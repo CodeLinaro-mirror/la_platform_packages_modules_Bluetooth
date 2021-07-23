@@ -424,6 +424,9 @@ typedef struct {
   bt_status_t (*get_item_attribute_cmd)(const RawAddress& bd_addr, uint8_t scope, uint8_t* uid,
                                    uint16_t uid_counter, uint8_t num_attr, uint32_t *attr_id);
 
+  /** Get element attributes */
+  bt_status_t (*get_element_attribute_cmd)(const RawAddress& bd_addr, uint8_t numAttr, uint32_t *attr);
+
   /** Closes the interface. */
   void (*cleanup)(void);
 } btrc_ctrl_interface_t;
