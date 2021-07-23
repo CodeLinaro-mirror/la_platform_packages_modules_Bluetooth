@@ -802,6 +802,12 @@ static void btavrcp_add_to_now_playing_callback(const RawAddress& bd_addr, uint8
                                addr.get(), (jint)status);
 }
 
+static void  btavrcp_get_item_attr_rsp_callback(const RawAddress& bd_addr, uint8_t num_attr,
+                                                btrc_element_attr_val_t *p_attrs) {
+    log::info("");
+    btavrcp_track_changed_callback(bd_addr, num_attr, p_attrs);
+}
+
 static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
         sizeof(sBluetoothAvrcpCallbacks),
         btavrcp_passthrough_response_callback,
@@ -826,7 +832,8 @@ static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
         btavrcp_available_player_changed_callback,
         btavrcp_get_rcpsm_callback,
         btavrcp_uids_changed_callback,
-        btavrcp_search_response_callback
+        btavrcp_search_response_callback,
+        btavrcp_get_item_attr_rsp_callback
 };
 
 static void initNative(JNIEnv* env, jobject object) {
@@ -1414,6 +1421,78 @@ static void abortContinuingResponseNative(JNIEnv* env, jobject /* object */,
   env->ReleaseByteArrayElements(address, addr, 0);
 }
 
+static void getItemAttributesNative(JNIEnv* env, jobject /* object */, jbyteArray address,
+                                    jbyte scope, jlong uid, jint uidCounter,
+                                    jbyte numAttr, jintArray attrIds) {
+  if (!sBluetoothAvrcpInterface) return;
+  jbyte *addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+  if (numAttr > BTRC_MAX_ELEM_ATTR_SIZE) {
+    log::error("getItemAttributesNative： number of attributes exceed maximum");
+    return;
+  }
+  jint* attr = NULL;
+  if ((numAttr > 0) && (attrIds != NULL)) {
+    attr = env->GetIntArrayElements(attrIds, NULL);
+    if (!attr) {
+      jniThrowIOException(env, EINVAL);
+      return;
+    }
+  }
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+  bt_status_t status = sBluetoothAvrcpInterface->get_item_attribute_cmd(
+      rawAddress, (uint8_t)scope, (uint8_t*)&uid, (uint16_t)uidCounter,
+      numAttr, (uint32_t*)attr);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending getItemAttributesNative command, status: {}", status);
+  }
+  if (attr) env->ReleaseIntArrayElements(attrIds, attr, 0);
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
+static void getElementAttributesNative(JNIEnv *env, jobject /* object */, jbyteArray address,
+                                       jbyte numAttr, jintArray attrIds) {
+  if (!sBluetoothAvrcpInterface) {
+    return;
+  }
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress = RawAddress::FromOctets((uint8_t*)addr);
+  if (numAttr > BTRC_MAX_ELEM_ATTR_SIZE) {
+    log::error("getElementAttributesNative: number of attributes exceeds maximum");
+    return;
+  }
+
+  jint* attr = NULL;
+  if ((numAttr > 0) && (attrIds != NULL)) {
+    attr = env->GetIntArrayElements(attrIds, NULL);
+    if (!attr) {
+      jniThrowIOException(env, EINVAL);
+      return;
+    }
+  }
+
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+  bt_status_t status = sBluetoothAvrcpInterface->get_element_attribute_cmd(
+      rawAddress, numAttr, (uint32_t*)attr);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending getElementAttributesNative command, status: {}",
+               bt_status_text(status));
+  }
+  if (attr) env->ReleaseIntArrayElements(attrIds, attr, 0);
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
 int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)initNative},
@@ -1435,11 +1514,13 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"setAddressedPlayerNative", "([BI)V", (void*)setAddressedPlayerNative},
           {"searchNative", "([BIILjava/lang/String;)V", (void*)searchNative},
           {"getSearchListNative", "([BII)V", (void*)getSearchListNative},
+          {"getItemAttributesNative", "([BBJIB[I)V",(void *) getItemAttributesNative},
           {"stopNative", "()V", (void*)stopNative},
           {"getFolderItemsNative", "([BBBBB[I)V", (void *) getFolderItemsNative},
           {"addToNowPlayingNative", "([BBJI)V",(void*)addToNowPlayingNative},
           {"requestContinuingResponseNative", "([BB)V",(void *) requestContinuingResponseNative},
           {"abortContinuingResponseNative", "([BB)V",(void *) abortContinuingResponseNative},
+          {"getElementAttributesNative", "([BB[I)V",(void *) getElementAttributesNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface", methods);

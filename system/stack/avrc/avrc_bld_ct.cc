@@ -445,20 +445,30 @@ static tAVRC_STS avrc_bld_change_folder_cmd(BT_HDR* p_pkt, const tAVRC_CHG_PATH_
   p_pkt->len = (p_data - p_start);
   return AVRC_STS_NO_ERROR;
 }
-static tAVRC_STS avrc_bld_get_item_attributes_cmd(BT_HDR* p_pkt, const tAVRC_GET_ATTRS_CMD* cmd) {
-  log::verbose("");
-  uint8_t* p_start = (uint8_t*)(p_pkt + 1) + p_pkt->offset;
-  /* This is where the PDU specific for AVRC starts
-   * AVRCP Spec 1.4 section 22.19 */
-  uint8_t* p_data = p_start + 1; /* pdu */
-  UINT16_TO_BE_STREAM(p_data, 12 + 4 * cmd->attr_count);
+
+static tAVRC_STS avrc_bld_get_item_attributes_cmd(
+    BT_HDR* p_pkt, const tAVRC_GET_ATTRS_CMD* cmd) {
+  uint8_t* p_data;
+  uint8_t* p_start;
+  uint16_t length;
+
+  log::verbose("avrc_bld_get_item_attributes_cmd");
+
+  p_start = (uint8_t *)(p_pkt + 1) + p_pkt->offset;
+  p_data = p_start + 1; /* PDU ID */
+
+  /* 12 = 1 (scope) + 8 (uid) + 2 (uid_counter) + 1 (attr_count)  */
+  length = 12 + cmd->attr_count * sizeof(uint32_t);
+  UINT16_TO_BE_STREAM(p_data, length);
   UINT8_TO_BE_STREAM(p_data, cmd->scope);
-  uint64_t uid;
-  memcpy(&uid, cmd->uid, 8);
-  UINT64_TO_BE_STREAM(p_data, uid);
+  ARRAY_TO_BE_STREAM(p_data, cmd->uid, AVRC_UID_SIZE);
   UINT16_TO_BE_STREAM(p_data, cmd->uid_counter);
   UINT8_TO_BE_STREAM(p_data, cmd->attr_count);
-  ARRAY_TO_BE_STREAM(p_data, cmd->p_attr_list, 4 * cmd->attr_count);
+  for (uint8_t index = 0; index < cmd->attr_count; index++) {
+    uint32_t attr_id = cmd->p_attr_list[index];
+    UINT32_TO_BE_STREAM(p_data, attr_id);
+  }
+
   p_pkt->len = (p_data - p_start);
   return AVRC_STS_NO_ERROR;
 }

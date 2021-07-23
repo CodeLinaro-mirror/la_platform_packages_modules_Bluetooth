@@ -873,4 +873,16 @@ public class AvrcpControllerService extends ConnectableProfile {
      */
     public native void setAddressedPlayerNative(byte[] address, int playerId);
 
+    /**
+     * Get item attributes with provided uid
+     *
+     * @param scope          scope of item to played
+     * @param uid            song unique id
+     * @param uidCounter     counter
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getItemAttributesNative(byte[] address, byte scope, long uid,
+            int uidCounter, byte numAttributes, int[] attribIds);
+
 }

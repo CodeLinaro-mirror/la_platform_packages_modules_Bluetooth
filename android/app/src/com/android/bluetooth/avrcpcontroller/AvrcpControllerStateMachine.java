@@ -34,6 +34,7 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.content.Intent;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Message;
@@ -110,6 +111,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     static final int MSG_AVRCP_SET_SHUFFLE = 303;
     static final int MSG_AVRCP_SET_REPEAT = 304;
     static final int MSG_AVRCP_SEARCH = 305;
+    static final int MSG_AVRCP_GET_ITEM_ATTR = 306;
     static final int MSG_AVRCP_GET_FOLDER_ITEMS_PTS = 308;
     static final int MSG_AVRCP_ADD_TO_NOW_PLAYING = 309;
     static final int MSG_AVRCP_SET_ADDRESSED_PLAYER_PTS = 310;
@@ -162,6 +164,29 @@ class AvrcpControllerStateMachine extends StateMachine {
     private int mUidCounter = 0;
     private int mVolumeNotificationLabel = -1;
     private int mRemoteFeatures;
+
+    /**
+     * Custom action to get item attributes.
+     *
+     * <p>This is called in {@link MediaController.TransportControls.sendCustomAction}
+     *
+     * <p>This is an asynchronous call: it will return immediately.
+     *
+     * <p>Intent {@link AvrcpControllerService.ACTION_TRACK_EVENT} will be broadcast.
+     * to notify the item attributes retrieved.
+     *
+     * @param Bundle wrapped with {@link MediaMetadata.METADATA_KEY_MEDIA_ID}
+     *
+     * @return void
+     *
+     * @See {@link android.media.session.MediaController}
+     *      {@link android.media.MediaMetadata}
+     *      {@link com.android.bluetooth.avrcpcontroller.AvrcpControllerService}
+     */
+    public static final String CUSTOM_ACTION_GET_ITEM_ATTR =
+        "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_GET_ITEM_ATTR";
+    public static final String KEY_BROWSE_SCOPE = "scope";
+    public static final String KEY_ATTRIBUTE_ID = "attribute_id";
 
     /**
      * Custom action to get folder items.
@@ -765,6 +790,12 @@ class AvrcpControllerStateMachine extends StateMachine {
                 }
                 case MSG_AVRCP_SET_REPEAT -> setRepeat(msg.arg1);
                 case MSG_AVRCP_SET_SHUFFLE -> setShuffle(msg.arg1);
+
+                case MSG_AVRCP_GET_ITEM_ATTR -> {
+                    getItemAttributes((Bundle) msg.obj);
+                    return true;
+                }
+
                 case MSG_AVRCP_GET_FOLDER_ITEMS_PTS -> {
                     getFolderItems((Bundle) msg.obj);
                     transitionTo(mGetFolderList);
@@ -1035,6 +1066,29 @@ class AvrcpControllerStateMachine extends StateMachine {
                         PlayerApplicationSettings.mapAvrcpPlayerSettingsToBTattribVal(
                                 PlayerApplicationSettings.SHUFFLE_STATUS, shuffleMode)
                     });
+        }
+
+        private synchronized void getItemAttributes(Bundle extras) {
+            int scope = extras.getInt(KEY_BROWSE_SCOPE, 0);
+            String mediaId = extras.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
+            int [] attributeId = extras.getIntArray(KEY_ATTRIBUTE_ID);
+            if (mediaId != null) {
+                BrowseTree.BrowseNode currItem = mBrowseTree.findBrowseNodeByID(mediaId);
+                debug("processGetItemAttrReq mediaId=" + mediaId + " node=" + currItem);
+                if (currItem != null) {
+                    int features = getRemoteFeatures();
+                    if ((features & BluetoothAvrcpController.BTRC_FEAT_BROWSE) != 0) {
+                        AvrcpControllerService.getItemAttributesNative(
+                            mDeviceAddress, (byte) scope,
+                            currItem.getBluetoothID(),
+                            mUidCounter, (byte) attributeId.length, attributeId);
+                    } else {
+                        debug("Browsing channel not supported!!!");
+                    }
+                }
+            } else {
+                debug("processGetItemAttrReq GetElementAttributes");
+            }
         }
 
         private synchronized void getFolderItems(Bundle extras) {
@@ -1879,6 +1933,8 @@ class AvrcpControllerStateMachine extends StateMachine {
                     debug("onCustomAction:" + action);
                     if (BluetoothAvrcpController.CUSTOM_ACTION_SEARCH.equals(action)) {
                         handleCustomActionSearch(extras);
+                    } else if (CUSTOM_ACTION_GET_ITEM_ATTR.equals(action)) {
+                        handleCustomActionGetItemAttributes(extras);
                     } else if (CUSTOM_ACTION_GET_FOLDER_ITEM.equals(action)) {
                         handleCustomActionGetFolderItems(extras);
                     } else if (CUSTOM_ACTION_ADD_TO_NOW_PLAYING.equals(action)) {
@@ -2018,6 +2074,14 @@ class AvrcpControllerStateMachine extends StateMachine {
 
         String searchQuery = extras.getString(BluetoothAvrcpController.KEY_SEARCH);
         sendMessage(MSG_AVRCP_SEARCH, searchQuery);
+    }
+
+    private void handleCustomActionGetItemAttributes(Bundle extras) {
+        debug("handleCustomActionGetItemAttributes extras: " + extras);
+        if (extras == null) {
+            return;
+        }
+        sendMessage(MSG_AVRCP_GET_ITEM_ATTR, extras);
     }
 
     public void handleCustomActionGetFolderItems(Bundle extras) {

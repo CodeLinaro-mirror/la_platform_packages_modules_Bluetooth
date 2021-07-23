@@ -117,6 +117,11 @@ public class AvrcpControllerNativeInterface {
         getSearchListNative(address, start, end);
     }
 
+    void getItemAttributes(byte[] address, byte scope, long uid,
+                           int uidCounter, byte numAttributes, int[] attribIds) {
+        getItemAttributesNative(address, scope, uid, uidCounter, numAttributes, attribIds);
+    }
+
     void getFolderItems(byte[] address, byte scope, byte start, byte end,
                         byte numAttributes, int[] attribIds) {
         getFolderItemsNative(address, scope, start, end, numAttributes, attribIds);
@@ -549,6 +554,20 @@ public class AvrcpControllerNativeInterface {
      * @param end          end
      */
     public native static void getSearchListNative(byte[] address, int start, int end);
+
+    /**
+     * Get item attributes with provided uid
+     *
+     * @param scope          scope of item to played
+     * @param uid            song unique id
+     * @param uidCounter     counter
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getItemAttributesNative(byte[] address, byte scope,
+                                                      long uid, int uidCounter,
+                                                      byte numAttributes, int[] attribIds);
+
     /**
      * Get folder items with specified range
      *
