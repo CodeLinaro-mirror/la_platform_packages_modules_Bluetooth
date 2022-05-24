@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -733,9 +738,9 @@ static void cleanup(void) {
   log::verbose("");
 
   btif_queue_cleanup(UUID_SERVCLASS_HF_HANDSFREE);
+  btif_disable_service(BTA_HFP_HS_SERVICE_ID);
   if (bt_hf_client_callbacks) {
-    btif_disable_service(BTA_HFP_HS_SERVICE_ID);
-    bt_hf_client_callbacks = NULL;
+    do_in_jni_thread(base::BindOnce([]() { bt_hf_client_callbacks = nullptr; }));
   }
 }
 
