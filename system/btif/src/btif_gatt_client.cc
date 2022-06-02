@@ -14,6 +14,40 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted (subject to the limitations in the
+ *  disclaimer below) provided that the following conditions are met:
+ *
+ *  Redistributions of source code must retain the above copyright
+ *  notice, this list of conditions and the following disclaimer.
+ *
+ *  Redistributions in binary form must reproduce the above
+ *  copyright notice, this list of conditions and the following
+ *  disclaimer in the documentation and/or other materials provided
+ *  with the distribution.
+ *
+ *  Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *  contributors may be used to endorse or promote products derived
+ *  from this software without specific prior written permission.
+ *
+ *  NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ *  GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ *  HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ *  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ *  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ *  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ *  IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ *  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ *  IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -339,7 +373,7 @@ void btif_gattc_open_impl(int client_if, RawAddress address, bool is_direct,
         break;
 
       case BT_DEVICE_TYPE_DUMO:
-        if (transport_p == BT_TRANSPORT_LE)
+        if (addr_type == BLE_ADDR_RANDOM)
           transport = BT_TRANSPORT_LE;
         else
           transport = BT_TRANSPORT_BR_EDR;
@@ -348,8 +382,8 @@ void btif_gattc_open_impl(int client_if, RawAddress address, bool is_direct,
   }
 
   // Connect!
-  BTIF_TRACE_DEBUG("%s Transport=%d, device type=%d, phy=%d", __func__,
-                   transport, device_type, initiating_phys);
+  LOG_INFO("%s Transport=%d, device type=%d, address type =%d, phy=%d",
+           __func__, transport, device_type, addr_type, initiating_phys);
   BTA_GATTC_Open(client_if, address, is_direct, transport, opportunistic,
                  initiating_phys);
 }
@@ -648,6 +682,14 @@ static bt_status_t btif_gattc_test_command(int command,
   return btif_gattc_test_command_impl(command, &params);
 }
 
+bt_status_t btif_gattc_subrate_request(const RawAddress& bd_addr,
+                                       int subrate_min, int subrate_max,
+                                       int max_latency, int cont_num,
+                                       int sup_timeout) {
+  CHECK_BTGATT_INIT();
+  return BT_STATUS_SUCCESS;
+}
+
 }  // namespace
 
 const btgatt_client_interface_t btgattClientInterface = {
@@ -673,4 +715,5 @@ const btgatt_client_interface_t btgattClientInterface = {
     btif_gattc_set_preferred_phy,
     btif_gattc_read_phy,
     btif_gattc_test_command,
-    btif_gattc_get_gatt_db};
+    btif_gattc_get_gatt_db,
+    btif_gattc_subrate_request};

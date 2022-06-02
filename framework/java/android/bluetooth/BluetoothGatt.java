@@ -12,6 +12,41 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *
+ * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following
+ * disclaimer in the documentation and/or other materials provided
+ * with the distribution.
+ *
+ * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
 
 package android.bluetooth;
@@ -148,6 +183,27 @@ public final class BluetoothGatt implements BluetoothProfile {
 
     /** Connection parameter update - Request low power, reduced data rate connection parameters. */
     public static final int CONNECTION_PRIORITY_LOW_POWER = 2;
+
+    /**
+     * Connection subrate request - Balanced.
+     *
+     * @hide
+     */
+    public static final int SUBRATE_REQ_BALANCED = 0;
+
+    /**
+     * Connection subrate request - High.
+     *
+     * @hide
+     */
+    public static final int SUBRATE_REQ_HIGH = 1;
+
+    /**
+     * Connection Subrate Request - Low Power.
+     *
+     * @hide
+     */
+    public static final int SUBRATE_REQ_LOW_POWER = 2;
 
     /**
      * No authentication required.
@@ -769,6 +825,34 @@ public final class BluetoothGatt implements BluetoothProfile {
                         }
                     });
                 }
+
+                /**
+                 * Callback invoked when the given connection's subrate is changed
+                 * @hide
+                 */
+                @Override
+                public void onSubrateChange(String address, int subrateFactor, int latency,
+                        int contNum, int timeout, int status) {
+                    Log.d(TAG, "onSubrateChange() - Device=" + address
+                            + " subrateFactor=" + subrateFactor + " latency=" + latency
+                            + " contNum=" + contNum + " timeout=" + timeout + " status=" + status);
+
+                    if (!address.equals(mDevice.getAddress())) {
+                        return;
+                    }
+
+                    runOrQueueCallback(new Runnable() {
+                        @Override
+                        public void run() {
+                            final BluetoothGattCallback callback = mCallback;
+                            if (callback != null) {
+                                callback.onSubrateChange(BluetoothGatt.this, subrateFactor, latency,
+                                        contNum, timeout, status);
+                            }
+                        }
+                    });
+                }
+
             };
 
     /* package */ BluetoothGatt(IBluetoothGatt iGatt, BluetoothDevice device, int transport,
@@ -1903,6 +1987,70 @@ public final class BluetoothGatt implements BluetoothProfile {
                     mAttributionSource, recv);
             recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
         } catch (RemoteException | TimeoutException e) {
+            Log.e(TAG, "", e);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Request LE subrate mode.
+     *
+     * <p>This function will send a LE subrate request to the
+     * remote device.
+     *
+     * @param subrateMode Request a specific subrate mode. Must be one of {@link
+     * BluetoothGatt#SUBRATE_REQ_BALANCED}, {@link BluetoothGatt#SUBRATE_REQ_HIGH}
+     * or {@link BluetoothGatt#SUBRATE_REQ_LOW_POWER}.
+     * @throws IllegalArgumentException If the parameters are outside of their specified range.
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public boolean requestSubrateMode(int subrateMode) {
+        if (subrateMode < SUBRATE_REQ_BALANCED
+                || subrateMode > SUBRATE_REQ_LOW_POWER) {
+            throw new IllegalArgumentException(" Subrate Mode not within valid range");
+        }
+
+        Log.d(TAG, "requestsubrateMode() - params: " + subrateMode);
+        if (mService == null || mClientIf == 0) return false;
+
+        try {
+            mService.subrateModeRequest(
+                    mClientIf, mDevice.getAddress(), subrateMode, mAttributionSource);
+        } catch (RemoteException e) {
+            Log.e(TAG, "", e);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Request a LE subrate request.
+     *
+     * <p>This function will send a LE subrate request to the remote device.
+     *
+     * @return true, if the request is send to the Bluetooth stack.
+     * @hide
+     */
+    public boolean bleSubrateRequest(int subrateMin, int subrateMax,
+                                     int maxLatency, int contNumber,
+                                     int supervisionTimeout) {
+        Log.d(TAG, "bleSubrateRequest() - subrateMin=" + subrateMin
+                   + " subrateMax=" + (subrateMax)
+                   + " maxLatency= " + maxLatency + "contNumber="
+                   + contNumber + " supervisionTimeout=" + supervisionTimeout);
+        if (mService == null || mClientIf == 0) return false;
+
+        try {
+            mService.leSubrateRequest(mClientIf, mDevice.getAddress(),
+                                      subrateMin, subrateMax, maxLatency,
+                                      contNumber, supervisionTimeout,
+                                      mAttributionSource);
+        } catch (RemoteException e) {
             Log.e(TAG, "", e);
             return false;
         }

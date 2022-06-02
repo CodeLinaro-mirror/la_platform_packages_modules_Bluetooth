@@ -1656,6 +1656,7 @@ impl Gatt {
             // TODO(b/200073464): Remove these.
             services_removed_cb: None,
             services_added_cb: None,
+            subrate_chg_cb: None,
         });
 
         let mut gatt_server_callbacks = Box::new(btgatt_server_callbacks_t {
@@ -1675,6 +1676,7 @@ impl Gatt {
             mtu_changed_cb: Some(gs_mtu_changed_cb),
             phy_updated_cb: Some(gs_phy_updated_cb),
             conn_updated_cb: Some(gs_conn_updated_cb),
+            subrate_chg_cb : None,
         });
 
         let mut gatt_scanner_callbacks = Box::new(btgatt_scanner_callbacks_t {

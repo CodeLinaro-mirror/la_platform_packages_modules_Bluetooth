@@ -12,6 +12,41 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *
+ * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following
+ * disclaimer in the documentation and/or other materials provided
+ * with the distribution.
+ *
+ * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
 
 #ifndef ANDROID_INCLUDE_BT_GATT_CLIENT_H
@@ -113,7 +148,7 @@ typedef void (*disconnect_callback)(int conn_id, int status, int client_if,
  */
 typedef void (*search_complete_callback)(int conn_id, int status);
 
-/** Callback invoked in response to [de]register_for_notification */
+/** Callback invoked in response to (de)register_for_notification */
 typedef void (*register_for_notification_callback)(int conn_id, int registered,
                                                    int status, uint16_t handle);
 
@@ -186,6 +221,13 @@ typedef void (*conn_updated_callback)(int conn_id, uint16_t interval,
 /** Callback when services are changed */
 typedef void (*service_changed_callback)(int conn_id);
 
+/** Callback invoked when the subrate change event for a given connection
+ * is received */
+typedef void (*subrate_change_callback)(int conn_id, uint16_t subrate_factor,
+                                        uint16_t latency, uint16_t cont_num,
+                                        uint16_t timeout, uint8_t status);
+
+
 typedef struct {
   register_client_callback register_client_cb;
   connect_callback open_cb;
@@ -207,6 +249,7 @@ typedef struct {
   phy_updated_callback phy_updated_cb;
   conn_updated_callback conn_updated_cb;
   service_changed_callback service_changed_cb;
+  subrate_change_callback subrate_chg_cb;
 } btgatt_client_callbacks_t;
 
 /** Represents the standard BT-GATT client interface. */
@@ -311,6 +354,12 @@ typedef struct {
 
   /** Get gatt db content */
   bt_status_t (*get_gatt_db)(int conn_id);
+
+  /** Request a BLE subrate request procedure */
+  bt_status_t (*subrate_request)(const RawAddress& bd_addr,
+                                 int subrate_min, int subrate_max,
+                                 int max_latency, int cont_num,
+                                 int timeout);
 
 } btgatt_client_interface_t;
 

@@ -12,6 +12,41 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *
+ * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following
+ * disclaimer in the documentation and/or other materials provided
+ * with the distribution.
+ *
+ * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
 
 package com.android.bluetooth.gatt;
@@ -64,6 +99,7 @@ import android.os.UserHandle;
 import android.os.WorkSource;
 import android.provider.DeviceConfig;
 import android.provider.Settings;
+import android.sysprop.BluetoothProperties;
 import android.text.format.DateUtils;
 import android.util.Log;
 
@@ -267,6 +303,10 @@ public class GattService extends ProfileService {
     private String mExposureNotificationPackage;
     private Handler mTestModeHandler;
     private final Object mTestModeLock = new Object();
+
+    public static boolean isEnabled() {
+        return BluetoothProperties.isProfileGattEnabled().orElse(false);
+    }
 
     /**
      */
@@ -1144,6 +1184,30 @@ public class GattService extends ProfileService {
         }
 
         @Override
+        public void subrateModeRequest(int clientIf, String address,
+                int subrateMode, AttributionSource attributionSource) {
+            GattService service = getService();
+            if (service == null) {
+                return;
+            }
+            service.subrateModeRequest(clientIf, address, subrateMode,
+                                       attributionSource);
+        }
+
+        @Override
+        public void leSubrateRequest(int clientIf, String address,
+                int subrateMin, int subrateMax, int maxLatency,
+                int contNumber, int supervisionTimeout,
+                AttributionSource attributionSource) {
+            GattService service = getService();
+            if (service == null) {
+                return;
+            }
+            service.leSubrateRequest(clientIf, address, subrateMin, subrateMax, maxLatency,
+                                     contNumber, supervisionTimeout, attributionSource);
+        }
+
+        @Override
         public void registerServer(ParcelUuid uuid, IBluetoothGattServerCallback callback,
                 boolean eattSupport, AttributionSource attributionSource,
                 SynchronousResultReceiver receiver) {
@@ -1691,13 +1755,6 @@ public class GattService extends ProfileService {
             return service.numHwTrackFiltersAvailable(attributionSource);
         }
 
-        @Override
-        public void transferSetInfo(BluetoothDevice bda, int service_data , int adv_handle,
-                IPeriodicAdvertisingCallback callback) { }
-
-        @Override
-        public void transferSync(BluetoothDevice bda, int service_data , int sync_handle) { }
-
     }
 
     ;
@@ -1778,6 +1835,16 @@ public class GattService extends ProfileService {
                     + ", originalAddress=" + originalAddress);
         }
 
+        String identityAddress = mAdapterService.getIdentityAddress(address);
+        if (!address.equals(identityAddress)) {
+            if (VDBG) {
+                Log.d(TAG, "found identityAddress of " + address + ", replace originalAddress as "
+                        + identityAddress);
+            }
+            originalAddress = identityAddress;
+        }
+
+
         byte[] legacyAdvData = Arrays.copyOfRange(advData, 0, 62);
 
         for (ScanClient client : mScanManager.getRegularScanQueue()) {
@@ -1845,13 +1912,6 @@ public class GattService extends ProfileService {
                             + hasPermission + " matches=" + matchResult.getMatches());
                 }
                 continue;
-            }
-
-            if (matchResult.getMatchOrigin() == MatchOrigin.ORIGINAL_ADDRESS) {
-                result = new ScanResult(BluetoothAdapter.getDefaultAdapter()
-                        .getRemoteDevice(originalAddress), eventType, primaryPhy, secondaryPhy,
-                        advertisingSid, txPower, rssi, periodicAdvInt, scanRecord,
-                        SystemClock.elapsedRealtimeNanos());
             }
 
             if ((settings.getCallbackType() & ScanSettings.CALLBACK_TYPE_ALL_MATCHES) == 0) {
@@ -2123,6 +2183,24 @@ public class GattService extends ProfileService {
         app.callback.onServiceChanged(address);
     }
 
+    void onClientSubrateChange(int connId, int subrateFactor, int latency, int contNum,
+            int timeout, int status)
+            throws RemoteException {
+        Log.d(TAG, "onClientSubrateChange() - connId=" + connId + ", status=" + status);
+
+        String address = mClientMap.addressByConnId(connId);
+        if (address == null) {
+            return;
+        }
+
+        ClientMap.App app = mClientMap.getByConnId(connId);
+        if (app == null) {
+            return;
+        }
+
+        app.callback.onSubrateChange(address, subrateFactor, latency, contNum, timeout, status);
+    }
+
     void onServerPhyUpdate(int connId, int txPhy, int rxPhy, int status) throws RemoteException {
         if (DBG) {
             Log.d(TAG, "onServerPhyUpdate() - connId=" + connId + ", status=" + status);
@@ -2179,6 +2257,25 @@ public class GattService extends ProfileService {
 
         app.callback.onConnectionUpdated(address, interval, latency, timeout, status);
     }
+
+    void onServerSubrateChange(int connId, int subrateFactor, int latency, int contNum,
+            int timeout, int status)
+            throws RemoteException {
+        Log.d(TAG, "onServerSubrateChange() - connId=" + connId + ", status=" + status);
+
+        String address = mServerMap.addressByConnId(connId);
+        if (address == null) {
+            return;
+        }
+
+        ServerMap.App app = mServerMap.getByConnId(connId);
+        if (app == null) {
+            return;
+        }
+
+        app.callback.onSubrateChange(address, subrateFactor, latency, contNum, timeout, status);
+    }
+
 
     void onSearchCompleted(int connId, int status) throws RemoteException {
         if (DBG) {
@@ -3868,6 +3965,81 @@ public class GattService extends ProfileService {
                                             minConnectionEventLen, maxConnectionEventLen);
     }
 
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public void subrateModeRequest(int clientIf, String address,
+            int subrateMode, AttributionSource attributionSource) {
+        if (!Utils.checkConnectPermissionForDataDelivery(
+                this, attributionSource, "GattService subrateModeRequest")) {
+            return;
+        }
+
+        int subrateMin;
+        int subrateMax;
+        int maxLatency;
+        int contNumber;
+        // Link supervision timeout is measured in N * 10ms
+        int supervisionTimeout = 500; // 5s
+
+        switch (subrateMode) {
+            case BluetoothGatt.SUBRATE_REQ_HIGH:
+                subrateMin =
+                        getResources().getInteger(R.integer.subrate_mode_high_priority_min_subrate);
+                subrateMax =
+                        getResources().getInteger(R.integer.subrate_mode_high_priority_max_subrate);
+                maxLatency =
+                        getResources().getInteger(R.integer.subrate_mode_high_priority_latency);
+                contNumber =
+                        getResources().getInteger(R.integer.subrate_mode_high_priority_cont_number);
+                break;
+
+            case BluetoothGatt.SUBRATE_REQ_LOW_POWER:
+                subrateMin =
+                        getResources().getInteger(R.integer.subrate_mode_low_power_min_subrate);
+                subrateMax =
+                        getResources().getInteger(R.integer.subrate_mode_low_power_max_subrate);
+                maxLatency = getResources().getInteger(R.integer.subrate_mode_low_power_latency);
+                contNumber = getResources().getInteger(R.integer.subrate_mode_low_power_cont_number);
+                break;
+
+            default:
+                // Using the values for SUBRATE_REQ_BALANCED.
+                subrateMin =
+                        getResources().getInteger(R.integer.subrate_mode_balanced_min_subrate);
+                subrateMax =
+                        getResources().getInteger(R.integer.subrate_mode_balanced_max_subrate);
+                maxLatency = getResources().getInteger(R.integer.subrate_mode_balanced_latency);
+                contNumber = getResources().getInteger(R.integer.subrate_mode_balanced_cont_number);
+                break;
+        }
+
+        if (DBG) {
+            Log.d(TAG, "subrateModeRequest() - address=" + address + ", subrate min/max="
+                  + subrateMin + "/" + subrateMax + ", maxLatency=" + maxLatency
+                  + " continuation Number=" + contNumber +", timeout=" + supervisionTimeout);
+        }
+
+        gattSubrateRequestNative(clientIf, address, subrateMin, subrateMax, maxLatency,
+                                 contNumber, supervisionTimeout);
+    }
+
+    void leSubrateRequest(int clientIf, String address, int subrateMin, int subrateMax,
+            int maxLatency, int contNumber, int supervisionTimeout,
+            AttributionSource attributionSource) {
+        if (!Utils.checkConnectPermissionForDataDelivery(
+                this, attributionSource, "GattService leSubrateRequest")) {
+            return;
+        }
+
+        if (DBG) {
+            Log.d(TAG, "leSubrateRequest() - address=" + address + ", subrate min/max="
+                  + subrateMin + "/" + subrateMax + ", maxLatency=" + maxLatency
+                  + " continuation Number=" + contNumber +", timeout=" + supervisionTimeout);
+        }
+
+        gattSubrateRequestNative(clientIf, address, subrateMin, subrateMax, maxLatency,
+                                 contNumber, supervisionTimeout);
+    }
+
     /**************************************************************************
      * Callback functions - SERVER
      *************************************************************************/
@@ -4762,4 +4934,7 @@ public class GattService extends ProfileService {
 
     private native void gattServerSendResponseNative(int serverIf, int connId, int transId,
             int status, int handle, int offset, byte[] val, int authReq);
+
+    private native void gattSubrateRequestNative(int clientIf, String address, int subrateMin,
+            int subrateMax, int maxLatency, int contNumber, int supervisionTimeout);
 }

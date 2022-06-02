@@ -1638,7 +1638,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getIdentityAddress()");
         final IBluetooth service = sService;
         final String defaultValue = null;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot get identity address");
         } else {
             try {
@@ -1668,7 +1668,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getName()");
         final IBluetooth service = sService;
         final String defaultValue = null;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot get Remote Device name");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -1703,7 +1703,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getType()");
         final IBluetooth service = sService;
         final int defaultValue = DEVICE_TYPE_UNKNOWN;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot get Remote Device type");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -1732,7 +1732,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getAlias()");
         final IBluetooth service = sService;
         final String defaultValue = null;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot get Remote Device Alias");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -1793,7 +1793,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setAlias(" + alias + ")");
         final IBluetooth service = sService;
         final int defaultValue = BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot set Remote Device name");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -1827,7 +1827,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getBatteryLevel()");
         final IBluetooth service = sService;
         final int defaultValue = BATTERY_LEVEL_BLUETOOTH_OFF;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "Bluetooth disabled. Cannot get remote device battery level");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -1922,7 +1922,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("createBondOutOfBand()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "BT not enabled, createBondOutOfBand failed");
             return false;
         }
@@ -1965,7 +1965,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("isBondingInitiatedLocally()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "BT not enabled, isBondingInitiatedLocally failed");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2011,7 +2011,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("cancelBondProcess()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot cancel Remote Device bond");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2044,7 +2044,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("removeBond()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot remove Remote Device bond");
             return false;
         }
@@ -2169,7 +2169,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("canBondWithoutDialog, device: " + this);
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot check if we can skip pairing dialog");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2223,7 +2223,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         }
         final IBluetooth service = sService;
         final int defaultValue = BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot connect to remote device.");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2270,7 +2270,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         }
         final IBluetooth service = sService;
         final int defaultValue = BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot disconnect to remote device.");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2302,7 +2302,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("isConnected()");
         final IBluetooth service = sService;
         final int defaultValue = CONNECTION_STATE_DISCONNECTED;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2334,7 +2334,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("isEncrypted()");
         final IBluetooth service = sService;
         final int defaultValue = CONNECTION_STATE_DISCONNECTED;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2363,7 +2363,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getBluetoothClass()");
         final IBluetooth service = sService;
         final int defaultValue = 0;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot get Bluetooth Class");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2506,7 +2506,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("sdpSearch()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot query remote device sdp records");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2574,7 +2574,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setPin()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot set Remote Device pin");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2620,7 +2620,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setPairingConfirmation()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "BT not enabled. Cannot set pairing confirmation");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2659,7 +2659,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getPhonebookAccessPermission()");
         final IBluetooth service = sService;
         final int defaultValue = ACCESS_UNKNOWN;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2706,7 +2706,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setSilenceMode()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             throw new IllegalStateException("Bluetooth is not turned ON");
         } else {
             try {
@@ -2736,7 +2736,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("isInSilenceMode()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             throw new IllegalStateException("Bluetooth is not turned ON");
         } else {
             try {
@@ -2767,7 +2767,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setPhonebookAccessPermission()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2796,7 +2796,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getMessageAccessPermission()");
         final IBluetooth service = sService;
         final int defaultValue = ACCESS_UNKNOWN;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2833,7 +2833,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setMessageAccessPermission()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2862,7 +2862,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getSimAccessPermission()");
         final IBluetooth service = sService;
         final int defaultValue = ACCESS_UNKNOWN;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -2895,7 +2895,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setSimAccessPermission()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.w(TAG, "Proxy not attached to service");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -3448,7 +3448,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setMetadata()");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "Bluetooth is not enabled. Cannot set metadata");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (value.length > METADATA_MAX_LENGTH) {
@@ -3483,7 +3483,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("getMetadata()");
         final IBluetooth service = sService;
         final byte[] defaultValue = null;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "Bluetooth is not enabled. Cannot get metadata");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
@@ -3564,7 +3564,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (DBG) log("setLowLatencyAudioAllowed(" + allowed + ")");
         final IBluetooth service = sService;
         final boolean defaultValue = false;
-        if (service == null) {
+        if (service == null || !isBluetoothEnabled()) {
             Log.e(TAG, "Bluetooth is not enabled. Cannot allow low latency");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else {
