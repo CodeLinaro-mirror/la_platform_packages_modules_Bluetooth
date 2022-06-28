@@ -69,6 +69,7 @@ class MockScannerHandler : public BleScannerInterface {
 
   MOCK_METHOD2(BatchscanReadReports, void(int client_if, int scan_mode));
 
+  MOCK_METHOD5(StartSync, void(uint8_t, RawAddress, uint16_t, uint16_t, int));
   MOCK_METHOD7(StartSync, void(uint8_t, RawAddress, uint16_t, uint16_t,
                                StartSyncCb, SyncReportCb, SyncLostCb));
   MOCK_METHOD1(StopSync, void(uint16_t));
@@ -77,12 +78,17 @@ class MockScannerHandler : public BleScannerInterface {
 
   MOCK_METHOD2(CancelCreateSync, void(uint8_t, RawAddress));
 
+  MOCK_METHOD4(TransferSync, void(RawAddress, uint16_t, uint16_t, int));
+
+  MOCK_METHOD4(TransferSetInfo, void(RawAddress, uint16_t, uint8_t, int));
+
+  MOCK_METHOD5(SyncTxParameters,
+               void(RawAddress, uint8_t, uint16_t, uint16_t, int));
+
   MOCK_METHOD4(TransferSync,
                void(RawAddress, uint16_t, uint16_t, SyncTransferCb));
-
   MOCK_METHOD4(TransferSetInfo,
                void(RawAddress, uint16_t, uint8_t, SyncTransferCb));
-
   MOCK_METHOD5(SyncTxParameters,
                void(RawAddress, uint8_t, uint16_t, uint16_t, StartSyncCb));
 

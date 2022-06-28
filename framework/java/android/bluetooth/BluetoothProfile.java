@@ -217,68 +217,24 @@ public interface BluetoothProfile {
     int LE_AUDIO = 22;
 
     /**
-     * DUN
-     * @hide
-     */
-    // Temporary fix for b/198947204
-    public static final int DUN = 30;
-
-    /**
-     * Group Operation Profile (Client Role)
-     * @hide
-     */
-    public int GROUP_CLIENT = 24;
-
-    /**
-     * Broadcast
-     * @hide
-     */
-    public int BROADCAST = 32;
-
-    /**
-     * VCP
-     * @hide
-     */
-    public static final int VCP = 33;
-
-   /**
-     * BC_PROFILE
-     * @hide
-     */
-    public static final int BC_PROFILE = 27;
-
-    /**
-     * PC_PROFILE
-     * @hide
-     */
-    public static final int PC_PROFILE = 28;
-
-   /**
-     * CC_SERVER
-     * @hide
-     */
-    public static final int CC_SERVER = 29;
-
-   /**
      * Volume Control profile
      *
      * @hide
      */
     @SystemApi
-    // Temporary fix for b/198947204
-    public static final int VOLUME_CONTROL = 23;
+    int VOLUME_CONTROL = 23;
 
-   /**
-     * MCP_SERVER
+    /**
      * @hide
+     * Media Control Profile server
+     *
      */
-    public static final int MCP_SERVER = 31;
+    int MCP_SERVER = 24;
 
     /**
      * Coordinated Set Identification Profile set coordinator
      *
      */
-    // Temporary fix for b/203821845
     int CSIP_SET_COORDINATOR = 25;
 
     /**
@@ -294,7 +250,7 @@ public interface BluetoothProfile {
      * Telephone Bearer Service from Call Control Profile
      *
      */
-    int LE_CALL_CONTROL = 34;
+    int LE_CALL_CONTROL = 27;
 
     /*
      * Hearing Access Profile Client
@@ -318,12 +274,55 @@ public interface BluetoothProfile {
     int BATTERY = 30;
 
     /**
+     * DUN
+     * @hide
+     */
+    public int DUN = 31;
+
+    /**
+     * Group Operation Profile (Client Role)
+     * @hide
+     */
+    public int GROUP_CLIENT = 32;
+
+    /**
+     * Broadcast
+     * @hide
+     */
+    public int BROADCAST = 33;
+
+    /**
+     * VCP
+     * @hide
+     */
+    public static final int VCP = 34;
+
+    /**
+     * BC_PROFILE
+     * @hide
+     */
+    public static final int BC_PROFILE = 35;
+
+    /**
+     * PC_PROFILE
+     * @hide
+     */
+    public static final int PC_PROFILE = 36;
+
+   /**
+     * CC_SERVER
+     * @hide
+     */
+    public static final int CC_SERVER = 37;
+
+
+    /**
      * Max profile ID. This value should be updated whenever a new profile is added to match
      * the largest value assigned to a profile.
      *
      * @hide
      */
-    int MAX_PROFILE_ID = 34;
+    int MAX_PROFILE_ID = 37;
 
     /**
      * Default priority for devices that we try to auto-connect to and
@@ -539,16 +538,26 @@ public interface BluetoothProfile {
                 return "LE_AUDIO_BROADCAST";
             case LE_CALL_CONTROL:
                 return "LE_CALL_CONTROL";
-            case BROADCAST:
-                return "BROADCAST";
-            case VCP:
-                return "VCP";
             case HAP_CLIENT:
                 return "HAP_CLIENT";
             case LE_AUDIO_BROADCAST_ASSISTANT:
                 return "LE_AUDIO_BROADCAST_ASSISTANT";
             case BATTERY:
                 return "BATTERY";
+            case BROADCAST:
+                return "BROADCAST";
+            case VCP:
+                return "VCP";
+            case GROUP_CLIENT:
+                return "GROUP_CLIENT";
+            case DUN:
+                return "DUN";
+            case BC_PROFILE:
+                return "BC_PROFILE";
+            case PC_PROFILE:
+                return "PC_PROFILE";
+            case CC_SERVER:
+                return "CC_SERVER";
             default:
                 return "UNKNOWN_PROFILE";
         }

@@ -66,6 +66,7 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothProtoEnums;
 import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.IBluetoothGatt;
 import android.bluetooth.IBluetoothGattCallback;
@@ -104,6 +105,7 @@ import android.text.format.DateUtils;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothMetricsProto;
+import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AbstractionLayer;
@@ -305,7 +307,7 @@ public class GattService extends ProfileService {
     private final Object mTestModeLock = new Object();
 
     public static boolean isEnabled() {
-        return BluetoothProperties.isProfileGattEnabled().orElse(false);
+        return BluetoothProperties.isProfileGattEnabled().orElse(true);
     }
 
     /**
@@ -2063,7 +2065,7 @@ public class GattService extends ProfileService {
             Log.d(TAG, "onConnected() - clientIf=" + clientIf + ", connId=" + connId + ", address="
                     + address);
         }
-
+        int connectionState = BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTED;
         if (status == 0) {
             mClientMap.addConnection(clientIf, connId, address);
 
@@ -2073,12 +2075,16 @@ public class GattService extends ProfileService {
                     + address);
                 mPermits.putIfAbsent(address, new AtomicBoolean(true));
             }
+            connectionState = BluetoothProtoEnums.CONNECTION_STATE_CONNECTED;
+
         }
         ClientMap.App app = mClientMap.getById(clientIf);
         if (app != null) {
             app.callback.onClientConnectionState(status, clientIf,
                     (status == BluetoothGatt.GATT_SUCCESS), address);
         }
+        statsLogGattConnectionStateChange(
+                BluetoothProfile.GATT, address, clientIf, connectionState);
     }
 
     void onDisconnected(int clientIf, int connId, int status, String address)
@@ -2104,6 +2110,9 @@ public class GattService extends ProfileService {
         if (app != null) {
             app.callback.onClientConnectionState(status, clientIf, false, address);
         }
+        statsLogGattConnectionStateChange(
+                BluetoothProfile.GATT, address, clientIf,
+                BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTED);
     }
 
     void onClientPhyUpdate(int connId, int txPhy, int rxPhy, int status) throws RemoteException {
@@ -3485,6 +3494,9 @@ public class GattService extends ProfileService {
             Log.d(TAG, "clientConnect() - address=" + address + ", isDirect=" + isDirect
                     + ", opportunistic=" + opportunistic + ", phy=" + phy);
         }
+        statsLogGattConnectionStateChange(
+                BluetoothProfile.GATT, address, clientIf,
+                BluetoothProtoEnums.CONNECTION_STATE_CONNECTING);
         gattClientConnectNative(clientIf, address, isDirect, transport, opportunistic, phy);
     }
 
@@ -3499,7 +3511,9 @@ public class GattService extends ProfileService {
         if (DBG) {
             Log.d(TAG, "clientDisconnect() - address=" + address + ", connId=" + connId);
         }
-
+        statsLogGattConnectionStateChange(
+                BluetoothProfile.GATT, address, clientIf,
+                BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTING);
         gattClientDisconnectNative(clientIf, address, connId != null ? connId : 0);
     }
 
@@ -4136,14 +4150,18 @@ public class GattService extends ProfileService {
         if (app == null) {
             return;
         }
-
+        int connectionState;
         if (connected) {
             mServerMap.addConnection(serverIf, connId, address);
+            connectionState = BluetoothProtoEnums.CONNECTION_STATE_CONNECTED;
         } else {
             mServerMap.removeConnection(serverIf, connId);
+            connectionState = BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTED;
         }
 
         app.callback.onServerConnectionState((byte) 0, serverIf, connected, address);
+        statsLogGattConnectionStateChange(
+                BluetoothProfile.GATT_SERVER, address, serverIf, connectionState);
     }
 
     void onServerReadCharacteristic(String address, int connId, int transId, int handle, int offset,
@@ -4814,6 +4832,20 @@ public class GattService extends ProfileService {
                 mScanEvents.remove();
             }
             mScanEvents.add(event);
+        }
+    }
+
+    private void statsLogGattConnectionStateChange(
+            int profile, String address, int sessionIndex, int connectionState) {
+        BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+        BluetoothStatsLog.write(
+                BluetoothStatsLog.BLUETOOTH_CONNECTION_STATE_CHANGED, connectionState,
+                0 /* deprecated */, profile, new byte[0],
+                mAdapterService.getMetricId(device), sessionIndex);
+        if (DBG) {
+            Log.d(TAG, "Gatt Logging: metric_id=" + mAdapterService.getMetricId(device)
+                    + ", session_index=" + sessionIndex
+                    + ", connection state=" + connectionState);
         }
     }
 

@@ -19,6 +19,7 @@ package com.android.bluetooth.bas;
 import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
 
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.after;
@@ -77,10 +78,6 @@ public class BatteryStateMachineTest {
     @Before
     public void setUp() throws Exception {
         mTargetContext = InstrumentationRegistry.getTargetContext();
-        //TODO: check flag or override it
-        Assume.assumeTrue("Ignore test when BatteryService is not enabled",
-                BatteryService.isEnabled());
-
         TestUtils.setAdapterService(mAdapterService);
 
         mAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -100,9 +97,6 @@ public class BatteryStateMachineTest {
 
     @After
     public void tearDown() throws Exception {
-        if (!BatteryService.isEnabled()) {
-            return;
-        }
         mBatteryStateMachine.doQuit();
         mHandlerThread.quit();
         TestUtils.clearAdapterService(mAdapterService);
@@ -164,6 +158,7 @@ public class BatteryStateMachineTest {
         // Check that we are in Disconnected state
         Assert.assertThat(mBatteryStateMachine.getCurrentState(),
                 IsInstanceOf.instanceOf(BatteryStateMachine.Disconnected.class));
+        assertNull(mBatteryStateMachine.mBluetoothGatt);
     }
 
     @Test
