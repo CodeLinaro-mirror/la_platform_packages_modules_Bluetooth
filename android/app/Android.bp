@@ -62,6 +62,7 @@ cc_library_shared {
     static_libs: [
         "libbluetooth-types",
         "libbluetooth",
+        "libc++fs",
     ],
     cflags: [
         "-Wall",
@@ -86,7 +87,7 @@ android_app {
         ":bluetooth-proto-enums-java-gen",
     ],
     aaptflags: [ "--custom-package", "com.android.bluetooth" ],
-    certificate: ":com.android.bluetooth.services.certificate",
+    certificate: ":com.android.bluetooth.certificate",
 
     jni_libs: ["libbluetooth_jni"],
     libs: [
@@ -157,6 +158,6 @@ genrule {
 }
 
 android_app_certificate {
-    name: "com.android.bluetooth.services.certificate",
-    certificate: "certs/com.android.bluetooth.services"
+    name: "com.android.bluetooth.certificate",
+    certificate: "certs/com.android.bluetooth"
 }

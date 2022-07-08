@@ -461,6 +461,7 @@ public class BassClientStateMachine extends StateMachine {
             int broadcastId = result.getBroadcastId();
             log("broadcast ID: " + broadcastId);
             metaData.setBroadcastId(broadcastId);
+            metaData.setSourceAdvertisingSid(result.getAdvSid());
         }
         return metaData.build();
     }
@@ -662,7 +663,6 @@ public class BassClientStateMachine extends StateMachine {
                         badBroadcastCode,
                         0,
                         BassConstants.BCAST_RCVR_STATE_BADCODE_SIZE);
-                badBroadcastCode = reverseBytes(badBroadcastCode);
                 badBroadcastCodeLen = BassConstants.BCAST_RCVR_STATE_BADCODE_SIZE;
             }
             byte numSubGroups = receiverState[BassConstants.BCAST_RCVR_STATE_BADCODE_START_IDX
@@ -679,7 +679,7 @@ public class BassClientStateMachine extends StateMachine {
                 offset += BassConstants.BCAST_RCVR_STATE_BIS_SYNC_SIZE;
                 log("BIS index byte array: ");
                 BassUtils.printByteArray(audioSyncIndex);
-                ByteBuffer wrapped = ByteBuffer.wrap(reverseBytes(audioSyncIndex));
+                ByteBuffer wrapped = ByteBuffer.wrap(audioSyncIndex);
                 audioSyncState.add((long) wrapped.getInt());
 
                 byte metaDataLength = receiverState[offset++];
