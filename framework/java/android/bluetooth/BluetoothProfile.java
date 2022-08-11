@@ -314,7 +314,11 @@ public interface BluetoothProfile {
      * @hide
      */
     public static final int CC_SERVER = 37;
-
+   /**
+     * Coordinated Audio Unicast
+     * @hide
+     */
+    int COORDINATED_AUDIO_UNICAST = 38;
 
     /**
      * Max profile ID. This value should be updated whenever a new profile is added to match
@@ -322,7 +326,7 @@ public interface BluetoothProfile {
      *
      * @hide
      */
-    int MAX_PROFILE_ID = 37;
+    int MAX_PROFILE_ID = 38;
 
     /**
      * Default priority for devices that we try to auto-connect to and

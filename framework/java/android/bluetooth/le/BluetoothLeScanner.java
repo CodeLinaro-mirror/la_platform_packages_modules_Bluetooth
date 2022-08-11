@@ -294,7 +294,7 @@ public final class BluetoothLeScanner {
                 wrapper.startRegistration();
             } else {
                 try {
-                    final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+                    final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
                     gatt.startScanForIntent(callbackIntent, settings, filters,
                             mAttributionSource, recv);
                     recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
@@ -342,7 +342,7 @@ public final class BluetoothLeScanner {
         IBluetoothGatt gatt;
         try {
             gatt = mBluetoothManager.getBluetoothGatt();
-            final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+            final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
             gatt.stopScanForIntent(callbackIntent, mAttributionSource, recv);
             recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
         } catch (TimeoutException | RemoteException e) {
@@ -440,7 +440,7 @@ public final class BluetoothLeScanner {
                 // Scan stopped.
                 if (mScannerId == -1 || mScannerId == -2) return;
                 try {
-                    final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+                    final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
                     mBluetoothGatt.registerScanner(this, mWorkSource, mAttributionSource, recv);
                     recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
                     wait(REGISTRATION_CALLBACK_TIMEOUT_MILLIS);
@@ -472,11 +472,11 @@ public final class BluetoothLeScanner {
                     return;
                 }
                 try {
-                    final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+                    final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
                     mBluetoothGatt.stopScan(mScannerId, mAttributionSource, recv);
                     recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
 
-                    final SynchronousResultReceiver recv2 = new SynchronousResultReceiver();
+                    final SynchronousResultReceiver recv2 = SynchronousResultReceiver.get();
                     mBluetoothGatt.unregisterScanner(mScannerId, mAttributionSource, recv2);
                     recv2.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
                 } catch (TimeoutException | RemoteException e) {
@@ -494,7 +494,7 @@ public final class BluetoothLeScanner {
                     return;
                 }
                 try {
-                    final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+                    final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
                     mBluetoothGatt.flushPendingBatchResults(mScannerId, mAttributionSource, recv);
                     recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
                 } catch (TimeoutException | RemoteException e) {
@@ -513,7 +513,7 @@ public final class BluetoothLeScanner {
             synchronized (this) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     try {
-                        final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+                        final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
                         if (mScannerId == -1) {
                             // Registration succeeds after timeout, unregister scanner.
                             mBluetoothGatt.unregisterScanner(scannerId, mAttributionSource, recv);

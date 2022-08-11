@@ -801,7 +801,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private boolean synchronousDisable(AttributionSource attributionSource)
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return false;
-        final SynchronousResultReceiver<Boolean> recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver<Boolean> recv = SynchronousResultReceiver.get();
         mBluetooth.disable(attributionSource, recv);
         return recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(false);
     }
@@ -810,7 +810,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private boolean synchronousEnable(boolean quietMode, AttributionSource attributionSource)
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return false;
-        final SynchronousResultReceiver<Boolean> recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver<Boolean> recv = SynchronousResultReceiver.get();
         mBluetooth.enable(quietMode, attributionSource, recv);
         return recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(false);
     }
@@ -819,7 +819,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private String synchronousGetAddress(AttributionSource attributionSource)
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return null;
-        final SynchronousResultReceiver<String> recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver<String> recv = SynchronousResultReceiver.get();
         mBluetooth.getAddressWithAttribution(attributionSource, recv);
         return recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
     }
@@ -828,7 +828,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private String synchronousGetName(AttributionSource attributionSource)
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return null;
-        final SynchronousResultReceiver<String> recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver<String> recv = SynchronousResultReceiver.get();
         mBluetooth.getName(attributionSource, recv);
         return recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
     }
@@ -837,7 +837,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private int synchronousGetState()
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return BluetoothAdapter.STATE_OFF;
-        final SynchronousResultReceiver<Integer> recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
         mBluetooth.getState(recv);
         return recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(BluetoothAdapter.STATE_OFF);
     }
@@ -846,7 +846,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private void synchronousOnBrEdrDown(AttributionSource attributionSource)
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return;
-        final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
         mBluetooth.onBrEdrDown(attributionSource, recv);
         recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
     }
@@ -855,7 +855,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private void synchronousOnLeServiceUp(AttributionSource attributionSource)
             throws RemoteException, TimeoutException {
         if (mBluetooth == null) return;
-        final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
         mBluetooth.onLeServiceUp(attributionSource, recv);
         recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
     }
@@ -864,7 +864,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private void synchronousRegisterCallback(IBluetoothCallback callback,
             AttributionSource attributionSource) throws RemoteException, TimeoutException {
         if (mBluetooth == null) return;
-        final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
         mBluetooth.registerCallback(callback, attributionSource, recv);
         recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
     }
@@ -873,7 +873,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private void synchronousUnregisterCallback(IBluetoothCallback callback,
             AttributionSource attributionSource) throws RemoteException, TimeoutException {
         if (mBluetooth == null) return;
-        final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+        final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
         mBluetooth.unregisterCallback(callback, attributionSource, recv);
         recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
     }
@@ -1274,7 +1274,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
         if (isBleAppPresent()) {
             // Need to stay at BLE ON. Disconnect all Gatt connections
             try {
-                final SynchronousResultReceiver recv = new SynchronousResultReceiver();
+                final SynchronousResultReceiver recv = SynchronousResultReceiver.get();
                 if (mBluetoothGatt != null) {
                     mBluetoothGatt.unregAll(attributionSource, recv);
                 }
@@ -2015,7 +2015,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
             } else if (state == BluetoothAdapter.STATE_OFF) {
                 mEnable = true;
                 mBluetooth.factoryReset(mContext.getAttributionSource(),
-                                        new SynchronousResultReceiver());
+                                        SynchronousResultReceiver.get());
                 handleEnable(mQuietEnable);
             } else if (state == BluetoothAdapter.STATE_BLE_ON) {
                 addActiveLog(
@@ -2023,14 +2023,14 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                 mContext.getPackageName(), false);
                 synchronousOnBrEdrDown(mContext.getAttributionSource());
                 mBluetooth.factoryReset(mContext.getAttributionSource(),
-                                        new SynchronousResultReceiver());
+                                        SynchronousResultReceiver.get());
             } else if (state == BluetoothAdapter.STATE_ON) {
                 addActiveLog(
                 BluetoothProtoEnums.ENABLE_DISABLE_REASON_FACTORY_RESET,
                 mContext.getPackageName(), false);
                 handleDisable();
                 mBluetooth.factoryReset(mContext.getAttributionSource(),
-                                        new SynchronousResultReceiver());
+                                        SynchronousResultReceiver.get());
             }
         } catch (RemoteException | TimeoutException e) {
             Log.e(TAG, "factoryReset(): Unable to do factoryReset.", e);
@@ -2510,8 +2510,12 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                         break;
                     }
                     if (msg.arg1 > 0) {
-                        mContext.unbindService(psc);
-                        Log.w(TAG, "Calling psc.bindService from MESSAGE_BIND_PROFILE_SERVICE");
+                        try {
+                            mContext.unbindService(psc);
+                            Log.w(TAG, "Calling psc.bindService from MESSAGE_BIND_PROFILE_SERVICE");
+                        } catch (IllegalArgumentException e) {
+                            Log.e(TAG, "Unable to unbind service with intent: " + psc.mIntent, e);
+                        }
                         psc.bindService(msg.arg1 - 1);
                     }
                     break;
