@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 package android.bluetooth;
@@ -325,13 +330,20 @@ public interface BluetoothProfile {
      * @hide
      */
     public static final int CS_PROFILE = 39;
+
+    /**
+     * LE Direction Finding
+     * @hide
+     */
+    public static final int LE_DIRECTION_FINDING = 40;
+
     /**
      * Max profile ID. This value should be updated whenever a new profile is added to match
      * the largest value assigned to a profile.
      *
      * @hide
      */
-    int MAX_PROFILE_ID = 39;
+    int MAX_PROFILE_ID = 40;
 
     /**
      * Default priority for devices that we try to auto-connect to and

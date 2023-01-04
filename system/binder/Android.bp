@@ -67,5 +67,7 @@ filegroup {
         "android/bluetooth/IBluetoothDeviceGroup.aidl",
         "android/bluetooth/IBluetoothGroupCallback.aidl",
         "android/bluetooth/IBluetoothVcp.aidl",
+        "android/bluetooth/IBluetoothLeDirectionFinderCallback.aidl",
+        "android/bluetooth/IBluetoothLeDirectionFinder.aidl",
     ],
 }

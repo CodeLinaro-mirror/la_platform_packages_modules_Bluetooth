@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 package android.bluetooth;
@@ -412,6 +417,12 @@ public final class BluetoothUuid {
     @NonNull
     public static ParcelUuid ADVANCE_VOICE_T_UUID =
             ParcelUuid.fromString("00006AD5-0000-1000-8000-00805F9B34FB");
+
+    /** @hide */
+    @NonNull
+    public static ParcelUuid CONSTANT_TONE_EXT_UUID =
+            ParcelUuid.fromString("0000184A-0000-1000-8000-00805F9B34FB");
+
 
     /**
      * Length of bytes for 16 bit UUID
