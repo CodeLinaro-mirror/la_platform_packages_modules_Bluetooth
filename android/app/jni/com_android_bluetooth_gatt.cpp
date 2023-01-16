@@ -1663,6 +1663,7 @@ static void gattClientScanFilterAddNative(JNIEnv* env, jobject object,
   jfieldID nameFid = env->GetFieldID(entryClazz, "name", "Ljava/lang/String;");
   jfieldID companyFid = env->GetFieldID(entryClazz, "company", "I");
   jfieldID companyMaskFid = env->GetFieldID(entryClazz, "company_mask", "I");
+  jfieldID adTypeFid = env->GetFieldID(entryClazz, "ad_type", "I");
   jfieldID dataFid = env->GetFieldID(entryClazz, "data", "[B");
   jfieldID dataMaskFid = env->GetFieldID(entryClazz, "data_mask", "[B");
 
@@ -1732,6 +1733,8 @@ static void gattClientScanFilterAddNative(JNIEnv* env, jobject object,
     curr.company = env->GetIntField(current.get(), companyFid);
 
     curr.company_mask = env->GetIntField(current.get(), companyMaskFid);
+
+    curr.ad_type = env->GetByteField(current.get(), adTypeFid);
 
     ScopedLocalRef<jbyteArray> data(
         env, (jbyteArray)env->GetObjectField(current.get(), dataFid));

@@ -52,7 +52,8 @@ apex {
     manifest: "apex_manifest.json",
     bootclasspath_fragments: ["com.android.btservices-bootclasspath-fragment"],
     systemserverclasspath_fragments: ["com.android.btservices-systemserverclasspath-fragment"],
-    compat_configs: ["bluetooth-compat-config"],
+    // TODO(b/244748540) re-enable
+    // compat_configs: ["bluetooth-compat-config"],
     apps: ["Bluetooth"],
 
     multilib: {
