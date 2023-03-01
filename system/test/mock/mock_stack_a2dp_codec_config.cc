@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /*
@@ -264,6 +269,11 @@ btav_a2dp_codec_index_t A2DP_SourceCodecIndex(
     const uint8_t* /* p_codec_info */) {
   inc_func_call_count(__func__);
   return BTAV_A2DP_CODEC_INDEX_MAX;
+}
+
+btav_a2dp_codec_location_t A2DP_GetCodecLocation(btav_a2dp_codec_index_t codec_index) {
+  mock_function_count_map[__func__]++;
+  return BTAV_A2DP_CODEC_LOCATION_SOFTWARE;
 }
 const char* A2DP_CodecIndexStr(btav_a2dp_codec_index_t /* codec_index */) {
   inc_func_call_count(__func__);
