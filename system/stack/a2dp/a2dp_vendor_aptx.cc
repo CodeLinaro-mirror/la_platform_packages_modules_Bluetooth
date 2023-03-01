@@ -44,10 +44,12 @@
 #include "a2dp_vendor.h"
 #include "a2dp_vendor_aptx_constants.h"
 #include "a2dp_vendor_aptx_encoder.h"
+#include "a2dp_vendor_aptx_decoder.h"
 #include "avdt_api.h"
 #include "btif/include/btif_av_co.h"
 #include "hardware/bt_av.h"
 #include "internal_include/bt_trace.h"
+#include "osi/include/properties.h"
 #include "stack/include/bt_hdr.h"
 
 using namespace bluetooth;
@@ -74,8 +76,19 @@ static const tA2DP_APTX_CIE a2dp_aptx_source_caps = {
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16                         /* bits_per_sample */
 };
 
+/* aptX Sink codec capabilities */
+static const tA2DP_APTX_CIE a2dp_aptx_sink_caps = {
+        A2DP_APTX_VENDOR_ID,                                       /* vendorId */
+        A2DP_APTX_CODEC_ID_BLUETOOTH,                              /* codecId */
+        A2DP_APTX_SAMPLERATE_44100|A2DP_APTX_SAMPLERATE_48000,     /* sampleRate */
+        A2DP_APTX_CHANNELS_STEREO|A2DP_APTX_CHANNELS_STEREO,       /* channelMode */
+        A2DP_APTX_FUTURE_1,                                        /* future1 */
+        A2DP_APTX_FUTURE_2,                                        /* future2 */
+        BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16                         /* bits_per_sample */
+};
+
 /* Default aptX codec configuration */
-static const tA2DP_APTX_CIE a2dp_aptx_default_config = {
+static const tA2DP_APTX_CIE a2dp_aptx_source_default_config = {
         A2DP_APTX_VENDOR_ID,               /* vendorId */
         A2DP_APTX_CODEC_ID_BLUETOOTH,      /* codecId */
         A2DP_APTX_SAMPLERATE_48000,        /* sampleRate */
@@ -84,6 +97,18 @@ static const tA2DP_APTX_CIE a2dp_aptx_default_config = {
         A2DP_APTX_FUTURE_2,                /* future2 */
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16 /* bits_per_sample */
 };
+
+/* aptX Sink codec capabilities */
+static const tA2DP_APTX_CIE a2dp_aptx_sink_default_config = {
+        A2DP_APTX_VENDOR_ID,                                       /* vendorId */
+        A2DP_APTX_CODEC_ID_BLUETOOTH,                              /* codecId */
+        A2DP_APTX_SAMPLERATE_48000,                                /* sampleRate */
+        A2DP_APTX_CHANNELS_STEREO,                                 /* channelMode */
+        A2DP_APTX_FUTURE_1,                                        /* future1 */
+        A2DP_APTX_FUTURE_2,                                        /* future2 */
+        BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16                         /* bits_per_sample */
+};
+
 /*
 static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aptx = {
         a2dp_vendor_aptx_encoder_init,
@@ -95,6 +120,19 @@ static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aptx = {
         a2dp_vendor_aptx_send_frames,
         nullptr  // set_transmit_queue_length
 };*/
+
+static const tA2DP_DECODER_INTERFACE a2dp_decoder_interface_aptx = {
+        a2dp_vendor_aptx_decoder_init,
+        a2dp_vendor_aptx_decoder_cleanup,
+        a2dp_vendor_aptx_decoder_decode_packet,
+        nullptr,  // decoder_start
+        nullptr,  // decoder_suspend
+        nullptr,  // decoder_configure
+};
+
+static tA2DP_STATUS A2DP_CodecInfoMatchesCapabilityAptx(const tA2DP_APTX_CIE* p_cap,
+                                                        const uint8_t* p_codec_info,
+                                                        bool is_peer_codec_info);
 
 // Builds the aptX Media Codec Capabilities byte sequence beginning from the
 // LOSC octet. |media_type| is the media type |AVDT_MEDIA_TYPE_*|.
@@ -193,6 +231,64 @@ bool A2DP_IsCodecValidAptx(const uint8_t* p_codec_info) {
   /* Use a liberal check when parsing the codec info */
   return (A2DP_ParseInfoAptx(&cfg_cie, p_codec_info, false) == A2DP_SUCCESS) ||
          (A2DP_ParseInfoAptx(&cfg_cie, p_codec_info, true) == A2DP_SUCCESS);
+}
+
+static bool A2DP_IsVendorCodecAptxEnabled() {
+  return A2DP_IsCodecSupported(BTAV_A2DP_CODEC_INDEX_SINK_APTX);
+}
+
+tA2DP_STATUS A2DP_IsSinkCodecSupportedAptx(const uint8_t* p_codec_info) {
+  if (!A2DP_IsVendorCodecAptxEnabled()) {
+    return A2DP_INVALID_CODEC_TYPE;
+  }
+  return A2DP_CodecInfoMatchesCapabilityAptx(&a2dp_aptx_sink_caps, p_codec_info, false);
+}
+
+tA2DP_STATUS A2DP_IsPeerSourceCodecSupportedAptx(const uint8_t* p_codec_info) {
+  if (!A2DP_IsVendorCodecAptxEnabled()) {
+    return A2DP_INVALID_CODEC_TYPE;
+  }
+  return A2DP_CodecInfoMatchesCapabilityAptx(&a2dp_aptx_sink_caps, p_codec_info, true);
+}
+
+// Checks whether A2DP aptX codec configuration matches with a device's codec
+// capabilities. |p_cap| is the aptX codec configuration. |p_codec_info| is
+// the device's codec capabilities.
+// If |is_capability| is true, the byte sequence is codec capabilities,
+// otherwise is codec configuration.
+// |p_codec_info| contains the codec capabilities for a peer device that
+// is acting as an A2DP source.
+// Returns A2DP_SUCCESS if the codec configuration matches with capabilities,
+// otherwise the corresponding A2DP error status code.
+static tA2DP_STATUS A2DP_CodecInfoMatchesCapabilityAptx(const tA2DP_APTX_CIE* p_cap,
+                                                        const uint8_t* p_codec_info,
+                                                        bool is_capability) {
+  tA2DP_STATUS status;
+  tA2DP_APTX_CIE cfg_cie;
+
+  /* parse configuration */
+  status = A2DP_ParseInfoAptx(&cfg_cie, p_codec_info, is_capability);
+  if (status != A2DP_SUCCESS) {
+    log::error("parsing failed {}", status);
+    return status;
+  }
+
+  /* verify that each parameter is in range */
+
+  log::verbose("FREQ peer: 0x{:x}, capability 0x{:x}", cfg_cie.sampleRate, p_cap->sampleRate);
+  log::verbose("CH_MODE peer: 0x{:x}, capability 0x{:x}", cfg_cie.channelMode, p_cap->channelMode);
+
+  /* sampling frequency */
+  if ((cfg_cie.sampleRate & p_cap->sampleRate) == 0) {
+    return A2DP_NOT_SUPPORTED_SAMPLING_FREQUENCY;
+  }
+
+  /* channel mode */
+  if ((cfg_cie.channelMode & p_cap->channelMode) == 0) {
+    return A2DP_NOT_SUPPORTED_CHANNEL_MODE;
+  }
+
+  return A2DP_SUCCESS;
 }
 
 bool A2DP_VendorUsesRtpHeaderAptx(bool /* content_protection_enabled */,
@@ -304,6 +400,26 @@ int A2DP_VendorGetTrackChannelCountAptx(const uint8_t* p_codec_info) {
   return -1;
 }
 
+int A2DP_VendorGetTrackChannelTypeAptx(const uint8_t* p_codec_info) {
+  tA2DP_APTX_CIE aptx_cie;
+
+  // Check whether the codec info contains valid data
+  tA2DP_STATUS a2dp_status = A2DP_ParseInfoAptx(&aptx_cie, p_codec_info, false);
+  if (a2dp_status != A2DP_SUCCESS) {
+    log::error("cannot decode codec information:{}", a2dp_status);
+    return -1;
+  }
+
+  switch (aptx_cie.channelMode) {
+    case A2DP_APTX_CHANNELS_MONO:
+      return 1;
+    case A2DP_APTX_CHANNELS_STEREO:
+      return 3;
+  }
+
+  return -1;
+}
+
 bool A2DP_VendorGetPacketTimestampAptx(const uint8_t* /* p_codec_info */, const uint8_t* p_data,
                                        uint32_t* p_timestamp) {
   // TODO: Is this function really codec-specific?
@@ -362,6 +478,16 @@ A2dpEncoderInterface* A2DP_VendorGetEncoderInterfaceAptx(
   return encoder;
 }
 
+const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterfaceAptx(
+    const uint8_t* p_codec_info) {
+  if (!A2DP_IsCodecValidAptx(p_codec_info) ||
+    !A2DP_IsVendorCodecAptxEnabled()) {
+    return NULL;
+  }
+
+  return &a2dp_decoder_interface_aptx;
+}
+
 bool A2DP_VendorAdjustCodecAptx(uint8_t* p_codec_info) {
   tA2DP_APTX_CIE cfg_cie;
 
@@ -377,15 +503,40 @@ btav_a2dp_codec_index_t A2DP_VendorSourceCodecIndexAptx(const uint8_t* /* p_code
   return BTAV_A2DP_CODEC_INDEX_SOURCE_APTX;
 }
 
+btav_a2dp_codec_index_t A2DP_VendorSinkCodecIndexAptx(const uint8_t* /* p_codec_info */) {
+  return BTAV_A2DP_CODEC_INDEX_SINK_APTX;
+}
+
 const char* A2DP_VendorCodecIndexStrAptx(void) { return "aptX"; }
+const char* A2DP_VendorCodecIndexStrAptxSink(void) { return "aptX sink"; }
 
 bool A2DP_VendorInitCodecConfigAptx(AvdtpSepConfig* p_cfg) {
   return A2DP_BuildInfoAptx(AVDT_MEDIA_TYPE_AUDIO, &a2dp_aptx_source_caps, p_cfg->codec_info);
 }
 
-A2dpCodecConfigAptx::A2dpCodecConfigAptx(btav_a2dp_codec_priority_t codec_priority)
-    : A2dpCodecConfig(BTAV_A2DP_CODEC_INDEX_SOURCE_APTX, bluetooth::a2dp::CodecId::APTX,
-                      A2DP_VendorCodecIndexStrAptx(), codec_priority) {
+bool A2DP_VendorInitCodecConfigAptxSink(AvdtpSepConfig* p_cfg) {
+  if(!A2DP_IsVendorCodecAptxEnabled()) {
+    return false;
+  }
+
+  if (!A2DP_BuildInfoAptx(AVDT_MEDIA_TYPE_AUDIO, &a2dp_aptx_sink_caps, p_cfg->codec_info)) {
+    return false;
+  }
+
+#if (BTA_AV_CO_CP_SCMS_T == TRUE)
+  /* Content protection info - support SCMS-T */
+  uint8_t* p = p_cfg->protect_info;
+  *p++ = AVDT_CP_LOSC;
+  UINT16_TO_STREAM(p, AVDT_CP_SCMS_T_ID);
+  p_cfg->num_protect = 1;
+#endif
+
+  return true;
+}
+
+A2dpCodecConfigAptxSource::A2dpCodecConfigAptxSource(btav_a2dp_codec_priority_t codec_priority)
+    : A2dpCodecConfigAptxBase(BTAV_A2DP_CODEC_INDEX_SOURCE_APTX, A2DP_VendorCodecIndexStrAptx(),
+                              codec_priority, true) {
   // Compute the local capability
   if (a2dp_aptx_source_caps.sampleRate & A2DP_APTX_SAMPLERATE_44100) {
     codec_local_capability_.sample_rate |= BTAV_A2DP_CODEC_SAMPLE_RATE_44100;
@@ -402,9 +553,9 @@ A2dpCodecConfigAptx::A2dpCodecConfigAptx(btav_a2dp_codec_priority_t codec_priori
   }
 }
 
-A2dpCodecConfigAptx::~A2dpCodecConfigAptx() {}
+A2dpCodecConfigAptxSource::~A2dpCodecConfigAptxSource() {}
 
-bool A2dpCodecConfigAptx::init() {
+bool A2dpCodecConfigAptxSource::init() {
   // Load the encoder
   if (A2DP_VendorLoadEncoderAptx() != LOAD_SUCCESS) {
     log::error("cannot load the encoder");
@@ -414,7 +565,7 @@ bool A2dpCodecConfigAptx::init() {
   return true;
 }
 
-bool A2dpCodecConfigAptx::useRtpHeaderMarkerBit() const { return false; }
+bool A2dpCodecConfigAptxSource::useRtpHeaderMarkerBit() const { return false; }
 
 //
 // Selects the best sample rate from |sampleRate|.
@@ -552,14 +703,20 @@ static bool select_audio_channel_mode(const btav_a2dp_codec_config_t* p_codec_au
   return false;
 }
 
-tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_info,
-                                                 bool is_capability,
-                                                 uint8_t* p_result_codec_config) {
+tA2DP_STATUS A2dpCodecConfigAptxBase::setCodecConfig(const uint8_t* p_peer_codec_info,
+                                                     bool is_capability,
+                                                     uint8_t* p_result_codec_config) {
   std::lock_guard<std::recursive_mutex> lock(codec_mutex_);
   tA2DP_APTX_CIE peer_info_cie;
   tA2DP_APTX_CIE result_config_cie;
   uint8_t sampleRate;
   uint8_t channelMode;
+
+  const tA2DP_APTX_CIE* p_a2dp_aptx_config =
+        (is_source_) ? &a2dp_aptx_source_default_config : &a2dp_aptx_sink_default_config;
+
+  const tA2DP_APTX_CIE* p_a2dp_aptx_cap =
+        (is_source_) ? &a2dp_aptx_source_caps : &a2dp_aptx_sink_caps;
 
   peer_info_cie.future1 = A2DP_APTX_FUTURE_1;
   peer_info_cie.future2 = A2DP_APTX_FUTURE_2;
@@ -587,13 +744,13 @@ tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_inf
   // Build the preferred configuration
   //
   memset(&result_config_cie, 0, sizeof(result_config_cie));
-  result_config_cie.vendorId = a2dp_aptx_source_caps.vendorId;
-  result_config_cie.codecId = a2dp_aptx_source_caps.codecId;
+  result_config_cie.vendorId = p_a2dp_aptx_cap->vendorId;
+  result_config_cie.codecId = p_a2dp_aptx_cap->codecId;
 
   //
   // Select the sample frequency
   //
-  sampleRate = a2dp_aptx_source_caps.sampleRate & peer_info_cie.sampleRate;
+  sampleRate = p_a2dp_aptx_cap->sampleRate & peer_info_cie.sampleRate;
   codec_config_.sample_rate = BTAV_A2DP_CODEC_SAMPLE_RATE_NONE;
   switch (codec_user_config_.sample_rate) {
     case BTAV_A2DP_CODEC_SAMPLE_RATE_44100:
@@ -640,7 +797,7 @@ tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_inf
     }
 
     // No user preference - try the default config
-    if (select_best_sample_rate(a2dp_aptx_default_config.sampleRate & peer_info_cie.sampleRate,
+    if (select_best_sample_rate(p_a2dp_aptx_config->sampleRate & peer_info_cie.sampleRate,
                                 &result_config_cie, &codec_config_)) {
       break;
     }
@@ -677,7 +834,7 @@ tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_inf
   // Select the bits per sample if there is no user preference
   do {
     // Compute the selectable capability
-    codec_selectable_capability_.bits_per_sample = a2dp_aptx_source_caps.bits_per_sample;
+    codec_selectable_capability_.bits_per_sample = p_a2dp_aptx_cap->bits_per_sample;
 
     if (codec_config_.bits_per_sample != BTAV_A2DP_CODEC_BITS_PER_SAMPLE_NONE) {
       break;
@@ -709,7 +866,7 @@ tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_inf
   //
   // Select the channel mode
   //
-  channelMode = a2dp_aptx_source_caps.channelMode & peer_info_cie.channelMode;
+  channelMode = p_a2dp_aptx_cap->channelMode & peer_info_cie.channelMode;
   codec_config_.channel_mode = BTAV_A2DP_CODEC_CHANNEL_MODE_NONE;
   switch (codec_user_config_.channel_mode) {
     case BTAV_A2DP_CODEC_CHANNEL_MODE_MONO:
@@ -750,7 +907,7 @@ tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_inf
     }
 
     // No user preference - try the default config
-    if (select_best_channel_mode(a2dp_aptx_default_config.channelMode & peer_info_cie.channelMode,
+    if (select_best_channel_mode(p_a2dp_aptx_config->channelMode & peer_info_cie.channelMode,
                                  &result_config_cie, &codec_config_)) {
       break;
     }
@@ -770,8 +927,8 @@ tA2DP_STATUS A2dpCodecConfigAptx::setCodecConfig(const uint8_t* p_peer_codec_inf
   //
   // Set the rest of the fields as bit-wise AND operation
   //
-  result_config_cie.future1 = a2dp_aptx_source_caps.future1 & peer_info_cie.future1;
-  result_config_cie.future2 = a2dp_aptx_source_caps.future2 & peer_info_cie.future2;
+  result_config_cie.future1 = p_a2dp_aptx_cap->future1 & peer_info_cie.future1;
+  result_config_cie.future2 = p_a2dp_aptx_cap->future2 & peer_info_cie.future2;
 
   if (!A2DP_BuildInfoAptx(AVDT_MEDIA_TYPE_AUDIO, &result_config_cie, p_result_codec_config)) {
     status = AVDTP_UNSUPPORTED_CONFIGURATION;
@@ -823,11 +980,14 @@ fail:
   return status;
 }
 
-bool A2dpCodecConfigAptx::setPeerCodecCapabilities(const uint8_t* p_peer_codec_capabilities) {
+bool A2dpCodecConfigAptxBase::setPeerCodecCapabilities(const uint8_t* p_peer_codec_capabilities) {
   std::lock_guard<std::recursive_mutex> lock(codec_mutex_);
   tA2DP_APTX_CIE peer_info_cie;
   uint8_t sampleRate;
   uint8_t channelMode;
+
+  const tA2DP_APTX_CIE* p_a2dp_aptx_caps =
+      (is_source_) ? &a2dp_aptx_source_caps : &a2dp_aptx_sink_caps;
 
   // Save the internal state
   btav_a2dp_codec_config_t saved_codec_selectable_capability = codec_selectable_capability_;
@@ -842,7 +1002,7 @@ bool A2dpCodecConfigAptx::setPeerCodecCapabilities(const uint8_t* p_peer_codec_c
   }
 
   // Compute the selectable capability - sample rate
-  sampleRate = a2dp_aptx_source_caps.sampleRate & peer_info_cie.sampleRate;
+  sampleRate = p_a2dp_aptx_caps->sampleRate & peer_info_cie.sampleRate;
   if (sampleRate & A2DP_APTX_SAMPLERATE_44100) {
     codec_selectable_capability_.sample_rate |= BTAV_A2DP_CODEC_SAMPLE_RATE_44100;
   }
@@ -851,10 +1011,10 @@ bool A2dpCodecConfigAptx::setPeerCodecCapabilities(const uint8_t* p_peer_codec_c
   }
 
   // Compute the selectable capability - bits per sample
-  codec_selectable_capability_.bits_per_sample = a2dp_aptx_source_caps.bits_per_sample;
+  codec_selectable_capability_.bits_per_sample = p_a2dp_aptx_caps->bits_per_sample;
 
   // Compute the selectable capability - channel mode
-  channelMode = a2dp_aptx_source_caps.channelMode & peer_info_cie.channelMode;
+  channelMode = p_a2dp_aptx_caps->channelMode & peer_info_cie.channelMode;
   if (channelMode & A2DP_APTX_CHANNELS_MONO) {
     codec_selectable_capability_.channel_mode |= BTAV_A2DP_CODEC_CHANNEL_MODE_MONO;
   }
@@ -874,3 +1034,50 @@ fail:
          sizeof(ota_codec_peer_capability_));
   return false;
 }
+
+A2dpCodecConfigAptxSink::A2dpCodecConfigAptxSink(
+    btav_a2dp_codec_priority_t codec_priority)
+    : A2dpCodecConfigAptxBase(BTAV_A2DP_CODEC_INDEX_SINK_APTX,
+                              A2DP_VendorCodecIndexStrAptxSink(),
+                              codec_priority, false) {
+  if (a2dp_aptx_sink_caps.sampleRate & A2DP_APTX_SAMPLERATE_44100) {
+    codec_local_capability_.sample_rate |= BTAV_A2DP_CODEC_SAMPLE_RATE_44100;
+  }
+  if (a2dp_aptx_sink_caps.sampleRate & A2DP_APTX_SAMPLERATE_48000) {
+    codec_local_capability_.sample_rate |= BTAV_A2DP_CODEC_SAMPLE_RATE_48000;
+  }
+  codec_local_capability_.bits_per_sample = a2dp_aptx_sink_caps.bits_per_sample;
+  if (a2dp_aptx_sink_caps.channelMode & A2DP_APTX_CHANNELS_MONO) {
+    codec_local_capability_.channel_mode |= BTAV_A2DP_CODEC_CHANNEL_MODE_MONO;
+  }
+  if (a2dp_aptx_sink_caps.channelMode & A2DP_APTX_CHANNELS_STEREO) {
+    codec_local_capability_.channel_mode |= BTAV_A2DP_CODEC_CHANNEL_MODE_STEREO;
+  }
+}
+
+A2dpCodecConfigAptxSink::~A2dpCodecConfigAptxSink() {}
+
+bool A2dpCodecConfigAptxSink::init() {
+  if (!A2DP_IsVendorCodecAptxEnabled()) return false;
+
+  if (A2DP_GetCodecLocation(BTAV_A2DP_CODEC_INDEX_SINK_APTX) !=
+      BTAV_A2DP_CODEC_LOCATION_SOFTWARE) {
+    log::info("non software decoder");
+    return true;
+  }
+
+  // Load the decoder
+  if (!A2DP_VendorLoadDecoderAptx()) {
+    log::error("cannot load the decoder");
+    return false;
+  }
+
+  if (!A2DP_VendorAuthenticateAptx()) {
+    log::error("cannot authenticate the decoder");
+    return false;
+  }
+
+  return true;
+}
+
+bool A2dpCodecConfigAptxSink::useRtpHeaderMarkerBit() const { return false; }

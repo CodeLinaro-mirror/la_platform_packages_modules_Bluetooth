@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -236,6 +241,18 @@ void avdt_scb_hdl_pkt_no_frag(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data) {
   uint16_t ex_len;
   uint8_t pad_len = 0;
   uint16_t len = p_data->p_pkt->len;
+
+  if (!A2DP_UsesRtpHeader(p_scb->curr_cfg.num_protect, p_scb->curr_cfg.codec_info)) {
+    log::debug("No RTP header");
+    p_data->p_pkt->layer_specific = 0;
+    if (p_scb->stream_config.p_sink_data_cback != NULL) {
+      (*p_scb->stream_config.p_sink_data_cback)(avdt_scb_to_hdl(p_scb), p_data->p_pkt, 0, 0);
+    } else {
+      log::error("p_sink_data_cback is NULL");
+      osi_free_and_reset((void**)&p_data->p_pkt);
+    }
+    return;
+  }
 
   p = p_start = (uint8_t*)(p_data->p_pkt + 1) + p_data->p_pkt->offset;
 

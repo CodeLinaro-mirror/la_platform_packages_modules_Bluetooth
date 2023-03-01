@@ -35,19 +35,43 @@
 #include "internal_include/bt_target.h"
 #include "stack/include/bt_hdr.h"
 
-class A2dpCodecConfigAptx : public A2dpCodecConfig {
-public:
-  A2dpCodecConfigAptx(btav_a2dp_codec_priority_t codec_priority);
-  virtual ~A2dpCodecConfigAptx();
-
-  bool init() override;
+class A2dpCodecConfigAptxBase : public A2dpCodecConfig {
+ protected:
+  A2dpCodecConfigAptxBase(btav_a2dp_codec_index_t codec_index,
+                         const std::string& name,
+                         btav_a2dp_codec_priority_t codec_priority,
+                         bool is_source)
+      : A2dpCodecConfig(codec_index, bluetooth::a2dp::CodecId::APTX, name, codec_priority),
+        is_source_(is_source) {}
   tA2DP_STATUS setCodecConfig(const uint8_t* p_peer_codec_info, bool is_capability,
                               uint8_t* p_result_codec_config) override;
   bool setPeerCodecCapabilities(const uint8_t* p_peer_codec_capabilities) override;
 
-private:
+ private:
+  bool is_source_;  // True if local is Source
+};
+
+class A2dpCodecConfigAptxSource : public A2dpCodecConfigAptxBase {
+ public:
+  A2dpCodecConfigAptxSource(btav_a2dp_codec_priority_t codec_priority);
+  virtual ~A2dpCodecConfigAptxSource();
+
+  bool init() override;
+
+ private:
   bool useRtpHeaderMarkerBit() const override;
   void debug_codec_dump(int fd) override;
+};
+
+class A2dpCodecConfigAptxSink : public A2dpCodecConfigAptxBase {
+ public:
+  A2dpCodecConfigAptxSink(btav_a2dp_codec_priority_t codec_priority);
+  virtual ~A2dpCodecConfigAptxSink();
+
+  bool init() override;
+
+ private:
+  bool useRtpHeaderMarkerBit() const override;
 };
 
 // Checks whether the codec capabilities contain a valid A2DP aptX Source
@@ -56,6 +80,26 @@ private:
 // Returns true if |p_codec_info| contains information about a valid aptX
 // codec, otherwise false.
 bool A2DP_IsCodecValidAptx(const uint8_t* p_codec_info);
+
+// Checks whether the codec capabilities contain a valid peer A2DP aptX Source
+// codec.
+// NOTE: only codecs that are implemented are considered valid.
+// Returns true if |p_codec_info| contains information about a valid aptX
+// codec, otherwise false.
+bool A2DP_IsVendorPeerSourceCodecValidAptx(const uint8_t* p_codec_info);
+
+// Checks whether A2DP aptX Sink codec is supported.
+// |p_codec_info| contains information about the codec capabilities.
+// Returns true if the A2DP aptX Sink codec is supported, otherwise false.
+tA2DP_STATUS A2DP_IsSinkCodecSupportedAptx(const uint8_t* p_codec_info);
+
+// Checks whether an A2DP aptX Source codec for a peer Source device is
+// supported.
+// |p_codec_info| contains information about the codec capabilities of the
+// peer device.
+// Returns true if the A2DP aptX Source codec for a peer Source device is
+// supported, otherwise false.
+tA2DP_STATUS A2DP_IsPeerSourceCodecSupportedAptx(const uint8_t* p_codec_info);
 
 // Checks whether the A2DP data packets should contain RTP header.
 // |content_protection_enabled| is true if Content Protection is
@@ -105,6 +149,13 @@ int A2DP_VendorGetBitRateAptx(
 // contains invalid codec information.
 int A2DP_VendorGetTrackChannelCountAptx(const uint8_t* p_codec_info);
 
+// Gets the channel type for the A2DP aptX Sink codec:
+// 1 for mono, or 3 for stereo
+// |p_codec_info| is a pointer to the aptX codec_info to decode.
+// Returns the channel type on success, or -1 if |p_codec_info|
+// contains invalid codec information.
+int A2DP_VendorGetTrackChannelTypeAptx(const uint8_t* p_codec_info);
+
 // Gets the A2DP aptX audio data timestamp from an audio packet.
 // |p_codec_info| contains the codec information.
 // |p_data| contains the audio data.
@@ -138,6 +189,14 @@ A2dpEncoderInterface* A2DP_VendorGetEncoderInterfaceAptx(
     const RawAddress& peer_address,
     const uint8_t* p_codec_info);
 
+// Gets the A2DP aptX decoder interface that can be used to decode and prepare
+// PCM packets for playing - see |tA2DP_DECODER_INTERFACE|.
+// |p_codec_info| contains the codec information.
+// Returns the A2DP aptX decoder interface if the |p_codec_info| is valid and
+// supported, otherwise NULL.
+const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterfaceAptx(
+    const uint8_t* p_codec_info);
+
 // Adjusts the A2DP aptX codec, based on local support and Bluetooth
 // specification.
 // |p_codec_info| contains the codec information to adjust.
@@ -149,11 +208,24 @@ bool A2DP_VendorAdjustCodecAptx(uint8_t* p_codec_info);
 // otherwise |BTAV_A2DP_CODEC_INDEX_MAX|.
 btav_a2dp_codec_index_t A2DP_VendorSourceCodecIndexAptx(const uint8_t* p_codec_info);
 
+// Gets the A2DP aptX Sink codec index for a given |p_codec_info|.
+// Returns the corresponding |btav_a2dp_codec_index_t| on success,
+// otherwise |BTAV_A2DP_CODEC_INDEX_MAX|.
+btav_a2dp_codec_index_t A2DP_VendorSinkCodecIndexAptx(
+    const uint8_t* p_codec_info);
+
 // Gets the A2DP aptX Source codec name.
 const char* A2DP_VendorCodecIndexStrAptx(void);
+
+// Gets the A2DP aptX Sink codec name.
+const char* A2DP_VendorCodecIndexStrAptxSink(void);
 
 // Initializes A2DP aptX Source codec information into |AvdtpSepConfig|
 // configuration entry pointed by |p_cfg|.
 bool A2DP_VendorInitCodecConfigAptx(AvdtpSepConfig* p_cfg);
+
+// Initializes A2DP aptX Sink codec information into |AvdtpSepConfig|
+// configuration entry pointed by |p_cfg|.
+bool A2DP_VendorInitCodecConfigAptxSink(AvdtpSepConfig* p_cfg);
 
 #endif  // A2DP_VENDOR_APTX_H
