@@ -67,7 +67,7 @@ class BleScannerInterfaceImpl : public ::BleScannerInterface,
                  uint16_t timeout, int reg_id) override;
   void StartSync(uint8_t sid, RawAddress address, uint16_t skip,
                  uint16_t timeout, StartSyncCb start_cb, SyncReportCb report_cb,
-                 SyncLostCb lost_cb) override;
+                 SyncLostCb lost_cb, BigInfoReportCb biginfo_report_cb) override;
   void StopSync(uint16_t handle) override;
   void CancelCreateSync(uint8_t sid, RawAddress address) override;
   void TransferSync(RawAddress address, uint16_t service_data,
@@ -120,6 +120,8 @@ class BleScannerInterfaceImpl : public ::BleScannerInterface,
   void OnPeriodicSyncLost(uint16_t sync_handle) override;
   void OnPeriodicSyncTransferred(int pa_source, uint8_t status,
                                  bluetooth::hci::Address address) override;
+  void OnBigInfoReport(uint16_t sync_handle, bool encrypted) override;
+
   ::ScanningCallbacks* scanning_callbacks_ = default_scanning_callback;
 
  private:

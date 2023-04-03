@@ -1114,6 +1114,10 @@ class JniScanningCallbacks : ScanningCallbacks {
                                  method_onSyncTransferredCallback, pa_source,
                                  status, addr.get());
   }
+
+  void OnBigInfoReport(uint16_t sync_handle, bool encrypted) override {
+    ALOGI("OnBigInfoReport in JniScanningCallbacks");
+  }
 };
 
 /**

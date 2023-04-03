@@ -361,7 +361,7 @@ class BleScannerInterfaceImpl : public BleScannerInterface {
 
   void StartSync(uint8_t sid, RawAddress address, uint16_t skip,
                  uint16_t timeout, StartSyncCb start_cb, SyncReportCb report_cb,
-                 SyncLostCb lost_cb) override {
+                 SyncLostCb lost_cb, BigInfoReportCb biginfo_report_cb) override {
     BTIF_TRACE_DEBUG("%s :", __func__);
   }
 

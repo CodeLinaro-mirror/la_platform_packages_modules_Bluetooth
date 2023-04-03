@@ -357,6 +357,15 @@ public final class PeriodicAdvertisingManager {
                     }
                 });
             }
+
+            public void onBigInfoAdvertisingReport(int syncHandle, boolean encrypted) {
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onBigInfoAdvertisingReport(syncHandle, encrypted);
+                    }
+                });
+            }
         };
     }
 }

@@ -99,6 +99,8 @@ class DefaultScanningCallback : public ::ScanningCallbacks {
     LogUnused();
   };
 
+  void OnBigInfoReport(uint16_t sync_handle, bool encrypted) override {LogUnused(); };
+
  private:
   static void LogUnused() {
     LOG_WARN("BLE Scanning callbacks have not been registered");
@@ -337,7 +339,8 @@ void BleScannerInterfaceImpl::StartSync(uint8_t sid, RawAddress address,
                                         uint16_t skip, uint16_t timeout,
                                         StartSyncCb start_cb,
                                         SyncReportCb report_cb,
-                                        SyncLostCb lost_cb) {
+                                        SyncLostCb lost_cb,
+                                        BigInfoReportCb biginfoI_report_cb) {
   LOG(INFO) << __func__ << " in shim layer";
 }
 
@@ -572,6 +575,12 @@ void BleScannerInterfaceImpl::OnPeriodicSyncTransferred(
                    base::BindOnce(&ScanningCallbacks::OnPeriodicSyncTransferred,
                                   base::Unretained(scanning_callbacks_),
                                   pa_source, status, ToRawAddress(address)));
+}
+
+void BleScannerInterfaceImpl::OnBigInfoReport(uint16_t sync_handle, bool encrypted) {
+  do_in_jni_thread(FROM_HERE,
+                   base::BindOnce(&ScanningCallbacks::OnBigInfoReport,
+                   base::Unretained(scanning_callbacks_), sync_handle, encrypted));
 }
 
 void BleScannerInterfaceImpl::OnTimeout() {}
