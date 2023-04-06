@@ -14,10 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ****************************************************************************************/
 
@@ -112,6 +112,7 @@ void bta_dm_remove_device(const RawAddress& bd_addr);
 void bta_dm_on_encryption_change(bt_encryption_change_evt encryption_change);
 void bta_dm_remote_key_missing(const RawAddress bd_addr);
 void bta_dm_process_remove_device(const RawAddress& bd_addr);
+void bta_read_inq_tx_power_complete(int8_t power);
 
 static tBTM_STATUS btm_sec_execute_procedure(tBTM_SEC_DEV_REC* p_dev_rec);
 static bool btm_sec_start_get_name(tBTM_SEC_DEV_REC* p_dev_rec);
@@ -2944,6 +2945,29 @@ void btm_rem_oob_req(const RawAddress bd_addr) {
   /* something bad. we can only fail this connection */
   acl_set_disconnect_reason(HCI_ERR_HOST_REJECT_SECURITY);
   btsnd_hcic_rem_oob_neg_reply(p_bda);
+}
+
+/*******************************************************************************
+ *
+ * Function         btm_read_inq_tx_power_complete
+ *
+ * Description      This function is called when read tx power level is
+ *                  completed by the LM
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btm_read_inq_tx_power_complete(uint8_t* p) {
+  uint8_t status = *p++;
+  int8_t power;
+
+  log::info("btm_read_inq_tx_power_complete: status {}", status);
+  if (status == HCI_SUCCESS) {
+    STREAM_TO_INT8(power, p);
+    bta_read_inq_tx_power_complete(power);
+  } else {
+    log::error("btm_read_inq_tx_power_complete: failed {}", status);
+  }
 }
 
 /*******************************************************************************

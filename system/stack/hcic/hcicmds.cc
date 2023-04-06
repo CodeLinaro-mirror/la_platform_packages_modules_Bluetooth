@@ -14,9 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ****************************************************************************************/
@@ -1477,6 +1477,19 @@ void btsnd_hcic_read_rssi(uint16_t handle) {
   UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_CMD_HANDLE);
 
   UINT16_TO_STREAM(pp, handle);
+
+  btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
+}
+
+void btsnd_hcic_read_inq_tx_power(void) {
+  BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
+  uint8_t* pp = (uint8_t*)(p + 1);
+
+  p->len = HCIC_PREAMBLE_SIZE + HCIC_PARAM_SIZE_R_TX_POWER;
+  p->offset = 0;
+
+  UINT16_TO_STREAM(pp, HCI_READ_INQ_TX_POWER_LEVEL);
+  UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_R_TX_POWER);
 
   btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
 }
