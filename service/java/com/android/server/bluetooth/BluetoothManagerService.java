@@ -46,8 +46,6 @@ import android.bluetooth.BluetoothProtoEnums;
 import android.bluetooth.IBluetooth;
 import android.bluetooth.IBluetoothCallback;
 import android.bluetooth.IBluetoothGatt;
-import android.bluetooth.IBluetoothHeadset;
-import android.bluetooth.IBluetoothLeCallControl;
 import android.bluetooth.IBluetoothManager;
 import android.bluetooth.IBluetoothManagerCallback;
 import android.bluetooth.IBluetoothProfileServiceConnection;
@@ -1432,20 +1430,23 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
         synchronized (mReceiver) {
             mQuietEnableExternal = false;
             mEnableExternal = true;
-            if (isAirplaneModeOn() && isApmEnhancementOn()) {
-                setSettingsSecureInt(BLUETOOTH_APM_STATE, BLUETOOTH_ON_APM);
-                setSettingsSecureInt(APM_USER_TOGGLED_BLUETOOTH, USED);
-                if (isFirstTimeNotification(APM_BT_ENABLED_NOTIFICATION)) {
-                    final long callingIdentity = Binder.clearCallingIdentity();
-                    try {
-                        mBluetoothAirplaneModeListener.sendApmNotification(
-                                "bluetooth_enabled_apm_title",
-                                "bluetooth_enabled_apm_message",
-                                APM_BT_ENABLED_NOTIFICATION);
-                    } catch (Exception e) {
-                        Log.e(TAG, "APM enhancement BT enabled notification not shown");
-                    } finally {
-                        Binder.restoreCallingIdentity(callingIdentity);
+            if (isAirplaneModeOn()) {
+                mBluetoothAirplaneModeListener.updateBluetoothToggledTime();
+                if (isApmEnhancementOn()) {
+                    setSettingsSecureInt(BLUETOOTH_APM_STATE, BLUETOOTH_ON_APM);
+                    setSettingsSecureInt(APM_USER_TOGGLED_BLUETOOTH, USED);
+                    if (isFirstTimeNotification(APM_BT_ENABLED_NOTIFICATION)) {
+                        final long callingIdentity = Binder.clearCallingIdentity();
+                        try {
+                            mBluetoothAirplaneModeListener.sendApmNotification(
+                                    "bluetooth_enabled_apm_title",
+                                    "bluetooth_enabled_apm_message",
+                                    APM_BT_ENABLED_NOTIFICATION);
+                        } catch (Exception e) {
+                            Log.e(TAG, "APM enhancement BT enabled notification not shown");
+                        } finally {
+                            Binder.restoreCallingIdentity(callingIdentity);
+                        }
                     }
                 }
             }
@@ -1523,9 +1524,12 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                     mBluetoothLock.readLock().unlock();
                 }
             }
-            if (isAirplaneModeOn() && isApmEnhancementOn()) {
-                setSettingsSecureInt(BLUETOOTH_APM_STATE, BLUETOOTH_OFF_APM);
-                setSettingsSecureInt(APM_USER_TOGGLED_BLUETOOTH, USED);
+            if (isAirplaneModeOn()) {
+                mBluetoothAirplaneModeListener.updateBluetoothToggledTime();
+                if (isApmEnhancementOn()) {
+                    setSettingsSecureInt(BLUETOOTH_APM_STATE, BLUETOOTH_OFF_APM);
+                    setSettingsSecureInt(APM_USER_TOGGLED_BLUETOOTH, USED);
+                }
             }
         }
         return true;
@@ -1630,7 +1634,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     }
 
     @Override
-    public boolean bindBluetoothProfileService(int bluetoothProfile,
+    public boolean bindBluetoothProfileService(int bluetoothProfile, String serviceName,
             IBluetoothProfileServiceConnection proxy) {
         if (isBluetoothAvailableForBinding() == false) {
             Log.w(TAG, "bindBluetoothProfileService:Trying to bind to profile: "
@@ -1638,23 +1642,19 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
             return false;
         }
         synchronized (mProfileServices) {
-            ProfileServiceConnections psc = mProfileServices.get(new Integer(bluetoothProfile));
-            Intent intent;
-            if (bluetoothProfile == BluetoothProfile.HEADSET
-                    && mSupportedProfileList.contains(BluetoothProfile.HEADSET)) {
-                intent = new Intent(IBluetoothHeadset.class.getName());
-            } else if (bluetoothProfile == BluetoothProfile.LE_CALL_CONTROL
-                    && mSupportedProfileList.contains(BluetoothProfile.LE_CALL_CONTROL)) {
-                intent = new Intent(IBluetoothLeCallControl.class.getName());
-            } else {
+            if (!mSupportedProfileList.contains(bluetoothProfile)) {
+                Log.w(TAG, "Cannot bind profile: "  + bluetoothProfile
+                        + ", not in supported profiles list");
                 return false;
             }
+            ProfileServiceConnections psc =
+                    mProfileServices.get(Integer.valueOf(bluetoothProfile));
             if (psc == null) {
                 if (DBG) {
                     Log.d(TAG, "Creating new ProfileServiceConnections object for" + " profile: "
                             + bluetoothProfile);
                 }
-                psc = new ProfileServiceConnections(intent);
+                psc = new ProfileServiceConnections(new Intent(serviceName));
                 if (!psc.bindService(DEFAULT_REBIND_COUNT)) {
                     return false;
                 }
@@ -3285,15 +3285,25 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
         }
     }
 
+    boolean waitForManagerState(int state) {
+        return waitForState(Set.of(state), false);
+    }
+
     private boolean waitForState(Set<Integer> states) {
-        int i = 0;
-        while (i < 16) {
+        return waitForState(states, true);
+    }
+    private boolean waitForState(Set<Integer> states, boolean failIfUnbind) {
+        for (int i = 0; i < 16; i++) {
+            mBluetoothLock.readLock().lock();
             try {
-                mBluetoothLock.readLock().lock();
-                if (mBluetooth == null) {
-                    break;
+                if (mBluetooth == null && failIfUnbind) {
+                    Log.e(TAG, "waitForState " + states + " Bluetooth is not unbind");
+                    return false;
                 }
-                if (states.contains(synchronousGetState())) {
+                if (mBluetooth == null && states.contains(BluetoothAdapter.STATE_OFF)) {
+                    return true; // We are so OFF that the bluetooth is not bind
+                }
+                if (mBluetooth != null && states.contains(synchronousGetState())) {
                     return true;
                 }
             } catch (RemoteException | TimeoutException e) {
@@ -3303,7 +3313,6 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                 mBluetoothLock.readLock().unlock();
             }
             SystemClock.sleep(300);
-            i++;
         }
         Log.e(TAG, "waitForState " + states + " time out");
         return false;

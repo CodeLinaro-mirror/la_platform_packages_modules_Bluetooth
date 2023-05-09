@@ -877,6 +877,11 @@ public final class BluetoothSocket implements Closeable {
         return ret;
     }
 
+    @Override
+    public String toString() {
+        return BluetoothUtils.toAnonymizedAddress(mAddress);
+    }
+
     /**
      * getSocketOpt for the Buetooth Socket.
      *
@@ -906,5 +911,4 @@ public final class BluetoothSocket implements Closeable {
         }
         return ret;
     }
-
 }
