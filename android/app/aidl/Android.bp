@@ -14,6 +14,7 @@ filegroup {
         ":framework-bluetooth-updatable-exported-aidl-sources",
         "android/bluetooth/IAudioInputCallback.aidl",
         "android/bluetooth/IBluetooth.aidl",
+        "android/bluetooth/IBluetoothExt.aidl",
         "android/bluetooth/IBluetoothA2dp.aidl",
         "android/bluetooth/IBluetoothA2dpSink.aidl",
         "android/bluetooth/IBluetoothActivityEnergyInfoListener.aidl",

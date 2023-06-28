@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.telephony;
@@ -51,6 +56,7 @@ import android.util.Log;
 
 import androidx.annotation.VisibleForTesting;
 
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hfp.HeadsetService;
@@ -785,7 +791,7 @@ public class BluetoothInCallService extends InCallService {
         super.onCreate();
         synchronized (LOCK) {
             Log.d(TAG, "onCreate");
-            mAdapter = requireNonNull(getSystemService(BluetoothManager.class)).getAdapter();
+            mAdapter = AdapterService.getAdapter();
             mTelephonyManager = requireNonNull(getSystemService(TelephonyManager.class));
             mTelecomManager = requireNonNull(getSystemService(TelecomManager.class));
             mAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.LE_CALL_CONTROL);
