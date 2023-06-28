@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.le_audio;
@@ -155,6 +160,7 @@ public class LeAudioService extends ProfileService {
                     .build();
 
     private AdapterService mAdapterService;
+    private BluetoothAdapter mAdapter;
     private DatabaseManager mDatabaseManager;
     private HandlerThread mStateMachinesThread;
     private volatile BluetoothDevice mActiveAudioOutDevice;
@@ -549,6 +555,7 @@ public class LeAudioService extends ProfileService {
                 Objects.requireNonNull(
                         AdapterService.getAdapterService(),
                         "AdapterService cannot be null when LeAudioService starts");
+        mAdapter = AdapterService.getAdapter();
         mDatabaseManager =
                 Objects.requireNonNull(
                         mAdapterService.getDatabase(),
@@ -3167,7 +3174,7 @@ public class LeAudioService extends ProfileService {
         }
 
         if (mAudioServersScanner == null) {
-            mAudioServersScanner = BluetoothAdapter.getDefaultAdapter().getBluetoothLeScanner();
+            mAudioServersScanner = mAdapter.getBluetoothLeScanner();
             if (mAudioServersScanner == null) {
                 Log.e(TAG, "startAudioServersBackgroundScan: Could not get scanner");
                 return;

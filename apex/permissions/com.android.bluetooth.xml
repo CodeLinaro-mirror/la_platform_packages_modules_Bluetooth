@@ -14,9 +14,10 @@
   ~ See the License for the specific language governing permissions and
   ~ limitations under the License
   ~
-  ~ Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
-  ~ Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
-  ~ SPDX-License-Identifier: BSD-3-Clause-Clear
+  ~ Changes from Qualcomm Technologies, Inc. are provided under the following license:
+  ~
+  ~ Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  ~ SPDX-License-Identifier: BSD-3-Clause-Clear.
 -->
 
 <permissions>
@@ -45,5 +46,6 @@
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
         <permission name="android.permission.WRITE_SECURITY_LOG" />
         <permission name="android.car.permission.CAR_CONTROL_AUDIO_VOLUME" />
+        <permission name="android.permission.LOCAL_MAC_ADDRESS" />
     </privapp-permissions>
 </permissions>
