@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "BluetoothServiceJni"
@@ -979,6 +984,16 @@ static bt_os_callouts_t sBluetoothOsCallouts = {
         acquire_wake_lock_callout,
         release_wake_lock_callout,
 };
+
+static void setAdapterIndexNative(JNIEnv* /* env */, jobject /* obj */, jint adapterIndex) {
+  log::info("{}", adapterIndex);
+
+  if (!sBluetoothInterface) {
+    return;
+  }
+  uint8_t adapter_index = (uint8_t)adapterIndex;
+  sBluetoothInterface->set_adapter_index(adapter_index);
+}
 
 static bool initNative(JNIEnv* env, jobject obj, jboolean isGuest, jboolean isCommonCriteriaMode,
                        int configCompareResult, jboolean isAtvDevice, jstring jHciInstanceName,
@@ -2016,6 +2031,9 @@ static jboolean setSuspendStateNative(JNIEnv* /* env */, jobject /* obj */, jboo
 
 static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) {
   const JNINativeMethod methods[] = {
+#ifdef DUAL_BT
+          {"setAdapterIndexNative", "(I)V", reinterpret_cast<void*>(setAdapterIndexNative)},
+#endif
           {"initNative", "(ZZIZLjava/lang/String;Z)Z", reinterpret_cast<void*>(initNative)},
           {"cleanupNative", "()V", reinterpret_cast<void*>(cleanupNative)},
           {"enableNative", "(Ljava/lang/String;)V", reinterpret_cast<void*>(enableNative)},

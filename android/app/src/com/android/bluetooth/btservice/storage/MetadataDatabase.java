@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice.storage;
@@ -26,6 +31,7 @@ import androidx.room.RoomDatabase;
 import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
+import com.android.bluetooth.btservice.AdapterUtil;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.List;
@@ -36,7 +42,7 @@ import java.util.List;
         version = 125) // Deprecated. See the user_data.proto instead
 public abstract class MetadataDatabase extends RoomDatabase {
     /** The metadata database file name */
-    public static final String DATABASE_NAME = "bluetooth_db";
+    public static final String DATABASE_NAME = AdapterUtil.isAdapterDefault() ? "bluetooth_db" : "bluetooth_db1";
 
     protected abstract MetadataDao mMetadataDao();
 

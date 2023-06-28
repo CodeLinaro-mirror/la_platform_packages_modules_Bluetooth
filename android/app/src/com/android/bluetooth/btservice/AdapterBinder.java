@@ -94,6 +94,7 @@ class AdapterBinder extends IAdapter.Stub {
         if (service == null || !callerIsSystemOrActiveOrManagedUser(service, TAG, "offToBleOn")) {
             return;
         }
+        service.handleDualAdapterMode(AdapterService.ENABLE);
         service.offToBleOn(quietMode, hciInstanceName);
     }
 
@@ -104,6 +105,7 @@ class AdapterBinder extends IAdapter.Stub {
         if (service == null || !callerIsSystemOrActiveOrManagedUser(service, TAG, "onToBleOn")) {
             return;
         }
+        service.handleDualAdapterMode(AdapterService.DISABLE);
         service.onToBleOn();
     }
 

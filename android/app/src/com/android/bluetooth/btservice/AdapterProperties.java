@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -28,9 +33,12 @@ import static com.android.bluetooth.Utils.BD_ADDR_LEN;
 import static com.android.bluetooth.Utils.TYPED_BD_ADDR_LEN;
 
 import android.annotation.NonNull;
+import android.annotation.RequiresPermission;
+import android.annotation.SuppressLint;
 import android.app.BroadcastOptions;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothAdapterExt;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -149,7 +157,7 @@ public class AdapterProperties {
 
     AdapterProperties(AdapterService service, RemoteDevices remoteDevices, Looper looper) {
         mService = service;
-        mAdapter = mService.getSystemService(BluetoothManager.class).getAdapter();
+        mAdapter = mService.getAdapter();
         mRemoteDevices = remoteDevices;
         mHandler = new Handler(looper);
         invalidateBluetoothCaches();
@@ -322,6 +330,31 @@ public class AdapterProperties {
         return mMaxConnectedAudioDevices;
     }
 
+    /**
+     * @return the maximum number of connected audio devices
+     */
+    int getMaxConnectedAudioDevices(long supportedProfiles, int profile) {
+        boolean isDualBluetoothEnabled = AdapterUtil.isDualBluetoothEnabled();
+        if (profile == BluetoothProfile.A2DP) {
+            boolean isA2dpSinkSupported = AdapterUtil.isProfileSupported(
+                    supportedProfiles, BluetoothProfile.A2DP_SINK);
+            return (isDualBluetoothEnabled || !isA2dpSinkSupported) ?
+                    mMaxConnectedAudioDevices :
+                    1;
+        } else if (profile == BluetoothProfile.A2DP_SINK) {
+            boolean isA2dpSupported = AdapterUtil.isProfileSupported(
+                    supportedProfiles, BluetoothProfile.A2DP);
+            return (isDualBluetoothEnabled || !isA2dpSupported) ?
+                    mMaxConnectedAudioDevices :
+                    1;
+        } else {
+            return mMaxConnectedAudioDevices;
+        }
+    }
+
+    /**
+     * @return A2DP offload support
+     */
     boolean isA2dpOffloadEnabled() {
         return mA2dpOffloadEnabled;
     }
@@ -374,6 +407,7 @@ public class AdapterProperties {
     // This function shall be invoked from BondStateMachine whenever the bond
     // state changes.
     @VisibleForTesting
+    @RequiresPermission(BLUETOOTH_CONNECT)
     void onBondStateChanged(BluetoothDevice device, int state) {
         if (device == null) {
             Log.w(TAG, "onBondStateChanged, device is null");
@@ -520,6 +554,7 @@ public class AdapterProperties {
             int prevAdapterState = convertToAdapterState(prevState);
             setConnectionState(newAdapterState);
 
+            // Same action "ACTION_CONNECTION_STATE_CHANGED" for different Bluetooth adapters
             Intent intent =
                     new Intent(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
                             .putExtra(BluetoothDevice.EXTRA_DEVICE, device)
@@ -672,10 +707,13 @@ public class AdapterProperties {
         }
     }
 
+    @RequiresPermission(BLUETOOTH_CONNECT)
     void adapterPropertyChangedCallback(int[] types, byte[][] values) {
         mHandler.post(() -> adapterPropertyChangedCallbackInternal(types, values));
     }
 
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    @SuppressLint("AndroidFrameworkRequiresPermission")
     private void adapterPropertyChangedCallbackInternal(int[] types, byte[][] values) {
         int type;
         byte[] val;
@@ -729,6 +767,7 @@ public class AdapterProperties {
         }
     }
 
+    @RequiresPermission(BLUETOOTH_CONNECT)
     private void updateBondedDevices(byte[] val) {
         int number = val.length / TYPED_BD_ADDR_LEN;
         int addressType;
@@ -908,6 +947,7 @@ public class AdapterProperties {
         }
     }
 
+    @SuppressLint("AndroidFrameworkRequiresPermission")
     void discoveryStateChangeCallback(int state) {
         infoLog("Callback:discoveryStateChangeCallback with state:" + state);
         synchronized (mObject) {
@@ -916,13 +956,15 @@ public class AdapterProperties {
                 mNativeDiscovering = false;
                 mService.clearDiscoveryData();
                 mDiscoveryEndMs = System.currentTimeMillis();
-                intent = new Intent(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+                intent = newIntent(BluetoothAdapter.ACTION_DISCOVERY_FINISHED,
+                        BluetoothAdapterExt.ACTION_DISCOVERY_FINISHED);
                 mService.sendBroadcast(
                         intent, BLUETOOTH_SCAN, getBroadcastOptionsForDiscoveryFinished());
             } else if (state == AbstractionLayer.BT_DISCOVERY_STARTED) {
                 mNativeDiscovering = true;
                 mDiscoveryEndMs = System.currentTimeMillis() + DEFAULT_DISCOVERY_TIMEOUT_MS;
-                intent = new Intent(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+                intent = newIntent(BluetoothAdapter.ACTION_DISCOVERY_STARTED,
+                        BluetoothAdapterExt.ACTION_DISCOVERY_STARTED);
                 mService.sendBroadcast(intent, BLUETOOTH_SCAN, Util.getTempBroadcastBundle());
             }
         }
@@ -936,6 +978,10 @@ public class AdapterProperties {
         options.setDeliveryGroupPolicy(BroadcastOptions.DELIVERY_GROUP_POLICY_MOST_RECENT);
         options.setDeferralPolicy(BroadcastOptions.DEFERRAL_POLICY_UNTIL_ACTIVE);
         return options.toBundle();
+    }
+
+    private static Intent newIntent(String action, String newAction) {
+        return AdapterUtil.newIntent(action, newAction);
     }
 
     protected void dump(PrintWriter writer) {
