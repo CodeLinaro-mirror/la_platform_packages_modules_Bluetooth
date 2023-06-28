@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.le_scan;
@@ -140,6 +145,7 @@ public class TransitionalScanHelper {
     private PeriodicScanManager mPeriodicScanManager;
     private ScanManager mScanManager;
     private AdapterService mAdapterService;
+    private BluetoothAdapter mAdapter;
 
     private ScannerMap mScannerMap = new ScannerMap();
     private String mExposureNotificationPackage;
@@ -190,6 +196,7 @@ public class TransitionalScanHelper {
         mAppOps = mContext.getSystemService(AppOpsManager.class);
         mCompanionManager = mContext.getSystemService(CompanionDeviceManager.class);
         mAdapterService = AdapterService.getAdapterService();
+        mAdapter = AdapterService.getAdapter();
         mScanManager =
                 ScanObjectsFactory.getInstance()
                         .createScanManager(
@@ -376,8 +383,7 @@ public class TransitionalScanHelper {
                 continue;
             }
 
-            BluetoothDevice device =
-                    BluetoothAdapter.getDefaultAdapter().getRemoteLeDevice(address, addressType);
+            BluetoothDevice device = mAdapter.getRemoteLeDevice(address, addressType);
 
             ScanSettings settings = client.settings;
             byte[] scanRecordData;
@@ -840,7 +846,7 @@ public class TransitionalScanHelper {
                     extractBytes(batchRecord, i * TRUNCATED_RESULT_SIZE, TRUNCATED_RESULT_SIZE);
             byte[] address = extractBytes(record, 0, 6);
             reverse(address);
-            BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+            BluetoothDevice device = mAdapter.getRemoteDevice(address);
             int rssi = record[8];
             long timestampNanos = now - parseTimestampNanos(extractBytes(record, 9, 2));
             results.add(
@@ -866,7 +872,7 @@ public class TransitionalScanHelper {
             byte[] address = extractBytes(batchRecord, position, 6);
             // TODO: remove temp hack.
             reverse(address);
-            BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+            BluetoothDevice device = mAdapter.getRemoteDevice(address);
             position += 6;
             // Skip address type.
             position++;
@@ -970,12 +976,10 @@ public class TransitionalScanHelper {
         BluetoothDevice device;
         if (Flags.leScanUseAddressType()) {
             device =
-                    BluetoothAdapter.getDefaultAdapter()
-                            .getRemoteLeDevice(
-                                    trackingInfo.getAddress(), trackingInfo.getAddressType());
+                    mAdapter.getRemoteLeDevice(trackingInfo.getAddress(), trackingInfo.getAddressType());
         } else {
             device =
-                    BluetoothAdapter.getDefaultAdapter().getRemoteDevice(trackingInfo.getAddress());
+                    mAdapter.getRemoteDevice(trackingInfo.getAddress());
         }
         int advertiserState = trackingInfo.getAdvState();
         ScanResult result =

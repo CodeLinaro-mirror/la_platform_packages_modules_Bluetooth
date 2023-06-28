@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.bass_client;
@@ -19,6 +24,8 @@ package com.android.bluetooth.bass_client;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.le.PeriodicAdvertisingManager;
 import android.util.Log;
+
+import com.android.bluetooth.btservice.AdapterService;
 
 /** Bass Client Periodic Advertising object handler */
 public class BassClientPeriodicAdvertisingManager {
@@ -33,7 +40,7 @@ public class BassClientPeriodicAdvertisingManager {
      * Adapter is successful.
      */
     public static boolean initializePeriodicAdvertisingManagerOnDefaultAdapter() {
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        BluetoothAdapter adapter = AdapterService.getAdapter();
 
         if (sPeriodicAdvertisingManager != null) {
             Log.w(TAG, "Periodic Advertising Manager already initialized - re-initializing");

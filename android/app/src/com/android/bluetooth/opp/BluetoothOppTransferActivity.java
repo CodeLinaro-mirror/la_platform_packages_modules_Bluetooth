@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -53,6 +58,7 @@ import android.widget.Toast;
 
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.content_profiles.ContentProfileErrorReportUtils;
 
 import com.google.common.annotations.VisibleForTesting;

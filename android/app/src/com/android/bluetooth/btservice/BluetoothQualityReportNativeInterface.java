@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -79,7 +84,7 @@ public class BluetoothQualityReportNativeInterface {
             Log.e(TAG, "bqrDeliver failed: remoteAddress is null");
             return;
         }
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        BluetoothAdapter adapter = AdapterService.getAdapter();
         if (adapter == null) {
             Log.e(TAG, "bqrDeliver failed: adapter is null");
             return;
