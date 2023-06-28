@@ -12,10 +12,16 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
 
+import android.annotation.RequiresPermission;
 import android.annotation.SuppressLint;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.os.Handler;
@@ -74,6 +80,7 @@ public final class BluetoothServerSocket implements Closeable {
 
     private static final String TAG = "BluetoothServerSocket";
     private static final boolean DBG = Log.isLoggable(TAG, Log.DEBUG);
+    private static final int ADAPTER_DEFAULT = BluetoothAdapterCommon.ADAPTER_DEFAULT;
 
     @UnsupportedAppUsage(
             publicAlternatives = "Use public {@link BluetoothServerSocket} API " + "instead.")
@@ -84,6 +91,7 @@ public final class BluetoothServerSocket implements Closeable {
     private int mChannel;
     private long mSocketCreationTimeMillis = 0;
     private long mSocketCreationLatencyMillis = 0;
+    private int mAdapterIndex = ADAPTER_DEFAULT;
 
     // BluetoothSocket.getConnectionType() will hide L2CAP_LE.
     // Therefore a new variable need to be maintained here.
@@ -100,14 +108,22 @@ public final class BluetoothServerSocket implements Closeable {
      */
     /*package*/ BluetoothServerSocket(int type, boolean auth, boolean encrypt, int port)
             throws IOException {
-        mSocketCreationTimeMillis = System.currentTimeMillis();
-        mType = type;
-        mChannel = port;
-        mSocket = new BluetoothSocket(type, auth, encrypt, null, port, null);
-        if (port == BluetoothAdapter.SOCKET_CHANNEL_AUTO_STATIC_NO_SDP) {
-            mSocket.setExcludeSdp(true);
-        }
-        mSocketCreationLatencyMillis = System.currentTimeMillis() - mSocketCreationTimeMillis;
+        this(type, auth, encrypt, port, ADAPTER_DEFAULT);
+    }
+
+    /**
+     * Construct a socket for incoming connections.
+     *
+     * @param type type of socket
+     * @param auth require the remote device to be authenticated
+     * @param encrypt require the connection to be encrypted
+     * @param port remote port
+     * @param adapterIndex Bluetooth adapter index
+     * @throws IOException On error, for example Bluetooth not available, or insufficient privileges
+     */
+    /*package*/ BluetoothServerSocket(int type, boolean auth, boolean encrypt, int port, int adapterIndex)
+            throws IOException {
+        this(type, auth, encrypt, port, false, false, adapterIndex);
     }
 
     /**
@@ -124,10 +140,29 @@ public final class BluetoothServerSocket implements Closeable {
     /*package*/ BluetoothServerSocket(
             int type, boolean auth, boolean encrypt, int port, boolean mitm, boolean min16DigitPin)
             throws IOException {
+        this(type, auth, encrypt, port, mitm, min16DigitPin, ADAPTER_DEFAULT);
+    }
+
+    /**
+     * Construct a socket for incoming connections.
+     *
+     * @param type type of socket
+     * @param auth require the remote device to be authenticated
+     * @param encrypt require the connection to be encrypted
+     * @param port remote port
+     * @param mitm enforce person-in-the-middle protection for authentication.
+     * @param min16DigitPin enforce a minimum length of 16 digits for a sec mode 2 connection
+     * @param adapterIndex Bluetooth adapter index
+     * @throws IOException On error, for example Bluetooth not available, or insufficient privileges
+     */
+    /*package*/ BluetoothServerSocket(
+                int type, boolean auth, boolean encrypt, int port, boolean mitm, boolean min16DigitPin,
+                int adapterIndex) throws IOException {
         mSocketCreationTimeMillis = System.currentTimeMillis();
         mType = type;
         mChannel = port;
-        mSocket = new BluetoothSocket(type, auth, encrypt, null, port, null, mitm, min16DigitPin);
+        mAdapterIndex = adapterIndex;
+        mSocket = new BluetoothSocket(type, auth, encrypt, null, port, null, mitm, min16DigitPin, mAdapterIndex);
         if (port == BluetoothAdapter.SOCKET_CHANNEL_AUTO_STATIC_NO_SDP) {
             mSocket.setExcludeSdp(true);
         }
@@ -145,9 +180,25 @@ public final class BluetoothServerSocket implements Closeable {
      */
     /*package*/ BluetoothServerSocket(int type, boolean auth, boolean encrypt, ParcelUuid uuid)
             throws IOException {
+        this(type, auth, encrypt, uuid, ADAPTER_DEFAULT);
+    }
+
+    /**
+     * Construct a socket for incoming connections.
+     *
+     * @param type type of socket
+     * @param auth require the remote device to be authenticated
+     * @param encrypt require the connection to be encrypted
+     * @param uuid uuid
+     * @param adapterIndex Bluetooth adapter index
+     * @throws IOException On error, for example Bluetooth not available, or insufficient privileges
+     */
+    /*package*/ BluetoothServerSocket(int type, boolean auth, boolean encrypt, ParcelUuid uuid,
+                int adapterIndex) throws IOException {
         mSocketCreationTimeMillis = System.currentTimeMillis();
         mType = type;
-        mSocket = new BluetoothSocket(type, auth, encrypt, null, -1, uuid);
+        mAdapterIndex = adapterIndex;
+        mSocket = new BluetoothSocket(type, auth, encrypt, null, -1, uuid, adapterIndex);
         // TODO: This is the same as mChannel = -1 - is this intentional?
         mChannel = mSocket.getPort();
         mSocketCreationLatencyMillis = System.currentTimeMillis() - mSocketCreationTimeMillis;
@@ -195,7 +246,8 @@ public final class BluetoothServerSocket implements Closeable {
                     SocketMetrics.RESULT_L2CAP_CONN_SUCCESS,
                     mSocketCreationTimeMillis,
                     mSocketCreationLatencyMillis,
-                    socketConnectionTime);
+                    socketConnectionTime,
+                    mAdapterIndex);
             return acceptedSocket;
         } catch (IOException e) {
             SocketMetrics.logSocketAccept(
@@ -207,7 +259,8 @@ public final class BluetoothServerSocket implements Closeable {
                     SocketMetrics.RESULT_L2CAP_CONN_SERVER_FAILURE,
                     mSocketCreationTimeMillis,
                     mSocketCreationLatencyMillis,
-                    socketConnectionTime);
+                    socketConnectionTime,
+                    mAdapterIndex);
             throw e;
         }
     }
