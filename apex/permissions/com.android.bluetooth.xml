@@ -46,5 +46,6 @@
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
         <permission name="android.permission.WRITE_SECURITY_LOG" />
         <permission name="android.car.permission.CAR_CONTROL_AUDIO_VOLUME" />
+        <permission name="android.permission.LOCAL_MAC_ADDRESS" />
     </privapp-permissions>
 </permissions>

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.le_scan;
@@ -174,7 +179,7 @@ public class ScanController {
             TimeProvider timeProvider) {
         Log.i(TAG, "Created with Flags.scanControllerThread: " + Flags.scanControllerThread());
         mAdapterService = requireNonNull(service);
-        mAdapter = mAdapterService.getSystemService(BluetoothManager.class).getAdapter();
+        mAdapter = AdapterService.getAdapter();
         mAppOps = mAdapterService.getSystemService(AppOpsManager.class);
         mCompanionManager = companionDeviceManager;
         mBinder = new ScanBinder(mAdapterService, this);

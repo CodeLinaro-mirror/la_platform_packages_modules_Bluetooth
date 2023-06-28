@@ -44,6 +44,9 @@ cc_library_shared {
         "latest_android_hardware_bluetooth_audio_ndk_static",
         "latest_android_media_audio_common_types_ndk_static",
     ],
+    cflags: [
+        "-DDUAL_BT",
+    ],
     srcs: ["jni/**/*.cpp"],
     version_script: "libbluetooth_jni.map",
     header_libs: [

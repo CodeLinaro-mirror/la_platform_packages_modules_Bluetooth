@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice.bluetoothkeystore;
@@ -76,12 +81,19 @@ public class BluetoothKeystoreService {
 
     private static final String CONFIG_FILE_HASH = "hash";
 
-    private static final String CONFIG_CHECKSUM_ENCRYPTION_PATH =
-            "/data/misc/bluedroid/bt_config.checksum.encrypted";
-    private static final String CONFIG_FILE_ENCRYPTION_PATH =
-            "/data/misc/bluedroid/bt_config.conf.encrypted";
+    private static final String CONFIG_PATH_FORMAT = "%s%s";
+    private static final String CONFIG_PATH = "/data/misc/bluedroid/";
+    private static final String NEW_CONFIG_PATH = "/data/misc/bluedroid/new/";
 
-    private static final String CONFIG_FILE_PATH = "/data/misc/bluedroid/bt_config.conf";
+    private static final String CONFIG_CHECKSUM_ENCRYPTION_FILE = "bt_config.checksum.encrypted";
+    private static final String CONFIG_FILE_ENCRYPTION_FILE = "bt_config.conf.encrypted";
+
+    private static final String CONFIG_FILE = "bt_config.conf";
+
+    private static String CONFIG_CHECKSUM_ENCRYPTION_PATH;
+    private static String CONFIG_FILE_ENCRYPTION_PATH;
+
+    private static String CONFIG_FILE_PATH;
 
     private static final int BUFFER_SIZE = 400 * 10;
 
@@ -113,10 +125,15 @@ public class BluetoothKeystoreService {
     private boolean mIsCommonCriteriaMode;
 
     public BluetoothKeystoreService(BluetoothKeystoreNativeInterface nativeInterface) {
+        this(nativeInterface, 0);
+    }
+    public BluetoothKeystoreService(BluetoothKeystoreNativeInterface nativeInterface,
+                                    int adapterIndex) {
         debugLog("new BluetoothKeystoreService");
         mBluetoothKeystoreNativeInterface =
                 requireNonNullElseGet(
                         nativeInterface, () -> new BluetoothKeystoreNativeInterface(this));
+        initConfigFile(adapterIndex);
     }
 
     public void init(boolean isCommonCriteriaMode) {
@@ -126,7 +143,30 @@ public class BluetoothKeystoreService {
         startThread();
     }
 
-    /** Start and initialize the BluetoothKeystoreService */
+    private static void initConfigFile(int adapterIndex) {
+        String path = (adapterIndex == 0) ? CONFIG_PATH : NEW_CONFIG_PATH;
+
+        /*
+         * Initialize config file according to Bluetooth adapter index (0|1).
+         * E.g.
+         *   adapter0: /data/misc/bluedroid/bt_config.conf
+         *   adapter1: /data/misc/bluedroid/new/bt_config.conf
+         */
+        CONFIG_CHECKSUM_ENCRYPTION_PATH = String.format(CONFIG_PATH_FORMAT,
+                path, CONFIG_CHECKSUM_ENCRYPTION_FILE);
+
+        CONFIG_FILE_ENCRYPTION_PATH = String.format(CONFIG_PATH_FORMAT,
+                path, CONFIG_FILE_ENCRYPTION_FILE);
+
+        CONFIG_FILE_PATH = String.format(CONFIG_PATH_FORMAT,
+               path, CONFIG_FILE);
+
+        debugLog("initConfigFile CONFIG_FILE_PATH: " + CONFIG_FILE_PATH);
+    }
+
+    /*
+     * Start and initialize the BluetoothKeystoreService
+     */
     public void start() {
         debugLog("start");
         KeyStore keyStore;

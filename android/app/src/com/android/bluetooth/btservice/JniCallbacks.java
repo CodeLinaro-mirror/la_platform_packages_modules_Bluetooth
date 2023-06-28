@@ -12,9 +12,19 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
+
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
+import static android.Manifest.permission.LOCAL_MAC_ADDRESS;
+
+import android.annotation.RequiresPermission;
 
 import android.bluetooth.OobData;
 import android.bluetooth.UidTraffic;
@@ -55,6 +65,7 @@ class JniCallbacks {
         mRemoteDevices.devicePropertyChangedCallback(address, addressType, types, val);
     }
 
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, LOCAL_MAC_ADDRESS})
     void deviceFoundCallback(byte[] address) {
         mRemoteDevices.deviceFoundCallback(address);
     }
@@ -112,6 +123,7 @@ class JniCallbacks {
         mAdapterProperties.discoveryStateChangeCallback(state);
     }
 
+    @RequiresPermission(BLUETOOTH_CONNECT)
     void adapterPropertyChangedCallback(int[] types, byte[][] val) {
         mAdapterProperties.adapterPropertyChangedCallback(types, val);
     }

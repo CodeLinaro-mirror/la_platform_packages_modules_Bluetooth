@@ -21,18 +21,47 @@
 
 package com.android.bluetooth.btservice;
 
-import android.app.Application;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.IAdapter;
+import android.content.Intent;
 import android.util.Log;
+import android.os.IBinder;
 
 import com.android.bluetooth.Utils;
 
-public class AdapterApp extends Application {
-    private static final String TAG = Utils.BT_PREFIX + AdapterApp.class.getSimpleName();
+public class AdapterExtService extends AdapterService {
+    private static final String TAG = Utils.BT_PREFIX + AdapterExtService.class.getSimpleName();
 
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "onCreate");
-        AdapterUtil.init(this);
+        debugLog("onCreate()");
+        mExtBinder = new AdapterExtBinder(this);
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        debugLog("onBind()");
+        return mExtBinder;
+    }
+
+    @Override
+    void cleanup() {
+        super.cleanup();
+        debugLog("cleanup()");
+        if (mExtBinder != null) {
+            mExtBinder.cleanup();
+            mExtBinder = null;
+        }
+    }
+
+    public IAdapter getBluetoothAdapter() {
+        return IAdapter.Stub.asInterface(mAdapterBinder);
+    }
+
+    private AdapterExtBinder mExtBinder;
+
+    private static void debugLog(String msg) {
+        Log.d(TAG, msg);
     }
 }

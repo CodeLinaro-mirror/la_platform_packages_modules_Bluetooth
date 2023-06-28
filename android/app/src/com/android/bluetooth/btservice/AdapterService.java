@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -218,6 +223,11 @@ public class AdapterService extends Service {
 
     private static final int CONTROLLER_ENERGY_UPDATE_TIMEOUT_MILLIS = 100;
 
+    public static final int ENABLE = 0;
+    public static final int DISABLE = 1;
+    public static final int START_DISCOVERY = 2;
+    public static final int CANCEL_DISCOVERY = 3;
+
     private static final Duration PENDING_SOCKET_HANDOFF_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration GENERATE_LOCAL_OOB_DATA_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration PREFERRED_AUDIO_PROFILE_CHANGE_TIMEOUT = Duration.ofSeconds(10);
@@ -368,10 +378,23 @@ public class AdapterService extends Service {
 
     private volatile boolean mTestModeEnabled = false;
 
+    private int mAdapterIndex = 0;
+    private boolean mEnableNewAdapter = false;
+    private boolean mDisableNewAdapter = false;
+
+    private void initAdapter() {
+        mAdapterIndex = AdapterUtil.getAdapterIndex();
+        mAdapter = AdapterUtil.getAdapter();
+    }
+
+    public static BluetoothAdapter getAdapter() {
+        return AdapterUtil.getAdapter();
+    }
+
     /** Handlers for incoming service calls */
     private final AdapterServiceBinder mAdapterServiceBinder = new AdapterServiceBinder(this);
 
-    private final AdapterBinder mAdapterBinder = new AdapterBinder(this);
+    protected final AdapterBinder mAdapterBinder = new AdapterBinder(this);
 
     private volatile int mScanMode;
 
@@ -964,6 +987,7 @@ public class AdapterService extends Service {
         }
 
         Config.init(this);
+        initAdapter();
         mDeviceConfigListener.start();
 
         MetricsLogger.getInstance().init(this, mRemoteDevices);
@@ -991,6 +1015,7 @@ public class AdapterService extends Service {
             Log.d(TAG, "Loading JNI Library");
             System.loadLibrary("bluetooth_jni");
         }
+        mNativeInterface.setAdapterIndex(mAdapterIndex);
         mNativeInterface.init(
                 this,
                 mAdapterProperties,
@@ -2704,6 +2729,15 @@ public class AdapterService extends Service {
         UserHandle callingUser = Binder.getCallingUserHandle();
         Log.d(TAG, "startDiscovery");
         String callingPackage = source.getPackageName();
+        // Internal discovery triggered by the system Bluetooth package,
+        // which itself lacks the required permissions.
+        // Since results are not broadcast externally, permission checks can be safely skipped.
+        String bluetoothPackage = "com.android.bluetooth";
+        if (bluetoothPackage.equals(callingPackage) &&
+            (!AdapterUtil.isAdapterDefault())) {
+            Log.d(TAG, "Internal discovery initiated, skipping permission checks");
+            return mNativeInterface.startDiscovery();
+        }
         mAppOps.checkPackage(Binder.getCallingUid(), callingPackage);
         boolean isQApp = Utils.checkCallerTargetSdk(this, callingPackage, Build.VERSION_CODES.Q);
         boolean hasDisavowedLocation =
@@ -3800,6 +3834,10 @@ public class AdapterService extends Service {
         return mAdapterProperties.getLeMaximumAdvertisingDataLength();
     }
 
+    public long getSupportedProfilesBitMask() {
+        return Config.getSupportedProfilesBitMask();
+    }
+
     /**
      * Get the maximum number of connected audio devices.
      *
@@ -3807,6 +3845,16 @@ public class AdapterService extends Service {
      */
     public int getMaxConnectedAudioDevices() {
         return mAdapterProperties.getMaxConnectedAudioDevices();
+    }
+
+    /**
+     * Get the maximum number of connected audio devices.
+     *
+     * @return the maximum number of connected audio devices
+     */
+    public int getMaxConnectedAudioDevices(int profile) {
+        return mAdapterProperties.getMaxConnectedAudioDevices(
+                getSupportedProfilesBitMask(), profile);
     }
 
     /**
@@ -4889,6 +4937,50 @@ public class AdapterService extends Service {
      */
     public boolean pbapPseDynamicVersionUpgradeIsEnabled() {
         return mNativeInterface.pbapPseDynamicVersionUpgradeIsEnabled();
+    }
+
+    public boolean isNewAdapter() {
+        return AdapterUtil.isAdapter1();
+    }
+
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    public void handleDualAdapterMode(int option) {
+        if (AdapterUtil.isDualAdapterMode()) {
+            if (AdapterUtil.isAdapterDefault()) {
+                // In dual adapter mode, default adapter enable/disable
+                // enable/disable/discovery/canceldiscovery
+                // new adapter concurrently.
+                switch (option) {
+                    case ENABLE -> mEnableNewAdapter = AdapterExt.enable();
+                    case DISABLE -> mDisableNewAdapter = AdapterExt.disable();
+                    // HOGP is deployed on the new adapter in dual BT mode.
+                    // Pairing requires device info from the Bluetooth core stack,
+                    // so discovery must be triggered on the new adapter.
+                    case START_DISCOVERY -> AdapterExt.startDiscovery();
+                    // Cancel discovery on the new adapter as well,
+                    // to keep adapter states consistent in dual adapter mode.
+                    case CANCEL_DISCOVERY -> AdapterExt.cancelDiscovery();
+                    default -> Log.w(TAG, "Invalid option:" + option);
+                }
+            }
+        }
+    }
+
+    public boolean canEnableNewAdapter() {
+        int state = AdapterExt.getState();
+        // In system boot phase, user is switching from user 0 to user 10 which causes
+        // AdapterExt.enable() being rejected due to permission issue. Cover this case
+        // by checking the state of the new adapter.
+        return mEnableNewAdapter || AdapterExt.isTurningOn(state);
+    }
+
+    public boolean canDisableNewAdapter() {
+        return mDisableNewAdapter;
+    }
+
+    public void notifyNewAdapterState(boolean isOn) {
+        mAdapterStateMachine.sendMessage(AdapterState.NEW_ADAPTER_STATE_CHANGED,
+                isOn ? 1 : 0);
     }
 
     /** Sets the battery level of the remote device */

@@ -11,6 +11,11 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+   Changes from Qualcomm Technologies, Inc. are provided under the following license:
+
+   Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+   SPDX-License-Identifier: BSD-3-Clause-Clear.
 -->
 <resources>
     <bool name="pbap_include_photos_in_vcard">true</bool>
@@ -157,4 +162,6 @@
             https://support.google.com/pixelphone/answer/12639358
     </string>
 
+    <!-- [Dual Bluetooth] Flag whether or not to filter local counterpart Bluetooth device -->
+    <bool name="filter_device">false</bool>
 </resources>

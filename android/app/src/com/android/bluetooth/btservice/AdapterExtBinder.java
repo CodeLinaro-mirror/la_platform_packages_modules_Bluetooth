@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,18 +21,27 @@
 
 package com.android.bluetooth.btservice;
 
-import android.app.Application;
-import android.util.Log;
+import android.bluetooth.IAdapter;
+import android.bluetooth.IAdapterExt;
 
 import com.android.bluetooth.Utils;
 
-public class AdapterApp extends Application {
-    private static final String TAG = Utils.BT_PREFIX + AdapterApp.class.getSimpleName();
+class AdapterExtBinder extends IAdapterExt.Stub {
+    private static final String TAG = Utils.BT_PREFIX + AdapterBinder.class.getSimpleName();
+    private AdapterExtService mService;
 
+    AdapterExtBinder(AdapterExtService svc) {
+        mService = svc;
+    }
+
+    public void cleanup() {
+        mService = null;
+    }
+
+    // New API to get Bluetooth interface in new Bluetooth adapter
     @Override
-    public void onCreate() {
-        super.onCreate();
-        Log.d(TAG, "onCreate");
-        AdapterUtil.init(this);
+    public synchronized IAdapter getBluetoothAdapter() {
+        return mService.getBluetoothAdapter();
     }
 }
+

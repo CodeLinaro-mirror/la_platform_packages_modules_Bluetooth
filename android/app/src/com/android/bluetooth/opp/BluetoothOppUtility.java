@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -56,6 +61,7 @@ import android.provider.Settings;
 import android.util.EventLog;
 import android.util.Log;
 
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
@@ -120,7 +126,7 @@ public class BluetoothOppUtility {
     }
 
     public static void fillRecord(Context context, Cursor cursor, BluetoothOppTransferInfo info) {
-        BluetoothAdapter adapter = context.getSystemService(BluetoothManager.class).getAdapter();
+        BluetoothAdapter adapter = AdapterService.getAdapter();
         info.mID = cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare._ID));
         info.mStatus = cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare.STATUS));
         info.mDirection = cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare.DIRECTION));

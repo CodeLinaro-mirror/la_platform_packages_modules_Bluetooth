@@ -12,6 +12,11 @@
      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
      See the License for the specific language governing permissions and
      limitations under the License.
+
+     Changes from Qualcomm Technologies, Inc. are provided under the following license:
+
+     Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+     SPDX-License-Identifier: BSD-3-Clause-Clear.
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Bluetooth</string>
@@ -227,7 +232,9 @@
     <!-- Do not translate. android:sharedUserId string of this application. -->
     <string name="sharedUserId" translatable="false"><xliff:g id="x" /></string>
     <!-- Do not translate. android:process of this application. -->
-    <string name="process" translatable="false"><xliff:g id="x" /></string>
+    <string name="process" translatable="false"><xliff:g id="x" />com.android.bluetooth</string>
+    <!-- Do not translate. android:process of this application. -->
+    <string name="new_process" translatable="false"><xliff:g id="x" />com.android.bluetooth1</string>
 
 
     <string name="bluetooth_a2dp_sink_queue_name">Now Playing</string>

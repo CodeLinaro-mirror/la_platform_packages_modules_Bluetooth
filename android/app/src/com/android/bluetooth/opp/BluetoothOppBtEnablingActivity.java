@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -51,6 +56,7 @@ import android.widget.TextView;
 import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.R;
 import com.android.bluetooth.util.AlertActivity;
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.internal.annotations.VisibleForTesting;
 
 /** This class is designed to show BT enabling progress. */
@@ -68,8 +74,8 @@ public class BluetoothOppBtEnablingActivity extends AlertActivity {
         super.onCreate(savedInstanceState);
 
         getWindow().addSystemFlags(SYSTEM_FLAG_HIDE_NON_SYSTEM_OVERLAY_WINDOWS);
-        // If BT is already enabled just return.
-        BluetoothAdapter adapter = getSystemService(BluetoothManager.class).getAdapter();
+        // If BT is already enabled jus return.
+        BluetoothAdapter adapter = AdapterService.getAdapter();
         if (BluetoothMethodProxy.getInstance().bluetoothAdapterIsEnabled(adapter)) {
             finish();
             return;
