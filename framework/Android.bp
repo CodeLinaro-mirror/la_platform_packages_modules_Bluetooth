@@ -93,6 +93,7 @@ java_sdk_library {
         "//packages/services/Car/car-builtin-lib",
         // TODO(240720385)
         "//packages/services/Car/tests/CarBuiltinLibUnitTest",
+        "//frameworks/base/packages/SettingsLib",
         ":__subpackages__",
     ],
 
