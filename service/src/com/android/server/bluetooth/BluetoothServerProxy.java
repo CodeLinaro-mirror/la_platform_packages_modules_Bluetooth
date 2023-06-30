@@ -12,11 +12,17 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.server.bluetooth;
 
 import android.annotation.NonNull;
+import android.bluetooth.BluetoothAdapterCommon;
 import android.content.ContentResolver;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -55,7 +61,11 @@ class BluetoothServerProxy {
     }
 
     AdapterBinder createAdapterBinder(IBinder binder) {
-        return new AdapterBinder(binder);
+        return new AdapterBinder(binder, BluetoothAdapterCommon.ADAPTER_DEFAULT);
+    }
+
+    AdapterBinder createAdapterBinder(IBinder binder, int adapterIndex) {
+        return new AdapterBinder(binder, adapterIndex);
     }
 
     String settingsSecureGetString(ContentResolver contentResolver, String name) {
