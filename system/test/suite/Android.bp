@@ -11,6 +11,9 @@ package {
 cc_defaults {
     name: "net_test_defaults",
     defaults: ["fluoride_defaults"],
+    cflags: [
+        "-DDUAL_BT",
+    ],
     include_dirs: [
         "frameworks/av/media/libaaudio/include",
         "packages/modules/Bluetooth/system",

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "btif/include/btif_bqr.h"
@@ -912,17 +917,18 @@ static void DumpLmpLlMessage(uint8_t length, const uint8_t* p_lmp_ll_message_eve
 //
 // @return a file descriptor of the LMP/LL message trace log file.
 static int OpenLmpLlTraceLogFile() {
-  if (rename(kpLmpLlMessageTraceLogPath, kpLmpLlMessageTraceLastLogPath) != 0 && errno != ENOENT) {
-    log::error("Unable to rename '{}' to '{}' : {}", kpLmpLlMessageTraceLogPath,
-               kpLmpLlMessageTraceLastLogPath, strerror(errno));
+  if (rename(GetLmpLlMessageTraceLogPath().c_str(),
+             GetLmpLlMessageTraceLastLogPath().c_str()) != 0 && errno != ENOENT) {
+    log::error("Unable to rename '{}' to '{}' : {}", GetLmpLlMessageTraceLogPath().c_str(),
+               GetLmpLlMessageTraceLastLogPath().c_str(), strerror(errno));
   }
 
   mode_t prevmask = umask(0);
-  int logfile_fd = open(kpLmpLlMessageTraceLogPath, O_WRONLY | O_CREAT | O_TRUNC,
+  int logfile_fd = open(GetLmpLlMessageTraceLogPath().c_str(), O_WRONLY | O_CREAT | O_TRUNC,
                         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
   umask(prevmask);
   if (logfile_fd == INVALID_FD) {
-    log::error("Unable to open '{}' : {}", kpLmpLlMessageTraceLogPath, strerror(errno));
+    log::error("Unable to open '{}' : {}", GetLmpLlMessageTraceLogPath().c_str(), strerror(errno));
   } else {
     LmpLlMessageTraceCounter = 0;
   }
@@ -954,17 +960,18 @@ static void DumpBtScheduling(uint8_t length, const uint8_t* p_bt_scheduling_even
 // @return a file descriptor of the Bluetooth Multi-profile/Coex scheduling
 //   trace log file.
 static int OpenBtSchedulingTraceLogFile() {
-  if (rename(kpBtSchedulingTraceLogPath, kpBtSchedulingTraceLastLogPath) != 0 && errno != ENOENT) {
-    log::error("Unable to rename '{}' to '{}' : {}", kpBtSchedulingTraceLogPath,
-               kpBtSchedulingTraceLastLogPath, strerror(errno));
+  if (rename(GetBtSchedulingTraceLogPath().c_str(),
+             GetBtSchedulingTraceLastLogPath().c_str()) != 0 && errno != ENOENT) {
+    log::error("Unable to rename '{}' to '{}' : {}", GetBtSchedulingTraceLogPath().c_str(),
+               GetBtSchedulingTraceLastLogPath().c_str(), strerror(errno));
   }
 
   mode_t prevmask = umask(0);
-  int logfile_fd = open(kpBtSchedulingTraceLogPath, O_WRONLY | O_CREAT | O_TRUNC,
+  int logfile_fd = open(GetBtSchedulingTraceLogPath().c_str(), O_WRONLY | O_CREAT | O_TRUNC,
                         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
   umask(prevmask);
   if (logfile_fd == INVALID_FD) {
-    log::error("Unable to open '{}' : {}", kpBtSchedulingTraceLogPath, strerror(errno));
+    log::error("Unable to open '{}' : {}", GetBtSchedulingTraceLogPath().c_str(), strerror(errno));
   } else {
     BtSchedulingTraceCounter = 0;
   }

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -19,7 +24,11 @@
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
 
+#include <string>
+#include <string_view>
+
 #include "common/postable_context.h"
+#include "gd/os/parameter_provider.h"
 #include "include/hardware/bt_bqr.h"
 #include "osi/include/osi.h"
 
@@ -195,18 +204,69 @@ static constexpr const char* kpPropertyMinReportIntervalMs =
         "persist.bluetooth.bqr.min_interval_ms";
 // The Property of BQR minimum report interval multiple.
 static constexpr const char* kpPropertyIntervalMultiple = "persist.bluetooth.bqr.interval_multiple";
+
+constexpr std::string_view kpLmpLlLogPath = "/data/misc/bluetooth/logs";
+
 // Path of the LMP/LL message trace log file.
-static constexpr const char* kpLmpLlMessageTraceLogPath =
+constexpr std::string_view kpLmpLlMessageTraceLogPath =
         "/data/misc/bluetooth/logs/lmp_ll_message_trace.log";
+constexpr std::string_view kpLmpLlMessageTraceLogPrefix =
+        "lmp_ll_message_trace.log";
+
 // Path of the last LMP/LL message trace log file.
-static constexpr const char* kpLmpLlMessageTraceLastLogPath =
+constexpr std::string_view kpLmpLlMessageTraceLastLogPath =
         "/data/misc/bluetooth/logs/lmp_ll_message_trace.log.last";
+constexpr std::string_view kpLmpLlMessageTraceLastLogPrefix =
+        "lmp_ll_message_trace.log.last";
+
 // Path of the Bluetooth Multi-profile/Coex scheduling trace log file.
-static constexpr const char* kpBtSchedulingTraceLogPath =
+constexpr std::string_view kpBtSchedulingTraceLogPath =
         "/data/misc/bluetooth/logs/bt_scheduling_trace.log";
+constexpr std::string_view kpBtSchedulingTraceLogPrefix =
+        "bt_scheduling_trace.log";
+
 // Path of the last Bluetooth Multi-profile/Coex scheduling trace log file.
-static constexpr const char* kpBtSchedulingTraceLastLogPath =
+constexpr std::string_view kpBtSchedulingTraceLastLogPath =
         "/data/misc/bluetooth/logs/bt_scheduling_trace.log.last";
+constexpr std::string_view kpBtSchedulingTraceLastLogPrefix =
+        "bt_scheduling_trace.log.last";
+
+inline std::string GetLmpLlMessageTraceLogPath() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kpLmpLlMessageTraceLogPath);
+  }
+  return std::string(kpLmpLlLogPath) + "/" + name + "_" +
+         std::string(kpLmpLlMessageTraceLogPrefix);
+}
+
+inline std::string GetLmpLlMessageTraceLastLogPath() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kpLmpLlMessageTraceLastLogPath);
+  }
+  return std::string(kpLmpLlLogPath) + "/" + name + "_" +
+         std::string(kpLmpLlMessageTraceLastLogPrefix);
+}
+
+inline std::string GetBtSchedulingTraceLogPath() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kpBtSchedulingTraceLogPath);
+  }
+  return std::string(kpLmpLlLogPath) + "/" + name + "_" +
+         std::string(kpBtSchedulingTraceLogPrefix);
+}
+
+inline std::string GetBtSchedulingTraceLastLogPath() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kpBtSchedulingTraceLastLogPath);
+  }
+  return std::string(kpLmpLlLogPath) + "/" + name + "_" +
+         std::string(kpBtSchedulingTraceLastLogPrefix);
+}
+
 // The Property of BQR a2dp choppy report and sco choppy report thresholds.
 // A2dp choppy will be reported only when a2dp choppy times is >=
 // a2dp_choppy_threshold. The default value in firmware side is 1. It is same
