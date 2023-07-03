@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BLUETOOTH_H
@@ -68,6 +68,11 @@
 
 #define KEY_LEN 16
 typedef std::array<uint8_t, KEY_LEN> Link_Key;
+
+// Dual BT
+#ifndef DUAL_BT
+#define DUAL_BT
+#endif
 
 /** Bluetooth Device Name */
 typedef struct {
@@ -676,7 +681,7 @@ typedef struct {
 typedef struct {
   /** set to sizeof(bt_interface_t) */
   size_t size;
-#ifdef TARGET_FLOSS
+#if defined(TARGET_FLOSS) || defined(DUAL_BT)
   /** set index of the adapter to use */
   void (*set_adapter_index)(int adapter_index);
 #endif
