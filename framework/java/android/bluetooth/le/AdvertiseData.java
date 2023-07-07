@@ -481,7 +481,7 @@ public final class AdvertiseData implements Parcelable {
             if (serviceSolicitationUuid == null) {
                 throw new IllegalArgumentException("serviceSolicitationUuid is null");
             }
-            return addServiceUuid(serviceSolicitationUuid, false);
+            return addServiceSolicitationUuid(serviceSolicitationUuid, false);
         }
 
         /**

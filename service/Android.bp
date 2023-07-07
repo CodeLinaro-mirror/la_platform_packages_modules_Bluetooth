@@ -28,8 +28,8 @@ genrule {
 filegroup {
     name: "services.bluetooth-sources",
     srcs: [
-        "java/**/*.java",
         ":statslog-bluetooth-java-gen",
+        "src/**/*.java",
     ],
     visibility: [
         "//frameworks/base/services",
@@ -48,9 +48,13 @@ java_defaults {
             enabled: false,
         },
     },
+    apex_available: [
+        "com.android.btservices",
+    ],
+    min_sdk_version: "Tiramisu",
 }
 
-// pre-jarjar version of service-uwb that builds against pre-jarjar version of framework-bluetooth
+// pre-jarjar version of service-bluetooth that builds against pre-jarjar version of framework-bluetooth
 java_library {
     name: "service-bluetooth-pre-jarjar",
     installable: false,
@@ -65,20 +69,20 @@ java_library {
         strict_updatability_linting: true,
     },
     libs: [
+        "app-compat-annotations",
         "framework-annotations-lib",
         "framework-bluetooth-pre-jarjar",
         "framework-configinfrastructure",
-        "app-compat-annotations",
         "framework-statsd.stubs.module_lib",
     ],
 
     static_libs: [
         "androidx.annotation_annotation",
         "androidx.appcompat_appcompat",
-        "modules-utils-shell-command-handler",
         "bluetooth-manager-service-proto-java-gen",
-        "bluetooth-proto-enums-java-gen",
         "bluetooth-nano-protos",
+        "bluetooth-proto-enums-java-gen",
+        "modules-utils-shell-command-handler",
     ],
 
     min_sdk_version: "Tiramisu"
@@ -91,13 +95,13 @@ java_library {
     defaults: ["service-bluetooth-common-defaults"],
     installable: true,
     static_libs: [
-        "service-bluetooth-pre-jarjar",
         "androidx.appcompat_appcompat",
+        "service-bluetooth-pre-jarjar",
     ],
 
     libs: [
-        "framework-bluetooth.impl",
         "app-compat-annotations",
+        "framework-bluetooth.impl",
     ],
     sdk_version: "system_server_current",
 
@@ -120,7 +124,7 @@ java_library {
     proto: {
         type: "stream",
         include_dirs: [
-             "external/protobuf/src",
+            "external/protobuf/src",
         ],
     },
     srcs: [
@@ -144,7 +148,9 @@ java_library {
     apex_available: [
         "com.android.btservices",
     ],
-    lint: { strict_updatability_linting: true },
+    lint: {
+        strict_updatability_linting: true,
+    },
 }
 
 java_library {
@@ -217,3 +223,4 @@ cc_library {
     host_supported: true,
     min_sdk_version: "Tiramisu",
 }
+

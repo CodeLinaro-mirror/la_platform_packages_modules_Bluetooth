@@ -311,10 +311,8 @@ TEST_F(BtaDmTest, bta_dm_set_encryption) {
   BTA_DM_ENCRYPT_CBACK_queue = {};
 }
 
-extern void bta_dm_encrypt_cback(const RawAddress* bd_addr,
-                                 tBT_TRANSPORT transport,
-                                 UNUSED_ATTR void* p_ref_data,
-                                 tBTM_STATUS result);
+void bta_dm_encrypt_cback(const RawAddress* bd_addr, tBT_TRANSPORT transport,
+                          UNUSED_ATTR void* p_ref_data, tBTM_STATUS result);
 
 TEST_F(BtaDmTest, bta_dm_encrypt_cback) {
   const RawAddress bd_addr{{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}};
@@ -500,4 +498,30 @@ TEST_F(BtaDmTest, bta_dm_determine_discovery_transport__BT_TRANSPORT_AUTO) {
   ASSERT_EQ(BT_TRANSPORT_BR_EDR,
             bluetooth::legacy::testing::bta_dm_determine_discovery_transport(
                 bd_addr));
+}
+
+TEST_F(BtaDmTest, bta_dm_search_evt_text) {
+  std::vector<std::pair<tBTA_DM_SEARCH_EVT, std::string>> events = {
+      std::make_pair(BTA_DM_INQ_RES_EVT, "BTA_DM_INQ_RES_EVT"),
+      std::make_pair(BTA_DM_INQ_CMPL_EVT, "BTA_DM_INQ_CMPL_EVT"),
+      std::make_pair(BTA_DM_DISC_RES_EVT, "BTA_DM_DISC_RES_EVT"),
+      std::make_pair(BTA_DM_GATT_OVER_LE_RES_EVT,
+                     "BTA_DM_GATT_OVER_LE_RES_EVT"),
+      std::make_pair(BTA_DM_DISC_CMPL_EVT, "BTA_DM_DISC_CMPL_EVT"),
+      std::make_pair(BTA_DM_SEARCH_CANCEL_CMPL_EVT,
+                     "BTA_DM_SEARCH_CANCEL_CMPL_EVT"),
+      std::make_pair(BTA_DM_DID_RES_EVT, "BTA_DM_DID_RES_EVT"),
+      std::make_pair(BTA_DM_GATT_OVER_SDP_RES_EVT,
+                     "BTA_DM_GATT_OVER_SDP_RES_EVT"),
+  };
+  for (const auto& event : events) {
+    ASSERT_STREQ(event.second.c_str(),
+                 bta_dm_search_evt_text(event.first).c_str());
+  }
+  ASSERT_STREQ(
+      base::StringPrintf("UNKNOWN[%hhu]", std::numeric_limits<uint8_t>::max())
+          .c_str(),
+      bta_dm_search_evt_text(
+          static_cast<tBTA_DM_SEARCH_EVT>(std::numeric_limits<uint8_t>::max()))
+          .c_str());
 }

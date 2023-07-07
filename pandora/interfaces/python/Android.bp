@@ -6,34 +6,37 @@ genrule {
     name: "pandora_experimental-python-gen-src",
     tools: [
         "aprotoc",
-        "protoc-gen-pandora-python"
+        "protoc-gen-pandora-python",
     ],
     cmd: "$(location aprotoc)" +
-         "    -Ipackages/modules/Bluetooth/pandora/interfaces" +
-         "    -Iexternal/pandora/bt-test-interfaces" +
-         "    -Iexternal/protobuf/src" +
-         "    --plugin=protoc-gen-grpc=$(location protoc-gen-pandora-python)" +
-         "    --python_out=$(genDir)" +
-         "    --grpc_out=$(genDir)" +
-         "    $(in) &&" +
-         "touch $(genDir)/pandora_experimental/py.typed &&" +
-         "touch $(genDir)/pandora_experimental/__init__.py",
+        "    -Ipackages/modules/Bluetooth/pandora/interfaces" +
+        "    -Iexternal/pandora/bt-test-interfaces" +
+        "    -Iexternal/protobuf/src" +
+        "    --plugin=protoc-gen-grpc=$(location protoc-gen-pandora-python)" +
+        "    --python_out=$(genDir)" +
+        "    --grpc_out=$(genDir)" +
+        "    $(in) &&" +
+        "touch $(genDir)/pandora_experimental/py.typed &&" +
+        "touch $(genDir)/pandora_experimental/__init__.py",
     srcs: [
         ":pandora-protos",
         ":pandora_experimental-protos",
     ],
     out: [
-        "pandora_experimental/py.typed",
         "pandora_experimental/__init__.py",
-        "pandora_experimental/_utils.py",
         "pandora_experimental/_android_grpc.py",
         "pandora_experimental/_android_grpc_aio.py",
         "pandora_experimental/_android_pb2.py",
         "pandora_experimental/_android_pb2.pyi",
+        "pandora_experimental/_utils.py",
         "pandora_experimental/a2dp_grpc.py",
         "pandora_experimental/a2dp_grpc_aio.py",
         "pandora_experimental/a2dp_pb2.py",
         "pandora_experimental/a2dp_pb2.pyi",
+        "pandora_experimental/asha_grpc.py",
+        "pandora_experimental/asha_grpc_aio.py",
+        "pandora_experimental/asha_pb2.py",
+        "pandora_experimental/asha_pb2.pyi",
         "pandora_experimental/avrcp_grpc.py",
         "pandora_experimental/avrcp_grpc_aio.py",
         "pandora_experimental/avrcp_pb2.py",
@@ -66,29 +69,30 @@ genrule {
         "pandora_experimental/pbap_grpc_aio.py",
         "pandora_experimental/pbap_pb2.py",
         "pandora_experimental/pbap_pb2.pyi",
+        "pandora_experimental/py.typed",
         "pandora_experimental/rfcomm_grpc.py",
         "pandora_experimental/rfcomm_grpc_aio.py",
         "pandora_experimental/rfcomm_pb2.py",
         "pandora_experimental/rfcomm_pb2.pyi",
-    ]
+    ],
 }
 
 filegroup {
     name: "pandora_experimental-python-src",
     srcs: [
-        ":pandora_experimental-python-gen-src"
+        ":pandora_experimental-python-gen-src",
     ],
     exclude_srcs: [
         ":pandora_experimental-python-stubs",
-    ]
+    ],
 }
 
 filegroup {
     name: "pandora_experimental-python-stubs",
     srcs: [
-        ":pandora_experimental-python-gen-src{pandora_experimental/py.typed}",
         ":pandora_experimental-python-gen-src{pandora_experimental/_android_pb2.pyi}",
         ":pandora_experimental-python-gen-src{pandora_experimental/a2dp_pb2.pyi}",
+        ":pandora_experimental-python-gen-src{pandora_experimental/asha_pb2.pyi}",
         ":pandora_experimental-python-gen-src{pandora_experimental/avrcp_pb2.pyi}",
         ":pandora_experimental-python-gen-src{pandora_experimental/gatt_pb2.pyi}",
         ":pandora_experimental-python-gen-src{pandora_experimental/hfp_pb2.pyi}",
@@ -97,6 +101,7 @@ filegroup {
         ":pandora_experimental-python-gen-src{pandora_experimental/mediaplayer_pb2.pyi}",
         ":pandora_experimental-python-gen-src{pandora_experimental/pan_pb2.pyi}",
         ":pandora_experimental-python-gen-src{pandora_experimental/pbap_pb2.pyi}",
+        ":pandora_experimental-python-gen-src{pandora_experimental/py.typed}",
         ":pandora_experimental-python-gen-src{pandora_experimental/rfcomm_pb2.pyi}",
     ],
 }
@@ -107,5 +112,5 @@ python_library_host {
     libs: ["pandora-python"],
     data: [
         ":pandora_experimental-python-stubs",
-    ]
+    ],
 }

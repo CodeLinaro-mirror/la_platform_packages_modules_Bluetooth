@@ -194,7 +194,7 @@ class BleAdvertiserInterfaceImpl : public BleAdvertiserInterface {
              timeout_s * 100, jni_thread_wrapper(FROM_HERE, timeout_cb)));
   }
 
-  uint8_t StartAdvertisingSet(int reg_id, IdTxPowerStatusCallback cb,
+  void StartAdvertisingSet(int reg_id, IdTxPowerStatusCallback cb,
                               AdvertiseParameters params,
                               std::vector<uint8_t> advertise_data,
                               std::vector<uint8_t> advertise_data_enc,
@@ -208,7 +208,7 @@ class BleAdvertiserInterfaceImpl : public BleAdvertiserInterface {
                               IdStatusCallback timeout_cb) override {
     VLOG(1) << __func__;
 
-    if (!BleAdvertisingManager::IsInitialized()) return {};
+    if (!BleAdvertisingManager::IsInitialized()) return;
     tBTM_BLE_ADV_PARAMS* p_params = new tBTM_BLE_ADV_PARAMS;
     parseParams(p_params, params);
 
@@ -224,7 +224,7 @@ class BleAdvertiserInterfaceImpl : public BleAdvertiserInterface {
              std::move(periodic_data), duration, maxExtAdvEvents,
              jni_thread_wrapper(FROM_HERE, timeout_cb)));
 
-    return {};
+    return;
   }
 
   void SetPeriodicAdvertisingParameters(

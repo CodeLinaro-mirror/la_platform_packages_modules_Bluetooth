@@ -6,15 +6,17 @@ pub mod att_server_bearer;
 pub mod gatt_database;
 mod indication_handler;
 mod request_handler;
+pub mod services;
 mod transactions;
 
+mod command_handler;
 #[cfg(test)]
 mod test;
 
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    core::shared_box::{SharedBox, WeakBoxRef},
+    core::shared_box::{SharedBox, WeakBox, WeakBoxRef},
     gatt::{ids::ConnectionId, server::gatt_database::GattDatabase},
 };
 
@@ -22,9 +24,14 @@ use self::{
     super::ids::ServerId,
     att_server_bearer::AttServerBearer,
     gatt_database::{AttDatabaseImpl, GattServiceWithHandle},
+    services::register_builtin_services,
 };
 
-use super::{callbacks::GattDatastore, channel::AttTransport, ids::AttHandle};
+use super::{
+    callbacks::RawGattDatastore,
+    channel::AttTransport,
+    ids::{AttHandle, TransportIndex},
+};
 use anyhow::{anyhow, bail, Result};
 use log::info;
 
@@ -32,17 +39,20 @@ pub use indication_handler::IndicationError;
 
 #[allow(missing_docs)]
 pub struct GattModule {
-    connection_bearers:
-        HashMap<ConnectionId, SharedBox<AttServerBearer<AttDatabaseImpl<dyn GattDatastore>>>>,
-    databases: HashMap<ServerId, SharedBox<GattDatabase<dyn GattDatastore>>>,
-    datastore: Rc<dyn GattDatastore>,
+    connections: HashMap<TransportIndex, GattConnection>,
+    databases: HashMap<ServerId, SharedBox<GattDatabase>>,
     transport: Rc<dyn AttTransport>,
 }
 
+struct GattConnection {
+    bearer: SharedBox<AttServerBearer<AttDatabaseImpl>>,
+    database: WeakBox<GattDatabase>,
+}
+
 impl GattModule {
-    /// Constructor. Uses `datastore` to read/write characteristics.
-    pub fn new(datastore: Rc<dyn GattDatastore>, transport: Rc<dyn AttTransport>) -> Self {
-        Self { connection_bearers: HashMap::new(), databases: HashMap::new(), datastore, transport }
+    /// Constructor.
+    pub fn new(transport: Rc<dyn AttTransport>) -> Self {
+        Self { connections: HashMap::new(), databases: HashMap::new(), transport }
     }
 
     /// Handle LE link connect
@@ -55,21 +65,30 @@ impl GattModule {
                 conn_id.get_server_id(),
             );
         };
+
+        // TODO(aryarahul): do not pass in conn_id at all, derive it using the IsolationManager instead
+        let tcb_idx = conn_id.get_tcb_idx();
+
         let transport = self.transport.clone();
-        self.connection_bearers.insert(
-            conn_id,
-            AttServerBearer::new(database.get_att_database(conn_id), move |packet| {
-                transport.send_packet(conn_id.get_tcb_idx(), packet)
-            })
-            .into(),
-        );
+        let bearer = SharedBox::new(AttServerBearer::new(
+            database.get_att_database(tcb_idx),
+            move |packet| transport.send_packet(tcb_idx, packet),
+        ));
+        database.on_bearer_ready(tcb_idx, bearer.as_ref());
+        self.connections.insert(tcb_idx, GattConnection { bearer, database: database.downgrade() });
         Ok(())
     }
 
     /// Handle an LE link disconnect
-    pub fn on_le_disconnect(&mut self, conn_id: ConnectionId) {
-        info!("disconnected conn_id {conn_id:?}");
-        self.connection_bearers.remove(&conn_id);
+    pub fn on_le_disconnect(&mut self, tcb_idx: TransportIndex) -> Result<()> {
+        info!("disconnected conn_id {tcb_idx:?}");
+        let connection = self.connections.remove(&tcb_idx);
+        let Some(connection) = connection else {
+            bail!("got disconnection from {tcb_idx:?} but bearer does not exist");
+        };
+        drop(connection.bearer);
+        connection.database.with(|db| db.map(|db| db.on_bearer_dropped(tcb_idx)));
+        Ok(())
     }
 
     /// Register a new GATT service on a given server
@@ -77,11 +96,12 @@ impl GattModule {
         &mut self,
         server_id: ServerId,
         service: GattServiceWithHandle,
+        datastore: impl RawGattDatastore + 'static,
     ) -> Result<()> {
         self.databases
             .get(&server_id)
             .ok_or_else(|| anyhow!("server {server_id:?} not opened"))?
-            .add_service_with_handles(service)
+            .add_service_with_handles(service, Rc::new(datastore))
     }
 
     /// Unregister an existing GATT service on a given server
@@ -98,8 +118,9 @@ impl GattModule {
 
     /// Open a GATT server
     pub fn open_gatt_server(&mut self, server_id: ServerId) -> Result<()> {
-        let old =
-            self.databases.insert(server_id, GattDatabase::new(self.datastore.clone()).into());
+        let mut db = GattDatabase::new();
+        register_builtin_services(&mut db)?;
+        let old = self.databases.insert(server_id, db.into());
         if old.is_some() {
             bail!("GATT server {server_id:?} already exists but was re-opened, clobbering old value...")
         }
@@ -119,8 +140,8 @@ impl GattModule {
     /// Get an ATT bearer for a particular connection
     pub fn get_bearer(
         &self,
-        conn_id: ConnectionId,
-    ) -> Option<WeakBoxRef<AttServerBearer<AttDatabaseImpl<dyn GattDatastore>>>> {
-        self.connection_bearers.get(&conn_id).map(|x| x.as_ref())
+        tcb_idx: TransportIndex,
+    ) -> Option<WeakBoxRef<AttServerBearer<AttDatabaseImpl>>> {
+        self.connections.get(&tcb_idx).map(|x| x.bearer.as_ref())
     }
 }

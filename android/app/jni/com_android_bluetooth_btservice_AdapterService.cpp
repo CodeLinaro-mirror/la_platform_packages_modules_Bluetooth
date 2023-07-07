@@ -41,19 +41,6 @@ extern bt_interface_t bluetoothInterface;
 
 namespace android {
 // Both
-// OOB_ADDRESS_SIZE is 6 bytes address + 1 byte address type
-#define OOB_ADDRESS_SIZE 7
-#define OOB_C_SIZE 16
-#define OOB_R_SIZE 16
-#define OOB_NAME_MAX_SIZE 256
-// Classic
-#define OOB_DATA_LEN_SIZE 2
-#define OOB_COD_SIZE 3
-// LE
-#define OOB_TK_SIZE 16
-#define OOB_LE_FLAG_SIZE 1
-#define OOB_LE_ROLE_SIZE 1
-#define OOB_LE_APPEARANCE_SIZE 2
 
 #define TRANSPORT_AUTO 0
 #define TRANSPORT_BREDR 1
@@ -1274,7 +1261,7 @@ static jboolean set_data(JNIEnv* env, bt_oob_data_t& oob_data, jobject oobData,
     }
 
     oobDataLengthBytes = env->GetByteArrayElements(oobDataLength, NULL);
-    memcpy(oob_data.oob_data_length, oobDataLengthBytes, len);
+    memcpy(oob_data.oob_data_length, oobDataLengthBytes, OOB_DATA_LEN_SIZE);
     env->ReleaseByteArrayElements(oobDataLength, oobDataLengthBytes, 0);
 
     // Optional
@@ -2269,6 +2256,14 @@ jint JNI_OnLoad(JavaVM* jvm, void* reserved) {
   status = android::register_com_android_bluetooth_csip_set_coordinator(e);
   if (status < 0) {
     ALOGE("jni csis client registration failure: %d", status);
+    return JNI_ERR;
+  }
+
+  status =
+      android::register_com_android_bluetooth_btservice_BluetoothQualityReport(
+          e);
+  if (status < 0) {
+    ALOGE("jni bluetooth quality report registration failure: %d", status);
     return JNI_ERR;
   }
 

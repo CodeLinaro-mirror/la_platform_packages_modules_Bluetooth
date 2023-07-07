@@ -6,26 +6,28 @@ java_defaults {
     name: "BluetoothInstrumentationTestsDefaults",
 
     libs: [
-        "javax.obex",
-        "android.test.runner",
-        "telephony-common",
-        "libprotobuf-java-micro",
         "android.test.base",
         "android.test.mock",
+        "android.test.runner",
+        "javax.obex",
+        "libprotobuf-java-micro",
+        "telephony-common",
     ],
 
     static_libs: [
+        "PlatformProperties",
         "androidx.media_media",
-        "androidx.test.ext.truth",
-        "androidx.test.rules",
-        "androidx.test.espresso.intents",
         "androidx.room_room-migration",
         "androidx.room_room-runtime",
         "androidx.room_room-testing",
+        "androidx.test.espresso.intents",
+        "androidx.test.ext.truth",
+        "androidx.test.rules",
+        "androidx.test.uiautomator_uiautomator",
+        "framework-bluetooth-pre-jarjar",
         "gson",
         "mockito-target",
         "truth-prebuilt",
-        "PlatformProperties"
     ],
 
     asset_dirs: ["src/com/android/bluetooth/btservice/storage/schemas"],

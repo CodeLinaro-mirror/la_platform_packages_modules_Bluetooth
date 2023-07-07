@@ -17,6 +17,8 @@
 
 #include <base/functional/bind.h>
 
+#include <mutex>
+
 #include "bta/include/bta_le_audio_api.h"
 #include "bta/include/bta_le_audio_broadcaster_api.h"
 #include "bta/le_audio/broadcaster/state_machine.h"
@@ -62,6 +64,7 @@ using le_audio::utils::GetAllowedAudioContextsFromSourceMetadata;
 namespace {
 class LeAudioBroadcasterImpl;
 LeAudioBroadcasterImpl* instance;
+std::mutex instance_mutex;
 
 /* Class definitions */
 
@@ -299,6 +302,10 @@ class LeAudioBroadcasterImpl : public LeAudioBroadcaster, public BigCallbacks {
             le_audio::types::kLeAudioMetadataTypeStreamingAudioContext);
         if (stream_context_vec) {
           auto pp = stream_context_vec.value().data();
+          if (stream_context_vec.value().size() < 2) {
+            LOG_ERROR("stream_context_vec.value() size < 2");
+            return;
+          }
           UINT16_TO_STREAM(pp, context_type.value());
         }
       }
@@ -307,6 +314,10 @@ class LeAudioBroadcasterImpl : public LeAudioBroadcaster, public BigCallbacks {
           ltv.Find(le_audio::types::kLeAudioMetadataTypeStreamingAudioContext);
       if (stream_context_vec) {
         auto pp = stream_context_vec.value().data();
+        if (stream_context_vec.value().size() < 2) {
+          LOG_ERROR("stream_context_vec.value() size < 2");
+          return;
+        }
         STREAM_TO_UINT16(context_type.value_ref(), pp);
       }
 
@@ -1019,6 +1030,7 @@ LeAudioBroadcasterImpl::LeAudioSourceCallbacksImpl
 void LeAudioBroadcaster::Initialize(
     bluetooth::le_audio::LeAudioBroadcasterCallbacks* callbacks,
     base::Callback<bool()> audio_hal_verifier) {
+  std::scoped_lock<std::mutex> lock(instance_mutex);
   LOG_INFO();
   if (instance) {
     LOG_ERROR("Already initialized");
@@ -1059,6 +1071,7 @@ void LeAudioBroadcaster::Stop(void) {
 }
 
 void LeAudioBroadcaster::Cleanup(void) {
+  std::scoped_lock<std::mutex> lock(instance_mutex);
   LOG_INFO();
 
   if (instance == nullptr) return;
@@ -1071,6 +1084,7 @@ void LeAudioBroadcaster::Cleanup(void) {
 }
 
 void LeAudioBroadcaster::DebugDump(int fd) {
+  std::scoped_lock<std::mutex> lock(instance_mutex);
   dprintf(fd, "Le Audio Broadcaster:\n");
   if (instance) instance->Dump(fd);
   dprintf(fd, "\n");

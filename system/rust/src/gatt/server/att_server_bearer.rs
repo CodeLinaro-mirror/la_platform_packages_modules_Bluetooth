@@ -27,6 +27,7 @@ use crate::{
 
 use super::{
     att_database::AttDatabase,
+    command_handler::AttCommandHandler,
     indication_handler::{ConfirmationWatcher, IndicationError, IndicationHandler},
     request_handler::AttRequestHandler,
 };
@@ -59,6 +60,9 @@ pub struct AttServerBearer<T: AttDatabase> {
     // indication state
     indication_handler: SharedMutex<IndicationHandler<T>>,
     pending_confirmation: ConfirmationWatcher,
+
+    // command handler (across all bearers)
+    command_handler: AttCommandHandler<T>,
 }
 
 impl<T: AttDatabase + Clone + 'static> AttServerBearer<T> {
@@ -73,17 +77,19 @@ impl<T: AttDatabase + Clone + 'static> AttServerBearer<T> {
             send_packet: Box::new(send_packet),
             mtu: AttMtu::new(),
 
-            curr_request: AttRequestState::Idle(AttRequestHandler::new(db)).into(),
+            curr_request: AttRequestState::Idle(AttRequestHandler::new(db.clone())).into(),
 
             indication_handler: SharedMutex::new(indication_handler),
             pending_confirmation,
+
+            command_handler: AttCommandHandler::new(db),
         }
     }
 
-    fn send_packet(&self, packet: impl Into<AttChild>) -> Result<(), SendError> {
+    fn send_packet(&self, packet: impl Into<AttChild>) -> Result<(), SerializeError> {
         let child = packet.into();
         let packet = AttBuilder { opcode: HACK_child_to_opcode(&child), _child_: child };
-        (self.send_packet)(packet).map_err(SendError::SerializeError)
+        (self.send_packet)(packet)
     }
 }
 
@@ -93,10 +99,10 @@ impl<T: AttDatabase + Clone + 'static> WeakBoxRef<'_, AttServerBearer<T>> {
     pub fn handle_packet(&self, packet: AttView<'_>) {
         match classify_opcode(packet.get_opcode()) {
             OperationType::Command => {
-                error!("dropping ATT command (currently unsupported)");
+                self.command_handler.process_packet(packet);
             }
             OperationType::Request => {
-                Self::handle_request(self, packet);
+                self.handle_request(packet);
             }
             OperationType::Confirmation => self.pending_confirmation.on_confirmation(),
             OperationType::Response | OperationType::Notification | OperationType::Indication => {
@@ -164,13 +170,10 @@ impl<T: AttDatabase + Clone + 'static> WeakBoxRef<'_, AttServerBearer<T>> {
                                 Ok(_) => {
                                     trace!("reply packet sent")
                                 }
-                                Err(SendError::ConnectionDropped) => {
-                                    warn!("callback returned after disconnect");
-                                }
-                                Err(SendError::SerializeError(err)) => {
+                                Err(err) => {
                                     error!("serializer failure {err:?}, dropping packet and sending failed reply");
                                     // if this also fails, we're stuck
-                                    if let Err(SendError::SerializeError(err)) = this.send_packet(AttErrorResponseBuilder {
+                                    if let Err(err) = this.send_packet(AttErrorResponseBuilder {
                                         opcode_in_error: packet.view().get_opcode(),
                                         handle_in_error: AttHandle(0).into(),
                                         error_code: AttErrorCode::UNLIKELY_ERROR,
@@ -203,6 +206,7 @@ impl<T: AttDatabase + Clone + 'static> WeakBox<AttServerBearer<T>> {
                 SendError::ConnectionDropped
             })?
             .send_packet(packet)
+            .map_err(SendError::SerializeError)
         })
     }
 }
@@ -219,7 +223,7 @@ mod test {
         core::{shared_box::SharedBox, uuid::Uuid},
         gatt::{
             ffi::AttributeBackingType,
-            ids::ConnectionId,
+            ids::TransportIndex,
             mocks::mock_datastore::{MockDatastore, MockDatastoreEvents},
             server::{
                 att_database::{AttAttribute, AttPermissions},
@@ -243,7 +247,7 @@ mod test {
     const INVALID_HANDLE: AttHandle = AttHandle(4);
     const ANOTHER_VALID_HANDLE: AttHandle = AttHandle(10);
 
-    const CONN_ID: ConnectionId = ConnectionId(1);
+    const TCB_IDX: TransportIndex = TransportIndex(1);
 
     fn open_connection(
     ) -> (SharedBox<AttServerBearer<TestAttDatabase>>, UnboundedReceiver<AttBuilder>) {
@@ -319,32 +323,35 @@ mod test {
         // two characteristics in the database
         let (datastore, mut data_rx) = MockDatastore::new();
         let datastore = Rc::new(datastore);
-        let db = SharedBox::new(GattDatabase::new(datastore));
-        db.add_service_with_handles(GattServiceWithHandle {
-            handle: AttHandle(1),
-            type_: Uuid::new(1),
-            characteristics: vec![
-                GattCharacteristicWithHandle {
-                    handle: VALID_HANDLE,
-                    type_: Uuid::new(2),
-                    permissions: AttPermissions::READABLE,
-                    descriptors: vec![],
-                },
-                GattCharacteristicWithHandle {
-                    handle: ANOTHER_VALID_HANDLE,
-                    type_: Uuid::new(2),
-                    permissions: AttPermissions::READABLE,
-                    descriptors: vec![],
-                },
-            ],
-        })
+        let db = SharedBox::new(GattDatabase::new());
+        db.add_service_with_handles(
+            GattServiceWithHandle {
+                handle: AttHandle(1),
+                type_: Uuid::new(1),
+                characteristics: vec![
+                    GattCharacteristicWithHandle {
+                        handle: VALID_HANDLE,
+                        type_: Uuid::new(2),
+                        permissions: AttPermissions::READABLE,
+                        descriptors: vec![],
+                    },
+                    GattCharacteristicWithHandle {
+                        handle: ANOTHER_VALID_HANDLE,
+                        type_: Uuid::new(2),
+                        permissions: AttPermissions::READABLE,
+                        descriptors: vec![],
+                    },
+                ],
+            },
+            datastore,
+        )
         .unwrap();
         let (tx, mut rx) = unbounded_channel();
         let send_packet = move |packet| {
             tx.send(packet).unwrap();
             Ok(())
         };
-        let conn = SharedBox::new(AttServerBearer::new(db.get_att_database(CONN_ID), send_packet));
+        let conn = SharedBox::new(AttServerBearer::new(db.get_att_database(TCB_IDX), send_packet));
         let data = AttAttributeDataChild::RawData([1, 2].into());
 
         // act: send two read requests before replying to either read
@@ -360,7 +367,7 @@ mod test {
             });
             conn.as_ref().handle_packet(req2.view());
             // handle first reply
-            let MockDatastoreEvents::Read(CONN_ID, VALID_HANDLE, AttributeBackingType::Characteristic, data_resp) =
+            let MockDatastoreEvents::Read(TCB_IDX, VALID_HANDLE, AttributeBackingType::Characteristic, data_resp) =
                 data_rx.recv().await.unwrap() else {
                     unreachable!();
             };

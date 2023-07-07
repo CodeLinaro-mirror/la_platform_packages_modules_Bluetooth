@@ -23,6 +23,12 @@ impl<T> SharedBox<T> {
         Self(t.into())
     }
 
+    /// Constructs a new SharedBox<T> while giving you a WeakBox<T> to the allocation,
+    /// to allow you to construct a T which holds a weak pointer to itself.
+    pub fn new_cyclic(f: impl FnOnce(WeakBox<T>) -> T) -> Self {
+        Self(Rc::new_cyclic(|weak| f(WeakBox(weak.clone()))))
+    }
+
     /// Produce a weak reference to the contents
     pub fn downgrade(&self) -> WeakBox<T> {
         WeakBox(Rc::downgrade(&self.0))
@@ -49,9 +55,9 @@ impl<T> Deref for SharedBox<T> {
 }
 
 /// A weak reference to the contents within a SharedBox<>
-pub struct WeakBox<T>(Weak<T>);
+pub struct WeakBox<T: ?Sized>(Weak<T>);
 
-impl<T> WeakBox<T> {
+impl<T: ?Sized> WeakBox<T> {
     /// Fallibly upgrade to a strong reference, passed into the supplied closure.
     /// The strong reference is not passed into the closure to avoid accidental
     /// lifetime extension.
@@ -64,16 +70,16 @@ impl<T> WeakBox<T> {
     }
 }
 
-impl<T> Clone for WeakBox<T> {
+impl<T: ?Sized> Clone for WeakBox<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
 /// A strong reference to the contents within a SharedBox<>.
-pub struct WeakBoxRef<'a, T>(&'a T, Weak<T>);
+pub struct WeakBoxRef<'a, T: ?Sized>(&'a T, Weak<T>);
 
-impl<'a, T> WeakBoxRef<'a, T> {
+impl<'a, T: ?Sized> WeakBoxRef<'a, T> {
     /// Downgrade to a weak reference (with static lifetime) to the contents
     /// within the underlying SharedBox<>
     pub fn downgrade(&self) -> WeakBox<T> {
@@ -81,10 +87,16 @@ impl<'a, T> WeakBoxRef<'a, T> {
     }
 }
 
-impl<'a, T> Deref for WeakBoxRef<'a, T> {
+impl<'a, T: ?Sized> Deref for WeakBoxRef<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
         self.0
+    }
+}
+
+impl<'a, T: ?Sized> Clone for WeakBoxRef<'a, T> {
+    fn clone(&self) -> Self {
+        Self(self.0, self.1.clone())
     }
 }

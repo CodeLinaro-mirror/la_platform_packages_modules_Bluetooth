@@ -23,6 +23,7 @@ apex {
     compat_configs: [
         // TODO(b/244748540) re-enable
         //"bluetooth-compat-config",
+       // "bluetoothapk-platform-compat-config",
         "framework-bluetooth-compat-config",
     ],
     apps: ["Bluetooth"],
@@ -41,9 +42,9 @@ apex {
         "audio_set_configurations_json",
         "audio_set_scenarios_bfbs",
         "audio_set_scenarios_json",
-        "btservices-linker-config",
         "bt_did.conf",
         "bt_stack.conf",
+        "btservices-linker-config",
         "interop_database.conf",
         "privapp_allowlist_com.android.bluetooth.xml",
     ],
