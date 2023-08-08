@@ -358,6 +358,8 @@ pub const LOG_TAG_VERBOSE: i32 = 6;
 init_flags!(
     name: InitFlags
     flags: {
+        asha_packet_drop_frequency_threshold: i32 = 60,
+        asha_phy_update_retry_limit: i32 = 5,
         always_send_services_if_gatt_disc_done = true,
         always_use_private_gatt_for_debugging,
         asynchronously_start_l2cap_coc = true,
@@ -391,6 +393,7 @@ init_flags!(
         read_encryption_key_size = true,
         redact_log = true,
         rust_event_loop = true,
+        sco_codec_select_lc3,
         sco_codec_timeout_clear,
         sdp_serialization = true,
         sdp_skip_rnr_if_known = true,
@@ -399,6 +402,7 @@ init_flags!(
         subrating = true,
         trigger_advertising_callbacks_on_first_resume_after_pause = true,
         use_unified_connection_manager,
+        sdp_return_classic_services_when_le_discovery_fails = true,
     }
     // dynamic flags can be updated at runtime and should be accessed directly
     // to check.

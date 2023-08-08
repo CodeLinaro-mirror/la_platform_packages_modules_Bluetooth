@@ -62,6 +62,7 @@ public final class AdvertiseData implements Parcelable {
     private final boolean mIncludeDeviceName;
     private final boolean mIncludePublicBroadcastDeviceName;
     private final byte[] mEncryptedKeyMaterialValue;
+    private final String mPublicBroadcastDeviceName;
 
     private final boolean mServiceUuidsEnc;
     private final boolean mServiceSolicitationUuidsEnc;
@@ -87,6 +88,7 @@ public final class AdvertiseData implements Parcelable {
             boolean includeDeviceName,
             boolean deviceNameEnc,
             boolean includePublicBroadcastDeviceName,
+            String publicBroadcastDeviceName,
             boolean publicBroadcastDeviceNameEnc,
             byte[] encryptedKeyMaterialValue) {
         mServiceUuids = serviceUuids;
@@ -104,6 +106,7 @@ public final class AdvertiseData implements Parcelable {
         mIncludeDeviceName = includeDeviceName;
         mDeviceNameEnc = deviceNameEnc;
         mIncludePublicBroadcastDeviceName = includePublicBroadcastDeviceName;
+        mPublicBroadcastDeviceName = publicBroadcastDeviceName;
         mPublicBroadcastDeviceNameEnc = publicBroadcastDeviceNameEnc;
         mEncryptedKeyMaterialValue = encryptedKeyMaterialValue;
     }
@@ -231,6 +234,14 @@ public final class AdvertiseData implements Parcelable {
     }
 
     /**
+     * Returns public broadcast name
+     * @hide
+     */
+    public String getPublicBroadcastDeviceName() {
+        return mPublicBroadcastDeviceName;
+    }
+
+    /**
      * Returns whether Public Broadcast Device Name needs to be encrypted.
      * @hide
      */
@@ -255,8 +266,8 @@ public final class AdvertiseData implements Parcelable {
                 mServiceSolicitationUuidsEnc, mTransportDiscoveryData, mTransportDiscoveryDataEnc,
                 mManufacturerSpecificData, mManufacturerSpecificDataEnc, mServiceData,
                 mServiceDataEnc, mIncludeTxPowerLevel, mTxPowerLevelEnc, mIncludeDeviceName,
-                mDeviceNameEnc, mIncludePublicBroadcastDeviceName, mPublicBroadcastDeviceNameEnc,
-                mEncryptedKeyMaterialValue);
+                mDeviceNameEnc, mIncludePublicBroadcastDeviceName, mPublicBroadcastDeviceName,
+                mPublicBroadcastDeviceNameEnc, mEncryptedKeyMaterialValue);
     }
 
     /**
@@ -287,6 +298,7 @@ public final class AdvertiseData implements Parcelable {
                 && mIncludeDeviceName == other.mIncludeDeviceName
                 && mDeviceNameEnc == other.mDeviceNameEnc
                 && mIncludePublicBroadcastDeviceName == other.mIncludePublicBroadcastDeviceName
+                && mPublicBroadcastDeviceName.equals(other.mPublicBroadcastDeviceName)
                 && mPublicBroadcastDeviceNameEnc == other.mPublicBroadcastDeviceNameEnc
                 && BluetoothLeUtils.equals(mEncryptedKeyMaterialValue,
                     other.mEncryptedKeyMaterialValue);
@@ -309,6 +321,7 @@ public final class AdvertiseData implements Parcelable {
                 + ", mIncludeDeviceName=" + mIncludeDeviceName
                 + ", mDeviceNameEnc=" + mDeviceNameEnc
                 + ", mIncludePublicBroadcastDeviceName=" + mIncludePublicBroadcastDeviceName
+                + ", mPublicBroadcastDeviceName=" + mPublicBroadcastDeviceName
                 + ", mPublicBroadcastDeviceNameEnc=" + mPublicBroadcastDeviceNameEnc
                 + ", mEncryptedKeyMaterialValue="
                 + BluetoothLeUtils.toString(mEncryptedKeyMaterialValue) + "]";
@@ -348,6 +361,7 @@ public final class AdvertiseData implements Parcelable {
         dest.writeByte((byte) (getIncludeDeviceName() ? 1 : 0));
         dest.writeByte((byte) (getDeviceNameEnc() ? 1 : 0));
         dest.writeByte((byte) (getIncludePublicBroadcastDeviceName() ? 1 : 0));
+        dest.writeString(getPublicBroadcastDeviceName());
         dest.writeByte((byte) (getPublicBroadcastDeviceNameEnc() ? 1 : 0));
 
         if(mEncryptedKeyMaterialValue != null) {
@@ -403,7 +417,7 @@ public final class AdvertiseData implements Parcelable {
                     }
                     builder.setIncludeTxPowerLevel((in.readByte() == 1), (in.readByte() == 1));
                     builder.setIncludeDeviceName((in.readByte() == 1), (in.readByte() == 1));
-                    builder.setIncludePublicBroadcastDeviceName((in.readByte() == 1), (in.readByte() == 1));
+                    builder.setIncludePublicBroadcastDeviceName((in.readByte() == 1), in.readString(), (in.readByte() == 1));
 
                     int encryptedKeyMaterialValueSize = in.readInt();
                     if (encryptedKeyMaterialValueSize > 0) {
@@ -430,6 +444,7 @@ public final class AdvertiseData implements Parcelable {
         private boolean mIncludeTxPowerLevel;
         private boolean mIncludeDeviceName;
         private boolean mIncludePublicBroadcastDeviceName;
+        private String mPublicBroadcastDeviceName;
         private boolean mServiceUuidsEnc;
         private boolean mServiceSolicitationUuidsEnc;
         private boolean mTransportDiscoveryDataEnc;
@@ -669,7 +684,7 @@ public final class AdvertiseData implements Parcelable {
          */
         @NonNull
         public Builder setIncludePublicBroadcastDeviceName(boolean includeDeviceName) {
-            return setIncludePublicBroadcastDeviceName(includeDeviceName, false);
+            return setIncludePublicBroadcastDeviceName(includeDeviceName, null, false);
         }
 
         /**
@@ -677,9 +692,19 @@ public final class AdvertiseData implements Parcelable {
          * @hide
          */
         @NonNull
-        public Builder setIncludePublicBroadcastDeviceName(boolean includeDeviceName, boolean
+        public Builder setIncludePublicBroadcastDeviceName(boolean includeDeviceName, String pubBroadcastName) {
+            return setIncludePublicBroadcastDeviceName(includeDeviceName, pubBroadcastName, false);
+        }
+
+        /**
+         * Set whether the public broadcast device name should be included in advertise packet.
+         * @hide
+         */
+        @NonNull
+        public Builder setIncludePublicBroadcastDeviceName(boolean includeDeviceName, String pubBroadcastName, boolean
                 needEncryption) {
             mIncludePublicBroadcastDeviceName = includeDeviceName;
+            mPublicBroadcastDeviceName = pubBroadcastName;
             mPublicBroadcastDeviceNameEnc = needEncryption;
             return this;
         }
@@ -709,7 +734,7 @@ public final class AdvertiseData implements Parcelable {
                     mServiceSolicitationUuidsEnc, mTransportDiscoveryData, mTransportDiscoveryDataEnc,
                     mManufacturerSpecificData, mManufacturerSpecificDataEnc, mServiceData,
                     mServiceDataEnc, mIncludeTxPowerLevel, mTxPowerLevelEnc, mIncludeDeviceName,
-                    mDeviceNameEnc, mIncludePublicBroadcastDeviceName,
+                    mDeviceNameEnc, mIncludePublicBroadcastDeviceName, mPublicBroadcastDeviceName,
                     mPublicBroadcastDeviceNameEnc, mEncryptedKeyMaterialValue);
         }
     }

@@ -40,7 +40,10 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
     @IntDef(prefix = "SOURCE_CODEC_TYPE_", value = {
             SOURCE_CODEC_TYPE_LC3,
             SOURCE_CODEC_TYPE_APTX_ADAPTIVE_LE,
-            SOURCE_CODEC_TYPE_INVALID
+            SOURCE_CODEC_TYPE_INVALID,
+            SOURCE_CODEC_TYPE_APTX_ADAPTIVE_R4,
+            SOURCE_CODEC_TYPE_DEFAULT
+
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface SourceCodecType {};
@@ -52,6 +55,16 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
      */
     public static final int SOURCE_CODEC_TYPE_APTX_ADAPTIVE_LE = 1;
     public static final int SOURCE_CODEC_TYPE_INVALID = 1000 * 1000;
+    /**
+     * AptX Adaptive R4 Codec.
+     * @hide
+     */
+    public static final int SOURCE_CODEC_TYPE_APTX_ADAPTIVE_R4 = 2;
+    /**
+     * Default Codec.
+     * @hide
+     */
+    public static final int SOURCE_CODEC_TYPE_DEFAULT = 3;
 
     /** @hide */
     @IntDef(prefix = "CODEC_PRIORITY_",
@@ -80,7 +93,7 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
     /** @hide */
     @IntDef(flag = true, prefix = "SAMPLE_RATE_",
             value = {SAMPLE_RATE_NONE, SAMPLE_RATE_8000, SAMPLE_RATE_16000, SAMPLE_RATE_24000,
-                    SAMPLE_RATE_32000, SAMPLE_RATE_44100, SAMPLE_RATE_48000, SAMPLE_RATE_96000})
+                    SAMPLE_RATE_32000, SAMPLE_RATE_44100, SAMPLE_RATE_48000, SAMPLE_RATE_96000, SAMPLE_RATE_192000})
     @Retention(RetentionPolicy.SOURCE)
     public @interface SampleRate {}
 
@@ -129,6 +142,12 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
      * @hide
      */
     public static final int SAMPLE_RATE_96000 = 0x01 << 9;
+
+    /**
+     * Codec sample rate 192000 Hz.
+     * @hide
+     */
+    public static final int SAMPLE_RATE_192000 = 0x01 << 10;
 
     /** @hide */
     @IntDef(flag = true, prefix = "BITS_PER_SAMPLE_",
@@ -360,6 +379,10 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
                 return "APTX_ADAPTIVE_LEA";
             case SOURCE_CODEC_TYPE_INVALID:
                 return "INVALID CODEC";
+            case SOURCE_CODEC_TYPE_APTX_ADAPTIVE_R4:
+                return "APTX_ADAPTIVE_R4";
+            case SOURCE_CODEC_TYPE_DEFAULT:
+                return "DEFAULT";
             default:
                 break;
         }

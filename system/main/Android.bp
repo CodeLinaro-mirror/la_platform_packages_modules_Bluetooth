@@ -59,7 +59,7 @@ cc_library_static {
 
 cc_library {
     name: "libbluetooth",
-    defaults: ["fluoride_full_defaults"],
+    defaults: ["fluoride_basic_defaults"],
     header_libs: ["libbluetooth_headers"],
     export_header_lib_headers: ["libbluetooth_headers"],
     include_dirs: [

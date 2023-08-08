@@ -40,6 +40,7 @@ java_defaults {
     test_suites: [
         "device-tests",
         "mts-bluetooth",
+        "automotive-tests",
     ],
 
     instrumentation_for: "Bluetooth",
