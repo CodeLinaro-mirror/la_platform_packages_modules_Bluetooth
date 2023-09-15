@@ -3532,7 +3532,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
             }
             BluetoothGatt gatt = new BluetoothGatt(
                     iGatt, this, transport, opportunistic, phy, mAttributionSource);
-            gatt.connect(autoConnect, callback, handler);
+            gatt.connect(autoConnect, callback, handler, eattSupport);
             return gatt;
         } catch (RemoteException e) {
             Log.e(TAG, "", e);

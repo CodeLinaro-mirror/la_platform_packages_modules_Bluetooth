@@ -122,9 +122,9 @@ struct codec_manager_impl {
       sink_config.stream_map =
           stream_conf.sink_offloader_streams_current_allocation;
     }
-    // TODO: set the default value 16 for now, would change it if we support
+    // TODO: set the default value 24 for now, would change it if we support
     // mode bits_per_sample
-    sink_config.bits_per_sample = 16;
+    sink_config.bits_per_sample = 24;
     sink_config.sampling_rate = stream_conf.sink_sample_frequency_hz;
     sink_config.frame_duration = stream_conf.sink_frame_duration_us;
     sink_config.octets_per_frame = stream_conf.sink_octets_per_codec_frame;
@@ -146,9 +146,9 @@ struct codec_manager_impl {
       source_config.stream_map =
           stream_conf.source_offloader_streams_current_allocation;
     }
-    // TODO: set the default value 16 for now, would change it if we support
+    // TODO: set the default value 24 for now, would change it if we support
     // mode bits_per_sample
-    source_config.bits_per_sample = 16;
+    source_config.bits_per_sample = 24;
     source_config.sampling_rate = stream_conf.source_sample_frequency_hz;
     source_config.frame_duration = stream_conf.source_frame_duration_us;
     source_config.octets_per_frame = stream_conf.source_octets_per_codec_frame;

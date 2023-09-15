@@ -425,6 +425,19 @@ uint8_t CodecCapabilitySetting::GetConfigChannelCount() const {
       return 0;
   }
 }
+
+uint16_t CodecCapabilitySetting::GetConfigOctetsPerFrame() const {
+  switch (id.coding_format) {
+    case kLeAudioCodingFormatLC3:
+      LOG_INFO("count = %d",
+           std::get<types::LeAudioLc3Config>(config).GetOctetsPerFrame());
+      return std::get<types::LeAudioLc3Config>(config).GetOctetsPerFrame();
+    default:
+      LOG_WARN(", invalid codec id: 0x%02x", id.coding_format);
+      return 0;
+  }
+}
+
 }  // namespace set_configurations
 
 namespace types {

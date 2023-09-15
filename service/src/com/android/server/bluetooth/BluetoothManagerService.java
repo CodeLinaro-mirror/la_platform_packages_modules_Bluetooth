@@ -1822,30 +1822,32 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                        + bluetoothProfile + ", while Bluetooth is disabled");
             return false;
         }
+        ProfileServiceConnections psc = null;
         synchronized (mProfileServices) {
             if (!mSupportedProfileList.contains(bluetoothProfile)) {
                 Log.w(TAG, "Cannot bind profile: "  + bluetoothProfile
                         + ", not in supported profiles list");
                 return false;
             }
-            ProfileServiceConnections psc =
-                    mProfileServices.get(Integer.valueOf(bluetoothProfile));
-            if (psc == null) {
+            if (mProfileServices.get(Integer.valueOf(bluetoothProfile)) == null) {
                 if (DBG) {
                     Log.d(TAG, "Creating new ProfileServiceConnections object for" + " profile: "
                             + bluetoothProfile);
                 }
                 psc = new ProfileServiceConnections(new Intent(serviceName));
-                if (!psc.bindService(DEFAULT_REBIND_COUNT)) {
-                    return false;
-                }
-
                 mProfileServices.put(new Integer(bluetoothProfile), psc);
             }
             else
                Log.w(TAG, "psc is not null in bindBluetoothProfileService");
         }
-
+        if (psc != null) {
+            if (!psc.bindService(DEFAULT_REBIND_COUNT)) {
+                synchronized (mProfileServices) {
+                     mProfileServices.remove(new Integer(bluetoothProfile));
+                }
+                return false;
+            }
+        }
         // Introducing a delay to give the client app time to prepare
         Message addProxyMsg = mHandler.obtainMessage(MESSAGE_ADD_PROXY_DELAYED);
         addProxyMsg.arg1 = bluetoothProfile;

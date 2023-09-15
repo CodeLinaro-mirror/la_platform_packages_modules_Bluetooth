@@ -439,9 +439,15 @@ std::unordered_map<int32_t, uint8_t> frame_duration_map{
 std::unordered_map<int32_t, uint16_t> octets_per_frame_map{
     {30, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen30},
     {40, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen40},
+    {45, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen45},
     {60, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen60},
+    {75, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen75},
     {80, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen80},
-    {120, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen120}};
+    {90, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen90},
+    {100, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen100},
+    {117, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen117},
+    {120, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen120},
+    {155, ::le_audio::codec_spec_conf::kLeAudioCodecLC3FrameLen155}};
 
 std::unordered_map<AudioLocation, uint32_t> audio_location_map{
     {AudioLocation::UNKNOWN,
