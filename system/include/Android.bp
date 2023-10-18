@@ -49,3 +49,44 @@ cc_library_headers {
     ],
     min_sdk_version: "30",
 }
+
+cc_library_headers {
+    name: "avrcp_headers_qti",
+    defaults: ["libchrome_support_defaults"],
+    export_include_dirs: ["./hardware/avrcp/",],
+
+    // We need this in case some file outside of the Bluetooth project includes
+    // bluetooth.h but doesn't include libchrome which avrcp.h depends on.
+    export_static_lib_headers: ["libchrome"],
+
+    vendor_available: true,
+    host_supported: true,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.bluetooth",
+    ],
+    min_sdk_version: "30",
+}
+
+cc_library_headers {
+    name: "libbluetooth_headers_qti",
+    defaults: ["libchrome_support_defaults"],
+    header_libs: [
+        "avrcp_headers_qti",
+        "libbluetooth-types-header",
+        "libbtcore_headers",
+    ],
+    export_header_lib_headers: [
+        "avrcp_headers_qti",
+        "libbluetooth-types-header",
+        "libbtcore_headers",
+    ],
+	export_include_dirs: ["./"],
+    vendor_available: true,
+    host_supported: true,
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.bluetooth",
+    ],
+    min_sdk_version: "30",
+}
