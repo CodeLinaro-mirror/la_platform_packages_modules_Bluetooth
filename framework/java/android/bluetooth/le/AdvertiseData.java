@@ -298,7 +298,7 @@ public final class AdvertiseData implements Parcelable {
                 && mIncludeDeviceName == other.mIncludeDeviceName
                 && mDeviceNameEnc == other.mDeviceNameEnc
                 && mIncludePublicBroadcastDeviceName == other.mIncludePublicBroadcastDeviceName
-                && mPublicBroadcastDeviceName.equals(other.mPublicBroadcastDeviceName)
+                && Objects.equals(mPublicBroadcastDeviceName, other.mPublicBroadcastDeviceName)
                 && mPublicBroadcastDeviceNameEnc == other.mPublicBroadcastDeviceNameEnc
                 && BluetoothLeUtils.equals(mEncryptedKeyMaterialValue,
                     other.mEncryptedKeyMaterialValue);

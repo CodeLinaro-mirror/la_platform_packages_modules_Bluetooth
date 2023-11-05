@@ -65,7 +65,6 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.os.Binder;
 import android.os.Bundle;
@@ -209,6 +208,9 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     @ChangeId
     @EnabledSince(targetSdkVersion = android.os.Build.VERSION_CODES.TIRAMISU)
     static final long RESTRICT_ENABLE_DISABLE = 218493289L;
+    // APM enhancement feature is enabled by default
+    // Set this value to 0 to disable the feature
+    private static final int DEFAULT_APM_ENHANCEMENT_STATE = 1;
 
     private final Context mContext;
 
@@ -1803,8 +1805,9 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     public boolean isBluetoothAvailableForBinding() {
         try {
             mBluetoothLock.readLock().lock();
-            if (mBluetooth != null && ((getState() == BluetoothAdapter.STATE_ON) ||
-                (getState() == BluetoothAdapter.STATE_TURNING_ON))) {
+            int state = getState();
+            if (mBluetooth != null && ((state == BluetoothAdapter.STATE_ON) ||
+                (state == BluetoothAdapter.STATE_TURNING_ON))) {
                 return true;
             } else {
                 return false;
@@ -1822,30 +1825,32 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                        + bluetoothProfile + ", while Bluetooth is disabled");
             return false;
         }
+        ProfileServiceConnections psc = null;
         synchronized (mProfileServices) {
             if (!mSupportedProfileList.contains(bluetoothProfile)) {
                 Log.w(TAG, "Cannot bind profile: "  + bluetoothProfile
                         + ", not in supported profiles list");
                 return false;
             }
-            ProfileServiceConnections psc =
-                    mProfileServices.get(Integer.valueOf(bluetoothProfile));
-            if (psc == null) {
+            if (mProfileServices.get(Integer.valueOf(bluetoothProfile)) == null) {
                 if (DBG) {
                     Log.d(TAG, "Creating new ProfileServiceConnections object for" + " profile: "
                             + bluetoothProfile);
                 }
                 psc = new ProfileServiceConnections(new Intent(serviceName));
-                if (!psc.bindService(DEFAULT_REBIND_COUNT)) {
-                    return false;
-                }
-
                 mProfileServices.put(new Integer(bluetoothProfile), psc);
             }
             else
                Log.w(TAG, "psc is not null in bindBluetoothProfileService");
         }
-
+        if (psc != null) {
+            if (!psc.bindService(DEFAULT_REBIND_COUNT)) {
+                synchronized (mProfileServices) {
+                     mProfileServices.remove(new Integer(bluetoothProfile));
+                }
+                return false;
+            }
+        }
         // Introducing a delay to give the client app time to prepare
         Message addProxyMsg = mHandler.obtainMessage(MESSAGE_ADD_PROXY_DELAYED);
         addProxyMsg.arg1 = bluetoothProfile;
@@ -1934,37 +1939,14 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
         }
         registerForProvisioningStateChange();
         mBluetoothDeviceConfigListener = new BluetoothDeviceConfigListener(this, DBG);
-        loadApmEnhancementStateFromResource();
+        setApmEnhancementState();
     }
 
-    /**
-     * Set BluetoothModeChangeHelper for testing
-     */
+    /** set APM enhancement feature state */
     @VisibleForTesting
-    void setBluetoothModeChangeHelper(BluetoothModeChangeHelper bluetoothModeChangeHelper) {
-        mBluetoothModeChangeHelper = bluetoothModeChangeHelper;
-    }
-
-    /**
-     * Load whether APM Enhancement feature should be enabled from overlay
-     */
-    @VisibleForTesting
-    void loadApmEnhancementStateFromResource() {
-        String btPackageName = mBluetoothModeChangeHelper.getBluetoothPackageName();
-        if (btPackageName == null) {
-            Log.e(TAG, "Unable to find Bluetooth package name with APM resources");
-            return;
-        }
-        try {
-            Resources resources = mContext.getPackageManager()
-                    .getResourcesForApplication(btPackageName);
-            int apmEnhancement = resources.getIdentifier("config_bluetooth_apm_enhancement_enabled",
-                    "bool", btPackageName);
-            Settings.Global.putInt(mContext.getContentResolver(),
-                    APM_ENHANCEMENT, resources.getBoolean(apmEnhancement) ? 1 : 0);
-        } catch (Exception e) {
-            Log.e(TAG, "Unable to set whether APM enhancement should be enabled");
-        }
+    void setApmEnhancementState() {
+        Settings.Global.putInt(
+                mContext.getContentResolver(), APM_ENHANCEMENT, DEFAULT_APM_ENHANCEMENT_STATE);
     }
 
     /**
@@ -2445,7 +2427,9 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
 
                 case MESSAGE_ENABLE:
                     int quietEnable = msg.arg1;
-                    int isBle  = msg.arg2;
+                    int isBle = msg.arg2;
+
+                    Log.d(TAG, "MESSAGE_ENABLE: isBle: " + isBle + " msg.obj : " + msg.obj);
                     if (mShutdownInProgress) {
                         Log.d(TAG, "Skip Bluetooth Enable in device shutdown process");
                         break;
@@ -2453,7 +2437,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
 
                     if (mHandler.hasMessages(MESSAGE_HANDLE_DISABLE_DELAYED)
                             || mHandler.hasMessages(MESSAGE_HANDLE_ENABLE_DELAYED)) {
-                        if (msg.arg2 == 0) {
+                        if (msg.obj == null) {
                             int delay = ENABLE_DISABLE_DELAY_MS;
 
                             if (mHandler.hasMessages(MESSAGE_DISABLE)) {
@@ -2464,26 +2448,26 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                             mHandler.removeMessages(MESSAGE_ENABLE);
                             // We are handling enable or disable right now, wait for it.
                             mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                MESSAGE_ENABLE, quietEnable, 1), delay);
+                                MESSAGE_ENABLE, quietEnable, isBle, 1), delay);
                             Log.d(TAG, "Queue new MESSAGE_ENABLE");
                         } else {
                             mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                MESSAGE_ENABLE, quietEnable, isBle), ENABLE_DISABLE_DELAY_MS);
+                                MESSAGE_ENABLE, quietEnable, isBle, 1), ENABLE_DISABLE_DELAY_MS);
                             Log.d(TAG, "Re-Queue previous MESSAGE_ENABLE");
                             if (mHandler.hasMessages(MESSAGE_DISABLE)) {
                                 // Ensure the original order of just entering the queue
                                 // if MESSAGE_DISABLE present
                                 mHandler.removeMessages(MESSAGE_DISABLE);
                                 mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                    MESSAGE_DISABLE, 0, isBle), ENABLE_DISABLE_DELAY_MS * 2);
+                                    MESSAGE_DISABLE, 0, 1), ENABLE_DISABLE_DELAY_MS * 2);
                                 Log.d(TAG, "Re-Queue previous MESSAGE_DISABLE");
                             }
                         }
                         break;
-                    } else if(msg.arg2 == 0 && mHandler.hasMessages(MESSAGE_DISABLE)) {
+                    } else if(msg.obj == null && mHandler.hasMessages(MESSAGE_DISABLE)) {
                         mHandler.removeMessages(MESSAGE_ENABLE);
                         mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                            MESSAGE_ENABLE, quietEnable, isBle), ENABLE_DISABLE_DELAY_MS * 2);
+                            MESSAGE_ENABLE, quietEnable, isBle, 1), ENABLE_DISABLE_DELAY_MS * 2);
                         Log.d(TAG, "MESSAGE_DISABLE exist. Queue new MESSAGE_ENABLE");
                         break;
                     }
@@ -2508,9 +2492,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                             int state = synchronousGetState();
                             switch (state) {
                                 case BluetoothAdapter.STATE_BLE_ON:
-                                    if (isBle == 1) {
-                                        Log.i(TAG, "Already at BLE_ON State");
-                                    } else if (isBluetoothPersistedStateOnBluetooth() ||
+                                    if (isBluetoothPersistedStateOnBluetooth() ||
                                         mEnableExternal) {
                                         Log.w(TAG, "BLE_ON State:Enable from Settings or" +
                                                     "BT on persisted, going to ON");
@@ -2522,7 +2504,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                                         // waive WRITE_SECURE_SETTINGS permission check
                                         long callingIdentity = Binder.clearCallingIdentity();
                                         Binder.restoreCallingIdentity(callingIdentity);
-                                    } else {
+                                    } else if (isBle == 1) {
                                         Log.w(TAG, "BLE_ON State:Queued enable from ble app," +
                                                     " stay in ble on");
                                     }
@@ -2597,8 +2579,8 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                                 // if MESSAGE_DISABLE present
                                 mHandler.removeMessages(MESSAGE_ENABLE);
                                 mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                   MESSAGE_ENABLE, mQuietEnableExternal ? 1: 0, 1),
-                                   ENABLE_DISABLE_DELAY_MS * 2);
+                                   MESSAGE_ENABLE, mQuietEnableExternal ? 1: 0,
+                                   mEnableExternal ? 0:1, 1), ENABLE_DISABLE_DELAY_MS * 2);
                                 Log.d(TAG, "Re-Queue previous MESSAGE_ENABLE");
                             }
                         }
