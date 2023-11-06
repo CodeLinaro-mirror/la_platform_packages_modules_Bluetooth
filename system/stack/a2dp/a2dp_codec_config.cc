@@ -69,6 +69,13 @@
 
 #define PROPERTY_CODEC_LOCATION_LEN 100
 
+#define DEFAULT_SUPPORTED_CODECS \
+  ((1 << BTAV_A2DP_CODEC_INDEX_SINK_SBC) | \
+   (1 << BTAV_A2DP_CODEC_INDEX_SINK_AAC) | \
+   (1 << BTAV_A2DP_CODEC_INDEX_SINK_APTX)| \
+   (1 << BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD)| \
+   (1 << BTAV_A2DP_CODEC_INDEX_SINK_OPUS))
+
 static bool A2DP_CheckCodecLocation(btav_a2dp_codec_index_t codec_index,
                                     int32_t default_codecs,
                                     char* property_name);
@@ -201,7 +208,10 @@ A2dpCodecConfig* A2dpCodecConfig::createCodec(btav_a2dp_codec_index_t codec_inde
       codec_config = new A2dpCodecConfigAptxSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD:
-      //codec_config = new A2dpCodecConfigAptxHd(codec_priority);
+      //codec_config = new A2dpCodecConfigAptxHdSource(codec_priority);
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
+      codec_config = new A2dpCodecConfigAptxHdSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
       //codec_config = new A2dpCodecConfigLdacSource(codec_priority);
@@ -1659,18 +1669,14 @@ bool A2DP_InitCodecConfig(btav_a2dp_codec_index_t codec_index, AvdtpSepConfig* p
 bool A2DP_IsCodecSupported(btav_a2dp_codec_index_t codec_index) {
   char value[PROPERTY_VALUE_MAX] = {0};
   int32_t base = 1;
-  int32_t default_codec_supported = base << BTAV_A2DP_CODEC_INDEX_SINK_SBC |
-                                    base << BTAV_A2DP_CODEC_INDEX_SINK_AAC |
-                                    base << BTAV_A2DP_CODEC_INDEX_SINK_APTX |
-                                    base << BTAV_A2DP_CODEC_INDEX_SINK_OPUS;
+  int32_t default_codec_supported = DEFAULT_SUPPORTED_CODECS;
   int32_t codec_supported = 0;
   int32_t codec_flag = base << codec_index;
 
   osi_property_get("persist.bt.a2dp.codec.support", value, "");
-  if (strncmp("", value, sizeof("")) == 0) {
+  codec_supported = (int32_t)strtol(value, nullptr, 16);
+  if (codec_supported == 0) {
     codec_supported = default_codec_supported;
-  } else {
-    codec_supported = atoi(value);
   }
 
   log::debug("codec_supported {}", codec_supported);
@@ -1716,11 +1722,7 @@ static bool A2DP_CheckCodecLocation(btav_a2dp_codec_index_t codec_index,
 }
 
 static bool A2DP_IsSoftwareCodec(btav_a2dp_codec_index_t codec_index) {
-  int32_t base       = 1;
-  int32_t default_software_codecs = base << BTAV_A2DP_CODEC_INDEX_SINK_SBC |
-                                    base << BTAV_A2DP_CODEC_INDEX_SINK_AAC |
-                                    base << BTAV_A2DP_CODEC_INDEX_SINK_APTX |
-                                    base << BTAV_A2DP_CODEC_INDEX_SINK_OPUS;
+  int32_t default_software_codecs = DEFAULT_SUPPORTED_CODECS;
   char value[PROPERTY_CODEC_LOCATION_LEN]   = "persist.bt.a2dp.codec.location.software";
 
   log::debug("default_software_codecs {}", default_software_codecs);
@@ -1729,7 +1731,7 @@ static bool A2DP_IsSoftwareCodec(btav_a2dp_codec_index_t codec_index) {
 }
 
 static bool A2DP_IsADSPCodec(btav_a2dp_codec_index_t codec_index) {
-  int32_t default_adsp_codecs   = 0;
+  int32_t default_adsp_codecs = 0;
   char value[PROPERTY_CODEC_LOCATION_LEN] = "persist.bt.a2dp.codec.location.adsp";
 
   return A2DP_CheckCodecLocation(codec_index, default_adsp_codecs, value);

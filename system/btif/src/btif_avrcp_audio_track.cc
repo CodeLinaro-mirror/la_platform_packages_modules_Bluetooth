@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 // #define LOG_NDEBUG 0
@@ -101,8 +106,12 @@ void* BtifAvrcpAudioTrackCreate(int trackFreq, int bitsPerSample, int channelCou
   AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
   AAudioStreamBuilder_setChannelCount(builder, channelCount);
   AAudioStreamBuilder_setSessionId(builder, AAUDIO_SESSION_ID_ALLOCATE);
-  AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+  aaudio_performance_mode_t mode = (bitsPerSample >= 24) ? AAUDIO_PERFORMANCE_MODE_NONE :
+                                    AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
+  log::debug("mode:{}", mode);
+  AAudioStreamBuilder_setPerformanceMode(builder, mode);
   AAudioStreamBuilder_setErrorCallback(builder, ErrorCallback, nullptr);
+
   result = AAudioStreamBuilder_openStream(builder, &stream);
   log::assert_that(result == AAUDIO_OK, "assert failed: result == AAUDIO_OK");
   AAudioStreamBuilder_delete(builder);
@@ -217,7 +226,8 @@ static size_t transcodeQ23ToFloat(uint8_t* buffer, size_t length,
   const float scaledGain = trackHolder->gain * kScaleQ23ToFloat;
   for (; i < std::min(trackHolder->bufferLength, length / sampleSize); i++) {
     size_t offset = i * sampleSize;
-    int32_t sample = *((int32_t*)(buffer + offset - 1)) & 0x00FFFFFF;
+    int32_t sample = *((int32_t*)(buffer + offset - 1)) & 0xFFFFFF00;
+    sample = sample >> 8;
     trackHolder->buffer[i] = sample * scaledGain;
   }
   return i * sampleSize;
