@@ -81,6 +81,7 @@ typedef enum {
   BTAV_A2DP_CODEC_INDEX_SINK_AAC,
   BTAV_A2DP_CODEC_INDEX_SINK_LDAC,
   BTAV_A2DP_CODEC_INDEX_SINK_APTX,
+  BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD,
   BTAV_A2DP_CODEC_INDEX_SINK_OPUS,
 
   BTAV_A2DP_CODEC_INDEX_SINK_MAX,
@@ -198,6 +199,8 @@ struct btav_a2dp_codec_config_t {
         return "AAC (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SINK_APTX:
         return "APTX (Sink)";
+      case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
+        return "APTX HD (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SINK_LDAC:
         return "LDAC (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SOURCE_LC3:
