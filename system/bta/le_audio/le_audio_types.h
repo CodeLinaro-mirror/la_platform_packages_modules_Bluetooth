@@ -179,9 +179,15 @@ constexpr uint32_t kLeAudioLocationStereo =
 /* Octets Per Frame */
 constexpr uint16_t kLeAudioCodecLC3FrameLen30 = 30;
 constexpr uint16_t kLeAudioCodecLC3FrameLen40 = 40;
+constexpr uint16_t kLeAudioCodecLC3FrameLen45 = 45;
 constexpr uint16_t kLeAudioCodecLC3FrameLen60 = 60;
+constexpr uint16_t kLeAudioCodecLC3FrameLen75 = 75;
 constexpr uint16_t kLeAudioCodecLC3FrameLen80 = 80;
+constexpr uint16_t kLeAudioCodecLC3FrameLen90 = 90;
+constexpr uint16_t kLeAudioCodecLC3FrameLen100 = 100;
+constexpr uint16_t kLeAudioCodecLC3FrameLen117 = 117;
 constexpr uint16_t kLeAudioCodecLC3FrameLen120 = 120;
+constexpr uint16_t kLeAudioCodecLC3FrameLen155 = 155;
 
 }  // namespace codec_spec_conf
 
@@ -591,6 +597,14 @@ struct LeAudioLc3Config {
     return 0;
   }
 
+  /** Returns the frame duration representation in us */
+  uint16_t GetOctetsPerFrame() const {
+    if (octets_per_codec_frame)
+      return *octets_per_codec_frame;
+
+    return 0;
+  }
+
   uint8_t GetChannelCount(void) const {
     if (channel_count) return channel_count;
 
@@ -756,6 +770,8 @@ struct CodecCapabilitySetting {
   uint8_t GetConfigBitsPerSample() const;
   /* Audio channels number for stream */
   uint8_t GetConfigChannelCount() const;
+  /* Octets per frame requested for codec */
+  uint16_t GetConfigOctetsPerFrame()  const;
 };
 
 struct QosConfigSetting {

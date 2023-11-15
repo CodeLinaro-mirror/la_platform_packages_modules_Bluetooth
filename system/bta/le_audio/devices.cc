@@ -1753,7 +1753,7 @@ LeAudioDeviceGroup::GetCodecConfigurationByDirection(
 
   const set_configurations::AudioSetConfiguration* audio_set_conf =
       available_context_to_configuration_map.at(group_context_type);
-  LeAudioCodecConfiguration group_config = {0, 0, 0, 0};
+  LeAudioCodecConfiguration group_config = {0, 0, 0, 0, 0};
   if (!audio_set_conf) return std::nullopt;
 
   for (const auto& conf : audio_set_conf->confs) {
@@ -1788,6 +1788,17 @@ LeAudioDeviceGroup::GetCodecConfigurationByDirection(
       return std::nullopt;
     }
     group_config.bits_per_sample = conf.codec.GetConfigBitsPerSample();
+
+    if (group_config.octets_per_codec_frame != 0 &&
+        conf.codec.GetConfigOctetsPerFrame() != group_config.octets_per_codec_frame) {
+      LOG(WARNING) << __func__
+                   << ", stream configuration could not be "
+                      "determined (ocets per frame differs) for direction: "
+                   << loghex(direction);
+      return std::nullopt;
+    }
+
+    group_config.octets_per_codec_frame = conf.codec.GetConfigOctetsPerFrame();
 
     group_config.num_channels +=
         conf.codec.GetConfigChannelCount() * conf.device_cnt;

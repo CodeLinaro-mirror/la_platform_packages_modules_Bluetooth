@@ -238,8 +238,8 @@ class LeAudioClientImpl : public LeAudioClient {
         audio_receiver_state_(AudioState::IDLE),
         audio_sender_state_(AudioState::IDLE),
         in_call_(false),
-        current_source_codec_config({0, 0, 0, 0}),
-        current_sink_codec_config({0, 0, 0, 0}),
+        current_source_codec_config({0, 0, 0, 0, 0}),
+        current_sink_codec_config({0, 0, 0, 0, 0}),
         lc3_encoder_left_mem(nullptr),
         lc3_encoder_right_mem(nullptr),
         lc3_decoder_left_mem(nullptr),
@@ -3657,7 +3657,7 @@ class LeAudioClientImpl : public LeAudioClient {
       }
     } else {
       if (!current_source_codec_config.IsInvalid()) {
-        current_source_codec_config = {0, 0, 0, 0};
+        current_source_codec_config = {0, 0, 0, 0, 0};
         reconfiguration_needed = true;
       }
       source_cfg_available = false;
@@ -3670,7 +3670,7 @@ class LeAudioClientImpl : public LeAudioClient {
       }
     } else {
       if (!current_sink_codec_config.IsInvalid()) {
-        current_sink_codec_config = {0, 0, 0, 0};
+        current_sink_codec_config = {0, 0, 0, 0, 0};
         reconfiguration_needed = true;
       }
 
