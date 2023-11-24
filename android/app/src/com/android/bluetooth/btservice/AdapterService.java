@@ -4373,6 +4373,20 @@ public class AdapterService extends Service {
                 byte [] optionVal) { return -1; }
 
         @Override
+        public int setLeHighPriorityMode(BluetoothDevice device, boolean enable,
+                 AttributionSource attributionSource) { return -1; }
+
+        @Override
+        public boolean isLeHighPriorityModeSet(BluetoothDevice device,
+                AttributionSource attributionSource) { return false; }
+
+        public boolean setAfhChannelMap(int transport, int len, byte [] afhMap,
+                AttributionSource attributionSource) { return false; }
+
+        public boolean getAfhChannelMap(BluetoothDevice device, int transport,
+                AttributionSource attributionSource) { return false; }
+
+        @Override
         public int getDeviceType(BluetoothDevice device, AttributionSource source)
                 { return -1; }
 

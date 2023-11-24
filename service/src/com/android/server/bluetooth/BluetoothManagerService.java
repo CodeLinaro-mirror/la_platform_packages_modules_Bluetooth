@@ -1805,8 +1805,9 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     public boolean isBluetoothAvailableForBinding() {
         try {
             mBluetoothLock.readLock().lock();
-            if (mBluetooth != null && ((getState() == BluetoothAdapter.STATE_ON) ||
-                (getState() == BluetoothAdapter.STATE_TURNING_ON))) {
+            int state = getState();
+            if (mBluetooth != null && ((state == BluetoothAdapter.STATE_ON) ||
+                (state == BluetoothAdapter.STATE_TURNING_ON))) {
                 return true;
             } else {
                 return false;
@@ -2426,7 +2427,9 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
 
                 case MESSAGE_ENABLE:
                     int quietEnable = msg.arg1;
-                    int isBle  = msg.arg2;
+                    int isBle = msg.arg2;
+
+                    Log.d(TAG, "MESSAGE_ENABLE: isBle: " + isBle + " msg.obj : " + msg.obj);
                     if (mShutdownInProgress) {
                         Log.d(TAG, "Skip Bluetooth Enable in device shutdown process");
                         break;
@@ -2434,7 +2437,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
 
                     if (mHandler.hasMessages(MESSAGE_HANDLE_DISABLE_DELAYED)
                             || mHandler.hasMessages(MESSAGE_HANDLE_ENABLE_DELAYED)) {
-                        if (msg.arg2 == 0) {
+                        if (msg.obj == null) {
                             int delay = ENABLE_DISABLE_DELAY_MS;
 
                             if (mHandler.hasMessages(MESSAGE_DISABLE)) {
@@ -2445,26 +2448,26 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                             mHandler.removeMessages(MESSAGE_ENABLE);
                             // We are handling enable or disable right now, wait for it.
                             mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                MESSAGE_ENABLE, quietEnable, 1), delay);
+                                MESSAGE_ENABLE, quietEnable, isBle, 1), delay);
                             Log.d(TAG, "Queue new MESSAGE_ENABLE");
                         } else {
                             mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                MESSAGE_ENABLE, quietEnable, isBle), ENABLE_DISABLE_DELAY_MS);
+                                MESSAGE_ENABLE, quietEnable, isBle, 1), ENABLE_DISABLE_DELAY_MS);
                             Log.d(TAG, "Re-Queue previous MESSAGE_ENABLE");
                             if (mHandler.hasMessages(MESSAGE_DISABLE)) {
                                 // Ensure the original order of just entering the queue
                                 // if MESSAGE_DISABLE present
                                 mHandler.removeMessages(MESSAGE_DISABLE);
                                 mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                    MESSAGE_DISABLE, 0, isBle), ENABLE_DISABLE_DELAY_MS * 2);
+                                    MESSAGE_DISABLE, 0, 1), ENABLE_DISABLE_DELAY_MS * 2);
                                 Log.d(TAG, "Re-Queue previous MESSAGE_DISABLE");
                             }
                         }
                         break;
-                    } else if(msg.arg2 == 0 && mHandler.hasMessages(MESSAGE_DISABLE)) {
+                    } else if(msg.obj == null && mHandler.hasMessages(MESSAGE_DISABLE)) {
                         mHandler.removeMessages(MESSAGE_ENABLE);
                         mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                            MESSAGE_ENABLE, quietEnable, isBle), ENABLE_DISABLE_DELAY_MS * 2);
+                            MESSAGE_ENABLE, quietEnable, isBle, 1), ENABLE_DISABLE_DELAY_MS * 2);
                         Log.d(TAG, "MESSAGE_DISABLE exist. Queue new MESSAGE_ENABLE");
                         break;
                     }
@@ -2489,9 +2492,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                             int state = synchronousGetState();
                             switch (state) {
                                 case BluetoothAdapter.STATE_BLE_ON:
-                                    if (isBle == 1) {
-                                        Log.i(TAG, "Already at BLE_ON State");
-                                    } else if (isBluetoothPersistedStateOnBluetooth() ||
+                                    if (isBluetoothPersistedStateOnBluetooth() ||
                                         mEnableExternal) {
                                         Log.w(TAG, "BLE_ON State:Enable from Settings or" +
                                                     "BT on persisted, going to ON");
@@ -2503,7 +2504,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                                         // waive WRITE_SECURE_SETTINGS permission check
                                         long callingIdentity = Binder.clearCallingIdentity();
                                         Binder.restoreCallingIdentity(callingIdentity);
-                                    } else {
+                                    } else if (isBle == 1) {
                                         Log.w(TAG, "BLE_ON State:Queued enable from ble app," +
                                                     " stay in ble on");
                                     }
@@ -2578,8 +2579,8 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                                 // if MESSAGE_DISABLE present
                                 mHandler.removeMessages(MESSAGE_ENABLE);
                                 mHandler.sendMessageDelayed(mHandler.obtainMessage(
-                                   MESSAGE_ENABLE, mQuietEnableExternal ? 1: 0, 1),
-                                   ENABLE_DISABLE_DELAY_MS * 2);
+                                   MESSAGE_ENABLE, mQuietEnableExternal ? 1: 0,
+                                   mEnableExternal ? 0:1, 1), ENABLE_DISABLE_DELAY_MS * 2);
                                 Log.d(TAG, "Re-Queue previous MESSAGE_ENABLE");
                             }
                         }

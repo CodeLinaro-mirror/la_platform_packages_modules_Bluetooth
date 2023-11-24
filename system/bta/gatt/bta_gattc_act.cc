@@ -33,6 +33,7 @@
 #include "bta/gatt/bta_gattc_int.h"
 #include "bta/hh/bta_hh_int.h"
 #include "btif/include/btif_debug_conn.h"
+#include "btif/include/btif_storage.h"
 #include "btif/include/core_callbacks.h"
 #include "btif/include/stack_manager.h"
 #include "device/include/controller.h"
@@ -720,6 +721,11 @@ void bta_gattc_disc_close(tBTA_GATTC_CLCB* p_clcb,
 static void bta_gattc_set_discover_st(tBTA_GATTC_SERV* p_srcb) {
   uint8_t i;
 
+  if (!interop_match_addr_or_name(INTEROP_DISABLE_LE_CONN_UPDATES,
+                                  &p_srcb->server_bda,
+                                  &btif_storage_get_remote_device_property)) {
+    L2CA_EnableUpdateBleConnParams(p_srcb->server_bda, false);
+  }
   for (i = 0; i < BTA_GATTC_CLCB_MAX; i++) {
     if (bta_gattc_cb.clcb[i].p_srcb == p_srcb) {
       bta_gattc_cb.clcb[i].status = GATT_SUCCESS;
@@ -794,8 +800,13 @@ void bta_gattc_cfg_mtu(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
 }
 
 void bta_gattc_start_discover_internal(tBTA_GATTC_CLCB* p_clcb) {
-  if (p_clcb->transport == BT_TRANSPORT_LE)
-    L2CA_EnableUpdateBleConnParams(p_clcb->p_srcb->server_bda, false);
+  if (p_clcb->transport == BT_TRANSPORT_LE) {
+    if (!interop_match_addr_or_name(INTEROP_DISABLE_LE_CONN_UPDATES,
+                                    &p_clcb->p_srcb->server_bda,
+                                    &btif_storage_get_remote_device_property)) {
+      L2CA_EnableUpdateBleConnParams(p_clcb->p_srcb->server_bda, false);
+    }
+  }
 
   bta_gattc_init_cache(p_clcb->p_srcb);
   p_clcb->status = bta_gattc_discover_pri_service(
@@ -873,9 +884,18 @@ void bta_gattc_disc_cmpl(tBTA_GATTC_CLCB* p_clcb,
 
   VLOG(1) << __func__ << ": conn_id=" << loghex(p_clcb->bta_conn_id);
 
-  if (p_clcb->transport == BT_TRANSPORT_LE)
-    L2CA_EnableUpdateBleConnParams(p_clcb->p_srcb->server_bda, true);
-  p_clcb->p_srcb->state = BTA_GATTC_SERV_IDLE;
+  if (p_clcb->transport == BT_TRANSPORT_LE) {
+    if (p_clcb->p_srcb &&
+        (!interop_match_addr_or_name(
+            INTEROP_DISABLE_LE_CONN_UPDATES, &p_clcb->p_srcb->server_bda,
+            &btif_storage_get_remote_device_property))) {
+      L2CA_EnableUpdateBleConnParams(p_clcb->p_srcb->server_bda, true);
+    }
+  }
+
+  if (p_clcb->p_srcb) {
+    p_clcb->p_srcb->state = BTA_GATTC_SERV_IDLE;
+  }
   p_clcb->disc_active = false;
 
   if (p_clcb->status != GATT_SUCCESS) {
