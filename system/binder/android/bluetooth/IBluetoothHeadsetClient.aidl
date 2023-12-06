@@ -14,11 +14,18 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.bluetooth;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.bluetooth.BluetoothHeadsetClientCall;
+import android.bluetooth.IBluetoothHeadsetClientScoCallback;
 import android.content.AttributionSource;
 
 import com.android.modules.utils.SynchronousResultReceiver;
@@ -93,4 +100,12 @@ oneway interface IBluetoothHeadsetClient {
 
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)")
     void getCurrentAgFeatures(in BluetoothDevice device, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
+
+    // HeadsetClientSCOCallback API
+    //@JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)")
+    void registerHeadsetClientScoCallback(in IBluetoothHeadsetClientScoCallback callback, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
+    //@JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)")
+    void unregisterHeadsetClientScoCallback(in IBluetoothHeadsetClientScoCallback callback, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
 }
