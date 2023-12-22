@@ -1380,6 +1380,7 @@ public class HeadsetService extends ProfileService {
                 }
             }
             mActiveDevice = null;
+            mNativeInterface.setActiveDevice(null);
             broadcastActiveDevice(null);
         }
     }
