@@ -45,6 +45,27 @@ constexpr uint16_t kSsrMaxLatency = 18; /* slots * 0.625ms */
 }  // namespace
 
 /*******************************************************************************
+**      Function       blacklist_adjust_sniff_subrate
+**
+**      Description    It's used to update SSR parameter such as max latency,
+**                     if device is found in HID blacklist.
+**
+**      Returns        None
+*******************************************************************************/
+static void blacklist_adjust_sniff_subrate(RawAddress peer_dev,
+                                           uint16_t* ssr_max_lat) {
+  uint16_t old_ssr_max_lat = *ssr_max_lat;
+  RawAddress remote_bdaddr = peer_dev;
+  if (interop_match_addr_get_max_lat(INTEROP_UPDATE_HID_SSR_MAX_LAT,
+                                     &remote_bdaddr, ssr_max_lat)) {
+    APPL_TRACE_WARNING(
+        "%s: Device in blacklist for ssr, max latency changed "
+        "from %d to %d",
+        __func__, old_ssr_max_lat, *ssr_max_lat);
+  }
+}
+
+/*******************************************************************************
  *
  * Function         bta_hh_find_cb
  *
@@ -183,6 +204,8 @@ void bta_hh_add_device_to_list(tBTA_HH_DEV_CB* p_cb, uint8_t handle,
 
   p_cb->dscp_info.ssr_max_latency = ssr_max_latency;
   p_cb->dscp_info.ssr_min_tout = ssr_min_tout;
+  blacklist_adjust_sniff_subrate(p_cb->addr,
+                                 &(p_cb->dscp_info.ssr_max_latency));
 
   /* store report descriptor info */
   if (p_dscp_info) {

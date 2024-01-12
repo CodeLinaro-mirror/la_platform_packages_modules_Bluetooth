@@ -27,7 +27,9 @@
 
 #include <cstdint>
 
+#include "btif/include/btif_storage.h"
 #include "device/include/device_iot_config.h"
+#include "device/include/interop.h"
 #include "main/shim/l2c_api.h"
 #include "main/shim/shim.h"
 #include "osi/include/allocator.h"
@@ -103,6 +105,15 @@ void l2c_link_hci_conn_req(const RawAddress& bd_addr) {
         p_lcb->SetLinkRoleAsPeripheral();
       else
         p_lcb->SetLinkRoleAsCentral();
+      if (p_lcb->IsLinkRoleCentral() &&
+          (interop_match_addr_or_name(
+              INTEROP_DISABLE_ROLE_SWITCH, &bd_addr,
+              &btif_storage_get_remote_device_property))) {
+        p_lcb->SetLinkRoleAsPeripheral();
+      }
+
+      L2CAP_TRACE_WARNING("l2c_link_hci_conn_req:set link_role= %d",
+                          p_lcb->LinkRole());
     }
 
     /* Tell the other side we accept the connection */
@@ -125,6 +136,15 @@ void l2c_link_hci_conn_req(const RawAddress& bd_addr) {
     else
       p_lcb->SetLinkRoleAsCentral();
 
+    if (p_lcb->IsLinkRoleCentral() &&
+        (interop_match_addr_or_name(
+            INTEROP_DISABLE_ROLE_SWITCH, &bd_addr,
+            &btif_storage_get_remote_device_property))) {
+      p_lcb->SetLinkRoleAsPeripheral();
+    }
+
+    L2CAP_TRACE_WARNING("l2c_link_hci_conn_req:set link_role= %d",
+                        p_lcb->LinkRole());
     acl_accept_connection_request(bd_addr, p_lcb->LinkRole());
 
     p_lcb->link_state = LST_CONNECTING;
