@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.bluetooth;
 
 import static android.bluetooth.BluetoothUtils.getSyncTimeout;
@@ -47,6 +53,10 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.Objects;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.Executor;
+import java.util.Map;
+import java.util.HashMap;
+import android.annotation.CallbackExecutor;
 
 /**
  * Public API for controlling the Bluetooth Headset Service. This includes both
@@ -1541,4 +1551,91 @@ public final class BluetoothHeadset implements BluetoothProfile {
             if (DBG) Log.d(TAG, Log.getStackTraceString(new Throwable()));
         }
     }
+
+    private final Map<Callback, Executor> mCallbackExecutorMap = new HashMap<>();
+    private final IBluetoothHeadsetScoCallback mCallback = new IBluetoothHeadsetScoCallback.Stub() {
+            @Override
+            public void onHeadsetScoStateChanged(int sco_state) {
+            for (Map.Entry<BluetoothHeadset.Callback, Executor> callbackExecutorEntry:
+                    mCallbackExecutorMap.entrySet()) {
+                BluetoothHeadset.Callback callback = callbackExecutorEntry.getKey();
+                Executor executor = callbackExecutorEntry.getValue();
+                executor.execute(() -> callback.onHeadsetScoStateChanged(sco_state));
+            }
+        }
+    };
+    /** @hide */
+    public void registerCallback(@NonNull @CallbackExecutor Executor executor,
+    @NonNull Callback callback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(callback, "callback cannot be null");
+
+        if (DBG) log("registerCallback");
+
+        synchronized (mCallbackExecutorMap) {
+            // If the callback map is empty, we register the service-to-app callback
+            if (mCallbackExecutorMap.isEmpty()) {
+                if (!mAdapter.isEnabled()) {
+                    /* If Bluetooth is off, just store callback and it will be registered
+                        * when Bluetooth is on
+                        */
+                    mCallbackExecutorMap.put(callback, executor);
+                    return;
+                }
+                try {
+                    final IBluetoothHeadset service = getService();
+                    if (service != null) {
+                        final SynchronousResultReceiver<Integer> recv =
+                                SynchronousResultReceiver.get();
+                        service.registerHeadsetScoCallback(mCallback, mAttributionSource, recv);
+                        recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+                    }
+                } catch (TimeoutException e) {
+                    Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                } catch (RemoteException e) {
+                    throw e.rethrowFromSystemServer();
+                }
+            }
+
+            // Adds the passed in callback to our map of callbacks to executors
+            if (mCallbackExecutorMap.containsKey(callback)) {
+                throw new IllegalArgumentException("This callback has already been registered");
+            }
+            mCallbackExecutorMap.put(callback, executor);
+        }
+    }
+    /** @hide */
+    public void unregisterCallback(@NonNull Callback callback) {
+        Objects.requireNonNull(callback, "callback cannot be null");
+
+        if (DBG) log("unregisterCallback");
+
+        synchronized (mCallbackExecutorMap) {
+            if (mCallbackExecutorMap.remove(callback) == null) {
+                throw new IllegalArgumentException("This callback has not been registered");
+            }
+        }
+
+        // If the callback map is empty, we unregister the service-to-app callback
+        if (mCallbackExecutorMap.isEmpty()) {
+            try {
+                final IBluetoothHeadset service = getService();
+                if (service != null) {
+                    final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                    service.unregisterHeadsetScoCallback(mCallback, mAttributionSource, recv);
+                    recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+                }
+            } catch (TimeoutException | IllegalStateException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /** @hide */
+    public interface Callback {
+        void onHeadsetScoStateChanged(int sco_state);
+    }
+
 }

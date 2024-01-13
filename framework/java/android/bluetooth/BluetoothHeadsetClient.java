@@ -13,6 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 package android.bluetooth;
 
 import static android.bluetooth.BluetoothUtils.getSyncTimeout;
@@ -44,6 +50,11 @@ import com.android.modules.utils.SynchronousResultReceiver;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.Executor;
+import java.util.Objects;
+import java.util.Map;
+import java.util.HashMap;
+import android.annotation.CallbackExecutor;
 
 /**
  * This class provides the System APIs to interact with the Hands-Free Client profile.
@@ -1958,5 +1969,91 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
 
     private static void log(String msg) {
         Log.d(TAG, msg);
+    }
+
+    private final Map<Callback, Executor> mCallbackExecutorMap = new HashMap<>();
+    private final IBluetoothHeadsetClientScoCallback mCallback = new IBluetoothHeadsetClientScoCallback.Stub() {
+            @Override
+            public void onHeadsetClientScoStateChanged(int sco_state) {
+            for (Map.Entry<BluetoothHeadsetClient.Callback, Executor> callbackExecutorEntry:
+                    mCallbackExecutorMap.entrySet()) {
+                BluetoothHeadsetClient.Callback callback = callbackExecutorEntry.getKey();
+                Executor executor = callbackExecutorEntry.getValue();
+                executor.execute(() -> callback.onHeadsetClientScoStateChanged(sco_state));
+            }
+        }
+    };
+    /** @hide */
+    public void registerCallback(@NonNull @CallbackExecutor Executor executor,
+    @NonNull Callback callback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(callback, "callback cannot be null");
+
+        if (DBG) log("registerCallback");
+
+        synchronized (mCallbackExecutorMap) {
+            // If the callback map is empty, we register the service-to-app callback
+            if (mCallbackExecutorMap.isEmpty()) {
+                if (!mAdapter.isEnabled()) {
+                    /* If Bluetooth is off, just store callback and it will be registered
+                        * when Bluetooth is on
+                        */
+                    mCallbackExecutorMap.put(callback, executor);
+                    return;
+                }
+                try {
+                    final IBluetoothHeadsetClient service = getService();
+                    if (service != null) {
+                        final SynchronousResultReceiver<Integer> recv =
+                                SynchronousResultReceiver.get();
+                        service.registerHeadsetClientScoCallback(mCallback, mAttributionSource, recv);
+                        recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+                    }
+                } catch (TimeoutException e) {
+                    Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                } catch (RemoteException e) {
+                    throw e.rethrowFromSystemServer();
+                }
+            }
+
+            // Adds the passed in callback to our map of callbacks to executors
+            if (mCallbackExecutorMap.containsKey(callback)) {
+                throw new IllegalArgumentException("This callback has already been registered");
+            }
+            mCallbackExecutorMap.put(callback, executor);
+        }
+    }
+    /** @hide */
+    public void unregisterCallback(@NonNull Callback callback) {
+        Objects.requireNonNull(callback, "callback cannot be null");
+
+        if (DBG) log("unregisterCallback");
+
+        synchronized (mCallbackExecutorMap) {
+            if (mCallbackExecutorMap.remove(callback) == null) {
+                throw new IllegalArgumentException("This callback has not been registered");
+            }
+        }
+
+        // If the callback map is empty, we unregister the service-to-app callback
+        if (mCallbackExecutorMap.isEmpty()) {
+            try {
+                final IBluetoothHeadsetClient service = getService();
+                if (service != null) {
+                    final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                    service.unregisterHeadsetClientScoCallback(mCallback, mAttributionSource, recv);
+                    recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+                }
+            } catch (TimeoutException | IllegalStateException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /** @hide */
+    public interface Callback {
+        void onHeadsetClientScoStateChanged(int sco_state);
     }
 }
