@@ -96,7 +96,7 @@ constexpr char kBtmLogTag[] = "A2DP";
 
 /* the delay time in milliseconds to start service discovery on AVRCP */
 #ifndef BTA_AV_RC_DISC_TIME_VAL
-#define BTA_AV_RC_DISC_TIME_VAL 3500
+#define BTA_AV_RC_DISC_TIME_VAL 2500
 #endif
 
 /* the timer in milliseconds to guard against link busy and AVDT_CloseReq failed
