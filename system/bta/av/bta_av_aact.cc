@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -75,7 +80,7 @@ constexpr char kBtmLogTag[] = "A2DP";
 
 /* the delay time in milliseconds to start service discovery on AVRCP */
 #ifndef BTA_AV_RC_DISC_TIME_VAL
-#define BTA_AV_RC_DISC_TIME_VAL 3500
+#define BTA_AV_RC_DISC_TIME_VAL 2500
 #endif
 
 /* the timer in milliseconds to guard against link busy and AVDT_CloseReq failed
