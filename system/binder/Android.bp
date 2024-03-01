@@ -32,7 +32,7 @@ filegroup {
         "android/bluetooth/IBluetoothHeadset.aidl",
         "android/bluetooth/IBluetoothHeadsetScoCallback.aidl",
         "android/bluetooth/IBluetoothHeadsetClient.aidl",
-        "android/bluetooth/IBluetoothHeadsetClientScoCallback.aidl",
+        "android/bluetooth/IBluetoothHeadsetClientCallback.aidl",
         "android/bluetooth/IBluetoothHearingAid.aidl",
         "android/bluetooth/IBluetoothHidDevice.aidl",
         "android/bluetooth/IBluetoothHidDeviceCallback.aidl",

@@ -16,7 +16,7 @@
 
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 package android.bluetooth;
@@ -1972,7 +1972,7 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
     }
 
     private final Map<Callback, Executor> mCallbackExecutorMap = new HashMap<>();
-    private final IBluetoothHeadsetClientScoCallback mCallback = new IBluetoothHeadsetClientScoCallback.Stub() {
+    private final IBluetoothHeadsetClientCallback mCallback = new IBluetoothHeadsetClientCallback.Stub() {
             @Override
             public void onHeadsetClientScoStateChanged(int sco_state) {
             for (Map.Entry<BluetoothHeadsetClient.Callback, Executor> callbackExecutorEntry:
@@ -1980,6 +1980,15 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
                 BluetoothHeadsetClient.Callback callback = callbackExecutorEntry.getKey();
                 Executor executor = callbackExecutorEntry.getValue();
                 executor.execute(() -> callback.onHeadsetClientScoStateChanged(sco_state));
+            }
+        }
+            @Override
+            public void onHeadsetClientCallStateChanged(BluetoothHeadsetClientCall call) {
+            for (Map.Entry<BluetoothHeadsetClient.Callback, Executor> callbackExecutorEntry:
+                    mCallbackExecutorMap.entrySet()) {
+                BluetoothHeadsetClient.Callback callback = callbackExecutorEntry.getKey();
+                Executor executor = callbackExecutorEntry.getValue();
+                executor.execute(() -> callback.onHeadsetClientCallStateChanged(call));
             }
         }
     };
@@ -2006,7 +2015,7 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
                     if (service != null) {
                         final SynchronousResultReceiver<Integer> recv =
                                 SynchronousResultReceiver.get();
-                        service.registerHeadsetClientScoCallback(mCallback, mAttributionSource, recv);
+                        service.registerHeadsetClientCallback(mCallback, mAttributionSource, recv);
                         recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
                     }
                 } catch (TimeoutException e) {
@@ -2041,7 +2050,7 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
                 final IBluetoothHeadsetClient service = getService();
                 if (service != null) {
                     final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
-                    service.unregisterHeadsetClientScoCallback(mCallback, mAttributionSource, recv);
+                    service.unregisterHeadsetClientCallback(mCallback, mAttributionSource, recv);
                     recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
                 }
             } catch (TimeoutException | IllegalStateException e) {
@@ -2055,5 +2064,6 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
     /** @hide */
     public interface Callback {
         void onHeadsetClientScoStateChanged(int sco_state);
+        void onHeadsetClientCallStateChanged(BluetoothHeadsetClientCall call);
     }
 }
