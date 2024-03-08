@@ -537,6 +537,16 @@ public class AvrcpControllerService extends ConnectableProfile {
         }
     }
 
+    void onUidsChanged(BluetoothDevice device, int uidCounter) {
+        Log.d(TAG, "onUidsChanged uidCounter: " + uidCounter);
+        AvrcpControllerStateMachine stateMachine = getStateMachine(device);
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                    AvrcpControllerStateMachine.MESSAGE_PROCESS_UIDS_CHANGED,
+                    uidCounter, 0, device);
+        }
+    }
+
     // Called by JNI to report remote Player's capabilities
     synchronized void handlePlayerAppSetting(
             BluetoothDevice device, byte[] playerAttribRsp, int rspLen) {

@@ -99,6 +99,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     static final int MESSAGE_PROCESS_AVAILABLE_PLAYER_CHANGED = 219;
     static final int MESSAGE_PROCESS_RECEIVED_COVER_ART_PSM = 220;
     static final int MESSAGE_PROCESS_SEARCH_RESP = 221;
+    static final int MESSAGE_PROCESS_UIDS_CHANGED = 222;
     static final int MESSAGE_PROCESS_ADD_TO_NOW_PLAYING = 224;
 
     // 300->399 Events for Browsing
@@ -155,6 +156,9 @@ class AvrcpControllerStateMachine extends StateMachine {
 
     private AvrcpPlayer mAddressedPlayer;
     private int mAddressedPlayerId;
+    // Set default value as zero based on assumption that TG is database unaware player
+    // Refresh this value once receiving UIDS_CHANGED_EVENT interim/resp_changed from TG
+    private int mUidCounter = 0;
     private int mVolumeNotificationLabel = -1;
 
     /**
@@ -901,6 +905,10 @@ class AvrcpControllerStateMachine extends StateMachine {
                     mCoverArtPsm = msg.arg1;
                     connectCoverArt();
                 }
+                case MESSAGE_PROCESS_UIDS_CHANGED -> {
+                    processUIDSChange(msg);
+                    return true;
+                }
                 case MESSAGE_PROCESS_IMAGE_DOWNLOADED -> {
                     AvrcpCoverArtManager.DownloadEvent event =
                             (AvrcpCoverArtManager.DownloadEvent) msg.obj;
@@ -1421,12 +1429,13 @@ class AvrcpControllerStateMachine extends StateMachine {
                 mBrowseTree.getCurrentBrowsedFolder().setCached(false);
                 removeUnusedArtworkFromBrowseTree();
                 mNativeInterface.changeFolderPath(
-                        mDeviceAddress, AvrcpControllerService.FOLDER_NAVIGATION_DIRECTION_UP, 0);
+                        mDeviceAddress, mUidCounter,
+                        AvrcpControllerService.FOLDER_NAVIGATION_DIRECTION_UP, 0);
 
             } else {
                 debug("GetFolderList: NAVIGATING DOWN " + mNextStep.toString());
                 mNativeInterface.changeFolderPath(
-                        mDeviceAddress,
+                        mDeviceAddress, mUidCounter,
                         AvrcpControllerService.FOLDER_NAVIGATION_DIRECTION_DOWN,
                         mNextStep.getBluetoothID());
             }
@@ -1709,6 +1718,20 @@ class AvrcpControllerStateMachine extends StateMachine {
         int currIndex = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
         int newIndex = (currIndex * ABS_VOL_BASE) / maxVolume;
         return newIndex;
+    }
+
+    private void processUIDSChange(Message msg) {
+        BluetoothDevice device = (BluetoothDevice) msg.obj;
+        int uidCounter = msg.arg1;
+        Log.d(TAG, "processUIDSChange device: " + device + ", uidCounter: " + uidCounter);
+        mUidCounter = uidCounter;
+
+        refreshCoverArt();
+        // Refresh Root node and Now Playing List
+        mBrowseTree.mRootNode.setCached(false);
+        requestContents(mBrowseTree.mRootNode);
+        mBrowseTree.mNowPlayingNode.setCached(false);
+        requestContents(mBrowseTree.mNowPlayingNode);
     }
 
     private boolean shouldDownloadBrowsedImages() {

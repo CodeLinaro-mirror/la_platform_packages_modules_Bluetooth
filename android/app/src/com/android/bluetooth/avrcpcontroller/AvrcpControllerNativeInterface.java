@@ -97,8 +97,8 @@ public class AvrcpControllerNativeInterface {
         getPlayerListNative(address, start, end);
     }
 
-    void changeFolderPath(byte[] address, byte direction, long uid) {
-        changeFolderPathNative(address, direction, uid);
+    void changeFolderPath(byte[] address, int uidCounter, byte direction, long uid) {
+        changeFolderPathNative(address, uidCounter, direction, uid);
     }
 
     void playItem(byte[] address, byte scope, long uid, int uidCounter) {
@@ -172,6 +172,14 @@ public class AvrcpControllerNativeInterface {
         Log.d(TAG, "onPlayerAppSettingChanged: device=" + device);
 
         mAvrcpController.onPlayerAppSettingChanged(device, playerAttribRsp, rspLen);
+    }
+
+    @VisibleForTesting
+    void onUidsChanged(byte[] address, int uidCounter) {
+        Log.d(TAG, "onUidsChanged uidCounter: " + uidCounter);
+        BluetoothDevice device = mAdapterService.getRemoteDevice(getAddressStringFromByte(address));
+
+        mAvrcpController.onUidsChanged(device, uidCounter);
     }
 
     // Called by JNI when remote wants to set absolute volume.
@@ -487,10 +495,12 @@ public class AvrcpControllerNativeInterface {
     /**
      * Change the current browsed folder
      *
-     * @param direction up/down
-     * @param uid folder unique id
+     * @param uidCounter uid counter
+     * @param direction  up/down
+     * @param uid        folder unique id
      */
-    private native void changeFolderPathNative(byte[] address, byte direction, long uid);
+    private native void changeFolderPathNative(byte[] address, int uidCounter,
+                                               byte direction, long uid);
 
     /**
      * Play item with provided uid

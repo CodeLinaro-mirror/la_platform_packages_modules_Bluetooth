@@ -16,7 +16,7 @@
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /*****************************************************************************
@@ -1366,6 +1366,11 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_GE
   int xx = 0;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
 
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return;
+  }
+
   /* Todo: Do we need to retry on command timeout */
   if (p_rsp->status != AVRC_STS_NO_ERROR) {
     log::error("Error capability response: 0x{:02X}", p_rsp->status);
@@ -1377,6 +1382,11 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_GE
 
     /* Todo: Check if list can be active when we hit here */
     p_dev->rc_supported_event_list = list_new(osi_free);
+    if (p_dev->rc_supported_event_list == NULL) {
+      log::error("Failed to allocate memory");
+      return;
+    }
+
     for (xx = 0; xx < p_rsp->count; xx++) {
       /* Skip registering for Play position change notification */
       if ((p_rsp->param.event_id[xx] == AVRC_EVT_PLAY_STATUS_CHANGE) ||
@@ -1527,6 +1537,11 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
 
         break;
       case AVRC_EVT_UIDS_CHANGE:
+        // UIDS_CHANGED_EVENT should be handled on Interim. Otherwise, UID counter
+        // maintained in CT can't be intialized and synchronized correctly
+        do_in_jni_thread(
+            base::Bind(bt_rc_ctrl_callbacks->uids_changed_cb,
+                       p_dev->rc_addr, p_rsp->param.uid_counter));
         break;
 
       case AVRC_EVT_TRACK_REACHED_END:
@@ -2964,10 +2979,14 @@ static bt_status_t get_player_list_cmd(const RawAddress& bd_addr, uint32_t start
  *                  BT_STATUS_FAIL.
  *
  **************************************************************************/
-static bt_status_t change_folder_path_cmd(const RawAddress& bd_addr, uint8_t direction,
-                                          uint8_t* uid) {
-  log::verbose("direction {}", direction);
+static bt_status_t change_folder_path_cmd(const RawAddress& bd_addr, uint16_t uid_counter,
+                                          uint8_t direction, uint8_t* uid) {
+  log::debug("uid_counter {} direction {}", uid_counter, direction);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -2976,7 +2995,7 @@ static bt_status_t change_folder_path_cmd(const RawAddress& bd_addr, uint8_t dir
   avrc_cmd.chg_path.pdu = AVRC_PDU_CHANGE_PATH;
   avrc_cmd.chg_path.status = AVRC_STS_NO_ERROR;
   // TODO(sanketa): Improve for database aware clients.
-  avrc_cmd.chg_path.uid_counter = 0;
+  avrc_cmd.chg_path.uid_counter = uid_counter;
   avrc_cmd.chg_path.direction = direction;
 
   memset(avrc_cmd.chg_path.folder_uid, 0, AVRC_UID_SIZE * sizeof(uint8_t));
