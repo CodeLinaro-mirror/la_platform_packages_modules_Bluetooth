@@ -100,6 +100,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     static final int MESSAGE_PROCESS_RECEIVED_COVER_ART_PSM = 220;
     static final int MESSAGE_PROCESS_SEARCH_RESP = 221;
     static final int MESSAGE_PROCESS_UIDS_CHANGED = 222;
+    static final int MESSAGE_PROCESS_RC_FEATURES = 223;
     static final int MESSAGE_PROCESS_ADD_TO_NOW_PLAYING = 224;
 
     // 300->399 Events for Browsing
@@ -160,6 +161,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     // Refresh this value once receiving UIDS_CHANGED_EVENT interim/resp_changed from TG
     private int mUidCounter = 0;
     private int mVolumeNotificationLabel = -1;
+    private int mRemoteFeatures;
 
     /**
      * Custom action to get folder items.
@@ -301,6 +303,7 @@ class AvrcpControllerStateMachine extends StateMachine {
         mDeviceAddress = Utils.getByteAddress(mDevice);
         mService = service;
         mNativeInterface = requireNonNull(nativeInterface);
+        mRemoteFeatures = BluetoothAvrcpController.BTRC_FEAT_NONE;
         mCoverArtPsm = 0;
         mCoverArtManager = service.getCoverArtManager();
 
@@ -365,6 +368,14 @@ class AvrcpControllerStateMachine extends StateMachine {
      */
     public BluetoothDevice getDevice() {
         return mDevice;
+    }
+
+    public synchronized void setRemoteFeatures(int remoteFeatures) {
+        mRemoteFeatures = remoteFeatures;
+    }
+
+    public synchronized int getRemoteFeatures() {
+        return mRemoteFeatures;
     }
 
     /** send the connection event asynchronously */
@@ -746,6 +757,10 @@ class AvrcpControllerStateMachine extends StateMachine {
                     // Reset search node before processing new search request.
                     refreshSearchNode(false);
                     processSearchReq((String) msg.obj);
+                    return true;
+                }
+                case MESSAGE_PROCESS_RC_FEATURES -> {
+                    setRemoteFeatures(msg.arg1);
                     return true;
                 }
                 case MSG_AVRCP_SET_REPEAT -> setRepeat(msg.arg1);

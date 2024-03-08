@@ -40,6 +40,7 @@
 
 namespace android {
 static jmethodID method_onConnectionStateChanged;
+static jmethodID method_getRcFeatures;
 static jmethodID method_handleplayerappsetting;
 static jmethodID method_handleplayerappsettingchanged;
 static jmethodID method_handleSetAbsVolume;
@@ -71,6 +72,7 @@ static jclass class_AvrcpPlayer;
 static const btrc_ctrl_interface_t* sBluetoothAvrcpInterface = NULL;
 static jobject sCallbacksObj = NULL;
 static std::shared_timed_mutex sCallbacks_mutex;
+static std::atomic<bool> g_callbacks_enabled{true};
 
 static void btavrcp_passthrough_response_callback(const RawAddress& /* bd_addr */, int id,
                                                   int pressed) {
@@ -107,9 +109,36 @@ static void btavrcp_connection_state_callback(bool rc_connect, bool br_connect,
                                (jboolean)br_connect, addr.get());
 }
 
-static void btavrcp_get_rcfeatures_callback(const RawAddress& /* bd_addr */, int /* features */) {
-  log::verbose("--- Not implemented");
+static void btavrcp_get_rcfeatures_callback(const RawAddress& bd_addr , int features ) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_get_rcfeatures_callback");
+    return;
+  }
+
+  log::info("btavrcp_get_rcfeatures_callback: features: {}", features);
+  std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) {
+    return;
+  }
+  if (!sCallbacksObj) {
+    log::error("sCallbacksObj is null");
+    return;
+  }
+
+  ScopedLocalRef<jbyteArray> addr(sCallbackEnv.get(),
+                                  sCallbackEnv->NewByteArray(sizeof(RawAddress)));
+  if (!addr.get()) {
+    log::error("Failed to allocate a new byte array");
+    return;
+  }
+
+  sCallbackEnv->SetByteArrayRegion(addr.get(), 0, sizeof(RawAddress),
+                                   (jbyte*)bd_addr.address.data());
+  sCallbackEnv->CallVoidMethod(sCallbacksObj, method_getRcFeatures, addr.get(),
+                               (jint)features);
 }
+
 static void btavrcp_setplayerapplicationsetting_rsp_callback(const RawAddress& /* bd_addr */,
                                                              uint8_t /* accepted */) {
   log::verbose("--- Not implemented");
@@ -873,6 +902,9 @@ static void stopNative([[maybe_unused]]JNIEnv* env, jobject /* object */) {
 }
 
 static void cleanupNative(JNIEnv* env, jobject /* object */) {
+  // Disable all future callbacks immediately
+  g_callbacks_enabled.store(false, std::memory_order_release);
+
   std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
 
   const bt_interface_t* btInf = getBluetoothInterface();
@@ -1417,6 +1449,7 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
 
   const JNIJavaMethod javaMethods[] = {
           {"onConnectionStateChanged", "(ZZ[B)V", &method_onConnectionStateChanged},
+          {"getRcFeatures", "([BI)V", &method_getRcFeatures},
           {"getRcPsm", "([BI)V", &method_getRcPsm},
           {"handlePlayerAppSetting", "([B[BI)V", &method_handleplayerappsetting},
           {"onPlayerAppSettingChanged", "([B[BI)V", &method_handleplayerappsettingchanged},

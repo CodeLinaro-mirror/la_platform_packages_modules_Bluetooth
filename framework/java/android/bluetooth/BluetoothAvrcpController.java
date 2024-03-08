@@ -106,6 +106,12 @@ public final class BluetoothAvrcpController implements BluetoothProfile {
         "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_SEARCH";
     public static final String KEY_SEARCH = "search";
 
+    /* Remote supported Features */
+    public static final int BTRC_FEAT_NONE = 0x00;
+    public static final int BTRC_FEAT_METADATA = 0x01;
+    public static final int BTRC_FEAT_ABSOLUTE_VOLUME = 0x02;
+    public static final int BTRC_FEAT_BROWSE = 0x04;
+    public static final int BTRC_FEAT_COVER_ART = 0x08;
     private final BluetoothAdapter mAdapter;
     private final AttributionSource mAttributionSource;
 
@@ -211,6 +217,29 @@ public final class BluetoothAvrcpController implements BluetoothProfile {
             }
         }
         return STATE_DISCONNECTED;
+    }
+
+    /**
+     * Get Supported features for Remote.
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public int getSupportedFeatures(BluetoothDevice device) {
+        Log.d(TAG, "getSupportedFeatures dev = " + device);
+        final IBluetoothAvrcpController service = getService();
+        final int defaultValue = BTRC_FEAT_NONE;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                return service.getSupportedFeatures(device, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return defaultValue;
     }
 
     private boolean isEnabled() {

@@ -148,6 +148,14 @@ public class AvrcpControllerNativeInterface {
         mAvrcpController.onConnectionStateChanged(
                 remoteControlConnected, browsingConnected, device);
     }
+ 
+    // Called by JNI to notify Avrcp of a remote device's Supported features
+    @VisibleForTesting
+    void getRcFeatures(byte[] address, int features) {
+        BluetoothDevice device = mAdapterService.getRemoteDevice(getAddressStringFromByte(address));
+        Log.d(TAG, "getRcFeatures: device=" + device + " features=" + features);
+        mAvrcpController.getRcFeatures(device, features);
+    }
 
     // Called by JNI to notify Avrcp of a remote device's Cover Art PSM
     @VisibleForTesting
