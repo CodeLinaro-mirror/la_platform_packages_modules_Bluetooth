@@ -107,6 +107,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     static final int MSG_AVRCP_SET_SHUFFLE = 303;
     static final int MSG_AVRCP_SET_REPEAT = 304;
     static final int MSG_AVRCP_SEARCH = 305;
+    static final int MSG_AVRCP_GET_FOLDER_ITEMS_PTS = 308;
 
     // 400->499 Events for Cover Artwork
     static final int MESSAGE_PROCESS_IMAGE_DOWNLOADED = 400;
@@ -150,6 +151,29 @@ class AvrcpControllerStateMachine extends StateMachine {
     private AvrcpPlayer mAddressedPlayer;
     private int mAddressedPlayerId;
     private int mVolumeNotificationLabel = -1;
+
+    /**
+     * Custom action to get folder items.
+     *
+     * <p>This is called in {@link MediaController.TransportControls.sendCustomAction}
+     *
+     * <p>This is an asynchronous call: it will return immediately.
+     *
+     * <p>Intent {@link AvrcpControllerService.EXTRA_FOLDER_LIST} will be broadcast.
+     * to notify the items(player or folder/item) retrieved.
+     *
+     * @param Bundle wrapped with KEY_BROWSE_SCOPE and KEY_ATTRIBUTE_ID
+     *
+     * @return void
+     *
+     * @See {@link android.media.session.MediaController}
+     *      {@link android.media.MediaMetadata}
+     *      {@link com.android.bluetooth.avrcpcontroller.AvrcpControllerService}
+     */
+    public static final String CUSTOM_ACTION_GET_FOLDER_ITEM =
+        "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_GET_FOLDER_ITEM";
+    public static final String KEY_START = "start";
+    public static final String KEY_END = "end";
 
     // Number of items to get in a single fetch
     static final int ITEM_PAGE_SIZE = 20;
@@ -614,6 +638,11 @@ class AvrcpControllerStateMachine extends StateMachine {
                 }
                 case MSG_AVRCP_SET_REPEAT -> setRepeat(msg.arg1);
                 case MSG_AVRCP_SET_SHUFFLE -> setShuffle(msg.arg1);
+                case MSG_AVRCP_GET_FOLDER_ITEMS_PTS -> {
+                    getFolderItems((Bundle) msg.obj);
+                    transitionTo(mGetFolderList);
+                    return true;
+                }
                 case MESSAGE_PROCESS_TRACK_CHANGED -> {
                     AvrcpItem track = (AvrcpItem) msg.obj;
                     AvrcpItem previousTrack = mAddressedPlayer.getCurrentTrack();
@@ -856,6 +885,16 @@ class AvrcpControllerStateMachine extends StateMachine {
                     });
         }
 
+        private synchronized void getFolderItems(Bundle extras) {
+            int scope = extras.getInt(KEY_BROWSE_SCOPE, 0);
+            int start = extras.getInt(KEY_START, 0);
+            int end = extras.getInt(KEY_END, 0xFF);
+            int [] attributeId = extras.getIntArray(KEY_ATTRIBUTE_ID);
+            AvrcpControllerService.getFolderItemsNative(
+                mDeviceAddress, (byte) scope, (byte) start, (byte) end,
+                (byte) attributeId.length, attributeId);
+        }
+
         private void processAvailablePlayerChanged() {
             debug("Connected: processAvailablePlayerChanged");
             mBrowseTree.mRootNode.setCached(false);
@@ -897,6 +936,18 @@ class AvrcpControllerStateMachine extends StateMachine {
             if (msg.what == MESSAGE_GET_FOLDER_ITEMS) {
                 mBrowseNode = (BrowseTree.BrowseNode) msg.obj;
                 debug("GetFolderList: new fetch request, node=" + mBrowseNode);
+            } else if (msg.what == MSG_AVRCP_GET_FOLDER_ITEMS_PTS)  {
+                Bundle extras = (Bundle) msg.obj;
+                int scope = extras.getInt(KEY_BROWSE_SCOPE, 0);
+                if (scope == AvrcpControllerService.BROWSE_SCOPE_SEARCH) {
+                    mBrowseNode = mBrowseTree.mSearchNode;
+                } else if (scope == AvrcpControllerService.BROWSE_SCOPE_NOW_PLAYING) {
+                    mBrowseNode = mBrowseTree.mNowPlayingNode;
+                } else if (scope == AvrcpControllerService.BROWSE_SCOPE_PLAYER_LIST) {
+                    mBrowseNode = mBrowseTree.mRootNode;
+                } else {
+                    mBrowseNode = mBrowseTree.getCurrentBrowsedFolder();
+                }
             }
 
             if (mBrowseNode == null) {
@@ -908,6 +959,10 @@ class AvrcpControllerStateMachine extends StateMachine {
             } else {
                 if (mBrowseNode.equals(mBrowseTree.mSearchNode)) {
                     setScope(AvrcpControllerService.BROWSE_SCOPE_SEARCH);
+                } else if (mBrowseNode.equals(mBrowseTree.mNowPlayingNode)) {
+                    setScope(AvrcpControllerService.BROWSE_SCOPE_NOW_PLAYING);
+                } else if (mBrowseNode.equals(mBrowseTree.mRootNode)) {
+                    setScope(AvrcpControllerService.BROWSE_SCOPE_PLAYER_LIST);
                 } else {
                     setScope(AvrcpControllerService.BROWSE_SCOPE_VFS);
                 }
@@ -917,7 +972,10 @@ class AvrcpControllerStateMachine extends StateMachine {
                     mBrowseNode.setExpectedChildren(BrowseTree.DEFAULT_FOLDER_SIZE);
                 }
                 mBrowseNode.setCached(false);
-                navigateToFolderOrRetrieve(mBrowseNode);
+
+                if (msg.what != MSG_AVRCP_GET_FOLDER_ITEMS_PTS) {
+                    navigateToFolderOrRetrieve(mBrowseNode);
+                }
             }
         }
 
@@ -956,6 +1014,8 @@ class AvrcpControllerStateMachine extends StateMachine {
                         // If we have fetched all the elements or if the remotes sends us 0 elements
                         // (which can lead us into a loop since mCurrInd does not proceed) we simply
                         // abort.
+                        mBrowseNode.setCached(true);
+                        sendFolderBroadcastAndUpdateNode();
                         transitionTo(mConnected);
                     } else {
                         // Fetch the next set of items.
@@ -1054,6 +1114,12 @@ class AvrcpControllerStateMachine extends StateMachine {
                         mBrowseTree.setCurrentBrowsedFolder(BrowseTree.ROOT);
                         rootNode.setExpectedChildren(playerList.size());
                         rootNode.setCached(true);
+                        // mBrowseNode could be null when doing PTS test
+                        // E.g. When flag mPTSTag is set to true.
+                        if (mBrowseNode == null) {
+                            mBrowseNode = rootNode;
+                        }
+                        sendFolderBroadcastAndUpdateNode();
                         notifyNodeChanged(rootNode);
                     }
                     transitionTo(mConnected);
@@ -1223,6 +1289,34 @@ class AvrcpControllerStateMachine extends StateMachine {
                         AvrcpControllerService.FOLDER_NAVIGATION_DIRECTION_DOWN,
                         mNextStep.getBluetoothID());
             }
+        }
+
+        // Broadcast results into BTTestApp for PTS verification
+        private void sendFolderBroadcastAndUpdateNode() {
+            // This broadcast is for PTS test only
+            if (!Utils.isPtsTestMode()) {
+                return;
+            }
+
+            String id = mBrowseNode.getID();
+            debug("sendFolderBroadcastAndUpdateNode, folderID: " + id
+                    + ", size: " + mBrowseNode.getChildrenCount());
+
+            List<MediaItem> list = mBrowseNode.getContents();
+            ArrayList<MediaItem> folderList = new ArrayList<MediaItem>(0);
+            for(MediaItem folder: list) {
+                folderList.add(folder);
+            }
+
+            Intent intent = new Intent(AvrcpControllerService.ACTION_FOLDER_LIST);
+            intent.putExtra(AvrcpControllerService.EXTRA_FOLDER_ID, id);
+            intent.putParcelableArrayListExtra(
+                    AvrcpControllerService.EXTRA_FOLDER_LIST, folderList);
+            mService.sendBroadcast(
+                    intent, BLUETOOTH_CONNECT,
+                    Utils.getTempBroadcastBundle());
+
+            return;
         }
 
         @Override
@@ -1500,6 +1594,8 @@ class AvrcpControllerStateMachine extends StateMachine {
                     debug("onCustomAction:" + action);
                     if (BluetoothAvrcpController.CUSTOM_ACTION_SEARCH.equals(action)) {
                         handleCustomActionSearch(extras);
+                    } else if (CUSTOM_ACTION_GET_FOLDER_ITEM.equals(action)) {
+                        handleCustomActionGetFolderItems(extras);
                     }
                 }
 
@@ -1622,4 +1718,14 @@ class AvrcpControllerStateMachine extends StateMachine {
         String searchQuery = extras.getString(BluetoothAvrcpController.KEY_SEARCH);
         sendMessage(MSG_AVRCP_SEARCH, searchQuery);
     }
+
+    public void handleCustomActionGetFolderItems(Bundle extras) {
+        debug("handleCustomActionGetFolderItems extras: " + extras);
+        if (extras == null) {
+            return;
+        }
+
+        sendMessage(MSG_AVRCP_GET_FOLDER_ITEMS_PTS, extras);
+    }
+
 }

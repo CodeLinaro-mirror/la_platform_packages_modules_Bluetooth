@@ -1227,6 +1227,45 @@ static void getSearchListNative(JNIEnv* env, jobject /* object */, jbyteArray ad
   env->ReleaseByteArrayElements(address, addr, 0);
 }
 
+static void getFolderItemsNative(JNIEnv* env, jobject /* object */, jbyteArray address,
+                           jbyte scope, jbyte start, jbyte end, jbyte numAttr,
+                           jintArray attrIds) {
+  if (!sBluetoothAvrcpInterface) return;
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+
+  if (numAttr > BTRC_MAX_ELEM_ATTR_SIZE) {
+    log::error("getFolderItemsNative: number of attributes exceed maximum");
+    return;
+  }
+
+  jint* attr = NULL;
+  if ((numAttr > 0) && (attrIds != NULL)) {
+    attr = env->GetIntArrayElements(attrIds, NULL);
+    if (!attr) {
+      jniThrowIOException(env, EINVAL);
+      return;
+    }
+  }
+
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+  bt_status_t status = sBluetoothAvrcpInterface->get_folder_items_vendor_cmd(
+      rawAddress, (uint8_t)scope, (uint8_t)start, (uint8_t)end, (uint8_t)numAttr, (uint32_t*)attr);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending getFolderItemsNative command, status: {}", status);
+  }
+
+  if (attr) env->ReleaseIntArrayElements(attrIds, attr, 0);
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
 int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)initNative},
@@ -1249,6 +1288,7 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"searchNative", "([BIILjava/lang/String;)V", (void*)searchNative},
           {"getSearchListNative", "([BII)V", (void*)getSearchListNative},
           {"stopNative", "()V", (void*)stopNative},
+          {"getFolderItemsNative", "([BBBBB[I)V", (void *) getFolderItemsNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface", methods);

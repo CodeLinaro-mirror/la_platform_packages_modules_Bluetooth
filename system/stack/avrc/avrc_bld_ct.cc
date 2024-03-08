@@ -398,15 +398,22 @@ static tAVRC_STS avrc_bld_get_folder_items_cmd(BT_HDR* p_pkt, const tAVRC_GET_IT
   /* This is where the PDU specific for AVRC starts
    * AVRCP Spec 1.4 section 22.19 */
   uint8_t* p_data = p_start + 1; /* pdu */
+  uint16_t length;
 
   /* To get the list of all media players we simply need to use the predefined
    * PDU mentioned in above spec. */
-  /* scope (1) + st item (4) + end item (4) + attr (1) */
-  UINT16_TO_BE_STREAM(p_data, 10);
+  /* 10 = scope (1) + st item (4) + end item (4) + attr_count (1) */
+  length = 10 + cmd->attr_count * sizeof(uint32_t);
+  UINT16_TO_BE_STREAM(p_data, length);
   UINT8_TO_BE_STREAM(p_data, cmd->scope);       /* scope (1bytes) */
   UINT32_TO_BE_STREAM(p_data, cmd->start_item); /* start item (4bytes) */
   UINT32_TO_BE_STREAM(p_data, cmd->end_item);   /* end item (4bytes) */
-  UINT8_TO_BE_STREAM(p_data, 0);                /* attribute count = 0 (1bytes) */
+  UINT8_TO_BE_STREAM(p_data, cmd->attr_count);
+  for (uint8_t index = 0; index < cmd->attr_count; index++) {
+    uint32_t attr_id = cmd->p_attr_list[index];
+    UINT32_TO_BE_STREAM(p_data, attr_id);
+  }
+
   p_pkt->len = (p_data - p_start);
   return AVRC_STS_NO_ERROR;
 }

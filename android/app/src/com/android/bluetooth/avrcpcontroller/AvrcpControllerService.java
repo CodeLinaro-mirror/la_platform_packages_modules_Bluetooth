@@ -100,6 +100,32 @@ public class AvrcpControllerService extends ConnectableProfile {
     public static final int DEVICE_STATE_INACTIVE = 0;
     public static final int DEVICE_STATE_ACTIVE = 1;
 
+    /**
+     * intent used to broadcast the change in metadata state of playing track on the avrcp
+     * ag.
+     *
+     * <p>this intent will have the two extras:
+     * <ul>
+     *    <li> {@link #extra_metadata} - {@link mediametadata} containing the current metadata.</li>
+     *    <li> {@link #extra_playback} - {@link playbackstate} containing the current playback
+     *    state. </li>
+     * </ul>
+     */
+    public static final String ACTION_TRACK_EVENT =
+        "android.bluetooth.avrcp-controller.profile.action.TRACK_EVENT";
+
+    public static final String EXTRA_METADATA =
+        "android.bluetooth.avrcp-controller.profile.extra.METADATA";
+
+    public static final String ACTION_FOLDER_LIST =
+        "android.bluetooth.avrcp-controller.profile.action.FOLDER_LIST";
+
+    public static final String EXTRA_FOLDER_LIST =
+        "android.bluetooth.avrcp-controller.profile.extra.FOLDER_LIST";
+
+    public static final String EXTRA_FOLDER_ID =
+        "android.bluetooth.avrcp-controller.profile.extra.EXTRA_FOLDER_ID";
+
     private final Object mActiveDeviceLock = new Object();
 
     private final AvrcpControllerNativeInterface mNativeInterface;
@@ -761,4 +787,17 @@ public class AvrcpControllerService extends ConnectableProfile {
 
         sb.append("\n  ").append(BluetoothMediaBrowserService.dump()).append("\n");
     }
+
+    /**
+     * Get folder items with specified range
+     *
+     * @param scope          scope of item to played
+     * @param start          start of range
+     * @param end            end of range
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getFolderItemsNative(byte[] address, byte scope, byte start,
+            byte end, byte numAttributes, int[] attribIds);
+
 }
