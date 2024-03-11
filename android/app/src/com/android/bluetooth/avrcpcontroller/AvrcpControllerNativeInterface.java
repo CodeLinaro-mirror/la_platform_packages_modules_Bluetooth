@@ -122,6 +122,10 @@ public class AvrcpControllerNativeInterface {
         getFolderItemsNative(address, scope, start, end, numAttributes, attribIds);
     }
 
+    void addToNowPlaying(byte[] address, byte scope, long uid, int uidCounter) {
+        addToNowPlayingNative(address, scope, uid, uidCounter);
+    }
+
     /**********************************************************************************************/
     /*********************************** callbacks from native ************************************/
     /**********************************************************************************************/
@@ -534,4 +538,15 @@ public class AvrcpControllerNativeInterface {
      */
     public native static void getFolderItemsNative(byte[] address, byte scope, byte start,
                                                    byte end, byte numAttributes, int[] attribIds);
+
+    /**
+     * add folder into now playing list
+     *
+     * @param scope          scope of item to played
+     * @param uid            song unique id
+     * @param uidCounter     counter
+     */
+    public native static void addToNowPlayingNative(byte[] address, byte scope, long uid,
+                                                    int uidCounter);
+
 }

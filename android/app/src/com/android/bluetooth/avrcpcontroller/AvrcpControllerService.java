@@ -92,6 +92,16 @@ public class AvrcpControllerService extends ConnectableProfile {
     public static final int PASS_THRU_CMD_ID_FORWARD = 0x4B;
     public static final int PASS_THRU_CMD_ID_BACKWARD = 0x4C;
 
+    /*
+     * AVRCP Error types as defined in spec. Also they should be in sync with btrc_status_t
+     * NOTE: Not all may be defined.
+     */
+    public static final int JNI_AVRC_STS_INVALID_CMD = 0x00;
+    public static final int JNI_AVRC_STS_INVALID_PARAMETER = 0x01;
+    public static final int JNI_AVRC_STS_NO_ERROR = 0x04;
+    public static final int JNI_AVRC_STS_INVALID_SCOPE = 0x0a;
+    public static final int JNI_AVRC_INV_RANGE = 0x0b;
+
     /* Key State Variables */
     public static final int KEY_STATE_PRESSED = 0;
     public static final int KEY_STATE_RELEASED = 1;
@@ -662,6 +672,17 @@ public class AvrcpControllerService extends ConnectableProfile {
         }
     }
 
+    private void handleAddToNowPlayingRsp(byte[] address, int status) {
+        Log.d(TAG, "handleAddToNowPlayingRsp status" + status);
+        BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+
+        AvrcpControllerStateMachine stateMachine = getStateMachine(device);
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                    AvrcpControllerStateMachine.MESSAGE_PROCESS_ADD_TO_NOW_PLAYING, status, 0);
+        }
+    }
+
     /* Generic Profile Code */
 
     /**
@@ -787,6 +808,15 @@ public class AvrcpControllerService extends ConnectableProfile {
 
         sb.append("\n  ").append(BluetoothMediaBrowserService.dump()).append("\n");
     }
+
+    /**
+     * add folder into now playing list
+     *
+     * @param scope          scope of item to played
+     * @param uid            song unique id
+     * @param uidCounter     counter
+     */
+    public native static void addToNowPlayingNative(byte[] address, byte scope, long uid, int uidCounter);
 
     /**
      * Get folder items with specified range

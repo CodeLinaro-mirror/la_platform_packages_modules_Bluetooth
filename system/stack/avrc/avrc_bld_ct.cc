@@ -548,6 +548,33 @@ static tAVRC_STS avrc_bld_search_cmd(BT_HDR* p_pkt, tAVRC_SEARCH_CMD* cmd) {
 
 /*******************************************************************************
  *
+ * Function         avrc_bld_add_to_now_playing_cmd
+ *
+ * Description      This function builds the add to now playing cmd
+ *
+ * Returns          AVRC_STS_NO_ERROR, if the command is built successfully
+ *                  Otherwise, the error code.
+ *
+ ******************************************************************************/
+static tAVRC_STS avrc_bld_add_to_now_playing_cmd(BT_HDR* p_pkt, uint8_t scope,
+                                                 uint8_t* uid, uint16_t uid_counter) {
+  log::info("");
+  uint8_t* p_start = (uint8_t*)(p_pkt + 1) + p_pkt->offset;
+  uint8_t* p_data = p_start + 2; /* pdu + rsvd */
+  /* add fixed length 11 */
+  UINT16_TO_BE_STREAM(p_data, 0xb);
+  /* Add scope */
+  UINT8_TO_BE_STREAM(p_data, scope);
+  /* Add UID */
+  ARRAY_TO_BE_STREAM(p_data, uid, AVRC_UID_SIZE);
+  /* Add UID Counter */
+  UINT16_TO_BE_STREAM(p_data, uid_counter);
+  p_pkt->len = (p_data - p_start);
+  return AVRC_STS_NO_ERROR;
+}
+
+/*******************************************************************************
+ *
  * Function         avrc_bld_init_cmd_buffer
  *
  * Description      This function initializes the command buffer based on PDU
@@ -712,6 +739,11 @@ tAVRC_STS AVRC_BldCommand(tAVRC_COMMAND* p_cmd, BT_HDR** pp_pkt) {
       break;
     case AVRC_PDU_SEARCH:
       status = avrc_bld_search_cmd(p_pkt, &(p_cmd->search));
+      break;
+    case AVRC_PDU_ADD_TO_NOW_PLAYING:
+      status = avrc_bld_add_to_now_playing_cmd(p_pkt, p_cmd->add_to_play.scope,
+                                               p_cmd->add_to_play.uid,
+                                               p_cmd->add_to_play.uid_counter);
       break;
     default:
       /* warn! un-handled pdu */

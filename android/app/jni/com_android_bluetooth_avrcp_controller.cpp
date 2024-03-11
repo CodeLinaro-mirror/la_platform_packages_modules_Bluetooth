@@ -61,6 +61,7 @@ static jmethodID method_onAvailablePlayerChanged;
 static jmethodID method_onStop;
 static jmethodID method_getRcPsm;
 static jmethodID method_handleSearchRsp;
+static jmethodID method_handleAddToNowPlayingRsp;
 
 static jclass class_AvrcpControllerNativeInterface;
 static jclass class_AvrcpItem;
@@ -728,6 +729,25 @@ static void btavrcp_search_response_callback(const RawAddress& bd_addr, uint8_t 
                                (jint)uid_counter, (jint)num_items);
 }
 
+static void btavrcp_add_to_now_playing_callback(const RawAddress& bd_addr, uint8_t status) {
+  log::info("btavrcp_add_to_now_playing_callback status: {}", status);
+
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) return;
+
+  ScopedLocalRef<jbyteArray> addr(
+      sCallbackEnv.get(), sCallbackEnv->NewByteArray(sizeof(RawAddress)));
+  if (!addr.get()) {
+    log::error("Fail to get new array ");
+    return;
+  }
+
+  sCallbackEnv->SetByteArrayRegion(addr.get(), 0, sizeof(RawAddress),
+                                   (jbyte*)&bd_addr);
+  sCallbackEnv->CallVoidMethod(sCallbacksObj, method_handleAddToNowPlayingRsp,
+                               addr.get(), (jint)status);
+}
+
 static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
         sizeof(sBluetoothAvrcpCallbacks),
         btavrcp_passthrough_response_callback,
@@ -746,6 +766,7 @@ static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
         btavrcp_change_path_callback,
         btavrcp_set_browsed_player_callback,
         btavrcp_set_addressed_player_callback,
+        btavrcp_add_to_now_playing_callback,
         btavrcp_addressed_player_changed_callback,
         btavrcp_now_playing_content_changed_callback,
         btavrcp_available_player_changed_callback,
@@ -1266,6 +1287,29 @@ static void getFolderItemsNative(JNIEnv* env, jobject /* object */, jbyteArray a
   env->ReleaseByteArrayElements(address, addr, 0);
 }
 
+static void addToNowPlayingNative(JNIEnv* env, jobject /* object */, jbyteArray address,
+                                  jbyte scope, jlong uid, jint uidCounter) {
+  if (!sBluetoothAvrcpInterface) return;
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+  bt_status_t status = sBluetoothAvrcpInterface->add_to_now_playing_cmd(
+      rawAddress, (uint8_t)scope, (uint8_t*)&uid, (uint16_t)uidCounter);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending addToNowPlayingNative command, status: {}", status);
+  }
+
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
 int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)initNative},
@@ -1289,6 +1333,7 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"getSearchListNative", "([BII)V", (void*)getSearchListNative},
           {"stopNative", "()V", (void*)stopNative},
           {"getFolderItemsNative", "([BBBBB[I)V", (void *) getFolderItemsNative},
+          {"addToNowPlayingNative", "([BBJI)V",(void*)addToNowPlayingNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface", methods);
