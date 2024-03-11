@@ -126,6 +126,10 @@ public class AvrcpControllerNativeInterface {
         addToNowPlayingNative(address, scope, uid, uidCounter);
     }
 
+    void setAddressedPlayer(byte[] address, int playerId) {
+        setAddressedPlayerNative(address, playerId);
+    }
+
     /**********************************************************************************************/
     /*********************************** callbacks from native ************************************/
     /**********************************************************************************************/

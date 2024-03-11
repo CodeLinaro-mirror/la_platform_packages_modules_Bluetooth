@@ -830,4 +830,10 @@ public class AvrcpControllerService extends ConnectableProfile {
     public native static void getFolderItemsNative(byte[] address, byte scope, byte start,
             byte end, byte numAttributes, int[] attribIds);
 
+    /**
+     * Set a specific player for handling playback commands
+     *
+     * @param playerId player number
+     */
+    public native void setAddressedPlayerNative(byte[] address, int playerId);
 }
