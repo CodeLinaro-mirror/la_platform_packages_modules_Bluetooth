@@ -1310,6 +1310,53 @@ static void addToNowPlayingNative(JNIEnv* env, jobject /* object */, jbyteArray 
   env->ReleaseByteArrayElements(address, addr, 0);
 }
 
+static void requestContinuingResponseNative(JNIEnv* env, jobject /* object */,
+                                   jbyteArray address, jbyte pduId) {
+  if (!sBluetoothAvrcpInterface) return;
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+  bt_status_t status = sBluetoothAvrcpInterface->request_continuing_response_cmd(
+      rawAddress, (uint8_t)pduId);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending requestContinuingResponseNative command, status: {}", status);
+  }
+
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
+static void abortContinuingResponseNative(JNIEnv* env, jobject /* object */,
+                                   jbyteArray address, jbyte pduId) {
+  if (!sBluetoothAvrcpInterface) return;
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+  bt_status_t status = sBluetoothAvrcpInterface->abort_continuing_response_cmd(
+      rawAddress, (uint8_t)pduId);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending abortContinuingResponseNative command, status: {}", status);
+  }
+
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
+
 int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)initNative},
@@ -1334,6 +1381,8 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"stopNative", "()V", (void*)stopNative},
           {"getFolderItemsNative", "([BBBBB[I)V", (void *) getFolderItemsNative},
           {"addToNowPlayingNative", "([BBJI)V",(void*)addToNowPlayingNative},
+          {"requestContinuingResponseNative", "([BB)V",(void *) requestContinuingResponseNative},
+          {"abortContinuingResponseNative", "([BB)V",(void *) abortContinuingResponseNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface", methods);

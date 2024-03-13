@@ -406,6 +406,12 @@ typedef struct {
                                              uint8_t start, uint8_t end,
                                              uint8_t numAttr, uint32_t *attr);
 
+  /** Request for continuing response */
+  bt_status_t (*request_continuing_response_cmd)(const RawAddress& bd_addr, uint8_t pdu_id);
+
+  /** Abort continuing response */
+  bt_status_t (*abort_continuing_response_cmd)(const RawAddress& bd_addr, uint8_t pdu_id);
+
   /** Closes the interface. */
   void (*cleanup)(void);
 } btrc_ctrl_interface_t;

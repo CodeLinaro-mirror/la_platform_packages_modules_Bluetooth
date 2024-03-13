@@ -553,4 +553,18 @@ public class AvrcpControllerNativeInterface {
     public native static void addToNowPlayingNative(byte[] address, byte scope, long uid,
                                                     int uidCounter);
 
+    /**
+     * Request for continuing response
+     *
+     * @param pduId  ID of PDU data packet
+     */
+    public native static void requestContinuingResponseNative(byte[] address, byte pduId);
+
+    /**
+     * Abort continuing response
+     *
+     * @param pduId  ID of PDU data packet
+     */
+    public native static void abortContinuingResponseNative(byte[] address, byte pduId);
+
 }

@@ -836,4 +836,5 @@ public class AvrcpControllerService extends ConnectableProfile {
      * @param playerId player number
      */
     public native void setAddressedPlayerNative(byte[] address, int playerId);
+
 }
