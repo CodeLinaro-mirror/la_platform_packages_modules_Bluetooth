@@ -274,6 +274,12 @@ class AvrcpControllerStateMachine extends StateMachine {
     public static final String CUSTOM_ACTION_ABORT_CONTINUING_RESPONSE =
         "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_ABORT_CONTINUING_RESPONSE";
 
+    // Custom actions for PTS testing.
+    private static final String CUSTOM_ACTION_VOL_UP =
+        "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_VOL_UP";
+    private static final String CUSTOM_ACTION_VOL_DN =
+        "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_VOL_DN";
+
     // Number of items to get in a single fetch
     static final int ITEM_PAGE_SIZE = 20;
     static final int CMD_TIMEOUT_MILLIS = 10000;
@@ -1845,6 +1851,12 @@ class AvrcpControllerStateMachine extends StateMachine {
                         handleCustomActionRequestContinuingResponse(extras);
                     } else if (CUSTOM_ACTION_ABORT_CONTINUING_RESPONSE.equals(action)) {
                         handleCustomActionAbortContinuingResponse(extras);
+                    } else if (CUSTOM_ACTION_VOL_UP.equals(action)) {
+                        sendMessage(MSG_AVRCP_PASSTHRU,
+                                AvrcpControllerService.PASS_THRU_CMD_ID_VOL_UP);
+                    } else if (CUSTOM_ACTION_VOL_DN.equals(action)) {
+                        sendMessage(MSG_AVRCP_PASSTHRU,
+                                AvrcpControllerService.PASS_THRU_CMD_ID_VOL_DOWN);
                     } else {
                         Log.w(TAG, "Custom action " + action + " not supported.");
                     }
