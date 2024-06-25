@@ -131,6 +131,13 @@ public class AvrcpCoverArtProvider extends ContentProvider {
         }
 
         try {
+            /* Check mAdapter to avoid null ptr exception. mAdapter could be null if
+             * calling openFile() is executed before calling onCreate() or calling
+             * onCreate() is executed before calling AdapterUtil.init().
+             */
+            if (mAdapter == null) {
+                mAdapter = AdapterService.getAdapter();
+            }
             device = mAdapter.getRemoteDevice(address);
         } catch (IllegalArgumentException e) {
             throw new FileNotFoundException();
