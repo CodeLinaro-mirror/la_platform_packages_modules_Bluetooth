@@ -35,7 +35,6 @@ import com.android.bluetooth.a2dp.A2dpNativeInterface;
 import com.android.bluetooth.avrcp.AvrcpNativeInterface;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.csip.CsipSetCoordinatorNativeInterface;
-import com.android.bluetooth.hap.HapClientNativeInterface;
 import com.android.bluetooth.hearingaid.HearingAidNativeInterface;
 import com.android.bluetooth.hfp.HeadsetNativeInterface;
 import com.android.bluetooth.hid.HidDeviceNativeInterface;
@@ -57,6 +56,7 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.FutureTask;
@@ -85,7 +85,6 @@ public class ProfileServiceTest {
     @Mock private HidHostNativeInterface mHidHostNativeInterface;
     @Mock private PanNativeInterface mPanNativeInterface;
     @Mock private CsipSetCoordinatorNativeInterface mCsipSetCoordinatorInterface;
-    @Mock private HapClientNativeInterface mHapClientInterface;
     @Mock private LeAudioNativeInterface mLeAudioInterface;
     @Mock private VolumeControlNativeInterface mVolumeControlInterface;
 
@@ -103,11 +102,6 @@ public class ProfileServiceTest {
     private void setAllProfilesState(int state, int invocationNumber) {
         int profileCount = mProfiles.length;
         for (int profile : mProfiles) {
-            if (profile == BluetoothProfile.GATT) {
-                // GattService is no longer a service to be start independently
-                profileCount--;
-                continue;
-            }
             setProfileState(profile, state);
         }
         if (invocationNumber == 0) {
@@ -136,7 +130,6 @@ public class ProfileServiceTest {
         }
         Assert.assertNotNull(Looper.myLooper());
 
-
         doReturn(mDatabaseManager).when(mAdapterService).getDatabase();
         doNothing().when(mAdapterService).addProfile(any());
         doNothing().when(mAdapterService).removeProfile(any());
@@ -145,7 +138,13 @@ public class ProfileServiceTest {
         doReturn(false).when(mAdapterService).isA2dpOffloadEnabled();
         doReturn(false).when(mAdapterService).pbapPseDynamicVersionUpgradeIsEnabled();
 
-        mProfiles = Config.getSupportedProfiles();
+        mProfiles =
+                Arrays.stream(Config.getSupportedProfiles())
+                        .filter(
+                                profile ->
+                                        profile != BluetoothProfile.HAP_CLIENT
+                                                && profile != BluetoothProfile.GATT)
+                        .toArray();
         TestUtils.setAdapterService(mAdapterService);
 
         Assert.assertNotNull(AdapterService.getAdapterService());
@@ -158,7 +157,6 @@ public class ProfileServiceTest {
         HidHostNativeInterface.setInstance(mHidHostNativeInterface);
         PanNativeInterface.setInstance(mPanNativeInterface);
         CsipSetCoordinatorNativeInterface.setInstance(mCsipSetCoordinatorInterface);
-        HapClientNativeInterface.setInstance(mHapClientInterface);
         LeAudioNativeInterface.setInstance(mLeAudioInterface);
         VolumeControlNativeInterface.setInstance(mVolumeControlInterface);
     }
@@ -177,7 +175,6 @@ public class ProfileServiceTest {
         HidHostNativeInterface.setInstance(null);
         PanNativeInterface.setInstance(null);
         CsipSetCoordinatorNativeInterface.setInstance(null);
-        HapClientNativeInterface.setInstance(null);
         LeAudioNativeInterface.setInstance(null);
         VolumeControlNativeInterface.setInstance(null);
     }
@@ -242,10 +239,6 @@ public class ProfileServiceTest {
     public void testRepeatedEnableDisableSingly() {
         int profileNumber = 0;
         for (int profile : mProfiles) {
-            if (profile == BluetoothProfile.GATT) {
-                // GattService is no longer a service to be start independently
-                continue;
-            }
             for (int i = 0; i < NUM_REPEATS; i++) {
                 setProfileState(profile, BluetoothAdapter.STATE_ON);
                 ArgumentCaptor<ProfileService> start =
@@ -272,10 +265,6 @@ public class ProfileServiceTest {
     public void testProfileServiceRegisterUnregister() {
         int profileNumber = 0;
         for (int profile : mProfiles) {
-            if (profile == BluetoothProfile.GATT) {
-                // GattService is no longer a service to be start independently
-                continue;
-            }
             for (int i = 0; i < NUM_REPEATS; i++) {
                 setProfileState(profile, BluetoothAdapter.STATE_ON);
                 ArgumentCaptor<ProfileService> start =

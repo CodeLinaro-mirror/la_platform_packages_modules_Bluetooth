@@ -24,8 +24,8 @@
 
 #define LOG_TAG "bt_bta_hh"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <cstdint>
 #include <string>
@@ -520,8 +520,7 @@ void bta_hh_api_disc_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
   log::assert_that(p_cb != nullptr, "assert failed: p_cb != nullptr");
 
   if (p_cb->link_spec.transport == BT_TRANSPORT_LE) {
-    log::debug("Host initiating close to le device:{}",
-               ADDRESS_TO_LOGGABLE_CSTR(p_cb->link_spec));
+    log::debug("Host initiating close to le device:{}", p_cb->link_spec);
 
     bta_hh_le_api_disc_act(p_cb);
 
@@ -531,12 +530,10 @@ void bta_hh_api_disc_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
                             : p_cb->hid_handle;
     tHID_STATUS status = HID_HostCloseDev(hid_handle);
     if (status != HID_SUCCESS) {
-      log::warn("Failed closing classic device:{} status:{}",
-                ADDRESS_TO_LOGGABLE_CSTR(p_cb->link_spec),
+      log::warn("Failed closing classic device:{} status:{}", p_cb->link_spec,
                 hid_status_text(status));
     } else {
-      log::debug("Host initiated close to classic device:{}",
-                 ADDRESS_TO_LOGGABLE_CSTR(p_cb->link_spec));
+      log::debug("Host initiated close to classic device:{}", p_cb->link_spec);
     }
     tBTA_HH bta_hh = {
         .dev_status = {.status =
@@ -658,8 +655,7 @@ void bta_hh_data_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
   uint8_t* p_rpt = (uint8_t*)(pdata + 1) + pdata->offset;
 
   bta_hh_co_data((uint8_t)p_data->hid_cback.hdr.layer_specific, p_rpt,
-                 pdata->len, p_cb->mode, p_cb->sub_class,
-                 p_cb->dscp_info.ctry_code, p_cb->link_spec, p_cb->app_id);
+                 pdata->len);
 
   osi_free_and_reset((void**)&pdata);
 }
@@ -947,7 +943,7 @@ void bta_hh_maint_dev_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
       /* initialize callback data */
       if (p_cb->hid_handle == BTA_HH_INVALID_HANDLE) {
         tBT_TRANSPORT transport = p_data->api_maintdev.link_spec.transport;
-        if (!IS_FLAG_ENABLED(allow_switching_hid_and_hogp)) {
+        if (!com::android::bluetooth::flags::allow_switching_hid_and_hogp()) {
           transport = BTM_UseLeLink(p_data->api_maintdev.link_spec.addrt.bda)
                           ? BT_TRANSPORT_LE
                           : BT_TRANSPORT_BR_EDR;
@@ -982,7 +978,7 @@ void bta_hh_maint_dev_act(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
           }
         } else {
           log::error("unexpected BT transport: {}",
-                     bt_transport_text(transport).c_str());
+                     bt_transport_text(transport));
           break;
         }
       } else /* device already been added */

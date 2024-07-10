@@ -16,8 +16,8 @@
 
 #include "hci/controller.h"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <future>
 #include <memory>
@@ -33,7 +33,9 @@
 #include "os/log.h"
 #include "os/metrics.h"
 #include "os/system_properties.h"
+#if TARGET_FLOSS
 #include "sysprops/sysprops_module.h"
+#endif
 
 namespace bluetooth {
 namespace hci {
@@ -81,7 +83,14 @@ struct Controller::impl {
                                              std::move(features_promise)));
     features_future.wait();
 
-    le_set_event_mask(MaskLeEventMask(local_version_information_.hci_version_, kDefaultLeEventMask));
+    if (com::android::bluetooth::flags::channel_sounding_in_stack() &&
+        module_.SupportsBleChannelSounding()) {
+      le_set_event_mask(MaskLeEventMask(
+          local_version_information_.hci_version_, kDefaultLeEventMask | kLeCSEventMask));
+    } else {
+      le_set_event_mask(
+          MaskLeEventMask(local_version_information_.hci_version_, kDefaultLeEventMask));
+    }
 
     hci_->EnqueueCommand(ReadBufferSizeBuilder::Create(),
                          handler->BindOnceOn(this, &Controller::impl::read_buffer_size_complete_handler));
@@ -191,6 +200,14 @@ struct Controller::impl {
           handler->BindOnceOn(this, &Controller::impl::le_set_host_feature_handler));
     }
 
+    if (com::android::bluetooth::flags::channel_sounding_in_stack() &&
+        module_.SupportsBleChannelSounding()) {
+      hci_->EnqueueCommand(
+          LeSetHostFeatureBuilder::Create(
+              LeHostFeatureBits::CHANNEL_SOUNDING_HOST_SUPPORT, Enable::ENABLED),
+          handler->BindOnceOn(this, &Controller::impl::le_set_host_feature_handler));
+    }
+
     if (is_supported(OpCode::READ_DEFAULT_ERRONEOUS_DATA_REPORTING)) {
       hci_->EnqueueCommand(
           ReadDefaultErroneousDataReportingBuilder::Create(),
@@ -229,7 +246,7 @@ struct Controller::impl {
   }
 
   void NumberOfCompletedPackets(EventView event) {
-    if (acl_credits_callback_.IsEmpty()) {
+    if (!acl_credits_callback_) {
       log::warn("Received event when AclManager is not listening");
       return;
     }
@@ -238,40 +255,40 @@ struct Controller::impl {
     for (auto completed_packets : complete_view.GetCompletedPackets()) {
       uint16_t handle = completed_packets.connection_handle_;
       uint16_t credits = completed_packets.host_num_of_completed_packets_;
-      acl_credits_callback_.Invoke(handle, credits);
-      if (!acl_monitor_credits_callback_.IsEmpty()) {
-        acl_monitor_credits_callback_.Invoke(handle, credits);
+      acl_credits_callback_(handle, credits);
+      if (acl_monitor_credits_callback_) {
+        acl_monitor_credits_callback_(handle, credits);
       }
     }
   }
 
   void register_completed_acl_packets_callback(CompletedAclPacketsCallback callback) {
-    ASSERT(acl_credits_callback_.IsEmpty());
+    ASSERT(!acl_credits_callback_);
     acl_credits_callback_ = callback;
   }
 
   void unregister_completed_acl_packets_callback() {
-    ASSERT(!acl_credits_callback_.IsEmpty());
+    ASSERT(acl_credits_callback_);
     acl_credits_callback_ = {};
   }
 
   void register_completed_monitor_acl_packets_callback(CompletedAclPacketsCallback callback) {
-    ASSERT(acl_monitor_credits_callback_.IsEmpty());
+    ASSERT(!acl_monitor_credits_callback_);
     acl_monitor_credits_callback_ = callback;
   }
 
   void unregister_completed_monitor_acl_packets_callback() {
-    ASSERT(!acl_monitor_credits_callback_.IsEmpty());
+    ASSERT(acl_monitor_credits_callback_);
     acl_monitor_credits_callback_ = {};
   }
 
   void register_monitor_completed_acl_packets_callback(CompletedAclPacketsCallback callback) {
-    ASSERT(acl_monitor_credits_callback_.IsEmpty());
+    ASSERT(!acl_monitor_credits_callback_);
     acl_monitor_credits_callback_ = callback;
   }
 
   void unregister_monitor_completed_acl_packets_callback() {
-    ASSERT(!acl_monitor_credits_callback_.IsEmpty());
+    ASSERT(acl_monitor_credits_callback_);
     acl_monitor_credits_callback_ = {};
   }
 
@@ -639,7 +656,7 @@ struct Controller::impl {
     }
     vendor_capabilities_.dynamic_audio_buffer_support_ = v103.GetDynamicAudioBufferSupport();
 
-    if (IS_FLAG_ENABLED(a2dp_offload_codec_extensibility)) {
+    if (com::android::bluetooth::flags::a2dp_offload_codec_extensibility()) {
       // v1.04
       auto v104 = LeGetVendorCapabilitiesComplete104View::Create(v103);
       if (!v104.IsValid()) {
@@ -770,7 +787,7 @@ struct Controller::impl {
     auto status_view = LeRandCompleteView::Create(view);
     ASSERT(status_view.IsValid());
     ASSERT(status_view.GetStatus() == ErrorCode::SUCCESS);
-    std::move(cb).Invoke(status_view.GetRandomNumber());
+    std::move(cb)(status_view.GetRandomNumber());
   }
 
   void set_event_filter(std::unique_ptr<SetEventFilterBuilder> packet) {
@@ -1335,6 +1352,7 @@ LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePathLossMonitoring, 35)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertisingAdi, 36)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionSubrating, 37)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionSubratingHost, 38)
+LOCAL_LE_FEATURE_ACCESSOR(SupportsBleChannelSounding, 46)
 
 uint64_t Controller::GetLocalFeatures(uint8_t page_number) const {
   if (page_number < impl_->extended_lmp_features_array_.size()) {
@@ -1537,7 +1555,9 @@ const ModuleFactory Controller::Factory = ModuleFactory([]() { return new Contro
 
 void Controller::ListDependencies(ModuleList* list) const {
   list->add<hci::HciLayer>();
+#if TARGET_FLOSS
   list->add<sysprops::SyspropsModule>();
+#endif
 }
 
 void Controller::Start() {

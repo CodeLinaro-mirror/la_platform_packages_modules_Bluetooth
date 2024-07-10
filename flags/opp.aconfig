@@ -19,21 +19,12 @@ flag {
 }
 
 flag {
-    name: "opp_service_fix_index_out_of_bounds_exception_in_update_thread"
+    name: "opp_ignore_content_observer_after_service_stop"
     namespace: "bluetooth"
-    description: "Fix IndexOutOfBoundsException which happens in OPP service's UpdateThread"
-    bug: "326135849"
+    description: "When OppService.stop() is called, previously posted ContentObserver.onChange() should not run"
+    bug: "346467641"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
 }
 
-flag {
-    name: "opp_remove_incomplete_download"
-    namespace: "bluetooth"
-    description: "Remove incomplete file download (e.g. BT turned off while downloading)"
-    bug: "331298337"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}

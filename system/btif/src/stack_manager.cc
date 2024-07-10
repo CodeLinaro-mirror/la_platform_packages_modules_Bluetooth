@@ -18,8 +18,8 @@
 
 #define LOG_TAG "bt_stack_manager"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 #include <hardware/bluetooth.h>
 
 #include <cstdlib>
@@ -325,14 +325,14 @@ static void event_start_up_stack(bluetooth::core::CoreInterface* interface,
   }
 
   module_start_up(get_local_module(RUST_MODULE));
-  if (IS_FLAG_ENABLED(channel_sounding_in_stack)) {
+  if (com::android::bluetooth::flags::channel_sounding_in_stack()) {
     bluetooth::ras::GetRasServer()->Initialize();
     bluetooth::ras::GetRasClient()->Initialize();
   }
 
   stack_is_running = true;
   log::info("finished");
-  do_in_jni_thread(FROM_HERE, base::BindOnce(event_signal_stack_up, nullptr));
+  do_in_jni_thread(base::BindOnce(event_signal_stack_up, nullptr));
 }
 
 // Synchronous function to shut down the stack
@@ -371,14 +371,14 @@ static void event_shut_down_stack(ProfileStopCallback stopProfiles) {
   future_await(local_hack_future);
 
   gatt_free();
-  l2c_free();
   sdp_free();
+  l2c_free();
   get_btm_client_interface().lifecycle.btm_ble_free();
 
   get_btm_client_interface().lifecycle.btm_free();
 
   hack_future = future_new();
-  do_in_jni_thread(FROM_HERE, base::BindOnce(event_signal_stack_down, nullptr));
+  do_in_jni_thread(base::BindOnce(event_signal_stack_down, nullptr));
   future_await(hack_future);
   log::info("finished");
 }

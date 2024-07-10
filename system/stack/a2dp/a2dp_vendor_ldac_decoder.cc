@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "a2dp_vendor_ldac_decoder"
+#define LOG_TAG "bluetooth-a2dp"
 
 #include "a2dp_vendor_ldac_decoder.h"
 
@@ -23,7 +23,6 @@
 #include <ldacBT.h>
 #include <ldacBT_bco_for_fluoride.h>
 #include <pthread.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "a2dp_vendor_ldac.h"

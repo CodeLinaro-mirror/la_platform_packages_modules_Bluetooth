@@ -246,7 +246,7 @@ static bt_status_t btpan_disconnect(const RawAddress* bd_addr) {
     BTA_PanClose(conn->handle);
     return BT_STATUS_SUCCESS;
   }
-  return BT_STATUS_FAIL;
+  return BT_STATUS_DEVICE_NOT_FOUND;
 }
 
 static int pan_pth = -1;
@@ -576,8 +576,7 @@ static void bta_pan_callback_transfer(uint16_t event, char* p_param) {
     case BTA_PAN_OPENING_EVT: {
       btpan_conn_t* conn;
       log::verbose("BTA_PAN_OPENING_EVT handle {}, addr: {}",
-                   p_data->opening.handle,
-                   ADDRESS_TO_LOGGABLE_CSTR(p_data->opening.bd_addr));
+                   p_data->opening.handle, p_data->opening.bd_addr);
       conn = btpan_find_conn_addr(p_data->opening.bd_addr);
 
       asrt(conn != NULL);

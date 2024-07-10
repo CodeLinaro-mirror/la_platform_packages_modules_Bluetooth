@@ -17,14 +17,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <string>
-
 #include "bta/dm/bta_dm_disc_int.h"
 #include "bta/test/bta_test_fixtures.h"
-#include "osi/include/allocator.h"
-#include "test/common/main_handler.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_gatt_api.h"
 
 void BTA_dm_on_hw_on();
 void BTA_dm_on_hw_off();
@@ -37,8 +31,8 @@ namespace bluetooth {
 namespace legacy {
 namespace testing {
 
-tBTA_DM_SEARCH_CB& bta_dm_disc_search_cb();
-void bta_dm_sdp_result(tBTA_DM_SDP_RESULT& sdp_event);
+tBTA_DM_SERVICE_DISCOVERY_CB& bta_dm_discovery_cb();
+void bta_dm_sdp_result(tSDP_STATUS sdp_status, tBTA_DM_SDP_STATE* state);
 
 }  // namespace testing
 }  // namespace legacy
@@ -56,27 +50,13 @@ class BtaSdpRegisteredTest : public BtaSdpTest {
   void SetUp() override { BtaSdpTest::SetUp(); }
 
   void TearDown() override { BtaSdpTest::TearDown(); }
-
-  tBTA_SYS_REG bta_sys_reg = {
-      .evt_hdlr = [](const BT_HDR_RIGID* p_msg) -> bool {
-        osi_free((void*)p_msg);
-        return false;
-      },
-      .disable = []() {},
-  };
 };
 
 TEST_F(BtaSdpTest, nop) {}
 
 TEST_F(BtaSdpRegisteredTest, bta_dm_sdp_result_SDP_SUCCESS) {
-  tBTA_DM_SEARCH_CB& search_cb =
-      bluetooth::legacy::testing::bta_dm_disc_search_cb();
-  search_cb.service_index = BTA_MAX_SERVICE_ID;
-
-  mock_btm_client_interface.security.BTM_SecReadDevName =
-      [](const RawAddress& bd_addr) -> const char* { return kName; };
-  mock_btm_client_interface.security.BTM_SecDeleteRmtNameNotifyCallback =
-      [](tBTM_RMT_NAME_CALLBACK*) -> bool { return true; };
-  tBTA_DM_SDP_RESULT result{.sdp_result = SDP_SUCCESS};
-  bluetooth::legacy::testing::bta_dm_sdp_result(result);
+  std::unique_ptr<tBTA_DM_SDP_STATE> state =
+      std::make_unique<tBTA_DM_SDP_STATE>(
+          tBTA_DM_SDP_STATE{.service_index = BTA_MAX_SERVICE_ID});
+  bluetooth::legacy::testing::bta_dm_sdp_result(SDP_SUCCESS, state.get());
 }

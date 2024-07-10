@@ -134,6 +134,9 @@ class BtStatus(enum.IntEnum):
     JNI_THREAD_ATTACH_ERROR = 13
     WAKE_LOCK_ERROR = 14
     BT_STATUS_TIMEOUT = 15
+    DEVICE_NOT_FOUND = 16
+    UNEXPECTED_STATE = 17
+    SOCKET_ERROR = 18
 
 
 class SocketType(enum.IntEnum):
@@ -191,7 +194,6 @@ class BtPropertyType(enum.IntEnum):
     Appearance = 0x12
     VendorProductInfo = 0x13
     # Unimplemented:
-    #  BT_PROPERTY_WL_MEDIA_PLAYERS_LIST,
     #  BT_PROPERTY_REMOTE_ASHA_CAPABILITY,
     #  BT_PROPERTY_REMOTE_ASHA_TRUNCATED_HISYNCID,
     #  BT_PROPERTY_REMOTE_MODEL_NUM,

@@ -30,9 +30,7 @@ import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.Set;
 
-/**
- * Helper class to parse the Broadcast Announcement BASE data
- */
+/** Helper class to parse the Broadcast Announcement BASE data */
 class BaseData {
     private static final String TAG = "Bassclient-BaseData";
     private static final byte UNKNOWN_CODEC = (byte) 0xFE;
@@ -67,9 +65,9 @@ class BaseData {
     public static class BaseInformation {
         public byte[] presentationDelay = new byte[3];
         public byte[] codecId = new byte[5];
-        public byte codecConfigLength;
+        public int codecConfigLength;
         public byte[] codecConfigInfo;
-        public byte metaDataLength;
+        public int metaDataLength;
         public byte[] metaData;
         public byte numSubGroups;
         public byte[] bisIndices;
@@ -126,12 +124,12 @@ class BaseData {
                 log("codecConfigLength: " + codecConfigLength);
                 log("subGroupId: " + subGroupId);
             }
-            if (codecConfigLength != (byte) 0) {
+            if (codecConfigLength != 0) {
                 log("codecConfigInfo: " + Arrays.toString(codecConfigInfo));
             }
             if (level == 2) {
                 log("metaDataLength: " + metaDataLength);
-                if (metaDataLength != (byte) 0) {
+                if (metaDataLength != 0) {
                     log("metaData: " + Arrays.toString(metaData));
                 }
                 if (level == 1 || level == 2) {
@@ -143,8 +141,11 @@ class BaseData {
                 if (keyMetadataDiff != null) {
                     Iterator<String> itr = keyMetadataDiff.iterator();
                     for (int k = 0; itr.hasNext(); k++) {
-                        log("keyMetadataDiff:[" + k + "]:"
-                                + Arrays.toString(itr.next().getBytes()));
+                        log(
+                                "keyMetadataDiff:["
+                                        + k
+                                        + "]:"
+                                        + Arrays.toString(itr.next().getBytes()));
                     }
                 }
                 log("END: Level2: Key Metadata differentiators");
@@ -152,8 +153,11 @@ class BaseData {
                 if (keyCodecCfgDiff != null) {
                     Iterator<String> itr = keyCodecCfgDiff.iterator();
                     for (int k = 0; itr.hasNext(); k++) {
-                        log("LEVEL2: keyCodecCfgDiff:[" + k + "]:"
-                                + Arrays.toString(itr.next().getBytes()));
+                        log(
+                                "LEVEL2: keyCodecCfgDiff:["
+                                        + k
+                                        + "]:"
+                                        + Arrays.toString(itr.next().getBytes()));
                     }
                 }
                 log("END: Level2: Key CodecConfig differentiators");
@@ -164,8 +168,11 @@ class BaseData {
                 if (keyCodecCfgDiff != null) {
                     Iterator<String> itr = keyCodecCfgDiff.iterator();
                     for (int k = 0; itr.hasNext(); k++) {
-                        log("LEVEL3: keyCodecCfgDiff:[" + k + "]:"
-                                + Arrays.toString(itr.next().getBytes()));
+                        log(
+                                "LEVEL3: keyCodecCfgDiff:["
+                                        + k
+                                        + "]:"
+                                        + Arrays.toString(itr.next().getBytes()));
                     }
                 }
                 log("END: Level3: Key CodecConfig differentiators");
@@ -176,8 +183,11 @@ class BaseData {
         }
     }
 
-    BaseData(BaseInformation levelOne, ArrayList<BaseInformation> levelTwo,
-             ArrayList<BaseInformation> levelThree, int numOfBISIndices) {
+    BaseData(
+            BaseInformation levelOne,
+            ArrayList<BaseInformation> levelTwo,
+            ArrayList<BaseInformation> levelThree,
+            int numOfBISIndices) {
         mLevelOne = levelOne;
         mLevelTwo = levelTwo;
         mLevelThree = levelThree;
@@ -204,8 +214,7 @@ class BaseData {
         levelOne.print();
         log("levelOne subgroups" + levelOne.numSubGroups);
         for (int i = 0; i < (int) levelOne.numSubGroups; i++) {
-            Pair<BaseInformation, Integer> pair1 =
-                    parseLevelTwo(serviceData, i, offset);
+            Pair<BaseInformation, Integer> pair1 = parseLevelTwo(serviceData, i, offset);
             BaseInformation node2 = pair1.first;
             if (node2 == null) {
                 Log.e(TAG, "Error: parsing Level 2");
@@ -216,8 +225,7 @@ class BaseData {
             node2.print();
             offset = pair1.second;
             for (int k = 0; k < node2.numSubGroups; k++) {
-                Pair<BaseInformation, Integer> pair2 =
-                        parseLevelThree(serviceData, offset);
+                Pair<BaseInformation, Integer> pair2 = parseLevelThree(serviceData, offset);
                 BaseInformation node3 = pair2.first;
                 offset = pair2.second;
                 if (node3 == null) {
@@ -232,8 +240,8 @@ class BaseData {
         return new BaseData(levelOne, levelTwo, levelThree, numOfBISIndices);
     }
 
-    private static Pair<BaseInformation, Integer>
-            parseLevelTwo(byte[] serviceData, int groupIndex, int offset) {
+    private static Pair<BaseInformation, Integer> parseLevelTwo(
+            byte[] serviceData, int groupIndex, int offset) {
         log("Parsing Level 2");
         BaseInformation node = new BaseInformation();
         node.level = METADATA_LEVEL2;
@@ -241,57 +249,56 @@ class BaseData {
         node.numSubGroups = serviceData[offset++];
         if (serviceData[offset] == (byte) UNKNOWN_CODEC) {
             // Place It in the last byte of codecID
-            System.arraycopy(serviceData, offset, node.codecId,
-                    METADATA_CODEC_LENGTH - 1, METADATA_UNKNOWN_CODEC_LENGTH);
+            System.arraycopy(
+                    serviceData,
+                    offset,
+                    node.codecId,
+                    METADATA_CODEC_LENGTH - 1,
+                    METADATA_UNKNOWN_CODEC_LENGTH);
             offset += METADATA_UNKNOWN_CODEC_LENGTH;
             log("codecId is FE");
         } else {
-            System.arraycopy(serviceData, offset, node.codecId,
-                    0, METADATA_CODEC_LENGTH);
+            System.arraycopy(serviceData, offset, node.codecId, 0, METADATA_CODEC_LENGTH);
             offset += METADATA_CODEC_LENGTH;
         }
-        node.codecConfigLength = serviceData[offset++];
+        node.codecConfigLength = serviceData[offset++] & 0xff;
         if (node.codecConfigLength != 0) {
-            node.codecConfigInfo = new byte[(int) node.codecConfigLength];
-            System.arraycopy(serviceData, offset, node.codecConfigInfo,
-                    0, (int) node.codecConfigLength);
+            node.codecConfigInfo = new byte[node.codecConfigLength];
+            System.arraycopy(serviceData, offset, node.codecConfigInfo, 0, node.codecConfigLength);
             offset += node.codecConfigLength;
         }
-        node.metaDataLength = serviceData[offset++];
+        node.metaDataLength = serviceData[offset++] & 0xff;
         if (node.metaDataLength != 0) {
-            node.metaData = new byte[(int) node.metaDataLength];
-            System.arraycopy(serviceData, offset,
-                    node.metaData, 0, (int) node.metaDataLength);
+            node.metaData = new byte[node.metaDataLength];
+            System.arraycopy(serviceData, offset, node.metaData, 0, node.metaDataLength);
             offset += node.metaDataLength;
         }
         return new Pair<BaseInformation, Integer>(node, offset);
     }
 
-    private static Pair<BaseInformation, Integer>
-            parseLevelThree(byte[] serviceData, int offset) {
+    private static Pair<BaseInformation, Integer> parseLevelThree(byte[] serviceData, int offset) {
         log("Parsing Level 3");
         BaseInformation node = new BaseInformation();
         node.level = METADATA_LEVEL3;
         node.index = serviceData[offset++];
-        node.codecConfigLength = serviceData[offset++];
+        node.codecConfigLength = serviceData[offset++] & 0xff;
         if (node.codecConfigLength != 0) {
-            node.codecConfigInfo = new byte[(int) node.codecConfigLength];
-            System.arraycopy(serviceData, offset,
-                    node.codecConfigInfo, 0, (int) node.codecConfigLength);
+            node.codecConfigInfo = new byte[node.codecConfigLength];
+            System.arraycopy(serviceData, offset, node.codecConfigInfo, 0, node.codecConfigLength);
             offset += node.codecConfigLength;
         }
         return new Pair<BaseInformation, Integer>(node, offset);
     }
 
-    static void consolidateBaseofLevelTwo(ArrayList<BaseInformation> levelTwo,
-            ArrayList<BaseInformation> levelThree) {
+    static void consolidateBaseofLevelTwo(
+            ArrayList<BaseInformation> levelTwo, ArrayList<BaseInformation> levelThree) {
         int startIdx = 0;
         int children = 0;
         for (int i = 0; i < levelTwo.size(); i++) {
             startIdx = startIdx + children;
             children = children + levelTwo.get(i).numSubGroups;
-            consolidateBaseofLevelThree(levelTwo, levelThree,
-                    i, startIdx, levelTwo.get(i).numSubGroups);
+            consolidateBaseofLevelThree(
+                    levelTwo, levelThree, i, startIdx, levelTwo.get(i).numSubGroups);
         }
         // Eliminate Duplicates at Level 3
         for (int i = 0; i < levelThree.size(); i++) {
@@ -342,14 +349,21 @@ class BaseData {
         }
     }
 
-    static void consolidateBaseofLevelThree(ArrayList<BaseInformation> levelTwo,
-            ArrayList<BaseInformation> levelThree, int parentSubgroup, int startIdx, int numNodes) {
+    static void consolidateBaseofLevelThree(
+            ArrayList<BaseInformation> levelTwo,
+            ArrayList<BaseInformation> levelThree,
+            int parentSubgroup,
+            int startIdx,
+            int numNodes) {
         for (int i = startIdx; i < startIdx + numNodes || i < levelThree.size(); i++) {
             levelThree.get(i).subGroupId = levelTwo.get(parentSubgroup).subGroupId;
             log("Copy Codec Id from Level2 Parent" + parentSubgroup);
             System.arraycopy(
                     levelTwo.get(parentSubgroup).consolidatedCodecId,
-                    0, levelThree.get(i).consolidatedCodecId, 0, 5);
+                    0,
+                    levelThree.get(i).consolidatedCodecId,
+                    0,
+                    5);
             // Metadata clone from Parent
             levelThree.get(i).consolidatedMetadata =
                     new LinkedHashSet<String>(levelTwo.get(parentSubgroup).consolidatedMetadata);
@@ -369,7 +383,7 @@ class BaseData {
         return mNumBISIndices;
     }
 
-    public BaseInformation  getLevelOne() {
+    public BaseInformation getLevelOne() {
         return mLevelOne;
     }
 
@@ -436,8 +450,7 @@ class BaseData {
                     case CODEC_AUDIO_LOCATION_FRONT_RIGHT:
                         ret = "RIGHT";
                         break;
-                    case CODEC_AUDIO_LOCATION_FRONT_LEFT
-                            | CODEC_AUDIO_LOCATION_FRONT_RIGHT:
+                    case CODEC_AUDIO_LOCATION_FRONT_LEFT | CODEC_AUDIO_LOCATION_FRONT_RIGHT:
                         ret = "LR";
                         break;
                 }

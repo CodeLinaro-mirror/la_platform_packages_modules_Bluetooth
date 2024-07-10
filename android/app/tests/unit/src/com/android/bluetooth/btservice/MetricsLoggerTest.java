@@ -54,8 +54,6 @@ import java.util.Map;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class MetricsLoggerTest {
-    private static final String TEST_BLOOMFILTER_NAME = "TestBloomfilter";
-
     private static final HashMap<String, String> SANITIZED_DEVICE_NAME_MAP = new HashMap<>();
 
     static {
@@ -64,17 +62,17 @@ public class MetricsLoggerTest {
         SANITIZED_DEVICE_NAME_MAP.put("Someone's AirpoDs", "airpods");
         SANITIZED_DEVICE_NAME_MAP.put("Galaxy Buds pro", "galaxybudspro");
         SANITIZED_DEVICE_NAME_MAP.put("Someone's AirpoDs", "airpods");
-        SANITIZED_DEVICE_NAME_MAP.put("My BMW X5", "bmw");
+        SANITIZED_DEVICE_NAME_MAP.put("My BMW X5", "bmwx5");
         SANITIZED_DEVICE_NAME_MAP.put("Jane Doe's Tesla Model--X", "teslamodelx");
         SANITIZED_DEVICE_NAME_MAP.put("TESLA of Jane DOE", "tesla");
-        SANITIZED_DEVICE_NAME_MAP.put("SONY WH-1000XM4", "wh1000xm4");
-        SANITIZED_DEVICE_NAME_MAP.put("Amazon Echo Dot", "echo");
+        SANITIZED_DEVICE_NAME_MAP.put("SONY WH-1000XM4", "sonywh1000xm4");
+        SANITIZED_DEVICE_NAME_MAP.put("Amazon Echo Dot", "amazonechodot");
         SANITIZED_DEVICE_NAME_MAP.put("Chevy my link", "chevymylink");
         SANITIZED_DEVICE_NAME_MAP.put("Dad's Hyundai i10", "hyundai");
         SANITIZED_DEVICE_NAME_MAP.put("Mike's new Galaxy Buds 2", "galaxybuds2");
         SANITIZED_DEVICE_NAME_MAP.put("My third Ford F-150", "fordf150");
         SANITIZED_DEVICE_NAME_MAP.put("Bose QuietComfort 35 Series 2", "bosequietcomfort35");
-        SANITIZED_DEVICE_NAME_MAP.put("Fitbit versa 3 band", "versa3");
+        SANITIZED_DEVICE_NAME_MAP.put("Fitbit versa 3 band", "fitbitversa3");
         SANITIZED_DEVICE_NAME_MAP.put("my vw bt", "myvw");
         SANITIZED_DEVICE_NAME_MAP.put("SomeDevice1", "");
         SANITIZED_DEVICE_NAME_MAP.put("My traverse", "traverse");
@@ -91,7 +89,7 @@ public class MetricsLoggerTest {
 
     @Mock private AdapterService mMockAdapterService;
 
-    public class TestableMetricsLogger extends MetricsLogger {
+    private static class TestableMetricsLogger extends MetricsLogger {
         public HashMap<Integer, Long> mTestableCounters = new HashMap<>();
         public HashMap<String, Integer> mTestableDeviceNames = new HashMap<>();
 
@@ -157,7 +155,7 @@ public class MetricsLoggerTest {
         MetricsLogger.dumpProto(metricsBuilder);
         BluetoothLog metricsProto = metricsBuilder.build();
         Assert.assertEquals(2, metricsProto.getProfileConnectionStatsCount());
-        HashMap<ProfileId, ProfileConnectionStats> profileConnectionCountMap =
+        Map<ProfileId, ProfileConnectionStats> profileConnectionCountMap =
                 getProfileUsageStatsMap(metricsProto.getProfileConnectionStatsList());
         Assert.assertTrue(profileConnectionCountMap.containsKey(ProfileId.AVRCP));
         Assert.assertEquals(
@@ -172,7 +170,7 @@ public class MetricsLoggerTest {
         Assert.assertEquals(0, metricsProtoAfterDump.getProfileConnectionStatsCount());
     }
 
-    private static HashMap<ProfileId, ProfileConnectionStats> getProfileUsageStatsMap(
+    private static Map<ProfileId, ProfileConnectionStats> getProfileUsageStatsMap(
             List<ProfileConnectionStats> profileUsageStats) {
         HashMap<ProfileId, ProfileConnectionStats> profileUsageStatsMap = new HashMap<>();
         profileUsageStats.forEach(item -> profileUsageStatsMap.put(item.getProfileId(), item));
@@ -252,6 +250,7 @@ public class MetricsLoggerTest {
             String deviceName = entry.getKey();
             String sha256 = MetricsLogger.getSha256String(entry.getValue());
             Assert.assertEquals(
+                    deviceName,
                     sha256,
                     mTestableMetricsLogger.logAllowlistedDeviceNameHash(1, deviceName, true));
         }

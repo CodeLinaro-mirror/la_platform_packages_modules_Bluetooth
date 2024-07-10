@@ -32,12 +32,13 @@
 #include "btif/include/btif_sock_thread.h"
 #include "btif/include/btif_sock_util.h"
 #include "btif/include/btif_uid.h"
+#include "gd/os/rand.h"
 #include "include/hardware/bluetooth.h"
 #include "internal_include/bt_target.h"
-#include "os/log.h"
 #include "osi/include/allocator.h"
 #include "osi/include/osi.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/l2cdefs.h"
 #include "types/raw_address.h"
 
 using namespace bluetooth;
@@ -229,8 +230,7 @@ static void btsock_l2cap_free_l(l2cap_socket* sock) {
   log::info(
       "Disconnected L2CAP connection for device: {}, channel: {}, app_uid: {}, "
       "id: {}, is_le: {}",
-      ADDRESS_TO_LOGGABLE_CSTR(sock->addr), sock->channel, sock->app_uid,
-      sock->id, sock->is_le_coc);
+      sock->addr, sock->channel, sock->app_uid, sock->id, sock->is_le_coc);
   btif_sock_connection_logger(
       sock->addr, sock->id, sock->is_le_coc ? BTSOCK_L2CAP_LE : BTSOCK_L2CAP,
       SOCKET_CONNECTION_STATE_DISCONNECTED,
@@ -261,7 +261,7 @@ static void btsock_l2cap_free_l(l2cap_socket* sock) {
       BTA_JvL2capClose(sock->handle);
     }
     if ((sock->channel >= 0) && (sock->server)) {
-      BTA_JvFreeChannel(sock->channel, BTA_JV_CONN_TYPE_L2CAP_LE);
+      BTA_JvFreeChannel(sock->channel, tBTA_JV_CONN_TYPE::L2CAP_LE);
       log::info("Stopped L2CAP LE COC server socket_id:{} channel:{}", sock->id,
                 sock->channel);
       BTA_JvL2capStopServer(sock->channel, sock->id);
@@ -272,7 +272,7 @@ static void btsock_l2cap_free_l(l2cap_socket* sock) {
       BTA_JvL2capClose(sock->handle);
     }
     if ((sock->channel >= 0) && (sock->server)) {
-      BTA_JvFreeChannel(sock->channel, BTA_JV_CONN_TYPE_L2CAP);
+      BTA_JvFreeChannel(sock->channel, tBTA_JV_CONN_TYPE::L2CAP);
       BTA_JvL2capStopServer(sock->channel, sock->id);
     }
   }
@@ -458,8 +458,7 @@ static void on_srv_l2cap_listen_started(tBTA_JV_L2CAP_START* p_start,
   log::info(
       "Listening for L2CAP connection for device: {}, channel: {}, app_uid: "
       "{}, id: {}, is_le: {}",
-      ADDRESS_TO_LOGGABLE_CSTR(sock->addr), sock->channel, sock->app_uid,
-      sock->id, sock->is_le_coc);
+      sock->addr, sock->channel, sock->app_uid, sock->id, sock->is_le_coc);
   btif_sock_connection_logger(
       sock->addr, sock->id, sock->is_le_coc ? BTSOCK_L2CAP_LE : BTSOCK_L2CAP,
       SOCKET_CONNECTION_STATE_LISTENING,
@@ -516,7 +515,9 @@ static void on_srv_l2cap_psm_connect_l(tBTA_JV_L2CAP_OPEN* p_open,
   accept_rs->tx_mtu = sock->tx_mtu = p_open->tx_mtu;
   accept_rs->local_cid = p_open->local_cid;
   accept_rs->remote_cid = p_open->remote_cid;
-  accept_rs->conn_uuid = Uuid::GetRandom();
+  Uuid uuid =
+      Uuid::From128BitBE(bluetooth::os::GenerateRandom<Uuid::kNumBytes128>());
+  accept_rs->conn_uuid = uuid;
 
   /* Swap IDs to hand over the GAP connection to the accepted socket, and start
      a new server on the newly create socket ID. */
@@ -527,8 +528,7 @@ static void on_srv_l2cap_psm_connect_l(tBTA_JV_L2CAP_OPEN* p_open,
   log::info(
       "Connected to L2CAP connection for device: {}, channel: {}, app_uid: {}, "
       "id: {}, is_le: {}",
-      ADDRESS_TO_LOGGABLE_CSTR(sock->addr), sock->channel, sock->app_uid,
-      sock->id, sock->is_le_coc);
+      sock->addr, sock->channel, sock->app_uid, sock->id, sock->is_le_coc);
   btif_sock_connection_logger(
       accept_rs->addr, accept_rs->id,
       accept_rs->is_le_coc ? BTSOCK_L2CAP_LE : BTSOCK_L2CAP,
@@ -557,7 +557,9 @@ static void on_cl_l2cap_psm_connect_l(tBTA_JV_L2CAP_OPEN* p_open,
   sock->tx_mtu = p_open->tx_mtu;
   sock->local_cid = p_open->local_cid;
   sock->remote_cid = p_open->remote_cid;
-  sock->conn_uuid = Uuid::GetRandom();
+  Uuid uuid =
+      Uuid::From128BitBE(bluetooth::os::GenerateRandom<Uuid::kNumBytes128>());
+  sock->conn_uuid = uuid;
 
   if (!send_app_psm_or_chan_l(sock)) {
     log::error("Unable to send l2cap socket to application socket_id:{}",
@@ -575,8 +577,7 @@ static void on_cl_l2cap_psm_connect_l(tBTA_JV_L2CAP_OPEN* p_open,
   log::info(
       "Connected to L2CAP connection for device: {}, channel: {}, app_uid: {}, "
       "id: {}, is_le: {}",
-      ADDRESS_TO_LOGGABLE_CSTR(sock->addr), sock->channel, sock->app_uid,
-      sock->id, sock->is_le_coc);
+      sock->addr, sock->channel, sock->app_uid, sock->id, sock->is_le_coc);
   btif_sock_connection_logger(
       sock->addr, sock->id, sock->is_le_coc ? BTSOCK_L2CAP_LE : BTSOCK_L2CAP,
       SOCKET_CONNECTION_STATE_CONNECTED,
@@ -631,8 +632,7 @@ static void on_l2cap_close(tBTA_JV_L2CAP_CLOSE* p_close, uint32_t id) {
   log::info(
       "Disconnecting from L2CAP connection for device: {}, channel: {}, "
       "app_uid: {}, id: {}, is_le: {}",
-      ADDRESS_TO_LOGGABLE_CSTR(sock->addr), sock->channel, sock->app_uid,
-      sock->id, sock->is_le_coc);
+      sock->addr, sock->channel, sock->app_uid, sock->id, sock->is_le_coc);
   btif_sock_connection_logger(
       sock->addr, sock->id, sock->is_le_coc ? BTSOCK_L2CAP_LE : BTSOCK_L2CAP,
       SOCKET_CONNECTION_STATE_DISCONNECTING,
@@ -646,7 +646,7 @@ static void on_l2cap_close(tBTA_JV_L2CAP_CLOSE* p_close, uint32_t id) {
   // TODO: This does not seem to be called...
   // I'm not sure if this will be called for non-server sockets?
   if (sock->server) {
-    BTA_JvFreeChannel(sock->channel, BTA_JV_CONN_TYPE_L2CAP);
+    BTA_JvFreeChannel(sock->channel, tBTA_JV_CONN_TYPE::L2CAP);
   }
   btsock_l2cap_free_l(sock);
 }
@@ -800,8 +800,8 @@ void on_l2cap_psm_assigned(int id, int psm) {
 }
 
 static void btsock_l2cap_server_listen(l2cap_socket* sock) {
-  int connection_type =
-      sock->is_le_coc ? BTA_JV_CONN_TYPE_L2CAP_LE : BTA_JV_CONN_TYPE_L2CAP;
+  tBTA_JV_CONN_TYPE connection_type =
+      sock->is_le_coc ? tBTA_JV_CONN_TYPE::L2CAP_LE : tBTA_JV_CONN_TYPE::L2CAP;
 
   /* If we have a channel specified in the request, just start the server,
    * else we request a PSM and start the server after we receive a PSM. */
@@ -819,9 +819,9 @@ static void btsock_l2cap_server_listen(l2cap_socket* sock) {
     ertm_info.reset(new tL2CAP_ERTM_INFO(obex_l2c_etm_opt));
   }
 
-  BTA_JvL2capStartServer(connection_type, sock->security, 0,
-                         std::move(ertm_info), sock->channel, sock->rx_mtu,
-                         std::move(cfg), btsock_l2cap_cbk, sock->id);
+  BTA_JvL2capStartServer(connection_type, sock->security, std::move(ertm_info),
+                         sock->channel, sock->rx_mtu, std::move(cfg),
+                         btsock_l2cap_cbk, sock->id);
 }
 
 static bt_status_t btsock_l2cap_listen_or_connect(const char* name,
@@ -840,7 +840,7 @@ static bt_status_t btsock_l2cap_listen_or_connect(const char* name,
         channel = 0;
       } else if (channel <= 0) {
         log::error("type BTSOCK_L2CAP_LE: invalid channel={}", channel);
-        return BT_STATUS_FAIL;
+        return BT_STATUS_SOCKET_ERROR;
       }
     } else {
       // Ensure device is in inquiry database during L2CAP CoC connection
@@ -870,21 +870,22 @@ static bt_status_t btsock_l2cap_listen_or_connect(const char* name,
   if (listen) {
     btsock_l2cap_server_listen(sock);
   } else {
-      int connection_type =
-          sock->is_le_coc ? BTA_JV_CONN_TYPE_L2CAP_LE : BTA_JV_CONN_TYPE_L2CAP;
+    tBTA_JV_CONN_TYPE connection_type = sock->is_le_coc
+                                            ? tBTA_JV_CONN_TYPE::L2CAP_LE
+                                            : tBTA_JV_CONN_TYPE::L2CAP;
 
-      /* Setup ETM settings: mtu will be set below */
-      std::unique_ptr<tL2CAP_CFG_INFO> cfg = std::make_unique<tL2CAP_CFG_INFO>(
-          tL2CAP_CFG_INFO{.fcr_present = true, .fcr = kDefaultErtmOptions});
+    /* Setup ETM settings: mtu will be set below */
+    std::unique_ptr<tL2CAP_CFG_INFO> cfg = std::make_unique<tL2CAP_CFG_INFO>(
+        tL2CAP_CFG_INFO{.fcr_present = true, .fcr = kDefaultErtmOptions});
 
-      std::unique_ptr<tL2CAP_ERTM_INFO> ertm_info;
-      if (!sock->is_le_coc) {
-        ertm_info.reset(new tL2CAP_ERTM_INFO(obex_l2c_etm_opt));
-      }
+    std::unique_ptr<tL2CAP_ERTM_INFO> ertm_info;
+    if (!sock->is_le_coc) {
+      ertm_info.reset(new tL2CAP_ERTM_INFO(obex_l2c_etm_opt));
+    }
 
-      BTA_JvL2capConnect(
-          connection_type, sock->security, 0, std::move(ertm_info), channel,
-          sock->rx_mtu, std::move(cfg), sock->addr, btsock_l2cap_cbk, sock->id);
+    BTA_JvL2capConnect(connection_type, sock->security, std::move(ertm_info),
+                       channel, sock->rx_mtu, std::move(cfg), sock->addr,
+                       btsock_l2cap_cbk, sock->id);
   }
 
   *sock_fd = sock->app_fd;
@@ -1042,7 +1043,7 @@ bt_status_t btsock_l2cap_get_l2cap_local_cid(Uuid& conn_uuid, uint16_t* cid) {
   if (!sock) {
     log::error("Unable to find l2cap socket with conn_uuid:{}",
                conn_uuid.ToString());
-    return BT_STATUS_FAIL;
+    return BT_STATUS_SOCKET_ERROR;
   }
   *cid = sock->local_cid;
   return BT_STATUS_SUCCESS;
@@ -1056,7 +1057,7 @@ bt_status_t btsock_l2cap_get_l2cap_remote_cid(Uuid& conn_uuid, uint16_t* cid) {
   if (!sock) {
     log::error("Unable to find l2cap socket with conn_uuid:{}",
                conn_uuid.ToString());
-    return BT_STATUS_FAIL;
+    return BT_STATUS_SOCKET_ERROR;
   }
   *cid = sock->remote_cid;
   return BT_STATUS_SUCCESS;

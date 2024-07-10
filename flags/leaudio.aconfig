@@ -74,20 +74,6 @@ flag {
 }
 
 flag {
-    name: "delay_bonding_when_busy"
-    namespace: "bluetooth"
-    description: "Fix bonding failure due to native stack being busy"
-    bug: "316927319"
-}
-
-flag {
-    name: "le_audio_fast_bond_params"
-    namespace: "bluetooth"
-    description: "Faster LE Audio devices connection"
-    bug: "319405267"
-}
-
-flag {
     name: "le_audio_dev_type_detection_fix"
     namespace: "bluetooth"
     description: "Better LE Audio devices detection"
@@ -305,6 +291,96 @@ flag {
     namespace: "bluetooth"
     description: "Set broadcast sink volume with setVolume API"
     bug: "333761969"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "run_clock_recovery_in_worker_thread"
+    namespace: "bluetooth"
+    description: "Fix thread ownership issue in clock_recovery"
+    bug: "333657963"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_broadcast_extract_periodic_scanner_from_state_machine"
+    namespace: "bluetooth"
+    description: "Extract periodic scanner from state machine to make it independent from remote devices"
+    bug: "333691526"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_allowed_context_mask"
+    namespace: "bluetooth"
+    description: "Set allowed context mask to filter stream requests in native"
+    bug: "336468573"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_no_context_validate_streaming_request"
+    namespace: "bluetooth"
+    description: "Request streaming would be send without available cotext validation"
+    bug: "336466406"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_synchronize_start"
+    namespace: "bluetooth"
+    description: "Do not post on main looper when starting le_audio"
+    bug: "341385684"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_broadcast_stop_on_streaming_request"
+    namespace: "bluetooth"
+    description: "Stop instead of pause on unicast stream request"
+    bug: "336740254"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "headtracker_codec_capability"
+    namespace: "bluetooth"
+    description: "Use Android Headtracker codec capabilities"
+    bug: "338098113"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_use_audio_mode_listener"
+    namespace: "bluetooth"
+    description: "Use Audio Mode listener instead of Telecom in call callback"
+    bug: "339612732"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_big_depends_on_audio_state"
+    namespace: "bluetooth"
+    description: "BIG creation/termination depends on audio resume/pause"
+    bug: "347204335"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

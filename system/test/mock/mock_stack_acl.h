@@ -318,24 +318,6 @@ struct acl_set_peer_le_features_from_handle {
 };
 extern struct acl_set_peer_le_features_from_handle
     acl_set_peer_le_features_from_handle;
-// Name: acl_create_classic_connection
-// Params: const RawAddress& bd_addr, bool there_are_high_priority_channels,
-// bool is_bonding Returns: constexpr uint16_t kDefaultPacketTypes =
-// HCI_PKT_TYPES_MASK_DM1 | HCI_PKT_TYPES_MASK_DH1 | HCI_PKT_TYPES_MASK_DM3 |
-// HCI_PKT_TYPES_MASK_DH3 | HCI_PKT_TYPES_MASK_DM5 | HCI_PKT_TYPES_MASK_DH5;
-// void
-struct acl_create_classic_connection {
-  std::function<void(const RawAddress& bd_addr,
-                     bool there_are_high_priority_channels, bool is_bonding)>
-      body{[](const RawAddress& /* bd_addr */,
-              bool /* there_are_high_priority_channels */,
-              bool /* is_bonding */) { return 0; }};
-  void operator()(const RawAddress& bd_addr,
-                  bool there_are_high_priority_channels, bool is_bonding) {
-    return body(bd_addr, there_are_high_priority_channels, is_bonding);
-  };
-};
-extern struct acl_create_classic_connection acl_create_classic_connection;
 // Name: acl_get_connection_from_address
 // Params: const RawAddress& bd_addr, tBT_TRANSPORT transport
 // Returns: tACL_CONN*
@@ -987,15 +969,6 @@ struct btm_read_failed_contact_counter_timeout {
 };
 extern struct btm_read_failed_contact_counter_timeout
     btm_read_failed_contact_counter_timeout;
-// Name: btm_read_link_quality_complete
-// Params: uint8_t* p
-// Returns: void
-struct btm_read_link_quality_complete {
-  std::function<void(uint8_t* p, uint16_t evt_len)> body{
-      [](uint8_t* /* p */, uint16_t /* evt_len */) { ; }};
-  void operator()(uint8_t* p, uint16_t evt_len) { body(p, evt_len); };
-};
-extern struct btm_read_link_quality_complete btm_read_link_quality_complete;
 // Name: btm_read_remote_ext_features
 // Params: uint16_t handle, uint8_t page_number
 // Returns: void

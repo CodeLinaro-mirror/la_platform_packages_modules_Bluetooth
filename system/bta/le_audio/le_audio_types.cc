@@ -43,28 +43,6 @@ using types::kLeAudioDirectionSink;
 using types::kLeAudioDirectionSource;
 using types::LeAudioCoreCodecConfig;
 
-static uint8_t min_req_devices_cnt(
-    const AudioSetConfiguration* audio_set_conf) {
-  log::assert_that(
-      audio_set_conf->topology_info.has_value(),
-      "No topology info, which is required to properly configure the ASEs");
-  return std::max(audio_set_conf->topology_info->device_count.sink,
-                  audio_set_conf->topology_info->device_count.source);
-}
-
-static uint8_t min_req_devices_cnt(
-    const AudioSetConfigurations* audio_set_confs) {
-  uint8_t curr_min_req_devices_cnt = 0xff;
-
-  for (auto ent : *audio_set_confs) {
-    uint8_t req_devices_cnt = min_req_devices_cnt(ent);
-    if (req_devices_cnt < curr_min_req_devices_cnt)
-      curr_min_req_devices_cnt = req_devices_cnt;
-  }
-
-  return curr_min_req_devices_cnt;
-}
-
 void get_cis_count(LeAudioContextType context_type, int expected_device_cnt,
                    types::LeAudioConfigurationStrategy strategy,
                    int avail_group_ase_snk_cnt, int avail_group_ase_src_count,
@@ -109,6 +87,9 @@ void get_cis_count(LeAudioContextType context_type, int expected_device_cnt,
       if (is_bidirectional) {
         if ((avail_group_ase_snk_cnt > 0) && (avail_group_ase_src_count) > 0) {
           /* Prepare CIG to enable all microphones per device */
+          /* TODO: Support TWS style device with two source ASEs - two
+           * bidirectional CISes
+           */
           out_cis_count_bidir = expected_device_cnt;
           out_cis_count_unidir_sink = expected_device_cnt;
         } else {
@@ -134,125 +115,19 @@ void get_cis_count(LeAudioContextType context_type, int expected_device_cnt,
       out_cis_count_unidir_source);
 }
 
-bool check_if_may_cover_scenario(const AudioSetConfigurations* audio_set_confs,
-                                 uint8_t group_size) {
-  if (!audio_set_confs) {
-    log::error("no audio requirements for group");
-    return false;
-  }
-
-  return group_size >= min_req_devices_cnt(audio_set_confs);
-}
-
-bool check_if_may_cover_scenario(const AudioSetConfiguration* audio_set_conf,
-                                 uint8_t group_size) {
-  if (!audio_set_conf) {
-    log::error("no audio requirement for group");
-    return false;
-  }
-
-  return group_size >= min_req_devices_cnt(audio_set_conf);
-}
-
-uint8_t get_num_of_devices_in_configuration(
-    const AudioSetConfiguration* audio_set_conf) {
-  return min_req_devices_cnt(audio_set_conf);
-}
-
-static bool IsCodecConfigCoreSupported(const types::LeAudioLtvMap& pacs,
-                                       const types::LeAudioLtvMap& reqs) {
-  auto caps = pacs.GetAsCoreCodecCapabilities();
-  auto config = reqs.GetAsCoreCodecConfig();
-
-  /* Sampling frequency */
-  if (!caps.HasSupportedSamplingFrequencies() || !config.sampling_frequency) {
-    log::debug("Missing supported sampling frequencies capability");
-    return false;
-  }
-  if (!caps.IsSamplingFrequencyConfigSupported(
-          config.sampling_frequency.value())) {
-    log::debug("Cfg: SamplingFrequency= 0x{:04x}",
-               config.sampling_frequency.value());
-    log::debug("Cap: SupportedSamplingFrequencies= 0x{:04x}",
-               caps.supported_sampling_frequencies.value());
-    log::debug("Sampling frequency not supported");
-    return false;
-  }
-
-  /* Channel counts */
-  if (!caps.IsAudioChannelCountsSupported(
-          config.GetChannelCountPerIsoStream())) {
-    log::debug("Cfg: Allocated channel count= 0x{:04x}",
-               config.GetChannelCountPerIsoStream());
-    log::debug("Cap: Supported channel counts= 0x{:04x}",
-               caps.supported_audio_channel_counts.value_or(1));
-    log::debug("Channel count not supported");
-    return false;
-  }
-
-  /* Frame duration */
-  if (!caps.HasSupportedFrameDurations() || !config.frame_duration) {
-    log::debug("Missing supported frame durations capability");
-    return false;
-  }
-  if (!caps.IsFrameDurationConfigSupported(config.frame_duration.value())) {
-    log::debug("Cfg: FrameDuration= 0x{:04x}", config.frame_duration.value());
-    log::debug("Cap: SupportedFrameDurations= 0x{:04x}",
-               caps.supported_frame_durations.value());
-    log::debug("Frame duration not supported");
-    return false;
-  }
-
-  /* Octets per frame */
-  if (!caps.HasSupportedOctetsPerCodecFrame() ||
-      !config.octets_per_codec_frame) {
-    log::debug("Missing supported octets per codec frame");
-    return false;
-  }
-  if (!caps.IsOctetsPerCodecFrameConfigSupported(
-          config.octets_per_codec_frame.value())) {
-    log::debug("Cfg: Octets per frame={}",
-               config.octets_per_codec_frame.value());
-    log::debug("Cap: Min octets per frame={}",
-               caps.supported_min_octets_per_codec_frame.value());
-    log::debug("Cap: Max octets per frame={}",
-               caps.supported_max_octets_per_codec_frame.value());
-    log::debug("Octets per codec frame outside the capabilities");
-    return false;
-  }
-
-  return true;
-}
-
-bool IsCodecConfigSettingSupported(
-    const acs_ac_record& pac, const CodecConfigSetting& codec_config_setting) {
-  const auto& codec_id = codec_config_setting.id;
-
-  if (codec_id != pac.codec_id) return false;
-
-  log::debug(": Settings for format: 0x{:02x}", codec_id.coding_format);
-
-  if (utils::IsCodecUsingLtvFormat(codec_id)) {
-    log::assert_that(
-        !pac.codec_spec_caps.IsEmpty(),
-        "Codec specific capabilities are not parsed approprietly.");
-    return IsCodecConfigCoreSupported(pac.codec_spec_caps,
-                                      codec_config_setting.params);
-  }
-
-  log::error("Codec {}, seems to be not supported here.",
-             bluetooth::common::ToString(codec_id));
-  return false;
-}
-
-uint32_t CodecConfigSetting::GetSamplingFrequencyHz() const {
+uint16_t CodecConfigSetting::GetOctectsPerFrame() const {
   switch (id.coding_format) {
     case kLeAudioCodingFormatLC3:
-      return params.GetAsCoreCodecConfig().GetSamplingFrequencyHz();
+      return params.GetAsCoreCodecConfig().GetOctectsPerFrame();
     default:
       log::warn(", invalid codec id: 0x{:02x}", id.coding_format);
       return 0;
   }
+};
+
+uint32_t CodecConfigSetting::GetSamplingFrequencyHz() const {
+  // We also mandate the sampling frequency parameter for vendor spec. codecs
+  return params.GetAsCoreCodecConfig().GetSamplingFrequencyHz();
 };
 
 uint32_t CodecConfigSetting::GetDataIntervalUs() const {
@@ -275,6 +150,62 @@ uint8_t CodecConfigSetting::GetBitsPerSample() const {
       return 0;
   }
 };
+
+std::ostream& operator<<(std::ostream& os, const QosConfigSetting& config) {
+  os << "QosConfigSetting{";
+  os << "targetLatency: " << (int)config.target_latency;
+  os << ", retransmissionNum: " << (int)config.retransmission_number;
+  os << ", maxTransportLatency: " << (int)config.max_transport_latency;
+  os << ", sduIntervalUs: " << (int)config.sduIntervalUs;
+  os << ", maxSdu: " << (int)config.maxSdu;
+  os << "}";
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const AseConfiguration& config) {
+  os << "AseConfiguration{";
+  os << "dataPath: " << config.data_path_configuration;
+  os << ", codec: " << config.codec;
+  os << ", qos: " << config.qos;
+  os << "}";
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const AudioSetConfiguration& config) {
+  os << "AudioSetConfiguration{";
+  os << "name: " << config.name;
+  os << ", packing: " << (int)config.packing;
+  os << ", sinkConfs: [";
+  for (auto const& conf : config.confs.sink) {
+    os << conf;
+    os << ", ";
+  }
+  os << "], sourceConfs: [";
+  for (auto const& conf : config.confs.source) {
+    os << conf;
+    os << ", ";
+  }
+  os << "]}";
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const CodecConfigSetting& config) {
+  os << "CodecConfigSetting{";
+  os << ", id: " << config.id;
+  os << ", codecSpecParams: " << config.params.GetAsCoreCodecConfig();
+  os << ", bitsPerSample: " << (int)config.GetBitsPerSample();
+  os << ", channelCountPerIsoStream: "
+     << (int)config.GetChannelCountPerIsoStream();
+  if (!config.vendor_params.empty()) {
+    os << ", vendorParams: "
+       << base::HexEncode(config.vendor_params.data(),
+                          config.vendor_params.size());
+  }
+  os << "}";
+  return os;
+}
+
 }  // namespace set_configurations
 
 namespace types {
@@ -610,6 +541,7 @@ const struct LeAudioCoreCodecConfig& LeAudioLtvMap::GetAsCoreCodecConfig()
     const {
   log::assert_that(!core_capabilities,
                    "LTVs were already parsed for capabilities!");
+  log::assert_that(!metadata, "LTVs were already parsed for metadata!");
 
   if (!core_config) {
     core_config = LtvMapToCoreCodecConfig(*this);
@@ -621,11 +553,24 @@ const struct LeAudioCoreCodecCapabilities&
 LeAudioLtvMap::GetAsCoreCodecCapabilities() const {
   log::assert_that(!core_config,
                    "LTVs were already parsed for configurations!");
+  log::assert_that(!metadata, "LTVs were already parsed for metadata!");
 
   if (!core_capabilities) {
     core_capabilities = LtvMapToCoreCodecCapabilities(*this);
   }
   return *core_capabilities;
+}
+
+const struct LeAudioMetadata& LeAudioLtvMap::GetAsLeAudioMetadata() const {
+  log::assert_that(!core_config,
+                   "LTVs were already parsed for configurations!");
+  log::assert_that(!core_capabilities,
+                   "LTVs were already parsed for capabilities!");
+
+  if (!metadata) {
+    metadata = LtvMapToMetadata(*this);
+  }
+  return *metadata;
 }
 
 void LeAudioLtvMap::RemoveAllTypes(const LeAudioLtvMap& other) {
@@ -734,20 +679,21 @@ std::ostream& operator<<(std::ostream& os, const types::AseState& state) {
 }
 
 std::ostream& operator<<(std::ostream& os, const LeAudioCodecId& codec_id) {
-  os << "LeAudioCodecId(CodingFormat=" << loghex(codec_id.coding_format)
-     << ", CompanyId=" << loghex(codec_id.vendor_company_id)
-     << ", CodecId=" << loghex(codec_id.vendor_codec_id) << ")";
+  os << "LeAudioCodecId{CodingFormat: " << loghex(codec_id.coding_format)
+     << ", CompanyId: " << loghex(codec_id.vendor_company_id)
+     << ", CodecId: " << loghex(codec_id.vendor_codec_id) << "}";
   return os;
 }
 
 std::ostream& operator<<(std::ostream& os,
                          const types::LeAudioCoreCodecConfig& config) {
-  os << " LeAudioCoreCodecConfig(SamplFreq="
+  os << "LeAudioCoreCodecConfig{SamplFreq: "
      << loghex(*config.sampling_frequency)
-     << ", FrameDur=" << loghex(*config.frame_duration)
-     << ", OctetsPerFrame=" << int(*config.octets_per_codec_frame)
-     << ", CodecFramesBlocksPerSDU=" << int(*config.codec_frames_blocks_per_sdu)
-     << ", AudioChanLoc=" << loghex(*config.audio_channel_allocation) << ")";
+     << ", FrameDur: " << loghex(*config.frame_duration)
+     << ", OctetsPerFrame: " << int(*config.octets_per_codec_frame)
+     << ", CodecFramesBlocksPerSDU: "
+     << int(*config.codec_frames_blocks_per_sdu)
+     << ", AudioChanLoc: " << loghex(*config.audio_channel_allocation) << "}";
   return os;
 }
 
@@ -864,18 +810,71 @@ AudioLocations get_bidirectional(BidirectionalPair<AudioLocations> bidir) {
 
 std::ostream& operator<<(
     std::ostream& os, const le_audio::types::IsoDataPathConfiguration& config) {
-  os << "IsoDataPathCfg={codecId=" << config.codecId
-     << ", isTransparent=" << config.isTransparent
-     << ", controllerDelayUs=" << config.controllerDelayUs
-     << ", configuration.size()=" << config.configuration.size() << "}";
+  os << "IsoDataPathCfg{codecId: " << config.codecId
+     << ", isTransparent: " << config.isTransparent
+     << ", controllerDelayUs: " << config.controllerDelayUs
+     << ", configuration.size: " << config.configuration.size() << "}";
   return os;
 }
 
 std::ostream& operator<<(std::ostream& os,
                          const le_audio::types::DataPathConfiguration& config) {
-  os << "DataPathCfg={datapathId=" << +config.dataPathId
-     << ", dataPathCfg.size()=" << +config.dataPathConfig.size()
-     << ", isoDataPathCfg=" << config.isoDataPathConfig << "}";
+  os << "DataPathCfg{datapathId: " << +config.dataPathId
+     << ", dataPathCfg.size: " << +config.dataPathConfig.size()
+     << ", isoDataPathCfg: " << config.isoDataPathConfig << "}";
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const LeAudioMetadata& config) {
+  os << "LeAudioMetadata{";
+  if (config.preferred_audio_context) {
+    os << "preferred_audio_context: ";
+    os << AudioContexts(config.preferred_audio_context.value());
+  }
+  if (config.streaming_audio_context) {
+    os << ", streaming_audio_context: ";
+    os << AudioContexts(config.streaming_audio_context.value());
+  }
+  if (config.program_info) {
+    os << ", program_info: ";
+    os << config.program_info.value();
+  }
+  if (config.language) {
+    os << ", language: ";
+    os << config.language.value();
+  }
+  if (config.ccid_list) {
+    os << ", ccid_list: ";
+    os << base::HexEncode(config.ccid_list.value().data(),
+                          config.ccid_list.value().size());
+  }
+  if (config.parental_rating) {
+    os << ", parental_rating: ";
+    os << (int)config.parental_rating.value();
+  }
+  if (config.program_info_uri) {
+    os << ", program_info_uri: ";
+    os << config.program_info_uri.value();
+  }
+  if (config.extended_metadata) {
+    os << ", extended_metadata: ";
+    os << base::HexEncode(config.extended_metadata.value().data(),
+                          config.extended_metadata.value().size());
+  }
+  if (config.vendor_specific) {
+    os << ", vendor_specific: ";
+    os << base::HexEncode(config.vendor_specific.value().data(),
+                          config.vendor_specific.value().size());
+  }
+  if (config.audio_active_state) {
+    os << ", audio_active_state: ";
+    os << config.audio_active_state.value();
+  }
+  if (config.broadcast_audio_immediate_rendering) {
+    os << ", broadcast_audio_immediate_rendering: ";
+    os << config.broadcast_audio_immediate_rendering.value();
+  }
+  os << "}";
   return os;
 }
 

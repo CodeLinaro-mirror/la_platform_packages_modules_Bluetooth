@@ -37,11 +37,10 @@ import com.android.internal.annotations.VisibleForTesting;
 import java.util.List;
 
 /**
- * Defines system calls that is used by state machine/service to either send or receive
- * messages from the Android System.
+ * Defines system calls that is used by state machine/service to either send or receive messages
+ * from the Android System.
  */
-@VisibleForTesting
-public class HeadsetSystemInterface {
+class HeadsetSystemInterface {
     private static final String TAG = HeadsetSystemInterface.class.getSimpleName();
 
     private final HeadsetService mHeadsetService;
@@ -70,15 +69,13 @@ public class HeadsetSystemInterface {
         return BluetoothInCallService.getInstance();
     }
 
-    /**
-     * Stop this system interface
-     */
+    /** Stop this system interface */
     public synchronized void stop() {
         mHeadsetPhoneState.cleanup();
     }
 
     /**
-     * Get audio manager. Most audio manager oprations are pass through and therefore are not
+     * Get audio manager. Most audio manager operations are pass through and therefore are not
      * individually managed by this class
      *
      * @return audio manager for setting audio parameters
@@ -125,8 +122,9 @@ public class HeadsetSystemInterface {
         if (bluetoothInCallService != null) {
             BluetoothSinkAudioPolicy callAudioPolicy =
                     mHeadsetService.getHfpCallAudioPolicy(device);
-            if (callAudioPolicy == null || callAudioPolicy.getCallEstablishPolicy()
-                    != BluetoothSinkAudioPolicy.POLICY_NOT_ALLOWED) {
+            if (callAudioPolicy == null
+                    || callAudioPolicy.getCallEstablishPolicy()
+                            != BluetoothSinkAudioPolicy.POLICY_NOT_ALLOWED) {
                 mHeadsetService.setActiveDevice(device);
             }
             bluetoothInCallService.answerCall();
@@ -232,7 +230,7 @@ public class HeadsetSystemInterface {
     /**
      * Get the phone number of this device without incall service
      *
-     * @return emptry if unavailable
+     * @return empty if unavailable
      */
     @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
     private String getNumberWithoutInCallService() {
@@ -278,17 +276,13 @@ public class HeadsetSystemInterface {
             Log.e(TAG, "getSubscriberNumber() failed: mBluetoothInCallService is null");
             Log.i(TAG, "Try to get phone number without mBluetoothInCallService.");
             return getNumberWithoutInCallService();
-
         }
         return bluetoothInCallService.getSubscriberNumber();
     }
 
-
     /**
-     * Ask the Telecomm service to list current list of calls through CLCC response
-     * {@link BluetoothHeadset#clccResponse(int, int, int, int, boolean, String, int)}
-     *
-     * @return
+     * Ask the Telecomm service to list current list of calls through CLCC response {@link
+     * BluetoothHeadset#clccResponse(int, int, int, int, boolean, String, int)}
      */
     @VisibleForTesting
     @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
@@ -323,9 +317,11 @@ public class HeadsetSystemInterface {
      */
     @VisibleForTesting
     public boolean isInCall() {
-        return ((mHeadsetPhoneState.getNumActiveCall() > 0) || (mHeadsetPhoneState.getNumHeldCall()
-                > 0) || ((mHeadsetPhoneState.getCallState() != HeadsetHalConstants.CALL_STATE_IDLE)
-                && (mHeadsetPhoneState.getCallState() != HeadsetHalConstants.CALL_STATE_INCOMING)));
+        return ((mHeadsetPhoneState.getNumActiveCall() > 0)
+                || (mHeadsetPhoneState.getNumHeldCall() > 0)
+                || ((mHeadsetPhoneState.getCallState() != HeadsetHalConstants.CALL_STATE_IDLE)
+                        && (mHeadsetPhoneState.getCallState()
+                                != HeadsetHalConstants.CALL_STATE_INCOMING)));
     }
 
     /**
@@ -351,10 +347,10 @@ public class HeadsetSystemInterface {
     /**
      * Activate voice recognition on Android system
      *
-     * @return true if activation succeeds, caller should wait for
-     * {@link BluetoothHeadset#startVoiceRecognition(BluetoothDevice)} callback that will then
-     * trigger {@link HeadsetService#startVoiceRecognition(BluetoothDevice)}, false if failed to
-     * activate
+     * @return true if activation succeeds, caller should wait for {@link
+     *     BluetoothHeadset#startVoiceRecognition(BluetoothDevice)} callback that will then trigger
+     *     {@link HeadsetService#startVoiceRecognition(BluetoothDevice)}, false if failed to
+     *     activate
      */
     @VisibleForTesting
     public boolean activateVoiceRecognition() {
@@ -372,15 +368,13 @@ public class HeadsetSystemInterface {
     /**
      * Deactivate voice recognition on Android system
      *
-     * @return true if activation succeeds, caller should wait for
-     * {@link BluetoothHeadset#stopVoiceRecognition(BluetoothDevice)} callback that will then
-     * trigger {@link HeadsetService#stopVoiceRecognition(BluetoothDevice)}, false if failed to
-     * activate
+     * @return true if activation succeeds, caller should wait for {@link
+     *     BluetoothHeadset#stopVoiceRecognition(BluetoothDevice)} callback that will then trigger
+     *     {@link HeadsetService#stopVoiceRecognition(BluetoothDevice)}, false if failed to activate
      */
     @VisibleForTesting
     public boolean deactivateVoiceRecognition() {
         // TODO: need a method to deactivate voice recognition on Android
         return true;
     }
-
 }

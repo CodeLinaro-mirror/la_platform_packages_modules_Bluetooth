@@ -21,7 +21,7 @@
  *
  ******************************************************************************/
 
-#define LOG_TAG "a2dp_aac"
+#define LOG_TAG "bluetooth-a2dp"
 
 #include "a2dp_aac.h"
 
@@ -132,7 +132,7 @@ static const tA2DP_DECODER_INTERFACE a2dp_decoder_interface_aac = {
     nullptr,  // decoder_configure
 };
 
-UNUSED_ATTR static tA2DP_STATUS A2DP_CodecInfoMatchesCapabilityAac(
+static tA2DP_STATUS A2DP_CodecInfoMatchesCapabilityAac(
     const tA2DP_AAC_CIE* p_cap, const uint8_t* p_codec_info,
     bool is_capability);
 
@@ -248,7 +248,7 @@ bool A2DP_IsSourceCodecValidAac(const uint8_t* p_codec_info) {
          (A2DP_ParseInfoAac(&cfg_cie, p_codec_info, true) == A2DP_SUCCESS);
 }
 
-bool A2DP_IsSinkCodecValidAac(UNUSED_ATTR const uint8_t* p_codec_info) {
+bool A2DP_IsSinkCodecValidAac(const uint8_t* p_codec_info) {
   tA2DP_AAC_CIE cfg_cie;
 
   /* Use a liberal check when parsing the codec info */
@@ -256,7 +256,7 @@ bool A2DP_IsSinkCodecValidAac(UNUSED_ATTR const uint8_t* p_codec_info) {
          (A2DP_ParseInfoAac(&cfg_cie, p_codec_info, true) == A2DP_SUCCESS);
 }
 
-bool A2DP_IsPeerSourceCodecValidAac(UNUSED_ATTR const uint8_t* p_codec_info) {
+bool A2DP_IsPeerSourceCodecValidAac(const uint8_t* p_codec_info) {
   tA2DP_AAC_CIE cfg_cie;
 
   /* Use a liberal check when parsing the codec info */
@@ -326,12 +326,12 @@ static tA2DP_STATUS A2DP_CodecInfoMatchesCapabilityAac(
   return A2DP_SUCCESS;
 }
 
-bool A2DP_UsesRtpHeaderAac(UNUSED_ATTR bool content_protection_enabled,
-                           UNUSED_ATTR const uint8_t* p_codec_info) {
+bool A2DP_UsesRtpHeaderAac(bool /* content_protection_enabled */,
+                           const uint8_t* /* p_codec_info */) {
   return true;
 }
 
-const char* A2DP_CodecNameAac(UNUSED_ATTR const uint8_t* p_codec_info) {
+const char* A2DP_CodecNameAac(const uint8_t* /* p_codec_info */) {
   return "AAC";
 }
 
@@ -594,9 +594,9 @@ bool A2DP_GetPacketTimestampAac(const uint8_t* p_codec_info,
   return true;
 }
 
-bool A2DP_BuildCodecHeaderAac(UNUSED_ATTR const uint8_t* p_codec_info,
-                              UNUSED_ATTR BT_HDR* p_buf,
-                              UNUSED_ATTR uint16_t frames_per_packet) {
+bool A2DP_BuildCodecHeaderAac(const uint8_t* /* p_codec_info */,
+                              BT_HDR* /* p_buf */,
+                              uint16_t /* frames_per_packet */) {
   return true;
 }
 
@@ -608,7 +608,8 @@ std::string A2DP_CodecInfoStringAac(const uint8_t* p_codec_info) {
 
   a2dp_status = A2DP_ParseInfoAac(&aac_cie, p_codec_info, true);
   if (a2dp_status != A2DP_SUCCESS) {
-    res << "A2DP_ParseInfoAac fail: " << loghex(a2dp_status);
+    res << "A2DP_ParseInfoAac fail: "
+        << loghex(static_cast<uint8_t>(a2dp_status));
     return res.str();
   }
 
@@ -703,12 +704,12 @@ bool A2DP_AdjustCodecAac(uint8_t* p_codec_info) {
 }
 
 btav_a2dp_codec_index_t A2DP_SourceCodecIndexAac(
-    UNUSED_ATTR const uint8_t* p_codec_info) {
+    const uint8_t* /* p_codec_info */) {
   return BTAV_A2DP_CODEC_INDEX_SOURCE_AAC;
 }
 
 btav_a2dp_codec_index_t A2DP_SinkCodecIndexAac(
-    UNUSED_ATTR const uint8_t* p_codec_info) {
+    const uint8_t* /* p_codec_info */) {
   return BTAV_A2DP_CODEC_INDEX_SINK_AAC;
 }
 

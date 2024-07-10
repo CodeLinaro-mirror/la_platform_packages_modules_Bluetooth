@@ -23,6 +23,8 @@
  *
  ******************************************************************************/
 
+#define LOG_TAG "bluetooth-a2dp"
+
 #include <bluetooth/log.h>
 #include <string.h>
 
@@ -888,7 +890,7 @@ void AvdtpScb::Allocate(AvdtpCcb* p_avdtp_ccb,
  * Returns          void.
  *
  ******************************************************************************/
-void avdt_scb_dealloc(AvdtpScb* p_scb, UNUSED_ATTR tAVDT_SCB_EVT* p_data) {
+void avdt_scb_dealloc(AvdtpScb* p_scb, tAVDT_SCB_EVT* /* p_data */) {
   log::verbose("hdl={}", avdt_scb_to_hdl(p_scb));
   p_scb->Recycle();
 }

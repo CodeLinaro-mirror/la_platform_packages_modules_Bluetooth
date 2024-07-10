@@ -27,10 +27,13 @@ cc_library_static {
         "libbluetooth_headers",
     ],
     shared_libs: [
+        "libaconfig_storage_read_api_cc",
         "libchrome",
         "liblog",
+        "server_configurable_flags",
     ],
     static_libs: [
+        "bluetooth_flags_c_lib",
         "libbase",
         "libbluetooth_hci_pdl",
         "libbluetooth_log",
@@ -64,7 +67,12 @@ cc_library_host_shared {
     header_libs: [
         "libbluetooth_headers",
     ],
+    shared_libs: [
+        "libaconfig_storage_read_api_cc",
+        "server_configurable_flags",
+    ],
     static_libs: [
+        "bluetooth_flags_c_lib",
         "libbase",
         "libbluetooth_hci_pdl",
         "libbluetooth_log",

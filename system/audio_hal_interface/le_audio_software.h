@@ -22,9 +22,10 @@
 #include <hardware/audio.h>
 #endif
 
-#include <android_bluetooth_flags.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <functional>
+#include <optional>
 
 #include "bta/le_audio/codec_manager.h"
 #include "bta/le_audio/le_audio_types.h"
@@ -66,8 +67,14 @@ struct StreamCallbacks {
   std::function<bool(const sink_metadata_v7_t&)> on_sink_metadata_update_;
 };
 
-std::vector<::bluetooth::le_audio::set_configurations::AudioSetConfiguration>
-get_offload_capabilities();
+struct OffloadCapabilities {
+  std::vector<bluetooth::le_audio::set_configurations::AudioSetConfiguration>
+      unicast_offload_capabilities;
+  std::vector<bluetooth::le_audio::set_configurations::AudioSetConfiguration>
+      broadcast_offload_capabilities;
+};
+
+OffloadCapabilities get_offload_capabilities();
 
 class LeAudioClientInterface {
  public:
@@ -121,6 +128,18 @@ class LeAudioClientInterface {
     // Read the stream of bytes sinked to us by the upper layers
     size_t Read(uint8_t* p_buf, uint32_t len);
     bool IsBroadcaster() { return is_broadcaster_; }
+    std::optional<::bluetooth::le_audio::broadcaster::BroadcastConfiguration>
+    GetBroadcastConfig(
+        const std::vector<std::pair<
+            ::bluetooth::le_audio::types::LeAudioContextType, uint8_t>>&
+            subgroup_quality,
+        const std::optional<
+            std::vector<::bluetooth::le_audio::types::acs_ac_record>>& pacs)
+        const;
+    std::optional<
+        ::bluetooth::le_audio::set_configurations::AudioSetConfiguration>
+    GetUnicastConfig(const ::bluetooth::le_audio::CodecManager::
+                         UnicastConfigurationRequirements& requirements) const;
 
    private:
     bool is_broadcaster_ = false;

@@ -39,7 +39,7 @@ import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import com.android.modules.expresslog.Counter
 import com.android.server.bluetooth.airplane.hasUserToggledApm as hasUserToggledApm
-import com.android.server.bluetooth.airplane.isOn as isAirplaneModeOn
+import com.android.server.bluetooth.airplane.isOnOverrode as isAirplaneModeOn
 import com.android.server.bluetooth.satellite.isOn as isSatelliteModeOn
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -109,6 +109,10 @@ public fun notifyBluetoothOn(context: Context) {
         } else {
             Log.i(TAG, "Feature was set to its default value ${defaultFeatureValue}")
         }
+    } else {
+        // When Bluetooth turned on state, any saved time will be obsolete.
+        // This happen only when the phone reboot while Bluetooth is ON
+        Timer.resetStorage(context.contentResolver)
     }
 }
 
@@ -138,6 +142,7 @@ public fun setUserEnabled(
     Counter.logIncrement(
         if (status) "bluetooth.value_auto_on_enabled" else "bluetooth.value_auto_on_disabled"
     )
+    Timer.resetStorage(context.contentResolver)
     resetAutoOnTimerForUser(looper, context, state, callback_on)
 }
 
@@ -204,7 +209,7 @@ private constructor(
             return date?.let { LocalDateTime.parse(it) }
         }
 
-        private fun resetStorage(resolver: ContentResolver) {
+        fun resetStorage(resolver: ContentResolver) {
             Settings.Secure.putString(resolver, STORAGE_KEY, null)
         }
 

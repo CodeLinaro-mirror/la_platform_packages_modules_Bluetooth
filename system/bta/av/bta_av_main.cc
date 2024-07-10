@@ -22,7 +22,7 @@
  *
  ******************************************************************************/
 
-#define LOG_TAG "bt_bta_av"
+#define LOG_TAG "bluetooth-a2dp"
 
 #include <bluetooth/log.h>
 
@@ -165,13 +165,19 @@ static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
       return;
     }
     if (bta_av_cb.sdp_a2dp_handle) {
-      get_legacy_stack_sdp_api()->handle.SDP_DeleteRecord(
-          bta_av_cb.sdp_a2dp_handle);
+      if (!get_legacy_stack_sdp_api()->handle.SDP_DeleteRecord(
+              bta_av_cb.sdp_a2dp_handle)) {
+        log::warn("Unable to delete SDP record handle:{}",
+                  bta_av_cb.sdp_a2dp_handle);
+      }
       bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
     }
     if (bta_av_cb.sdp_a2dp_snk_handle) {
-      get_legacy_stack_sdp_api()->handle.SDP_DeleteRecord(
-          bta_av_cb.sdp_a2dp_snk_handle);
+      if (!get_legacy_stack_sdp_api()->handle.SDP_DeleteRecord(
+              bta_av_cb.sdp_a2dp_snk_handle)) {
+        log::warn("Unable to delete SDP record handle:{}",
+                  bta_av_cb.sdp_a2dp_snk_handle);
+      }
       bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SINK);
     }
     // deregister from AVDT
@@ -355,8 +361,7 @@ void tBTA_AV_SCB::OnConnected(const RawAddress& peer_address) {
   peer_address_ = peer_address;
 
   if (peer_address.IsEmpty()) {
-    log::error("Invalid peer address: {}",
-               ADDRESS_TO_LOGGABLE_CSTR(peer_address));
+    log::error("Invalid peer address: {}", peer_address);
     return;
   }
 
@@ -366,8 +371,7 @@ void tBTA_AV_SCB::OnConnected(const RawAddress& peer_address) {
   if (!btif_config_get_bin(peer_address_.ToString(),
                            BTIF_STORAGE_KEY_AVDTP_VERSION,
                            (uint8_t*)&avdtp_version, &version_value_size)) {
-    log::warn("Failed to read cached peer AVDTP version for {}",
-              ADDRESS_TO_LOGGABLE_CSTR(peer_address_));
+    log::warn("Failed to read cached peer AVDTP version for {}", peer_address_);
   } else {
     SetAvdtpVersion(avdtp_version);
   }
@@ -380,8 +384,8 @@ void tBTA_AV_SCB::OnDisconnected() {
 
 void tBTA_AV_SCB::SetAvdtpVersion(uint16_t avdtp_version) {
   avdtp_version_ = avdtp_version;
-  log::info("AVDTP version for {} set to 0x{:x}",
-            ADDRESS_TO_LOGGABLE_CSTR(peer_address_), avdtp_version_);
+  log::info("AVDTP version for {} set to 0x{:x}", peer_address_,
+            avdtp_version_);
 }
 
 /*******************************************************************************
@@ -411,8 +415,7 @@ void bta_av_conn_cback(uint8_t /* handle */, const RawAddress& bd_addr,
     if (p_scb) {
       log::verbose("bta_handle x{:x}, role x{:x}", p_scb->hndl, p_scb->role);
     }
-    log::info("conn_cback bd_addr: {}, scb_index: {}",
-              ADDRESS_TO_LOGGABLE_CSTR(bd_addr), scb_index);
+    log::info("conn_cback bd_addr: {}, scb_index: {}", bd_addr, scb_index);
     bta_sys_sendmsg(p_msg);
   }
 }
@@ -720,7 +723,8 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
             bta_ar_reg_avrc_for_src_sink_coexist(
                 UUID_SERVCLASS_AV_REMOTE_CONTROL, NULL, NULL,
                 p_bta_av_cfg->avrc_ct_cat, BTA_ID_AVK,
-                (bta_av_cb.features & BTA_AV_FEAT_BROWSE), AVRC_REV_1_5);
+                (bta_av_cb.features & BTA_AV_FEAT_BROWSE),
+                AVRC_GetControlProfileVersion());
         } else {
           if (profile_initialized == UUID_SERVCLASS_AUDIO_SOURCE &&
               !is_new_avrcp_enabled()) {
@@ -877,8 +881,8 @@ bool bta_av_chk_start(tBTA_AV_SCB* p_scb) {
   log::info(
       "peer {} channel:{} bta_av_cb.audio_open_cnt:{} role:0x{:x} "
       "features:0x{:x} start:{}",
-      ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()), p_scb->chnl,
-      bta_av_cb.audio_open_cnt, p_scb->role, bta_av_cb.features, start);
+      p_scb->PeerAddress(), p_scb->chnl, bta_av_cb.audio_open_cnt, p_scb->role,
+      bta_av_cb.features, start);
   return start;
 }
 
@@ -927,8 +931,7 @@ static void bta_av_sys_rs_cback(tBTA_SYS_CONN_STATUS /* status */,
   uint8_t peer_idx = 0;
 
   log::verbose("peer {} new_role:{} hci_status:0x{:x} bta_av_cb.rs_idx:{}",
-               ADDRESS_TO_LOGGABLE_CSTR(peer_addr), new_role, hci_status,
-               bta_av_cb.rs_idx);
+               peer_addr, new_role, hci_status, bta_av_cb.rs_idx);
 
   for (i = 0; i < BTA_AV_NUM_STRS; i++) {
     /* loop through all the SCBs to find matching peer addresses and report the
@@ -940,8 +943,7 @@ static void bta_av_sys_rs_cback(tBTA_SYS_CONN_STATUS /* status */,
           (tBTA_AV_ROLE_RES*)osi_malloc(sizeof(tBTA_AV_ROLE_RES));
       log::verbose(
           "peer {} found: new_role:{}, hci_status:0x{:x} bta_handle:0x{:x}",
-          ADDRESS_TO_LOGGABLE_CSTR(peer_addr), new_role, hci_status,
-          p_scb->hndl);
+          peer_addr, new_role, hci_status, p_scb->hndl);
       p_buf->hdr.event = BTA_AV_ROLE_CHANGE_EVT;
       p_buf->hdr.layer_specific = p_scb->hndl;
       p_buf->new_role = new_role;
@@ -968,8 +970,8 @@ static void bta_av_sys_rs_cback(tBTA_SYS_CONN_STATUS /* status */,
     }
     if (p_scb && p_scb->q_tag == BTA_AV_Q_TAG_OPEN) {
       log::verbose("peer {} rs_idx:{}, bta_handle:0x{:x} q_tag:{}",
-                   ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()),
-                   bta_av_cb.rs_idx, p_scb->hndl, p_scb->q_tag);
+                   p_scb->PeerAddress(), bta_av_cb.rs_idx, p_scb->hndl,
+                   p_scb->q_tag);
 
       if (HCI_SUCCESS == hci_status || HCI_ERR_NO_CONNECTION == hci_status) {
         p_scb->q_info.open.switch_res = BTA_AV_RS_OK;
@@ -977,9 +979,7 @@ static void bta_av_sys_rs_cback(tBTA_SYS_CONN_STATUS /* status */,
         log::error(
             "peer {} (p_scb peer {}) role switch failed: new_role:{} "
             "hci_status:0x{:x}",
-            ADDRESS_TO_LOGGABLE_CSTR(peer_addr),
-            ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()), new_role,
-            hci_status);
+            peer_addr, p_scb->PeerAddress(), new_role, hci_status);
         p_scb->q_info.open.switch_res = BTA_AV_RS_FAIL;
       }
 
@@ -1013,8 +1013,7 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status,
             num_sco_links);
   if (num_sco_links) {
     bta_av_cb.sco_occupied = true;
-    log::debug("SCO occupied peer:{} status:{}",
-               ADDRESS_TO_LOGGABLE_CSTR(peer_addr),
+    log::debug("SCO occupied peer:{} status:{}", peer_addr,
                bta_sys_conn_status_text(status));
 
     if (bta_av_cb.features & BTA_AV_FEAT_NO_SCO_SSPD) {
@@ -1037,8 +1036,7 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status,
     }
   } else {
     bta_av_cb.sco_occupied = false;
-    log::debug("SCO unoccupied peer:{} status:{}",
-               ADDRESS_TO_LOGGABLE_CSTR(peer_addr),
+    log::debug("SCO unoccupied peer:{} status:{}", peer_addr,
                bta_sys_conn_status_text(status));
 
     if (bta_av_cb.features & BTA_AV_FEAT_NO_SCO_SSPD) {
@@ -1123,8 +1121,7 @@ bool bta_av_switch_if_needed(tBTA_AV_SCB* p_scb) {
 bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits) {
   tHCI_ROLE role;
   if (BTM_GetRole(p_scb->PeerAddress(), &role) != BTM_SUCCESS) {
-    log::warn("Unable to find link role for device:{}",
-              ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()));
+    log::warn("Unable to find link role for device:{}", p_scb->PeerAddress());
     return true;
   }
 
@@ -1132,8 +1129,8 @@ bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits) {
     log::info(
         "Switch link role to central peer:{} bta_handle:0x{:x} current_role:{} "
         "conn_audio:0x{:x} bits:{} features:0x{:x}",
-        ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()), p_scb->hndl,
-        RoleText(role), bta_av_cb.conn_audio, bits, bta_av_cb.features);
+        p_scb->PeerAddress(), p_scb->hndl, RoleText(role), bta_av_cb.conn_audio,
+        bits, bta_av_cb.features);
     const tBTM_STATUS status = BTM_SwitchRoleToCentral(p_scb->PeerAddress());
     switch (status) {
       case BTM_CMD_STARTED:
@@ -1144,14 +1141,13 @@ bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits) {
         // a result such that a timer will not start to repeatedly
         // try something not possible.
         log::error("Link can never role switch to central device:{}",
-                   ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()));
+                   p_scb->PeerAddress());
         break;
       default:
         /* can not switch role on SCB - start the timer on SCB */
         p_scb->wait |= BTA_AV_WAIT_ROLE_SW_RES_START;
         log::error("Unable to switch role to central device:{} error:{}",
-                   ADDRESS_TO_LOGGABLE_CSTR(p_scb->PeerAddress()),
-                   btm_status_text(status));
+                   p_scb->PeerAddress(), btm_status_text(status));
         return false;
     }
   }

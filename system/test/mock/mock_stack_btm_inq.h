@@ -28,7 +28,6 @@
 // Original included files, if any
 
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -291,16 +290,6 @@ struct BTM_WriteEIR {
 };
 extern struct BTM_WriteEIR BTM_WriteEIR;
 
-// Name: SendRemoteNameRequest
-// Params: const RawAddress& raw_address
-// Return: void
-struct SendRemoteNameRequest {
-  std::function<void(const RawAddress& raw_address)> body{
-      [](const RawAddress& /* raw_address */) {}};
-  void operator()(const RawAddress& raw_address) { body(raw_address); };
-};
-extern struct SendRemoteNameRequest SendRemoteNameRequest;
-
 // Name: btm_clear_all_pending_le_entry
 // Params: void
 // Return: void
@@ -328,15 +317,6 @@ struct btm_clr_inq_result_flt {
   void operator()(void) { body(); };
 };
 extern struct btm_clr_inq_result_flt btm_clr_inq_result_flt;
-
-// Name: btm_inq_clear_ssp
-// Params: void
-// Return: void
-struct btm_inq_clear_ssp {
-  std::function<void(void)> body{[](void) {}};
-  void operator()(void) { body(); };
-};
-extern struct btm_inq_clear_ssp btm_inq_clear_ssp;
 
 // Name: btm_inq_db_find
 // Params: const RawAddress& p_bda

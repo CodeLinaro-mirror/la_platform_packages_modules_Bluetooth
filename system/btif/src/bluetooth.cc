@@ -27,8 +27,8 @@
 
 #define LOG_TAG "bt_btif"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 #include <hardware/bluetooth.h>
 #include <hardware/bluetooth_headset_interface.h>
 #include <hardware/bt_av.h>
@@ -45,7 +45,6 @@
 #include <hardware/bt_sdp.h>
 #include <hardware/bt_sock.h>
 #include <hardware/bt_vc.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -94,7 +93,6 @@
 #include "device/include/interop_config.h"
 #include "internal_include/bt_target.h"
 #include "main/shim/dumpsys.h"
-#include "os/log.h"
 #include "os/parameter_provider.h"
 #include "osi/include/alarm.h"
 #include "osi/include/allocator.h"
@@ -105,6 +103,7 @@
 #include "stack/include/a2dp_api.h"
 #include "stack/include/avdt_api.h"
 #include "stack/include/btm_api.h"
+#include "stack/include/btm_client_interface.h"
 #include "stack/include/hfp_lc3_decoder.h"
 #include "stack/include/hfp_lc3_encoder.h"
 #include "stack/include/hfp_msbc_decoder.h"
@@ -333,7 +332,7 @@ struct CoreInterfaceImpl : bluetooth::core::CoreInterface {
   }
 
   void onLinkDown(const RawAddress& bd_addr) override {
-    if (IS_FLAG_ENABLED(a2dp_concurrent_source_sink)) {
+    if (com::android::bluetooth::flags::a2dp_concurrent_source_sink()) {
       btif_av_acl_disconnected(bd_addr, A2dpType::kSource);
       btif_av_acl_disconnected(bd_addr, A2dpType::kSink);
     } else {
@@ -397,7 +396,9 @@ static bluetooth::core::CoreInterface* CreateInterfaceToProfiles() {
  ******************************************************************************/
 
 static bool interface_ready(void) { return bt_hal_cbacks != NULL; }
-void set_hal_cbacks(bt_callbacks_t* callbacks) { bt_hal_cbacks = callbacks; }
+static void set_hal_cbacks(bt_callbacks_t* callbacks) {
+  bt_hal_cbacks = callbacks;
+}
 
 static bool is_profile(const char* p1, const char* p2) {
   log::assert_that(p1 != nullptr, "assert failed: p1 != nullptr");
@@ -537,10 +538,9 @@ static int set_adapter_property(const bt_property_t* property) {
     case BT_PROPERTY_ADAPTER_SCAN_MODE:
     case BT_PROPERTY_ADAPTER_DISCOVERABLE_TIMEOUT:
     case BT_PROPERTY_CLASS_OF_DEVICE:
-    case BT_PROPERTY_LOCAL_IO_CAPS:
       break;
     default:
-      return BT_STATUS_FAIL;
+      return BT_STATUS_UNHANDLED;
   }
 
   do_in_main_thread(FROM_HERE, base::BindOnce(
@@ -652,8 +652,7 @@ static int cancel_bond(const RawAddress* bd_addr) {
 
 static int remove_bond(const RawAddress* bd_addr) {
   if (is_restricted_mode() && !btif_storage_is_restricted_device(bd_addr)) {
-    log::info("{} cannot be removed in restricted mode",
-              ADDRESS_TO_LOGGABLE_CSTR(*bd_addr));
+    log::info("{} cannot be removed in restricted mode", *bd_addr);
     return BT_STATUS_SUCCESS;
   }
 
@@ -674,18 +673,16 @@ static int get_connection_state(const RawAddress* bd_addr) {
 
   if (bd_addr == nullptr) return 0;
 
-  if (IS_FLAG_ENABLED(api_get_connection_state_sync_on_main)) {
-    return btif_dm_get_connection_state_sync(*bd_addr);
-  } else {
-    return btif_dm_get_connection_state(*bd_addr);
-  }
+  return btif_dm_get_connection_state(*bd_addr);
 }
 
 static int pin_reply(const RawAddress* bd_addr, uint8_t accept, uint8_t pin_len,
                      bt_pin_code_t* pin_code) {
   bt_pin_code_t tmp_pin_code;
   if (!interface_ready()) return BT_STATUS_NOT_READY;
-  if (pin_code == nullptr || pin_len > PIN_CODE_LEN) return BT_STATUS_FAIL;
+  if (pin_code == nullptr || pin_len > PIN_CODE_LEN) {
+    return BT_STATUS_PARM_INVALID;
+  }
 
   memcpy(&tmp_pin_code, pin_code, pin_len);
 
@@ -697,7 +694,7 @@ static int pin_reply(const RawAddress* bd_addr, uint8_t accept, uint8_t pin_len,
 static int ssp_reply(const RawAddress* bd_addr, bt_ssp_variant_t variant,
                      uint8_t accept, uint32_t /* passkey */) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
-  if (variant == BT_SSP_VARIANT_PASSKEY_ENTRY) return BT_STATUS_FAIL;
+  if (variant == BT_SSP_VARIANT_PASSKEY_ENTRY) return BT_STATUS_PARM_INVALID;
 
   do_in_main_thread(
       FROM_HERE, base::BindOnce(btif_dm_ssp_reply, *bd_addr, variant, accept));
@@ -746,11 +743,9 @@ static int disconnect_all_acls() {
 
 static void le_rand_btif_cb(uint64_t random_number) {
   log::verbose("");
-  do_in_jni_thread(
-      FROM_HERE,
-      base::BindOnce(
-          [](uint64_t random) { HAL_CBACK(bt_hal_cbacks, le_rand_cb, random); },
-          random_number));
+  do_in_jni_thread(base::BindOnce(
+      [](uint64_t random) { HAL_CBACK(bt_hal_cbacks, le_rand_cb, random); },
+      random_number));
 }
 
 static int le_rand() {
@@ -812,6 +807,7 @@ static int set_event_filter_connection_setup_all_devices() {
 }
 
 static void dump(int fd, const char** arguments) {
+  log::debug("Started bluetooth dumpsys");
   btif_debug_conn_dump(fd);
   btif_debug_bond_event_dump(fd);
   btif_debug_linkkey_type_dump(fd);
@@ -841,6 +837,7 @@ static void dump(int fd, const char** arguments) {
   DumpsysBtaDm(fd);
   bluetooth::shim::Dump(fd, arguments);
   power_telemetry::GetInstance().Dumpsys(fd);
+  log::debug("Finished bluetooth dumpsys");
 }
 
 static void dumpMetrics(std::string* output) {
@@ -854,8 +851,7 @@ static int get_remote_pbap_pce_version(const RawAddress* bd_addr) {
   if (!btif_config_get_bin(bd_addr->ToString(),
                            BTIF_STORAGE_KEY_PBAP_PCE_VERSION,
                            (uint8_t*)&pce_version, &version_value_size)) {
-    log::warn("Failed to read cached peer PCE version for {}",
-              ADDRESS_TO_LOGGABLE_CSTR(*bd_addr));
+    log::warn("Failed to read cached peer PCE version for {}", *bd_addr);
   }
   return pce_version;
 }
@@ -933,12 +929,8 @@ static const void* get_profile_interface(const char* profile_id) {
   if (is_profile(profile_id, BT_PROFILE_CSIS_CLIENT_ID))
     return btif_csis_client_get_interface();
 
-  bool isBqrEnabled =
-      bluetooth::common::InitFlags::IsBluetoothQualityReportCallbackEnabled();
-  if (isBqrEnabled) {
-    if (is_profile(profile_id, BT_BQR_ID))
-      return bluetooth::bqr::getBluetoothQualityReportInterface();
-  }
+  if (is_profile(profile_id, BT_BQR_ID))
+    return bluetooth::bqr::getBluetoothQualityReportInterface();
 
   return NULL;
 }
@@ -954,7 +946,7 @@ int dut_mode_configure(uint8_t enable) {
 
 int dut_mode_send(uint16_t opcode, uint8_t* buf, uint8_t len) {
   if (!interface_ready()) return BT_STATUS_NOT_READY;
-  if (!btif_is_dut_mode()) return BT_STATUS_FAIL;
+  if (!btif_is_dut_mode()) return BT_STATUS_UNEXPECTED_STATE;
 
   uint8_t* copy = (uint8_t*)osi_calloc(len);
   memcpy(copy, buf, len);
@@ -995,19 +987,15 @@ int le_test_mode(uint16_t opcode, uint8_t* buf, uint8_t len) {
 static bt_os_callouts_t* wakelock_os_callouts_saved = nullptr;
 
 static int acquire_wake_lock_cb(const char* lock_name) {
-  return do_in_jni_thread(
-      FROM_HERE,
-      base::BindOnce(
-          base::IgnoreResult(wakelock_os_callouts_saved->acquire_wake_lock),
-          lock_name));
+  return do_in_jni_thread(base::BindOnce(
+      base::IgnoreResult(wakelock_os_callouts_saved->acquire_wake_lock),
+      lock_name));
 }
 
 static int release_wake_lock_cb(const char* lock_name) {
-  return do_in_jni_thread(
-      FROM_HERE,
-      base::BindOnce(
-          base::IgnoreResult(wakelock_os_callouts_saved->release_wake_lock),
-          lock_name));
+  return do_in_jni_thread(base::BindOnce(
+      base::IgnoreResult(wakelock_os_callouts_saved->release_wake_lock),
+      lock_name));
 }
 
 static bt_os_callouts_t wakelock_os_callouts_jni = {
@@ -1058,7 +1046,15 @@ static int set_dynamic_audio_buffer_size(int codec, int size) {
 static bool allow_low_latency_audio(bool allowed,
                                     const RawAddress& /* address */) {
   log::info("{}", allowed);
-  bluetooth::audio::a2dp::set_audio_low_latency_mode_allowed(allowed);
+  if (com::android::bluetooth::flags::a2dp_async_allow_low_latency()) {
+    do_in_main_thread(
+        FROM_HERE,
+        base::BindOnce(
+            bluetooth::audio::a2dp::set_audio_low_latency_mode_allowed,
+            allowed));
+  } else {
+    bluetooth::audio::a2dp::set_audio_low_latency_mode_allowed(allowed);
+  }
   return true;
 }
 
@@ -1263,94 +1259,82 @@ bt_property_t* property_deep_copy_array(int num_properties,
 }
 
 void invoke_adapter_state_changed_cb(bt_state_t state) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bt_state_t state) {
-                                    HAL_CBACK(bt_hal_cbacks,
-                                              adapter_state_changed_cb, state);
-                                  },
-                                  state));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_state_t state) {
+        HAL_CBACK(bt_hal_cbacks, adapter_state_changed_cb, state);
+      },
+      state));
 }
 
 void invoke_adapter_properties_cb(bt_status_t status, int num_properties,
                                   bt_property_t* properties) {
-  do_in_jni_thread(FROM_HERE,
-                   base::BindOnce(
-                       [](bt_status_t status, int num_properties,
-                          bt_property_t* properties) {
-                         HAL_CBACK(bt_hal_cbacks, adapter_properties_cb, status,
-                                   num_properties, properties);
-                         if (properties) {
-                           osi_free(properties);
-                         }
-                       },
-                       status, num_properties,
-                       property_deep_copy_array(num_properties, properties)));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_status_t status, int num_properties, bt_property_t* properties) {
+        HAL_CBACK(bt_hal_cbacks, adapter_properties_cb, status, num_properties,
+                  properties);
+        if (properties) {
+          osi_free(properties);
+        }
+      },
+      status, num_properties,
+      property_deep_copy_array(num_properties, properties)));
 }
 
 void invoke_remote_device_properties_cb(bt_status_t status, RawAddress bd_addr,
                                         int num_properties,
                                         bt_property_t* properties) {
-  do_in_jni_thread(
-      FROM_HERE, base::BindOnce(
-                     [](bt_status_t status, RawAddress bd_addr,
-                        int num_properties, bt_property_t* properties) {
-                       HAL_CBACK(bt_hal_cbacks, remote_device_properties_cb,
-                                 status, &bd_addr, num_properties, properties);
-                       if (properties) {
-                         osi_free(properties);
-                       }
-                     },
-                     status, bd_addr, num_properties,
-                     property_deep_copy_array(num_properties, properties)));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_status_t status, RawAddress bd_addr, int num_properties,
+         bt_property_t* properties) {
+        HAL_CBACK(bt_hal_cbacks, remote_device_properties_cb, status, &bd_addr,
+                  num_properties, properties);
+        if (properties) {
+          osi_free(properties);
+        }
+      },
+      status, bd_addr, num_properties,
+      property_deep_copy_array(num_properties, properties)));
 }
 
 void invoke_device_found_cb(int num_properties, bt_property_t* properties) {
-  do_in_jni_thread(FROM_HERE,
-                   base::BindOnce(
-                       [](int num_properties, bt_property_t* properties) {
-                         HAL_CBACK(bt_hal_cbacks, device_found_cb,
-                                   num_properties, properties);
-                         if (properties) {
-                           osi_free(properties);
-                         }
-                       },
-                       num_properties,
-                       property_deep_copy_array(num_properties, properties)));
+  do_in_jni_thread(base::BindOnce(
+      [](int num_properties, bt_property_t* properties) {
+        HAL_CBACK(bt_hal_cbacks, device_found_cb, num_properties, properties);
+        if (properties) {
+          osi_free(properties);
+        }
+      },
+      num_properties, property_deep_copy_array(num_properties, properties)));
 }
 
 void invoke_discovery_state_changed_cb(bt_discovery_state_t state) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bt_discovery_state_t state) {
-                                    HAL_CBACK(bt_hal_cbacks,
-                                              discovery_state_changed_cb,
-                                              state);
-                                  },
-                                  state));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_discovery_state_t state) {
+        HAL_CBACK(bt_hal_cbacks, discovery_state_changed_cb, state);
+      },
+      state));
 }
 
 void invoke_pin_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
                            uint32_t cod, bool min_16_digit) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](RawAddress bd_addr, bt_bdname_t bd_name,
-                                     uint32_t cod, bool min_16_digit) {
-                                    HAL_CBACK(bt_hal_cbacks, pin_request_cb,
-                                              &bd_addr, &bd_name, cod,
-                                              min_16_digit);
-                                  },
-                                  bd_addr, bd_name, cod, min_16_digit));
+  do_in_jni_thread(base::BindOnce(
+      [](RawAddress bd_addr, bt_bdname_t bd_name, uint32_t cod,
+         bool min_16_digit) {
+        HAL_CBACK(bt_hal_cbacks, pin_request_cb, &bd_addr, &bd_name, cod,
+                  min_16_digit);
+      },
+      bd_addr, bd_name, cod, min_16_digit));
 }
 
-void invoke_ssp_request_cb(RawAddress bd_addr, bt_bdname_t bd_name,
-                           uint32_t cod, bt_ssp_variant_t pairing_variant,
+void invoke_ssp_request_cb(RawAddress bd_addr, bt_ssp_variant_t pairing_variant,
                            uint32_t pass_key) {
-  do_in_jni_thread(FROM_HERE,
-                   base::BindOnce(
-                       [](RawAddress bd_addr, bt_bdname_t bd_name, uint32_t cod,
-                          bt_ssp_variant_t pairing_variant, uint32_t pass_key) {
-                         HAL_CBACK(bt_hal_cbacks, ssp_request_cb, &bd_addr,
-                                   &bd_name, cod, pairing_variant, pass_key);
-                       },
-                       bd_addr, bd_name, cod, pairing_variant, pass_key));
+  do_in_jni_thread(base::BindOnce(
+      [](RawAddress bd_addr, bt_ssp_variant_t pairing_variant,
+         uint32_t pass_key) {
+        HAL_CBACK(bt_hal_cbacks, ssp_request_cb, &bd_addr, pairing_variant,
+                  pass_key);
+      },
+      bd_addr, pairing_variant, pass_key));
 }
 
 void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
@@ -1359,7 +1343,10 @@ void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
   log::info("");
   bt_oob_data_t oob_data = {};
   const char* local_name;
-  BTM_ReadLocalDeviceName(&local_name);
+  if (get_btm_client_interface().local.BTM_ReadLocalDeviceName(&local_name) !=
+      BTM_SUCCESS) {
+    log::warn("Unable to read local device name");
+  }
   for (int i = 0; i < BD_NAME_LEN; i++) {
     oob_data.device_name[i] = local_name[i];
   }
@@ -1386,13 +1373,11 @@ void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
   // of itself. 16 + 16 + 2 = 34 Data 0x0022 Little Endian order 0x2200
   oob_data.oob_data_length[0] = 0;
   oob_data.oob_data_length[1] = 34;
-  bt_status_t status = do_in_jni_thread(
-      FROM_HERE, base::BindOnce(
-                     [](tBT_TRANSPORT t, bt_oob_data_t oob_data) {
-                       HAL_CBACK(bt_hal_cbacks, generate_local_oob_data_cb, t,
-                                 oob_data);
-                     },
-                     t, oob_data));
+  bt_status_t status = do_in_jni_thread(base::BindOnce(
+      [](tBT_TRANSPORT t, bt_oob_data_t oob_data) {
+        HAL_CBACK(bt_hal_cbacks, generate_local_oob_data_cb, t, oob_data);
+      },
+      t, oob_data));
   if (status != BT_STATUS_SUCCESS) {
     log::error("Failed to call callback!");
   }
@@ -1400,88 +1385,78 @@ void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c,
 
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr,
                                   bt_bond_state_t state, int fail_reason) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bt_status_t status, RawAddress bd_addr,
-                                     bt_bond_state_t state, int fail_reason) {
-                                    HAL_CBACK(bt_hal_cbacks,
-                                              bond_state_changed_cb, status,
-                                              &bd_addr, state, fail_reason);
-                                  },
-                                  status, bd_addr, state, fail_reason));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_status_t status, RawAddress bd_addr, bt_bond_state_t state,
+         int fail_reason) {
+        HAL_CBACK(bt_hal_cbacks, bond_state_changed_cb, status, &bd_addr, state,
+                  fail_reason);
+      },
+      status, bd_addr, state, fail_reason));
 }
 
 void invoke_address_consolidate_cb(RawAddress main_bd_addr,
                                    RawAddress secondary_bd_addr) {
-  do_in_jni_thread(
-      FROM_HERE, base::BindOnce(
-                     [](RawAddress main_bd_addr, RawAddress secondary_bd_addr) {
-                       HAL_CBACK(bt_hal_cbacks, address_consolidate_cb,
-                                 &main_bd_addr, &secondary_bd_addr);
-                     },
-                     main_bd_addr, secondary_bd_addr));
+  do_in_jni_thread(base::BindOnce(
+      [](RawAddress main_bd_addr, RawAddress secondary_bd_addr) {
+        HAL_CBACK(bt_hal_cbacks, address_consolidate_cb, &main_bd_addr,
+                  &secondary_bd_addr);
+      },
+      main_bd_addr, secondary_bd_addr));
 }
 
 void invoke_le_address_associate_cb(RawAddress main_bd_addr,
                                     RawAddress secondary_bd_addr) {
-  do_in_jni_thread(
-      FROM_HERE, base::BindOnce(
-                     [](RawAddress main_bd_addr, RawAddress secondary_bd_addr) {
-                       HAL_CBACK(bt_hal_cbacks, le_address_associate_cb,
-                                 &main_bd_addr, &secondary_bd_addr);
-                     },
-                     main_bd_addr, secondary_bd_addr));
+  do_in_jni_thread(base::BindOnce(
+      [](RawAddress main_bd_addr, RawAddress secondary_bd_addr) {
+        HAL_CBACK(bt_hal_cbacks, le_address_associate_cb, &main_bd_addr,
+                  &secondary_bd_addr);
+      },
+      main_bd_addr, secondary_bd_addr));
 }
 void invoke_acl_state_changed_cb(bt_status_t status, RawAddress bd_addr,
                                  bt_acl_state_t state, int transport_link_type,
                                  bt_hci_error_code_t hci_reason,
                                  bt_conn_direction_t direction,
                                  uint16_t acl_handle) {
-  do_in_jni_thread(
-      FROM_HERE,
-      base::BindOnce(
-          [](bt_status_t status, RawAddress bd_addr, bt_acl_state_t state,
-             int transport_link_type, bt_hci_error_code_t hci_reason,
-             bt_conn_direction_t direction, uint16_t acl_handle) {
-            HAL_CBACK(bt_hal_cbacks, acl_state_changed_cb, status, &bd_addr,
-                      state, transport_link_type, hci_reason, direction,
-                      acl_handle);
-          },
-          status, bd_addr, state, transport_link_type, hci_reason, direction,
-          acl_handle));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_status_t status, RawAddress bd_addr, bt_acl_state_t state,
+         int transport_link_type, bt_hci_error_code_t hci_reason,
+         bt_conn_direction_t direction, uint16_t acl_handle) {
+        HAL_CBACK(bt_hal_cbacks, acl_state_changed_cb, status, &bd_addr, state,
+                  transport_link_type, hci_reason, direction, acl_handle);
+      },
+      status, bd_addr, state, transport_link_type, hci_reason, direction,
+      acl_handle));
 }
 
 void invoke_thread_evt_cb(bt_cb_thread_evt event) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bt_cb_thread_evt event) {
-                                    HAL_CBACK(bt_hal_cbacks, thread_evt_cb,
-                                              event);
-                                    if (event == DISASSOCIATE_JVM) {
-                                      bt_hal_cbacks = NULL;
-                                    }
-                                  },
-                                  event));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_cb_thread_evt event) {
+        HAL_CBACK(bt_hal_cbacks, thread_evt_cb, event);
+        if (event == DISASSOCIATE_JVM) {
+          bt_hal_cbacks = NULL;
+        }
+      },
+      event));
 }
 
 void invoke_le_test_mode_cb(bt_status_t status, uint16_t count) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bt_status_t status, uint16_t count) {
-                                    HAL_CBACK(bt_hal_cbacks, le_test_mode_cb,
-                                              status, count);
-                                  },
-                                  status, count));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_status_t status, uint16_t count) {
+        HAL_CBACK(bt_hal_cbacks, le_test_mode_cb, status, count);
+      },
+      status, count));
 }
 
 // takes ownership of |uid_data|
 void invoke_energy_info_cb(bt_activity_energy_info energy_info,
                            bt_uid_traffic_t* uid_data) {
-  do_in_jni_thread(
-      FROM_HERE,
-      base::BindOnce(
-          [](bt_activity_energy_info energy_info, bt_uid_traffic_t* uid_data) {
-            HAL_CBACK(bt_hal_cbacks, energy_info_cb, &energy_info, uid_data);
-            osi_free(uid_data);
-          },
-          energy_info, uid_data));
+  do_in_jni_thread(base::BindOnce(
+      [](bt_activity_energy_info energy_info, bt_uid_traffic_t* uid_data) {
+        HAL_CBACK(bt_hal_cbacks, energy_info_cb, &energy_info, uid_data);
+        osi_free(uid_data);
+      },
+      energy_info, uid_data));
 }
 
 void invoke_link_quality_report_cb(uint64_t timestamp, int report_id, int rssi,
@@ -1489,7 +1464,6 @@ void invoke_link_quality_report_cb(uint64_t timestamp, int report_id, int rssi,
                                    int packets_not_receive_count,
                                    int negative_acknowledgement_count) {
   do_in_jni_thread(
-      FROM_HERE,
       base::BindOnce(
           [](uint64_t timestamp, int report_id, int rssi, int snr,
              int retransmission_count, int packets_not_receive_count,
@@ -1504,29 +1478,31 @@ void invoke_link_quality_report_cb(uint64_t timestamp, int report_id, int rssi,
 }
 
 void invoke_switch_buffer_size_cb(bool is_low_latency_buffer_size) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bool is_low_latency_buffer_size) {
-                                    HAL_CBACK(bt_hal_cbacks,
-                                              switch_buffer_size_cb,
-                                              is_low_latency_buffer_size);
-                                  },
-                                  is_low_latency_buffer_size));
+  do_in_jni_thread(base::BindOnce(
+      [](bool is_low_latency_buffer_size) {
+        HAL_CBACK(bt_hal_cbacks, switch_buffer_size_cb,
+                  is_low_latency_buffer_size);
+      },
+      is_low_latency_buffer_size));
 }
 
 void invoke_switch_codec_cb(bool is_low_latency_buffer_size) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](bool is_low_latency_buffer_size) {
-                                    HAL_CBACK(bt_hal_cbacks, switch_codec_cb,
-                                              is_low_latency_buffer_size);
-                                  },
-                                  is_low_latency_buffer_size));
+  do_in_jni_thread(base::BindOnce(
+      [](bool is_low_latency_buffer_size) {
+        HAL_CBACK(bt_hal_cbacks, switch_codec_cb, is_low_latency_buffer_size);
+      },
+      is_low_latency_buffer_size));
 }
 
 void invoke_key_missing_cb(RawAddress bd_addr) {
-  do_in_jni_thread(FROM_HERE, base::BindOnce(
-                                  [](RawAddress bd_addr) {
-                                    HAL_CBACK(bt_hal_cbacks, key_missing_cb,
-                                              bd_addr);
-                                  },
-                                  bd_addr));
+  do_in_jni_thread(base::BindOnce(
+      [](RawAddress bd_addr) {
+        HAL_CBACK(bt_hal_cbacks, key_missing_cb, bd_addr);
+      },
+      bd_addr));
 }
+
+namespace bluetooth::testing {
+void set_hal_cbacks(bt_callbacks_t* callbacks) { ::set_hal_cbacks(callbacks); }
+
+}  // namespace bluetooth::testing

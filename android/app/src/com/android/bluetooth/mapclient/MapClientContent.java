@@ -54,6 +54,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 class MapClientContent {
@@ -90,10 +91,7 @@ class MapClientContent {
     private HashMap<String, Uri> mHandleToUriMap = new HashMap<>();
     private HashMap<Uri, MessageStatus> mUriToHandleMap = new HashMap<>();
 
-    /**
-     * Callbacks
-     * API to notify about statusChanges as observed from the content provider
-     */
+    /** Callbacks API to notify about statusChanges as observed from the content provider */
     interface Callbacks {
         void onMessageStatusChanged(String handle, int status);
     }
@@ -118,33 +116,36 @@ class MapClientContent {
 
         mSubscriptionManager = mContext.getSystemService(SubscriptionManager.class);
         mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
-        mSubscriptionManager
-                .addSubscriptionInfoRecord(mDevice.getAddress(), Utils.getName(mDevice), 0,
-                        SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
-        SubscriptionInfo info = mSubscriptionManager
-                .getActiveSubscriptionInfoForIcc(mDevice.getAddress());
+        mSubscriptionManager.addSubscriptionInfoRecord(
+                mDevice.getAddress(),
+                Utils.getName(mDevice),
+                0,
+                SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
+        SubscriptionInfo info =
+                mSubscriptionManager.getActiveSubscriptionInfoForIcc(mDevice.getAddress());
         if (info != null) {
             mSubscriptionId = info.getSubscriptionId();
         }
 
-        mContentObserver = new ContentObserver(null) {
-            @Override
-            public boolean deliverSelfNotifications() {
-                return false;
-            }
+        mContentObserver =
+                new ContentObserver(null) {
+                    @Override
+                    public boolean deliverSelfNotifications() {
+                        return false;
+                    }
 
-            @Override
-            public void onChange(boolean selfChange) {
-                verbose("onChange(self=" + selfChange + ")");
-                findChangeInDatabase();
-            }
+                    @Override
+                    public void onChange(boolean selfChange) {
+                        verbose("onChange(self=" + selfChange + ")");
+                        findChangeInDatabase();
+                    }
 
-            @Override
-            public void onChange(boolean selfChange, Uri uri) {
-                verbose("onChange(self=" + selfChange + ", uri=" + uri.toString() + ")");
-                findChangeInDatabase();
-            }
-        };
+                    @Override
+                    public void onChange(boolean selfChange, Uri uri) {
+                        verbose("onChange(self=" + selfChange + ", uri=" + uri.toString() + ")");
+                        findChangeInDatabase();
+                    }
+                };
 
         clearMessages(mContext, mSubscriptionId);
         mResolver.registerContentObserver(Sms.CONTENT_URI, true, mContentObserver);
@@ -164,8 +165,8 @@ class MapClientContent {
             if (info.getSubscriptionType() == SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM) {
                 clearMessages(context, info.getSubscriptionId());
                 try {
-                    subscriptionManager.removeSubscriptionInfoRecord(info.getIccId(),
-                            SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
+                    subscriptionManager.removeSubscriptionInfoRecord(
+                            info.getIccId(), SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
                 } catch (Exception e) {
                     Log.w(TAG, "[AllDevices] cleanUp failed: " + e.toString());
                 }
@@ -198,8 +199,8 @@ class MapClientContent {
     }
 
     /**
-     * This number is necessary for thread_id to work properly. thread_id is needed for
-     * (group) MMS messages to be displayed/stitched correctly.
+     * This number is necessary for thread_id to work properly. thread_id is needed for (group) MMS
+     * messages to be displayed/stitched correctly.
      */
     void setRemoteDeviceOwnNumber(String phoneNumber) {
         mPhoneNumber = phoneNumber;
@@ -209,8 +210,8 @@ class MapClientContent {
     /**
      * storeMessage
      *
-     * Store a message in database with the associated handle and timestamp.
-     * The handle is used to associate the local message with the remote message.
+     * <p>Store a message in database with the associated handle and timestamp. The handle is used
+     * to associate the local message with the remote message.
      */
     void storeMessage(Bmessage message, String handle, Long timestamp, boolean seen) {
         info(
@@ -254,8 +255,10 @@ class MapClientContent {
         }
         verbose("Received SMS from Number " + recipients);
 
-        Uri contentUri = INBOX_PATH.equalsIgnoreCase(message.getFolder()) ? Sms.Inbox.CONTENT_URI
-                : Sms.Sent.CONTENT_URI;
+        Uri contentUri =
+                INBOX_PATH.equalsIgnoreCase(message.getFolder())
+                        ? Sms.Inbox.CONTENT_URI
+                        : Sms.Sent.CONTENT_URI;
         ContentValues values = new ContentValues();
         long threadId = getThreadId(message);
         int readStatus = message.getStatus() == Bmessage.Status.READ ? 1 : 0;
@@ -269,15 +272,17 @@ class MapClientContent {
         values.put(Sms.SEEN, seen);
 
         Uri results = mResolver.insert(contentUri, values);
+        if (results == null) {
+            error("Failed to get SMS URI, insert failed. Dropping message.");
+            return;
+        }
+
         mHandleToUriMap.put(handle, results);
         mUriToHandleMap.put(results, new MessageStatus(handle, readStatus));
         debug("Map InsertedThread" + results);
     }
 
-    /**
-     * deleteMessage
-     * remove a message from the local provider based on a remote change
-     */
+    /** deleteMessage remove a message from the local provider based on a remote change */
     void deleteMessage(String handle) {
         debug("deleting handle" + handle);
         Uri messageToChange = mHandleToUriMap.get(handle);
@@ -286,11 +291,7 @@ class MapClientContent {
         }
     }
 
-
-    /**
-     * markRead
-     * mark a message read in the local provider based on a remote change
-     */
+    /** markRead mark a message read in the local provider based on a remote change */
     void markRead(String handle) {
         debug("marking read " + handle);
         Uri messageToChange = mHandleToUriMap.get(handle);
@@ -302,9 +303,8 @@ class MapClientContent {
     }
 
     /**
-     * findChangeInDatabase
-     * compare the current state of the local content provider to the expected state and propagate
-     * changes to the remote.
+     * findChangeInDatabase compare the current state of the local content provider to the expected
+     * state and propagate changes to the remote.
      */
     private void findChangeInDatabase() {
         HashMap<Uri, MessageStatus> originalUriToHandleMap;
@@ -312,7 +312,7 @@ class MapClientContent {
 
         originalUriToHandleMap = mUriToHandleMap;
         duplicateUriToHandleMap = new HashMap<>(originalUriToHandleMap);
-        for (Uri uri : new Uri[]{Mms.CONTENT_URI, Sms.CONTENT_URI}) {
+        for (Uri uri : new Uri[] {Mms.CONTENT_URI, Sms.CONTENT_URI}) {
             try (Cursor cursor = mResolver.query(uri, null, null, null, null)) {
                 while (cursor.moveToNext()) {
                     Uri index =
@@ -329,11 +329,11 @@ class MapClientContent {
                 }
             }
         }
-        for (HashMap.Entry record : duplicateUriToHandleMap.entrySet()) {
+        for (Map.Entry record : duplicateUriToHandleMap.entrySet()) {
             verbose("Deleted " + ((MessageStatus) record.getValue()).mHandle);
             originalUriToHandleMap.remove(record.getKey());
-            mCallbacks.onMessageStatusChanged(((MessageStatus) record.getValue()).mHandle,
-                    BluetoothMapClient.DELETED);
+            mCallbacks.onMessageStatusChanged(
+                    ((MessageStatus) record.getValue()).mHandle, BluetoothMapClient.DELETED);
         }
     }
 
@@ -375,19 +375,25 @@ class MapClientContent {
             values.put(Mms.MESSAGE_SIZE, mmsBmessage.getSize());
 
             Uri results = mResolver.insert(contentUri, values);
+            if (results == null) {
+                error("Failed to get MMS entry URI. Cannot store MMS parts. Dropping message.");
+                return;
+            }
+
             mHandleToUriMap.put(handle, results);
             mUriToHandleMap.put(results, new MessageStatus(handle, read));
 
             debug("Map InsertedThread" + results);
 
+            // Some Messenger Applications don't listen to address table changes and only listen
+            // for message content changes. Adding the address parts first makes it so they're
+            // already in the tables when a given app syncs due to content updates. Otherwise, we
+            // risk a race where the address content may not be ready.
+            storeAddressPart(message, results);
+
             for (MimePart part : mmsBmessage.getMimeParts()) {
                 storeMmsPart(part, results);
             }
-
-            storeAddressPart(message, results);
-
-            values.put(Mms.Part.CONTENT_TYPE, "plain/text");
-            values.put(Mms.SUBSCRIPTION_ID, mSubscriptionId);
         } catch (Exception e) {
             error("Error while storing MMS: " + e.toString());
             throw e;
@@ -406,6 +412,12 @@ class MapClientContent {
 
         Uri contentUri = Uri.parse(messageUri.toString() + "/part");
         Uri results = mResolver.insert(contentUri, values);
+
+        if (results == null) {
+            warn("failed to insert MMS part");
+            return null;
+        }
+
         debug("Inserted" + results);
         return results;
     }
@@ -415,42 +427,45 @@ class MapClientContent {
         Uri contentUri = Uri.parse(messageUri.toString() + "/addr");
         String originator = getOriginatorNumber(message);
         values.put(Mms.Addr.CHARSET, DEFAULT_CHARSET);
-
         values.put(Mms.Addr.ADDRESS, originator);
         values.put(Mms.Addr.TYPE, ORIGINATOR_ADDRESS_TYPE);
-        mResolver.insert(contentUri, values);
+
+        Uri results = mResolver.insert(contentUri, values);
+        if (results == null) {
+            warn("failed to insert originator address");
+        }
 
         Set<String> messageContacts = new ArraySet<>();
         getRecipientsFromMessage(message, messageContacts);
         for (String recipient : messageContacts) {
             values.put(Mms.Addr.ADDRESS, recipient);
             values.put(Mms.Addr.TYPE, RECIPIENT_ADDRESS_TYPE);
-            mResolver.insert(contentUri, values);
+            results = mResolver.insert(contentUri, values);
+            if (results == null) {
+                warn("failed to insert recipient address");
+            }
         }
     }
 
-    /**
-     * cleanUp
-     * clear the subscription info and content on shutdown
-     */
+    /** cleanUp clear the subscription info and content on shutdown */
     void cleanUp() {
-        debug("cleanUp(device=" + Utils.getLoggableAddress(mDevice)
-                + "subscriptionId=" + mSubscriptionId);
+        debug(
+                "cleanUp(device="
+                        + Utils.getLoggableAddress(mDevice)
+                        + "subscriptionId="
+                        + mSubscriptionId);
         mResolver.unregisterContentObserver(mContentObserver);
         clearMessages(mContext, mSubscriptionId);
         try {
-            mSubscriptionManager.removeSubscriptionInfoRecord(mDevice.getAddress(),
-                    SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
+            mSubscriptionManager.removeSubscriptionInfoRecord(
+                    mDevice.getAddress(), SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
             mSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         } catch (Exception e) {
             warn("cleanUp failed: " + e.toString());
         }
     }
 
-    /**
-     * clearMessages
-     * clean up the content provider on startup
-     */
+    /** clearMessages clean up the content provider on startup */
     private static void clearMessages(Context context, int subscriptionId) {
         Log.d(TAG, "[AllDevices] clearMessages(subscriptionId=" + subscriptionId);
 
@@ -464,20 +479,21 @@ class MapClientContent {
             }
         }
 
-        resolver.delete(Sms.CONTENT_URI, Sms.SUBSCRIPTION_ID + " =? ",
-                new String[]{Integer.toString(subscriptionId)});
-        resolver.delete(Mms.CONTENT_URI, Mms.SUBSCRIPTION_ID + " =? ",
-                new String[]{Integer.toString(subscriptionId)});
+        resolver.delete(
+                Sms.CONTENT_URI,
+                Sms.SUBSCRIPTION_ID + " =? ",
+                new String[] {Integer.toString(subscriptionId)});
+        resolver.delete(
+                Mms.CONTENT_URI,
+                Mms.SUBSCRIPTION_ID + " =? ",
+                new String[] {Integer.toString(subscriptionId)});
         if (threads.length() > 2) {
             threads = threads.substring(0, threads.length() - 2);
             resolver.delete(Threads.CONTENT_URI, Threads._ID + " IN (" + threads + ")", null);
         }
     }
 
-    /**
-     * getThreadId
-     * utilize the originator and recipients to obtain the thread id
-     */
+    /** getThreadId utilize the originator and recipients to obtain the thread id */
     private long getThreadId(Bmessage message) {
 
         Set<String> messageContacts = new ArraySet<>();
@@ -493,8 +509,12 @@ class MapClientContent {
             if (mPhoneNumber == null) {
                 warn("getThreadId called, mPhoneNumber never found.");
             }
-            messageContacts.removeIf(number -> (PhoneNumberUtils.areSamePhoneNumber(number,
-                    mPhoneNumber, mTelephonyManager.getNetworkCountryIso())));
+            messageContacts.removeIf(
+                    number ->
+                            (PhoneNumberUtils.areSamePhoneNumber(
+                                    number,
+                                    mPhoneNumber,
+                                    mTelephonyManager.getNetworkCountryIso())));
         }
 
         verbose("Contacts = " + messageContacts.toString());
@@ -506,8 +526,8 @@ class MapClientContent {
         for (VCardEntry recipient : recipients) {
             List<VCardEntry.PhoneData> phoneData = recipient.getPhoneList();
             if (phoneData != null && !phoneData.isEmpty()) {
-                messageContacts
-                        .add(PhoneNumberUtils.extractNetworkPortion(phoneData.get(0).getNumber()));
+                messageContacts.add(
+                        PhoneNumberUtils.extractNetworkPortion(phoneData.get(0).getNumber()));
             }
         }
     }
@@ -541,8 +561,8 @@ class MapClientContent {
     }
 
     /**
-     * addThreadContactToEntries
-     * utilizing the thread id fill in the appropriate fields of bmsg with the intended recipients
+     * addThreadContactToEntries utilizing the thread id fill in the appropriate fields of bmsg with
+     * the intended recipients
      */
     boolean addThreadContactsToEntries(Bmessage bmsg, String thread) {
         String threadId = Uri.parse(thread).getLastPathSegment();
@@ -561,8 +581,9 @@ class MapClientContent {
 
             if (cursor.moveToNext()) {
                 debug("Columns" + Arrays.toString(cursor.getColumnNames()));
-                verbose("CONTACT LIST: "
-                        + cursor.getString(cursor.getColumnIndex("recipient_ids")));
+                verbose(
+                        "CONTACT LIST: "
+                                + cursor.getString(cursor.getColumnIndex("recipient_ids")));
                 addRecipientsToEntries(
                         bmsg, cursor.getString(cursor.getColumnIndex("recipient_ids")).split(" "));
                 return true;
@@ -572,7 +593,6 @@ class MapClientContent {
             }
         }
     }
-
 
     private void addRecipientsToEntries(Bmessage bmsg, String[] recipients) {
         verbose("CONTACT LIST: " + Arrays.toString(recipients));
@@ -609,14 +629,26 @@ class MapClientContent {
         }
 
         Cursor cursor = null;
-        if (Sms.CONTENT_URI.equals(uri) || Sms.Inbox.CONTENT_URI.equals(uri)
+        if (Sms.CONTENT_URI.equals(uri)
+                || Sms.Inbox.CONTENT_URI.equals(uri)
                 || Sms.Sent.CONTENT_URI.equals(uri)) {
-            cursor = mResolver.query(uri, new String[] {"count(*)"}, Sms.SUBSCRIPTION_ID + " =? ",
-                    new String[]{Integer.toString(mSubscriptionId)}, null);
-        } else if (Mms.CONTENT_URI.equals(uri) || Mms.Inbox.CONTENT_URI.equals(uri)
+            cursor =
+                    mResolver.query(
+                            uri,
+                            new String[] {"count(*)"},
+                            Sms.SUBSCRIPTION_ID + " =? ",
+                            new String[] {Integer.toString(mSubscriptionId)},
+                            null);
+        } else if (Mms.CONTENT_URI.equals(uri)
+                || Mms.Inbox.CONTENT_URI.equals(uri)
                 || Mms.Sent.CONTENT_URI.equals(uri)) {
-            cursor = mResolver.query(uri, new String[] {"count(*)"}, Mms.SUBSCRIPTION_ID + " =? ",
-                    new String[]{Integer.toString(mSubscriptionId)}, null);
+            cursor =
+                    mResolver.query(
+                            uri,
+                            new String[] {"count(*)"},
+                            Mms.SUBSCRIPTION_ID + " =? ",
+                            new String[] {Integer.toString(mSubscriptionId)},
+                            null);
         } else if (Threads.CONTENT_URI.equals(uri)) {
             uri = Threads.CONTENT_URI.buildUpon().appendQueryParameter("simple", "true").build();
             cursor = mResolver.query(uri, new String[] {"count(*)"}, null, null, null);
@@ -777,15 +809,21 @@ class MapClientContent {
         sb.append("    Device Message DB:");
         sb.append("\n      Subscription ID: " + mSubscriptionId);
         if (mSubscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            sb.append("\n      SMS Messages (Inbox/Sent/Total): "
-                    + getStoredMessagesCount(Sms.Inbox.CONTENT_URI)
-                    + " / " + getStoredMessagesCount(Sms.Sent.CONTENT_URI)
-                    + " / " + getStoredMessagesCount(Sms.CONTENT_URI));
+            sb.append(
+                    "\n      SMS Messages (Inbox/Sent/Total): "
+                            + getStoredMessagesCount(Sms.Inbox.CONTENT_URI)
+                            + " / "
+                            + getStoredMessagesCount(Sms.Sent.CONTENT_URI)
+                            + " / "
+                            + getStoredMessagesCount(Sms.CONTENT_URI));
 
-            sb.append("\n      MMS Messages (Inbox/Sent/Total): "
-                    + getStoredMessagesCount(Mms.Inbox.CONTENT_URI)
-                    + " / " + getStoredMessagesCount(Mms.Sent.CONTENT_URI)
-                    + " / " + getStoredMessagesCount(Mms.CONTENT_URI));
+            sb.append(
+                    "\n      MMS Messages (Inbox/Sent/Total): "
+                            + getStoredMessagesCount(Mms.Inbox.CONTENT_URI)
+                            + " / "
+                            + getStoredMessagesCount(Mms.Sent.CONTENT_URI)
+                            + " / "
+                            + getStoredMessagesCount(Mms.CONTENT_URI));
 
             sb.append("\n      Threads: " + getStoredMessagesCount(Threads.CONTENT_URI));
 
@@ -806,10 +844,10 @@ class MapClientContent {
     /**
      * MessageStatus
      *
-     * Helper class to store associations between remote and local provider based on message handle
-     * and read status
+     * <p>Helper class to store associations between remote and local provider based on message
+     * handle and read status
      */
-    class MessageStatus {
+    static class MessageStatus {
 
         String mHandle;
         int mRead;
@@ -821,8 +859,8 @@ class MapClientContent {
 
         @Override
         public boolean equals(Object other) {
-            return ((other instanceof MessageStatus) && ((MessageStatus) other).mHandle
-                    .equals(mHandle));
+            return ((other instanceof MessageStatus)
+                    && ((MessageStatus) other).mHandle.equals(mHandle));
         }
     }
 

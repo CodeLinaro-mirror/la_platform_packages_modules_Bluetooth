@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "btif/include/stack_manager_t.h"
+#include "common/message_loop_thread.h"
 #include "hal/snoop_logger.h"
 #include "hci/controller_interface_mock.h"
 #include "osi/include/allocator.h"
@@ -33,6 +34,7 @@
 #include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_controller_interface.h"
 #include "stack/include/l2cap_hci_link_interface.h"
+#include "stack/include/l2cdefs.h"
 #include "test/fake/fake_osi.h"
 #include "test/mock/mock_main_shim_entry.h"
 #include "test/mock/mock_stack_acl.h"
@@ -65,6 +67,7 @@ bt_status_t do_in_main_thread_delayed(base::Location const&,
   // any test cases
   abort();
 }
+bluetooth::common::MessageLoopThread* get_main_thread() { return nullptr; }
 
 namespace bluetooth {
 namespace os {
@@ -99,10 +102,6 @@ class FakeBtStack {
     test::mock::stack_btm_devctl::BTM_IsDeviceUp.body = []() { return true; };
     test::mock::stack_acl::acl_create_le_connection.body =
         [](const RawAddress& bd_addr) { return true; };
-    test::mock::stack_acl::acl_create_classic_connection.body =
-        [](const RawAddress& bd_addr, bool there_are_high_priority_channels,
-           bool is_bonding) { return true; };
-
     test::mock::stack_acl::acl_send_data_packet_br_edr.body =
         [](const RawAddress& bd_addr, BT_HDR* hdr) {
           ConsumeData((const uint8_t*)hdr, hdr->offset + hdr->len);
@@ -136,7 +135,6 @@ class FakeBtStack {
   ~FakeBtStack() {
     test::mock::stack_btm_devctl::BTM_IsDeviceUp = {};
     test::mock::stack_acl::acl_create_le_connection = {};
-    test::mock::stack_acl::acl_create_classic_connection = {};
     test::mock::stack_acl::acl_send_data_packet_br_edr = {};
     test::mock::stack_acl::acl_send_data_packet_ble = {};
     bluetooth::hci::testing::mock_controller_ = nullptr;
@@ -209,10 +207,11 @@ static void Fuzz(const uint8_t* data, size_t size) {
                                                   bool, tL2CAP_LE_CFG_INFO*) {},
       .pL2CA_CreditBasedCollisionInd_Cb = [](const RawAddress&) {},
   };
-  log::assert_that(L2CA_Register2(BT_PSM_ATT, appl_info, false, nullptr,
-                                  L2CAP_MTU_SIZE, 0, BTM_SEC_NONE),
-                   "assert failed: L2CA_Register2(BT_PSM_ATT, appl_info, "
-                   "false, nullptr, L2CAP_MTU_SIZE, 0, BTM_SEC_NONE)");
+  log::assert_that(
+      L2CA_RegisterWithSecurity(BT_PSM_ATT, appl_info, false, nullptr,
+                                L2CAP_MTU_SIZE, 0, BTM_SEC_NONE),
+      "assert failed: L2CA_RegisterWithSecurity(BT_PSM_ATT, appl_info, "
+      "false, nullptr, L2CAP_MTU_SIZE, 0, BTM_SEC_NONE)");
   log::assert_that(L2CA_RegisterLECoc(BT_PSM_EATT, appl_info, BTM_SEC_NONE, {}),
                    "assert failed: L2CA_RegisterLECoc(BT_PSM_EATT, appl_info, "
                    "BTM_SEC_NONE, {{}})");
@@ -263,13 +262,13 @@ static void Fuzz(const uint8_t* data, size_t size) {
     l2c_rcv_acl_data(hdr);
   }
 
-  L2CA_DisconnectReq(att_cid);
-  L2CA_DisconnectLECocReq(eatt_cid);
+  (void)L2CA_DisconnectReq(att_cid);
+  (void)L2CA_DisconnectLECocReq(eatt_cid);
 
-  L2CA_RemoveFixedChnl(L2CAP_SMP_BR_CID, kSmpBrAddr);
+  (void)L2CA_RemoveFixedChnl(L2CAP_SMP_BR_CID, kSmpBrAddr);
   l2c_link_hci_disc_comp(kSmpBrHndl, HCI_SUCCESS);
 
-  L2CA_RemoveFixedChnl(L2CAP_ATT_CID, kAttAddr);
+  (void)L2CA_RemoveFixedChnl(L2CAP_ATT_CID, kAttAddr);
   l2c_link_hci_disc_comp(kAttHndl, HCI_SUCCESS);
 
   l2cu_device_reset();

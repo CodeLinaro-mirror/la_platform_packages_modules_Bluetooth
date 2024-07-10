@@ -70,7 +70,6 @@ struct acl_peer_supports_ble_connection_subrating_host
 struct acl_refresh_remote_address acl_refresh_remote_address;
 struct acl_set_peer_le_features_from_handle
     acl_set_peer_le_features_from_handle;
-struct acl_create_classic_connection acl_create_classic_connection;
 struct acl_get_connection_from_address acl_get_connection_from_address;
 struct btm_acl_for_bda btm_acl_for_bda;
 struct acl_get_connection_from_handle acl_get_connection_from_handle;
@@ -135,7 +134,6 @@ struct btm_read_failed_contact_counter_complete
     btm_read_failed_contact_counter_complete;
 struct btm_read_failed_contact_counter_timeout
     btm_read_failed_contact_counter_timeout;
-struct btm_read_link_quality_complete btm_read_link_quality_complete;
 struct btm_read_remote_ext_features btm_read_remote_ext_features;
 struct btm_read_remote_ext_features_complete
     btm_read_remote_ext_features_complete;
@@ -288,13 +286,6 @@ bool acl_set_peer_le_features_from_handle(uint16_t hci_handle,
 void acl_send_data_packet_br_edr(const RawAddress& bd_addr, BT_HDR* p_buf) {
   inc_func_call_count(__func__);
   test::mock::stack_acl::acl_send_data_packet_br_edr(bd_addr, p_buf);
-}
-void acl_create_classic_connection(const RawAddress& bd_addr,
-                                   bool there_are_high_priority_channels,
-                                   bool is_bonding) {
-  inc_func_call_count(__func__);
-  return test::mock::stack_acl::acl_create_classic_connection(
-      bd_addr, there_are_high_priority_channels, is_bonding);
 }
 tACL_CONN* acl_get_connection_from_address(const RawAddress& bd_addr,
                                            tBT_TRANSPORT transport) {
@@ -562,10 +553,6 @@ void btm_read_failed_contact_counter_complete(uint8_t* p) {
 void btm_read_failed_contact_counter_timeout(void* data) {
   inc_func_call_count(__func__);
   test::mock::stack_acl::btm_read_failed_contact_counter_timeout(data);
-}
-void btm_read_link_quality_complete(uint8_t* p, uint16_t evt_len) {
-  inc_func_call_count(__func__);
-  test::mock::stack_acl::btm_read_link_quality_complete(p, evt_len);
 }
 void btm_read_remote_ext_features(uint16_t handle, uint8_t page_number) {
   inc_func_call_count(__func__);

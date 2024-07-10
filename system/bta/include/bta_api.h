@@ -96,20 +96,11 @@ typedef uint32_t tBTA_SERVICE_MASK;
 #define BTA_ALL_APP_ID 0xFF
 
 /* Discoverable Modes */
-#define BTA_DM_NON_DISC BTM_NON_DISCOVERABLE /* Device is not discoverable. */
-#define BTA_DM_GENERAL_DISC                         \
-  BTM_GENERAL_DISCOVERABLE /* General discoverable. \
-                              */
-#define BTA_DM_LIMITED_DISC BTM_LIMITED_DISCOVERABLE
-
 typedef uint16_t
     tBTA_DM_DISC; /* this discoverability mode is a bit mask among BR mode and
                      LE mode */
 
 /* Connectable Modes */
-#define BTA_DM_NON_CONN BTM_NON_CONNECTABLE /* Device is not connectable. */
-#define BTA_DM_CONN BTM_CONNECTABLE         /* Device is connectable. */
-
 typedef uint16_t tBTA_DM_CONN;
 
 /* Central/peripheral preferred roles */
@@ -283,24 +274,26 @@ typedef union {
 /* Search callback */
 typedef void(tBTA_DM_SEARCH_CBACK)(tBTA_DM_SEARCH_EVT event,
                                    tBTA_DM_SEARCH* p_data);
+
+// TODO: delete bd_name parameter after separate_service_and_device_discovery
+// rolls out
 typedef void(tBTA_DM_GATT_DISC_CBACK)(RawAddress bd_addr, BD_NAME bd_name,
                                       std::vector<bluetooth::Uuid>& services,
                                       bool transport_le);
 typedef void(tBTA_DM_DID_RES_CBACK)(RawAddress bd_addr, uint8_t vendor_id_src,
                                     uint16_t vendor_id, uint16_t product_id,
                                     uint16_t version);
-
+// TODO: delete after separate_service_and_device_discovery rolls out
 typedef void(tBTA_DM_NAME_READ_CBACK)(RawAddress bd_addr,
                                       tHCI_ERROR_CODE hci_status,
                                       const BD_NAME bd_name);
-typedef void(tBTA_DM_DISC_CBACK)(RawAddress bd_addr, tBTA_SERVICE_MASK services,
-                                 tBT_DEVICE_TYPE device_type,
+typedef void(tBTA_DM_DISC_CBACK)(RawAddress bd_addr,
                                  const std::vector<bluetooth::Uuid>& uuids,
-                                 tBTA_STATUS result, tHCI_STATUS hci_status);
+                                 tBTA_STATUS result);
 struct service_discovery_callbacks {
-  /* legacy callback I'll tear apart and get rid of */
   tBTA_DM_GATT_DISC_CBACK* on_gatt_results;
   tBTA_DM_DID_RES_CBACK* on_did_received;
+  // TODO: delete after separate_service_and_device_discovery rolls out
   tBTA_DM_NAME_READ_CBACK* on_name_read;
   tBTA_DM_DISC_CBACK* on_service_discovery_results;
 };

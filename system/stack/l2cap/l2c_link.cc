@@ -25,8 +25,8 @@
  ******************************************************************************/
 #define LOG_TAG "l2c_link"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <cstdint>
 
@@ -34,7 +34,6 @@
 #include "internal_include/bt_target.h"
 #include "os/log.h"
 #include "osi/include/allocator.h"
-#include "osi/include/osi.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_hdr.h"
@@ -187,16 +186,15 @@ void l2c_link_hci_conn_comp(tHCI_STATUS status, uint16_t handle,
  * Returns          void
  *
  ******************************************************************************/
-void l2c_link_sec_comp(const RawAddress* p_bda,
-                       UNUSED_ATTR tBT_TRANSPORT transport, void* p_ref_data,
-                       tBTM_STATUS status) {
+void l2c_link_sec_comp(RawAddress p_bda, tBT_TRANSPORT transport,
+                       void* p_ref_data, tBTM_STATUS status) {
   tL2C_CONN_INFO ci;
   tL2C_LCB* p_lcb;
   tL2C_CCB* p_ccb;
   tL2C_CCB* p_next_ccb;
 
   log::debug("btm_status={}, BD_ADDR={}, transport={}", btm_status_text(status),
-             ADDRESS_TO_LOGGABLE_CSTR(*p_bda), bt_transport_text(transport));
+             p_bda, bt_transport_text(transport));
 
   if (status == BTM_SUCCESS_NO_SECURITY) {
     status = BTM_SUCCESS;
@@ -204,9 +202,9 @@ void l2c_link_sec_comp(const RawAddress* p_bda,
 
   /* Save the parameters */
   ci.status = status;
-  ci.bd_addr = *p_bda;
+  ci.bd_addr = p_bda;
 
-  p_lcb = l2cu_find_lcb_by_bd_addr(*p_bda, transport);
+  p_lcb = l2cu_find_lcb_by_bd_addr(p_bda, transport);
 
   /* If we don't have one, this is an error */
   if (!p_lcb) {
@@ -214,7 +212,7 @@ void l2c_link_sec_comp(const RawAddress* p_bda,
     return;
   }
 
-  if (IS_FLAG_ENABLED(l2cap_p_ccb_check_rewrite)) {
+  if (com::android::bluetooth::flags::l2cap_p_ccb_check_rewrite()) {
     if (!p_ref_data) {
       log::warn("Argument p_ref_data is NULL");
       return;
@@ -728,8 +726,8 @@ void l2c_link_init(const uint16_t acl_buffer_count_classic) {
  * Returns          void
  *
  ******************************************************************************/
-void l2c_link_role_changed(const RawAddress* bd_addr, uint8_t new_role,
-                           uint8_t hci_status) {
+void l2c_link_role_changed(const RawAddress* bd_addr, tHCI_ROLE new_role,
+                           tHCI_STATUS hci_status) {
   /* Make sure not called from HCI Command Status (bd_addr and new_role are
    * invalid) */
   if (bd_addr != nullptr) {
@@ -1155,7 +1153,7 @@ tBTM_STATUS l2cu_ConnectAclForSecurity(const RawAddress& bd_addr) {
   /* Make sure an L2cap link control block is available */
   if (!p_lcb &&
       (p_lcb = l2cu_allocate_lcb(bd_addr, true, BT_TRANSPORT_BR_EDR)) == NULL) {
-    log::warn("failed allocate LCB for {}", ADDRESS_TO_LOGGABLE_CSTR(bd_addr));
+    log::warn("failed allocate LCB for {}", bd_addr);
     return BTM_NO_RESOURCES;
   }
 

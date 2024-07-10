@@ -21,6 +21,7 @@
 
 #include "bta/dm/bta_dm_sec_int.h"
 #include "bta/test/bta_test_fixtures.h"
+#include "btm_status.h"
 #include "test/mock/mock_stack_btm_inq.h"
 #include "test/mock/mock_stack_btm_interface.h"
 #include "types/raw_address.h"
@@ -42,7 +43,6 @@ namespace legacy {
 namespace testing {
 
 tBTM_STATUS bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data);
-void btm_set_local_io_caps(uint8_t io_caps);
 
 }  // namespace testing
 }  // namespace legacy
@@ -67,8 +67,6 @@ TEST_F(BtaSecTest, bta_dm_sp_cback__BTM_SP_CFM_REQ_EVT_WithName) {
     callback_sent = true;
     cfm_req = p_data->cfm_req;
   });
-
-  bluetooth::legacy::testing::btm_set_local_io_caps(0xff);
 
   tBTM_SP_EVT_DATA data = {
       .cfm_req =
@@ -109,7 +107,8 @@ TEST_F(BtaSecTest, bta_dm_sp_cback__BTM_SP_CFM_REQ_EVT_WithName) {
 TEST_F(BtaSecTest, bta_dm_sp_cback__BTM_SP_CFM_REQ_EVT_WithoutName_RNRSuccess) {
   constexpr uint32_t kNumVal = 1234;
   static bool callback_sent = false;
-  test::mock::stack_btm_inq::BTM_ReadRemoteDeviceName.body =
+  reset_mock_btm_client_interface();
+  mock_btm_client_interface.peer.BTM_ReadRemoteDeviceName =
       [](const RawAddress& remote_bda, tBTM_NAME_CMPL_CB* p_cb,
          tBT_TRANSPORT transport) -> tBTM_STATUS { return BTM_CMD_STARTED; };
 
@@ -118,8 +117,6 @@ TEST_F(BtaSecTest, bta_dm_sp_cback__BTM_SP_CFM_REQ_EVT_WithoutName_RNRSuccess) {
     callback_sent = true;
     cfm_req = p_data->cfm_req;
   });
-
-  bluetooth::legacy::testing::btm_set_local_io_caps(0xff);
 
   tBTM_SP_EVT_DATA data = {
       .cfm_req =
@@ -159,8 +156,6 @@ TEST_F(BtaSecTest, bta_dm_sp_cback__BTM_SP_CFM_REQ_EVT_WithoutName_RNRFail) {
     callback_sent = true;
     cfm_req = p_data->cfm_req;
   });
-
-  bluetooth::legacy::testing::btm_set_local_io_caps(0xff);
 
   tBTM_SP_EVT_DATA data = {
       .cfm_req =
@@ -208,7 +203,6 @@ TEST_F(BtaSecTest, bta_dm_sp_cback__BTM_SP_KEY_NOTIF_EVT) {
     callback_sent = true;
     key_notif = p_data->key_notif;
   });
-  bluetooth::legacy::testing::btm_set_local_io_caps(0xff);
 
   tBTM_SP_EVT_DATA data = {
       .key_notif =

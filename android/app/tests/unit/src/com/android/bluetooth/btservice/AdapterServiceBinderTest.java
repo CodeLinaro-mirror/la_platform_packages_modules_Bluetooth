@@ -57,7 +57,7 @@ public class AdapterServiceBinderTest {
     }
 
     @After
-    public void cleaUp() {
+    public void cleanUp() {
         mBinder.cleanup();
     }
 
@@ -70,7 +70,7 @@ public class AdapterServiceBinderTest {
     @Test
     public void dump() {
         FileDescriptor fd = new FileDescriptor();
-        String[] args = new String[] { };
+        String[] args = new String[] {};
         mBinder.dump(fd, args);
         verify(mService).dump(any(), any(), any());
 
@@ -92,12 +92,6 @@ public class AdapterServiceBinderTest {
         mBinder.cleanup();
         mBinder.generateLocalOobData(transport, cb, mAttributionSource);
         verify(mService, never()).generateLocalOobData(transport, cb);
-    }
-
-    @Test
-    public void getIoCapability() {
-        mBinder.getIoCapability(mAttributionSource);
-        verify(mService.mAdapterProperties).getIoCapability();
     }
 
     @Test
@@ -154,13 +148,6 @@ public class AdapterServiceBinderTest {
         ParcelUuid uuid = ParcelUuid.fromString("0000110A-0000-1000-8000-00805F9B34FB");
         mBinder.retrievePendingSocketForServiceRecord(uuid, mAttributionSource);
         verify(mService).retrievePendingSocketForServiceRecord(uuid, mAttributionSource);
-    }
-
-    @Test
-    public void setIoCapability() {
-        int capability = BluetoothAdapter.IO_CAPABILITY_MAX - 1;
-        mBinder.setIoCapability(capability, mAttributionSource);
-        verify(mService.mAdapterProperties).setIoCapability(capability);
     }
 
     @Test

@@ -78,6 +78,7 @@ void AvrcpService::RegisterVolChanged(const RawAddress& bdaddr) {
 
 namespace {
 const RawAddress kDeviceAddress({0x11, 0x22, 0x33, 0x44, 0x55, 0x66});
+const uint8_t kRcHandle = 123;
 }  // namespace
 
 void btif_av_clear_remote_suspend_flag(const A2dpType local_a2dp_type) {}
@@ -109,11 +110,10 @@ bool btif_av_peer_is_source(const RawAddress& peer_address) { return true; }
 bool btif_av_both_enable(void) { return true; }
 
 static bluetooth::common::MessageLoopThread jni_thread("bt_jni_thread");
-bt_status_t do_in_jni_thread(const base::Location& from_here,
-                             base::OnceClosure task) {
-  if (!jni_thread.DoInThread(from_here, std::move(task))) {
+bt_status_t do_in_jni_thread(base::OnceClosure task) {
+  if (!jni_thread.DoInThread(FROM_HERE, std::move(task))) {
     log::error("Post task to task runner failed!");
-    return BT_STATUS_FAIL;
+    return BT_STATUS_JNI_THREAD_ATTACH_ERROR;
   }
   return BT_STATUS_SUCCESS;
 }
@@ -451,8 +451,30 @@ class BtifTrackChangeCBTest : public BtifRcTest {
 };
 
 TEST_F(BtifTrackChangeCBTest, handle_get_metadata_attr_response) {
+  // Setup an already connected device
+  btif_rc_cb.rc_multi_cb[0].rc_connected = true;
+  btif_rc_cb.rc_multi_cb[0].br_connected = false;
+  btif_rc_cb.rc_multi_cb[0].rc_handle = kRcHandle;
+  btif_rc_cb.rc_multi_cb[0].rc_features = {};
+  btif_rc_cb.rc_multi_cb[0].rc_cover_art_psm = 0;
+  btif_rc_cb.rc_multi_cb[0].rc_state = BTRC_CONNECTION_STATE_CONNECTED;
+  btif_rc_cb.rc_multi_cb[0].rc_addr = kDeviceAddress;
+  btif_rc_cb.rc_multi_cb[0].rc_pending_play = 0;
+  btif_rc_cb.rc_multi_cb[0].rc_volume = 0;
+  btif_rc_cb.rc_multi_cb[0].rc_vol_label = 0;
+  btif_rc_cb.rc_multi_cb[0].rc_supported_event_list = nullptr;
+  btif_rc_cb.rc_multi_cb[0].rc_app_settings = {};
+  btif_rc_cb.rc_multi_cb[0].rc_play_status_timer = nullptr;
+  btif_rc_cb.rc_multi_cb[0].rc_features_processed = false;
+  btif_rc_cb.rc_multi_cb[0].rc_playing_uid = 0;
+  btif_rc_cb.rc_multi_cb[0].rc_procedure_complete = false;
+  btif_rc_cb.rc_multi_cb[0].peer_ct_features = {};
+  btif_rc_cb.rc_multi_cb[0].peer_tg_features = {};
+  btif_rc_cb.rc_multi_cb[0].launch_cmd_pending = 0;
+  ASSERT_TRUE(btif_rc_get_device_by_handle(kRcHandle));
+
   tBTA_AV_META_MSG meta_msg = {
-      .rc_handle = 0,
+      .rc_handle = kRcHandle,
       .len = 0,
       .label = 0,
       .code{},
@@ -468,11 +490,6 @@ TEST_F(BtifTrackChangeCBTest, handle_get_metadata_attr_response) {
       .num_attrs = 0,
       .p_attrs = nullptr,
   };
-
-  btif_rc_cb.rc_multi_cb[0].rc_handle = 0;
-  btif_rc_cb.rc_multi_cb[0].rc_addr = RawAddress::kEmpty;
-  btif_rc_cb.rc_multi_cb[0].rc_state = BTRC_CONNECTION_STATE_CONNECTED;
-  btif_rc_cb.rc_multi_cb[0].rc_connected = true;
 
   handle_get_metadata_attr_response(&meta_msg, &rsp);
 

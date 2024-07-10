@@ -389,8 +389,10 @@ void bta_hf_client_collision_cback(tBTA_SYS_CONN_STATUS /* status */,
 
     /* Cancel SDP if it had been started. */
     if (client_cb->p_disc_db) {
-      get_legacy_stack_sdp_api()->service.SDP_CancelServiceSearch(
-          client_cb->p_disc_db);
+      if (!get_legacy_stack_sdp_api()->service.SDP_CancelServiceSearch(
+              client_cb->p_disc_db)) {
+        log::warn("Unable to cancel SDP service discovery peer:{}", peer_addr);
+      }
       osi_free_and_reset((void**)&client_cb->p_disc_db);
     }
 
@@ -750,8 +752,7 @@ void bta_hf_client_sm_execute(uint16_t event, tBTA_HF_CLIENT_DATA* p_data) {
   /* If the state has changed then notify the app of the corresponding change */
   if (in_state != client_cb->state) {
     log::verbose("notifying state change to {} -> {} device {}", in_state,
-                 client_cb->state,
-                 ADDRESS_TO_LOGGABLE_STR(client_cb->peer_addr));
+                 client_cb->state, client_cb->peer_addr);
     tBTA_HF_CLIENT evt;
     memset(&evt, 0, sizeof(evt));
     evt.bd_addr = client_cb->peer_addr;
@@ -766,8 +767,7 @@ void bta_hf_client_sm_execute(uint16_t event, tBTA_HF_CLIENT_DATA* p_data) {
   }
 
   log::verbose("device {} state change: [{}] -> [{}] after Event [{}]",
-               ADDRESS_TO_LOGGABLE_STR(client_cb->peer_addr),
-               bta_hf_client_state_str(in_state),
+               client_cb->peer_addr, bta_hf_client_state_str(in_state),
                bta_hf_client_state_str(client_cb->state),
                bta_hf_client_evt_str(in_event));
 }

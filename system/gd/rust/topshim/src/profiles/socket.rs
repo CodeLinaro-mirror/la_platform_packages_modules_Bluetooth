@@ -6,7 +6,7 @@ use std::fs::File;
 use std::os::unix::io::FromRawFd;
 
 use crate::bindings::root as bindings;
-use crate::btif::{BluetoothInterface, BtStatus, RawAddress, SupportedProfiles, Uuid, Uuid128Bit};
+use crate::btif::{BluetoothInterface, BtStatus, RawAddress, SupportedProfiles, Uuid};
 use crate::ccall;
 use crate::utils::{LTCheckedPtr, LTCheckedPtrMut};
 
@@ -80,9 +80,7 @@ impl TryFrom<&[u8]> for ConnectionComplete {
         // the native endianness of the machine when writing to the socket. When
         // parsing, make sure to use native endianness here.
         let (size_bytes, rest) = bytes.split_at(std::mem::size_of::<u16>());
-        if u16::from_ne_bytes(size_bytes.clone().try_into().unwrap())
-            != (CONNECT_COMPLETE_SIZE as u16)
-        {
+        if u16::from_ne_bytes(size_bytes.try_into().unwrap()) != (CONNECT_COMPLETE_SIZE as u16) {
             return Err(format!("Wrong size in Connection Complete: {:?}", size_bytes));
         }
 
@@ -149,7 +147,7 @@ impl BtSocket {
         &self,
         sock_type: SocketType,
         service_name: String,
-        service_uuid: Option<Uuid128Bit>,
+        service_uuid: Option<Uuid>,
         channel: i32,
         flags: i32,
         calling_uid: i32,
@@ -157,10 +155,7 @@ impl BtSocket {
         let mut sockfd: i32 = -1;
         let sockfd_ptr = LTCheckedPtrMut::from_ref(&mut sockfd);
 
-        let uuid = match service_uuid {
-            Some(uu) => Some(Uuid::from(uu)),
-            None => Some(Uuid::from([0; 16])),
-        };
+        let uuid = service_uuid.or(Some(Uuid::from([0; 16])));
         let uuid_ptr = LTCheckedPtr::from(&uuid);
 
         let name = CString::new(service_name).expect("Service name has null in it.");
@@ -186,20 +181,14 @@ impl BtSocket {
         &self,
         addr: RawAddress,
         sock_type: SocketType,
-        service_uuid: Option<Uuid128Bit>,
+        service_uuid: Option<Uuid>,
         channel: i32,
         flags: i32,
         calling_uid: i32,
     ) -> (BtStatus, Result<File, FdError>) {
         let mut sockfd: i32 = -1;
         let sockfd_ptr = LTCheckedPtrMut::from_ref(&mut sockfd);
-
-        let uuid = match service_uuid {
-            Some(uu) => Some(Uuid::from(uu)),
-            None => None,
-        };
-        let uuid_ptr = LTCheckedPtr::from(&uuid);
-
+        let uuid_ptr = LTCheckedPtr::from(&service_uuid);
         let addr_ptr = LTCheckedPtr::from_ref(&addr);
 
         let status: BtStatus = ccall!(

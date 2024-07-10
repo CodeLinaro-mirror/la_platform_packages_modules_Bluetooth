@@ -27,7 +27,6 @@
 #include <fcntl.h>
 #include <hardware/bluetooth.h>
 #include <pthread.h>
-#include <stdio.h>
 #include <string.h>  // For memcmp
 #include <sys/stat.h>
 #include <unistd.h>
@@ -90,7 +89,6 @@ static const char* INTEROP_STATIC_FILE_PATH =
     return #const;
 
 static list_t* interop_list = NULL;
-static list_t* media_player_list = NULL;
 
 bool interop_is_initialized = false;
 // protects operations on |interop_list|
@@ -202,8 +200,6 @@ static void interop_config_cleanup(void);
 // This function is used to initialize the interop list and load the entries
 // from file
 static void load_config();
-static void interop_database_save_allowlisted_media_players_list(
-    const config_t* config);
 static void interop_database_add_(interop_db_entry_t* db_entry, bool persist);
 static bool interop_database_remove_(interop_db_entry_t* entry);
 static bool interop_database_match(interop_db_entry_t* entry,
@@ -315,8 +311,6 @@ static future_t* interop_clean_up(void) {
   pthread_mutex_lock(&interop_list_lock);
   list_free(interop_list);
   interop_list = NULL;
-  list_free(media_player_list);
-  media_player_list = NULL;
   interop_is_initialized = false;
   pthread_mutex_unlock(&interop_list_lock);
   pthread_mutex_destroy(&interop_list_lock);
@@ -375,7 +369,6 @@ static const char* interop_feature_string_(const interop_feature_t feature) {
     CASE_RETURN_STR(INTEROP_DISABLE_SNIFF_DURING_CALL)
     CASE_RETURN_STR(INTEROP_HID_HOST_LIMIT_SNIFF_INTERVAL)
     CASE_RETURN_STR(INTEROP_DISABLE_REFRESH_ACCEPT_SIG_TIMER)
-    CASE_RETURN_STR(INTEROP_BROWSE_PLAYER_ALLOW_LIST)
     CASE_RETURN_STR(INTEROP_SKIP_INCOMING_STATE)
     CASE_RETURN_STR(INTEROP_NOT_UPDATE_AVRCP_PAUSED_TO_REMOTE)
     CASE_RETURN_STR(INTEROP_PHONE_POLICY_INCREASED_DELAY_CONNECT_OTHER_PROFILES)
@@ -941,7 +934,7 @@ static bool load_to_database(int feature, const char* key, const char* value,
       log::warn(
           "key {} or Bluetooth Address {} is invalid, not added to interop "
           "list",
-          key, ADDRESS_TO_LOGGABLE_CSTR(addr));
+          key, addr);
       return false;
     }
 
@@ -1049,7 +1042,7 @@ static bool load_to_database(int feature, const char* key, const char* value,
       log::warn(
           "key {} or Bluetooth Address {} is invalid, not added to interop "
           "list",
-          key, ADDRESS_TO_LOGGABLE_CSTR(addr));
+          key, addr);
       return false;
     }
 
@@ -1115,7 +1108,7 @@ static bool load_to_database(int feature, const char* key, const char* value,
       log::warn(
           "key {} or Bluetooth Address {} is invalid, not added to interop "
           "list",
-          key, ADDRESS_TO_LOGGABLE_CSTR(addr));
+          key, addr);
       return false;
     }
 
@@ -1142,8 +1135,7 @@ static bool load_to_database(int feature, const char* key, const char* value,
     if (!get_addr_range(tmp_key, &addr_start, &addr_end)) {
       log::warn(
           "key: {} addr_start {} or addr end  {} is added to interop list", key,
-          ADDRESS_TO_LOGGABLE_CSTR(addr_start),
-          ADDRESS_TO_LOGGABLE_CSTR(addr_end));
+          addr_start, addr_end);
 
       return false;
     }
@@ -1181,7 +1173,6 @@ static void load_config() {
       }
     }
   }
-  interop_database_save_allowlisted_media_players_list(config_static.get());
   // We no longer need the static config file
   config_static.reset();
 
@@ -1369,8 +1360,7 @@ bool interop_database_match_addr(const interop_feature_t feature,
           &entry, NULL,
           (interop_entry_type)(INTEROP_ENTRY_TYPE_STATIC |
                                INTEROP_ENTRY_TYPE_DYNAMIC))) {
-    log::warn("Device {} is a match for interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a match for interop workaround {}.", *addr,
               interop_feature_string_(feature));
     return true;
   }
@@ -1382,8 +1372,7 @@ bool interop_database_match_addr(const interop_feature_t feature,
 
   if (interop_database_match(&entry, NULL,
                              (interop_entry_type)(INTEROP_ENTRY_TYPE_STATIC))) {
-    log::warn("Device {} is a match for interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a match for interop workaround {}.", *addr,
               interop_feature_string_(feature));
     return true;
   }
@@ -1429,8 +1418,7 @@ bool interop_database_match_addr_get_max_lat(const interop_feature_t feature,
           &entry, &ret_entry,
           (interop_entry_type)(INTEROP_ENTRY_TYPE_STATIC |
                                INTEROP_ENTRY_TYPE_DYNAMIC))) {
-    log::warn("Device {} is a match for interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a match for interop workaround {}.", *addr,
               interop_feature_string_(feature));
     *max_lat = ret_entry->entry_type.ssr_max_lat_entry.max_lat;
     return true;
@@ -1476,8 +1464,7 @@ bool interop_database_match_addr_get_lmp_ver(const interop_feature_t feature,
           &entry, &ret_entry,
           (interop_entry_type)(INTEROP_ENTRY_TYPE_STATIC |
                                INTEROP_ENTRY_TYPE_DYNAMIC))) {
-    log::warn("Device {} is a match for interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a match for interop workaround {}.", *addr,
               interop_feature_string_(feature));
     *lmp_ver = ret_entry->entry_type.lmp_version_entry.lmp_ver;
     *lmp_sub_ver = ret_entry->entry_type.lmp_version_entry.lmp_sub_ver;
@@ -1537,8 +1524,7 @@ bool interop_database_remove_addr(const interop_feature_t feature,
   entry.entry_type.addr_entry.feature = (interop_feature_t)feature;
   entry.entry_type.addr_entry.length = sizeof(RawAddress);
   if (interop_database_remove_(&entry)) {
-    log::warn("Device {} is a removed from interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a removed from interop workaround {}.", *addr,
               interop_feature_string_(feature));
     return true;
   }
@@ -1653,8 +1639,7 @@ bool interop_database_remove_addr_max_lat(const interop_feature_t feature,
   entry.entry_type.ssr_max_lat_entry.max_lat = max_lat;
 
   if (interop_database_remove_(&entry)) {
-    log::warn("Device {} is a removed from interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a removed from interop workaround {}.", *addr,
               interop_feature_string_(feature));
     return true;
   }
@@ -1695,45 +1680,9 @@ bool interop_database_remove_addr_lmp_version(const interop_feature_t feature,
   entry.entry_type.lmp_version_entry.lmp_sub_ver = lmp_sub_ver;
 
   if (interop_database_remove_(&entry)) {
-    log::warn("Device {} is a removed from interop workaround {}.",
-              ADDRESS_TO_LOGGABLE_CSTR(*addr),
+    log::warn("Device {} is a removed from interop workaround {}.", *addr,
               interop_feature_string_(feature));
     return true;
   }
   return false;
-}
-
-static void delete_media_player_node(void* data) {
-  std::string* key = static_cast<std::string*>(data);
-  delete key;
-}
-
-static void interop_database_save_allowlisted_media_players_list(
-    const config_t* config) {
-  media_player_list = list_new(delete_media_player_node);
-  for (const section_t& sec : config->sections) {
-    if (INTEROP_BROWSE_PLAYER_ALLOW_LIST ==
-        interop_feature_name_to_feature_id(sec.name.c_str())) {
-      log::warn("found feature - {}", sec.name);
-      for (const entry_t& entry : sec.entries) {
-        list_append(media_player_list, (void*)(new std::string(entry.key)));
-      }
-      break;
-    }
-  }
-}
-
-bool interop_get_allowlisted_media_players_list(list_t* p_bl_devices) {
-  if (media_player_list == nullptr) return false;
-
-  const list_node_t* node = list_begin(media_player_list);
-  bool found = false;
-
-  while (node != list_end(media_player_list)) {
-    found = true;
-    std::string* key = (std::string*)list_node(node);
-    list_append(p_bl_devices, (void*)key->c_str());
-    node = list_next(node);
-  }
-  return found;
 }

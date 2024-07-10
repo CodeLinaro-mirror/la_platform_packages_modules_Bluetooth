@@ -228,7 +228,7 @@ struct HciLayer::impl {
           CommandCompleteView::Create(EventView::Create(PacketView<kLittleEndian>(complete)));
       log::assert_that(
           command_complete_view.IsValid(), "assert failed: command_complete_view.IsValid()");
-      command_queue_.front().GetCallback<CommandCompleteView>()->Invoke(command_complete_view);
+      (*command_queue_.front().GetCallback<CommandCompleteView>())(command_complete_view);
     } else {
       log::assert_that(
           command_queue_.front().waiting_for_status_ == is_status,
@@ -236,7 +236,7 @@ struct HciLayer::impl {
           OpCodeText(op_code),
           logging_id);
 
-      command_queue_.front().GetCallback<TResponse>()->Invoke(std::move(response_view));
+      (*command_queue_.front().GetCallback<TResponse>())(std::move(response_view));
     }
 
 #ifdef TARGET_FLOSS
@@ -329,7 +329,7 @@ struct HciLayer::impl {
         "Can not register handler for {}",
         EventCodeText(EventCode::LE_META_EVENT));
     // Allow GD Cert tests to register for CONNECTION_REQUEST
-    if (event == EventCode::CONNECTION_REQUEST && module_.on_acl_connection_request_.IsEmpty()) {
+    if (event == EventCode::CONNECTION_REQUEST && !module_.on_acl_connection_request_) {
       log::info("Registering test for CONNECTION_REQUEST, since there's no ACL");
       event_handlers_.erase(event);
     }
@@ -346,14 +346,27 @@ struct HciLayer::impl {
 
   void register_le_event(SubeventCode event, ContextualCallback<void(LeMetaEventView)> handler) {
     log::assert_that(
-        subevent_handlers_.count(event) == 0,
+        le_event_handlers_.count(event) == 0,
         "Can not register a second handler for {}",
         SubeventCodeText(event));
-    subevent_handlers_[event] = handler;
+    le_event_handlers_[event] = handler;
   }
 
   void unregister_le_event(SubeventCode event) {
-    subevent_handlers_.erase(subevent_handlers_.find(event));
+    le_event_handlers_.erase(le_event_handlers_.find(event));
+  }
+
+  void register_vs_event(
+      VseSubeventCode event, ContextualCallback<void(VendorSpecificEventView)> handler) {
+    log::assert_that(
+        vs_event_handlers_.count(event) == 0,
+        "Can not register a second handler for {}",
+        VseSubeventCodeText(event));
+    vs_event_handlers_[event] = handler;
+  }
+
+  void unregister_vs_event(VseSubeventCode event) {
+    vs_event_handlers_.erase(vs_event_handlers_.find(event));
   }
 
   static void abort_after_root_inflammation(uint8_t vse_error) {
@@ -440,11 +453,14 @@ struct HciLayer::impl {
       case EventCode::HARDWARE_ERROR:
         on_hardware_error(event);
         break;
+      case EventCode::VENDOR_SPECIFIC:
+        on_vs_event(event);
+        break;
       default:
         if (event_handlers_.find(event_code) == event_handlers_.end()) {
           log::warn("Unhandled event of type {}", EventCodeText(event_code));
         } else {
-          event_handlers_[event_code].Invoke(event);
+          event_handlers_[event_code](event);
         }
     }
   }
@@ -467,11 +483,22 @@ struct HciLayer::impl {
     LeMetaEventView meta_event_view = LeMetaEventView::Create(event);
     log::assert_that(meta_event_view.IsValid(), "assert failed: meta_event_view.IsValid()");
     SubeventCode subevent_code = meta_event_view.GetSubeventCode();
-    if (subevent_handlers_.find(subevent_code) == subevent_handlers_.end()) {
+    if (le_event_handlers_.find(subevent_code) == le_event_handlers_.end()) {
       log::warn("Unhandled le subevent of type {}", SubeventCodeText(subevent_code));
       return;
     }
-    subevent_handlers_[subevent_code].Invoke(meta_event_view);
+    le_event_handlers_[subevent_code](meta_event_view);
+  }
+
+  void on_vs_event(EventView event) {
+    VendorSpecificEventView vs_event_view = VendorSpecificEventView::Create(event);
+    log::assert_that(vs_event_view.IsValid(), "assert failed: vs_event_view.IsValid()");
+    VseSubeventCode subevent_code = vs_event_view.GetSubeventCode();
+    if (vs_event_handlers_.find(subevent_code) == vs_event_handlers_.end()) {
+      log::warn("Unhandled vendor specific event of type {}", VseSubeventCodeText(subevent_code));
+      return;
+    }
+    vs_event_handlers_[subevent_code](vs_event_view);
   }
 
   hal::HciHal* hal_;
@@ -481,7 +508,9 @@ struct HciLayer::impl {
   std::list<CommandQueueEntry> command_queue_;
 
   std::map<EventCode, ContextualCallback<void(EventView)>> event_handlers_;
-  std::map<SubeventCode, ContextualCallback<void(LeMetaEventView)>> subevent_handlers_;
+  std::map<SubeventCode, ContextualCallback<void(LeMetaEventView)>> le_event_handlers_;
+  std::map<VseSubeventCode, ContextualCallback<void(VendorSpecificEventView)>> vs_event_handlers_;
+
   OpCode waiting_command_{OpCode::NONE};
   uint8_t command_credits_{1};  // Send reset first
   Alarm* hci_timeout_alarm_{nullptr};
@@ -581,6 +610,15 @@ void HciLayer::UnregisterLeEventHandler(SubeventCode event) {
   CallOn(impl_, &impl::unregister_le_event, event);
 }
 
+void HciLayer::RegisterVendorSpecificEventHandler(
+    VseSubeventCode event, ContextualCallback<void(VendorSpecificEventView)> handler) {
+  CallOn(impl_, &impl::register_vs_event, event, handler);
+}
+
+void HciLayer::UnregisterVendorSpecificEventHandler(VseSubeventCode event) {
+  CallOn(impl_, &impl::unregister_vs_event, event);
+}
+
 void HciLayer::on_disconnection_complete(EventView event_view) {
   auto disconnection_view = DisconnectionCompleteView::Create(event_view);
   if (!disconnection_view.IsValid()) {
@@ -605,18 +643,18 @@ void HciLayer::on_connection_request(EventView event_view) {
   ConnectionRequestLinkType link_type = view.GetLinkType();
   switch (link_type) {
     case ConnectionRequestLinkType::ACL:
-      if (on_acl_connection_request_.IsEmpty()) {
+      if (!on_acl_connection_request_) {
         log::warn("No callback registered for ACL connection requests.");
       } else {
-        on_acl_connection_request_.Invoke(address, cod);
+        on_acl_connection_request_(address, cod);
       }
       break;
     case ConnectionRequestLinkType::SCO:
     case ConnectionRequestLinkType::ESCO:
-      if (on_sco_connection_request_.IsEmpty()) {
+      if (!on_sco_connection_request_) {
         log::warn("No callback registered for SCO connection requests.");
       } else {
-        on_sco_connection_request_.Invoke(address, cod, link_type);
+        on_sco_connection_request_(address, cod, link_type);
       }
       break;
   }
@@ -625,7 +663,7 @@ void HciLayer::on_connection_request(EventView event_view) {
 void HciLayer::Disconnect(uint16_t handle, ErrorCode reason) {
   std::unique_lock<std::mutex> lock(callback_handlers_guard_);
   for (auto callback : disconnect_handlers_) {
-    callback.Invoke(handle, reason);
+    callback(handle, reason);
   }
 }
 
@@ -649,7 +687,7 @@ void HciLayer::ReadRemoteVersion(
     hci::ErrorCode hci_status, uint16_t handle, uint8_t version, uint16_t manufacturer_name, uint16_t sub_version) {
   std::unique_lock<std::mutex> lock(callback_handlers_guard_);
   for (auto callback : read_remote_version_handlers_) {
-    callback.Invoke(hci_status, handle, version, manufacturer_name, sub_version);
+    callback(hci_status, handle, version, manufacturer_name, sub_version);
   }
 }
 

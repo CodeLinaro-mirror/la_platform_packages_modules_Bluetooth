@@ -18,8 +18,8 @@
 
 #define LOG_TAG "bta_ag_cmd"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <cstdint>
 #include <cstring>
@@ -258,7 +258,12 @@ static void bta_ag_send_result(tBTA_AG_SCB* p_scb, size_t code,
 
   /* send to RFCOMM */
   uint16_t len = 0;
-  PORT_WriteData(p_scb->conn_handle, buf, (uint16_t)(p - buf), &len);
+  if (PORT_WriteData(p_scb->conn_handle, buf, (uint16_t)(p - buf), &len) !=
+      PORT_SUCCESS) {
+    log::warn(
+        "Unable to write RFCOMM data peer:{} handle:{} len_exp:{} len_act:{}",
+        p_scb->peer_addr, p_scb->conn_handle, (uint16_t)(p - buf), len);
+  }
 }
 
 /*******************************************************************************

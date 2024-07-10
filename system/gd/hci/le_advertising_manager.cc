@@ -15,8 +15,8 @@
  */
 #include "hci/le_advertising_manager.h"
 
-#include <android_bluetooth_flags.h>
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <iterator>
 #include <memory>
@@ -31,7 +31,6 @@
 #include "hci/hci_layer.h"
 #include "hci/hci_packets.h"
 #include "hci/le_advertising_interface.h"
-#include "hci/vendor_specific_event_manager.h"
 #include "module.h"
 #include "os/handler.h"
 #include "os/log.h"
@@ -84,6 +83,7 @@ struct Advertiser {
   bool discoverable = false;
   bool directed = false;
   bool in_use = false;
+  bool is_periodic = false;
   std::unique_ptr<os::Alarm> address_rotation_alarm;
 };
 
@@ -147,8 +147,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       os::Handler* handler,
       hci::HciLayer* hci_layer,
       hci::Controller* controller,
-      hci::AclManager* acl_manager,
-      hci::VendorSpecificEventManager* vendor_specific_event_manager) {
+      hci::AclManager* acl_manager) {
     module_handler_ = handler;
     hci_layer_ = hci_layer;
     controller_ = controller;
@@ -159,7 +158,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
 
     le_advertising_interface_ =
         hci_layer_->GetLeAdvertisingInterface(module_handler_->BindOn(this, &LeAdvertisingManager::impl::handle_event));
-    vendor_specific_event_manager->RegisterEventHandler(
+    hci_layer_->RegisterVendorSpecificEventHandler(
         hci::VseSubeventCode::BLE_STCHANGE,
         handler->BindOn(this, &LeAdvertisingManager::impl::multi_advertising_state_change));
 
@@ -469,7 +468,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       address_manager_registered = true;
     }
 
-    if (IS_FLAG_ENABLED(nrpa_non_connectable_adv) && !config.connectable) {
+    if (com::android::bluetooth::flags::nrpa_non_connectable_adv() && !config.connectable) {
       advertising_sets_[id].address_type = GetAdvertiserAddressTypeNonConnectable(
           config.requested_advertiser_address_type, le_address_manager_->GetAddressPolicy());
     } else {
@@ -605,7 +604,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
     advertising_sets_[id].duration = duration;
     advertising_sets_[id].max_extended_advertising_events = max_ext_adv_events;
     advertising_sets_[id].handler = handler;
-    if (IS_FLAG_ENABLED(nrpa_non_connectable_adv) && !config.connectable) {
+    if (com::android::bluetooth::flags::nrpa_non_connectable_adv() && !config.connectable) {
       advertising_sets_[id].address_type = GetAdvertiserAddressTypeNonConnectable(
           config.requested_advertiser_address_type, le_address_manager_->GetAddressPolicy());
     } else {
@@ -677,7 +676,8 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   }
 
   void stop_advertising(AdvertiserId advertiser_id) {
-    if (advertising_sets_.find(advertiser_id) == advertising_sets_.end()) {
+    auto advertising_iter = advertising_sets_.find(advertiser_id);
+    if (advertising_iter == advertising_sets_.end()) {
       log::info("Unknown advertising set {}", advertiser_id);
       return;
     }
@@ -704,8 +704,11 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
             hci::LeSetExtendedAdvertisingEnableBuilder::Create(Enable::DISABLED, enabled_vector),
             module_handler_->BindOnce(check_complete<LeSetExtendedAdvertisingEnableCompleteView>));
 
+        bool is_periodic = advertising_iter->second.is_periodic;
+        log::debug("advertiser_id: {} is_periodic: {}", advertiser_id, is_periodic);
+
         // Only set periodic advertising if supported.
-        if (controller_->SupportsBlePeriodicAdvertising()) {
+        if (is_periodic && controller_->SupportsBlePeriodicAdvertising()) {
           le_advertising_interface_->EnqueueCommand(
               hci::LeSetPeriodicAdvertisingEnableBuilder::Create(false, false, advertiser_id),
               module_handler_->BindOnce(
@@ -776,9 +779,9 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       common::ContextualOnceCallback<void(uint8_t /* inst_id */, uint8_t /* status */)> callback) {
     AdvertiserId id = allocate_advertiser();
     if (id == kInvalidId) {
-      callback.Invoke(kInvalidId, AdvertisingCallback::AdvertisingStatus::TOO_MANY_ADVERTISERS);
+      callback(kInvalidId, AdvertisingCallback::AdvertisingStatus::TOO_MANY_ADVERTISERS);
     } else {
-      callback.Invoke(id, AdvertisingCallback::AdvertisingStatus::SUCCESS);
+      callback(id, AdvertisingCallback::AdvertisingStatus::SUCCESS);
     }
   }
 
@@ -799,6 +802,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
     advertising_sets_[advertiser_id].discoverable = config.discoverable;
     advertising_sets_[advertiser_id].tx_power = config.tx_power;
     advertising_sets_[advertiser_id].directed = config.directed;
+    advertising_sets_[advertiser_id].is_periodic = config.periodic_advertising_parameters.enable;
 
     // based on logic in new_advertiser_address
     auto own_address_type = static_cast<OwnAddressType>(
@@ -951,8 +955,9 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
 
   bool check_extended_advertising_data(std::vector<GapData> data, bool include_flag) {
     uint16_t data_len = 0;
-    uint16_t data_limit = IS_FLAG_ENABLED(divide_long_single_gap_data) ? kLeMaximumGapDataLength
-                                                                       : kLeMaximumFragmentLength;
+    uint16_t data_limit = com::android::bluetooth::flags::divide_long_single_gap_data()
+                              ? kLeMaximumGapDataLength
+                              : kLeMaximumFragmentLength;
     // check data size
     for (size_t i = 0; i < data.size(); i++) {
       if (data[i].size() > data_limit) {
@@ -1048,7 +1053,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       } break;
       case (AdvertisingApiType::EXTENDED): {
         uint16_t data_len = 0;
-        bool divide_gap_flag = IS_FLAG_ENABLED(divide_long_single_gap_data);
+        bool divide_gap_flag = com::android::bluetooth::flags::divide_long_single_gap_data();
         // check data size
         for (size_t i = 0; i < data.size(); i++) {
           uint16_t data_limit =
@@ -1069,10 +1074,11 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           data_len += data[i].size();
         }
 
-        int maxDataLength = (IS_FLAG_ENABLED(ble_check_data_length_on_legacy_advertising) &&
-                             advertising_sets_[advertiser_id].is_legacy)
-                                ? kLeMaximumLegacyAdvertisingDataLength
-                                : le_maximum_advertising_data_length_;
+        int maxDataLength =
+            (com::android::bluetooth::flags::ble_check_data_length_on_legacy_advertising() &&
+             advertising_sets_[advertiser_id].is_legacy)
+                ? kLeMaximumLegacyAdvertisingDataLength
+                : le_maximum_advertising_data_length_;
 
         if (data_len > maxDataLength) {
           log::warn("advertising data len {} exceeds maxDataLength {}", data_len, maxDataLength);
@@ -1132,7 +1138,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
 
   void send_data_fragment(
       AdvertiserId advertiser_id, bool set_scan_rsp, std::vector<GapData> data, Operation operation) {
-    if (IS_FLAG_ENABLED(divide_long_single_gap_data)) {
+    if (com::android::bluetooth::flags::divide_long_single_gap_data()) {
       // For first and intermediate fragment, do not trigger advertising_callbacks_.
       bool send_callback =
           (operation == Operation::COMPLETE_ADVERTISEMENT || operation == Operation::LAST_FRAGMENT);
@@ -1309,7 +1315,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
 
   void set_periodic_data(AdvertiserId advertiser_id, std::vector<GapData> data) {
     uint16_t data_len = 0;
-    bool divide_gap_flag = IS_FLAG_ENABLED(divide_long_single_gap_data);
+    bool divide_gap_flag = com::android::bluetooth::flags::divide_long_single_gap_data();
     // check data size
     for (size_t i = 0; i < data.size(); i++) {
       uint16_t data_limit = divide_gap_flag ? kLeMaximumGapDataLength : kLeMaximumFragmentLength;
@@ -1377,7 +1383,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   }
 
   void send_periodic_data_fragment(AdvertiserId advertiser_id, std::vector<GapData> data, Operation operation) {
-    if (IS_FLAG_ENABLED(divide_long_single_gap_data)) {
+    if (com::android::bluetooth::flags::divide_long_single_gap_data()) {
       // For first and intermediate fragment, do not trigger advertising_callbacks_.
       bool send_callback =
           (operation == Operation::COMPLETE_ADVERTISEMENT || operation == Operation::LAST_FRAGMENT);
@@ -1738,7 +1744,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       log::info(
           "update random address for advertising set {} : {}",
           advertiser_id,
-          ADDRESS_TO_LOGGABLE_CSTR(address_with_type.GetAddress()));
+          address_with_type.GetAddress());
       advertising_sets_[advertiser_id].current_address = address_with_type;
     }
   }
@@ -1766,7 +1772,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       return;
     }
 
-    if (IS_FLAG_ENABLED(divide_long_single_gap_data)) {
+    if (com::android::bluetooth::flags::divide_long_single_gap_data()) {
       // Do not trigger callback if send_callback is false
       if (!send_callback) {
         return;
@@ -1833,7 +1839,6 @@ void LeAdvertisingManager::ListDependencies(ModuleList* list) const {
   list->add<hci::HciLayer>();
   list->add<hci::Controller>();
   list->add<hci::AclManager>();
-  list->add<hci::VendorSpecificEventManager>();
 }
 
 void LeAdvertisingManager::Start() {
@@ -1841,8 +1846,7 @@ void LeAdvertisingManager::Start() {
       GetHandler(),
       GetDependency<hci::HciLayer>(),
       GetDependency<hci::Controller>(),
-      GetDependency<AclManager>(),
-      GetDependency<VendorSpecificEventManager>());
+      GetDependency<AclManager>());
 }
 
 void LeAdvertisingManager::Stop() {

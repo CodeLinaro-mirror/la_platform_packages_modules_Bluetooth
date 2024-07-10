@@ -18,6 +18,7 @@ package com.android.bluetooth.bass_client;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.le.BluetoothLeScanner;
 import android.os.Looper;
 import android.util.Log;
 
@@ -25,9 +26,7 @@ import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.internal.annotations.VisibleForTesting;
 
-/**
- * Factory class for object initialization to help with unit testing
- */
+/** Factory class for object initialization to help with unit testing */
 public class BassObjectsFactory {
     private static final String TAG = BassObjectsFactory.class.getSimpleName();
     private static BassObjectsFactory sInstance;
@@ -95,6 +94,11 @@ public class BassObjectsFactory {
      * @return a bluetooth LE scanner
      */
     public BluetoothLeScannerWrapper getBluetoothLeScannerWrapper(BluetoothAdapter adapter) {
-        return new BluetoothLeScannerWrapper(adapter.getBluetoothLeScanner());
+        BluetoothLeScanner bluetoothLeScanner = adapter.getBluetoothLeScanner();
+        if (bluetoothLeScanner == null) {
+            return null;
+        } else {
+            return new BluetoothLeScannerWrapper(bluetoothLeScanner);
+        }
     }
 }

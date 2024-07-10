@@ -17,8 +17,11 @@
 #include "codec_manager.h"
 
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <bitset>
+#include <sstream>
+#include <vector>
 
 #include "audio_hal_client/audio_hal_client.h"
 #include "broadcaster/broadcast_configuration_provider.h"
@@ -203,36 +206,189 @@ struct codec_manager_impl {
     }
   }
 
-  const AudioSetConfigurations* GetSupportedCodecConfigurations(
-      types::LeAudioContextType ctx_type) {
+  bool UpdateActiveUnicastAudioHalClient(
+      LeAudioSourceAudioHalClient* source_unicast_client,
+      LeAudioSinkAudioHalClient* sink_unicast_client, bool is_active) {
+    log::debug("local_source: {}, local_sink: {}, is_active: {}",
+               fmt::ptr(source_unicast_client), fmt::ptr(sink_unicast_client),
+               is_active);
+
+    if (source_unicast_client == nullptr && sink_unicast_client == nullptr) {
+      return false;
+    }
+
+    if (is_active) {
+      if (source_unicast_client && unicast_local_source_hal_client != nullptr) {
+        log::error("Trying to override previous source hal client {}",
+                   fmt::ptr(unicast_local_source_hal_client));
+        return false;
+      }
+
+      if (sink_unicast_client && unicast_local_sink_hal_client != nullptr) {
+        log::error("Trying to override previous sink hal client {}",
+                   fmt::ptr(unicast_local_sink_hal_client));
+        return false;
+      }
+
+      if (source_unicast_client) {
+        unicast_local_source_hal_client = source_unicast_client;
+      }
+
+      if (sink_unicast_client) {
+        unicast_local_sink_hal_client = sink_unicast_client;
+      }
+
+      return true;
+    }
+
+    if (source_unicast_client &&
+        source_unicast_client != unicast_local_source_hal_client) {
+      log::error("local source session does not match {} != {}",
+                 fmt::ptr(source_unicast_client),
+                 fmt::ptr(unicast_local_source_hal_client));
+      return false;
+    }
+
+    if (sink_unicast_client &&
+        sink_unicast_client != unicast_local_sink_hal_client) {
+      log::error("local source session does not match {} != {}",
+                 fmt::ptr(sink_unicast_client),
+                 fmt::ptr(unicast_local_sink_hal_client));
+      return false;
+    }
+
+    if (source_unicast_client) {
+      unicast_local_source_hal_client = nullptr;
+    }
+
+    if (sink_unicast_client) {
+      unicast_local_sink_hal_client = nullptr;
+    }
+
+    return true;
+  }
+
+  bool UpdateActiveBroadcastAudioHalClient(
+      LeAudioSourceAudioHalClient* source_broadcast_client, bool is_active) {
+    log::debug("local_source: {},is_active: {}",
+               fmt::ptr(source_broadcast_client), is_active);
+
+    if (source_broadcast_client == nullptr) {
+      return false;
+    }
+
+    if (is_active) {
+      if (broadcast_local_source_hal_client != nullptr) {
+        log::error("Trying to override previous source hal client {}",
+                   fmt::ptr(broadcast_local_source_hal_client));
+        return false;
+      }
+      broadcast_local_source_hal_client = source_broadcast_client;
+      return true;
+    }
+
+    if (source_broadcast_client != broadcast_local_source_hal_client) {
+      log::error("local source session does not match {} != {}",
+                 fmt::ptr(source_broadcast_client),
+                 fmt::ptr(broadcast_local_source_hal_client));
+      return false;
+    }
+
+    broadcast_local_source_hal_client = nullptr;
+
+    return true;
+  }
+
+  AudioSetConfigurations GetSupportedCodecConfigurations(
+      const CodecManager::UnicastConfigurationRequirements& requirements)
+      const {
     if (GetCodecLocation() == le_audio::types::CodecLocation::ADSP) {
       log::verbose("Get offload config for the context type: {}",
-                   (int)ctx_type);
+                   (int)requirements.audio_context_type);
 
       // TODO: Need to have a mechanism to switch to software session if offload
       // doesn't support.
-      return context_type_offload_config_map_.count(ctx_type)
-                 ? &context_type_offload_config_map_[ctx_type]
-                 : nullptr;
+      return context_type_offload_config_map_.count(
+                 requirements.audio_context_type)
+                 ? context_type_offload_config_map_.at(
+                       requirements.audio_context_type)
+                 : AudioSetConfigurations();
     }
 
-    log::verbose("Get software config for the context type: {}", (int)ctx_type);
-    return AudioSetConfigurationProvider::Get()->GetConfigurations(ctx_type);
+    log::verbose("Get software config for the context type: {}",
+                 (int)requirements.audio_context_type);
+    return *AudioSetConfigurationProvider::Get()->GetConfigurations(
+        requirements.audio_context_type);
+  }
+
+  void PrintDebugState() const {
+    for (types::LeAudioContextType ctx_type :
+         types::kLeAudioContextAllTypesArray) {
+      std::stringstream os;
+      os << ctx_type << ": ";
+      if (context_type_offload_config_map_.count(ctx_type) == 0) {
+        os << "{empty}";
+      } else {
+        os << "{";
+        for (const auto& conf : context_type_offload_config_map_.at(ctx_type)) {
+          os << conf->name << ", ";
+        }
+        os << "}";
+      }
+      log::info("Offload configs for {}", os.str());
+    }
+  }
+
+  bool IsUsingCodecExtensibility() const {
+    auto codec_ext_status =
+        osi_property_get_bool(
+            "bluetooth.core.le_audio.codec_extension_aidl.enabled", false) &&
+        com::android::bluetooth::flags::leaudio_multicodec_aidl_support();
+
+    log::debug("Using codec extensibility AIDL: {}", codec_ext_status);
+    return codec_ext_status;
   }
 
   std::unique_ptr<AudioSetConfiguration> GetCodecConfig(
-      types::LeAudioContextType ctx_type,
-      std::function<const set_configurations::AudioSetConfiguration*(
-          types::LeAudioContextType context_type,
-          const set_configurations::AudioSetConfigurations* confs)>
-          non_vendor_config_matcher) {
+      const CodecManager::UnicastConfigurationRequirements& requirements,
+      CodecManager::UnicastConfigurationVerifier verifier) {
+    if (IsUsingCodecExtensibility()) {
+      auto hal_config =
+          unicast_local_source_hal_client->GetUnicastConfig(requirements);
+      if (hal_config) {
+        return std::make_unique<AudioSetConfiguration>(*hal_config);
+      }
+      log::debug(
+          "No configuration received from AIDL, fall back to static "
+          "configuration.");
+    }
+
+    auto configs = GetSupportedCodecConfigurations(requirements);
+    if (configs.empty()) {
+      log::error("No valid configuration matching the requirements: {}",
+                 requirements);
+      PrintDebugState();
+      return nullptr;
+    }
+
+    // Remove the dual bidir SWB config if not supported
+    if (!IsDualBiDirSwbSupported()) {
+      configs.erase(
+          std::remove_if(configs.begin(), configs.end(),
+                         [](auto const& el) {
+                           if (el->confs.source.empty()) return false;
+                           return AudioSetConfigurationProvider::Get()
+                               ->CheckConfigurationIsDualBiDirSwb(*el);
+                         }),
+          configs.end());
+    }
+
     // Note: For the only supported right now legacy software configuration
     //       provider, we use the device group logic to match the proper
     //       configuration with group capabilities. Note that this path only
     //       supports the LC3 codec format. For the multicodec support we should
     //       rely on the configuration matcher behind the AIDL interface.
-    auto conf = non_vendor_config_matcher(
-        ctx_type, GetSupportedCodecConfigurations(ctx_type));
+    auto conf = verifier(requirements, &configs);
     return conf ? std::make_unique<AudioSetConfiguration>(*conf) : nullptr;
   }
 
@@ -241,26 +397,38 @@ struct codec_manager_impl {
         config);
   }
 
+  bool CheckCodecConfigIsDualBiDirSwb(const AudioSetConfiguration& config) {
+    return AudioSetConfigurationProvider::Get()
+        ->CheckConfigurationIsDualBiDirSwb(config);
+  }
+
   void UpdateSupportedBroadcastConfig(
       const std::vector<AudioSetConfiguration>& adsp_capabilities) {
     log::info("UpdateSupportedBroadcastConfig");
 
     for (const auto& adsp_audio_set_conf : adsp_capabilities) {
-      log::assert_that(
-          adsp_audio_set_conf.topology_info.has_value(),
-          "No topology info, which is required to properly configure the ASEs");
-      if (adsp_audio_set_conf.confs.sink.size() != 1 ||
-          adsp_audio_set_conf.topology_info->device_count.sink != 0 ||
-          adsp_audio_set_conf.topology_info->device_count.source != 0) {
+      if (adsp_audio_set_conf.confs.sink.empty() ||
+          !adsp_audio_set_conf.confs.source.empty()) {
         continue;
       }
+
       auto& adsp_config = adsp_audio_set_conf.confs.sink[0];
 
       const types::LeAudioCoreCodecConfig core_config =
           adsp_config.codec.params.GetAsCoreCodecConfig();
       bluetooth::le_audio::broadcast_offload_config broadcast_config;
-      broadcast_config.stream_map.resize(
-          core_config.GetChannelCountPerIsoStream());
+      broadcast_config.stream_map.resize(adsp_audio_set_conf.confs.sink.size());
+
+      // Enable the individual channels per BIS in the stream map
+      auto all_channels = adsp_config.codec.channel_count_per_iso_stream;
+      uint8_t channel_alloc_idx = 0;
+      for (auto& [_, channels] : broadcast_config.stream_map) {
+        if (all_channels) {
+          channels |= (0b1 << channel_alloc_idx++);
+          --all_channels;
+        }
+      }
+
       broadcast_config.bits_per_sample =
           LeAudioCodecConfiguration::kBitsPerSample16;
       broadcast_config.sampling_rate = core_config.GetSamplingFrequencyHz();
@@ -365,15 +533,50 @@ struct codec_manager_impl {
     return &supported_broadcast_config[broadcast_target_config];
   }
 
+  void UpdateBroadcastOffloadConfig(
+      const broadcaster::BroadcastConfiguration& config) {
+    if (config.subgroups.empty()) {
+      broadcast_target_config = -1;
+      return;
+    }
+
+    // Use the first configuration slot
+    broadcast_target_config = 0;
+    auto& offload_cfg = supported_broadcast_config[broadcast_target_config];
+
+    // Note: Currently only a single subgroup offloading is supported
+    auto const& subgroup = config.subgroups.at(0);
+    auto subgroup_config =
+        subgroup.GetCommonBisCodecSpecData().GetAsCoreCodecConfig();
+
+    offload_cfg.sampling_rate = subgroup_config.GetSamplingFrequencyHz();
+    offload_cfg.frame_duration = subgroup_config.GetFrameDurationUs();
+    offload_cfg.octets_per_frame = subgroup_config.GetOctectsPerFrame();
+    offload_cfg.blocks_per_sdu = 1;
+    offload_cfg.stream_map.resize(subgroup.GetNumBis());
+
+    log::info(
+        "stream_map.size(): {}, sampling_rate: {}, frame_duration(us): {}, "
+        "octets_per_frame: {}, blocks_per_sdu {}, retransmission_number: {}, "
+        "max_transport_latency: {}",
+        supported_broadcast_config[broadcast_target_config].stream_map.size(),
+        supported_broadcast_config[broadcast_target_config].sampling_rate,
+        supported_broadcast_config[broadcast_target_config].frame_duration,
+        supported_broadcast_config[broadcast_target_config].octets_per_frame,
+        (int)supported_broadcast_config[broadcast_target_config].blocks_per_sdu,
+        (int)supported_broadcast_config[broadcast_target_config]
+            .retransmission_number,
+        supported_broadcast_config[broadcast_target_config]
+            .max_transport_latency);
+  }
+
   std::unique_ptr<broadcaster::BroadcastConfiguration> GetBroadcastConfig(
-      const std::vector<std::pair<types::LeAudioContextType, uint8_t>>&
-          subgroup_quality,
-      std::optional<const types::PublishedAudioCapabilities*> pacs) {
+      const CodecManager::BroadcastConfigurationRequirements& requirements) {
     if (GetCodecLocation() != types::CodecLocation::ADSP) {
       // Get the software supported broadcast configuration
       return std::make_unique<broadcaster::BroadcastConfiguration>(
           ::bluetooth::le_audio::broadcaster::GetBroadcastConfig(
-              subgroup_quality));
+              requirements.subgroup_quality));
     }
 
     /* Subgroups with different audio qualities is not being supported now,
@@ -381,10 +584,26 @@ struct codec_manager_impl {
      * the standard audio config instead
      */
     uint8_t BIG_audio_quality = bluetooth::le_audio::QUALITY_HIGH;
-    for (const auto& [_, quality] : subgroup_quality) {
+    for (const auto& [_, quality] : requirements.subgroup_quality) {
       if (quality == bluetooth::le_audio::QUALITY_STANDARD) {
         BIG_audio_quality = bluetooth::le_audio::QUALITY_STANDARD;
       }
+    }
+
+    if (IsUsingCodecExtensibility()) {
+      log::assert_that(broadcast_local_source_hal_client != nullptr,
+                       "audio source hal client is NULL");
+      auto hal_config = broadcast_local_source_hal_client->GetBroadcastConfig(
+          requirements.subgroup_quality, requirements.sink_pacs);
+      if (hal_config.has_value()) {
+        UpdateBroadcastOffloadConfig(hal_config.value());
+        return std::make_unique<broadcaster::BroadcastConfiguration>(
+            hal_config.value());
+      }
+
+      log::debug(
+          "No configuration received from AIDL, fall back to static "
+          "configuration.");
     }
 
     auto offload_config = GetBroadcastOffloadConfig(BIG_audio_quality);
@@ -412,13 +631,17 @@ struct codec_manager_impl {
     codec_params.Add(codec_spec_conf::kLeAudioLtvTypeOctetsPerCodecFrame,
                      offload_config->octets_per_frame);
 
+    // Note: We do not support a different channel count on each BIS within the
+    // same subgroup.
+    uint8_t allocated_channel_count =
+        offload_config->stream_map.size()
+            ? std::bitset<32>{offload_config->stream_map.at(0).second}.count()
+            : 1;
     bluetooth::le_audio::broadcaster::BroadcastSubgroupCodecConfig codec_config(
         bluetooth::le_audio::broadcaster::kLeAudioCodecIdLc3,
-        {bluetooth::le_audio::broadcaster::BroadcastSubgroupBisCodecConfig{
-            // num_bis
+        {bluetooth::le_audio::broadcaster::BroadcastSubgroupBisCodecConfig(
             static_cast<uint8_t>(offload_config->stream_map.size()),
-            codec_params,
-        }},
+            allocated_channel_count, codec_params)},
         offload_config->bits_per_sample);
 
     bluetooth::le_audio::broadcaster::BroadcastQosConfig qos_config(
@@ -438,7 +661,7 @@ struct codec_manager_impl {
       if (max_sdu_octets < sdu_octets) max_sdu_octets = sdu_octets;
     }
 
-    if (subgroup_quality.size() > 1) {
+    if (requirements.subgroup_quality.size() > 1) {
       log::error("More than one subgroup is not supported!");
     }
 
@@ -666,17 +889,8 @@ struct codec_manager_impl {
       size_t match_cnt = 0;
       size_t expected_match_cnt = 0;
 
-      log::assert_that(adsp_audio_set_conf.topology_info.has_value(),
-                       "ADSP capability is missing the topology information.");
-
       for (auto direction : {le_audio::types::kLeAudioDirectionSink,
                              le_audio::types::kLeAudioDirectionSource}) {
-        if (software_audio_set_conf->topology_info->device_count.get(
-                direction) !=
-            adsp_audio_set_conf.topology_info->device_count.get(direction)) {
-          continue;
-        }
-
         auto const& software_set_ase_confs =
             software_audio_set_conf->confs.get(direction);
         auto const& adsp_set_ase_confs =
@@ -769,12 +983,12 @@ struct codec_manager_impl {
     log::debug("Print adsp_capabilities:");
 
     for (auto& adsp : adsp_capabilities) {
-      log::debug("'{}':", adsp.name.c_str());
+      log::debug("'{}':", adsp.name);
       for (auto direction : {le_audio::types::kLeAudioDirectionSink,
                              le_audio::types::kLeAudioDirectionSource}) {
         log::debug(
             "dir: {}: number of confs {}:",
-            (direction == types::kLeAudioDirectionSink ? "sink" : "source"),
+            direction == types::kLeAudioDirectionSink ? "sink" : "source",
             (int)(adsp.confs.get(direction).size()));
         for (auto conf : adsp.confs.sink) {
           log::debug(
@@ -841,12 +1055,11 @@ struct codec_manager_impl {
       return;
     }
 
-    std::vector<
-        ::bluetooth::le_audio::set_configurations::AudioSetConfiguration>
-        adsp_capabilities =
-            ::bluetooth::audio::le_audio::get_offload_capabilities();
+    auto adsp_capabilities =
+        ::bluetooth::audio::le_audio::get_offload_capabilities();
 
-    storeLocalCapa(adsp_capabilities, offloading_preference);
+    storeLocalCapa(adsp_capabilities.unicast_offload_capabilities,
+                   offloading_preference);
 
     for (auto codec : offloading_preference) {
       auto it = btle_audio_codec_type_map_.find(codec.codec_type);
@@ -864,9 +1077,9 @@ struct codec_manager_impl {
           AudioSetConfigurationProvider::Get()->GetConfigurations(ctx_type);
 
       for (const auto& software_audio_set_conf : *software_audio_set_confs) {
-        if (IsAudioSetConfigurationMatched(software_audio_set_conf,
-                                           offload_preference_set,
-                                           adsp_capabilities)) {
+        if (IsAudioSetConfigurationMatched(
+                software_audio_set_conf, offload_preference_set,
+                adsp_capabilities.unicast_offload_capabilities)) {
           log::info("Offload supported conf, context type: {}, settings -> {}",
                     (int)ctx_type, software_audio_set_conf->name);
           if (dual_bidirection_swb_supported_ &&
@@ -880,8 +1093,8 @@ struct codec_manager_impl {
         }
       }
     }
-
-    UpdateSupportedBroadcastConfig(adsp_capabilities);
+    UpdateSupportedBroadcastConfig(
+        adsp_capabilities.broadcast_offload_capabilities);
   }
 
   CodecLocation codec_location_ = CodecLocation::HOST;
@@ -901,7 +1114,75 @@ struct codec_manager_impl {
   std::vector<btle_audio_codec_config_t> codec_input_capa = {};
   std::vector<btle_audio_codec_config_t> codec_output_capa = {};
   int broadcast_target_config = -1;
-};  // namespace bluetooth::le_audio
+
+  LeAudioSourceAudioHalClient* unicast_local_source_hal_client = nullptr;
+  LeAudioSinkAudioHalClient* unicast_local_sink_hal_client = nullptr;
+  LeAudioSourceAudioHalClient* broadcast_local_source_hal_client = nullptr;
+};
+
+std::ostream& operator<<(
+    std::ostream& os,
+    const CodecManager::UnicastConfigurationRequirements& req) {
+  os << "{audio context type: " << req.audio_context_type;
+  if (req.sink_pacs.has_value()) {
+    os << ", sink_pacs: [";
+    for (auto const& pac : req.sink_pacs.value()) {
+      os << "sink_pac: {";
+      os << ", codec_id: " << pac.codec_id;
+      os << ", caps size: " << pac.codec_spec_caps.Size();
+      os << ", caps_raw size: " << pac.codec_spec_caps_raw.size();
+      os << ", caps_raw size: " << pac.metadata.size();
+      os << "}, ";
+    }
+    os << "\b\b]";
+  } else {
+    os << ", sink_pacs: "
+       << "None";
+  }
+
+  if (req.source_pacs.has_value()) {
+    os << ", source_pacs: [";
+    for (auto const& pac : req.source_pacs.value()) {
+      os << "source_pac: {";
+      os << ", codec_id: " << pac.codec_id;
+      os << ", caps size: " << pac.codec_spec_caps.Size();
+      os << ", caps_raw size: " << pac.codec_spec_caps_raw.size();
+      os << ", caps_raw size: " << pac.metadata.size();
+      os << "}, ";
+    }
+    os << "\b\b]";
+  } else {
+    os << ", source_pacs: "
+       << "None";
+  }
+
+  if (req.sink_requirements.has_value()) {
+    for (auto const& sink_req : req.sink_requirements.value()) {
+      os << "sink_req: {";
+      os << ", target_latency: " << +sink_req.target_latency;
+      os << ", target_Phy: " << +sink_req.target_Phy;
+      // os << sink_req.params.GetAsCoreCodecCapabilities();
+      os << "}";
+    }
+  } else {
+    os << "sink_req: None";
+  }
+
+  if (req.source_requirements.has_value()) {
+    for (auto const& source_req : req.source_requirements.value()) {
+      os << "source_req: {";
+      os << ", target_latency: " << +source_req.target_latency;
+      os << ", target_Phy: " << +source_req.target_Phy;
+      // os << source_req.params.GetAsCoreCodecCapabilities();
+      os << "}";
+    }
+  } else {
+    os << "source_req: None";
+  }
+
+  os << "}";
+  return os;
+}
 
 struct CodecManager::impl {
   impl(const CodecManager& codec_manager) : codec_manager_(codec_manager) {}
@@ -982,15 +1263,30 @@ void CodecManager::UpdateActiveAudioConfig(
         stream_params, delays_ms, update_receiver);
 }
 
-std::unique_ptr<AudioSetConfiguration> CodecManager::GetCodecConfig(
-    types::LeAudioContextType ctx_type,
-    std::function<const set_configurations::AudioSetConfiguration*(
-        types::LeAudioContextType context_type,
-        const set_configurations::AudioSetConfigurations* confs)>
-        non_vendor_config_matcher) {
+bool CodecManager::UpdateActiveUnicastAudioHalClient(
+    LeAudioSourceAudioHalClient* source_unicast_client,
+    LeAudioSinkAudioHalClient* sink_unicast_client, bool is_active) {
   if (pimpl_->IsRunning()) {
-    return pimpl_->codec_manager_impl_->GetCodecConfig(
-        ctx_type, non_vendor_config_matcher);
+    return pimpl_->codec_manager_impl_->UpdateActiveUnicastAudioHalClient(
+        source_unicast_client, sink_unicast_client, is_active);
+  }
+  return false;
+}
+
+bool CodecManager::UpdateActiveBroadcastAudioHalClient(
+    LeAudioSourceAudioHalClient* source_broadcast_client, bool is_active) {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->codec_manager_impl_->UpdateActiveBroadcastAudioHalClient(
+        source_broadcast_client, is_active);
+  }
+  return false;
+}
+
+std::unique_ptr<AudioSetConfiguration> CodecManager::GetCodecConfig(
+    const CodecManager::UnicastConfigurationRequirements& requirements,
+    CodecManager::UnicastConfigurationVerifier verifier) {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->codec_manager_impl_->GetCodecConfig(requirements, verifier);
   }
 
   return nullptr;
@@ -1001,18 +1297,23 @@ bool CodecManager::CheckCodecConfigIsBiDirSwb(
   if (pimpl_->IsRunning()) {
     return pimpl_->codec_manager_impl_->CheckCodecConfigIsBiDirSwb(config);
   }
+  return false;
+}
 
+bool CodecManager::CheckCodecConfigIsDualBiDirSwb(
+    const set_configurations::AudioSetConfiguration& config) const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->codec_manager_impl_->CheckCodecConfigIsDualBiDirSwb(config);
+  }
   return false;
 }
 
 std::unique_ptr<broadcaster::BroadcastConfiguration>
 CodecManager::GetBroadcastConfig(
-    const std::vector<std::pair<types::LeAudioContextType, uint8_t>>&
-        subgroup_quality,
-    std::optional<const types::PublishedAudioCapabilities*> pacs) const {
+    const CodecManager::BroadcastConfigurationRequirements& requirements)
+    const {
   if (pimpl_->IsRunning()) {
-    return pimpl_->codec_manager_impl_->GetBroadcastConfig(subgroup_quality,
-                                                           pacs);
+    return pimpl_->codec_manager_impl_->GetBroadcastConfig(requirements);
   }
 
   return nullptr;
@@ -1042,6 +1343,13 @@ void CodecManager::ClearCisConfiguration(uint8_t direction) {
   if (pimpl_->IsRunning()) {
     return pimpl_->codec_manager_impl_->ClearCisConfiguration(direction);
   }
+}
+
+bool CodecManager::IsUsingCodecExtensibility() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->codec_manager_impl_->IsUsingCodecExtensibility();
+  }
+  return false;
 }
 
 }  // namespace bluetooth::le_audio

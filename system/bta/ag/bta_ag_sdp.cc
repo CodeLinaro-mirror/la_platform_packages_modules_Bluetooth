@@ -300,8 +300,11 @@ void bta_ag_del_records(tBTA_AG_SCB* p_scb) {
     if (((services & 1) == 1) && ((others & 1) == 0)) {
       log::verbose("bta_ag_del_records {}", i);
       if (bta_ag_cb.profile[i].sdp_handle != 0) {
-        get_legacy_stack_sdp_api()->handle.SDP_DeleteRecord(
-            bta_ag_cb.profile[i].sdp_handle);
+        if (!get_legacy_stack_sdp_api()->handle.SDP_DeleteRecord(
+                bta_ag_cb.profile[i].sdp_handle)) {
+          log::warn("Unable to delete record sdp_handle:{}",
+                    bta_ag_cb.profile[i].sdp_handle);
+        }
         bta_ag_cb.profile[i].sdp_handle = 0;
       }
       BTA_FreeSCN(bta_ag_cb.profile[i].scn);
@@ -389,7 +392,7 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
                 (const uint8_t*)&peer_version, sizeof(peer_version))) {
         } else {
           log::warn("Failed to store peer HFP version for {}",
-                    ADDRESS_TO_LOGGABLE_CSTR(p_scb->peer_addr));
+                    p_scb->peer_addr);
         }
       }
       /* get features if HFP */
@@ -420,7 +423,7 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
                                   sizeof(sdp_features))) {
           } else {
             log::warn("Failed to store peer HFP SDP Features for {}",
-                      ADDRESS_TO_LOGGABLE_CSTR(p_scb->peer_addr));
+                      p_scb->peer_addr);
           }
         }
         if (p_scb->peer_features == 0) {
@@ -542,12 +545,11 @@ void bta_ag_do_disc(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
             bta_ag_sdp_cback_tbl[bta_ag_scb_to_idx(p_scb) - 1])) {
       return;
     } else {
-      log::error("failed to start SDP discovery for {}",
-                 ADDRESS_TO_LOGGABLE_STR(p_scb->peer_addr));
+      log::error("failed to start SDP discovery for {}", p_scb->peer_addr);
     }
   } else {
     log::error("failed to init SDP discovery database for {}",
-               ADDRESS_TO_LOGGABLE_STR(p_scb->peer_addr));
+               p_scb->peer_addr);
   }
   // Failure actions
   bta_ag_free_db(p_scb, tBTA_AG_DATA::kEmpty);
