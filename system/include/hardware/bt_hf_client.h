@@ -242,7 +242,8 @@ typedef void (*bthf_client_resp_and_hold_callback)(
  *  Will be called only when there is an incoming call and number is provided.
  */
 typedef void (*bthf_client_clip_callback)(const RawAddress* bd_addr,
-                                          const char* number);
+                                          const char* number,
+                                          int type, const char *alpha);
 
 /**
  * Callback for Call Waiting notification
@@ -258,7 +259,8 @@ typedef void (*bthf_client_current_calls)(const RawAddress* bd_addr, int index,
                                           bthf_client_call_direction_t dir,
                                           bthf_client_call_state_t state,
                                           bthf_client_call_mpty_type_t mpty,
-                                          const char* number);
+                                          const char* number,
+                                          int type, const char *alpha);
 
 /** Callback for audio volume change
  */
