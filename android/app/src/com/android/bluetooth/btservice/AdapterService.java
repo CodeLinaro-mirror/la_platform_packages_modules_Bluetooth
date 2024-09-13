@@ -634,6 +634,10 @@ public class AdapterService extends Service {
             init();
             return;
         }
+        if (!Utils.checkCallerIsSystemOrActiveOrManagedUser(this, TAG)) {
+            Log.e(TAG, "Createad under non-active user. Force exit!");
+            System.exit(0);
+        }
         // OnCreate must perform the minimum of infaillible and mandatory initialization
         mRemoteDevices = new RemoteDevices(this, mLooper);
         mAdapterProperties = new AdapterProperties(this);
