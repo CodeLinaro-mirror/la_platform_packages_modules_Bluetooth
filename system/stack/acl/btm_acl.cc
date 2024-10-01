@@ -1014,7 +1014,6 @@ void StackAclBtmAcl::btm_establish_continue(tACL_CONN* p_acl) {
     }
     btm_set_link_policy(p_acl, btm_cb.acl_cb_.DefaultLinkPolicy());
   } else if (p_acl->is_transport_ble()) {
-    btm_ble_connection_established(p_acl->remote_addr);
     tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(p_acl->remote_addr);
 
     if (p_dev_rec == nullptr) {
