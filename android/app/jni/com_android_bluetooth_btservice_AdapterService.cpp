@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "BluetoothServiceJni"
@@ -86,6 +91,7 @@ static jmethodID method_acquireWakeLock;
 static jmethodID method_releaseWakeLock;
 static jmethodID method_energyInfo;
 static jmethodID method_keyMissingCallback;
+static jmethodID method_getLinkKeyCallback;
 
 static struct {
   jclass clazz;
@@ -849,6 +855,47 @@ static void energy_info_recv_callback(bt_activity_energy_info* p_energy_info,
       p_energy_info->idle_time, p_energy_info->energy_used, array.get());
 }
 
+static jstring create_link_key_string(JNIEnv* env, Link_Key link_key) {
+    char c_linkkey[KEY_LEN * 2 + 1] = {0};
+    //switch each Link_Key element(hex number) to 2 char in string, and end with '\0'.
+    snprintf(c_linkkey, sizeof(c_linkkey),
+            "%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
+            link_key.at(0), link_key.at(1), link_key.at(2), link_key.at(3),
+            link_key.at(4), link_key.at(5), link_key.at(6), link_key.at(7),
+            link_key.at(8), link_key.at(9), link_key.at(10), link_key.at(11),
+            link_key.at(12), link_key.at(13), link_key.at(14), link_key.at(15));
+    return env->NewStringUTF(c_linkkey);
+}
+
+static void get_link_key_callback(RawAddress* bd_addr, bool key_found,
+                                  Link_Key link_key, int key_type) {
+    log::verbose("");
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid()) return;
+
+    if (!bd_addr) {
+        log::error("Address is null");
+        return;
+    }
+
+    ScopedLocalRef<jbyteArray> addr(
+        sCallbackEnv.get(), sCallbackEnv->NewByteArray(sizeof(RawAddress)));
+
+    if (!addr.get()) {
+        log::error("Address allocation failed");
+        return;
+    }
+
+    sCallbackEnv->SetByteArrayRegion(addr.get(), 0, sizeof(RawAddress),
+                                    (jbyte*)bd_addr);
+
+    ScopedLocalRef<jstring> linkkey(sCallbackEnv.get(),
+                                    create_link_key_string(sCallbackEnv.get(), link_key));
+
+    sCallbackEnv->CallVoidMethod(sJniCallbacksObj, method_getLinkKeyCallback,
+                                 linkkey.get(), addr.get(), key_found, key_type);
+}
+
 static bt_callbacks_t sBluetoothCallbacks = {sizeof(sBluetoothCallbacks),
                                              adapter_state_change_callback,
                                              adapter_properties_callback,
@@ -870,7 +917,8 @@ static bt_callbacks_t sBluetoothCallbacks = {sizeof(sBluetoothCallbacks),
                                              switch_buffer_size_callback,
                                              switch_codec_callback,
                                              le_rand_callback,
-                                             key_missing_callback};
+                                             key_missing_callback,
+                                             get_link_key_callback};
 
 class JNIThreadAttacher {
  public:
@@ -2101,6 +2149,19 @@ static jboolean pbapPseDynamicVersionUpgradeIsEnabledNative(JNIEnv* /* env */,
              : JNI_FALSE;
 }
 
+static void getLinkKeyNative(JNIEnv* env, jobject obj, jbyteArray address) {
+  log::verbose("");
+  if (!sBluetoothInterface) return;
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (addr == NULL) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+  sBluetoothInterface->get_link_key((RawAddress*)addr);
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
 static jint getSocketL2capLocalChannelIdNative(JNIEnv* /* env */,
                                                jobject /* obj */,
                                                jlong conn_uuid_lsb,
@@ -2203,6 +2264,7 @@ int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) {
        (void*)getSocketL2capLocalChannelIdNative},
       {"getSocketL2capRemoteChannelIdNative", "(JJ)I",
        (void*)getSocketL2capRemoteChannelIdNative},
+      {"getLinkKeyNative", "([B)V", (void*) getLinkKeyNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
       env, "com/android/bluetooth/btservice/AdapterNativeInterface", methods);
@@ -2245,6 +2307,7 @@ int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) {
       {"energyInfoCallback", "(IIJJJJ[Landroid/bluetooth/UidTraffic;)V",
        &method_energyInfo},
       {"keyMissingCallback", "([B)V", &method_keyMissingCallback},
+      {"onGetLinkKey", "(Ljava/lang/String;[BZI)V", &method_getLinkKeyCallback},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/btservice/JniCallbacks",
                    javaMethods);
