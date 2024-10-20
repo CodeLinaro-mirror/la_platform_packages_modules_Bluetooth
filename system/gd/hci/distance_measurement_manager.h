@@ -53,14 +53,13 @@ class DistanceMeasurementCallbacks {
 public:
   virtual ~DistanceMeasurementCallbacks() = default;
   virtual void OnDistanceMeasurementStarted(Address address, DistanceMeasurementMethod method) = 0;
-  virtual void OnDistanceMeasurementStartFail(Address address, DistanceMeasurementErrorCode reason,
-                                              DistanceMeasurementMethod method) = 0;
   virtual void OnDistanceMeasurementStopped(Address address, DistanceMeasurementErrorCode reason,
                                             DistanceMeasurementMethod method) = 0;
   virtual void OnDistanceMeasurementResult(Address address, uint32_t centimeter,
                                            uint32_t error_centimeter, int azimuth_angle,
                                            int error_azimuth_angle, int altitude_angle,
                                            int error_altitude_angle, long elapsedRealtimeNanos,
+                                           int8_t confidence_level,
                                            DistanceMeasurementMethod method) = 0;
   virtual void OnRasFragmentReady(Address address, uint16_t procedure_counter, bool is_last,
                                   std::vector<uint8_t> raw_data) = 0;
