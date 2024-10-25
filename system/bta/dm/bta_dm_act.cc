@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -443,23 +448,30 @@ bool BTA_DmSetVisibility(bt_scan_mode_t mode) {
   }
   return true;
 }
-void bta_dm_process_remove_device_no_callback(const RawAddress& bd_addr) {
+bool bta_dm_process_remove_device_no_callback(const RawAddress& bd_addr) {
+  bool ret = false;
   /* need to remove all pending background connection before unpair */
   bta_dm_disc_gatt_cancel_open(bd_addr);
 
-  get_btm_client_interface().security.BTM_SecDeleteDevice(bd_addr);
+  ret = get_btm_client_interface().security.BTM_SecDeleteDevice(bd_addr);
 
   /* remove all cached GATT information */
   bta_dm_disc_gatt_refresh(bd_addr);
+  return ret;
 }
 
 void bta_dm_process_remove_device(const RawAddress& bd_addr) {
-  bta_dm_process_remove_device_no_callback(bd_addr);
+  bool ret = bta_dm_process_remove_device_no_callback(bd_addr);
 
   /* Conclude service search if it was pending */
   bta_dm_disc_remove_device(bd_addr);
 
-  if (bta_dm_sec_cb.p_sec_cback) {
+  // If ret is false, this indicates there is an incoming pairing request.
+  // In such scenario, host firstly receives HCI_IO_Capability_Response,
+  // then receives HCI_IO_Capability_Request, refer to core spec
+  // Version 5.3 | Vol 2, Part F Chapter4.2.7. Send BTA_DM_DEV_UNPAIRED_EVT will
+  // cause removing just stored authentication requirement from the peer.
+  if (ret && bta_dm_sec_cb.p_sec_cback) {
     tBTA_DM_SEC sec_event;
     sec_event.dev_unpair.bd_addr = bd_addr;
     bta_dm_sec_cb.p_sec_cback(BTA_DM_DEV_UNPAIRED_EVT, &sec_event);
