@@ -1,4 +1,4 @@
-/******************************************************************************
+/*****************************************************************************************
  *
  *  Copyright 2009-2016 Broadcom Corporation
  *
@@ -14,7 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ *****************************************************************************************/
 
 #define LOG_TAG "bluetooth-a2dp"
 
@@ -1211,6 +1216,11 @@ BtifAvPeer* BtifAvSource::FindOrCreatePeer(const RawAddress& peer_address,
   std::lock_guard<std::recursive_mutex> lock(btifavsource_peers_lock_);
   log::verbose("peer={} bta_handle=0x{:x}", peer_address, bta_handle);
 
+  // In corner case that A2DP is doing cleanup while AVDTP media channel
+  // has just set up, and event from lower layer is receveid. Cause fatal
+  // error while accessing cleared resource.
+  if (!Enabled()) return nullptr;
+
   BtifAvPeer* peer = FindPeer(peer_address);
   if (peer != nullptr) {
     return peer;
@@ -1471,6 +1481,11 @@ BtifAvPeer* BtifAvSink::FindPeerByPeerId(uint8_t peer_id) {
 BtifAvPeer* BtifAvSink::FindOrCreatePeer(const RawAddress& peer_address, tBTA_AV_HNDL bta_handle) {
   std::lock_guard<std::recursive_mutex> lock(btifavsink_peers_lock_);
   log::verbose("peer={} bta_handle=0x{:x}", peer_address, bta_handle);
+
+  // In corner case that A2DP is doing cleanup while AVDTP media channel
+  // has just set up, and event from lower layer is receveid. Cause fatal
+  // error while accessing cleared resource.
+  if (!Enabled()) return nullptr;
 
   BtifAvPeer* peer = FindPeer(peer_address);
   if (peer != nullptr) {
