@@ -3313,10 +3313,10 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep,
     case BTA_AV_VENDOR_CMD_EVT:
     case BTA_AV_VENDOR_RSP_EVT:
     case BTA_AV_META_MSG_EVT: {
+      const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
+      btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
       if (btif_av_src_sink_coexist_enabled()) {
         if (peer_sep == AVDT_TSEP_INVALID) {
-          const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
-          btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
           if (peer_address == RawAddress::kEmpty) {
             peer_address = btif_av_source.ActivePeer();
             if (peer_address == RawAddress::kEmpty) {
@@ -3336,10 +3336,12 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep,
       // TODO: Might be wrong - this code will be removed once those
       // events are received from the AVRCP module.
       if (peer_sep == AVDT_TSEP_SNK) {
-        peer_address = btif_av_source.ActivePeer();
+        if (peer_address == RawAddress::kEmpty)
+          peer_address = btif_av_source.ActivePeer();
         msg = "Stream sink offloaded";
       } else if (peer_sep == AVDT_TSEP_SRC) {
-        peer_address = btif_av_sink.ActivePeer();
+        if (peer_address == RawAddress::kEmpty)
+          peer_address = btif_av_sink.ActivePeer();
         msg = "Stream source offloaded";
       }
       break;
