@@ -1180,7 +1180,7 @@ bool BTM_SecIsLeSecurityPending(const RawAddress& bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
   return p_dev_rec &&
          (p_dev_rec->sec_rec.is_security_state_le_encrypting() ||
-          p_dev_rec->sec_rec.sec_state == BTM_SEC_STATE_AUTHENTICATING);
+          p_dev_rec->sec_rec.le_link == tSECURITY_STATE::AUTHENTICATING);
 }
 
 /*******************************************************************************
