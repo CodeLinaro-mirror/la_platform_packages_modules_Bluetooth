@@ -27,6 +27,7 @@
 
 #include "bta/dm/bta_dm_disc_int.h"
 #include "bta/include/bta_sdp_api.h"
+#include "btif/include/btif_common.h"
 #include "btif/include/btif_config.h"
 #include "btif/include/btif_storage.h"
 #include "device/include/interop.h"
@@ -346,8 +347,11 @@ void bta_dm_sdp_find_services(tBTA_DM_SDP_STATE* sdp_state) {
 
   if (uuid == Uuid::From16Bit(UUID_PROTOCOL_L2CAP)) {
     if (!is_sdp_pbap_pce_disabled(sdp_state->bd_addr)) {
-      log::debug("SDP search for PBAP Client");
-      BTA_SdpSearch(sdp_state->bd_addr, Uuid::From16Bit(UUID_SERVCLASS_PBAP_PCE));
+      tBTA_SERVICE_MASK service_mask = btif_get_enabled_services_mask();
+      if(service_mask & (tBTA_SERVICE_MASK)(1 << BTA_PBAP_SERVICE_ID)) {
+        log::debug("SDP search for PBAP Client");
+        BTA_SdpSearch(sdp_state->bd_addr, Uuid::From16Bit(UUID_SERVCLASS_PBAP_PCE));
+      }
     }
   }
   sdp_state->service_index++;
