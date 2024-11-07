@@ -31,6 +31,8 @@ import android.content.res.Resources;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Looper;
+import android.platform.test.annotations.DisableFlags;
+import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.SetFlagsRule;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaControllerCompat;
@@ -74,9 +76,9 @@ public class AvrcpControllerStateMachineTest {
     private static final int UUID_START = 0;
     private static final int UUID_LENGTH = 25;
 
-    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
-
     private BluetoothAdapter mAdapter;
+
+    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
@@ -465,8 +467,8 @@ public class AvrcpControllerStateMachineTest {
 
     /** Get the root of the device */
     @Test
+    @DisableFlags(Flags.FLAG_RANDOMIZE_DEVICE_LEVEL_MEDIA_IDS)
     public void testGetDeviceRootNode_flagRandomDeviceIdDisabled_rootNodeMatchesUuidFormat() {
-        mSetFlagsRule.disableFlags(Flags.FLAG_RANDOMIZE_DEVICE_LEVEL_MEDIA_IDS);
         // create new state machine to follow current flags rule
         mAvrcpStateMachine = makeStateMachine(mTestDevice);
         setUpConnectedState(true, true);
@@ -478,8 +480,8 @@ public class AvrcpControllerStateMachineTest {
 
     /** Get the root of the device */
     @Test
+    @EnableFlags(Flags.FLAG_RANDOMIZE_DEVICE_LEVEL_MEDIA_IDS)
     public void testGetDeviceRootNode_flagRandomDeviceIdEnabled_rootNodeMatchesUuidFormat() {
-        mSetFlagsRule.enableFlags(Flags.FLAG_RANDOMIZE_DEVICE_LEVEL_MEDIA_IDS);
         // create new state machine to follow current flags rule
         mAvrcpStateMachine = makeStateMachine(mTestDevice);
         setUpConnectedState(true, true);
@@ -1517,12 +1519,12 @@ public class AvrcpControllerStateMachineTest {
         sendAudioFocusUpdate(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT);
 
         TestUtils.waitForLooperToBeIdle(mAvrcpStateMachine.getHandler().getLooper());
-        verify(mNativeInterface, times(1))
+        verify(mNativeInterface)
                 .sendPassThroughCommand(
                         eq(mTestAddress),
                         eq(AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE),
                         eq(KEY_DOWN));
-        verify(mNativeInterface, times(1))
+        verify(mNativeInterface)
                 .sendPassThroughCommand(
                         eq(mTestAddress),
                         eq(AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE),
@@ -1562,12 +1564,12 @@ public class AvrcpControllerStateMachineTest {
         sendAudioFocusUpdate(AudioManager.AUDIOFOCUS_LOSS);
 
         TestUtils.waitForLooperToBeIdle(mAvrcpStateMachine.getHandler().getLooper());
-        verify(mNativeInterface, times(1))
+        verify(mNativeInterface)
                 .sendPassThroughCommand(
                         eq(mTestAddress),
                         eq(AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE),
                         eq(KEY_DOWN));
-        verify(mNativeInterface, times(1))
+        verify(mNativeInterface)
                 .sendPassThroughCommand(
                         eq(mTestAddress),
                         eq(AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE),
@@ -1608,12 +1610,12 @@ public class AvrcpControllerStateMachineTest {
         sendAudioFocusUpdate(AudioManager.AUDIOFOCUS_GAIN);
 
         TestUtils.waitForLooperToBeIdle(mAvrcpStateMachine.getHandler().getLooper());
-        verify(mNativeInterface, times(1))
+        verify(mNativeInterface)
                 .sendPassThroughCommand(
                         eq(mTestAddress),
                         eq(AvrcpControllerService.PASS_THRU_CMD_ID_PLAY),
                         eq(KEY_DOWN));
-        verify(mNativeInterface, times(1))
+        verify(mNativeInterface)
                 .sendPassThroughCommand(
                         eq(mTestAddress),
                         eq(AvrcpControllerService.PASS_THRU_CMD_ID_PLAY),
@@ -1752,12 +1754,12 @@ public class AvrcpControllerStateMachineTest {
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
 
         // Verify download attempt and send some elements over, verify next set is requested
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
         mAvrcpStateMachine.sendMessage(
                 AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_FOLDER_ITEMS,
                 new ArrayList<AvrcpItem>(nowPlayingList.subList(0, 20)));
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(20), eq(39));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(20), eq(39));
 
         // Force a now playing content invalidation and verify attempted download
         mAvrcpStateMachine.nowPlayingContentChanged();
@@ -1819,7 +1821,7 @@ public class AvrcpControllerStateMachineTest {
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
 
         // Verify download attempt and send some elements over, verify next set is requested
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
         mAvrcpStateMachine.nowPlayingContentChanged();
 
         mAvrcpStateMachine.sendMessage(
@@ -1879,12 +1881,12 @@ public class AvrcpControllerStateMachineTest {
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
 
         // Verify download attempt and send some elements over, verify next set is requested
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
         mAvrcpStateMachine.sendMessage(
                 AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_FOLDER_ITEMS,
                 new ArrayList<AvrcpItem>(nowPlayingList.subList(0, 20)));
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(20), eq(39));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(20), eq(39));
 
         // Force a now playing content invalidation due to addressed player change
         mAvrcpStateMachine.sendMessage(
@@ -1947,7 +1949,7 @@ public class AvrcpControllerStateMachineTest {
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
 
         // Verify download attempt and send some elements over, verify next set is requested
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
 
         // Force a now playing content invalidation due to addressed player change, happening
         // before we've received any items from the remote device.
@@ -2005,7 +2007,7 @@ public class AvrcpControllerStateMachineTest {
         TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
 
         // Request for new contents should be sent
-        verify(mNativeInterface, times(1)).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
+        verify(mNativeInterface).getNowPlayingList(eq(mTestAddress), eq(0), eq(19));
         Assert.assertFalse(nowPlaying.isCached());
 
         // Send timeout on our own instead of waiting 10 seconds
@@ -2073,6 +2075,105 @@ public class AvrcpControllerStateMachineTest {
         // issues a player list fetch
         mAvrcpStateMachine.connect(StackEvent.connectionStateChanged(true, true));
         TestUtils.waitForLooperToBeIdle(mAvrcpStateMachine.getHandler().getLooper());
-        verify(mNativeInterface, times(1)).getPlayerList(eq(mTestAddress), eq(0), eq(19));
+        verify(mNativeInterface).getPlayerList(eq(mTestAddress), eq(0), eq(19));
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_UNCACHE_PLAYER_WHEN_BROWSED_PLAYER_CHANGES)
+    public void testBrowsingContentsOfOtherBrowsablePlayer_browsedPlayerUncached() {
+        setUpConnectedState(true, true);
+        sendAudioFocusUpdate(AudioManager.AUDIOFOCUS_GAIN);
+
+        BrowseTree.BrowseNode results = mAvrcpStateMachine.mBrowseTree.mRootNode;
+
+        // Request fetch the list of players
+        BrowseTree.BrowseNode playerNodes = mAvrcpStateMachine.findNode(results.getID());
+        mAvrcpStateMachine.requestContents(playerNodes);
+        verify(mNativeInterface, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(1))
+                .getPlayerList(eq(mTestAddress), eq(0), eq(19));
+
+        // Provide back two player objects
+        byte[] playerFeatures =
+                new byte[] {0, 0, 0, 0, 0, (byte) 0xb7, 0x01, 0x0c, 0x0a, 0, 0, 0, 0, 0, 0, 0};
+        AvrcpPlayer playerOne = makePlayer(mTestDevice, 1, "player 1", playerFeatures, 1);
+        AvrcpPlayer playerTwo = makePlayer(mTestDevice, 2, "player 2", playerFeatures, 1);
+        List<AvrcpPlayer> testPlayers = new ArrayList<>();
+        testPlayers.add(playerOne);
+        testPlayers.add(playerTwo);
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_PLAYER_ITEMS, testPlayers);
+        TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
+
+        // Verify that the player objects are both available and properly formatted
+        playerNodes = mAvrcpStateMachine.findNode(results.getID());
+        assertThat(playerNodes.isCached()).isTrue();
+        assertThat(playerNodes.getChildren()).isNotNull();
+        assertThat(playerNodes.getChildren().size()).isEqualTo(2);
+        assertThat(playerNodes.getChildren().get(0).getMediaItem().toString())
+                .isEqualTo("MediaItem{mFlags=1, mDescription=player 1, null, null}");
+        assertThat(playerNodes.getChildren().get(1).getMediaItem().toString())
+                .isEqualTo("MediaItem{mFlags=1, mDescription=player 2, null, null}");
+
+        // Fetch contents of the first player object
+        BrowseTree.BrowseNode playerOneNode =
+                mAvrcpStateMachine.findNode(results.getChildren().get(0).getID());
+        mAvrcpStateMachine.requestContents(playerOneNode);
+        verify(mNativeInterface, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(1))
+                .setBrowsedPlayer(eq(mTestAddress), eq(1));
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_SET_BROWSED_PLAYER,
+                /* items= */ 5,
+                /* depth= */ 0);
+        verify(mNativeInterface, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(1))
+                .getFolderList(eq(mTestAddress), eq(0), eq(4));
+
+        // Return some results for Player One
+        List<AvrcpItem> testFolderContents = new ArrayList<AvrcpItem>();
+        for (int i = 0; i < 5; i++) {
+            String title = "Song " + Integer.toString(i);
+            testFolderContents.add(makeNowPlayingItem(i, title));
+        }
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_FOLDER_ITEMS, testFolderContents);
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_FOLDER_ITEMS_OUT_OF_RANGE);
+        TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
+
+        // Make sure the player/folder is cached
+        playerOneNode = mAvrcpStateMachine.findNode(results.getChildren().get(0).getID());
+        assertThat(playerOneNode.isCached()).isTrue();
+
+        // Browse to the Player Two
+        BrowseTree.BrowseNode playerTwoNode =
+                mAvrcpStateMachine.findNode(results.getChildren().get(1).getID());
+        mAvrcpStateMachine.requestContents(playerTwoNode);
+        verify(mNativeInterface, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(1))
+                .setBrowsedPlayer(eq(mTestAddress), eq(2));
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_SET_BROWSED_PLAYER,
+                /* items= */ 5,
+                /* depth= */ 0);
+        verify(mNativeInterface, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(2))
+                .getFolderList(eq(mTestAddress), eq(0), eq(4));
+
+        // Make sure the first player is uncached
+        playerOneNode = mAvrcpStateMachine.findNode(results.getChildren().get(0).getID());
+        assertThat(playerOneNode.isCached()).isFalse();
+
+        // Send items for Player Two
+        testFolderContents = new ArrayList<AvrcpItem>();
+        for (int i = 5; i < 10; i++) {
+            String title = "Song " + Integer.toString(i);
+            testFolderContents.add(makeNowPlayingItem(i, title));
+        }
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_FOLDER_ITEMS, testFolderContents);
+        mAvrcpStateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_GET_FOLDER_ITEMS_OUT_OF_RANGE);
+        TestUtils.waitForLooperToFinishScheduledTask(mAvrcpStateMachine.getHandler().getLooper());
+
+        // make sure the second player is cached now
+        playerTwoNode = mAvrcpStateMachine.findNode(results.getChildren().get(1).getID());
+        assertThat(playerTwoNode.isCached()).isTrue();
     }
 }

@@ -27,7 +27,6 @@
 #include "common/callback.h"
 #include "os/handler.h"
 #include "os/linux_generic/reactive_semaphore.h"
-#include "os/log.h"
 
 namespace bluetooth {
 namespace os {
@@ -53,6 +52,20 @@ public:
   virtual std::unique_ptr<T> TryDequeue() = 0;
 };
 
+//
+// An interface facilitating flow-controlled and non-blocking queue operations.
+//
+// This Queue uses separate semaphores and callbacks for enqueue end (producer)
+// and dequeue end (consumer) to manage data flow efficiently:
+//
+// Enqueue end (producer):
+// - Registers an EnqueueCallback when producer has data to send.
+// - Unregisters the EnqueueCallback when no data is available.
+//
+// Dequeue end (consumer):
+// - Registers a DequeueCallback when consumer is ready to process data.
+// - Unregisters the DequeueCallback when no longer ready.
+//
 template <typename T>
 class Queue : public IQueueEnqueue<T>, public IQueueDequeue<T> {
 public:

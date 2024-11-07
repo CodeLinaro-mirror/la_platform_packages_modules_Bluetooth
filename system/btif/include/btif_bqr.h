@@ -14,16 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef BTIF_BQR_H_
-#define BTIF_BQR_H_
+#pragma once
 
 #include <bluetooth/log.h>
 
 #include "common/postable_context.h"
-#include "hci/hci_packets.h"
 #include "include/hardware/bt_bqr.h"
 #include "osi/include/osi.h"
-#include "raw_address.h"
+#include "types/raw_address.h"
 
 namespace bluetooth {
 namespace bqr {
@@ -169,14 +167,6 @@ static constexpr const char* kpBtSchedulingTraceLastLogPath =
 // for sco choppy. Value format is a2dp_choppy_threshold,sco_choppy_threshold
 static constexpr const char* kpPropertyChoppyThreshold = "persist.bluetooth.bqr.choppy_threshold";
 
-// File Descriptor of LMP/LL message trace log
-static int LmpLlMessageTraceLogFd = INVALID_FD;
-// File Descriptor of Bluetooth Multi-profile/Coex scheduling trace log
-static int BtSchedulingTraceLogFd = INVALID_FD;
-// Counter of LMP/LL message trace
-static uint16_t LmpLlMessageTraceCounter = 0;
-// Counter of Bluetooth Multi-profile/Coex scheduling trace
-static uint16_t BtSchedulingTraceCounter = 0;
 // The version supports ISO packets start from v1.01(257)
 static constexpr uint16_t kBqrIsoVersion = 0x101;
 // The version supports vendor quality and trace log starting v1.02(258)
@@ -386,20 +376,26 @@ public:
 
 BluetoothQualityReportInterface* getBluetoothQualityReportInterface();
 
-// Enable/Disable Bluetooth Quality Report mechanism.
+// Enable Bluetooth Quality Report mechanism.
 //
 // Which Quality event will be enabled is according to the setting of the
 // property "persist.bluetooth.bqr.event_mask".
 // And the minimum time interval of quality event reporting depends on the
 // setting of property "persist.bluetooth.bqr.min_interval_ms".
 //
-// @param to_bind gives the postable for the callback, or null if disabling.
+// @param to_bind gives the postable for the callback.
 void EnableBtQualityReport(common::PostableContext* to_bind);
+
+// Disable Bluetooth Quality Report mechanism.
+void DisableBtQualityReport();
 
 // Dump Bluetooth Quality Report information.
 //
 // @param fd The file descriptor to use for dumping information.
 void DebugDump(int fd);
+
+// Configure the file descriptor for the LMP/LL message trace log.
+void SetLmpLlMessageTraceLogFd(int fd);
 
 }  // namespace bqr
 }  // namespace bluetooth
@@ -411,5 +407,3 @@ struct formatter<bluetooth::bqr::BqrReportAction>
 template <>
 struct formatter<bluetooth::bqr::BqrVseSubEvt> : ostream_formatter {};
 }  // namespace fmt
-
-#endif  // BTIF_BQR_H_

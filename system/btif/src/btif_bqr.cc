@@ -24,25 +24,26 @@
 #include <cerrno>
 #include <cstdint>
 
+#include "btif/include/btif_bqr.h"
+#include "btif/include/btif_common.h"
+#include "btif/include/btif_storage.h"
+#include "btif/include/core_callbacks.h"
 #include "btif/include/stack_manager_t.h"
-#include "btif_bqr.h"
-#include "btif_common.h"
-#include "btif_storage.h"
 #include "common/leaky_bonded_queue.h"
 #include "common/postable_context.h"
 #include "common/time_util.h"
-#include "core_callbacks.h"
+#include "hardware/bluetooth.h"
 #include "hci/hci_interface.h"
 #include "hci/hci_packets.h"
 #include "internal_include/bt_trace.h"
 #include "main/shim/entry.h"
 #include "osi/include/properties.h"
 #include "packet/raw_builder.h"
-#include "raw_address.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_ble_api.h"
 #include "stack/include/btm_client_interface.h"
+#include "types/raw_address.h"
 
 namespace bluetooth {
 namespace bqr {
@@ -54,6 +55,15 @@ using std::chrono::system_clock;
 static LeakyBondedQueue<BqrVseSubEvt> kpBqrEventQueue{kBqrEventQueueSize};
 
 static uint16_t vendor_cap_supported_version;
+
+// File Descriptor of LMP/LL message trace log
+static int LmpLlMessageTraceLogFd = INVALID_FD;
+// File Descriptor of Bluetooth Multi-profile/Coex scheduling trace log
+static int BtSchedulingTraceLogFd = INVALID_FD;
+// Counter of LMP/LL message trace
+static uint16_t LmpLlMessageTraceCounter = 0;
+// Counter of Bluetooth Multi-profile/Coex scheduling trace
+static uint16_t BtSchedulingTraceCounter = 0;
 
 class BluetoothQualityReportInterfaceImpl;
 std::unique_ptr<BluetoothQualityReportInterface> bluetoothQualityReportInstance;
@@ -316,12 +326,7 @@ void unregister_vse();
 
 static void ConfigureBqr(const BqrConfiguration& bqr_config);
 
-void EnableBtQualityReport(common::PostableContext* to_bind) {
-  log::info("is_enable: {}", to_bind != nullptr);
-  if (to_bind != nullptr) {
-    to_bind_ = to_bind;
-  }
-
+static void EnableDisableBtQualityReport(bool enable) {
   char bqr_prop_evtmask[PROPERTY_VALUE_MAX] = {0};
   char bqr_prop_interval_ms[PROPERTY_VALUE_MAX] = {0};
   char bqr_prop_vnd_quality_mask[PROPERTY_VALUE_MAX] = {0};
@@ -343,7 +348,7 @@ void EnableBtQualityReport(common::PostableContext* to_bind) {
 
   BqrConfiguration bqr_config = {};
 
-  if (to_bind) {
+  if (enable) {
     bqr_config.report_action = REPORT_ACTION_ADD;
     bqr_config.quality_event_mask = static_cast<uint32_t>(atoi(bqr_prop_evtmask));
     bqr_config.minimum_report_interval_ms = static_cast<uint16_t>(atoi(bqr_prop_interval_ms));
@@ -366,12 +371,26 @@ void EnableBtQualityReport(common::PostableContext* to_bind) {
   BTM_BleGetVendorCapabilities(&cmn_vsc_cb);
   vendor_cap_supported_version = cmn_vsc_cb.version_supported;
 
-  log::info(
-          "Event Mask: 0x{:x}, Interval: {}, Multiple: {}, "
-          "vendor_cap_supported_version: {}",
-          bqr_config.quality_event_mask, bqr_config.minimum_report_interval_ms,
-          bqr_config.report_interval_multiple, vendor_cap_supported_version);
+  log::info("Event Mask: 0x{:x}, Interval: {}, Multiple: {}, vendor_cap_supported_version: {}",
+            bqr_config.quality_event_mask, bqr_config.minimum_report_interval_ms,
+            bqr_config.report_interval_multiple, vendor_cap_supported_version);
   ConfigureBqr(bqr_config);
+}
+
+void EnableBtQualityReport(common::PostableContext* to_bind) {
+  log::info("");
+  to_bind_ = to_bind;
+  EnableDisableBtQualityReport(true);
+}
+
+void DisableBtQualityReport() {
+  log::info("");
+  if (to_bind_ == nullptr) {
+    log::warn("Skipping second call (Lifecycle issue).");
+    return;
+  }
+  EnableDisableBtQualityReport(false);
+  to_bind_ = nullptr;
 }
 
 static void BqrVscCompleteCallback(hci::CommandCompleteView complete);
@@ -495,7 +514,7 @@ static void BqrVscCompleteCallback(hci::CommandCompleteView complete) {
   ConfigureBqrCmpl(current_quality_event_mask);
 }
 
-void ConfigBqrA2dpScoThreshold() {
+static void ConfigBqrA2dpScoThreshold() {
   uint8_t sub_opcode = 0x16;
   uint16_t a2dp_choppy_threshold = 0;
   uint16_t sco_choppy_threshold = 0;
@@ -663,7 +682,7 @@ static void AddLinkQualityEventToQueue(uint8_t length, const uint8_t* p_link_qua
     }
 
     if (!bd_addr.IsEmpty()) {
-      bqrItf->bqr_delivery_event(bd_addr, (uint8_t*)p_link_quality_event, length);
+      bqrItf->bqr_delivery_event(bd_addr, p_link_quality_event, length);
     } else {
       log::warn("failed to deliver BQR, bdaddr is empty");
     }
@@ -778,10 +797,7 @@ void DebugDump(int fd) {
   dprintf(fd, "\n");
 }
 
-static void btif_get_remote_version(const RawAddress& bd_addr, uint8_t& lmp_version,
-                                    uint16_t& manufacturer, uint16_t& lmp_sub_version) {
-  bt_property_t prop;
-  bt_remote_version_t info;
+static bt_remote_version_t btif_get_remote_version(const RawAddress& bd_addr) {
   uint8_t tmp_lmp_ver = 0;
   uint16_t tmp_manufacturer = 0;
   uint16_t tmp_lmp_subver = 0;
@@ -789,21 +805,24 @@ static void btif_get_remote_version(const RawAddress& bd_addr, uint8_t& lmp_vers
   const bool status = get_btm_client_interface().peer.BTM_ReadRemoteVersion(
           bd_addr, &tmp_lmp_ver, &tmp_manufacturer, &tmp_lmp_subver);
   if (status && (tmp_lmp_ver || tmp_manufacturer || tmp_lmp_subver)) {
-    lmp_version = tmp_lmp_ver;
-    manufacturer = tmp_manufacturer;
-    lmp_sub_version = tmp_lmp_subver;
-    return;
+    return {
+            .version = tmp_lmp_ver,
+            .sub_ver = tmp_lmp_subver,
+            .manufacturer = tmp_manufacturer,
+    };
   }
 
-  prop.type = BT_PROPERTY_REMOTE_VERSION_INFO;
-  prop.len = sizeof(bt_remote_version_t);
-  prop.val = (void*)&info;
+  bt_remote_version_t info{};
+  bt_property_t prop{
+          .type = BT_PROPERTY_REMOTE_VERSION_INFO,
+          .len = sizeof(bt_remote_version_t),
+          .val = reinterpret_cast<void*>(&info),
+  };
 
   if (btif_storage_get_remote_device_property(&bd_addr, &prop) == BT_STATUS_SUCCESS) {
-    lmp_version = (uint8_t)info.version;
-    manufacturer = (uint16_t)info.manufacturer;
-    lmp_sub_version = (uint16_t)info.sub_ver;
+    return info;
   }
+  return {};
 }
 
 class BluetoothQualityReportInterfaceImpl : public bluetooth::bqr::BluetoothQualityReportInterface {
@@ -834,13 +853,10 @@ class BluetoothQualityReportInterfaceImpl : public bluetooth::bqr::BluetoothQual
       raw_data.insert(it, kVersion5_0ParamsTotalLen, 0);
     }
 
-    uint8_t lmp_ver = 0;
-    uint16_t lmp_subver = 0;
-    uint16_t manufacturer_id = 0;
-    btif_get_remote_version(bd_addr, lmp_ver, manufacturer_id, lmp_subver);
+    bt_remote_version_t info = btif_get_remote_version(bd_addr);
 
     log::info("len: {}, addr: {}, lmp_ver: {}, manufacturer_id: {}, lmp_subver: {}",
-              bqr_raw_data_len, bd_addr, lmp_ver, manufacturer_id, lmp_subver);
+              bqr_raw_data_len, bd_addr, info.version, info.manufacturer, info.sub_ver);
 
     if (callbacks == nullptr) {
       log::error("callbacks is nullptr");
@@ -849,8 +865,8 @@ class BluetoothQualityReportInterfaceImpl : public bluetooth::bqr::BluetoothQual
 
     do_in_jni_thread(
             base::BindOnce(&bluetooth::bqr::BluetoothQualityReportCallbacks::bqr_delivery_callback,
-                           base::Unretained(callbacks), bd_addr, lmp_ver, lmp_subver,
-                           manufacturer_id, std::move(raw_data)));
+                           base::Unretained(callbacks), bd_addr, info.version, info.sub_ver,
+                           info.manufacturer, std::move(raw_data)));
   }
 
 private:
@@ -916,9 +932,7 @@ void unregister_vse() {
           hci::VseSubeventCode::BQR_EVENT);
 }
 
-namespace testing {
-void set_lmp_trace_log_fd(int fd) { LmpLlMessageTraceLogFd = fd; }
-}  // namespace testing
+void SetLmpLlMessageTraceLogFd(int fd) { LmpLlMessageTraceLogFd = fd; }
 
 }  // namespace bqr
 }  // namespace bluetooth
