@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -741,6 +746,10 @@ uint8_t btif_a2dp_sink_enqueue_buf(BT_HDR* p_pkt) {
     if (btif_a2dp_sink_cb.rx_focus_state == BTIF_A2DP_SINK_FOCUS_GRANTED) {
       log::info("Request to begin decoding");
       btif_a2dp_sink_audio_handle_start_decoding();
+    } else {
+      // Discard old packet to prevent the queue from being full which
+      // results in the decoding process to be bypassed
+      osi_free(fixed_queue_try_dequeue(btif_a2dp_sink_cb.rx_audio_queue));
     }
   }
 
