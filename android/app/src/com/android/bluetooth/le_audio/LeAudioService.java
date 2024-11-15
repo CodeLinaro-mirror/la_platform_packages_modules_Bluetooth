@@ -5408,6 +5408,10 @@ public class LeAudioService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sLeAudioService == null) {
+            ProfileService.println(sb, "LeAudioService is not running");
+            return;
+        }
         super.dump(sb);
         ProfileService.println(sb, "isDualModeAudioEnabled: " + Utils.isDualModeAudioEnabled());
         ProfileService.println(sb, "Active Groups information: ");

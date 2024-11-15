@@ -134,6 +134,10 @@ public class McpService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sMcpService == null) {
+            ProfileService.println(sb, "McpService is not running");
+            return;
+        }
         super.dump(sb);
         mGmcs.dump(sb);
 

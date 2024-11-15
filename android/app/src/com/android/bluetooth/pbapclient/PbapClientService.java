@@ -656,6 +656,10 @@ public class PbapClientService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sPbapClientService == null) {
+            ProfileService.println(sb, "PbapClientService is not running");
+            return;
+        }
         super.dump(sb);
         ProfileService.println(sb, "isAuthServiceReady: " + isAuthenticationServiceReady());
         for (PbapClientStateMachine stateMachine : mPbapClientStateMachineMap.values()) {

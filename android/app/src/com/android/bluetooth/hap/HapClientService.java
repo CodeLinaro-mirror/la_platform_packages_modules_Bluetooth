@@ -990,6 +990,10 @@ public class HapClientService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sHapClient == null) {
+            ProfileService.println(sb, "HapClientService is not running");
+            return;
+        }
         super.dump(sb);
         for (HapClientStateMachine sm : mStateMachines.values()) {
             sm.dump(sb);

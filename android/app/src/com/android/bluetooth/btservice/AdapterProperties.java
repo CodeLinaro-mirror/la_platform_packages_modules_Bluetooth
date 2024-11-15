@@ -1234,6 +1234,10 @@ class AdapterProperties {
     @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
         writer.println(TAG);
+        if (mService == null) {
+            writer.println("  " + "Bluetooth Service is not running");
+            return;
+        }
         writer.println("  " + "Name: " + getName());
         writer.println("  " + "Address: " + Utils.getAddressStringFromByte(mAddress));
         writer.println("  " + "ScanMode: " + dumpScanMode(getScanMode()));
