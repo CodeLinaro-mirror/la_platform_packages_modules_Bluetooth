@@ -383,6 +383,24 @@ public class ActiveDeviceManagerTest {
     }
 
     @Test
+    public void headsetRemoveActive_fallbackToLeAudio() {
+        when(mHeadsetService.getFallbackDevice()).thenReturn(mHeadsetDevice);
+
+        leAudioConnected(mLeAudioDevice);
+        mTestLooper.dispatchAll();
+        verify(mLeAudioService, times(1)).setActiveDevice(mLeAudioDevice);
+
+        headsetConnected(mHeadsetDevice, false);
+        mTestLooper.dispatchAll();
+        verify(mHeadsetService).setActiveDevice(mHeadsetDevice);
+
+        // HFP activce device to null. Expect to fallback to LeAudio.
+        headsetActiveDeviceChanged(null);
+        mTestLooper.dispatchAll();
+        verify(mLeAudioService, times(2)).setActiveDevice(mLeAudioDevice);
+    }
+
+    @Test
     public void a2dpConnectedButHeadsetNotConnected_setA2dpActive() {
         when(mAudioManager.getMode()).thenReturn(AudioManager.MODE_IN_CALL);
         a2dpConnected(mA2dpHeadsetDevice, true);
@@ -624,6 +642,20 @@ public class ActiveDeviceManagerTest {
         assertThat(mActiveDeviceManager.getA2dpActiveDevice()).isEqualTo(mA2dpHeadsetDevice);
         assertThat(mActiveDeviceManager.getHfpActiveDevice()).isEqualTo(mHeadsetDevice);
         verify(mHeadsetService, never()).setActiveDevice(any());
+    }
+
+    @Test
+    public void a2dpDeactivated_makeSureToNotRemoveLeAudioDevice() {
+        a2dpActiveDeviceChanged(null);
+        mTestLooper.dispatchAll();
+        verify(mLeAudioService, never()).removeActiveDevice(anyBoolean());
+    }
+
+    @Test
+    public void hfpDeactivated_makeSureToNotRemoveLeAudioDevice() {
+        headsetActiveDeviceChanged(null);
+        mTestLooper.dispatchAll();
+        verify(mLeAudioService, never()).removeActiveDevice(anyBoolean());
     }
 
     @Test
@@ -1459,9 +1491,8 @@ public class ActiveDeviceManagerTest {
         headsetActiveDeviceChanged(mDualModeAudioDevice);
         mTestLooper.dispatchAll();
 
-        // When A2DP device is getting active, first LeAudio device is removed from active devices
-        // and later added
-        verify(mLeAudioService).removeActiveDevice(anyBoolean());
+        // When Hfp device is getting active and it is dual mode device LeAudioDevice will be added.
+        verify(mLeAudioService, never()).removeActiveDevice(anyBoolean());
         verify(mLeAudioService).setActiveDevice(mDualModeAudioDevice);
 
         Assert.assertEquals(mDualModeAudioDevice, mActiveDeviceManager.getA2dpActiveDevice());
