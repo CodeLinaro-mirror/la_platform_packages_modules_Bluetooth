@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BT_RC_H
@@ -295,6 +300,9 @@ typedef void (*btrc_ctrl_available_player_changed_callback)(const RawAddress& bd
 
 typedef void (*btrc_ctrl_get_cover_art_psm_callback)(const RawAddress& bd_addr, const uint16_t psm);
 
+typedef void (*btrc_ctrl_search_rsp_callback)(const RawAddress& bd_addr, uint8_t status,
+                                              uint16_t uid_counter, uint32_t num_items);
+
 /** BT-RC Controller callback structure. */
 typedef struct {
   /** set to sizeof(BtRcCallbacks) */
@@ -319,6 +327,7 @@ typedef struct {
   btrc_ctrl_now_playing_contents_changed_callback now_playing_contents_changed_cb;
   btrc_ctrl_available_player_changed_callback available_player_changed_cb;
   btrc_ctrl_get_cover_art_psm_callback get_cover_art_psm_cb;
+  btrc_ctrl_search_rsp_callback search_rsp_cb;
 } btrc_ctrl_callbacks_t;
 
 /** Represents the standard BT-RC AVRCP Controller interface. */
@@ -369,6 +378,14 @@ typedef struct {
 
   /** set addressed player */
   bt_status_t (*set_addressed_player_cmd)(const RawAddress& bd_addr, uint16_t player_id);
+
+  /** Search */
+  bt_status_t (*search_cmd)(const RawAddress& bd_addr, uint16_t charset_id,
+                            uint16_t length, uint8_t *str);
+
+  /** Get the search list */
+  bt_status_t (*get_search_list_cmd)(const RawAddress& bd_addr, uint32_t start,
+                                     uint32_t items);
 
   /** send rsp to set_abs_vol received from target */
   bt_status_t (*set_volume_rsp)(const RawAddress& bd_addr, uint8_t abs_vol, uint8_t label);

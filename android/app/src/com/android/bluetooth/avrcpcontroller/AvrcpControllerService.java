@@ -645,6 +645,16 @@ public class AvrcpControllerService extends ProfileService {
         }
     }
 
+    @VisibleForTesting
+    void handleSearchRsp(BluetoothDevice device, int status, int uid, int items) {
+        Log.d(TAG, "handleSearchRsp status: " + status + ", uid: " + uid + ", items: " + items);
+        AvrcpControllerStateMachine stateMachine = getStateMachine(device);
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_SEARCH_RESP, status, items);
+        }
+    }
+
     /* Generic Profile Code */
 
     /**

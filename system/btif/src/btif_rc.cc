@@ -15,8 +15,8 @@
  *
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
- * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /*****************************************************************************
@@ -2244,6 +2244,31 @@ static void handle_get_folder_items_response(tBTA_AV_META_MSG* pmeta_msg,
                                     (btrc_status_t)p_rsp->status, nullptr, 0));
   }
 }
+
+/***************************************************************************
+ *
+ * Function         handle_search_response
+ *
+ * Description      handles the search response, calls HAL callback to
+ *                  send the result.
+ * Returns          None
+ *
+ **************************************************************************/
+static void handle_search_response(tBTA_AV_META_MSG* pmeta_msg,
+                                   tAVRC_SEARCH_RSP* p_rsp) {
+
+  btif_rc_device_cb_t* p_dev =
+      btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
+
+  if (p_dev == NULL) {
+    log::error("p_dev NULL");
+    return;
+  }
+
+  do_in_jni_thread(base::Bind(bt_rc_ctrl_callbacks->search_rsp_cb, p_dev->rc_addr,
+                              p_rsp->status, p_rsp->uid_counter, p_rsp->num_items));
+}
+
 /***************************************************************************
  *
  * Function         cleanup_btrc_folder_items
@@ -2599,6 +2624,9 @@ static void handle_avk_rc_metamsg_rsp(tBTA_AV_META_MSG* pmeta_msg) {
         break;
       case AVRC_PDU_GET_ITEM_ATTRIBUTES:
         handle_get_metadata_attr_response(pmeta_msg, &avrc_response.get_attrs);
+        break;
+      case AVRC_PDU_SEARCH:
+        handle_search_response(pmeta_msg, &avrc_response.search);
         break;
       default:
         log::error("cannot handle browse pdu {}", pmeta_msg->p_msg->hdr.opcode);
@@ -3021,6 +3049,10 @@ static bt_status_t get_folder_items_cmd(const RawAddress& bd_addr, uint8_t scope
   /* Check that both avrcp and browse channel are connected. */
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
   log::verbose("");
+  if (p_dev == NULL) {
+    log::error("p_dev NULL");
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -3037,6 +3069,66 @@ static bt_status_t get_folder_items_cmd(const RawAddress& bd_addr, uint8_t scope
   avrc_cmd.get_items.attr_count = 0; /* p_attr_list does not matter hence */
 
   return build_and_send_browsing_cmd(&avrc_cmd, p_dev);
+}
+
+/***************************************************************************
+ *
+ * Function         search
+ *
+ * Description      Send search command
+ *
+ * Returns          BT_STATUS_SUCCESS if command issued successfully otherwise
+ *                  BT_STATUS_FAIL.
+ *
+ **************************************************************************/
+static bt_status_t search_cmd(const RawAddress &bd_addr, uint16_t charset_id, uint16_t len, uint8_t *str) {
+  /* Check that both avrcp and browse channel are connected. */
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev NULL");
+    return BT_STATUS_FAIL;
+  }
+  log::debug("");
+  CHECK_RC_CONNECTED(p_dev);
+  CHECK_BR_CONNECTED(p_dev);
+
+  tAVRC_COMMAND avrc_cmd = {0};
+
+  avrc_cmd.search.pdu = AVRC_PDU_SEARCH;
+  avrc_cmd.search.status = AVRC_STS_NO_ERROR;
+  avrc_cmd.search.string.charset_id = charset_id;
+  avrc_cmd.search.string.str_len = len;
+  avrc_cmd.search.string.p_str = str;  // not duplicate str, because it'll be copied into p_msg with enough buffer
+
+  BT_HDR* p_msg = NULL;
+  tAVRC_STS status = AVRC_BldCommand(&avrc_cmd, &p_msg);
+  if (status != AVRC_STS_NO_ERROR) {
+    log::error("failed to build command status {}", status);
+    return BT_STATUS_FAIL;
+  }
+
+  return build_and_send_browsing_cmd(&avrc_cmd, p_dev);
+
+}
+
+/***************************************************************************
+ *
+ * Function         get_search_list_cmd
+ *
+ * Description      Fetch the search list
+ *
+ * Paramters        start_item: First item to fetch (0 to fetch from beganning)
+ *                  end_item: Last item to fetch (0xffffffff to fetch until end)
+ *
+ * Returns          BT_STATUS_SUCCESS if command issued successfully otherwise
+ *                  BT_STATUS_FAIL.
+ *
+ **************************************************************************/
+static bt_status_t get_search_list_cmd(const RawAddress &bd_addr, uint32_t start_item,
+                                       uint32_t num_items) {
+  log::debug("start, end: ({}, {})", start_item, num_items);
+  return get_folder_items_cmd(bd_addr, AVRC_SCOPE_SEARCH, start_item,
+                              num_items);
 }
 
 /***************************************************************************
@@ -3438,6 +3530,8 @@ static const btrc_ctrl_interface_t bt_rc_ctrl_interface = {
         change_folder_path_cmd,
         set_browsed_player_cmd,
         set_addressed_player_cmd,
+        search_cmd,
+        get_search_list_cmd,
         set_volume_rsp,
         volume_change_notification_rsp,
         cleanup_ctrl,

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth;
@@ -91,6 +96,15 @@ public final class BluetoothAvrcpController implements BluetoothProfile {
 
     public static final String EXTRA_PLAYER_SETTING =
             "android.bluetooth.avrcp-controller.profile.extra.PLAYER_SETTING";
+
+    /**
+     * Intent used to do AVRCP custom action search.
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public static final String CUSTOM_ACTION_SEARCH =
+        "android.bluetooth.avrcp-controller.profile.action.CUSTOM_ACTION_SEARCH";
+    public static final String KEY_SEARCH = "search";
 
     private final BluetoothAdapter mAdapter;
     private final AttributionSource mAttributionSource;
