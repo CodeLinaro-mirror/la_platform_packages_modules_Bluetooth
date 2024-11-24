@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -28,6 +33,7 @@ import android.content.AttributionSource;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
+import android.media.session.PlaybackState;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
@@ -87,6 +93,16 @@ public class AvrcpControllerService extends ProfileService {
     public static final int PASS_THRU_CMD_ID_REWIND = 0x48;
     public static final int PASS_THRU_CMD_ID_FORWARD = 0x4B;
     public static final int PASS_THRU_CMD_ID_BACKWARD = 0x4C;
+
+    /*
+     * AVRCP Error types as defined in spec. Also they should be in sync with btrc_status_t
+     * NOTE: Not all may be defined.
+     */
+    public static final int JNI_AVRC_STS_INVALID_CMD = 0x00;
+    public static final int JNI_AVRC_STS_INVALID_PARAMETER = 0x01;
+    public static final int JNI_AVRC_STS_NO_ERROR = 0x04;
+    public static final int JNI_AVRC_STS_INVALID_SCOPE = 0x0a;
+    public static final int JNI_AVRC_INV_RANGE = 0x0b;
 
     /* Key State Variables */
     public static final int KEY_STATE_PRESSED = 0;
@@ -681,6 +697,18 @@ public class AvrcpControllerService extends ProfileService {
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.nowPlayingContentChanged();
+        }
+    }
+
+    @VisibleForTesting
+    void handleSearchRsp(BluetoothDevice device, int status, int uid, int items) {
+        Log.d(TAG, "handleSearchRsp status: " + status + ", uid: " + uid + ", items: " + items);
+
+        AvrcpControllerStateMachine stateMachine = getStateMachine(device);
+
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_SEARCH_RESP, status, items);
         }
     }
 

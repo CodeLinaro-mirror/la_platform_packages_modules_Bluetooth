@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -111,6 +116,14 @@ public class AvrcpControllerNativeInterface {
 
     void setBrowsedPlayer(byte[] address, int playerId) {
         setBrowsedPlayerNative(address, playerId);
+    }
+
+    void search(byte[] address, int charset, int strLen, String pattern) {
+        searchNative(address, charset, strLen, pattern);
+    }
+
+    void getSearchList(byte[] address, int start, int end) {
+        getSearchListNative(address, start, end);
     }
 
     /**********************************************************************************************/
@@ -219,6 +232,18 @@ public class AvrcpControllerNativeInterface {
                         + (" NumberOfItems=" + items.length));
 
         mAvrcpController.handleGetPlayerItemsRsp(device, Arrays.asList(items));
+    }
+
+    void handleSearchRsp(byte[] address, int status, int uid, int items) {
+        BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+        Log.d(
+                TAG,
+                "handleSearchRsp:"
+                        + (" device=" + device)
+                        + (" status=" + status)
+                        + (" uid=" + uid)
+                        + (" items=" + items));
+        mAvrcpController.handleSearchRsp(device, status, uid, items);
     }
 
     // JNI Helper functions to convert native objects to java.
@@ -483,4 +508,21 @@ public class AvrcpControllerNativeInterface {
      * @param playerId player number
      */
     private native void setAddressedPlayerNative(byte[] address, int playerId);
+    /**
+     * Search
+     *
+     * @param address      address
+     * @param charset      charset
+     * @param strLen       strLen
+     * @param pattern      pattern
+     */
+    public native static void searchNative(byte[] address, int charset, int strLen, String pattern);
+    /**
+     * Get Search List
+     *
+     * @param address      address
+     * @param start        start
+     * @param end          end
+     */
+    public native static void getSearchListNative(byte[] address, int start, int end);
 }
