@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.a2dpsink;
@@ -28,6 +33,7 @@ import android.util.Log;
 
 import com.android.bluetooth.R;
 import com.android.bluetooth.avrcpcontroller.AvrcpControllerService;
+import com.android.bluetooth.hfpclient.HeadsetClientStateMachine;
 
 /**
  * Bluetooth A2DP SINK Streaming Handler.
@@ -235,6 +241,16 @@ public class A2dpSinkStreamHandler extends Handler {
     /** Utility functions. */
     private void requestAudioFocusIfNone() {
         Log.d(TAG, "requestAudioFocusIfNone()");
+
+        // Don't request audio focus when SCO is connected.
+        // Audio playing cannot be recovered after failure occurs in requesting audio focus.
+        // This is because AudioService cleans up focus owner upon requestAudioFocus failure.
+        // Thus A2dpSinkStreamHandler can't receive Audio focus change event to resume music
+        // playing after call is terminated.
+        if (HeadsetClientStateMachine.isAudioRouted()) {
+            return;
+        }
+
         if (mAudioFocus != AudioManager.AUDIOFOCUS_GAIN) {
             requestAudioFocus();
         }
