@@ -734,6 +734,10 @@ public class PanService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sPanService == null) {
+            println(sb, "PanService is not running");
+            return;
+        }
         super.dump(sb);
         println(sb, "mMaxPanDevices: " + mMaxPanDevices);
         println(sb, "mPanIfName: " + mPanIfName);

@@ -1130,6 +1130,10 @@ public class HearingAidService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sHearingAidService == null) {
+            ProfileService.println(sb, "HearingAidService is not running");
+            return;
+        }
         super.dump(sb);
         for (HearingAidStateMachine sm : mStateMachines.values()) {
             sm.dump(sb);

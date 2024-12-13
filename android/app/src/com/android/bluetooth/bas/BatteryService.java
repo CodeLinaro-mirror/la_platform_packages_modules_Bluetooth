@@ -584,6 +584,10 @@ public class BatteryService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sBatteryService == null) {
+            ProfileService.println(sb, "BatterService is not running");
+            return;
+        }
         super.dump(sb);
         for (BatteryStateMachine sm : mStateMachines.values()) {
             sm.dump(sb);

@@ -1678,6 +1678,10 @@ public class A2dpService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sA2dpService == null) {
+            ProfileService.println(sb, "A2dpService is not running");
+            return;
+        }
         super.dump(sb);
         ProfileService.println(sb, "mActiveDevice: " + mActiveDevice);
         ProfileService.println(sb, "mMaxConnectedAudioDevices: " + mMaxConnectedAudioDevices);

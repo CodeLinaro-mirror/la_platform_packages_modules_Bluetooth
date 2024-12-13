@@ -1499,6 +1499,10 @@ public class HidHostService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sHidHostService == null) {
+            println(sb, "HidHostService is not running");
+            return;
+        }
         super.dump(sb);
         println(sb, "mTargetDevice: " + mTargetDevice);
         println(sb, "mInputDevices:");
