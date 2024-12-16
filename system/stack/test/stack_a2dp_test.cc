@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #include <dlfcn.h>
@@ -247,10 +252,85 @@ const uint8_t codec_info_non_a2dp_fake[AVDT_CODEC_SIZE] = {
     10              // Unused
 };
 
+const uint8_t codec_info_aptx[AVDT_CODEC_SIZE] = {
+    9,              // Length
+    0,              // Media Type: AVDT_MEDIA_TYPE_AUDIO
+    0xFF,           // Media Type: A2DP_MEDIA_CT_NON_A2DP
+    0x4F, 0, 0, 0,  // Vendor ID: A2DP_APTX_VENDOR_ID
+    0x01, 0,        // Codec ID: A2DP_APTX_CODEC_ID_BLUETOOTH
+    0x20 | 0x02,    // Sample Frequency: A2DP_APTX_SAMPLERATE_44100
+                    // Channel Mode: Setero
+    0xA             // Dummy
+};
+
+const uint8_t codec_info_aptx_capability[AVDT_CODEC_SIZE] = {
+    9,              // Length
+    0,              // Media Type: AVDT_MEDIA_TYPE_AUDIO
+    0xFF,           // Media Type: A2DP_MEDIA_CT_NON_A2DP
+    0x4F, 0, 0, 0,  // Vendor ID: A2DP_APTX_VENDOR_ID
+    0x01, 0,        // Codec ID: A2DP_APTX_CODEC_ID_BLUETOOTH
+    0x20 | 0x02,    // Sample Frequency: A2DP_APTX_SAMPLERATE_44100
+                    // Channel Mode: A2DP_APTX_CHANNELS_STEREO
+    0xB             // Dummy
+};
+
+const uint8_t codec_info_aptx_sink_capability[AVDT_CODEC_SIZE] = {
+    9,              // Length
+    0,              // Media Type: AVDT_MEDIA_TYPE_AUDIO
+    0xFF,           // Media Type: A2DP_MEDIA_CT_NON_A2DP
+    0x4F, 0, 0, 0,  // Vendor ID: A2DP_APTX_VENDOR_ID
+    0x01, 0,        // Codec ID: A2DP_APTX_CODEC_ID_BLUETOOTH
+    0x20 | 0x10 | 0x02,    // Sample Frequency:
+                           // A2DP_APTX_SAMPLERATE_44100
+                           // A2DP_APTX_SAMPLERATE_48000
+                           // Channel Mode:A2DP_APTX_CHANNELS_STEREO
+};
+
+const uint8_t codec_info_aptx_hd[AVDT_CODEC_SIZE] = {
+    0x0d,          // Length
+    0,              // Media Type: AVDT_MEDIA_TYPE_AUDIO
+    0xFF,           // Media Type: A2DP_MEDIA_CT_NON_A2DP
+    0xD7, 0, 0, 0,  // Vendor ID: A2DP_APTX_VENDOR_ID
+    0x24, 0,        // Codec ID: A2DP_APTX_CODEC_ID_BLUETOOTH
+    0x20 | 0x02,    // Sample Frequency: A2DP_APTX_SAMPLERATE_44100
+                    // Channel Mode: Setero
+    0, 0, 0, 0,     // acl_sprint_reserved
+    0x0E,           // Dummy
+    0x0E            // Dummy
+};
+
+const uint8_t codec_info_aptx_hd_capability[AVDT_CODEC_SIZE] = {
+    0x0d,             // Length
+    0,              // Media Type: AVDT_MEDIA_TYPE_AUDIO
+    0xFF,           // Media Type: A2DP_MEDIA_CT_NON_A2DP
+    0xD7, 0, 0, 0,  // Vendor ID: A2DP_APTX_VENDOR_ID
+    0x24, 0,        // Codec ID: A2DP_APTX_CODEC_ID_BLUETOOTH
+    0x20 | 0x02,    // Sample Frequency: A2DP_APTX_SAMPLERATE_44100
+                    // Channel Mode: Setero
+    0, 0, 0, 0,     // acl_sprint_reserved
+    0x0F,           // Dummy
+    0x0F            // Dummy
+};
+
+const uint8_t codec_info_aptx_hd_sink_capability[AVDT_CODEC_SIZE] = {
+    0x0d,           // Length
+    0,              // Media Type: AVDT_MEDIA_TYPE_AUDIO
+    0xFF,           // Media Type: A2DP_MEDIA_CT_NON_A2DP
+    0xD7, 0, 0, 0,  // Vendor ID: A2DP_APTX_VENDOR_ID
+    0x24, 0,        // Codec ID: A2DP_APTX_CODEC_ID_BLUETOOTH
+    0x20 | 0x10 | 0x02,    // Sample Frequency:
+                           // A2DP_APTX_SAMPLERATE_44100
+                           // A2DP_AAC_SAMPLING_FREQ_48000
+                           // Channel Mode:Setero
+    0, 0, 0, 0,            // acl_sprint_reserved
+};
+
 static const char* APTX_ENCODER_LIB_NAME = "libaptX_encoder.so";
 static const char* APTX_HD_ENCODER_LIB_NAME = "libaptXHD_encoder.so";
 static const char* LDAC_ENCODER_LIB_NAME = "libldacBT_enc.so";
 static const char* LDAC_DECODER_LIB_NAME = "libldacBT_dec.so";
+static const char* APTX_DECODER_LIB_NAME = "/system/lib64/libaptX_decoder.so";
+static const char* APTX_HD_DECODER_LIB_NAME = "/system/lib64/libaptX_HD_decoder.so";
 
 static bool has_shared_library(const char* name) {
   void* lib_handle = dlopen(name, RTLD_NOW);
@@ -305,6 +385,12 @@ class StackA2dpTest : public ::testing::Test {
           // Codec LDAC is supported only if the device has the corresponding
           // shared library installed.
           supported = has_shared_library(LDAC_DECODER_LIB_NAME);
+          break;
+        case BTAV_A2DP_CODEC_INDEX_SINK_APTX:
+          supported = has_shared_library(APTX_DECODER_LIB_NAME);
+          break;
+        case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
+          supported = has_shared_library(APTX_HD_DECODER_LIB_NAME);
           break;
         case BTAV_A2DP_CODEC_INDEX_SOURCE_LC3:
           break;
@@ -431,6 +517,56 @@ TEST_F(StackA2dpTest, test_a2dp_is_codec_valid_aac) {
   EXPECT_FALSE(A2DP_IsPeerSinkCodecValid(codec_info_aac_invalid));
 }
 
+TEST_F(StackA2dpTest, test_a2dp_is_codec_valid_aptx) {
+  EXPECT_TRUE(A2DP_IsSourceCodecValid(codec_info_aptx_capability));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_capability));
+
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_sink_capability));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_sink_capability));
+
+  // Test with invalid aptX codecs
+  uint8_t codec_info_aptx_invalid[AVDT_CODEC_SIZE];
+  memcpy(codec_info_aptx_invalid, codec_info_aptx, sizeof(codec_info_aptx));
+  codec_info_aptx_invalid[0] = 0;  // Corrupt the Length field
+  EXPECT_FALSE(A2DP_IsSourceCodecValid(codec_info_aptx_invalid));
+  EXPECT_FALSE(A2DP_IsSinkCodecValid(codec_info_aptx_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSinkCodecValid(codec_info_aptx_invalid));
+
+  // Test with invalid aptX codecs
+  memcpy(codec_info_aptx_invalid, codec_info_aptx, sizeof(codec_info_aptx));
+  codec_info_aptx_invalid[1] = 0xff;  // Corrupt the Length field
+  EXPECT_FALSE(A2DP_IsSourceCodecValid(codec_info_aptx_invalid));
+  EXPECT_FALSE(A2DP_IsSinkCodecValid(codec_info_aptx_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSinkCodecValid(codec_info_aptx_invalid));
+}
+
+TEST_F(StackA2dpTest, test_a2dp_is_codec_valid_aptx_hd) {
+  EXPECT_TRUE(A2DP_IsSourceCodecValid(codec_info_aptx_hd_capability));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_hd_capability));
+
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_hd_sink_capability));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_hd_sink_capability));
+
+  // Test with invalid aptX-HD codecs
+  uint8_t codec_info_aptx_hd_invalid[AVDT_CODEC_SIZE];
+  memcpy(codec_info_aptx_hd_invalid, codec_info_aptx_hd, sizeof(codec_info_aptx_hd));
+  codec_info_aptx_hd_invalid[0] = 0;  // Corrupt the Length field
+  EXPECT_FALSE(A2DP_IsSourceCodecValid(codec_info_aptx_hd_invalid));
+  EXPECT_FALSE(A2DP_IsSinkCodecValid(codec_info_aptx_hd_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_hd_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSinkCodecValid(codec_info_aptx_hd_invalid));
+
+  // Test with invalid aptX-HD codecs
+  memcpy(codec_info_aptx_hd_invalid, codec_info_aptx_hd, sizeof(codec_info_aptx_hd));
+  codec_info_aptx_hd_invalid[1] = 0xff;  // Corrupt the Length field
+  EXPECT_FALSE(A2DP_IsSourceCodecValid(codec_info_aptx_hd_invalid));
+  EXPECT_FALSE(A2DP_IsSinkCodecValid(codec_info_aptx_hd_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSourceCodecValid(codec_info_aptx_hd_invalid));
+  EXPECT_FALSE(A2DP_IsPeerSinkCodecValid(codec_info_aptx_hd_invalid));
+}
+
 TEST_F(StackA2dpTest, test_a2dp_is_codec_valid_opus) {
   ASSERT_TRUE(A2DP_IsVendorSourceCodecValid(codec_info_opus));
   ASSERT_TRUE(A2DP_IsVendorSourceCodecValid(codec_info_opus_capability));
@@ -484,6 +620,14 @@ TEST_F(StackA2dpTest, test_a2dp_is_sink_codec_supported) {
   EXPECT_FALSE(A2DP_IsSinkCodecSupported(codec_info_aac_sink_capability));
 
   EXPECT_FALSE(A2DP_IsSinkCodecSupported(codec_info_non_a2dp));
+
+  EXPECT_TRUE(A2DP_IsSinkCodecSupported(codec_info_aptx));
+  EXPECT_TRUE(A2DP_IsSinkCodecSupported(codec_info_aptx_capability));
+  EXPECT_FALSE(A2DP_IsSinkCodecSupported(codec_info_aptx_sink_capability));
+
+  EXPECT_TRUE(A2DP_IsSinkCodecSupported(codec_info_aptx_hd));
+  EXPECT_TRUE(A2DP_IsSinkCodecSupported(codec_info_aptx_hd_capability));
+  EXPECT_FALSE(A2DP_IsSinkCodecSupported(codec_info_aptx_hd_sink_capability));
 }
 
 TEST_F(StackA2dpTest, test_a2dp_is_peer_source_codec_supported) {
@@ -496,6 +640,14 @@ TEST_F(StackA2dpTest, test_a2dp_is_peer_source_codec_supported) {
   EXPECT_TRUE(A2DP_IsPeerSourceCodecSupported(codec_info_aac_sink_capability));
 
   EXPECT_FALSE(A2DP_IsPeerSourceCodecSupported(codec_info_non_a2dp));
+
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecSupported(codec_info_aptx));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecSupported(codec_info_aptx_capability));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecSupported(codec_info_aptx_sink_capability));
+
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecSupported(codec_info_aptx_hd));
+  EXPECT_TRUE(A2DP_IsPeerSourceCodecSupported(codec_info_aptx_hd_capability));
+  EXPECT_FALSE(A2DP_IsPeerSourceCodecSupported(codec_info_aptx_hd_sink_capability));
 }
 
 TEST_F(StackA2dpTest, test_init_default_codec) {
@@ -517,6 +669,14 @@ TEST_F(StackA2dpTest, test_a2dp_uses_rtp_header) {
   EXPECT_TRUE(A2DP_UsesRtpHeader(true, codec_info_aac));
   EXPECT_TRUE(A2DP_UsesRtpHeader(false, codec_info_aac));
 
+  //aptx
+  EXPECT_FALSE(A2DP_UsesRtpHeader(false, codec_info_aptx));
+  EXPECT_FALSE(A2DP_UsesRtpHeader(true, codec_info_aptx));
+
+  //aptx-HD
+  EXPECT_TRUE(A2DP_UsesRtpHeader(true, codec_info_aptx_hd));
+  EXPECT_TRUE(A2DP_UsesRtpHeader(false, codec_info_aptx_hd));
+
   ASSERT_TRUE(A2DP_VendorUsesRtpHeader(true, codec_info_opus));
   ASSERT_TRUE(A2DP_VendorUsesRtpHeader(false, codec_info_opus));
 
@@ -530,6 +690,8 @@ TEST_F(StackA2dpTest, test_a2dp_get_media_type) {
   EXPECT_EQ(A2DP_GetMediaType(codec_info_sbc), AVDT_MEDIA_TYPE_AUDIO);
   EXPECT_EQ(A2DP_GetMediaType(codec_info_aac), AVDT_MEDIA_TYPE_AUDIO);
   EXPECT_EQ(A2DP_GetMediaType(codec_info_non_a2dp), AVDT_MEDIA_TYPE_AUDIO);
+  EXPECT_EQ(A2DP_GetMediaType(codec_info_aptx), AVDT_MEDIA_TYPE_AUDIO);
+  EXPECT_EQ(A2DP_GetMediaType(codec_info_aptx_hd), AVDT_MEDIA_TYPE_AUDIO);
 
   // Prepare fake codec info for video and for multimedia
   memset(codec_info_test, 0, sizeof(codec_info_test));
@@ -550,6 +712,12 @@ TEST_F(StackA2dpTest, test_a2dp_codec_name) {
   EXPECT_STREQ(A2DP_CodecName(codec_info_aac), "AAC");
   EXPECT_STREQ(A2DP_CodecName(codec_info_aac_capability), "AAC");
   EXPECT_STREQ(A2DP_CodecName(codec_info_aac_sink_capability), "AAC");
+  EXPECT_STREQ(A2DP_CodecName(codec_info_aptx), "aptX");
+  EXPECT_STREQ(A2DP_CodecName(codec_info_aptx_capability), "aptX");
+  EXPECT_STREQ(A2DP_CodecName(codec_info_aptx_sink_capability), "aptX");
+  EXPECT_STREQ(A2DP_CodecName(codec_info_aptx_hd), "aptX-HD");
+  EXPECT_STREQ(A2DP_CodecName(codec_info_aptx_hd_capability), "aptX-HD");
+  EXPECT_STREQ(A2DP_CodecName(codec_info_aptx_hd_sink_capability), "aptX-HD");
   ASSERT_STREQ(A2DP_CodecName(codec_info_opus), "Opus");
   ASSERT_STREQ(A2DP_CodecName(codec_info_opus_capability), "Opus");
   ASSERT_STREQ(A2DP_CodecName(codec_info_opus_sink_capability), "Opus");
@@ -580,6 +748,10 @@ TEST_F(StackA2dpTest, test_a2dp_codec_type_equals) {
   EXPECT_TRUE(A2DP_CodecTypeEquals(codec_info_aac, codec_info_aac_capability));
   EXPECT_TRUE(
       A2DP_CodecTypeEquals(codec_info_aac, codec_info_aac_sink_capability));
+  EXPECT_TRUE(A2DP_CodecTypeEquals(codec_info_aptx, codec_info_aptx_capability));
+  EXPECT_TRUE(A2DP_CodecTypeEquals(codec_info_aptx, codec_info_aptx_sink_capability));
+  EXPECT_TRUE(A2DP_CodecTypeEquals(codec_info_aptx_hd, codec_info_aptx_hd_capability));
+  EXPECT_TRUE(A2DP_CodecTypeEquals(codec_info_aptx_hd, codec_info_aptx_hd_sink_capability));
 
   ASSERT_TRUE(
       A2DP_VendorCodecTypeEquals(codec_info_opus, codec_info_opus_capability));
@@ -597,6 +769,8 @@ TEST_F(StackA2dpTest, test_a2dp_codec_type_equals) {
 TEST_F(StackA2dpTest, test_a2dp_codec_equals) {
   uint8_t codec_info_sbc_test[AVDT_CODEC_SIZE];
   uint8_t codec_info_aac_test[AVDT_CODEC_SIZE];
+  uint8_t codec_info_aptx_test[AVDT_CODEC_SIZE];
+  uint8_t codec_info_aptx_hd_test[AVDT_CODEC_SIZE];
   uint8_t codec_info_opus_test[AVDT_CODEC_SIZE];
   uint8_t codec_info_non_a2dp_test[AVDT_CODEC_SIZE];
 
@@ -609,6 +783,16 @@ TEST_F(StackA2dpTest, test_a2dp_codec_equals) {
   memset(codec_info_aac_test, 0xAB, sizeof(codec_info_aac_test));
   memcpy(codec_info_aac_test, codec_info_aac, sizeof(codec_info_aac));
   EXPECT_TRUE(A2DP_CodecEquals(codec_info_aac, codec_info_aac_test));
+
+  // Test two identical aptX codecs
+  memset(codec_info_aptx_test, 0xAB, sizeof(codec_info_aptx_test));
+  memcpy(codec_info_aptx_test, codec_info_aptx, sizeof(codec_info_aptx));
+  EXPECT_TRUE(A2DP_CodecEquals(codec_info_aptx, codec_info_aptx_test));
+
+  // Test two identical aptX-HD codecs
+  memset(codec_info_aptx_hd_test, 0xAB, sizeof(codec_info_aptx_hd_test));
+  memcpy(codec_info_aptx_hd_test, codec_info_aptx_hd, sizeof(codec_info_aptx_hd));
+  EXPECT_TRUE(A2DP_CodecEquals(codec_info_aptx_hd, codec_info_aptx_hd_test));
 
   // Test two identical Opus codecs
   memset(codec_info_opus_test, 0xAB, sizeof(codec_info_opus_test));
@@ -624,6 +808,8 @@ TEST_F(StackA2dpTest, test_a2dp_codec_equals) {
   // Test two codecs that have different types
   EXPECT_FALSE(A2DP_CodecEquals(codec_info_sbc, codec_info_non_a2dp));
   ASSERT_FALSE(A2DP_CodecEquals(codec_info_sbc, codec_info_aac));
+  EXPECT_FALSE(A2DP_CodecEquals(codec_info_sbc, codec_info_aptx));
+  EXPECT_FALSE(A2DP_CodecEquals(codec_info_sbc, codec_info_aptx_hd));
   ASSERT_FALSE(A2DP_CodecEquals(codec_info_sbc, codec_info_opus));
 
   // Test two SBC codecs that are slightly different
@@ -644,7 +830,25 @@ TEST_F(StackA2dpTest, test_a2dp_codec_equals) {
   codec_info_aac_test[8] = codec_info_aac[8] + 1;
   EXPECT_FALSE(A2DP_CodecEquals(codec_info_aac, codec_info_aac_test));
 
-  // Test two SBC codecs that are identical, but with different fake
+  // Test two aptX codecs that are slightly different
+  memset(codec_info_aptx_test, 0xAB, sizeof(codec_info_aptx_test));
+  memcpy(codec_info_aptx_test, codec_info_aptx, sizeof(codec_info_aptx));
+  codec_info_aptx_test[7] = codec_info_aptx[7] + 1;
+  EXPECT_FALSE(A2DP_CodecEquals(codec_info_aptx, codec_info_aptx_test));
+  codec_info_aptx_test[7] = codec_info_aptx[7];
+  codec_info_aptx_test[8] = codec_info_aptx[8] + 1;
+  EXPECT_FALSE(A2DP_CodecEquals(codec_info_aptx, codec_info_aptx_test));
+
+  // Test two aptX-HD codecs that are slightly different
+  memset(codec_info_aptx_hd_test, 0xAB, sizeof(codec_info_aptx_hd_test));
+  memcpy(codec_info_aptx_hd_test, codec_info_aptx_hd, sizeof(codec_info_aptx_hd));
+  codec_info_aptx_hd_test[7] = codec_info_aptx_hd[7] + 1;
+  EXPECT_FALSE(A2DP_CodecEquals(codec_info_aptx_hd, codec_info_aptx_hd_test));
+  codec_info_aptx_hd_test[7] = codec_info_aptx_hd[7];
+  codec_info_aptx_hd_test[8] = codec_info_aptx_hd[8] + 1;
+  EXPECT_FALSE(A2DP_CodecEquals(codec_info_aptx_hd, codec_info_aptx_hd_test));
+
+  // Test two SBC codecs that are identical, but with different dummy
   // trailer data.
   memset(codec_info_sbc_test, 0xAB, sizeof(codec_info_sbc_test));
   memcpy(codec_info_sbc_test, codec_info_sbc, sizeof(codec_info_sbc));
@@ -657,18 +861,44 @@ TEST_F(StackA2dpTest, test_a2dp_codec_equals) {
   memcpy(codec_info_aac_test, codec_info_aac, sizeof(codec_info_aac));
   codec_info_aac_test[9] = codec_info_aac[9] + 1;
   EXPECT_TRUE(A2DP_CodecEquals(codec_info_aac, codec_info_aac_test));
+
+  // Test two aptX codecs that are identical, but with different dummy
+  // trailer data.
+  memset(codec_info_aptx_test, 0xAB, sizeof(codec_info_aptx_test));
+  memcpy(codec_info_aptx_test, codec_info_aptx, sizeof(codec_info_aptx));
+  codec_info_aptx_test[15] = codec_info_aptx[15] + 1;
+  EXPECT_TRUE(A2DP_CodecEquals(codec_info_aptx, codec_info_aptx_test));
+
+  // Test two aptX-HD codecs that are identical, but with different dummy
+  // trailer data.
+  memset(codec_info_aptx_hd_test, 0xAB, sizeof(codec_info_aptx_hd_test));
+  memcpy(codec_info_aptx_hd_test, codec_info_aptx_hd, sizeof(codec_info_aptx_hd));
+  codec_info_aptx_hd_test[15] = codec_info_aptx_hd[15] + 1;
+  EXPECT_TRUE(A2DP_CodecEquals(codec_info_aptx_hd, codec_info_aptx_hd_test));
 }
 
 TEST_F(StackA2dpTest, test_a2dp_get_track_sample_rate) {
   EXPECT_EQ(A2DP_GetTrackSampleRate(codec_info_sbc), 44100);
   EXPECT_EQ(A2DP_GetTrackSampleRate(codec_info_aac), 44100);
+  EXPECT_EQ(A2DP_GetTrackSampleRate(codec_info_aptx), 44100);
+  EXPECT_EQ(A2DP_GetTrackSampleRate(codec_info_aptx_hd), 44100);
   ASSERT_EQ(A2DP_VendorGetTrackSampleRate(codec_info_opus), 48000);
   EXPECT_EQ(A2DP_GetTrackSampleRate(codec_info_non_a2dp), -1);
+}
+
+TEST_F(StackA2dpTest, test_a2dp_get_track_bits_per_sample) {
+  EXPECT_EQ(A2DP_GetTrackBitsPerSample(codec_info_sbc), 16);
+  EXPECT_EQ(A2DP_GetTrackBitsPerSample(codec_info_aac), 16);
+  EXPECT_EQ(A2DP_GetTrackBitsPerSample(codec_info_non_a2dp), -1);
+  EXPECT_EQ(A2DP_GetTrackBitsPerSample(codec_info_aptx), 16);
+  EXPECT_EQ(A2DP_GetTrackBitsPerSample(codec_info_aptx_hd), 24);
 }
 
 TEST_F(StackA2dpTest, test_a2dp_get_track_channel_count) {
   EXPECT_EQ(A2DP_GetTrackChannelCount(codec_info_sbc), 2);
   EXPECT_EQ(A2DP_GetTrackChannelCount(codec_info_aac), 2);
+  EXPECT_EQ(A2DP_GetTrackChannelCount(codec_info_aptx), 2);
+  EXPECT_EQ(A2DP_GetTrackChannelCount(codec_info_aptx_hd), 2);
   ASSERT_EQ(A2DP_VendorGetTrackChannelCount(codec_info_opus), 2);
   EXPECT_EQ(A2DP_GetTrackChannelCount(codec_info_non_a2dp), -1);
 }
@@ -722,6 +952,8 @@ TEST_F(StackA2dpTest, test_a2dp_get_max_bitpool_sbc) {
 TEST_F(StackA2dpTest, test_a2dp_get_sink_track_channel_type) {
   EXPECT_EQ(A2DP_GetSinkTrackChannelType(codec_info_sbc), 3);
   EXPECT_EQ(A2DP_GetSinkTrackChannelType(codec_info_aac), 3);
+  EXPECT_EQ(A2DP_GetSinkTrackChannelType(codec_info_aptx), 3);
+  EXPECT_EQ(A2DP_GetSinkTrackChannelType(codec_info_aptx_hd), 3);
   ASSERT_EQ(A2DP_VendorGetSinkTrackChannelType(codec_info_opus), 2);
   EXPECT_EQ(A2DP_GetSinkTrackChannelType(codec_info_non_a2dp), -1);
 }
@@ -770,6 +1002,18 @@ TEST_F(StackA2dpTest, test_a2dp_get_packet_timestamp) {
   memset(a2dp_data, 0xAB, sizeof(a2dp_data));
   *p_ts = 0x12345678;
   timestamp = 0xFFFFFFFF;
+  EXPECT_TRUE(A2DP_GetPacketTimestamp(codec_info_aptx, a2dp_data, &timestamp));
+  EXPECT_EQ(timestamp, static_cast<uint32_t>(0x12345678));
+
+  memset(a2dp_data, 0xAB, sizeof(a2dp_data));
+  *p_ts = 0x12345678;
+  timestamp = 0xFFFFFFFF;
+  EXPECT_TRUE(A2DP_GetPacketTimestamp(codec_info_aptx_hd, a2dp_data, &timestamp));
+  EXPECT_EQ(timestamp, static_cast<uint32_t>(0x12345678));
+
+  memset(a2dp_data, 0xAB, sizeof(a2dp_data));
+  *p_ts = 0x12345678;
+  timestamp = 0xFFFFFFFF;
   ASSERT_TRUE(
       A2DP_VendorGetPacketTimestamp(codec_info_opus, a2dp_data, &timestamp));
   ASSERT_EQ(timestamp, static_cast<uint32_t>(0x12345678));
@@ -810,12 +1054,26 @@ TEST_F(StackA2dpTest, test_a2dp_build_codec_header) {
   p_buf->offset = BT_HDR_OFFSET;
   EXPECT_FALSE(
       A2DP_BuildCodecHeader(codec_info_non_a2dp, p_buf, FRAMES_PER_PACKET));
+
+  memset(a2dp_data, 0xAB, sizeof(a2dp_data));
+  p_buf->len = BT_HDR_LEN;
+  p_buf->offset = BT_HDR_OFFSET;
+  EXPECT_TRUE(
+    A2DP_BuildCodecHeader(codec_info_aptx, p_buf, FRAMES_PER_PACKET));
+
+  memset(a2dp_data, 0xAB, sizeof(a2dp_data));
+  p_buf->len = BT_HDR_LEN;
+  p_buf->offset = BT_HDR_OFFSET;
+  EXPECT_TRUE(
+    A2DP_BuildCodecHeader(codec_info_aptx_hd, p_buf, FRAMES_PER_PACKET));
 }
 
 TEST_F(StackA2dpTest, test_a2dp_adjust_codec) {
   uint8_t codec_info_sbc_test[AVDT_CODEC_SIZE];
   uint8_t codec_info_aac_test[AVDT_CODEC_SIZE];
   uint8_t codec_info_non_a2dp_test[AVDT_CODEC_SIZE];
+  uint8_t codec_info_aptx_test[AVDT_CODEC_SIZE];
+  uint8_t codec_info_aptx_hd_test[AVDT_CODEC_SIZE];
 
   // Test updating a valid SBC codec that doesn't need adjustment
   memset(codec_info_sbc_test, 0xAB, sizeof(codec_info_sbc_test));
@@ -850,6 +1108,20 @@ TEST_F(StackA2dpTest, test_a2dp_adjust_codec) {
   memcpy(codec_info_non_a2dp_test, codec_info_non_a2dp,
          sizeof(codec_info_non_a2dp));
   EXPECT_FALSE(A2DP_AdjustCodec(codec_info_non_a2dp_test));
+
+  // Test updating a valid aptX codec that doesn't need adjustment
+  memset(codec_info_aptx_test, 0xAB, sizeof(codec_info_aptx_test));
+  memcpy(codec_info_aptx_test, codec_info_aptx, sizeof(codec_info_aptx));
+  EXPECT_TRUE(A2DP_AdjustCodec(codec_info_aptx_test));
+  EXPECT_TRUE(
+    memcmp(codec_info_aptx_test, codec_info_aptx, sizeof(codec_info_aptx)) == 0);
+
+  // Test updating a valid aptX-HD codec that doesn't need adjustment
+  memset(codec_info_aptx_hd_test, 0xAB, sizeof(codec_info_aptx_hd_test));
+  memcpy(codec_info_aptx_hd_test, codec_info_aptx_hd, sizeof(codec_info_aptx_hd));
+  EXPECT_TRUE(A2DP_AdjustCodec(codec_info_aptx_hd_test));
+  EXPECT_TRUE(
+    memcmp(codec_info_aptx_hd_test, codec_info_aptx_hd, sizeof(codec_info_aptx_hd)) == 0);
 }
 
 TEST_F(StackA2dpTest, test_a2dp_source_codec_index) {
@@ -866,6 +1138,18 @@ TEST_F(StackA2dpTest, test_a2dp_source_codec_index) {
             BTAV_A2DP_CODEC_INDEX_SOURCE_AAC);
   EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aac_sink_capability),
             BTAV_A2DP_CODEC_INDEX_SOURCE_AAC);
+  EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aptx),
+            BTAV_A2DP_CODEC_INDEX_SOURCE_APTX);
+  EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aptx_capability),
+            BTAV_A2DP_CODEC_INDEX_SOURCE_APTX);
+  EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aptx_sink_capability),
+            BTAV_A2DP_CODEC_INDEX_SOURCE_APTX);
+  EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aptx_hd),
+            BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD);
+  EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aptx_hd_capability),
+            BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD);
+  EXPECT_EQ(A2DP_SourceCodecIndex(codec_info_aptx_hd_sink_capability),
+            BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD);
   ASSERT_EQ(A2DP_VendorSourceCodecIndex(codec_info_opus),
             BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS);
   ASSERT_EQ(A2DP_VendorSourceCodecIndex(codec_info_opus_capability),
@@ -890,6 +1174,18 @@ TEST_F(StackA2dpTest, test_a2dp_sink_codec_index) {
             BTAV_A2DP_CODEC_INDEX_SINK_AAC);
   EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aac_sink_capability),
             BTAV_A2DP_CODEC_INDEX_SINK_AAC);
+  EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aptx),
+            BTAV_A2DP_CODEC_INDEX_SINK_APTX);
+  EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aptx_capability),
+            BTAV_A2DP_CODEC_INDEX_SINK_APTX);
+  EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aptx_sink_capability),
+            BTAV_A2DP_CODEC_INDEX_SINK_APTX);
+  EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aptx_hd),
+            BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD);
+  EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aptx_hd_capability),
+            BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD);
+  EXPECT_EQ(A2DP_SinkCodecIndex(codec_info_aptx_hd_sink_capability),
+            BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD);
   ASSERT_EQ(A2DP_VendorSinkCodecIndex(codec_info_opus),
             BTAV_A2DP_CODEC_INDEX_SINK_OPUS);
   ASSERT_EQ(A2DP_VendorSinkCodecIndex(codec_info_opus_capability),
@@ -905,6 +1201,10 @@ TEST_F(StackA2dpTest, test_a2dp_codec_index_str) {
   EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_SBC), "SBC");
   EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SINK_SBC), "SBC SINK");
   EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_AAC), "AAC");
+  EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_APTX), "aptX");
+  EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SINK_APTX), "aptX sink");
+  EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD), "aptX-HD");
+  EXPECT_STREQ(A2DP_CodecIndexStr(BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD), "aptX-HD Sink");
   ASSERT_STREQ(A2DP_VendorCodecIndexStr(BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS),
                "Opus");
   ASSERT_STREQ(A2DP_VendorCodecIndexStr(BTAV_A2DP_CODEC_INDEX_SINK_OPUS),
@@ -970,6 +1270,34 @@ TEST_F(StackA2dpTest, test_a2dp_init_codec_config) {
     for (size_t i = 0; i < codec_info_aac_capability[0] + 1; i++) {
       ASSERT_EQ(avdt_cfg.codec_info[i], codec_info_aac_capability[i]);
     }
+  }
+
+// Test for content protection
+#if (BTA_AV_CO_CP_SCMS_T == TRUE)
+  EXPECT_EQ(avdt_cfg.protect_info[0], AVDT_CP_LOSC);
+  EXPECT_EQ(avdt_cfg.protect_info[1], (AVDT_CP_SCMS_T_ID & 0xFF));
+  EXPECT_EQ(avdt_cfg.protect_info[2], ((AVDT_CP_SCMS_T_ID >> 8) & 0xFF));
+  EXPECT_EQ(avdt_cfg.num_protect, 1);
+#endif
+
+  //
+  // Test for aptX Sink
+  //
+  memset(&avdt_cfg, 0, sizeof(avdt_cfg));
+  EXPECT_TRUE(A2DP_InitCodecConfig(BTAV_A2DP_CODEC_INDEX_SINK_APTX, &avdt_cfg));
+  // Compare the result codec with the local test codec info
+  for (size_t i = 0; i < codec_info_aptx_sink_capability[0] + 1; i++) {
+    EXPECT_EQ(avdt_cfg.codec_info[i], codec_info_aptx_sink_capability[i]);
+  }
+
+  //
+  // Test for aptX-HD Sink
+  //
+  memset(&avdt_cfg, 0, sizeof(avdt_cfg));
+  EXPECT_TRUE(A2DP_InitCodecConfig(BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD, &avdt_cfg));
+  // Compare the result codec with the local test codec info
+  for (size_t i = 0; i < codec_info_aptx_hd_sink_capability[0] + 1; i++) {
+    EXPECT_EQ(avdt_cfg.codec_info[i], codec_info_aptx_hd_sink_capability[i]);
   }
 }
 
@@ -1114,6 +1442,38 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
     EXPECT_EQ(codec_info_result[i], codec_info_aac[i]);
   }
   EXPECT_EQ(codec_config->getAudioBitsPerSample(), 16);
+
+  // Create the codec config - aptX Sink
+  memset(codec_info_result, 0, sizeof(codec_info_result));
+  peer_codec_index = A2DP_SinkCodecIndex(codec_info_aptx);
+  EXPECT_NE(peer_codec_index, BTAV_A2DP_CODEC_INDEX_MAX);
+  codec_config = a2dp_codecs->findSinkCodecConfig(codec_info_aptx);
+  EXPECT_NE(codec_config, nullptr);
+  EXPECT_TRUE(a2dp_codecs->setSinkCodecConfig(
+      codec_info_aptx, false /* is_capability */, codec_info_result,
+      true /* select_current_codec */));
+  EXPECT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
+  // Compare the result codec with the local test codec info
+  for (size_t i = 0; i < codec_info_aptx[0] + 1; i++) {
+    EXPECT_EQ(codec_info_result[i], codec_info_aptx[i]);
+  }
+  EXPECT_EQ(codec_config->getAudioBitsPerSample(), 16);
+
+  // Create the codec config - aptX-HD Sink
+  memset(codec_info_result, 0, sizeof(codec_info_result));
+  peer_codec_index = A2DP_SinkCodecIndex(codec_info_aptx_hd);
+  EXPECT_NE(peer_codec_index, BTAV_A2DP_CODEC_INDEX_MAX);
+  codec_config = a2dp_codecs->findSinkCodecConfig(codec_info_aptx_hd);
+  EXPECT_NE(codec_config, nullptr);
+  EXPECT_TRUE(a2dp_codecs->setSinkCodecConfig(
+      codec_info_aptx_hd, false /* is_capability */, codec_info_result,
+      true /* select_current_codec */));
+  EXPECT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
+  // Compare the result codec with the local test codec info
+  for (size_t i = 0; i < codec_info_aptx_hd[0] + 1; i++) {
+    EXPECT_EQ(codec_info_result[i], codec_info_aptx_hd[i]);
+  }
+  EXPECT_EQ(codec_config->getAudioBitsPerSample(), 24);
 
   // Test invalid codec info
   uint8_t codec_info_sbc_test1[AVDT_CODEC_SIZE];
