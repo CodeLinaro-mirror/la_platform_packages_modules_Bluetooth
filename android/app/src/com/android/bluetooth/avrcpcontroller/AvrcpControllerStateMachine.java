@@ -1455,10 +1455,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                         debug("Received a stop while in a transient loss. Do not recover anymore.");
                         mShouldSendPlayOnFocusRecovery = false;
                     }
-                    // When media player is switched from Bluetooth Audio to other media player,
-                    // This callback is invoked, and results the playback position of now playing
-                    // track back to the very begining. Change the command to 'PAUSE'.
-                    sendMessage(MSG_AVRCP_PASSTHRU, AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
+                    sendMessage(MSG_AVRCP_PASSTHRU, AvrcpControllerService.PASS_THRU_CMD_ID_STOP);
                 }
 
                 @Override
