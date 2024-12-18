@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
@@ -81,6 +86,9 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
     @VisibleForTesting
     static final String BYPASS_LE_AUDIO_ALLOWLIST_PROPERTY =
             "persist.bluetooth.leaudio.bypass_allow_list";
+
+    private static final String BLUETOOTH_CAR_ROLE =
+            "persist.bluetooth.car_role";
 
     // Timeouts
     @VisibleForTesting static int sConnectOtherProfilesTimeoutMillis = 6000; // 6s
@@ -874,6 +882,18 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
             return;
         }
 
+        if (SystemProperties.getBoolean(BLUETOOTH_CAR_ROLE, true)) {
+            BluetoothDevice[] bondedDevices = mAdapterService.getBondedDevices();
+            if (bondedDevices.length == 0) {
+                Log.e(TAG, "autoConnect(Car): Paired device list is null");
+                return;
+            }
+            for (BluetoothDevice device : bondedDevices) {
+                debugLog("autoConnect(Car): Device " + device + " attempting auto connection");
+                mAdapterService.connectAllEnabledProfiles(device);
+            }
+            return;
+        }
         final BluetoothDevice mostRecentlyActiveA2dpDevice =
                 mDatabaseManager.getMostRecentlyConnectedA2dpDevice();
         if (mostRecentlyActiveA2dpDevice != null) {
