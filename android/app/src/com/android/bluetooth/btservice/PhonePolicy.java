@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
@@ -92,6 +97,9 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
             "persist.bluetooth.leaudio.bypass_allow_list";
 
     @VisibleForTesting static final Duration CONNECT_OTHER_PROFILES_TIMEOUT = Duration.ofSeconds(6);
+
+    private static final String BLUETOOTH_CAR_ROLE =
+            "persist.bluetooth.car_role";
 
     private final DatabaseManager mDatabaseManager;
     private final AdapterService mAdapterService;
@@ -779,6 +787,19 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
         }
         if (mAdapterService.isQuietModeEnabled()) {
             Log.i(TAG, log + "Bluetooth is in quiet mode. Cancelling autoConnect");
+            return;
+        }
+
+        if (SystemProperties.getBoolean(BLUETOOTH_CAR_ROLE, true)) {
+            BluetoothDevice[] bondedDevices = mAdapterService.getBondedDevices();
+            if (bondedDevices.length == 0) {
+                Log.e(TAG, "autoConnect(Car): Paired device list is null");
+                return;
+            }
+            for (BluetoothDevice device : bondedDevices) {
+                Log.d(TAG, log + "Device " + device + " attempting auto connection");
+                mAdapterService.connectAllEnabledProfiles(device);
+            }
             return;
         }
 
