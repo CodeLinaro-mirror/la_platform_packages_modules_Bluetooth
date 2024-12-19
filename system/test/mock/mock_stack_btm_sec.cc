@@ -200,6 +200,12 @@ void BTM_RemoteOobDataReply(tBTM_STATUS res, const RawAddress& bd_addr,
   inc_func_call_count(__func__);
   test::mock::stack_btm_sec::BTM_RemoteOobDataReply(res, bd_addr, c, r);
 }
+void BTM_RemoteOobExtendedDataReply(tBTM_STATUS res, const RawAddress& bd_addr,
+                                    const Octet16& c, const Octet16& r,
+                                    const Octet16& c_256, const Octet16& r_256) {
+  mock_function_count_map[__func__]++;
+}
+
 bool BTM_SecAddRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback) {
   inc_func_call_count(__func__);
   return test::mock::stack_btm_sec::BTM_SecAddRmtNameNotifyCallback(p_callback);
