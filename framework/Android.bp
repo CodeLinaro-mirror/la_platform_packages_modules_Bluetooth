@@ -75,6 +75,7 @@ java_sdk_library {
         // TODO(240720385)
         "//packages/services/Car/tests/carservice_unit_test",
         ":__subpackages__",
+        "//vendor:__subpackages__",
     ],
 
     apex_available: [
