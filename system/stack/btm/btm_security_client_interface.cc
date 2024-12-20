@@ -13,6 +13,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #define LOG_TAG "sec_interf"
@@ -65,6 +70,7 @@ static SecurityClientInterface security = {
         .BTM_SecBond = BTM_SecBond,
         .BTM_SecBondCancel = BTM_SecBondCancel,
         .BTM_RemoteOobDataReply = BTM_RemoteOobDataReply,
+        .BTM_RemoteOobExtendedDataReply = BTM_RemoteOobExtendedDataReply,
         .BTM_PINCodeReply = BTM_PINCodeReply,
         .BTM_SecConfirmReqReply = BTM_SecConfirmReqReply,
         .BTM_BleSirkConfirmDeviceReply = BTM_BleSirkConfirmDeviceReply,

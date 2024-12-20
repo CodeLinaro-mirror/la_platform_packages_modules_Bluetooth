@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  */
 
 package android.bluetooth;
@@ -1871,6 +1877,44 @@ public final class BluetoothDevice implements Parcelable, Attributable {
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
+        }
+        return false;
+    }
+
+    /**
+     * Load remote oob data to BT process
+     *
+     * <p>This is a synchronous call
+     * <p>There are two possible versions of OOB Data.  This data can come in as
+     * P192 or P256.  This is a reference to the cryptography used to generate the key.
+     * The caller may pass one or both.  If both types of data are passed, then the
+     * P256 data will be preferred, and thus used.
+     *
+     * @param transport - Transport to use
+     * @param remoteP192Data - Out Of Band data (P192) or null
+     * @param remoteP256Data - Out Of Band data (P256) or null
+     * @return false on immediate error, true if load success
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public boolean loadRemoteOobData(int transport, @Nullable OobData remoteP192Data,
+            @Nullable OobData remoteP256Data) {
+        if (DBG) log("loadRemoteOobData()");
+        final IBluetooth service = getService();
+        if (remoteP192Data == null && remoteP256Data == null) {
+            throw new IllegalArgumentException(
+                "One or both arguments for the OOB data types are required to not be null."
+                + "  using normal in-bind bond.");
+        }
+        if (service == null) {
+            Log.w(TAG, "BT not enabled, loadRemoteOobDataInternal failed");
+            return false;
+        }
+        try {
+            service.loadRemoteOobData(this, transport, remoteP192Data, remoteP256Data, mAttributionSource);
+            return true;
+        } catch (RemoteException e) {
+            Log.e(TAG, "", e);
         }
         return false;
     }

@@ -13,6 +13,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  */
 
 package com.android.bluetooth.btservice;
@@ -2729,6 +2735,20 @@ public class AdapterService extends Service {
         }
 
         @Override
+        public void loadRemoteOobData(
+                BluetoothDevice device, int transport, OobData remoteP192Data,
+                OobData remoteP256Data, AttributionSource source) {
+            AdapterService service = getService();
+            if (service == null
+                    || !callerIsSystemOrActiveOrManagedUser(service, TAG, "generateLocalOobData")
+                    || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                return;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_CONNECT, null);
+            service.loadRemoteOobData(device, transport, remoteP192Data, remoteP256Data);
+        }
+
+        @Override
         public long getSupportedProfiles(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -4872,6 +4892,14 @@ public class AdapterService extends Service {
                 Log.e(TAG, "Failed to make callback", e);
             }
         }
+    }
+
+    public boolean loadRemoteOobData(BluetoothDevice device, int transport, OobData remoteP192Data,
+                                          OobData remoteP256Data) {
+
+        byte[] addr = Utils.getBytesFromAddress(device.getAddress());
+
+        return mNativeInterface.loadRemoteOobData(addr, transport, remoteP192Data, remoteP256Data);
     }
 
     public boolean isQuietModeEnabled() {

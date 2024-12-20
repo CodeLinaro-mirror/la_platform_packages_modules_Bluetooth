@@ -1,4 +1,4 @@
-/******************************************************************************
+/****************************************************************************************
  *
  *  Copyright (c) 2014 The Android Open Source Project
  *  Copyright 2009-2012 Broadcom Corporation
@@ -15,7 +15,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
+ ****************************************************************************************/
 
 #ifndef BTIF_COMMON_H
 #define BTIF_COMMON_H
@@ -147,6 +152,7 @@ void invoke_pin_request_cb(RawAddress bd_addr, bt_bdname_t bd_name, uint32_t cod
                            bool min_16_digit);
 void invoke_ssp_request_cb(RawAddress bd_addr, bt_ssp_variant_t pairing_variant, uint32_t pass_key);
 void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c, Octet16 r,
+                                Octet16 c_256, Octet16 r_256,
                                 RawAddress raw_address, uint8_t address_type);
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr, bt_bond_state_t state,
                                   int fail_reason);
