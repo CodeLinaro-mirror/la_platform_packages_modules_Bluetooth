@@ -80,7 +80,7 @@ using namespace bluetooth;
 #if defined(TARGET_FLOSS)
 #define BTE_DID_CONF_FILE "/var/lib/bluetooth/bt_did.conf"
 #elif defined(__ANDROID__)
-#define BTE_DID_CONF_FILE "/apex/com.android.btservices/etc/bluetooth/bt_did.conf"
+#define BTE_DID_CONF_FILE "/apex/com.android.bt/etc/bluetooth/bt_did.conf"
 #else  // !defined(__ANDROID__)
 #define BTE_DID_CONF_FILE "bt_did.conf"
 #endif  // defined(__ANDROID__)
@@ -517,6 +517,8 @@ void btif_get_adapter_property(bt_property_type_t type) {
             bluetooth::shim::GetLppOffloadManager()->GetSocketCapabilities();
     lpp_offload_features.number_of_supported_offloaded_le_coc_sockets =
             socket_offload_capabilities.le_coc_capabilities.number_of_supported_sockets;
+    lpp_offload_features.number_of_supported_offloaded_rfcomm_sockets =
+            socket_offload_capabilities.rfcomm_capabilities.number_of_supported_sockets;
     prop.len = sizeof(bt_lpp_offload_features_t);
     memcpy(prop.val, &lpp_offload_features, prop.len);
   } else {
