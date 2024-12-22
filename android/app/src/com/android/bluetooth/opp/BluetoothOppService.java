@@ -308,6 +308,10 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sBluetoothOppService == null) {
+            println(sb, "BluetoothOppService is not running");
+            return;
+        }
         super.dump(sb);
         if (mShares.size() > 0) {
             println(sb, "Shares:");

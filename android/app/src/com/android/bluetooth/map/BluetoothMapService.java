@@ -1466,6 +1466,10 @@ public class BluetoothMapService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sBluetoothMapService == null) {
+            ProfileService.println(sb, "BluetoothMapService is not running");
+            return;
+        }
         super.dump(sb);
         println(sb, "mRemoteDevice: " + sRemoteDevice);
         println(sb, "sRemoteDeviceName: " + sRemoteDeviceName);

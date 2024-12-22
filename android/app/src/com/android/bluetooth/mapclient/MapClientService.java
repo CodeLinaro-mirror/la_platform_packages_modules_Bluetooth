@@ -418,6 +418,10 @@ public class MapClientService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sMapClientService == null) {
+            ProfileService.println(sb, "MapClientService is not running");
+            return;
+        }
         super.dump(sb);
         for (MceStateMachine stateMachine : mMapInstanceMap.values()) {
             stateMachine.dump(sb);

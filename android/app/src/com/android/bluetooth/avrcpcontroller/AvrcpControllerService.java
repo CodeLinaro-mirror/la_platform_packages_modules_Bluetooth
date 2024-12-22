@@ -790,6 +790,10 @@ public class AvrcpControllerService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sService == null) {
+            sb.append("AvrcpControllerService not running");
+            return;
+        }
         super.dump(sb);
         ProfileService.println(sb, "Devices Tracked = " + mDeviceStateMap.size());
         ProfileService.println(sb, "Active Device = " + mActiveDevice);
@@ -800,7 +804,9 @@ public class AvrcpControllerService extends ProfileService {
             stateMachine.dump(sb);
         }
         sb.append("\n  BrowseTree:\n");
-        sBrowseTree.dump(sb);
+        if (sBrowseTree != null) {
+            sBrowseTree.dump(sb);
+        }
 
         sb.append("\n  Cover Artwork Enabled: " + (mCoverArtEnabled ? "True" : "False"));
         if (mCoverArtManager != null) {

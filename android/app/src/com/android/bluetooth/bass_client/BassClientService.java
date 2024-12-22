@@ -3561,6 +3561,10 @@ public class BassClientService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sService == null) {
+            ProfileService.println(sb, "BassClientService is not running\n");
+            return;
+        }
         super.dump(sb);
 
         sb.append("Broadcast Assistant Service instance:\n");

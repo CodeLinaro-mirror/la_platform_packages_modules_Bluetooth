@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -403,7 +408,7 @@ static size_t aptx_hd_encode_24bit(tAPTX_HD_FRAMING_PARAMS* framing_params,
   return pcm_bytes_encoded;
 }
 
-void A2dpCodecConfigAptxHd::debug_codec_dump(int fd) {
+void A2dpCodecConfigAptxHdSource::debug_codec_dump(int fd) {
   a2dp_aptx_hd_encoder_stats_t* stats = &a2dp_aptx_hd_encoder_cb.stats;
 
   A2dpCodecConfig::debug_codec_dump(fd);

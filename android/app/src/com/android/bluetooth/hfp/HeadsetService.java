@@ -2570,6 +2570,10 @@ public class HeadsetService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sHeadsetService == null) {
+            ProfileService.println(sb, "HeadsetService is not running");
+            return;
+        }
         boolean isScoOn = mSystemInterface.getAudioManager().isBluetoothScoOn();
         boolean isInbandRingingSupported =
                 getResources()

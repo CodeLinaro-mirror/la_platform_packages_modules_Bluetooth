@@ -1231,6 +1231,10 @@ public class CsipSetCoordinatorService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sCsipSetCoordinatorService == null) {
+            ProfileService.println(sb, "CsipSetCoordinatorService is not running");
+            return;
+        }
         super.dump(sb);
         for (CsipSetCoordinatorStateMachine sm : mStateMachines.values()) {
             sm.dump(sb);

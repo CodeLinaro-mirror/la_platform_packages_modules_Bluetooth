@@ -3521,6 +3521,10 @@ public class GattService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sGattService == null) {
+            println(sb, "GattService is not running");
+            return;
+        }
         super.dump(sb);
         println(sb, "mAdvertisingServiceUuids:");
         for (UUID uuid : mAdvertisingServiceUuids) {

@@ -1296,6 +1296,10 @@ public class HeadsetClientService extends ProfileService {
 
     @Override
     public void dump(StringBuilder sb) {
+        if (sHeadsetClientService == null) {
+            sb.append("HeadsetClientService is not running\n");
+            return;
+        }
         super.dump(sb);
         synchronized (mStateMachineMap) {
             for (HeadsetClientStateMachine sm : mStateMachineMap.values()) {
