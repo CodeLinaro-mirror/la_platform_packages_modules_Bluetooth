@@ -819,8 +819,7 @@ static void hh_get_dscp_handler(tBTA_HH_DEV_DSCP_INFO& dscp_info) {
             dscp_info.descriptor.dsc_list);
 
     // Allow incoming connections
-    if (com::android::bluetooth::flags::allow_switching_hid_and_hogp() &&
-        com::android::bluetooth::flags::save_initial_hid_connection_policy()) {
+    if (com::android::bluetooth::flags::allow_switching_hid_and_hogp()) {
       btif_storage_set_hid_connection_policy(p_dev->link_spec, true);
     }
 
@@ -1562,8 +1561,7 @@ static void btif_hh_transport_select(tAclLinkSpec& link_spec) {
         } else if (remote_uuids[i].As16Bit() == UUID_SERVCLASS_LE_HID) {
           hogp_available = true;
         }
-      } else if (com::android::bluetooth::flags::android_headtracker_service() &&
-                 remote_uuids[i] == ANDROID_HEADTRACKER_SERVICE_UUID) {
+      } else if (remote_uuids[i] == ANDROID_HEADTRACKER_SERVICE_UUID) {
         headtracker_available = true;
       }
 

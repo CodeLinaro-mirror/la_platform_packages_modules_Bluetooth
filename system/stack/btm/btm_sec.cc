@@ -826,9 +826,6 @@ tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
   if ((transport == BT_TRANSPORT_LE && (dev_type & BT_DEVICE_TYPE_BLE) == 0) ||
       (transport == BT_TRANSPORT_BR_EDR && (dev_type & BT_DEVICE_TYPE_BREDR) == 0)) {
     log::warn("Requested transport and supported transport don't match");
-    if (!com::android::bluetooth::flags::pairing_on_unknown_transport()) {
-      return tBTM_STATUS::BTM_ILLEGAL_ACTION;
-    }
   }
   return btm_sec_bond_by_transport(bd_addr, addr_type, transport);
 }
@@ -1251,8 +1248,7 @@ void BTM_PasskeyReqReply(tBTM_STATUS res, const RawAddress& bd_addr, uint32_t pa
  *
  ******************************************************************************/
 void BTM_ReadLocalOobData(void) {
-  if (com::android::bluetooth::flags::use_local_oob_extended_command() &&
-      bluetooth::shim::GetController()->SupportsSecureConnections()) {
+  if (bluetooth::shim::GetController()->SupportsSecureConnections()) {
     btsnd_hcic_read_local_oob_extended_data();
   } else {
     btsnd_hcic_read_local_oob_data();
