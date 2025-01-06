@@ -254,8 +254,7 @@ android_app {
         "unsupportedappusage",
 
         // Need to link the class at runtime
-        "framework-bluetooth",
-        "android.car",
+        "framework-bluetooth.stubs.module_lib"
     ],
     static_libs: [
         "BluetoothApiShims",

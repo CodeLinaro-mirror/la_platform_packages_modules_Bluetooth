@@ -14,9 +14,8 @@
  * limitations under the License.
  *
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.hfpclient;
@@ -36,7 +35,6 @@ import android.bluetooth.IBluetoothHeadsetClient;
 import android.content.AttributionSource;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioManager;
@@ -136,10 +134,9 @@ public class HeadsetClientService extends ProfileService {
                 mStateMachineMap.clear();
             }
 
-            IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-            if (!isAutomotive()) {
-                filter.addAction(AudioManager.ACTION_VOLUME_CHANGED);
-            }
+            IntentFilter filter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+            filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
+            filter.addAction(Intent.ACTION_BATTERY_CHANGED);
             registerReceiver(mBroadcastReceiver, filter);
 
             // Start the HfpClientConnectionService to create connection with telecom when HFP
@@ -1349,9 +1346,5 @@ public class HeadsetClientService extends ProfileService {
                 }
             }
         }
-    }
-
-    boolean isAutomotive() {
-        return getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE);
     }
 }
