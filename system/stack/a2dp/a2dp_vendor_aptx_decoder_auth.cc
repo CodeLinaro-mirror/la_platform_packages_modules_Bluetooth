@@ -222,6 +222,7 @@ static void get_time() {
   time_t current_time = time(NULL);
   char time_now[TIME_LENGTH];
   struct tm* time_created = localtime(&current_time);
+  log::assert_that(time_created != NULL, "Failed to convert time to local time");
   strftime(time_now, TIME_LENGTH, TIME_STRING_FORMAT,
            time_created);
 
