@@ -18,18 +18,30 @@
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <list>
 #include <map>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "bta/include/bta_gatt_api.h"
 #include "bta/include/bta_gatt_queue.h"
 #include "bta/vc/devices.h"
-#include "internal_include/bt_trace.h"
-#include "os/logging/log_adapter.h"
+#include "btm_ble_api_types.h"
+#include "btm_sec_api_types.h"
+#include "btm_status.h"
+#include "gatt/database.h"
+#include "gattdefs.h"
 #include "stack/btm/btm_sec.h"
+#include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/gatt_api.h"
 #include "types/bluetooth/uuid.h"
+#include "types/bt_transport.h"
+#include "vc/types.h"
 
 using bluetooth::vc::internal::VolumeControlDevice;
 
@@ -123,53 +135,61 @@ bool VolumeControlDevice::set_volume_control_service_handles(const gatt::Service
 }
 
 void VolumeControlDevice::set_audio_input_control_service_handles(const gatt::Service& service) {
-  VolumeAudioInput input = VolumeAudioInput(service.handle);
+  uint16_t state_handle{0};
+  uint16_t state_ccc_handle{0};
+  uint16_t gain_setting_handle{0};
+  uint16_t type_handle{0};
+  uint16_t status_handle{0};
+  uint16_t status_ccc_handle{0};
+  uint16_t control_point_handle{0};
+  uint16_t description_handle{0};
+  uint16_t description_ccc_handle{0};
+  uint16_t description_writable{0};
+
   for (const gatt::Characteristic& chrc : service.characteristics) {
     if (chrc.uuid == kVolumeAudioInputStateUuid) {
-      input.state_handle = chrc.value_handle;
-      input.state_ccc_handle = find_ccc_handle(chrc.value_handle);
-      log::debug("{}, input_state handle={:#x}, ccc {:#x}", address, input.state_handle,
-                 input.state_ccc_handle);
-
-    } else if (chrc.uuid == kVolumeAudioInputGainSettingUuid) {
-      input.gain_setting_handle = chrc.value_handle;
-
+      state_handle = chrc.value_handle;
+      state_ccc_handle = find_ccc_handle(chrc.value_handle);
+      log::debug("{} state_handle={:#x} ccc={:#x}", address, state_handle, state_ccc_handle);
+    } else if (chrc.uuid == kVolumeAudioInputGainSettingPropertiesUuid) {
+      gain_setting_handle = chrc.value_handle;
     } else if (chrc.uuid == kVolumeAudioInputTypeUuid) {
-      input.type_handle = chrc.value_handle;
-
+      type_handle = chrc.value_handle;
     } else if (chrc.uuid == kVolumeAudioInputStatusUuid) {
-      input.status_handle = chrc.value_handle;
-      input.status_ccc_handle = find_ccc_handle(chrc.value_handle);
-      log::debug("{}, input_status handle={:#x}, ccc {:#x}", address, input.status_handle,
-                 input.status_ccc_handle);
-
+      status_handle = chrc.value_handle;
+      status_ccc_handle = find_ccc_handle(chrc.value_handle);
+      log::debug("{} status_handle={:#x} ccc={:#x}", address, status_handle, status_ccc_handle);
     } else if (chrc.uuid == kVolumeAudioInputControlPointUuid) {
-      input.control_point_handle = chrc.value_handle;
-
+      control_point_handle = chrc.value_handle;
     } else if (chrc.uuid == kVolumeAudioInputDescriptionUuid) {
-      input.description_handle = chrc.value_handle;
-      input.description_ccc_handle = find_ccc_handle(chrc.value_handle);
-      input.description_writable = chrc.properties & GATT_CHAR_PROP_BIT_WRITE_NR;
-      log::debug("{}, input_desc handle={:#x}, ccc {:#x}", address, input.description_handle,
-                 input.description_ccc_handle);
-
+      description_handle = chrc.value_handle;
+      description_ccc_handle = find_ccc_handle(chrc.value_handle);
+      description_writable = chrc.properties & GATT_CHAR_PROP_BIT_WRITE_NR;
+      log::debug("{} description_handle={:#x} ccc={:#x}", address, description_handle,
+                 description_ccc_handle);
     } else {
-      log::warn("unknown characteristic={}", chrc.uuid);
+      log::info("found unexpected characteristic={}", chrc.uuid);
     }
   }
 
   // Check if all mandatory attributes are present
-  if (GATT_HANDLE_IS_VALID(input.state_handle) && GATT_HANDLE_IS_VALID(input.state_ccc_handle) &&
-      GATT_HANDLE_IS_VALID(input.gain_setting_handle) && GATT_HANDLE_IS_VALID(input.type_handle) &&
-      GATT_HANDLE_IS_VALID(input.status_handle) && GATT_HANDLE_IS_VALID(input.status_ccc_handle) &&
-      GATT_HANDLE_IS_VALID(input.control_point_handle) &&
-      GATT_HANDLE_IS_VALID(input.description_handle)
+  if (!GATT_HANDLE_IS_VALID(state_handle) || !GATT_HANDLE_IS_VALID(state_ccc_handle) ||
+      !GATT_HANDLE_IS_VALID(gain_setting_handle) || !GATT_HANDLE_IS_VALID(type_handle) ||
+      !GATT_HANDLE_IS_VALID(status_handle) || !GATT_HANDLE_IS_VALID(status_ccc_handle) ||
+      !GATT_HANDLE_IS_VALID(control_point_handle) || !GATT_HANDLE_IS_VALID(description_handle)
       /* description_ccc_handle is optional */) {
-    audio_inputs.Add(input);
-    log::info("{}, input added id={:#x}", address, input.id);
-  } else {
-    log::warn("{}, ignoring input handle={:#x}", address, service.handle);
+    log::error(
+            "The remote device {} does not comply with AICS 1-0, some handles are invalid. "
+            "The aics service with handle {:#x} will be ignored",
+            address, service.handle);
+    return;
   }
+  VolumeAudioInput input = VolumeAudioInput(
+          audio_inputs.Size(), service.handle, state_handle, state_ccc_handle, gain_setting_handle,
+          type_handle, status_handle, status_ccc_handle, control_point_handle, description_handle,
+          description_ccc_handle, description_writable);
+  audio_inputs.Add(input);
+  log::info("{}, input added id={:#x}", address, input.id);
 }
 
 void VolumeControlDevice::set_volume_offset_control_service_handles(const gatt::Service& service) {
@@ -402,48 +422,67 @@ void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
                                                    GATT_READ_OP_CB chrc_read_cb,
                                                    GATT_READ_MULTI_OP_CB chrc_multi_read_cb,
                                                    GATT_WRITE_OP_CB /*cccd_write_cb*/) {
-  std::vector<uint16_t> handles_to_read;
+  const auto is_eatt_supported = gatt_profile_get_eatt_support_by_conn_id(connection_id);
 
-  for (auto const& input : audio_inputs.volume_audio_inputs) {
-    handles_to_read.push_back(input.state_handle);
-    handles_to_read.push_back(input.gain_setting_handle);
-    handles_to_read.push_back(input.type_handle);
-    handles_to_read.push_back(input.status_handle);
-    handles_to_read.push_back(input.description_handle);
-  }
+  /* List of handles to the attributes having known and fixed-size values to read using the
+   * ATT_READ_MULTIPLE_REQ. The `.second` component contains 1 octet for the length + the actual
+   * attribute value length, exactly as in the received HCI packet for ATT_READ_MULTIPLE_RSP.
+   * We use this to make sure the request response will fit the current MTU size.
+   */
+  std::list<std::pair<uint16_t, size_t>> handles_to_read;
+
+  /* Variable-length attributes - always read using the regular read requests to automatically
+   * handle truncation in the  GATT layer if MTU is to small to fit even a single complete value.
+   */
+  std::vector<uint16_t> handles_to_read_variable_length;
 
   for (auto const& offset : audio_offsets.volume_offsets) {
-    handles_to_read.push_back(offset.state_handle);
-    handles_to_read.push_back(offset.audio_location_handle);
-    handles_to_read.push_back(offset.audio_descr_handle);
+    handles_to_read.push_back(std::make_pair(offset.state_handle, 4));
+    handles_to_read.push_back(std::make_pair(offset.audio_location_handle, 5));
+    handles_to_read_variable_length.push_back(offset.audio_descr_handle);
   }
 
-  log::debug("{}, number of handles={}", address, handles_to_read.size());
+  for (auto const& input : audio_inputs.volume_audio_inputs) {
+    handles_to_read.push_back(std::make_pair(input.state_handle, 5));
+    handles_to_read.push_back(std::make_pair(input.gain_setting_handle, 4));
+    handles_to_read.push_back(std::make_pair(input.type_handle, 2));
+    handles_to_read.push_back(std::make_pair(input.status_handle, 2));
+    handles_to_read_variable_length.push_back(input.description_handle);
+  }
 
-  if (!com::android::bluetooth::flags::le_ase_read_multiple_variable()) {
-    for (auto const& handle : handles_to_read) {
+  log::debug("{}, number of fixed-size attribute handles={}", address, handles_to_read.size());
+  log::debug("{}, number of variable-size attribute handles={}", address,
+             handles_to_read_variable_length.size());
+
+  if (com::android::bluetooth::flags::le_ase_read_multiple_variable() && is_eatt_supported) {
+    const size_t payload_limit = this->mtu_ - 1;
+
+    auto pair_it = handles_to_read.begin();
+    while (pair_it != handles_to_read.end()) {
+      tBTA_GATTC_MULTI multi_read{.num_attr = 0};
+      size_t size_limit = 0;
+
+      // Send at once just enough attributes to stay below the MTU size limit for the response
+      while ((pair_it != handles_to_read.end()) && (size_limit + pair_it->second < payload_limit) &&
+             (multi_read.num_attr < GATT_MAX_READ_MULTI_HANDLES)) {
+        multi_read.handles[multi_read.num_attr] = pair_it->first;
+        size_limit += pair_it->second;
+        ++multi_read.num_attr;
+        ++pair_it;
+      }
+
+      log::debug{"{}, calling multi-read with {} attributes, {} left", address, multi_read.num_attr,
+                 std::distance(pair_it, handles_to_read.end())};
+      BtaGattQueue::ReadMultiCharacteristic(connection_id, multi_read, chrc_multi_read_cb, nullptr);
+    }
+  } else {
+    for (auto const& [handle, _] : handles_to_read) {
       BtaGattQueue::ReadCharacteristic(connection_id, handle, chrc_read_cb, nullptr);
     }
-    return;
   }
 
-  size_t sent_cnt = 0;
-
-  while (sent_cnt < handles_to_read.size()) {
-    tBTA_GATTC_MULTI multi_read{};
-    size_t remain_cnt = (handles_to_read.size() - sent_cnt);
-
-    multi_read.num_attr =
-            remain_cnt > GATT_MAX_READ_MULTI_HANDLES ? GATT_MAX_READ_MULTI_HANDLES : remain_cnt;
-
-    auto handles_begin = handles_to_read.begin() + sent_cnt;
-    std::copy(handles_begin, handles_begin + multi_read.num_attr, multi_read.handles);
-
-    sent_cnt += multi_read.num_attr;
-    log::debug{"{}, calling multi with {} attributes, sent_cnt {} ", address, multi_read.num_attr,
-               sent_cnt};
-
-    BtaGattQueue::ReadMultiCharacteristic(connection_id, multi_read, chrc_multi_read_cb, nullptr);
+  for (auto const& handle : handles_to_read_variable_length) {
+    BtaGattQueue::ReadCharacteristic(connection_id, handle, chrc_read_cb, nullptr);
   }
 }
 
@@ -602,12 +641,12 @@ void VolumeControlDevice::GetExtAudioInDescription(uint8_t ext_input_id, GATT_RE
 void VolumeControlDevice::SetExtAudioInDescription(uint8_t ext_input_id, const std::string& descr) {
   VolumeAudioInput* input = audio_inputs.FindById(ext_input_id);
   if (!input) {
-    log::error("{}, no such input={:#x}", address, ext_input_id);
+    log::error("{} no such input={:#x}", address, ext_input_id);
     return;
   }
 
   if (!input->description_writable) {
-    log::warn("not writable");
+    log::warn("{} input={:#x} input description is not writable", address, ext_input_id);
     return;
   }
 
@@ -616,13 +655,13 @@ void VolumeControlDevice::SetExtAudioInDescription(uint8_t ext_input_id, const s
                                     GATT_WRITE_NO_RSP, nullptr, nullptr);
 }
 
-void VolumeControlDevice::ExtAudioInControlPointOperation(uint8_t ext_input_id, uint8_t opcode,
+bool VolumeControlDevice::ExtAudioInControlPointOperation(uint8_t ext_input_id, uint8_t opcode,
                                                           const std::vector<uint8_t>* arg,
                                                           GATT_WRITE_OP_CB cb, void* cb_data) {
   VolumeAudioInput* input = audio_inputs.FindById(ext_input_id);
   if (!input) {
     log::error("{}, no such input={:#x}", address, ext_input_id);
-    return;
+    return false;
   }
 
   std::vector<uint8_t> set_value({opcode, input->change_counter});
@@ -632,6 +671,7 @@ void VolumeControlDevice::ExtAudioInControlPointOperation(uint8_t ext_input_id, 
 
   BtaGattQueue::WriteCharacteristic(connection_id, input->control_point_handle, set_value,
                                     GATT_WRITE, cb, cb_data);
+  return true;
 }
 
 bool VolumeControlDevice::IsEncryptionEnabled() {

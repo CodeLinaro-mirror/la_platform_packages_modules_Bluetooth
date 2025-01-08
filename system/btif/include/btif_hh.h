@@ -133,7 +133,7 @@ typedef struct {
   btif_hh_added_device_t added_devices[BTIF_HH_MAX_ADDED_DEV];
   bool service_dereg_active;
 
-  std::list<tAclLinkSpec> pending_connections;
+  std::list<tAclLinkSpec> new_connection_requests;
 } btif_hh_cb_t;
 
 /*******************************************************************************
@@ -173,9 +173,9 @@ namespace bluetooth::legacy::testing {
 void bte_hh_evt(tBTA_HH_EVT event, tBTA_HH* p_data);
 }  // namespace bluetooth::legacy::testing
 
-namespace fmt {
+namespace std {
 template <>
 struct formatter<BTIF_HH_STATUS> : enum_formatter<BTIF_HH_STATUS> {};
-}  // namespace fmt
+}  // namespace std
 
 #endif

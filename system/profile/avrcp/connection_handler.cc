@@ -295,7 +295,6 @@ void ConnectionHandler::InitiatorControlCb(uint8_t handle, uint8_t event, uint16
           instance_->vol_->DeviceConnected(newDevice->GetAddress());
         }
       }
-
     } break;
 
     case AVRC_CLOSE_IND_EVT: {
@@ -407,10 +406,8 @@ void ConnectionHandler::AcceptorControlCb(uint8_t handle, uint8_t event, uint16_
       // as this one which will be closed when the device is disconnected.
       AvrcpConnect(false, RawAddress::kAny);
 
-      if (com::android::bluetooth::flags::avrcp_connect_a2dp_with_delay()) {
-        // Check peer audio role: src or sink and connect A2DP after 3 seconds
-        SdpLookupAudioRole(handle);
-      }
+      // Check peer audio role: src or sink and connect A2DP after 3 seconds
+      SdpLookupAudioRole(handle);
     } break;
 
     case AVRC_CLOSE_IND_EVT: {
