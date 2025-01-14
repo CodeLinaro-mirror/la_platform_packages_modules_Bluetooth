@@ -39,7 +39,7 @@
 #include <time.h>
 #include <queue>
 #include <base/logging.h>
-#include "btm_api.h"
+#include "stack/btm/internal/btm_api.h"
 #include "bt_target.h"
 #include "bt_types.h"
 #include "osi/include/allocator.h"

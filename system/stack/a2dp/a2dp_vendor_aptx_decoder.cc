@@ -45,7 +45,7 @@
 
 #include "a2dp_vendor.h"
 #include "a2dp_vendor_aptx.h"
-#include "btm_api.h"
+#include "stack/btm/internal/btm_api.h"
 #include "bt_target.h"
 #include "bt_types.h"
 #include "osi/include/allocator.h"
