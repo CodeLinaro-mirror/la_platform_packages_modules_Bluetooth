@@ -3022,13 +3022,13 @@ public class LeAudioService extends ProfileService {
 
                 /* Update Broadcast device before streaming state in handover case to avoid switch
                  * to non LE Audio device in Audio Manager e.g. Phone Speaker.
-                 */
+                 * Skip this logic to avoid Broadcast device opened failed in Audio-HAL.
                 BluetoothDevice device =
                         mAdapterService.getDeviceFromByte(
                                 Utils.getBytesFromAddress("FF:FF:FF:FF:FF:FF"));
                 if (!device.equals(mActiveBroadcastAudioDevice)) {
                     updateBroadcastActiveDevice(device, mActiveBroadcastAudioDevice, true);
-                }
+                }*/
 
                 /* After group de-activation a fallback broadcast to unicast device would be
                  * potential ringtone streaming device.
