@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 #pragma once
 
@@ -261,7 +267,7 @@ static const BroadcastConfiguration lc3_stereo_48_2_1 = {
         .qos = qos_config_4_20,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 100,
+        .maxSduOctets = 75,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0   // Unframed,
@@ -284,7 +290,7 @@ static const BroadcastConfiguration lc3_stereo_48_3_2 = {
         .subgroups = {lc3_stereo_48_3},
         .qos = qos_config_4_50,
         .data_path = lc3_data_path,
-        .sduIntervalUs = 7500,
+        .sduIntervalUs = 10000,
         .maxSduOctets = 90,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
