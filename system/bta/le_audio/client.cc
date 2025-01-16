@@ -249,7 +249,7 @@ public:
         stream_setup_time_(0) {}
 
   void Init(int group_id, LeAudioContextType context_type, int num_of_devices) {
-    Reset();
+    Reset(bluetooth::groups::kGroupUnknown);
     group_id_ = group_id;
     context_type_ = context_type;
     num_of_devices_ = num_of_devices;
@@ -257,7 +257,13 @@ public:
                  ToString(context_type_), num_of_devices);
   }
 
-  void Reset(void) {
+  void Reset(int group_id) {
+    if (group_id != bluetooth::groups::kGroupUnknown && group_id != group_id_) {
+      log::verbose("StreamSpeedTracker Reset called for invalid group_id: {} != {}", group_id,
+                   group_id_);
+      return;
+    }
+
     log::verbose("StreamSpeedTracker group_id: {}", group_id_);
     is_started_ = false;
     group_id_ = bluetooth::groups::kGroupUnknown;
@@ -300,14 +306,15 @@ public:
                  ToString(context_type_), total_time_);
   }
 
-  bool IsStarted(void) {
-    if (is_started_) {
+  bool IsStarted(int group_id) {
+    if (is_started_ && group_id_ == group_id) {
       log::verbose("StreamSpeedTracker group_id: {}, {} is_started_: {} ", group_id_,
                    ToString(context_type_), is_started_);
-    } else {
-      log::verbose("StreamSpeedTracker not started ");
+      return true;
     }
-    return is_started_;
+    log::verbose("StreamSpeedTracker not started {} or group_id does not match ({} ! = {}) ",
+                 is_started_, group_id, group_id_);
+    return false;
   }
 
   void Dump(std::stringstream& stream) {
@@ -1551,6 +1558,21 @@ public:
     active_group_id_ = bluetooth::groups::kGroupUnknown;
   }
 
+  void ConfigureStream(LeAudioDeviceGroup* group, bool up_to_qos_configured) {
+    log::debug("group_id: {}", group->group_id_);
+
+    BidirectionalPair<std::vector<uint8_t>> ccids = {
+            .sink = ContentControlIdKeeper::GetInstance()->GetAllCcids(
+                    local_metadata_context_types_.sink),
+            .source = ContentControlIdKeeper::GetInstance()->GetAllCcids(
+                    local_metadata_context_types_.source)};
+    if (!groupStateMachine_->ConfigureStream(group, configuration_context_type_,
+                                             local_metadata_context_types_, ccids,
+                                             up_to_qos_configured)) {
+      log::info("Could not configure group {}", group->group_id_);
+    }
+  }
+
   void PrepareStreamForAConversational(LeAudioDeviceGroup* group) {
     if (!com::android::bluetooth::flags::leaudio_improve_switch_during_phone_call()) {
       log::info("Flag leaudio_improve_switch_during_phone_call is not enabled");
@@ -1673,10 +1695,20 @@ public:
     auto previous_active_group = active_group_id_;
     log::info("Active group_id changed {} -> {}", previous_active_group, group_id);
 
+    bool prepare_for_a_call = IsInCall() || IsInVoipCall();
+
     if (previous_active_group == bluetooth::groups::kGroupUnknown) {
       /* Expose audio sessions if there was no previous active group */
       StartAudioSession(group);
       active_group_id_ = group_id;
+
+      /* For the fresh activated LeAudio device, do configuration ahead only when
+       * phone is in a call.
+       */
+      if (prepare_for_a_call) {
+        PrepareStreamForAConversational(group);
+      }
+
     } else {
       /* In case there was an active group. Stop the stream, but before that, set
        * the new group so the group change is correctly handled in OnStateMachineStatusReportCb
@@ -1687,7 +1719,12 @@ public:
       /* Note: On purpose we are not sending INACTIVE status up to Java, because previous active
        * group will be provided in ACTIVE status. This is in order to have single call to audio
        * framework
+       * If group become active while phone call, let's configure it right away up to
+       * the QoS configured state so when audio framework resumes the stream,
+       * only Enable will left.
+       * Otherwise, if there is group switch, let's move ASEs to Configured state.
        */
+      ConfigureStream(group, prepare_for_a_call);
     }
 
     /* Reset sink and source listener notified status */
@@ -1700,13 +1737,6 @@ public:
     } else {
       callbacks_->OnGroupStatus(active_group_id_, GroupStatus::ACTIVE);
       SendAudioGroupSelectableCodecConfigChanged(group);
-    }
-
-    /* If group become active while phone call, let's configure it right away,
-     * so when audio framework resumes the stream, it will be almost there.
-     */
-    if (IsInCall()) {
-      PrepareStreamForAConversational(group);
     }
   }
 
@@ -5846,9 +5876,9 @@ public:
 
   void speed_start_setup(int group_id, LeAudioContextType context_type, int num_of_connected,
                          bool is_reconfig = false) {
-    log::verbose("is_started {} is_reconfig {} num_of_connected {}", speed_tracker_.IsStarted(),
-                 is_reconfig, num_of_connected);
-    if (!speed_tracker_.IsStarted()) {
+    log::verbose("is_started {} is_reconfig {} num_of_connected {}",
+                 speed_tracker_.IsStarted(group_id), is_reconfig, num_of_connected);
+    if (!speed_tracker_.IsStarted(group_id)) {
       speed_tracker_.Init(group_id, context_type, num_of_connected);
     }
     if (is_reconfig) {
@@ -5858,26 +5888,27 @@ public:
     }
   }
 
-  void speed_stop_reconfig(void) {
+  void speed_stop_reconfig(int group_id) {
     log::verbose("");
-    if (!speed_tracker_.IsStarted()) {
+    if (!speed_tracker_.IsStarted(group_id)) {
       return;
     }
+
     speed_tracker_.ReconfigurationComplete();
   }
 
-  void speed_stream_created() {
+  void speed_stream_created(int group_id) {
     log::verbose("");
-    if (!speed_tracker_.IsStarted()) {
+    if (!speed_tracker_.IsStarted(group_id)) {
       return;
     }
 
     speed_tracker_.StreamCreated();
   }
 
-  void speed_stop_setup() {
+  void speed_stop_setup(int group_id) {
     log::verbose("");
-    if (!speed_tracker_.IsStarted()) {
+    if (!speed_tracker_.IsStarted(group_id)) {
       return;
     }
 
@@ -5887,7 +5918,7 @@ public:
 
     speed_tracker_.StopStreamSetup();
     stream_speed_history_.emplace_front(speed_tracker_);
-    speed_tracker_.Reset();
+    speed_tracker_.Reset(group_id);
   }
 
   void notifyGroupStreamStatus(int group_id, GroupStreamStatus groupStreamStatus) {
@@ -5942,26 +5973,36 @@ public:
      */
     CancelStreamingRequest();
     ReconfigurationComplete(previously_active_directions);
-    speed_stop_reconfig();
+    speed_stop_reconfig(active_group_id_);
   }
 
   void OnStateMachineStatusReportCb(int group_id, GroupStreamStatus status) {
-    log::info("status: {},  group_id: {}, audio_sender_state {}, audio_receiver_state {}",
-              static_cast<int>(status), group_id, bluetooth::common::ToString(audio_sender_state_),
-              bluetooth::common::ToString(audio_receiver_state_));
+    /* When switching stream between two group, it is important to keep track if given status is for
+     * active group or not in order to proper Audio HAL notifications.
+     * It means, we should update Audio HAL and clear common resources when group is an active group
+     * or active group is already cleared.
+     */
+    bool is_active_group_operation =
+            (group_id == active_group_id_ || active_group_id_ == bluetooth::groups::kGroupUnknown);
+
+    log::info(
+            "status: {},  group_id: {}, audio_sender_state {}, audio_receiver_state {}, "
+            "is_active_group_operation {}",
+            static_cast<int>(status), group_id, bluetooth::common::ToString(audio_sender_state_),
+            bluetooth::common::ToString(audio_receiver_state_), is_active_group_operation);
     LeAudioDeviceGroup* group = aseGroups_.FindById(group_id);
 
     notifyGroupStreamStatus(group_id, status);
 
     switch (status) {
       case GroupStreamStatus::STREAMING: {
-        if (group_id != active_group_id_) {
+        if (!is_active_group_operation) {
           log::error("Streaming group {} is no longer active. Stop the group.", group_id);
           GroupStop(group_id);
           return;
         }
 
-        speed_stream_created();
+        speed_stream_created(group_id);
         bluetooth::le_audio::MetricsCollector::Get()->OnStreamStarted(active_group_id_,
                                                                       configuration_context_type_);
 
@@ -5983,7 +6024,7 @@ public:
            * Just stop streaming
            */
           log::warn("Stopping stream for group {} as AF not interested.", group_id);
-          speed_stop_setup();
+          speed_stop_setup(group_id);
           groupStateMachine_->StopStream(group);
           return;
         }
@@ -5998,7 +6039,7 @@ public:
                   "reconfigure to {}",
                   ToString(group->GetConfigurationContextType()),
                   ToString(configuration_context_type_));
-          speed_stop_setup();
+          speed_stop_setup(group_id);
           initReconfiguration(group, group->GetConfigurationContextType());
           return;
         }
@@ -6020,16 +6061,21 @@ public:
           StartReceivingAudio(group_id);
         }
 
-        speed_stop_setup();
+        speed_stop_setup(group_id);
         break;
       }
       case GroupStreamStatus::SUSPENDED:
-        speed_tracker_.Reset();
-        /** Stop Audio but don't release all the Audio resources */
-        SuspendAudio();
+        speed_tracker_.Reset(group_id);
+
+        if (is_active_group_operation) {
+          /** Stop Audio but don't release all the Audio resources */
+          SuspendAudio();
+        }
         break;
       case GroupStreamStatus::CONFIGURED_BY_USER:
-        reconfigurationComplete();
+        if (is_active_group_operation) {
+          reconfigurationComplete();
+        }
         break;
       case GroupStreamStatus::CONFIGURED_AUTONOMOUS:
         /* This state is notified only when
@@ -6038,19 +6084,21 @@ public:
          * it is handled same as IDLE
          */
       case GroupStreamStatus::IDLE: {
-        if (sw_enc_left) {
-          sw_enc_left.reset();
+        if (is_active_group_operation) {
+          if (sw_enc_left) {
+            sw_enc_left.reset();
+          }
+          if (sw_enc_right) {
+            sw_enc_right.reset();
+          }
+          if (sw_dec_left) {
+            sw_dec_left.reset();
+          }
+          if (sw_dec_right) {
+            sw_dec_right.reset();
+          }
+          CleanCachedMicrophoneData();
         }
-        if (sw_enc_right) {
-          sw_enc_right.reset();
-        }
-        if (sw_dec_left) {
-          sw_dec_left.reset();
-        }
-        if (sw_dec_right) {
-          sw_dec_right.reset();
-        }
-        CleanCachedMicrophoneData();
 
         if (group) {
           handleAsymmetricPhyForUnicast(group);
@@ -6086,8 +6134,10 @@ public:
             }
             log::info("Clear pending configuration flag for group {}", group->group_id_);
             group->ClearPendingConfiguration();
-            reconfigurationComplete();
-          } else {
+            if (is_active_group_operation) {
+              reconfigurationComplete();
+            }
+          } else if (is_active_group_operation) {
             if (sink_monitor_mode_) {
               notifyAudioLocalSink(UnicastMonitorModeStatus::STREAMING_SUSPENDED);
             }
@@ -6098,8 +6148,10 @@ public:
           }
         }
 
-        speed_tracker_.Reset();
-        CancelStreamingRequest();
+        speed_tracker_.Reset(group_id);
+        if (is_active_group_operation) {
+          CancelStreamingRequest();
+        }
 
         if (group) {
           NotifyUpperLayerGroupTurnedIdleDuringCall(group->group_id_);
@@ -6125,18 +6177,21 @@ public:
           groupSetAndNotifyInactive();
         }
 
-        if (audio_sender_state_ != AudioState::IDLE) {
-          audio_sender_state_ = AudioState::RELEASING;
+        if (is_active_group_operation) {
+          if (audio_sender_state_ != AudioState::IDLE) {
+            audio_sender_state_ = AudioState::RELEASING;
+          }
+
+          if (audio_receiver_state_ != AudioState::IDLE) {
+            audio_receiver_state_ = AudioState::RELEASING;
+          }
+
+          if (group && group->IsPendingConfiguration()) {
+            log::info("Releasing for reconfiguration, don't send anything on CISes");
+            SuspendedForReconfiguration();
+          }
         }
 
-        if (audio_receiver_state_ != AudioState::IDLE) {
-          audio_receiver_state_ = AudioState::RELEASING;
-        }
-
-        if (group && group->IsPendingConfiguration()) {
-          log::info("Releasing for reconfiguration, don't send anything on CISes");
-          SuspendedForReconfiguration();
-        }
         break;
       default:
         break;

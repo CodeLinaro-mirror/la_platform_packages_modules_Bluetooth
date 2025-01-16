@@ -299,7 +299,7 @@ public class GattServiceTest {
                 mService.getDevicesMatchingConnectionStates(states, mAttributionSource);
 
         int expectedSize = 1;
-        assertThat(deviceList.size()).isEqualTo(expectedSize);
+        assertThat(deviceList).hasSize(expectedSize);
 
         BluetoothDevice bluetoothDevice = deviceList.get(0);
         assertThat(bluetoothDevice.getAddress()).isEqualTo(address);
@@ -333,8 +333,9 @@ public class GattServiceTest {
     public void unregisterClient() {
         int clientIf = 3;
 
-        mService.unregisterClient(clientIf, mAttributionSource);
-        verify(mClientMap).remove(clientIf);
+        mService.unregisterClient(
+                clientIf, mAttributionSource, ContextMap.RemoveReason.REASON_UNREGISTER_CLIENT);
+        verify(mClientMap).remove(clientIf, ContextMap.RemoveReason.REASON_UNREGISTER_CLIENT);
         verify(mNativeInterface).gattClientUnregisterApp(clientIf);
     }
 
@@ -581,7 +582,7 @@ public class GattServiceTest {
         doReturn(appIds).when(mClientMap).getAllAppsIds();
 
         mService.unregAll(mAttributionSource);
-        verify(mClientMap).remove(appId);
+        verify(mClientMap).remove(appId, ContextMap.RemoveReason.REASON_UNREGISTER_ALL);
         verify(mNativeInterface).gattClientUnregisterApp(appId);
     }
 

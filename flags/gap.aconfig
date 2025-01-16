@@ -281,3 +281,23 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "change_default_trackable_adv_number"
+    namespace: "bluetooth"
+    description: "Change the default value for number of trackable advertisements for onFound"
+    bug: "389568695"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "fix_unusable_adv_slot_due_to_map_access"
+    namespace: "bluetooth"
+    description: "Fixes the advertising slot becoming unusable due to incorrect map access via [] operator."
+    bug: "388615378"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
