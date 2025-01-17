@@ -429,7 +429,7 @@ public:
     leAudioHealthStatus_->RegisterCallback(base::BindRepeating(le_audio_health_status_callback));
 
     BTA_GATTC_AppRegister(
-            le_audio_gattc_callback,
+            "le_audio", le_audio_gattc_callback,
             base::Bind(
                     [](base::Closure initCb, uint8_t client_id, uint8_t status) {
                       if (status != GATT_SUCCESS) {
@@ -2512,7 +2512,7 @@ public:
 
     /* Check if the device is in allow list and update the flag */
     leAudioDevice->UpdateDeviceAllowlistFlag();
-    if (BTM_SecIsSecurityPending(address)) {
+    if (BTM_SecIsLeSecurityPending(address)) {
       /* if security collision happened, wait for encryption done
        * (BTA_GATTC_ENC_CMPL_CB_EVT) */
       return;
