@@ -21,6 +21,8 @@
 
 package com.android.bluetooth.avrcpcontroller;
 
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
+
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.RequiresPermission;
@@ -387,19 +389,6 @@ public class AvrcpControllerService extends ProfileService {
             implements IProfileServiceBinder {
         private AvrcpControllerService mService;
 
-        @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
-        private AvrcpControllerService getService(AttributionSource source) {
-            if (Utils.isInstrumentationTestMode()) {
-                return mService;
-            }
-            if (!Utils.checkServiceAvailable(mService, TAG)
-                    || !Utils.checkCallerIsSystemOrActiveOrManagedUser(mService, TAG)
-                    || !Utils.checkConnectPermissionForDataDelivery(mService, source, TAG)) {
-                return null;
-            }
-            return mService;
-        }
-
         AvrcpControllerServiceBinder(AvrcpControllerService service) {
             mService = service;
         }
@@ -407,6 +396,24 @@ public class AvrcpControllerService extends ProfileService {
         @Override
         public void cleanup() {
             mService = null;
+        }
+
+        @RequiresPermission(BLUETOOTH_CONNECT)
+        private AvrcpControllerService getService(AttributionSource source) {
+            // Cache mService because it can change while getService is called
+            AvrcpControllerService service = mService;
+
+            if (Utils.isInstrumentationTestMode()) {
+                return service;
+            }
+
+            if (!Utils.checkServiceAvailable(service, TAG)
+                    || !Utils.checkCallerIsSystemOrActiveOrManagedUser(service, TAG)
+                    || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                return null;
+            }
+
+            return service;
         }
 
         @Override
@@ -836,11 +843,11 @@ public class AvrcpControllerService extends ProfileService {
             sBrowseTree.dump(sb);
         }
 
-        sb.append("\n  Cover Artwork Enabled: " + (mCoverArtEnabled ? "True" : "False"));
+        sb.append("\n  Cover Artwork Enabled: ").append((mCoverArtEnabled ? "True" : "False"));
         if (mCoverArtManager != null) {
-            sb.append("\n  " + mCoverArtManager.toString());
+            sb.append("\n  ").append(mCoverArtManager.toString());
         }
 
-        sb.append("\n  " + BluetoothMediaBrowserService.dump() + "\n");
+        sb.append("\n  ").append(BluetoothMediaBrowserService.dump()).append("\n");
     }
 }

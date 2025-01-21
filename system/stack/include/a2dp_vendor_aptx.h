@@ -43,8 +43,8 @@ class A2dpCodecConfigAptxBase : public A2dpCodecConfig {
                          bool is_source)
       : A2dpCodecConfig(codec_index, A2DP_CODEC_ID_APTX, name, codec_priority),
         is_source_(is_source) {}
-  bool setCodecConfig(const uint8_t* p_peer_codec_info, bool is_capability,
-                      uint8_t* p_result_codec_config) override;
+  tA2DP_STATUS setCodecConfig(const uint8_t* p_peer_codec_info, bool is_capability,
+                              uint8_t* p_result_codec_config) override;
   bool setPeerCodecCapabilities(
       const uint8_t* p_peer_codec_capabilities) override;
 
@@ -80,21 +80,7 @@ class A2dpCodecConfigAptxSink : public A2dpCodecConfigAptxBase {
 // NOTE: only codecs that are implemented are considered valid.
 // Returns true if |p_codec_info| contains information about a valid aptX
 // codec, otherwise false.
-bool A2DP_IsVendorSourceCodecValidAptx(const uint8_t* p_codec_info);
-
-// Checks whether the codec capabilities contain a valid A2DP aptX Sink
-// codec.
-// NOTE: only codecs that are implemented are considered valid.
-// Returns true if |p_codec_info| contains information about a valid aptX
-// codec, otherwise false.
-bool A2DP_IsVendorSinkCodecValidAptx(const uint8_t* p_codec_info);
-
-// Checks whether the codec capabilities contain a valid peer A2DP aptX Sink
-// codec.
-// NOTE: only codecs that are implemented are considered valid.
-// Returns true if |p_codec_info| contains information about a valid aptX
-// codec, otherwise false.
-bool A2DP_IsVendorPeerSinkCodecValidAptx(const uint8_t* p_codec_info);
+bool A2DP_IsCodecValidAptx(const uint8_t* p_codec_info);
 
 // Checks whether the codec capabilities contain a valid peer A2DP aptX Source
 // codec.
@@ -106,7 +92,7 @@ bool A2DP_IsVendorPeerSourceCodecValidAptx(const uint8_t* p_codec_info);
 // Checks whether A2DP aptX Sink codec is supported.
 // |p_codec_info| contains information about the codec capabilities.
 // Returns true if the A2DP aptX Sink codec is supported, otherwise false.
-bool A2DP_IsSinkCodecSupportedAptx(const uint8_t* p_codec_info);
+tA2DP_STATUS A2DP_IsSinkCodecSupportedAptx(const uint8_t* p_codec_info);
 
 // Checks whether an A2DP aptX Source codec for a peer Source device is
 // supported.
@@ -114,15 +100,14 @@ bool A2DP_IsSinkCodecSupportedAptx(const uint8_t* p_codec_info);
 // peer device.
 // Returns true if the A2DP aptX Source codec for a peer Source device is
 // supported, otherwise false.
-bool A2DP_IsPeerSourceCodecSupportedAptx(const uint8_t* p_codec_info);
+tA2DP_STATUS A2DP_IsPeerSourceCodecSupportedAptx(const uint8_t* p_codec_info);
 
 // Checks whether the A2DP data packets should contain RTP header.
 // |content_protection_enabled| is true if Content Protection is
 // enabled. |p_codec_info| contains information about the codec capabilities.
 // Returns true if the A2DP data packets should contain RTP header, otherwise
 // false.
-bool A2DP_VendorUsesRtpHeaderAptx(bool content_protection_enabled,
-                                  const uint8_t* p_codec_info);
+bool A2DP_VendorUsesRtpHeaderAptx(bool content_protection_enabled, const uint8_t* p_codec_info);
 
 // Gets the A2DP aptX codec name for a given |p_codec_info|.
 const char* A2DP_VendorCodecNameAptx(const uint8_t* p_codec_info);
@@ -130,15 +115,13 @@ const char* A2DP_VendorCodecNameAptx(const uint8_t* p_codec_info);
 // Checks whether two A2DP aptX codecs |p_codec_info_a| and |p_codec_info_b|
 // have the same type.
 // Returns true if the two codecs have the same type, otherwise false.
-bool A2DP_VendorCodecTypeEqualsAptx(const uint8_t* p_codec_info_a,
-                                    const uint8_t* p_codec_info_b);
+bool A2DP_VendorCodecTypeEqualsAptx(const uint8_t* p_codec_info_a, const uint8_t* p_codec_info_b);
 
 // Checks whether two A2DP aptX codecs |p_codec_info_a| and |p_codec_info_b|
 // are exactly the same.
 // Returns true if the two codecs are exactly the same, otherwise false.
 // If the codec type is not aptX, the return value is false.
-bool A2DP_VendorCodecEqualsAptx(const uint8_t* p_codec_info_a,
-                                const uint8_t* p_codec_info_b);
+bool A2DP_VendorCodecEqualsAptx(const uint8_t* p_codec_info_a, const uint8_t* p_codec_info_b);
 
 // Gets the track sample rate value for the A2DP aptX codec.
 // |p_codec_info| is a pointer to the aptX codec_info to decode.
@@ -176,8 +159,7 @@ int A2DP_VendorGetTrackChannelTypeAptx(const uint8_t* p_codec_info);
 // |p_data| contains the audio data.
 // The timestamp is stored in |p_timestamp|.
 // Returns true on success, otherwise false.
-bool A2DP_VendorGetPacketTimestampAptx(const uint8_t* p_codec_info,
-                                       const uint8_t* p_data,
+bool A2DP_VendorGetPacketTimestampAptx(const uint8_t* p_codec_info, const uint8_t* p_data,
                                        uint32_t* p_timestamp);
 
 // Builds A2DP aptX codec header for audio data.
@@ -198,8 +180,7 @@ std::string A2DP_VendorCodecInfoStringAptx(const uint8_t* p_codec_info);
 // |p_codec_info| contains the codec information.
 // Returns the A2DP aptX encoder interface if the |p_codec_info| is valid and
 // supported, otherwise NULL.
-const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptx(
-    const uint8_t* p_codec_info);
+const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptx(const uint8_t* p_codec_info);
 
 // Gets the A2DP aptX decoder interface that can be used to decode and prepare
 // PCM packets for playing - see |tA2DP_DECODER_INTERFACE|.
@@ -218,8 +199,7 @@ bool A2DP_VendorAdjustCodecAptx(uint8_t* p_codec_info);
 // Gets the A2DP aptX Source codec index for a given |p_codec_info|.
 // Returns the corresponding |btav_a2dp_codec_index_t| on success,
 // otherwise |BTAV_A2DP_CODEC_INDEX_MAX|.
-btav_a2dp_codec_index_t A2DP_VendorSourceCodecIndexAptx(
-    const uint8_t* p_codec_info);
+btav_a2dp_codec_index_t A2DP_VendorSourceCodecIndexAptx(const uint8_t* p_codec_info);
 
 // Gets the A2DP aptX Sink codec index for a given |p_codec_info|.
 // Returns the corresponding |btav_a2dp_codec_index_t| on success,
