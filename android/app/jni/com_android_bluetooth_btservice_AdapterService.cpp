@@ -617,6 +617,65 @@ static jobject createClassicOobDataObject(JNIEnv* env, bt_oob_data_t oob_data) {
   return env->CallObjectMethod(oobDataClassicBuilder, buildMethod);
 }
 
+static jobject createClassicOobDataExtObject(JNIEnv* env, bt_oob_data_t oob_data) {
+  log::verbose("");
+  jclass classicExtendedBuilderClass =
+      env->FindClass("android/bluetooth/OobData$ClassicExtendedBuilder");
+
+  jbyteArray confirmationHash = env->NewByteArray(OOB_C_SIZE);
+  env->SetByteArrayRegion(confirmationHash, 0, OOB_C_SIZE,
+                          reinterpret_cast<jbyte*>(oob_data.c));
+  jbyteArray randomizerHash = env->NewByteArray(OOB_R_SIZE);
+  env->SetByteArrayRegion(randomizerHash, 0, OOB_R_SIZE,
+                          reinterpret_cast<jbyte*>(oob_data.r));
+  jbyteArray confirmationExtentedHash = env->NewByteArray(OOB_C_SIZE);
+  env->SetByteArrayRegion(confirmationExtentedHash, 0, OOB_C_SIZE,
+                          reinterpret_cast<jbyte*>(oob_data.c_256));
+  jbyteArray randomizerExtentedHash = env->NewByteArray(OOB_R_SIZE);
+  env->SetByteArrayRegion(randomizerExtentedHash, 0, OOB_R_SIZE,
+                          reinterpret_cast<jbyte*>(oob_data.r_256));
+
+  jbyteArray oobDataLength = env->NewByteArray(OOB_DATA_LEN_SIZE);
+  env->SetByteArrayRegion(oobDataLength, 0, OOB_DATA_LEN_SIZE,
+                          reinterpret_cast<jbyte*>(oob_data.oob_data_length));
+
+  jbyteArray address = env->NewByteArray(OOB_ADDRESS_SIZE);
+  env->SetByteArrayRegion(address, 0, OOB_ADDRESS_SIZE,
+                          reinterpret_cast<jbyte*>(oob_data.address));
+
+  jmethodID classicBuilderConstructor =
+      env->GetMethodID(classicExtendedBuilderClass, "<init>", "([B[B[B[B[B[B)V");
+
+  jobject oobDataClassicExtendedBuilder =
+      env->NewObject(classicExtendedBuilderClass, classicBuilderConstructor,
+                     confirmationHash,randomizerHash,confirmationExtentedHash,
+                     randomizerExtentedHash, oobDataLength, address);
+
+  jmethodID setNameMethod =
+      env->GetMethodID(classicExtendedBuilderClass, "setDeviceName",
+                       "([B)Landroid/bluetooth/OobData$ClassicExtendedBuilder;");
+
+  int name_char_count = 0;
+  for (int i = 0; i < OOB_NAME_MAX_SIZE; i++) {
+    if (oob_data.device_name[i] == 0) {
+      name_char_count = i;
+      break;
+    }
+  }
+
+  jbyteArray deviceName = env->NewByteArray(name_char_count);
+  env->SetByteArrayRegion(deviceName, 0, name_char_count,
+                          reinterpret_cast<jbyte*>(oob_data.device_name));
+
+  oobDataClassicExtendedBuilder =
+      env->CallObjectMethod(oobDataClassicExtendedBuilder, setNameMethod, deviceName);
+
+  jmethodID buildMethod = env->GetMethodID(classicExtendedBuilderClass, "build",
+                                           "()Landroid/bluetooth/OobData;");
+
+  return env->CallObjectMethod(oobDataClassicExtendedBuilder, buildMethod);
+}
+
 static jobject createLeOobDataObject(JNIEnv* env, bt_oob_data_t oob_data) {
   log::verbose("");
 
@@ -685,10 +744,21 @@ static void generate_local_oob_data_callback(tBT_TRANSPORT transport, bt_oob_dat
   }
 
   if (transport == BT_TRANSPORT_BR_EDR) {
-    sCallbackEnv->CallVoidMethod(
+    uint8_t zero[16] = {0};
+    if (memcmp(zero, oob_data.c_256, sizeof(oob_data.c_256)) &&
+        memcmp(zero, oob_data.r_256, sizeof(oob_data.r_256))) {
+       //ALOGV("%s Securty mode, P192 & P256 data both valiable", __func__);
+       sCallbackEnv->CallVoidMethod(
+            sJniCallbacksObj, method_oobDataReceivedCallback, (jint)transport,
+            ((oob_data.is_valid) ? createClassicOobDataExtObject(sCallbackEnv.get(), oob_data)
+                                 : nullptr));
+    } else {
+      log::verbose(" Only P192 data valiable");
+      sCallbackEnv->CallVoidMethod(
             sJniCallbacksObj, method_oobDataReceivedCallback, (jint)transport,
             ((oob_data.is_valid) ? createClassicOobDataObject(sCallbackEnv.get(), oob_data)
                                  : nullptr));
+    }
   } else if (transport == BT_TRANSPORT_LE) {
     sCallbackEnv->CallVoidMethod(
             sJniCallbacksObj, method_oobDataReceivedCallback, (jint)transport,
@@ -1386,6 +1456,66 @@ static void generateLocalOobDataNative(JNIEnv* /* env */, jobject /* obj */, jin
     generate_local_oob_data_callback(bt_transport, oob_data);
   }
 }  // namespace android
+
+static jboolean loadRemoteOobDataNative(JNIEnv* env, jobject /* obj */, jbyteArray address,
+                                        jint transport, jobject p192Data, jobject p256Data) {
+  // No BT interface? Can't do anything.
+  if (!sBluetoothInterface) return JNI_FALSE;
+
+  // No data? Can't do anything
+  if (p192Data == NULL && p256Data == NULL) {
+    log::error("All OOB Data are null! Nothing to do.");
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+
+  // This address is already reversed which is why its being passed...
+  // In the future we want to remove this and just reverse the address
+  // for the oobdata in the host stack.
+  if (address == NULL) {
+    log::error("Address cannot be null! Nothing to do.");
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+
+  // Check the data
+  int len = env->GetArrayLength(address);
+  if (len != 6) {
+    log::error("addressBytes must be 6 bytes in length (address plus type) 6+1!");
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (addr == NULL) {
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+
+  // Convert P192 data from Java POJO to C Struct
+  bt_oob_data_t p192_data = {};
+  if (p192Data != NULL) {
+    if (set_data(env, p192Data, transport, &p192_data) == JNI_FALSE) {
+      jniThrowIOException(env, EINVAL);
+      return JNI_FALSE;
+    }
+  }
+
+  // Convert P256 data from Java POJO to C Struct
+  bt_oob_data_t p256_data = {};
+  if (p256Data != NULL) {
+    if (set_data(env, p256Data, transport, &p256_data) == JNI_FALSE) {
+      jniThrowIOException(env, EINVAL);
+      return JNI_FALSE;
+    }
+  }
+
+  return ((sBluetoothInterface->load_remote_oob_data(
+              (RawAddress*)addr, transport, &p192_data, &p256_data)) ==
+              BT_STATUS_SUCCESS)
+              ? JNI_TRUE
+              : JNI_FALSE;
+}
 
 static jboolean createBondOutOfBandNative(JNIEnv* env, jobject /* obj */, jbyteArray address,
                                           jint transport, jobject p192Data, jobject p256Data) {
@@ -2303,6 +2433,9 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
           {"pairingIsBusyNative", "()Z", reinterpret_cast<void*>(pairingIsBusyNative)},
           {"generateLocalOobDataNative", "(I)V",
            reinterpret_cast<void*>(generateLocalOobDataNative)},
+          {"loadRemoteOobDataNative",
+           "([BILandroid/bluetooth/OobData;Landroid/bluetooth/OobData;)Z",
+           reinterpret_cast<void*>(loadRemoteOobDataNative)},
           {"getConnectionStateNative", "([B)I", reinterpret_cast<void*>(getConnectionStateNative)},
           {"pinReplyNative", "([BZI[B)Z", reinterpret_cast<void*>(pinReplyNative)},
           {"sspReplyNative", "([BIZI)Z", reinterpret_cast<void*>(sspReplyNative)},

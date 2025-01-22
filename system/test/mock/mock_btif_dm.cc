@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /*
@@ -137,13 +142,15 @@ bool btif_dm_get_smp_config(tBTE_APPL_CFG* /* p_cfg */) {
   return true;
 }
 
-bool btif_dm_proc_rmt_oob(const RawAddress& /* bd_addr */, Octet16* /* p_c */, Octet16* /* p_r */) {
+bool btif_dm_proc_rmt_oob(const RawAddress& /* bd_addr */, Octet16* /* p_c */, Octet16* /* p_r */,
+                          Octet16* p_c_256, Octet16* p_r_256 ) {
   inc_func_call_count(__func__);
   return false;
 }
 
 void btif_dm_proc_loc_oob(tBT_TRANSPORT /* transport */, bool /* is_valid */,
-                          const Octet16& /* c */, const Octet16& /* r */) {
+                          const Octet16& /* c */, const Octet16& /* r */,
+                          const Octet16& c_256, const Octet16& r_256  ) {
   inc_func_call_count(__func__);
 }
 bool btif_get_device_type(const RawAddress& /* bda */, int* /* p_device_type */) {
