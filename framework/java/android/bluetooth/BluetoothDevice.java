@@ -2138,6 +2138,46 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     }
 
     /**
+     * Load remote oob data to BT process
+     *
+     * <p>This is a synchronous call
+     * <p>There are two possible versions of OOB Data.  This data can come in as
+     * P192 or P256.  This is a reference to the cryptography used to generate the key.
+     * The caller may pass one or both.  If both types of data are passed, then the
+     * P256 data will be preferred, and thus used.
+     *
+     * @param transport - Transport to use
+     * @param remoteP192Data - Out Of Band data (P192) or null
+     * @param remoteP256Data - Out Of Band data (P256) or null
+     * @return false on immediate error, true if load success
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public boolean loadRemoteOobData(int transport, @Nullable OobData remoteP192Data,
+            @Nullable OobData remoteP256Data) {
+        if (DBG) log("loadRemoteOobData()");
+        final IBluetooth service = getService();
+        if (remoteP192Data == null && remoteP256Data == null) {
+            throw new IllegalArgumentException(
+                "One or both arguments for the OOB data types are required to not be null."
+                + "  using normal in-bind bond.");
+        }
+        if (service == null) {
+            Log.w(TAG, "BT not enabled, loadRemoteOobDataInternal failed");
+            return false;
+        }
+        try {
+            service.loadRemoteOobData(
+                    this, transport, remoteP192Data, remoteP256Data, mAttributionSource);
+            return true;
+        } catch (RemoteException e) {
+            Log.e(TAG, "", e);
+        }
+        return false;
+    }
+
+    /**
      * Gets whether bonding was initiated locally
      *
      * @return true if bonding is initiated locally, false otherwise

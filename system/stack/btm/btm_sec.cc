@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -1095,8 +1100,10 @@ void BTM_PasskeyReqReply(tBTM_STATUS res, const RawAddress& bd_addr, uint32_t pa
  ******************************************************************************/
 void BTM_ReadLocalOobData(void) {
   if (bluetooth::shim::GetController()->SupportsSecureConnections()) {
+    log::info("Read local oob extended data");
     btsnd_hcic_read_local_oob_extended_data();
   } else {
+    log::info("Read local oob data");
     btsnd_hcic_read_local_oob_data();
   }
 }
@@ -1132,6 +1139,44 @@ void BTM_RemoteOobDataReply(tBTM_STATUS res, const RawAddress& bd_addr, const Oc
   } else {
     acl_set_disconnect_reason(HCI_SUCCESS);
     btsnd_hcic_rem_oob_reply(bd_addr, c, r);
+  }
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_RemoteOobExtendedDataReply
+ *
+ * Description      This function is called to provide the remote OOB data for
+ *                  Simple Pairing in response to BTM_SP_RMT_OOB_EVT
+ *
+ * Parameters:      bd_addr     - Address of the peer device
+ *                  c           - simple pairing Hash C192
+ *                  r           - simple pairing Randomizer R192
+ *                  c_256       - simple pairing Hash C256
+ *                  r_256       - simple pairing Randomizer R256
+ *
+ ******************************************************************************/
+void BTM_RemoteOobExtendedDataReply(tBTM_STATUS res, const RawAddress& bd_addr,
+                                    const Octet16& c, const Octet16& r,
+                                    const Octet16& c_256, const Octet16& r_256) {
+  log::verbose("State: {} res: {}", btm_pair_state_descr(btm_sec_cb.pairing_state),
+               res);
+
+  /* If timeout already expired or has been canceled, ignore the reply */
+  if (btm_sec_cb.pairing_state != BTM_PAIR_STATE_WAIT_LOCAL_OOB_RSP) {
+    return;
+  }
+
+    btm_sec_cb.change_pairing_state(BTM_PAIR_STATE_WAIT_AUTH_COMPLETE);
+
+    if (res != tBTM_STATUS::BTM_SUCCESS) {
+      /* use BTM_PAIR_STATE_WAIT_AUTH_COMPLETE to report authentication failed
+       * event */
+      acl_set_disconnect_reason(HCI_ERR_HOST_REJECT_SECURITY);
+      btsnd_hcic_rem_oob_neg_reply(bd_addr);
+    } else {
+      acl_set_disconnect_reason(HCI_ERR_HOST_REJECT_SECURITY);
+      btsnd_hcic_rem_oob_ext_reply(bd_addr, c, r, c_256, r_256);
   }
 }
 
@@ -2866,6 +2911,26 @@ void btm_read_local_oob_complete(const tBTM_SP_LOC_OOB evt_data) {
     tBTM_SP_EVT_DATA btm_sp_evt_data;
     btm_sp_evt_data.loc_oob = evt_data;
     (*btm_sec_cb.api.p_sp_callback)(BTM_SP_LOC_OOB_EVT, &btm_sp_evt_data);
+  }
+}
+
+/*******************************************************************************
+ *
+ * Function         btm_read_local_oob_extended_complete
+ *
+ * Description      This function is called when read local oob extended data is
+ *                  completed by the LM
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btm_read_local_oob_extended_complete(const tBTM_SP_LOC_OOB evt_data) {
+  log::verbose("btm_read_local_oob_extended_complete:{}", evt_data.status);
+
+  if (btm_sec_cb.api.p_sp_callback) {
+    tBTM_SP_EVT_DATA btm_sp_evt_data;
+    btm_sp_evt_data.loc_oob_ext = evt_data;
+    (*btm_sec_cb.api.p_sp_callback)(BTM_SP_LOC_OOB_EXT_EVT, &btm_sp_evt_data);
   }
 }
 

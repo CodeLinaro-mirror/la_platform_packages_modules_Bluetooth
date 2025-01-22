@@ -16,6 +16,7 @@
 
 package com.android.bluetooth.btservice;
 
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.DUMP;
 import static android.Manifest.permission.MODIFY_PHONE_STATE;
@@ -523,6 +524,20 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         service.generateLocalOobData(transport, callback);
+    }
+
+    @Override
+    public void loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data, AttributionSource source) {
+        AdapterService service = getService();
+        if (service == null
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "generateLocalOobData")
+                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+            return;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_CONNECT, null);
+        service.loadRemoteOobData(device, transport, remoteP192Data, remoteP256Data);
     }
 
     @Override

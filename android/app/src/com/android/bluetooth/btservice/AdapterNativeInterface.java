@@ -116,6 +116,11 @@ public class AdapterNativeInterface {
         generateLocalOobDataNative(transport);
     }
 
+    boolean loadRemoteOobData(
+            byte[] address, int transport, OobData p192Data, OobData p256Data){
+        return loadRemoteOobDataNative(address, transport, p192Data, p256Data);
+    }
+
     boolean sdpSearch(byte[] address, byte[] uuid) {
         return sdpSearchNative(address, uuid);
     }
@@ -339,6 +344,9 @@ public class AdapterNativeInterface {
     private native boolean pairingIsBusyNative();
 
     private native void generateLocalOobDataNative(int transport);
+
+    private native boolean loadRemoteOobDataNative(
+            byte[] address, int transport, OobData p192Data, OobData p256Data);
 
     private native boolean sdpSearchNative(byte[] address, byte[] uuid);
 
