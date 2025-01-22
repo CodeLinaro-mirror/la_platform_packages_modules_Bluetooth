@@ -1,4 +1,4 @@
-/******************************************************************************
+/****************************************************************************************
  *
  *  Copyright 1999-2012 Broadcom Corporation
  *
@@ -14,7 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ ****************************************************************************************/
 
 #ifndef HCIMSGS_H
 #define HCIMSGS_H
@@ -153,6 +158,11 @@ void btsnd_hcic_user_passkey_neg_reply(const RawAddress& bd_addr);
 
 /* Remote OOB Data Request Reply */
 void btsnd_hcic_rem_oob_reply(const RawAddress& bd_addr, const Octet16& c, const Octet16& r);
+
+/* Remote OOB extended Data Request Reply */
+extern void btsnd_hcic_rem_oob_ext_reply(const RawAddress& bd_addr,
+                                     const Octet16& c192, const Octet16& r192,
+                                     const Octet16& c256, const Octet16& r256);
 
 /* Remote OOB Data Request Negative Reply */
 void btsnd_hcic_rem_oob_neg_reply(const RawAddress& bd_addr);
