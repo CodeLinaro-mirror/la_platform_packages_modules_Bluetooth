@@ -1,4 +1,4 @@
-/******************************************************************************
+/******************************************************************************************
  *
  *  Copyright (c) 2014 The Android Open Source Project
  *  Copyright 2009-2012 Broadcom Corporation
@@ -15,7 +15,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
+ ******************************************************************************************/
 
 #ifndef BTIF_COMMON_H
 #define BTIF_COMMON_H
@@ -163,4 +168,7 @@ void invoke_link_quality_report_cb(uint64_t timestamp, int report_id, int rssi, 
 void invoke_switch_buffer_size_cb(bool is_low_latency_buffer_size);
 void invoke_switch_codec_cb(bool is_low_latency_buffer_size);
 void invoke_key_missing_cb(RawAddress bd_addr);
+void invoke_get_linkkey_cb(
+    RawAddress* remote_bd_addr, bool key_found,
+    int key_type, Link_Key link_key);
 #endif /* BTIF_COMMON_H */

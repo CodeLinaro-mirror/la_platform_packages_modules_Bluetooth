@@ -1,4 +1,4 @@
-/******************************************************************************
+/******************************************************************************************
  *
  *  Copyright (C) 2016-2017 The Linux Foundation
  *  Copyright 2009-2012 Broadcom Corporation
@@ -15,7 +15,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
+ ******************************************************************************************/
 
 /*******************************************************************************
  *
@@ -155,6 +160,8 @@ const Uuid UUID_A2DP_SINK = Uuid::FromString("110B");
 
 #define ENCRYPTED_BREDR 2
 #define ENCRYPTED_LE 4
+
+#define BTIF_VENDOR_GET_LINK_KEY  1
 
 struct btif_dm_pairing_cb_t {
   bt_bond_state_t state;
@@ -3912,6 +3919,29 @@ void btif_dm_metadata_changed(const RawAddress& remote_bd_addr, int key,
       }
     }
   }
+}
+
+static void btif_vendor_get_link_key_event(uint16_t event, char *p_param){
+  bool bt_linkkey_file_found = false;
+  RawAddress *bd_addr = (RawAddress *)p_param;
+  LinkKey link_key;
+  int linkkey_type = 0;
+  size_t size = sizeof(link_key);
+
+  /* Get linkkey from config file */
+  if (btif_config_get_bin(bd_addr->ToString().c_str(), "LinkKey",  link_key.data(), &size)) {
+    if (btif_config_get_int(bd_addr->ToString().c_str(), "LinkKeyType", &linkkey_type)) {
+      bt_linkkey_file_found = true;
+    } else {
+      bt_linkkey_file_found = false;
+    }
+  }
+  invoke_get_linkkey_cb(bd_addr, bt_linkkey_file_found, linkkey_type, link_key);
+}
+
+void btif_dm_get_link_key(const RawAddress *bd_addr){
+  btif_transfer_context(btif_vendor_get_link_key_event, BTIF_VENDOR_GET_LINK_KEY,
+                        (char *)bd_addr, sizeof(RawAddress), NULL);
 }
 
 namespace bluetooth {

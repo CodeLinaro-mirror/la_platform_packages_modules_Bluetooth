@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -236,6 +241,7 @@ public class AdapterService extends Service {
     private final Map<Integer, ProfileService> mStartedProfiles = new HashMap<>();
     private final List<ProfileService> mRegisteredProfiles = new ArrayList<>();
     private final List<ProfileService> mRunningProfiles = new ArrayList<>();
+    private final Map<BluetoothDevice, String> mBluetoothCallerNameMap = new HashMap<>();
 
     private final List<DiscoveringPackage> mDiscoveringPackages = new ArrayList<>();
 
@@ -2694,6 +2700,19 @@ public class AdapterService extends Service {
         }
 
         @Override
+        public void getLinkKey(BluetoothDevice device, String caller,
+                AttributionSource source) {
+            AdapterService service = getService();
+            if (service == null
+                    || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getLinkKey")) {
+                Log.w(TAG, "getLinkKey() - Not allowed for non-active user");
+                return;
+            }
+           service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+           service.getLinkKey(device, caller, source.getPackageName());
+        }
+
+        @Override
         public boolean removeBond(BluetoothDevice device, AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -4922,6 +4941,49 @@ public class AdapterService extends Service {
                 Log.e(TAG, "Failed to make callback", e);
             }
         }
+    }
+
+    public void getLinkKey(BluetoothDevice device, String caller, String callingPackage) {
+        if (!isPackageNameAccurate(this, callingPackage, Binder.getCallingUid())) {
+            return;
+        }
+        byte[] addr = Utils.getBytesFromAddress(device.getAddress());
+        synchronized (mBluetoothCallerNameMap) {
+            mBluetoothCallerNameMap.put(device, caller);
+        }
+        mNativeInterface.getLinkKey(addr);
+    }
+
+    void sendGetLinkKeyIntent(String linkKey, String address, boolean keyFound, int keyType) {
+        Intent intent = new Intent(BluetoothDevice.ACTION_LINKKEY);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, address);
+
+        if (keyFound) {
+            intent.putExtra(BluetoothDevice.EXTRA_KEY_LINK_KEY, linkKey);
+            intent.putExtra(BluetoothDevice.EXTRA_KEY_LINK_KEY_TYPE, keyType);
+        } else {
+            Log.d(TAG, "Can not find linkkey");
+            intent.putExtra(BluetoothDevice.EXTRA_KEY_LINK_KEY, "");
+            intent.putExtra(BluetoothDevice.EXTRA_KEY_LINK_KEY_TYPE, BluetoothDevice.LKEY_TYPE_NO_LINK);
+        }
+
+        // send the intent to the caller application
+        synchronized (mBluetoothCallerNameMap) {
+            BluetoothDevice device = mRemoteDevices.getDevice(Utils.getBytesFromAddress(address));
+            String caller = mBluetoothCallerNameMap.get(device);
+            if (caller == null) {
+                Log.e(TAG, "Can not find caller");
+                return;
+            }
+            intent.setPackage(caller);
+            sendBroadcast(intent);
+        }
+    }
+
+    public void onGetLinkKey(String linkKey, byte[] remoteAddr, boolean keyFound, int keyType) {
+        String address = Utils.getAddressStringFromByte(remoteAddr);
+        // Broadcast intent (to app)
+        sendGetLinkKeyIntent(linkKey, address, keyFound, keyType);
     }
 
     public boolean isQuietModeEnabled() {
