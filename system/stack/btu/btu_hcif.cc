@@ -1,4 +1,4 @@
-/******************************************************************************
+/****************************************************************************************
  *
  *  Copyright 1999-2012 Broadcom Corporation
  *
@@ -14,7 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ ****************************************************************************************/
 
 /******************************************************************************
  *
@@ -1301,7 +1306,7 @@ void btu_hcif_read_local_oob_extended_complete(const uint8_t* p, uint16_t evt_le
   STREAM_TO_ARRAY16(evt_data.r_192.data(), p);
   STREAM_TO_ARRAY16(evt_data.c_256.data(), p);
   STREAM_TO_ARRAY16(evt_data.r_256.data(), p);
-  btm_read_local_oob_complete(evt_data);
+  btm_read_local_oob_extended_complete(evt_data);
 }
 
 /*******************************************************************************

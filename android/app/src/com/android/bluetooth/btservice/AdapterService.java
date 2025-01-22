@@ -2786,6 +2786,20 @@ public class AdapterService extends Service {
         }
 
         @Override
+        public void loadRemoteOobData(
+                BluetoothDevice device, int transport, OobData remoteP192Data,
+                OobData remoteP256Data, AttributionSource source) {
+            AdapterService service = getService();
+            if (service == null
+                    || !callerIsSystemOrActiveOrManagedUser(service, TAG, "generateLocalOobData")
+                    || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                return;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_CONNECT, null);
+            service.loadRemoteOobData(device, transport, remoteP192Data, remoteP256Data);
+        }
+
+        @Override
         public long getSupportedProfiles(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -4942,6 +4956,14 @@ public class AdapterService extends Service {
                 Log.e(TAG, "Failed to make callback", e);
             }
         }
+    }
+
+    public boolean loadRemoteOobData(BluetoothDevice device, int transport, OobData remoteP192Data,
+                                          OobData remoteP256Data) {
+
+        byte[] addr = Utils.getBytesFromAddress(device.getAddress());
+
+        return mNativeInterface.loadRemoteOobData(addr, transport, remoteP192Data, remoteP256Data);
     }
 
     public void getLinkKey(BluetoothDevice device, String caller, String callingPackage) {
