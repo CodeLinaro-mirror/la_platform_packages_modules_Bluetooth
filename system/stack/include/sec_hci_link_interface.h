@@ -13,6 +13,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #pragma once
@@ -30,6 +35,7 @@ void btm_io_capabilities_req(RawAddress p);
 void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data);
 void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, uint32_t value);
 void btm_read_local_oob_complete(const tBTM_SP_LOC_OOB evt_data);
+void btm_read_local_oob_extended_complete(const tBTM_SP_LOC_OOB evt_data);
 void btm_rem_oob_req(const RawAddress bd_addr);
 void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status);
 void btm_sec_disconnected(uint16_t handle, tHCI_STATUS reason, std::string);

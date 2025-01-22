@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #pragma once
@@ -182,6 +187,7 @@ typedef enum : uint8_t {
   BTM_SP_KEY_REQ_EVT,   /* received USER_PASSKEY_REQUEST event */
   BTM_SP_LOC_OOB_EVT,   /* received result for READ_LOCAL_OOB_DATA command */
   BTM_SP_RMT_OOB_EVT,   /* received REMOTE_OOB_DATA_REQUEST event */
+  BTM_SP_LOC_OOB_EXT_EVT,/* received result for READ_LOCAL_OOB_EXTENDED_DATA command */
 } tBTM_SP_EVT;
 
 inline std::string sp_evt_to_text(const tBTM_SP_EVT evt) {
@@ -193,6 +199,7 @@ inline std::string sp_evt_to_text(const tBTM_SP_EVT evt) {
     CASE_RETURN_TEXT(BTM_SP_KEY_REQ_EVT);
     CASE_RETURN_TEXT(BTM_SP_LOC_OOB_EVT);
     CASE_RETURN_TEXT(BTM_SP_RMT_OOB_EVT);
+    CASE_RETURN_TEXT(BTM_SP_LOC_OOB_EXT_EVT);
   }
 
   return std::format("UNKNOWN[{}]", static_cast<uint8_t>(evt));
@@ -357,6 +364,7 @@ typedef union {
   tBTM_SP_KEY_NOTIF key_notif; /* BTM_SP_KEY_NOTIF_EVT   */
   tBTM_SP_KEY_REQ key_req;     /* BTM_SP_KEY_REQ_EVT     */
   tBTM_SP_LOC_OOB loc_oob;     /* BTM_SP_LOC_OOB_EVT     */
+  tBTM_SP_LOC_OOB loc_oob_ext; /* BTM_SP_LOC_OOB_EXT_EVT */
   tBTM_SP_RMT_OOB rmt_oob;     /* BTM_SP_RMT_OOB_EVT     */
 } tBTM_SP_EVT_DATA;
 
