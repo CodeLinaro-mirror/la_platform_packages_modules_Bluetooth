@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -304,6 +309,7 @@
 
 /* Remote OOB Data Request Reply */
 #define HCIC_PARAM_SIZE_REM_OOB_REPLY 38
+#define HCIC_PARAM_SIZE_REM_OOB_EXTENDED_REPLY 70
 
 #define HCI_REM_OOB_DATA_BD_ADDR_OFF 0
 #define HCI_REM_OOB_DATA_C_OFF 6
@@ -1412,6 +1418,27 @@ void btsnd_hcic_rem_oob_reply(const RawAddress& bd_addr, const Octet16& c, const
   BDADDR_TO_STREAM(pp, bd_addr);
   ARRAY16_TO_STREAM(pp, c.data());
   ARRAY16_TO_STREAM(pp, r.data());
+
+  btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
+}
+
+void btsnd_hcic_rem_oob_ext_reply(const RawAddress& bd_addr, const Octet16& c192,
+                                  const Octet16& r192, const Octet16& c256,
+                                  const Octet16& r256) {
+  BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
+  uint8_t* pp = (uint8_t*)(p + 1);
+
+  p->len = HCIC_PREAMBLE_SIZE + HCIC_PARAM_SIZE_REM_OOB_EXTENDED_REPLY;
+  p->offset = 0;
+
+  UINT16_TO_STREAM(pp, HCI_REM_OOB_EXTENDED_DATA_REQ_REPLY);
+  UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_REM_OOB_EXTENDED_REPLY);
+
+  BDADDR_TO_STREAM(pp, bd_addr);
+  ARRAY16_TO_STREAM(pp, c192.data());
+  ARRAY16_TO_STREAM(pp, r192.data());
+  ARRAY16_TO_STREAM(pp, c256.data());
+  ARRAY16_TO_STREAM(pp, r256.data());
 
   btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
 }
