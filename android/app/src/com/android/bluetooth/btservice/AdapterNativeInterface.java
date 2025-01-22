@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -259,6 +264,10 @@ public class AdapterNativeInterface {
                 connectionUuid.getUuid().getMostSignificantBits());
     }
 
+   void getLinkKey(byte[] address) {
+        getLinkKeyNative(address);
+   }
+
     /**********************************************************************************************/
     /*********************************** callbacks from native ************************************/
     /**********************************************************************************************/
@@ -371,4 +380,6 @@ public class AdapterNativeInterface {
 
     private native int getSocketL2capRemoteChannelIdNative(
             long connectionUuidLsb, long connectionUuidMsb);
+
+    private native void getLinkKeyNative(byte[] address);
 }
