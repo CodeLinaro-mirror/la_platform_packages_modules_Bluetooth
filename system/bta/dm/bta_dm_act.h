@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -20,7 +25,7 @@
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
 
-void bta_dm_process_remove_device_no_callback(const RawAddress& bd_addr);
+bool bta_dm_process_remove_device_no_callback(const RawAddress& bd_addr);
 
 tBTA_DM_PEER_DEVICE* find_connected_device(const RawAddress& bd_addr,
                                            tBT_TRANSPORT /* transport */);
