@@ -33,6 +33,7 @@
 
 #include "internal_include/bt_target.h"
 #include "internal_include/stack_config.h"
+#include "main/shim/helpers.h"
 #include "os/system_properties.h"
 #include "osi/include/allocator.h"
 #include "stack/arbiter/acl_arbiter.h"
@@ -47,12 +48,10 @@
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
 #include "stack/include/sdp_api.h"
+#include "stack/include/stack_metrics_logging.h"
 #include "types/bluetooth/uuid.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using namespace bluetooth::legacy::stack::sdp;
 using namespace bluetooth;
@@ -63,7 +62,7 @@ using bluetooth::Uuid;
  * Add a service handle range to the list in descending order of the start
  * handle. Return reference to the newly added element.
  **/
-tGATT_HDL_LIST_ELEM& gatt_add_an_item_to_list(uint16_t s_handle) {
+static tGATT_HDL_LIST_ELEM& gatt_add_an_item_to_list(uint16_t s_handle) {
   auto lst_ptr = gatt_cb.hdl_list_info;
   auto it = lst_ptr->begin();
   for (; it != lst_ptr->end(); it++) {
@@ -353,7 +352,7 @@ tGATT_STATUS GATTS_AddService(tGATT_IF gatt_if, btgatt_db_element_t* service, in
   return GATT_SERVICE_STARTED;
 }
 
-bool is_active_service(const Uuid& app_uuid128, Uuid* p_svc_uuid, uint16_t start_handle) {
+static bool is_active_service(const Uuid& app_uuid128, Uuid* p_svc_uuid, uint16_t start_handle) {
   for (auto& info : *gatt_cb.srv_list_info) {
     Uuid* p_this_uuid = gatts_get_service_uuid(info.p_db);
 
@@ -1475,6 +1474,8 @@ bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE ad
     return true;
   }
 
+  log_le_connection_lifecycle(ToGdAddress(bd_addr), true /* is_connect */, is_direct);
+
   bool ret = false;
   if (is_direct) {
     log::debug("Starting direct connect gatt_if={} address={} transport={}", gatt_if, bd_addr,
@@ -1485,15 +1486,8 @@ bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE ad
       /* Consider to remove gatt_act_connect at all */
       ret = gatt_act_connect(p_reg, bd_addr, addr_type, transport, initiating_phys);
     } else {
-      log::verbose("Connecting without tcb address: {}", bd_addr);
-
-      if (p_reg->direct_connect_request.count(bd_addr) == 0) {
-        p_reg->direct_connect_request.insert(bd_addr);
-      } else {
-        log::warn("{} already added to gatt_if {} direct conn list", bd_addr, gatt_if);
-      }
-
-      ret = connection_manager::create_le_connection(gatt_if, bd_addr, addr_type);
+      log::verbose("Connecting without tcb to: {}", bd_addr);
+      ret = connection_manager::direct_connect_add(gatt_if, bd_addr, addr_type);
     }
 
   } else {
@@ -1621,6 +1615,9 @@ tGATT_STATUS GATT_Disconnect(tCONN_ID conn_id) {
     log::warn("Cannot find TCB for connection {}", conn_id);
     return GATT_ILLEGAL_PARAMETER;
   }
+
+  log_le_connection_lifecycle(ToGdAddress(p_tcb->peer_bda), true /* is_connect */,
+                              false /* is_direct */);
 
   tGATT_IF gatt_if = gatt_get_gatt_if(conn_id);
   gatt_update_app_use_link_flag(gatt_if, p_tcb, false, true);

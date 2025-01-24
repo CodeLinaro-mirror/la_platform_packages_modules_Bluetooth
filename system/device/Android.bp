@@ -26,12 +26,7 @@ cc_library_static {
         "src/esco_parameters.cc",
         "src/interop.cc",
     ],
-    apex_available: [
-        "com.android.btservices",
-    ],
-    generated_headers: [
-        "BluetoothGeneratedDumpsysDataSchema_h",
-    ],
+    apex_available: ["com.android.bt"],
     min_sdk_version: "Tiramisu",
     header_libs: ["libbluetooth_headers"],
     static_libs: [
@@ -68,6 +63,7 @@ cc_test {
         "libbtcore",
         "libbtdevice",
         "libchrome",
+        "libcom.android.sysprop.bluetooth.wrapped",
         "libosi",
     ],
     header_libs: ["libbluetooth_headers"],
@@ -99,16 +95,14 @@ cc_test {
         "liblog",
     ],
     static_libs: [
-        "bluetooth_flags_c_lib",
         "libbluetooth-types",
         "libbluetooth_log",
         "libbt-platform-protos-lite",
         "libbtcore",
         "libbtdevice",
         "libchrome",
-        "libflagtest",
         "libgmock",
-        "server_configurable_flags",
+        "libosi",
     ],
     header_libs: ["libbluetooth_headers"],
 }

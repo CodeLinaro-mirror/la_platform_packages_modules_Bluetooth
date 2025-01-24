@@ -22,17 +22,15 @@
 #include <string>
 #include <utility>
 
-#include "common/interfaces/ILoggable.h"
 #include "crypto_toolbox/crypto_toolbox.h"
 #include "hci/address.h"
 #include "hci/hci_packets.h"
 #include "hci/octets.h"
-#include "os/logging/log_adapter.h"
 
 namespace bluetooth {
 namespace hci {
 
-class AddressWithType final : public bluetooth::common::IRedactableLoggable {
+class AddressWithType final {
 public:
   AddressWithType(Address address, AddressType address_type)
       : address_(std::move(address)), address_type_(address_type) {}
@@ -109,16 +107,14 @@ public:
   }
 
   std::string ToString() const {
-    std::stringstream ss;
-    ss << address_ << "[" << AddressTypeText(address_type_) << "]";
-    return ss.str();
+    return address_.ToString() + "[" + AddressTypeText(address_type_) + "]";
   }
 
-  std::string ToStringForLogging() const override {
+  std::string ToStringForLogging() const {
     return address_.ToStringForLogging() + "[" + AddressTypeText(address_type_) + "]";
   }
 
-  std::string ToRedactedStringForLogging() const override {
+  std::string ToRedactedStringForLogging() const {
     return address_.ToRedactedStringForLogging() + "[" + AddressTypeText(address_type_) + "]";
   }
 
@@ -126,11 +122,6 @@ private:
   Address address_;
   AddressType address_type_;
 };
-
-inline std::ostream& operator<<(std::ostream& os, const AddressWithType& a) {
-  os << a.ToString();
-  return os;
-}
 
 }  // namespace hci
 }  // namespace bluetooth
@@ -155,16 +146,16 @@ struct hash<bluetooth::hci::AddressWithType> {
 #if __has_include(<bluetooth/log.h>)
 #include <bluetooth/log.h>
 
-namespace fmt {
+namespace std {
 template <>
 struct formatter<bluetooth::hci::AddressWithType> : formatter<std::string> {
   template <class Context>
   typename Context::iterator format(const bluetooth::hci::AddressWithType& address,
                                     Context& ctx) const {
     std::string repr = address.ToRedactedStringForLogging();
-    return fmt::formatter<std::string>::format(repr, ctx);
+    return std::formatter<std::string>::format(repr, ctx);
   }
 };
-}  // namespace fmt
+}  // namespace std
 
 #endif  // __has_include(<bluetooth/log.h>

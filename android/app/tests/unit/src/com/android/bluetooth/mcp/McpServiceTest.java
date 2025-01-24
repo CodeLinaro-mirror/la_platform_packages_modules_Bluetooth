@@ -17,6 +17,8 @@
 
 package com.android.bluetooth.mcp;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.Mockito.*;
 
 import android.bluetooth.BluetoothAdapter;
@@ -77,7 +79,7 @@ public class McpServiceTest {
 
         mMcpService.stop();
         mMcpService = McpService.getMcpService();
-        Assert.assertNull(mMcpService);
+        assertThat(mMcpService).isNull();
         reset(mMediaControlProfile);
         TestUtils.clearAdapterService(mAdapterService);
     }
@@ -85,7 +87,7 @@ public class McpServiceTest {
     @Test
     public void testGetService() {
         McpService mMcpServiceDuplicate = McpService.getMcpService();
-        Assert.assertNotNull(mMcpServiceDuplicate);
+        assertThat(mMcpServiceDuplicate).isNotNull();
         Assert.assertSame(mMcpServiceDuplicate, mMcpService);
     }
 
@@ -98,19 +100,19 @@ public class McpServiceTest {
 
         mMcpService.setDeviceAuthorized(device0, true);
         verify(mMediaControlProfile).onDeviceAuthorizationSet(eq(device0));
-        Assert.assertEquals(
-                BluetoothDevice.ACCESS_ALLOWED, mMcpService.getDeviceAuthorization(device0));
+        assertThat(mMcpService.getDeviceAuthorization(device0))
+                .isEqualTo(BluetoothDevice.ACCESS_ALLOWED);
 
         mMcpService.setDeviceAuthorized(device1, false);
         verify(mMediaControlProfile).onDeviceAuthorizationSet(eq(device1));
-        Assert.assertEquals(
-                BluetoothDevice.ACCESS_REJECTED, mMcpService.getDeviceAuthorization(device1));
+        assertThat(mMcpService.getDeviceAuthorization(device1))
+                .isEqualTo(BluetoothDevice.ACCESS_REJECTED);
     }
 
     @Test
     public void testStopMcpService() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync(mMcpService::stop);
-        Assert.assertNull(McpService.getMcpService());
+        assertThat(McpService.getMcpService()).isNull();
 
         // Try to restart the service. Note: must be done on the main thread
         InstrumentationRegistry.getInstrumentation().runOnMainSync(mMcpService::start);

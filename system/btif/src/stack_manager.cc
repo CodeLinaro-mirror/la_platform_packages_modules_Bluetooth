@@ -125,7 +125,7 @@ static void event_start_up_stack(bluetooth::core::CoreInterface* interface,
                                  ProfileStopCallback stopProfiles);
 static void event_shut_down_stack(ProfileStopCallback stopProfiles);
 static void event_clean_up_stack(std::promise<void> promise, ProfileStopCallback stopProfiles);
-static void event_start_up_rust_module();
+static void event_start_up_rust_module(std::promise<void> promise);
 static void event_shut_down_rust_module();
 
 static void event_signal_stack_up(void* context);
@@ -183,8 +183,9 @@ static void clean_up_stack(ProfileStopCallback stopProfiles) {
   }
 }
 
-static void start_up_rust_module_async() {
-  management_thread.DoInThread(FROM_HERE, base::BindOnce(event_start_up_rust_module));
+static void start_up_rust_module_async(std::promise<void> promise) {
+  management_thread.DoInThread(FROM_HERE,
+                               base::BindOnce(event_start_up_rust_module, std::move(promise)));
 }
 
 static void shut_down_rust_module_async() {
@@ -329,10 +330,10 @@ static void event_start_up_stack(bluetooth::core::CoreInterface* interface,
   if (!com::android::bluetooth::flags::scan_manager_refactor()) {
     info("Starting rust module");
     module_start_up(get_local_module(RUST_MODULE));
-  }
-  if (com::android::bluetooth::flags::channel_sounding_in_stack()) {
-    bluetooth::ras::GetRasServer()->Initialize();
-    bluetooth::ras::GetRasClient()->Initialize();
+    if (com::android::bluetooth::flags::channel_sounding_in_stack()) {
+      bluetooth::ras::GetRasServer()->Initialize();
+      bluetooth::ras::GetRasClient()->Initialize();
+    }
   }
 
   stack_is_running = true;
@@ -391,9 +392,15 @@ static void event_shut_down_stack(ProfileStopCallback stopProfiles) {
   info("finished");
 }
 
-static void event_start_up_rust_module() {
+static void event_start_up_rust_module(std::promise<void> promise) {
   info("is bringing up the Rust module");
   module_start_up(get_local_module(RUST_MODULE));
+  if (com::android::bluetooth::flags::channel_sounding_in_stack()) {
+    // GATT server requires the rust module to be running
+    bluetooth::ras::GetRasServer()->Initialize();
+    bluetooth::ras::GetRasClient()->Initialize();
+  }
+  promise.set_value();
   info("finished");
 }
 

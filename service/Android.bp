@@ -18,7 +18,7 @@ package {
 
 java_defaults {
     name: "service-bluetooth-buildflags",
-    defaults: ["bluetooth_errorprone_rules"],
+    defaults: ["bluetooth_framework_errorprone_rules"],
 
     lint: {
         error_checks: [
@@ -88,7 +88,7 @@ java_library {
 
     sdk_version: "system_server_current",
     min_sdk_version: "Tiramisu",
-    apex_available: ["com.android.btservices"],
+    apex_available: ["com.android.bt"],
     visibility: [":__subpackages__"],
 }
 
@@ -112,7 +112,7 @@ java_library {
 
     sdk_version: "system_server_current",
     min_sdk_version: "Tiramisu",
-    apex_available: ["com.android.btservices"],
+    apex_available: ["com.android.bt"],
     visibility: ["//packages/modules/Bluetooth/apex"],
 }
 
@@ -128,7 +128,7 @@ java_library {
 
     sdk_version: "system_server_current",
     min_sdk_version: "Tiramisu",
-    apex_available: ["com.android.btservices"],
+    apex_available: ["com.android.bt"],
 }
 
 java_library {
@@ -147,7 +147,7 @@ java_library {
 
     sdk_version: "system_current",
     min_sdk_version: "Tiramisu",
-    apex_available: ["com.android.btservices"],
+    apex_available: ["com.android.bt"],
 }
 
 android_robolectric_test {
@@ -201,7 +201,6 @@ android_robolectric_test {
     ],
 
     sdk_version: "test_current",
-    upstream: true,
     test_suites: ["general-tests"],
     strict_mode: false,
 }

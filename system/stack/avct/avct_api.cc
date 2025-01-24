@@ -28,10 +28,15 @@
 #include <com_android_bluetooth_flags.h>
 #include <string.h>
 
+#include <cstdint>
+
 #include "bta/include/bta_sec_api.h"
 #include "internal_include/bt_target.h"
+#include "l2cap_types.h"
+#include "l2cdefs.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/allocator.h"
+#include "osi/include/fixed_queue.h"
 #include "stack/avct/avct_int.h"
 #include "stack/include/avct_api.h"
 #include "stack/include/bt_hdr.h"
@@ -65,9 +70,6 @@ void AVCT_Register() {
   memset(&avct_cb, 0, sizeof(tAVCT_CB));
 
   uint16_t sec = BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT;
-  if (!com::android::bluetooth::flags::use_encrypt_req_for_av()) {
-    sec = BTA_SEC_AUTHENTICATE;
-  }
 
   /* register PSM with L2CAP */
   if (!stack::l2cap::get_interface().L2CA_RegisterWithSecurity(
@@ -113,8 +115,9 @@ void AVCT_Deregister(void) {
 
   // Clean up AVCTP data structures
   for (int i = 0; i < AVCT_NUM_LINKS; i++) {
-    osi_free(avct_cb.lcb[i].p_rx_msg);
+    osi_free_and_reset((void**)&(avct_cb.lcb[i].p_rx_msg));
     fixed_queue_free(avct_cb.lcb[i].tx_q, nullptr);
+    avct_cb.lcb[i].tx_q = nullptr;
     osi_free_and_reset((void**)&(avct_cb.bcb[i].p_tx_msg));
   }
 }
@@ -162,9 +165,8 @@ uint16_t AVCT_CreateConn(uint8_t* p_handle, tAVCT_CC* p_cc, const RawAddress& pe
           avct_ccb_dealloc(p_ccb, AVCT_NO_EVT, 0, NULL);
           result = AVCT_NO_RESOURCES;
         }
-      }
-      /* check if PID already in use */
-      else if (avct_lcb_has_pid(p_lcb, p_cc->pid)) {
+      } else if (avct_lcb_has_pid(p_lcb, p_cc->pid)) {
+        /* check if PID already in use */
         avct_ccb_dealloc(p_ccb, AVCT_NO_EVT, 0, NULL);
         result = AVCT_PID_IN_USE;
       }
@@ -197,27 +199,25 @@ uint16_t AVCT_CreateConn(uint8_t* p_handle, tAVCT_CC* p_cc, const RawAddress& pe
  *
  ******************************************************************************/
 uint16_t AVCT_RemoveConn(uint8_t handle) {
-  uint16_t result = AVCT_SUCCESS;
-  tAVCT_CCB* p_ccb;
-
   log::verbose("AVCT_RemoveConn");
 
   /* map handle to ccb */
-  p_ccb = avct_ccb_by_idx(handle);
-  if (p_ccb == NULL) {
-    result = AVCT_BAD_HANDLE;
+  tAVCT_CCB* p_ccb = avct_ccb_by_idx(handle);
+  if (p_ccb == nullptr) {
+    return AVCT_BAD_HANDLE;
   }
+
   /* if connection not bound to lcb, dealloc */
-  else if (p_ccb->p_lcb == NULL) {
+  if (p_ccb->p_lcb == nullptr) {
     avct_ccb_dealloc(p_ccb, AVCT_NO_EVT, 0, NULL);
-  }
-  /* send unbind event to lcb */
-  else {
-    tAVCT_LCB_EVT avct_lcb_evt;
-    avct_lcb_evt.p_ccb = p_ccb;
+  } else {
+    /* send unbind event to lcb */
+    tAVCT_LCB_EVT avct_lcb_evt = {
+            .p_ccb = p_ccb,
+    };
     avct_lcb_event(p_ccb->p_lcb, AVCT_LCB_UL_UNBIND_EVT, &avct_lcb_evt);
   }
-  return result;
+  return AVCT_SUCCESS;
 }
 
 /*******************************************************************************
@@ -301,24 +301,22 @@ uint16_t AVCT_CreateBrowse(uint8_t handle, tAVCT_ROLE role) {
  *
  ******************************************************************************/
 uint16_t AVCT_RemoveBrowse(uint8_t handle) {
-  uint16_t result = AVCT_SUCCESS;
-  tAVCT_CCB* p_ccb;
-
   log::verbose("AVCT_RemoveBrowse");
 
   /* map handle to ccb */
-  p_ccb = avct_ccb_by_idx(handle);
-  if (p_ccb == NULL) {
-    result = AVCT_BAD_HANDLE;
-  } else if (p_ccb->p_bcb != NULL)
-  /* send unbind event to bcb */
-  {
-    tAVCT_LCB_EVT avct_lcb_evt;
-    avct_lcb_evt.p_ccb = p_ccb;
-    avct_bcb_event(p_ccb->p_bcb, AVCT_LCB_UL_UNBIND_EVT, &avct_lcb_evt);
+  tAVCT_CCB* p_ccb = avct_ccb_by_idx(handle);
+  if (p_ccb == nullptr) {
+    return AVCT_BAD_HANDLE;
   }
 
-  return result;
+  if (p_ccb->p_bcb != nullptr) {
+    /* send unbind event to bcb */
+    tAVCT_LCB_EVT avct_lcb_evt = {
+            .p_ccb = p_ccb,
+    };
+    avct_bcb_event(p_ccb->p_bcb, AVCT_LCB_UL_UNBIND_EVT, &avct_lcb_evt);
+  }
+  return AVCT_SUCCESS;
 }
 
 /*******************************************************************************
@@ -408,9 +406,8 @@ uint16_t AVCT_MsgReq(uint8_t handle, uint8_t label, uint8_t cr, BT_HDR* p_msg) {
   if (p_ccb == NULL) {
     result = AVCT_BAD_HANDLE;
     osi_free(p_msg);
-  }
-  /* verify channel is bound to link */
-  else if (p_ccb->p_lcb == NULL) {
+  } else if (p_ccb->p_lcb == NULL) {
+    /* verify channel is bound to link */
     result = AVCT_NOT_OPEN;
     osi_free(p_msg);
   }
@@ -433,9 +430,8 @@ uint16_t AVCT_MsgReq(uint8_t handle, uint8_t label, uint8_t cr, BT_HDR* p_msg) {
         avct_lcb_evt.ul_msg = ul_msg;
         avct_bcb_event(p_ccb->p_bcb, AVCT_LCB_UL_MSG_EVT, &avct_lcb_evt);
       }
-    }
-    /* send msg event to lcb */
-    else {
+    } else {
+      /* send msg event to lcb */
       tAVCT_LCB_EVT avct_lcb_evt;
       avct_lcb_evt.ul_msg = ul_msg;
       avct_lcb_event(p_ccb->p_lcb, AVCT_LCB_UL_MSG_EVT, &avct_lcb_evt);
@@ -458,7 +454,7 @@ void AVCT_Dumpsys(int fd) {
     if (ccb.p_lcb) {  // tAVCT_LCB
       LOG_DUMPSYS(fd,
                   "  Link  : peer:%s lcid:0x%04x sm_state:%-24s ch_state:%s conflict_lcid:0x%04x",
-                  fmt::format("{}", ccb.p_lcb->peer_addr).c_str(), ccb.p_lcb->ch_lcid,
+                  std::format("{}", ccb.p_lcb->peer_addr).c_str(), ccb.p_lcb->ch_lcid,
                   avct_sm_state_text(ccb.p_lcb->state).c_str(),
                   avct_ch_state_text(ccb.p_lcb->ch_state).c_str(), ccb.p_lcb->conflict_lcid);
     } else {
@@ -468,7 +464,7 @@ void AVCT_Dumpsys(int fd) {
     if (ccb.p_bcb) {  // tAVCT_BCB
       LOG_DUMPSYS(fd,
                   "  Browse: peer:%s lcid:0x%04x sm_state:%-24s ch_state:%s conflict_lcid:0x%04x",
-                  fmt::format("{}", ccb.p_bcb->peer_addr).c_str(), ccb.p_bcb->ch_lcid,
+                  std::format("{}", ccb.p_bcb->peer_addr).c_str(), ccb.p_bcb->ch_lcid,
                   avct_sm_state_text(ccb.p_bcb->state).c_str(),
                   avct_ch_state_text(ccb.p_bcb->ch_state).c_str(), ccb.p_bcb->conflict_lcid);
     } else {

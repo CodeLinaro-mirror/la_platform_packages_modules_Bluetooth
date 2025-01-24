@@ -159,6 +159,10 @@ private:
 
   public:
     bool crash_on_unknown_handle_ = false;
+    size_t size() const {
+      std::unique_lock<std::mutex> lock(acl_connections_guard_);
+      return acl_connections_.size();
+    }
     bool is_empty() const {
       std::unique_lock<std::mutex> lock(acl_connections_guard_);
       return acl_connections_.empty();
@@ -277,6 +281,8 @@ public:
   bool is_classic_link_already_connected(Address address) {
     return connections.is_classic_link_already_connected(address);
   }
+
+  size_t get_connection_count() { return connections.size(); }
 
   void create_connection(Address address) {
     // TODO: Configure default connection parameters?
@@ -624,6 +630,11 @@ public:
     auto view = ReadRemoteSupportedFeaturesCompleteView::Create(packet);
     log::assert_that(view.IsValid(), "Read remote supported features packet invalid");
     uint16_t handle = view.GetConnectionHandle();
+    auto status = view.GetStatus();
+    if (status != ErrorCode::SUCCESS) {
+      log::error("handle:{} status:{}", handle, ErrorCodeText(status));
+      return;
+    }
     bluetooth::os::LogMetricBluetoothRemoteSupportedFeatures(connections.get_address(handle), 0,
                                                              view.GetLmpFeatures(), handle);
     connections.execute(handle, [=](ConnectionManagementCallbacks* callbacks) {
@@ -635,6 +646,11 @@ public:
     auto view = ReadRemoteExtendedFeaturesCompleteView::Create(packet);
     log::assert_that(view.IsValid(), "Read remote extended features packet invalid");
     uint16_t handle = view.GetConnectionHandle();
+    auto status = view.GetStatus();
+    if (status != ErrorCode::SUCCESS) {
+      log::error("handle:{} status:{}", handle, ErrorCodeText(status));
+      return;
+    }
     bluetooth::os::LogMetricBluetoothRemoteSupportedFeatures(connections.get_address(handle),
                                                              view.GetPageNumber(),
                                                              view.GetExtendedLmpFeatures(), handle);

@@ -46,6 +46,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.validateMockitoUsage;
 import static org.mockito.Mockito.verify;
 
+import android.annotation.SuppressLint;
 import android.app.PropertyInvalidatedCache;
 import android.bluetooth.IBluetooth;
 import android.bluetooth.IBluetoothCallback;
@@ -87,6 +88,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 @RunWith(ParameterizedAndroidJunit4.class)
+@SuppressLint("AndroidFrameworkRequiresPermission")
 public class BluetoothManagerServiceTest {
 
     @Rule public final SetFlagsRule mSetFlagsRule;
@@ -318,7 +320,7 @@ public class BluetoothManagerServiceTest {
         verify(mContext)
                 .bindServiceAsUser(
                         any(Intent.class), captor.capture(), anyInt(), any(UserHandle.class));
-        assertThat(captor.getAllValues().size()).isEqualTo(1);
+        assertThat(captor.getAllValues()).hasSize(1);
 
         BluetoothManagerService.BluetoothServiceConnection serviceConnection =
                 captor.getAllValues().get(0);
@@ -332,7 +334,7 @@ public class BluetoothManagerServiceTest {
         ArgumentCaptor<IBluetoothCallback> captor =
                 ArgumentCaptor.forClass(IBluetoothCallback.class);
         verify(adapterBinder).registerCallback(captor.capture(), any());
-        assertThat(captor.getAllValues().size()).isEqualTo(1);
+        assertThat(captor.getAllValues()).hasSize(1);
         return captor.getValue();
     }
 

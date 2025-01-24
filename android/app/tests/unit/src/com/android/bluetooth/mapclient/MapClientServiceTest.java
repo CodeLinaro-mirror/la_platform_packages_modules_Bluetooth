@@ -15,8 +15,14 @@
  */
 package com.android.bluetooth.mapclient;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
+
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -30,14 +36,12 @@ import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.SdpMasRecord;
 import android.content.Context;
-import android.os.Looper;
 import android.os.test.TestLooper;
+import android.telephony.SubscriptionManager;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
@@ -51,49 +55,48 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class MapClientServiceTest {
-    private static final String REMOTE_DEVICE_ADDRESS = "00:00:00:00:00:00";
-
     @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private DatabaseManager mDatabaseManager;
+    @Mock private MnsService mMnsService;
 
-    private MapClientService mService = null;
-    private BluetoothAdapter mAdapter = null;
-    private BluetoothDevice mRemoteDevice;
+    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
+    private final BluetoothDevice mRemoteDevice = TestUtils.getTestDevice(mAdapter, 0);
+
+    private MapClientService mService;
     private TestLooper mTestLooper;
 
     @Before
     public void setUp() throws Exception {
-        Context targetContext = InstrumentationRegistry.getTargetContext();
-        TestUtils.setAdapterService(mAdapterService);
+        doReturn(CONNECTION_POLICY_ALLOWED)
+                .when(mDatabaseManager)
+                .getProfileConnectionPolicy(any(), anyInt());
+
         doReturn(mDatabaseManager).when(mAdapterService).getDatabase();
+        TestUtils.mockGetSystemService(
+                mAdapterService, Context.TELEPHONY_SUBSCRIPTION_SERVICE, SubscriptionManager.class);
 
         mTestLooper = new TestLooper();
 
-        MnsService mnsServer = null;
-        mService = new MapClientService(targetContext, mTestLooper.getLooper(), mnsServer);
-        mService.start();
+        mService = new MapClientService(mAdapterService, mTestLooper.getLooper(), mMnsService);
         mService.setAvailable(true);
 
         // Try getting the Bluetooth adapter
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
         assertThat(mAdapter).isNotNull();
-        mRemoteDevice = mAdapter.getRemoteDevice(REMOTE_DEVICE_ADDRESS);
     }
 
     @After
     public void tearDown() throws Exception {
         mService.stop();
         mService.cleanup();
-        mService = MapClientService.getMapClientService();
-        assertThat(mService).isNull();
-        TestUtils.clearAdapterService(mAdapterService);
-        BluetoothMethodProxy.setInstanceForTesting(null);
-        mTestLooper.dispatchAll();
+        assertThat(MapClientService.getMapClientService()).isNull();
     }
 
     @Test
@@ -121,41 +124,37 @@ public class MapClientServiceTest {
 
     @Test
     public void setConnectionPolicy() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-        when(mDatabaseManager.setProfileConnectionPolicy(
-                        mRemoteDevice, BluetoothProfile.MAP_CLIENT, connectionPolicy))
-                .thenReturn(true);
+        doReturn(true).when(mDatabaseManager).setProfileConnectionPolicy(any(), anyInt(), anyInt());
 
-        assertThat(mService.setConnectionPolicy(mRemoteDevice, connectionPolicy)).isTrue();
+        assertThat(mService.setConnectionPolicy(mRemoteDevice, CONNECTION_POLICY_UNKNOWN)).isTrue();
+        verify(mDatabaseManager)
+                .setProfileConnectionPolicy(
+                        mRemoteDevice, BluetoothProfile.MAP_CLIENT, CONNECTION_POLICY_UNKNOWN);
     }
 
     @Test
     public void getConnectionPolicy() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-        when(mDatabaseManager.getProfileConnectionPolicy(
-                        mRemoteDevice, BluetoothProfile.MAP_CLIENT))
-                .thenReturn(connectionPolicy);
-
-        assertThat(mService.getConnectionPolicy(mRemoteDevice)).isEqualTo(connectionPolicy);
+        for (int policy :
+                List.of(
+                        CONNECTION_POLICY_UNKNOWN,
+                        CONNECTION_POLICY_FORBIDDEN,
+                        CONNECTION_POLICY_ALLOWED)) {
+            doReturn(policy).when(mDatabaseManager).getProfileConnectionPolicy(any(), anyInt());
+            assertThat(mService.getConnectionPolicy(mRemoteDevice)).isEqualTo(policy);
+        }
     }
 
     @Test
     public void connect_whenPolicyIsForbidden_returnsFalse() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-        when(mDatabaseManager.getProfileConnectionPolicy(
-                        mRemoteDevice, BluetoothProfile.MAP_CLIENT))
-                .thenReturn(connectionPolicy);
+        doReturn(CONNECTION_POLICY_FORBIDDEN)
+                .when(mDatabaseManager)
+                .getProfileConnectionPolicy(any(), anyInt());
 
         assertThat(mService.connect(mRemoteDevice)).isFalse();
     }
 
     @Test
     public void connect_whenPolicyIsAllowed_returnsTrue() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-        when(mDatabaseManager.getProfileConnectionPolicy(
-                        mRemoteDevice, BluetoothProfile.MAP_CLIENT))
-                .thenReturn(connectionPolicy);
-
         assertThat(mService.connect(mRemoteDevice)).isTrue();
     }
 
@@ -256,31 +255,19 @@ public class MapClientServiceTest {
     }
 
     @Test
-    public void disconnect_doesNotCleanUpNewStateMachineOfSameDevice() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-        when(mDatabaseManager.getProfileConnectionPolicy(
-                        mRemoteDevice, BluetoothProfile.MAP_CLIENT))
-                .thenReturn(connectionPolicy);
+    public void cleanUpDevice_deviceExistsWithDifferentStateMachine_doesNotCleanUpDevice() {
+        MceStateMachine sm1 = mock(MceStateMachine.class);
+        MceStateMachine sm2 = mock(MceStateMachine.class);
 
-        mService.connect(mRemoteDevice);
-        MceStateMachine connectedSm = mService.getInstanceMap().get(mRemoteDevice);
-        assertThat(connectedSm).isNotNull();
+        // Add device as state machine 1
+        mService.getInstanceMap().put(mRemoteDevice, sm1);
 
-        connectedSm.sendMessage(MceStateMachine.MSG_MAS_SDP_DONE, mock(SdpMasRecord.class));
-        connectedSm.sendMessage(MceStateMachine.MSG_MAS_CONNECTED);
-        // Stay it connected
-        while (mTestLooper.isIdle() && connectedSm.getState() != BluetoothProfile.STATE_CONNECTED) {
-            mTestLooper.dispatchNext();
-        }
+        // Remove device as state machine 2
+        mService.cleanupDevice(mRemoteDevice, sm2);
 
-        MceStateMachine sm = mock(MceStateMachine.class);
-        mService.getInstanceMap().put(mRemoteDevice, sm);
-
-        connectedSm.disconnect();
-        mTestLooper.dispatchAll();
-        assertThat(connectedSm.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
-
+        // Device and state machine1 should still be there
         assertThat(mService.getInstanceMap()).containsKey(mRemoteDevice);
+        assertThat(mService.getInstanceMap().get(mRemoteDevice)).isEqualTo(sm1);
     }
 
     @Test
@@ -291,7 +278,6 @@ public class MapClientServiceTest {
         when(sm.getState()).thenReturn(connectionState);
 
         mService.aclDisconnected(mRemoteDevice, BluetoothDevice.ERROR);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
         mTestLooper.dispatchAll();
 
         verify(sm, never()).disconnect();
@@ -305,7 +291,7 @@ public class MapClientServiceTest {
         when(sm.getState()).thenReturn(connectionState);
 
         mService.aclDisconnected(mRemoteDevice, BluetoothDevice.TRANSPORT_LE);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
+        mTestLooper.dispatchAll();
 
         verify(sm, never()).disconnect();
     }
@@ -318,7 +304,7 @@ public class MapClientServiceTest {
         when(sm.getState()).thenReturn(connectionState);
 
         mService.aclDisconnected(mRemoteDevice, BluetoothDevice.TRANSPORT_BREDR);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
+        mTestLooper.dispatchAll();
 
         verify(sm).disconnect();
     }
@@ -331,7 +317,7 @@ public class MapClientServiceTest {
 
         mService.receiveSdpSearchRecord(
                 mRemoteDevice, MceStateMachine.SDP_SUCCESS, mockSdpRecord, BluetoothUuid.MAS);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
+        mTestLooper.dispatchAll();
 
         verify(sm).sendSdpResult(eq(MceStateMachine.SDP_SUCCESS), eq(mockSdpRecord));
     }
@@ -343,7 +329,7 @@ public class MapClientServiceTest {
 
         mService.receiveSdpSearchRecord(
                 mRemoteDevice, MceStateMachine.SDP_SUCCESS, null, BluetoothUuid.MAS);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
+        mTestLooper.dispatchAll();
 
         // Verify message: SDP was successfully complete, but no record was returned
         verify(sm).sendSdpResult(eq(MceStateMachine.SDP_SUCCESS), eq(null));
@@ -356,7 +342,7 @@ public class MapClientServiceTest {
 
         mService.receiveSdpSearchRecord(
                 mRemoteDevice, MceStateMachine.SDP_BUSY, null, BluetoothUuid.MAS);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
+        mTestLooper.dispatchAll();
 
         // Verify message: SDP was busy and no record was returned
         verify(sm).sendSdpResult(eq(MceStateMachine.SDP_BUSY), eq(null));
@@ -369,9 +355,39 @@ public class MapClientServiceTest {
 
         mService.receiveSdpSearchRecord(
                 mRemoteDevice, MceStateMachine.SDP_FAILED, null, BluetoothUuid.MAS);
-        TestUtils.waitForLooperToBeIdle(Looper.getMainLooper());
+        mTestLooper.dispatchAll();
 
         // Verify message: SDP was failed for some reason and no record was returned
         verify(sm).sendSdpResult(eq(MceStateMachine.SDP_FAILED), eq(null));
+    }
+
+    @Test
+    public void connectOneDevice_whenAllowed_isConnected() {
+        assertThat(mService.getInstanceMap()).doesNotContainKey(mRemoteDevice);
+
+        assertThat(mService.connect(mRemoteDevice)).isTrue();
+        assertThat(mService.getInstanceMap().keySet()).containsExactly(mRemoteDevice);
+
+        mTestLooper.dispatchAll();
+        assertThat(mService.getConnectionState(mRemoteDevice))
+                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
+    }
+
+    @Test
+    public void connectDevice_whenMaxDevicesAreConnected_isRejected() {
+        List<BluetoothDevice> list = new ArrayList<>();
+        for (int i = 0; i < MapClientService.MAXIMUM_CONNECTED_DEVICES; ++i) {
+            BluetoothDevice testDevice = TestUtils.getTestDevice(mAdapter, i);
+            assertThat(mService.getInstanceMap().get(testDevice)).isNull();
+            assertThat(mService.connect(testDevice)).isTrue();
+
+            list.add(testDevice);
+        }
+
+        mTestLooper.dispatchAll();
+        assertThat(mService.getInstanceMap().keySet()).containsExactlyElementsIn(list);
+
+        // Try to connect one more device. Should fail.
+        assertThat(mService.connect(TestUtils.getTestDevice(mAdapter, 0xAF))).isFalse();
     }
 }

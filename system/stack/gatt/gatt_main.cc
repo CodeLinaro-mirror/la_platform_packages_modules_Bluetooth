@@ -45,14 +45,12 @@
 #include "stack/include/bt_psm_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/gatt_api.h"
 #include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
 #include "stack/include/srvc_api.h"  // tDIS_VALUE
 #include "types/raw_address.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using bluetooth::eatt::EattExtension;
 using namespace bluetooth;
@@ -218,8 +216,8 @@ void gatt_free(void) {
  * Returns          true if connection is started, otherwise return false.
  *
  ******************************************************************************/
-bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tGATT_TCB* p_tcb,
-                  tBT_TRANSPORT transport, uint8_t /* initiating_phys */, tGATT_IF gatt_if) {
+static bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tGATT_TCB* p_tcb,
+                         tBT_TRANSPORT transport, uint8_t /* initiating_phys */, tGATT_IF gatt_if) {
   if (gatt_get_ch_state(p_tcb) != GATT_CH_OPEN) {
     gatt_set_ch_state(p_tcb, GATT_CH_CONN);
   }
@@ -237,38 +235,7 @@ bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tGATT_TCB
   }
 
   p_tcb->att_lcid = L2CAP_ATT_CID;
-  return connection_manager::create_le_connection(gatt_if, rem_bda, addr_type);
-}
-
-bool gatt_connect(const RawAddress& rem_bda, tGATT_TCB* p_tcb, tBT_TRANSPORT transport,
-                  uint8_t initiating_phys, tGATT_IF gatt_if) {
-  return gatt_connect(rem_bda, BLE_ADDR_PUBLIC, p_tcb, transport, initiating_phys, gatt_if);
-}
-
-/*******************************************************************************
- *
- * Function         gatt_cancel_connect
- *
- * Description      This will remove device from allow list and cancel connection
- *
- * Parameter        bd_addr: peer device address.
- *                  transport: transport
- *
- *
- ******************************************************************************/
-void gatt_cancel_connect(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
-  /* This shall be call only when device is not connected */
-  log::debug("{}, transport {}", bd_addr, transport);
-
-  if (!connection_manager::direct_connect_remove(CONN_MGR_ID_L2CAP, bd_addr)) {
-    bluetooth::shim::ACL_IgnoreLeConnectionFrom(BTM_Sec_GetAddressWithType(bd_addr));
-    log::info(
-            "GATT connection manager has no record but removed filter "
-            "acceptlist gatt_if:{} peer:{}",
-            static_cast<uint8_t>(CONN_MGR_ID_L2CAP), bd_addr);
-  }
-
-  gatt_cleanup_upon_disc(bd_addr, GATT_CONN_TERMINATE_LOCAL_HOST, transport);
+  return connection_manager::direct_connect_add(gatt_if, rem_bda, addr_type);
 }
 
 /*******************************************************************************
@@ -297,29 +264,42 @@ bool gatt_disconnect(tGATT_TCB* p_tcb) {
     return true;
   }
 
-  if (p_tcb->att_lcid == L2CAP_ATT_CID) {
-    if (ch_state == GATT_CH_OPEN) {
-      if (com::android::bluetooth::flags::gatt_disconnect_fix() && p_tcb->eatt) {
-        /* ATT is fixed channel and it is expected to drop ACL.
-         * Make sure all EATT channels are disconnected before doing that.
-         */
-        EattExtension::GetInstance()->Disconnect(p_tcb->peer_bda);
-      }
-      if (!stack::l2cap::get_interface().L2CA_RemoveFixedChnl(L2CAP_ATT_CID, p_tcb->peer_bda)) {
-        log::warn("Unable to remove L2CAP ATT fixed channel peer:{}", p_tcb->peer_bda);
-      }
-      gatt_set_ch_state(p_tcb, GATT_CH_CLOSING);
-    } else {
-      gatt_cancel_connect(p_tcb->peer_bda, p_tcb->transport);
-    }
-  } else {
+  if (p_tcb->att_lcid != L2CAP_ATT_CID) {
     if ((ch_state == GATT_CH_OPEN) || (ch_state == GATT_CH_CFG)) {
       gatt_l2cif_disconnect(p_tcb->att_lcid);
     } else {
       log::verbose("gatt_disconnect channel not opened");
     }
+    return true;
   }
 
+  /* att_lcid == L2CAP_ATT_CID */
+
+  if (ch_state != GATT_CH_OPEN) {
+    if (!connection_manager::direct_connect_remove(CONN_MGR_ID_L2CAP, p_tcb->peer_bda)) {
+      bluetooth::shim::ACL_IgnoreLeConnectionFrom(BTM_Sec_GetAddressWithType(p_tcb->peer_bda));
+      log::info(
+              "GATT connection manager has no record but removed filter "
+              "acceptlist gatt_if:{} peer:{}",
+              static_cast<uint8_t>(CONN_MGR_ID_L2CAP), p_tcb->peer_bda);
+    }
+
+    gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_TERMINATE_LOCAL_HOST, p_tcb->transport);
+    return true;
+  }
+
+  if (com::android::bluetooth::flags::gatt_disconnect_fix() && p_tcb->eatt) {
+    /* ATT is fixed channel and it is expected to drop ACL.
+     * Make sure all EATT channels are disconnected before doing that.
+     */
+    EattExtension::GetInstance()->Disconnect(p_tcb->peer_bda);
+  }
+
+  if (!stack::l2cap::get_interface().L2CA_RemoveFixedChnl(L2CAP_ATT_CID, p_tcb->peer_bda)) {
+    log::warn("Unable to remove L2CAP ATT fixed channel peer:{}", p_tcb->peer_bda);
+  }
+
+  gatt_set_ch_state(p_tcb, GATT_CH_CLOSING);
   return true;
 }
 
@@ -540,10 +520,8 @@ static void gatt_le_connect_cback(uint16_t /* chan */, const RawAddress& bd_addr
     if (check_srv_chg) {
       gatt_chk_srv_chg(p_srv_chg_clt);
     }
-  }
-  /* this is incoming connection or background connection callback */
-
-  else {
+  } else {
+    /* this is incoming connection or background connection callback */
     p_tcb = gatt_allocate_tcb_by_bdaddr(bd_addr, BT_TRANSPORT_LE);
     if (!p_tcb) {
       log::error("Disconnecting address:{} due to out of resources.", bd_addr);
@@ -1013,13 +991,6 @@ static void gatt_send_conn_cback(tGATT_TCB* p_tcb) {
         gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
       }
 
-      if (p_reg->direct_connect_request.count(p_tcb->peer_bda) > 0) {
-        gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
-        log::info("Removing device {} from the direct connect list of gatt_if {}", p_tcb->peer_bda,
-                  p_reg->gatt_if);
-        p_reg->direct_connect_request.erase(p_tcb->peer_bda);
-      }
-
       if (p_reg->app_cb.p_conn_cb) {
         conn_id = gatt_create_conn_id(p_tcb->tcb_idx, p_reg->gatt_if);
         (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, p_tcb->peer_bda, conn_id, kGattConnected,
@@ -1034,13 +1005,6 @@ static void gatt_send_conn_cback(tGATT_TCB* p_tcb) {
 
       if (apps.find(p_reg->gatt_if) != apps.end()) {
         gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
-      }
-
-      if (p_reg->direct_connect_request.count(p_tcb->peer_bda) > 0) {
-        gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
-        log::info("Removing device {} from the direct connect list of gatt_if {}", p_tcb->peer_bda,
-                  p_reg->gatt_if);
-        p_reg->direct_connect_request.erase(p_tcb->peer_bda);
       }
 
       if (p_reg->app_cb.p_conn_cb) {
