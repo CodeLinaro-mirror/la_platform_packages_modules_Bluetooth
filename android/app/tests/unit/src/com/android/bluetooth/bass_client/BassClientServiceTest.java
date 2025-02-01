@@ -104,6 +104,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
@@ -142,7 +143,7 @@ public class BassClientServiceTest {
     private static final int TEST_NUM_SOURCES = 1;
 
     private final HashMap<BluetoothDevice, BassClientStateMachine> mStateMachines = new HashMap<>();
-    private HashMap<BluetoothDevice, LinkedBlockingQueue<Intent>> mIntentQueue;
+    private final BlockingQueue<Intent> mIntentQueue = new LinkedBlockingQueue<>();
 
     private Context mTargetContext;
     private BassClientService mBassClientService;
@@ -312,10 +313,6 @@ public class BassClientServiceTest {
         when(mCallback.asBinder()).thenReturn(mBinder);
         mBassClientService.registerCallback(mCallback);
 
-        mIntentQueue = new HashMap<>();
-        mIntentQueue.put(mCurrentDevice, new LinkedBlockingQueue<>());
-        mIntentQueue.put(mCurrentDevice1, new LinkedBlockingQueue<>());
-
         // Set up the Connection State Changed receiver
         IntentFilter filter = new IntentFilter();
         filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
@@ -339,6 +336,7 @@ public class BassClientServiceTest {
         if (mBassClientService == null) {
             return;
         }
+        mTargetContext.unregisterReceiver(mBassIntentReceiver);
         mBassClientService.unregisterCallback(mCallback);
 
         mBassClientService.stop();
@@ -349,7 +347,6 @@ public class BassClientServiceTest {
         mCurrentDevice1 = null;
         mSourceDevice = null;
         mSourceDevice2 = null;
-        mTargetContext.unregisterReceiver(mBassIntentReceiver);
         mIntentQueue.clear();
         BassObjectsFactory.setInstanceForTesting(null);
         TestUtils.clearAdapterService(mAdapterService);
@@ -368,11 +365,7 @@ public class BassClientServiceTest {
             }
 
             try {
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                assertThat(device).isNotNull();
-                LinkedBlockingQueue<Intent> queue = mIntentQueue.get(device);
-                assertThat(queue).isNotNull();
-                queue.put(intent);
+                mIntentQueue.put(intent);
             } catch (InterruptedException e) {
                 throw new AssertionError("Cannot add Intent to the queue: " + e.getMessage());
             }
@@ -491,10 +484,6 @@ public class BassClientServiceTest {
                 .thenReturn(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
         mCurrentDevice = TestUtils.getTestDevice(mBluetoothAdapter, 0);
         mCurrentDevice1 = TestUtils.getTestDevice(mBluetoothAdapter, 1);
-
-        // Prepare intent queues
-        mIntentQueue.put(mCurrentDevice, new LinkedBlockingQueue<>());
-        mIntentQueue.put(mCurrentDevice1, new LinkedBlockingQueue<>());
 
         // Mock the CSIP group
         List<BluetoothDevice> groupDevices = new ArrayList<>();
@@ -1475,7 +1464,7 @@ public class BassClientServiceTest {
 
     private void verifyConnectionStateIntent(
             int timeoutMs, BluetoothDevice device, int newState, int prevState) {
-        Intent intent = TestUtils.waitForIntent(timeoutMs, mIntentQueue.get(device));
+        Intent intent = TestUtils.waitForIntent(timeoutMs, mIntentQueue);
         assertThat(intent.getAction())
                 .isEqualTo(BluetoothLeBroadcastAssistant.ACTION_CONNECTION_STATE_CHANGED);
         assertThat(device).isEqualTo(intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE));
@@ -4483,6 +4472,8 @@ public class BassClientServiceTest {
 
         // Verify getSyncedBroadcastSinks returns empty device list if no broadcst ID
         assertThat(mBassClientService.getSyncedBroadcastSinks().isEmpty()).isTrue();
+        assertThat(mBassClientService.getSyncedBroadcastSinks(TEST_BROADCAST_ID).isEmpty())
+                .isTrue();
 
         // Update receiver state with broadcast ID
         injectRemoteSourceStateChanged(meta, true, false);
@@ -4496,6 +4487,16 @@ public class BassClientServiceTest {
         } else {
             // Verify getSyncedBroadcastSinks returns empty device list if no BIS synced
             assertThat(mBassClientService.getSyncedBroadcastSinks().isEmpty()).isTrue();
+        }
+
+        activeSinks.clear();
+        // Verify getSyncedBroadcastSinks by broadcast id
+        activeSinks = mBassClientService.getSyncedBroadcastSinks(TEST_BROADCAST_ID);
+        if (Flags.leaudioBigDependsOnAudioState()) {
+            // Verify getSyncedBroadcastSinks returns correct device list if no BIS synced
+            assertThat(activeSinks.size()).isEqualTo(2);
+            assertThat(activeSinks.contains(mCurrentDevice)).isTrue();
+            assertThat(activeSinks.contains(mCurrentDevice1)).isTrue();
         }
 
         // Update receiver state with BIS sync
@@ -6359,7 +6360,8 @@ public class BassClientServiceTest {
     @Test
     @EnableFlags({
         Flags.FLAG_LEAUDIO_BROADCAST_RESYNC_HELPER,
-        Flags.FLAG_LEAUDIO_BROADCAST_EXTRACT_PERIODIC_SCANNER_FROM_STATE_MACHINE
+        Flags.FLAG_LEAUDIO_BROADCAST_EXTRACT_PERIODIC_SCANNER_FROM_STATE_MACHINE,
+        Flags.FLAG_LEAUDIO_MONITOR_UNICAST_SOURCE_WHEN_MANAGED_BY_BROADCAST_DELEGATOR
     })
     public void sinkUnintentional_handleUnicastSourceStreamStatusChange_withoutScanning() {
         sinkUnintentionalWithoutScanning();
@@ -6368,7 +6370,6 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
         verifyStopBigMonitoringWithUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
         checkNoResumeSynchronizationByBig();
 
         /* Unicast finished streaming */
@@ -6381,7 +6382,8 @@ public class BassClientServiceTest {
     @Test
     @EnableFlags({
         Flags.FLAG_LEAUDIO_BROADCAST_RESYNC_HELPER,
-        Flags.FLAG_LEAUDIO_BROADCAST_EXTRACT_PERIODIC_SCANNER_FROM_STATE_MACHINE
+        Flags.FLAG_LEAUDIO_BROADCAST_EXTRACT_PERIODIC_SCANNER_FROM_STATE_MACHINE,
+        Flags.FLAG_LEAUDIO_MONITOR_UNICAST_SOURCE_WHEN_MANAGED_BY_BROADCAST_DELEGATOR
     })
     public void sinkUnintentional_handleUnicastSourceStreamStatusChange_duringScanning() {
         sinkUnintentionalDuringScanning();
@@ -6390,7 +6392,6 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
         verifyStopBigMonitoringWithoutUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
         checkNoResumeSynchronizationByBig();
 
         /* Unicast finished streaming */
@@ -6647,6 +6648,44 @@ public class BassClientServiceTest {
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 2 /* STATUS_LOCAL_STREAM_SUSPENDED */);
+        verifyAllGroupMembersGettingUpdateOrAddSource(createBroadcastMetadata(TEST_BROADCAST_ID));
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_RESYNC_HELPER,
+        Flags.FLAG_LEAUDIO_BROADCAST_EXTRACT_PERIODIC_SCANNER_FROM_STATE_MACHINE,
+        Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT,
+        Flags.FLAG_LEAUDIO_MONITOR_UNICAST_SOURCE_WHEN_MANAGED_BY_BROADCAST_DELEGATOR
+    })
+    public void hostIntentional_handleUnicastSourceStreamStatusChange_beforeResumeCompleted() {
+        prepareSynchronizedPairAndStopSearching();
+
+        /* Unicast would like to stream */
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                0 /* STATUS_LOCAL_STREAM_REQUESTED */);
+        checkNoSinkPause();
+
+        /* Unicast finished streaming */
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                2 /* STATUS_LOCAL_STREAM_SUSPENDED */);
+        mInOrderMethodProxy
+                .verify(mMethodProxy)
+                .periodicAdvertisingManagerRegisterSync(
+                        any(), any(), anyInt(), anyInt(), any(), any());
+
+        /* Unicast would like to stream again before previous resume was complete*/
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                0 /* STATUS_LOCAL_STREAM_REQUESTED */);
+
+        /* Unicast finished streaming */
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                2 /* STATUS_LOCAL_STREAM_SUSPENDED */);
+        mInOrderMethodProxy
+                .verify(mMethodProxy)
+                .periodicAdvertisingManagerRegisterSync(
+                        any(), any(), anyInt(), anyInt(), any(), any());
+        onSyncEstablished(mSourceDevice, TEST_SYNC_HANDLE); // In case of add source to inactive
         verifyAllGroupMembersGettingUpdateOrAddSource(createBroadcastMetadata(TEST_BROADCAST_ID));
     }
 

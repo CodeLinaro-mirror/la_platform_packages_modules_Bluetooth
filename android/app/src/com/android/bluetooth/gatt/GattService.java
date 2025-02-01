@@ -22,6 +22,7 @@ import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREG
 
 import static com.android.bluetooth.Utils.callerIsSystemOrActiveOrManagedUser;
 import static com.android.bluetooth.Utils.checkCallerTargetSdk;
+import static com.android.bluetooth.util.AttributionSourceUtil.getLastAttributionTag;
 
 import static java.util.Objects.requireNonNull;
 
@@ -50,6 +51,7 @@ import android.content.pm.PackageManager.PackageInfoFlags;
 import android.content.res.Resources;
 import android.os.Binder;
 import android.os.Build;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
@@ -118,6 +120,13 @@ public class GattService extends ProfileService {
     private static final Map<String, Integer> EARLY_MTU_EXCHANGE_PACKAGES =
             Map.of("com.teslamotors", GATT_MTU_MAX);
 
+    private static final Map<String, String> GATT_CLIENTS_NOTIFY_TO_ADAPTER_PACKAGES =
+            Map.of(
+                    "com.google.android.gms",
+                    "com.google.android.gms.findmydevice",
+                    "com.google.android.apps.adm",
+                    "");
+
     @VisibleForTesting static final int GATT_CLIENT_LIMIT_PER_APP = 32;
 
     @Nullable public final ScanController mScanController;
@@ -152,6 +161,7 @@ public class GattService extends ProfileService {
     private final DistanceMeasurementManager mDistanceMeasurementManager;
     private final ActivityManager mActivityManager;
     private final PackageManager mPackageManager;
+    private final HandlerThread mHandlerThread;
 
     public GattService(AdapterService adapterService) {
         super(requireNonNull(adapterService));
@@ -165,7 +175,12 @@ public class GattService extends ProfileService {
 
         mNativeInterface = GattObjectsFactory.getInstance().getNativeInterface();
         mNativeInterface.init(this);
-        mAdvertiseManager = new AdvertiseManager(this);
+
+        // Create a thread to handle LE operations
+        mHandlerThread = new HandlerThread("Bluetooth LE");
+        mHandlerThread.start();
+
+        mAdvertiseManager = new AdvertiseManager(mAdapterService, mHandlerThread.getLooper());
 
         if (!Flags.scanManagerRefactor()) {
             mScanController = new ScanController(adapterService);
@@ -205,7 +220,6 @@ public class GattService extends ProfileService {
         if (mScanController != null) {
             mScanController.stop();
         }
-        mAdvertiseManager.clear();
         mClientMap.clear();
         mRestrictedHandles.clear();
         mServerMap.clear();
@@ -220,6 +234,7 @@ public class GattService extends ProfileService {
         mNativeInterface.cleanup();
         mAdvertiseManager.cleanup();
         mDistanceMeasurementManager.cleanup();
+        mHandlerThread.quit();
     }
 
     /** This is only used when Flags.scanManagerRefactor() is true. */
@@ -856,7 +871,9 @@ public class GattService extends ProfileService {
                         + ", connId="
                         + connId
                         + ", address="
-                        + BluetoothUtils.toAnonymizedAddress(address));
+                        + BluetoothUtils.toAnonymizedAddress(address)
+                        + ", status="
+                        + status);
         int connectionState = BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTED;
         if (status == 0) {
             mClientMap.addConnection(clientIf, connId, address);
@@ -870,7 +887,10 @@ public class GattService extends ProfileService {
                 mPermits.putIfAbsent(address, -1);
             }
             connectionState = BluetoothProtoEnums.CONNECTION_STATE_CONNECTED;
+        } else {
+            mAdapterService.notifyGattClientConnectFailed(clientIf, getDevice(address));
         }
+
         ContextMap<IBluetoothGattCallback>.App app = mClientMap.getById(clientIf);
         if (app != null) {
             app.callback.onClientConnectionState(
@@ -899,6 +919,7 @@ public class GattService extends ProfileService {
                         + BluetoothUtils.toAnonymizedAddress(address));
 
         mClientMap.removeConnection(clientIf, connId);
+        mAdapterService.notifyGattClientDisconnect(clientIf, getDevice(address));
         ContextMap<IBluetoothGattCallback>.App app = mClientMap.getById(clientIf);
 
         mRestrictedHandles.remove(connId);
@@ -1495,6 +1516,10 @@ public class GattService extends ProfileService {
             unregisterClient(
                     appId, attributionSource, ContextMap.RemoveReason.REASON_UNREGISTER_ALL);
         }
+        for (Integer appId : mServerMap.getAllAppsIds()) {
+            Log.d(TAG, "unreg:" + appId);
+            unregisterServer(appId, attributionSource);
+        }
     }
 
     /**************************************************************************
@@ -1522,10 +1547,21 @@ public class GattService extends ProfileService {
             return;
         }
 
-        Log.d(TAG, "registerClient() - UUID=" + uuid);
+        String name = attributionSource.getPackageName();
+        String tag = getLastAttributionTag(attributionSource);
+        String myPackage = AttributionSource.myAttributionSource().getPackageName();
+        if (myPackage.equals(name) && tag != null) {
+            /* For clients created by Bluetooth stack, use just tag as name */
+            name = tag;
+        } else if (tag != null) {
+            name = name + "[" + tag + "]";
+        }
+
+        Log.d(TAG, "registerClient() - UUID=" + uuid + " name=" + name);
         mClientMap.add(uuid, callback, this, attributionSource);
+
         mNativeInterface.gattClientRegisterApp(
-                uuid.getLeastSignificantBits(), uuid.getMostSignificantBits(), eatt_support);
+                uuid.getLeastSignificantBits(), uuid.getMostSignificantBits(), name, eatt_support);
     }
 
     @RequiresPermission(BLUETOOTH_CONNECT)
@@ -1619,6 +1655,23 @@ public class GattService extends ProfileService {
             }
         }
 
+        if (transport != BluetoothDevice.TRANSPORT_BREDR && isDirect && !opportunistic) {
+            String attributionTag = getLastAttributionTag(attributionSource);
+            if (packageName != null) {
+                for (Map.Entry<String, String> entry :
+                        GATT_CLIENTS_NOTIFY_TO_ADAPTER_PACKAGES.entrySet()) {
+                    if (packageName.contains(entry.getKey())
+                            && ((attributionTag != null
+                                            && attributionTag.contains(entry.getValue()))
+                                    || entry.getValue().isEmpty())) {
+                        mAdapterService.notifyDirectLeGattClientConnect(
+                                clientIf, getDevice(address));
+                        break;
+                    }
+                }
+            }
+        }
+
         mNativeInterface.gattClientConnect(
                 clientIf,
                 address,
@@ -1657,6 +1710,9 @@ public class GattService extends ProfileService {
                                 .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__GATT_DISCONNECT_JAVA,
                         BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__START,
                         attributionSource.getUid());
+
+        mAdapterService.notifyGattClientDisconnect(clientIf, getDevice(address));
+
         mNativeInterface.gattClientDisconnect(clientIf, address, connId != null ? connId : 0);
     }
 

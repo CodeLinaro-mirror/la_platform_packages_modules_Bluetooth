@@ -20,6 +20,7 @@ import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.BLUETOOTH_SCAN;
 import static android.Manifest.permission.UPDATE_DEVICE_STATS;
 
+import static com.android.bluetooth.flags.Flags.leaudioBassScanWithInternalScanController;
 import static com.android.bluetooth.Utils.checkCallerTargetSdk;
 
 import static java.util.Objects.requireNonNull;
@@ -91,7 +92,7 @@ public class ScanController {
     private static final int TRUNCATED_RESULT_SIZE = 11;
 
     /** The default floor value for LE batch scan report delays greater than 0 */
-    @VisibleForTesting static final long DEFAULT_REPORT_DELAY_FLOOR = 5000;
+    static final long DEFAULT_REPORT_DELAY_FLOOR = 5000L;
 
     private static final int NUM_SCAN_EVENTS_KEPT = 20;
 
@@ -582,6 +583,10 @@ public class ScanController {
 
     /** Determines if the given scan client has the appropriate permissions to receive callbacks. */
     private boolean hasScanResultPermission(final ScanClient client) {
+        if (leaudioBassScanWithInternalScanController() && client.isInternalClient) {
+            // Bypass permission check for internal clients
+            return true;
+        }
         if (client.hasNetworkSettingsPermission
                 || client.hasNetworkSetupWizardPermission
                 || client.hasScanWithoutLocationPermission) {
@@ -759,17 +764,19 @@ public class ScanController {
                         }
                     }
                 }
-                if (permittedResults.isEmpty()) {
-                    return;
-                }
             }
 
             if (client.hasDisavowedLocation) {
                 permittedResults.removeIf(mLocationDenylistPredicate);
             }
+            if (permittedResults.isEmpty()) {
+                mScanManager.callbackDone(scannerId, status);
+                return;
+            }
 
             if (app.mCallback != null) {
                 app.mCallback.onBatchScanResults(permittedResults);
+                mScanManager.batchScanResultDelivered();
             } else {
                 // PendingIntent based
                 try {
@@ -791,6 +798,9 @@ public class ScanController {
     @SuppressWarnings("NonApiType")
     private void sendBatchScanResults(
             ScannerMap.ScannerApp app, ScanClient client, ArrayList<ScanResult> results) {
+        if (results.isEmpty()) {
+            return;
+        }
         try {
             if (app.mCallback != null) {
                 if (mScanManager.isAutoBatchScanClientEnabled(client)) {
@@ -811,6 +821,7 @@ public class ScanController {
             Log.e(TAG, "Exception: " + e);
             handleDeadScanClient(client);
         }
+        mScanManager.batchScanResultDelivered();
     }
 
     // Check and deliver scan results for different scan clients.
@@ -833,14 +844,11 @@ public class ScanController {
                     }
                 }
             }
-            if (permittedResults.isEmpty()) {
-                return;
-            }
         }
 
         if (client.filters == null || client.filters.isEmpty()) {
             sendBatchScanResults(app, client, permittedResults);
-            // TODO: Question to reviewer: Shouldn't there be a return here?
+            return;
         }
         // Reconstruct the scan results.
         ArrayList<ScanResult> results = new ArrayList<ScanResult>();
@@ -1253,6 +1261,7 @@ public class ScanController {
     /** Intended for internal use within the Bluetooth app. Bypass permission check */
     public void startScanInternal(int scannerId, ScanSettings settings, List<ScanFilter> filters) {
         final ScanClient scanClient = new ScanClient(scannerId, settings, filters);
+        scanClient.isInternalClient = true;
         scanClient.userHandle = Binder.getCallingUserHandle();
         scanClient.eligibleForSanitizedExposureNotification = false;
         scanClient.hasDisavowedLocation = false;
