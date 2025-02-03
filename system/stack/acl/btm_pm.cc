@@ -31,7 +31,6 @@
 #include "main/shim/entry.h"
 #define LOG_TAG "bt_btm_pm"
 
-#include <base/strings/stringprintf.h>
 #include <bluetooth/log.h>
 
 #include <cstdint>
@@ -44,19 +43,17 @@
 #include "main/shim/entry.h"
 #include "osi/include/stack_power_telemetry.h"
 #include "stack/btm/btm_int_types.h"
+#include "stack/include/acl_api.h"
+#include "stack/include/acl_hci_link_interface.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/l2cap_hci_link_interface.h"
+#include "stack/include/sco_hci_link_interface.h"
 #include "types/raw_address.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using namespace bluetooth;
 
-void l2c_OnHciModeChangeSendPendingPackets(RawAddress remote);
-void btm_sco_chk_pend_unpark(tHCI_STATUS status, uint16_t handle);
-void btm_cont_rswitch_from_handle(uint16_t hci_handle);
 extern tBTM_CB btm_cb;
 
 namespace {
@@ -105,9 +102,9 @@ static void send_sniff_subrating(uint16_t handle, const RawAddress& addr, uint16
 
   btsnd_hcic_sniff_sub_rate(handle, max_lat, min_rmt_to, min_loc_to);
   BTM_LogHistory(kBtmLogTag, addr, "Sniff subrating",
-                 base::StringPrintf("max_latency:%.2f peer_timeout:%.2f local_timeout:%.2f",
-                                    ticks_to_seconds(max_lat), ticks_to_seconds(min_rmt_to),
-                                    ticks_to_seconds(min_loc_to)));
+                 std::format("max_latency:{:.2f} peer_timeout:{:.2f} local_timeout:{:.2f}",
+                             ticks_to_seconds(max_lat), ticks_to_seconds(min_rmt_to),
+                             ticks_to_seconds(min_loc_to)));
 }
 
 static tBTM_STATUS btm_pm_snd_md_req(uint16_t handle, uint8_t pm_id, int link_ind,
@@ -557,9 +554,8 @@ static tBTM_STATUS btm_pm_snd_md_req(uint16_t handle, uint8_t pm_id, int link_in
   log::info("Switching from {}[0x{:02x}] to {}[0x{:02x}]", power_mode_state_text(p_cb->state),
             p_cb->state, power_mode_state_text(md_res.mode), md_res.mode);
   BTM_LogHistory(kBtmLogTag, p_cb->bda_, "Power mode change",
-                 base::StringPrintf("%s[0x%02x] ==> %s[0x%02x]",
-                                    power_mode_state_text(p_cb->state).c_str(), p_cb->state,
-                                    power_mode_state_text(md_res.mode).c_str(), md_res.mode));
+                 std::format("{}[0x{:02x}] ==> {}[0x{:02x}]", power_mode_state_text(p_cb->state),
+                             p_cb->state, power_mode_state_text(md_res.mode), md_res.mode));
 
   switch (md_res.mode) {
     case BTM_PM_MD_ACTIVE:
@@ -750,8 +746,8 @@ void btm_pm_proc_mode_change(tHCI_STATUS hci_status, uint16_t hci_handle, tHCI_M
  * Returns          none.
  *
  ******************************************************************************/
-void process_ssr_event(tHCI_STATUS status, uint16_t handle, uint16_t /* max_tx_lat */,
-                       uint16_t max_rx_lat) {
+static void process_ssr_event(tHCI_STATUS status, uint16_t handle, uint16_t /* max_tx_lat */,
+                              uint16_t max_rx_lat) {
   if (pm_mode_db.count(handle) == 0) {
     log::warn("Received sniff subrating event with no active ACL");
     return;

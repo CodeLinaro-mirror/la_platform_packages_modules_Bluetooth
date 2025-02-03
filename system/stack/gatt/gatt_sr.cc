@@ -44,9 +44,6 @@
 #define GATT_MTU_REQ_MIN_LEN 2
 #define L2CAP_PKT_OVERHEAD 4
 
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-
 using bluetooth::Uuid;
 using bluetooth::eatt::EattChannel;
 using bluetooth::eatt::EattExtension;
@@ -107,7 +104,7 @@ uint32_t gatt_sr_enqueue_cmd(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint
  * Returns          true if empty, false if there is pending command.
  *
  ******************************************************************************/
-bool gatt_sr_cmd_empty(tGATT_TCB& tcb, uint16_t cid) {
+static bool gatt_sr_cmd_empty(tGATT_TCB& tcb, uint16_t cid) {
   if (cid == tcb.att_lcid) {
     return tcb.sr_cmd.op_code == 0;
   }
@@ -148,7 +145,7 @@ void gatt_dequeue_sr_cmd(tGATT_TCB& tcb, uint16_t cid) {
   /* Double check in case any buffers are queued */
   log::verbose("gatt_dequeue_sr_cmd cid: 0x{:x}", cid);
   if (p_cmd->p_rsp_msg) {
-    log::error("free tcb.sr_cmd.p_rsp_msg = {}", fmt::ptr(p_cmd->p_rsp_msg));
+    log::error("free tcb.sr_cmd.p_rsp_msg = {}", std::format_ptr(p_cmd->p_rsp_msg));
   }
   osi_free_and_reset((void**)&p_cmd->p_rsp_msg);
 
@@ -341,7 +338,7 @@ tGATT_STATUS gatt_sr_process_app_rsp(tGATT_TCB& tcb, tGATT_IF gatt_if, uint32_t 
 
     sr_res_p->status = status;
 
-    if (gatt_sr_is_cback_cnt_zero(tcb) && status == GATT_SUCCESS) {
+    if (gatt_sr_is_cback_cnt_zero(tcb, sr_res_p->cid) && status == GATT_SUCCESS) {
       if (sr_res_p->p_rsp_msg == NULL) {
         sr_res_p->p_rsp_msg =
                 attp_build_sr_msg(tcb, (uint8_t)(op_code + 1), (tGATT_SR_MSG*)p_msg, payload_size);
@@ -350,7 +347,7 @@ tGATT_STATUS gatt_sr_process_app_rsp(tGATT_TCB& tcb, tGATT_IF gatt_if, uint32_t 
       }
     }
   }
-  if (gatt_sr_is_cback_cnt_zero(tcb)) {
+  if (gatt_sr_is_cback_cnt_zero(tcb, sr_res_p->cid)) {
     if ((sr_res_p->status == GATT_SUCCESS) && (sr_res_p->p_rsp_msg)) {
       ret_code = attp_send_sr_msg(tcb, sr_res_p->cid, sr_res_p->p_rsp_msg);
       sr_res_p->p_rsp_msg = NULL;
@@ -376,8 +373,8 @@ tGATT_STATUS gatt_sr_process_app_rsp(tGATT_TCB& tcb, tGATT_IF gatt_if, uint32_t 
  * Returns          void
  *
  ******************************************************************************/
-void gatt_process_exec_write_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
-                                 uint8_t* p_data) {
+static void gatt_process_exec_write_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
+                                        uint8_t* p_data) {
   uint8_t *p = p_data, flag;
   uint32_t trans_id = 0;
   tGATT_IF gatt_if;
@@ -433,8 +430,19 @@ void gatt_process_exec_write_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, 
       }
     }
   } else { /* nothing needs to be executed , send response now */
-    log::error("gatt_process_exec_write_req: no prepare write pending");
-    gatt_send_error_rsp(tcb, cid, GATT_ERROR, GATT_REQ_EXEC_WRITE, 0, false);
+    log::warn("gatt_process_exec_write_req: no prepare write pending");
+    if (com::android::bluetooth::flags::fix_execute_write_no_pending()) {
+      uint16_t payload_size = gatt_tcb_get_payload_size(tcb, cid);
+      BT_HDR* p_buf =
+              attp_build_sr_msg(tcb, GATT_RSP_EXEC_WRITE, (tGATT_SR_MSG*)NULL, payload_size);
+      if (p_buf != NULL) {
+        attp_send_sr_msg(tcb, cid, p_buf);
+      } else {
+        gatt_send_error_rsp(tcb, cid, GATT_ERROR, GATT_REQ_EXEC_WRITE, 0, false);
+      }
+    } else {
+      gatt_send_error_rsp(tcb, cid, GATT_ERROR, GATT_REQ_EXEC_WRITE, 0, false);
+    }
   }
 }
 
@@ -448,8 +456,8 @@ void gatt_process_exec_write_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, 
  * Returns          void
  *
  ******************************************************************************/
-void gatt_process_read_multi_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
-                                 uint8_t* p_data) {
+static void gatt_process_read_multi_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
+                                        uint8_t* p_data) {
   uint32_t trans_id;
   uint16_t handle = 0, ll = len;
   uint8_t* p = p_data;
@@ -737,8 +745,8 @@ static tGATT_STATUS gatts_validate_packet_format(uint8_t op_code, uint16_t& len,
  * Returns          void
  *
  ******************************************************************************/
-void gatts_process_primary_service_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
-                                       uint8_t* p_data) {
+static void gatts_process_primary_service_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code,
+                                              uint16_t len, uint8_t* p_data) {
   uint16_t s_hdl = 0, e_hdl = 0;
   Uuid uuid = Uuid::kEmpty;
 
@@ -1172,8 +1180,8 @@ static void gatts_process_read_req(tGATT_TCB& tcb, uint16_t cid, tGATT_SRV_LIST_
  * Returns          void
  *
  ******************************************************************************/
-void gatts_process_attribute_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
-                                 uint8_t* p_data) {
+static void gatts_process_attribute_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
+                                        uint8_t* p_data) {
   uint16_t handle = 0;
   uint8_t* p = p_data;
   tGATT_STATUS status = GATT_INVALID_HANDLE;
@@ -1319,7 +1327,7 @@ static bool gatts_proc_ind_ack(tGATT_TCB& tcb, uint16_t ack_handle) {
  * Returns          void
  *
  ******************************************************************************/
-void gatts_process_value_conf(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code) {
+static void gatts_process_value_conf(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code) {
   uint16_t handle;
 
   if (!gatt_tcb_find_indicate_handle(tcb, cid, &handle)) {

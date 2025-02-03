@@ -200,11 +200,22 @@ void SMP_ClearLocScOobData();
  ******************************************************************************/
 void SMP_SirkConfirmDeviceReply(const RawAddress& bd_addr, uint8_t res);
 
+/*******************************************************************************
+ *
+ * Function         SMP_SirkConfirmDeviceReply
+ *
+ * Description      Returns the key size of peinding LE pairing
+ *
+ ******************************************************************************/
+uint16_t SMP_GetPendingPairingKeySize();
+
 // Called when LTK request is received from controller.
 bool smp_proc_ltk_request(const RawAddress& bda);
 
 // Called when link is encrypted and notified to peripheral device.
 // Proceed to send LTK, DIV and ER to central if bonding the devices.
 void smp_link_encrypted(const RawAddress& bda, uint8_t encr_enable);
+
+void smp_cancel_start_encryption_attempt();
 
 #endif /* SMP_API_H */

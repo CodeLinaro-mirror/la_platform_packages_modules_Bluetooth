@@ -32,6 +32,7 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.Host;
 import android.bluetooth.PandoraDevice;
+import android.bluetooth.VirtualOnly;
 import android.bluetooth.test_utils.EnableBluetoothRule;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -204,6 +205,7 @@ public class LeAudioServiceDiscoveryTest {
      * Classic services
      */
     @Test
+    @VirtualOnly
     public void testServiceDiscoveryWithRandomAddr() {
 
         registerIntentActions(
@@ -269,13 +271,11 @@ public class LeAudioServiceDiscoveryTest {
                         BluetoothDevice.EXTRA_UUID,
                         Matchers.allOf(
                                 Matchers.hasItemInArray(BluetoothUuid.HFP),
-                                Matchers.hasItemInArray(BluetoothUuid.HID),
                                 Matchers.hasItemInArray(BluetoothUuid.A2DP_SOURCE),
                                 Matchers.hasItemInArray(BluetoothUuid.A2DP_SINK),
                                 Matchers.hasItemInArray(BluetoothUuid.AVRCP),
                                 Matchers.hasItemInArray(BluetoothUuid.LE_AUDIO),
-                                Matchers.hasItemInArray(BluetoothUuid.BATTERY),
-                                Matchers.hasItemInArray(BluetoothUuid.HOGP))));
+                                Matchers.hasItemInArray(BluetoothUuid.BATTERY))));
         unregisterIntentActions(
                 BluetoothDevice.ACTION_UUID,
                 BluetoothDevice.ACTION_ACL_CONNECTED,

@@ -79,9 +79,7 @@ cc_library_static {
     cflags: [
         "-Wthread-safety",
     ],
-    apex_available: [
-        "com.android.btservices",
-    ],
+    apex_available: ["com.android.bt"],
     min_sdk_version: "Tiramisu",
     header_libs: ["libbluetooth_headers"],
 }
@@ -187,6 +185,7 @@ cc_test {
         "libbluetooth_log",
         "libbt-common",
         "libchrome",
+        "libcom.android.sysprop.bluetooth.wrapped",
         "libflagtest",
         "libfmq",
         "libgmock",
@@ -227,8 +226,6 @@ cc_defaults {
         "android.hardware.common.fmq-V1-ndk",
         "libFraunhoferAAC",
         "libbase",
-        "libbluetooth-dumpsys",
-        "libbluetooth-gdx",
         "libbluetooth-protos",
         "libbluetooth-types",
         "libbluetooth_core_rs",
@@ -247,6 +244,7 @@ cc_defaults {
         "libbtif",
         "libbtif-core",
         "libchrome",
+        "libcom.android.sysprop.bluetooth.wrapped",
         "libcutils",
         "libevent",
         "libg722codec",
@@ -291,6 +289,7 @@ cc_test {
         "aidl/le_audio_utils_unittest.cc",
     ],
     shared_libs: [
+        "libaconfig_storage_read_api_cc",
         "libbase",
         "libbinder",
         "libbinder_ndk",

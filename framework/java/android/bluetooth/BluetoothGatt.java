@@ -17,6 +17,8 @@
 package android.bluetooth;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
+import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.bluetooth.BluetoothUtils.logRemoteException;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -34,8 +36,6 @@ import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
 import android.util.Log;
-
-import com.android.bluetooth.flags.Flags;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -299,7 +299,8 @@ public final class BluetoothGatt implements BluetoothProfile {
                                 TAG,
                                 "onPhyUpdate() -"
                                         + (" status=" + status)
-                                        + (" address=" + address)
+                                        + (" address="
+                                                + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" txPhy=" + txPhy)
                                         + (" rxPhy=" + rxPhy));
                     }
@@ -332,7 +333,8 @@ public final class BluetoothGatt implements BluetoothProfile {
                                 TAG,
                                 "onPhyRead() -"
                                         + (" status=" + status)
-                                        + (" address=" + address)
+                                        + (" address="
+                                                + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" txPhy=" + txPhy)
                                         + (" rxPhy=" + rxPhy));
                     }
@@ -368,7 +370,8 @@ public final class BluetoothGatt implements BluetoothProfile {
                                         + (" status=" + status)
                                         + (" clientIf=" + clientIf)
                                         + (" connected=" + connected)
-                                        + (" device=" + address));
+                                        + (" device="
+                                                + BluetoothUtils.toAnonymizedAddress(address)));
                     }
                     if (!address.equals(mDevice.getAddress())) {
                         return;
@@ -414,7 +417,12 @@ public final class BluetoothGatt implements BluetoothProfile {
                 public void onSearchComplete(
                         String address, List<BluetoothGattService> services, int status) {
                     if (DBG) {
-                        Log.d(TAG, "onSearchComplete() = Device=" + address + " Status=" + status);
+                        Log.d(
+                                TAG,
+                                "onSearchComplete() = address="
+                                        + BluetoothUtils.toAnonymizedAddress(address)
+                                        + " status="
+                                        + status);
                     }
                     if (!address.equals(mDevice.getAddress())) {
                         return;
@@ -472,7 +480,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                         Log.d(
                                 TAG,
                                 "onCharacteristicRead() -"
-                                        + (" Device=" + address)
+                                        + (" Device=" + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" handle=" + handle)
                                         + (" Status=" + status));
                     }
@@ -539,7 +547,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                         Log.d(
                                 TAG,
                                 "onCharacteristicWrite() -"
-                                        + (" Device=" + address)
+                                        + (" Device=" + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" handle=" + handle)
                                         + (" Status=" + status));
                     }
@@ -613,8 +621,14 @@ public final class BluetoothGatt implements BluetoothProfile {
                  */
                 @Override
                 public void onNotify(String address, int handle, byte[] value) {
-                    if (VDBG) Log.d(TAG, "onNotify() - Device=" + address + " handle=" + handle);
-
+                    if (VDBG) {
+                        Log.d(
+                                TAG,
+                                "onNotify() - address="
+                                        + BluetoothUtils.toAnonymizedAddress(address)
+                                        + " handle="
+                                        + handle);
+                    }
                     if (!address.equals(mDevice.getAddress())) {
                         return;
                     }
@@ -646,7 +660,12 @@ public final class BluetoothGatt implements BluetoothProfile {
                 @SuppressLint("AndroidFrameworkRequiresPermission")
                 public void onDescriptorRead(String address, int status, int handle, byte[] value) {
                     if (VDBG) {
-                        Log.d(TAG, "onDescriptorRead() - Device=" + address + " handle=" + handle);
+                        Log.d(
+                                TAG,
+                                "onDescriptorRead() - address="
+                                        + BluetoothUtils.toAnonymizedAddress(address)
+                                        + " handle="
+                                        + handle);
                     }
 
                     if (!address.equals(mDevice.getAddress())) {
@@ -703,7 +722,12 @@ public final class BluetoothGatt implements BluetoothProfile {
                 public void onDescriptorWrite(
                         String address, int status, int handle, byte[] value) {
                     if (VDBG) {
-                        Log.d(TAG, "onDescriptorWrite() - Device=" + address + " handle=" + handle);
+                        Log.d(
+                                TAG,
+                                "onDescriptorWrite() - address="
+                                        + BluetoothUtils.toAnonymizedAddress(address)
+                                        + " handle="
+                                        + handle);
                     }
 
                     if (!address.equals(mDevice.getAddress())) {
@@ -757,7 +781,12 @@ public final class BluetoothGatt implements BluetoothProfile {
                 @Override
                 public void onExecuteWrite(String address, int status) {
                     if (VDBG) {
-                        Log.d(TAG, "onExecuteWrite() - Device=" + address + " status=" + status);
+                        Log.d(
+                                TAG,
+                                "onExecuteWrite() - address="
+                                        + BluetoothUtils.toAnonymizedAddress(address)
+                                        + " status="
+                                        + status);
                     }
                     if (!address.equals(mDevice.getAddress())) {
                         return;
@@ -791,7 +820,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                         Log.d(
                                 TAG,
                                 "onReadRemoteRssi() -"
-                                        + (" Device=" + address)
+                                        + (" Device=" + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" rssi=" + rssi)
                                         + (" status=" + status));
                     }
@@ -821,7 +850,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                         Log.d(
                                 TAG,
                                 "onConfigureMTU() -"
-                                        + (" Device=" + address)
+                                        + (" Device=" + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" mtu=" + mtu)
                                         + (" status=" + status));
                     }
@@ -853,7 +882,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                         Log.d(
                                 TAG,
                                 "onConnectionUpdated() -"
-                                        + (" Device=" + address)
+                                        + (" Device=" + BluetoothUtils.toAnonymizedAddress(address))
                                         + (" interval=" + interval)
                                         + (" latency=" + latency)
                                         + (" timeout=" + timeout)
@@ -888,7 +917,10 @@ public final class BluetoothGatt implements BluetoothProfile {
                 @Override
                 public void onServiceChanged(String address) {
                     if (DBG) {
-                        Log.d(TAG, "onServiceChanged() - Device=" + address);
+                        Log.d(
+                                TAG,
+                                "onServiceChanged() - Device="
+                                        + BluetoothUtils.toAnonymizedAddress(address));
                     }
 
                     if (!address.equals(mDevice.getAddress())) {
@@ -923,7 +955,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                     Log.d(
                             TAG,
                             "onSubrateChange() - "
-                                    + (" Device=" + address)
+                                    + (" Device=" + BluetoothUtils.toAnonymizedAddress(address))
                                     + (" subrateFactor=" + subrateFactor)
                                     + (" latency=" + latency)
                                     + (" contNum=" + contNum)
@@ -1618,11 +1650,9 @@ public final class BluetoothGatt implements BluetoothProfile {
             }
             throw e.rethrowAsRuntimeException();
         }
-        if (Flags.gattFixDeviceBusy()) {
-            if (requestStatus != BluetoothStatusCodes.SUCCESS) {
-                synchronized (mDeviceBusyLock) {
-                    mDeviceBusy = false;
-                }
+        if (requestStatus != BluetoothStatusCodes.SUCCESS) {
+            synchronized (mDeviceBusyLock) {
+                mDeviceBusy = false;
             }
         }
 
@@ -2094,85 +2124,40 @@ public final class BluetoothGatt implements BluetoothProfile {
      *
      * <p>This function will send a LE subrate request to the remote device.
      *
+     * <p>This method requires the calling app to have the {@link
+     * android.Manifest.permission#BLUETOOTH_CONNECT} permission. Additionally, an app must either
+     * have the {@link android.Manifest.permission#BLUETOOTH_PRIVILEGED} or be associated with the
+     * Companion Device manager (see {@link android.companion.CompanionDeviceManager#associate(
+     * AssociationRequest, android.companion.CompanionDeviceManager.Callback, Handler)})
+     *
      * @param subrateMode Request a specific subrate mode.
      * @throws IllegalArgumentException If the parameters are outside of their specified range.
      * @return true, if the request is send to the Bluetooth stack.
      * @hide
      */
     @RequiresBluetoothConnectPermission
-    @RequiresPermission(BLUETOOTH_CONNECT)
-    public boolean requestSubrateMode(@SubrateRequestMode int subrateMode) {
+    @RequiresPermission(
+            allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED},
+            conditional = true)
+    public int requestSubrateMode(@SubrateRequestMode int subrateMode) {
         if (subrateMode < SUBRATE_REQUEST_MODE_BALANCED
                 || subrateMode > SUBRATE_REQUEST_MODE_LOW_POWER) {
             throw new IllegalArgumentException("Subrate Mode not within valid range");
         }
 
         if (DBG) {
-            Log.d(TAG, "requestsubrateMode() - subrateMode: " + subrateMode);
+            Log.d(TAG, "requestsubrateMode(" + subrateMode + ")");
         }
         if (mService == null || mClientIf == 0) {
-            return false;
+            return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
         }
 
         try {
-            mService.subrateModeRequest(
-                    mClientIf, mDevice.getAddress(), subrateMode, mAttributionSource);
+            return mService.subrateModeRequest(mClientIf, mDevice, subrateMode, mAttributionSource);
         } catch (RemoteException e) {
-            Log.e(TAG, "", e);
-            return false;
+            logRemoteException(TAG, e);
+            return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
         }
-        return true;
-    }
-
-    /**
-     * Request a LE subrate request.
-     *
-     * <p>This function will send a LE subrate request to the remote device.
-     *
-     * @return true, if the request is send to the Bluetooth stack.
-     * @hide
-     */
-    @RequiresBluetoothConnectPermission
-    @RequiresPermission(BLUETOOTH_CONNECT)
-    public boolean bleSubrateRequest(
-            int subrateMin,
-            int subrateMax,
-            int maxLatency,
-            int contNumber,
-            int supervisionTimeout) {
-        if (DBG) {
-            Log.d(
-                    TAG,
-                    "bleSubrateRequest() - subrateMin="
-                            + subrateMin
-                            + " subrateMax="
-                            + (subrateMax)
-                            + " maxLatency= "
-                            + maxLatency
-                            + "contNumber="
-                            + contNumber
-                            + " supervisionTimeout="
-                            + supervisionTimeout);
-        }
-        if (mService == null || mClientIf == 0) {
-            return false;
-        }
-
-        try {
-            mService.leSubrateRequest(
-                    mClientIf,
-                    mDevice.getAddress(),
-                    subrateMin,
-                    subrateMax,
-                    maxLatency,
-                    contNumber,
-                    supervisionTimeout,
-                    mAttributionSource);
-        } catch (RemoteException e) {
-            Log.e(TAG, "", e);
-            return false;
-        }
-        return true;
     }
 
     /**

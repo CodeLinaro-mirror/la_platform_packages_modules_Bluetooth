@@ -23,19 +23,19 @@
 #include <com_android_bluetooth_flags.h>
 #ifdef __ANDROID__
 #include <cutils/trace.h>
-#endif // __ANDROID__
+#endif  // __ANDROID__
 #include <sys/stat.h>
 
 #include <algorithm>
 #include <bitset>
 #include <chrono>
+#include <filesystem>
 #include <sstream>
 
 #include "common/circular_buffer.h"
 #include "common/strings.h"
 #include "hal/snoop_logger_common.h"
 #include "hci/hci_packets.h"
-#include "module_dumper_flatbuffer.h"
 #include "os/files.h"
 #include "os/parameter_provider.h"
 #include "os/system_properties.h"
@@ -323,6 +323,21 @@ std::string get_btsnoop_log_path(std::string log_dir, bool filtered) {
 
 std::string get_last_log_path(std::string log_file_path) { return log_file_path.append(".last"); }
 
+#ifdef __ANDROID__
+static bool create_log_directories() {
+  std::filesystem::path default_path = os::ParameterProvider::SnoopLogFilePath();
+  std::filesystem::path default_dir_path = default_path.parent_path();
+
+  if (std::filesystem::exists(default_dir_path)) {
+    log::info("Directory {} already exists", default_dir_path.string());
+    return true;
+  }
+
+  log::info("Creating directory: {}", default_dir_path.string());
+  return std::filesystem::create_directories(default_dir_path);
+}
+#endif  // __ANDROID__
+
 void delete_btsnoop_files(const std::string& log_path) {
   log::info("Deleting logs if they exist");
   if (os::FileExists(log_path)) {
@@ -469,8 +484,6 @@ const std::string SnoopLogger::kBtSnoopLogFilterProfileModeMagic = "magic";
 // PBAP, MAP and HFP packets filter mode - disabled
 const std::string SnoopLogger::kBtSnoopLogFilterProfileModeDisabled = "disabled";
 
-std::string SnoopLogger::btsnoop_mode_;
-
 // Consts accessible in unit tests
 const size_t SnoopLogger::PACKET_TYPE_LENGTH = 1;
 const size_t SnoopLogger::MAX_HCI_ACL_LEN = 14;
@@ -482,7 +495,8 @@ SnoopLogger::SnoopLogger(std::string snoop_log_path, std::string snooz_log_path,
                          const std::chrono::milliseconds snooz_log_life_time,
                          const std::chrono::milliseconds snooz_log_delete_alarm_interval,
                          bool snoop_log_persists)
-    : snoop_log_path_(std::move(snoop_log_path)),
+    : btsnoop_mode_(btsnoop_mode),
+      snoop_log_path_(std::move(snoop_log_path)),
       snooz_log_path_(std::move(snooz_log_path)),
       max_packets_per_file_(max_packets_per_file),
       btsnooz_buffer_(max_packets_per_buffer),
@@ -490,8 +504,6 @@ SnoopLogger::SnoopLogger(std::string snoop_log_path, std::string snooz_log_path,
       snooz_log_life_time_(snooz_log_life_time),
       snooz_log_delete_alarm_interval_(snooz_log_delete_alarm_interval),
       snoop_log_persists(snoop_log_persists) {
-  btsnoop_mode_ = btsnoop_mode;
-
   if (btsnoop_mode_ == kBtSnoopLogModeFiltered) {
     log::info("Snoop Logs filtered mode enabled");
     EnableFilters();
@@ -535,6 +547,13 @@ void SnoopLogger::OpenNextSnoopLogFile() {
 
   auto last_file_path = get_last_log_path(snoop_log_path_);
 
+#ifdef __ANDROID__
+  if (com::android::bluetooth::flags::snoop_logger_recreate_logs_directory() &&
+      !create_log_directories()) {
+    log::error("Could not recreate log directory");
+  }
+#endif  // __ANDROID__
+
   if (os::FileExists(snoop_log_path_)) {
     if (!os::RenameFile(snoop_log_path_, last_file_path)) {
       log::error("Unabled to rename existing snoop log from \"{}\" to \"{}\"", snoop_log_path_,
@@ -566,9 +585,6 @@ void SnoopLogger::OpenNextSnoopLogFile() {
 }
 
 void SnoopLogger::EnableFilters() {
-  if (btsnoop_mode_ != kBtSnoopLogModeFiltered) {
-    return;
-  }
   std::lock_guard<std::mutex> lock(snoop_log_filters_mutex);
   for (auto itr = kBtSnoopLogFilterState.begin(); itr != kBtSnoopLogFilterState.end(); itr++) {
     auto filter_enabled_property = os::GetSystemProperty(itr->first);
@@ -728,21 +744,30 @@ uint32_t SnoopLogger::PayloadStrip(profile_type_t current_profile, uint8_t* pack
 
 uint32_t SnoopLogger::FilterProfilesHandleHfp(uint8_t* packet, uint32_t length, uint32_t totlen,
                                               uint32_t offset) {
-  if ((totlen - offset) > cpbr_pat_len) {
-    if (memcmp(&packet[offset], cpbr_pattern, cpbr_pat_len) == 0) {
-      length = offset + cpbr_pat_len + 1;
-      packet[L2CAP_PDU_LENGTH_OFFSET] = offset + cpbr_pat_len - BASIC_L2CAP_HEADER_LENGTH;
-      packet[L2CAP_PDU_LENGTH_OFFSET] =
-              offset + cpbr_pat_len - (ACL_HEADER_LENGTH + BASIC_L2CAP_HEADER_LENGTH);
-      return length;
-    }
+  // CPBR packet
+  if ((totlen - offset) > cpbr_pat_len &&
+      memcmp(&packet[offset], cpbr_pattern, cpbr_pat_len) == 0) {
+    length = offset + cpbr_pat_len + 1;
+    packet[ACL_LENGTH_OFFSET] = offset + cpbr_pat_len - BASIC_L2CAP_HEADER_LENGTH;
+    packet[ACL_LENGTH_OFFSET + 1] = (offset + cpbr_pat_len - BASIC_L2CAP_HEADER_LENGTH) >> 8;
 
-    if (memcmp(&packet[offset], clcc_pattern, clcc_pat_len) == 0) {
-      length = offset + cpbr_pat_len + 1;
-      packet[L2CAP_PDU_LENGTH_OFFSET] = offset + clcc_pat_len - BASIC_L2CAP_HEADER_LENGTH;
-      packet[L2CAP_PDU_LENGTH_OFFSET] =
-              offset + clcc_pat_len - (ACL_HEADER_LENGTH + BASIC_L2CAP_HEADER_LENGTH);
-    }
+    packet[L2CAP_PDU_LENGTH_OFFSET] =
+            offset + cpbr_pat_len - (ACL_HEADER_LENGTH + BASIC_L2CAP_HEADER_LENGTH);
+    packet[L2CAP_PDU_LENGTH_OFFSET + 1] =
+            (offset + cpbr_pat_len - (ACL_HEADER_LENGTH + BASIC_L2CAP_HEADER_LENGTH)) >> 8;
+    return length;
+  }
+  // CLCC packet
+  if ((totlen - offset) > clcc_pat_len &&
+      memcmp(&packet[offset], clcc_pattern, clcc_pat_len) == 0) {
+    length = offset + cpbr_pat_len + 1;
+    packet[ACL_LENGTH_OFFSET] = offset + clcc_pat_len - BASIC_L2CAP_HEADER_LENGTH;
+    packet[ACL_LENGTH_OFFSET + 1] = (offset + clcc_pat_len - BASIC_L2CAP_HEADER_LENGTH) >> 8;
+
+    packet[L2CAP_PDU_LENGTH_OFFSET] =
+            offset + clcc_pat_len - (ACL_HEADER_LENGTH + BASIC_L2CAP_HEADER_LENGTH);
+    packet[L2CAP_PDU_LENGTH_OFFSET + 1] =
+            (offset + clcc_pat_len - (ACL_HEADER_LENGTH + BASIC_L2CAP_HEADER_LENGTH)) >> 8;
   }
 
   return length;
@@ -1135,7 +1160,7 @@ void SnoopLogger::Capture(const HciPacket& immutable_packet, Direction direction
   if (com::android::bluetooth::flags::snoop_logger_tracing()) {
     LogTracePoint(packet, direction, type);
   }
-  #endif // __ANDROID__
+#endif  // __ANDROID__
 
   uint64_t timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
                                   std::chrono::system_clock::now().time_since_epoch())
@@ -1220,8 +1245,10 @@ void SnoopLogger::Capture(const HciPacket& immutable_packet, Direction direction
   }
 }
 
-void SnoopLogger::DumpSnoozLogToFile(const std::vector<std::string>& data) const {
+void SnoopLogger::DumpSnoozLogToFile() {
   std::lock_guard<std::recursive_mutex> lock(file_mutex_);
+  std::vector<std::string> data = btsnooz_buffer_.Pull();
+
   if (btsnoop_mode_ != kBtSnoopLogModeDisabled) {
     log::debug("btsnoop log is enabled, skip dumping btsnooz log");
     return;
@@ -1305,7 +1332,7 @@ void SnoopLogger::Stop() {
     socket_ = nullptr;
   }
 
-  btsnoop_mode_.clear();
+  btsnoop_mode_ = kBtSnoopLogModeDisabled;
   // Disable all filters
   DisableFilters();
 
@@ -1316,12 +1343,6 @@ void SnoopLogger::Stop() {
   if (!snoop_log_persists) {
     delete_btsnoop_files(snooz_log_path_);
   }
-}
-
-DumpsysDataFinisher SnoopLogger::GetDumpsysData(
-        flatbuffers::FlatBufferBuilder* /* builder */) const {
-  DumpSnoozLogToFile(btsnooz_buffer_.Pull());
-  return EmptyDumpsysDataFinisher;
 }
 
 size_t SnoopLogger::GetMaxPacketsPerFile() {
@@ -1350,36 +1371,26 @@ size_t SnoopLogger::GetMaxPacketsPerBuffer() {
   return btsnooz_max_memory_usage_bytes / kDefaultBtSnoozMaxBytesPerPacket;
 }
 
-std::string SnoopLogger::GetBtSnoopMode() {
+std::string SnoopLogger::GetCurrentSnoopMode() { return btsnoop_mode_; }
+
+static std::string GetBtSnoopMode() {
   // Default mode is FILTERED on userdebug/eng build, DISABLED on user build.
   // In userdebug/eng build, it can also be overwritten by modifying the global setting
-  std::string default_mode = kBtSnoopLogModeDisabled;
-  {
-    auto is_debuggable = os::GetSystemPropertyBool(kIsDebuggableProperty, false);
-    if (is_debuggable) {
-      auto default_mode_property = os::GetSystemProperty(kBtSnoopDefaultLogModeProperty);
-      if (default_mode_property) {
-        default_mode = std::move(default_mode_property.value());
-      } else {
-        default_mode = kBtSnoopLogModeFiltered;
-      }
-    }
+  std::string btsnoop_mode = SnoopLogger::kBtSnoopLogModeDisabled;
+  if (os::GetSystemPropertyBool(SnoopLogger::kIsDebuggableProperty, false)) {
+    btsnoop_mode = os::GetSystemProperty(SnoopLogger::kBtSnoopDefaultLogModeProperty)
+                           .value_or(SnoopLogger::kBtSnoopLogModeFiltered);
   }
 
-  // Get the actual mode if exist
-  std::string btsnoop_mode = default_mode;
-  {
-    auto btsnoop_mode_prop = os::GetSystemProperty(kBtSnoopLogModeProperty);
-    if (btsnoop_mode_prop) {
-      btsnoop_mode = std::move(btsnoop_mode_prop.value());
-    }
-  }
+  btsnoop_mode = os::GetSystemProperty(SnoopLogger::kBtSnoopLogModeProperty).value_or(btsnoop_mode);
 
-  // If Snoop Logger already set up, return current mode
-  bool btsnoop_mode_empty = btsnoop_mode_.empty();
-  log::info("btsnoop_mode_empty: {}", btsnoop_mode_empty);
-  if (!btsnoop_mode_empty) {
-    return btsnoop_mode_;
+  // Only allow a subset of values:
+  if (!(btsnoop_mode == SnoopLogger::kBtSnoopLogModeDisabled ||
+        btsnoop_mode == SnoopLogger::kBtSnoopLogModeFull ||
+        btsnoop_mode == SnoopLogger::kBtSnoopLogModeFiltered ||
+        btsnoop_mode == SnoopLogger::kBtSnoopLogModeKernel)) {
+    log::warn("{}: Invalid btsnoop value, default back to disabled", btsnoop_mode);
+    return SnoopLogger::kBtSnoopLogModeDisabled;
   }
 
   return btsnoop_mode;
@@ -1425,12 +1436,12 @@ void SnoopLogger::LogTracePoint(const HciPacket& packet, Direction direction, Pa
           evt_code == static_cast<uint8_t>(hci::EventCode::VENDOR_SPECIFIC)) {
         uint8_t subevt_code = packet[2];
         std::string message =
-                fmt::format("BTSL:{}/{}/{}/{:02x}/{:02x}", static_cast<uint8_t>(type),
+                std::format("BTSL:{}/{}/{}/{:02x}/{:02x}", static_cast<uint8_t>(type),
                             static_cast<uint8_t>(direction), packet.size(), evt_code, subevt_code);
 
         ATRACE_INSTANT_FOR_TRACK(LOG_TAG, message.c_str());
       } else {
-        std::string message = fmt::format("BTSL:{}/{}/{}/{:02x}", static_cast<uint8_t>(type),
+        std::string message = std::format("BTSL:{}/{}/{}/{:02x}", static_cast<uint8_t>(type),
                                           static_cast<uint8_t>(direction), packet.size(), evt_code);
 
         ATRACE_INSTANT_FOR_TRACK(LOG_TAG, message.c_str());
@@ -1439,7 +1450,7 @@ void SnoopLogger::LogTracePoint(const HciPacket& packet, Direction direction, Pa
     case PacketType::CMD: {
       uint16_t op_code = packet[0] | (packet[1] << 8);
 
-      std::string message = fmt::format("BTSL:{}/{}/{}/{:04x}", static_cast<uint8_t>(type),
+      std::string message = std::format("BTSL:{}/{}/{}/{:04x}", static_cast<uint8_t>(type),
                                         static_cast<uint8_t>(direction), packet.size(), op_code);
 
       ATRACE_INSTANT_FOR_TRACK(LOG_TAG, message.c_str());
@@ -1448,22 +1459,22 @@ void SnoopLogger::LogTracePoint(const HciPacket& packet, Direction direction, Pa
       uint16_t handle = (packet[0] | (packet[1] << 8)) & 0x0fff;
       uint8_t pb_flag = (packet[1] & 0x30) >> 4;
 
-      std::string message = fmt::format("BTSL:{}/{}/{}/{:03x}/{}", static_cast<uint8_t>(type),
-                                        static_cast<uint8_t>(direction), packet.size(), handle,
-                                        pb_flag);
+      std::string message =
+              std::format("BTSL:{}/{}/{}/{:03x}/{}", static_cast<uint8_t>(type),
+                          static_cast<uint8_t>(direction), packet.size(), handle, pb_flag);
 
       ATRACE_INSTANT_FOR_TRACK(LOG_TAG, message.c_str());
     } break;
     case PacketType::ISO:
     case PacketType::SCO: {
-      std::string message = fmt::format("BTSL:{}/{}/{}", static_cast<uint8_t>(type),
+      std::string message = std::format("BTSL:{}/{}/{}", static_cast<uint8_t>(type),
                                         static_cast<uint8_t>(direction), packet.size());
 
       ATRACE_INSTANT_FOR_TRACK(LOG_TAG, message.c_str());
     } break;
   }
 }
-#endif // __ANDROID__
+#endif  // __ANDROID__
 
 }  // namespace hal
 }  // namespace bluetooth

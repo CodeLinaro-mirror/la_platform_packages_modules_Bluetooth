@@ -23,7 +23,6 @@
  ******************************************************************************/
 #define LOG_TAG "gatt_utils"
 
-#include <base/strings/stringprintf.h>
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 
@@ -45,15 +44,11 @@
 #include "stack/include/bt_psm_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
+#include "stack/include/btm_sec_api.h"
 #include "stack/include/l2cdefs.h"
 #include "stack/include/sdp_api.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-
-uint8_t btm_ble_read_sec_key_size(const RawAddress& bd_addr);
 
 using namespace bluetooth::legacy::stack::sdp;
 using namespace bluetooth;
@@ -108,7 +103,7 @@ uint16_t gatt_get_local_mtu(void) {
   return ATT_MTU_DEFAULT;
 }
 
-uint16_t gatt_get_max_phy_channel() {
+static uint16_t gatt_get_max_phy_channel() {
   static const uint16_t MAX_PHY_CHANNEL =
           std::min(std::max(osi_property_get_int32(
                                     "bluetooth.core.le.max_number_of_concurrent_connections", 0),
@@ -126,7 +121,7 @@ uint16_t gatt_get_max_phy_channel() {
  * Returns       None
  *
  ******************************************************************************/
-void gatt_free_pending_ind(tGATT_TCB* p_tcb) {
+static void gatt_free_pending_ind(tGATT_TCB* p_tcb) {
   log::verbose("");
 
   if (p_tcb->pending_ind_q == NULL) {
@@ -377,28 +372,6 @@ tGATTS_SRV_CHG* gatt_is_bda_in_the_srv_chg_clt_list(const RawAddress& bda) {
 
 /*******************************************************************************
  *
- * Function         gatt_is_bda_connected
- *
- * Description
- *
- * Returns          GATT_INDEX_INVALID if not found. Otherwise index to the tcb.
- *
- ******************************************************************************/
-bool gatt_is_bda_connected(const RawAddress& bda) {
-  uint8_t i = 0;
-  bool connected = false;
-
-  for (i = 0; i < gatt_get_max_phy_channel(); i++) {
-    if (gatt_cb.tcb[i].in_use && gatt_cb.tcb[i].peer_bda == bda) {
-      connected = true;
-      break;
-    }
-  }
-  return connected;
-}
-
-/*******************************************************************************
- *
  * Function         gatt_find_i_tcb_by_addr
  *
  * Description      Search for an empty tcb entry, and return the index.
@@ -406,7 +379,7 @@ bool gatt_is_bda_connected(const RawAddress& bda) {
  * Returns          GATT_INDEX_INVALID if not found. Otherwise index to the tcb.
  *
  ******************************************************************************/
-uint8_t gatt_find_i_tcb_by_addr(const RawAddress& bda, tBT_TRANSPORT transport) {
+static uint8_t gatt_find_i_tcb_by_addr(const RawAddress& bda, tBT_TRANSPORT transport) {
   uint8_t i = 0;
 
   for (; i < gatt_get_max_phy_channel(); i++) {
@@ -499,7 +472,7 @@ void gatt_tcb_dump(int fd) {
     if (p_tcb->in_use) {
       in_use_cnt++;
       stream << "  id: " << +p_tcb->tcb_idx
-             << "  address: " << ADDRESS_TO_LOGGABLE_STR(p_tcb->peer_bda)
+             << "  address: " << p_tcb->peer_bda.ToRedactedStringForLogging()
              << "  transport: " << bt_transport_text(p_tcb->transport)
              << "  ch_state: " << gatt_channel_state_text(p_tcb->ch_state) << ", "
              << gatt_tcb_get_holders_info_string(p_tcb) << "\n";
@@ -793,8 +766,6 @@ void gatt_rsp_timeout(void* data) {
     gatt_disconnect(p_clcb->p_tcb);
   }
 }
-
-void gatts_proc_srv_chg_ind_ack(tGATT_TCB tcb);
 
 /*******************************************************************************
  *
@@ -1282,8 +1253,8 @@ void gatt_clcb_invalidate(tGATT_TCB* p_tcb, const tGATT_CLCB* p_clcb) {
   if (!p_tcb->pending_enc_clcb.empty()) {
     for (size_t i = 0; i < p_tcb->pending_enc_clcb.size(); i++) {
       if (p_tcb->pending_enc_clcb.at(i) == p_clcb) {
-        log::warn("Removing clcb ({}) for conn id=0x{:04x} from pending_enc_clcb", fmt::ptr(p_clcb),
-                  p_clcb->conn_id);
+        log::warn("Removing clcb ({}) for conn id=0x{:04x} from pending_enc_clcb",
+                  std::format_ptr(p_clcb), p_clcb->conn_id);
         p_tcb->pending_enc_clcb.at(i) = NULL;
         break;
       }
@@ -1315,14 +1286,14 @@ void gatt_clcb_invalidate(tGATT_TCB* p_tcb, const tGATT_CLCB* p_clcb) {
   if (iter->to_send) {
     /* If command was not send, just remove the entire element */
     cl_cmd_q_p->erase(iter);
-    log::warn("Removing scheduled clcb ({}) for conn_id=0x{:04x}", fmt::ptr(p_clcb),
+    log::warn("Removing scheduled clcb ({}) for conn_id=0x{:04x}", std::format_ptr(p_clcb),
               p_clcb->conn_id);
   } else {
     /* If command has been sent, just invalidate p_clcb pointer for proper
      * response handling */
     iter->p_clcb = NULL;
     log::warn("Invalidating clcb ({}) for already sent request on conn_id=0x{:04x}",
-              fmt::ptr(p_clcb), p_clcb->conn_id);
+              std::format_ptr(p_clcb), p_clcb->conn_id);
   }
 }
 /*******************************************************************************
@@ -1391,17 +1362,30 @@ tGATT_SR_CMD* gatt_sr_get_cmd_by_trans_id(tGATT_TCB* p_tcb, uint32_t trans_id) {
  * Returns          True if thetotal application callback count is zero
  *
  ******************************************************************************/
-bool gatt_sr_is_cback_cnt_zero(tGATT_TCB& tcb) {
-  if (com::android::bluetooth::flags::gatt_client_dynamic_allocation()) {
-    return tcb.sr_cmd.cback_cnt_map.empty();
+bool gatt_sr_is_cback_cnt_zero(tGATT_TCB& tcb, uint16_t cid) {
+  tGATT_SR_CMD* sr_cmd_p;
+  if (cid == tcb.att_lcid) {
+    sr_cmd_p = &tcb.sr_cmd;
   } else {
-    for (uint8_t i = 0; i < GATT_MAX_APPS; i++) {
-      if (tcb.sr_cmd.cback_cnt[i]) {
-        return false;
-      }
+    EattChannel* channel = EattExtension::GetInstance()->FindEattChannelByCid(tcb.peer_bda, cid);
+    if (channel == nullptr) {
+      log::warn("{}, cid 0x{:02x} already disconnected", tcb.peer_bda, cid);
+      return true;
     }
-    return true;
+    sr_cmd_p = &channel->server_outstanding_cmd_;
   }
+
+  if (com::android::bluetooth::flags::gatt_client_dynamic_allocation()) {
+    return sr_cmd_p->cback_cnt_map.empty();
+  }
+
+  for (uint8_t i = 0; i < GATT_MAX_APPS; i++) {
+    if (sr_cmd_p->cback_cnt[i] != 0) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /*******************************************************************************
@@ -1610,46 +1594,25 @@ void gatt_sr_update_prep_cnt(tGATT_TCB& tcb, tGATT_IF gatt_if, bool is_inc, bool
   }
 }
 
-static bool gatt_is_anybody_interested_in_connection(const RawAddress& bda) {
-  if (connection_manager::is_background_connection(bda)) {
-    log::debug("{} is in background connection", bda);
-    return true;
-  }
-
-  for (size_t i = 1; i <= GATT_MAX_APPS; i++) {
-    tGATT_REG* p_reg = &gatt_cb.cl_rcb[i - 1];
-    if (p_reg->in_use && p_reg->direct_connect_request.count(bda) > 0) {
-      log::debug("gatt_if {} interested in connection to {}", i, bda);
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Cancel LE Create Connection request */
 bool gatt_cancel_open(tGATT_IF gatt_if, const RawAddress& bda) {
+  if (connection_manager::direct_connect_remove(gatt_if, bda)) {
+    log::info("{} was doing direct connect to {}, canceled", gatt_if, bda);
+  }
+  if (connection_manager::background_connect_remove(gatt_if, bda)) {
+    log::info("{} was doing background connect to {}, canceled", gatt_if, bda);
+  }
+
   tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(bda, BT_TRANSPORT_LE);
   if (!p_tcb) {
-    /* TCB is not allocated when trying to connect under this flag.
-     * but device address is storred in the tGATT_REG. Make sure to remove
-     * the address from the list when cancel is called.
-     */
-
-    tGATT_REG* p_reg = gatt_get_regcb(gatt_if);
-    if (!p_reg) {
-      log::error("Unable to find registered app gatt_if={}", gatt_if);
-    } else {
-      log::info("Removing {} from direct list", bda);
-      p_reg->direct_connect_request.erase(bda);
-    }
-    if (!gatt_is_anybody_interested_in_connection(bda)) {
-      gatt_cancel_connect(bda, static_cast<tBT_TRANSPORT>(BT_TRANSPORT_LE));
+    if (connection_manager::get_apps_connecting_to(bda).empty()) {
+      gatt_cleanup_upon_disc(bda, GATT_CONN_TERMINATE_LOCAL_HOST, BT_TRANSPORT_LE);
     }
     return true;
   }
 
   if (gatt_get_ch_state(p_tcb) == GATT_CH_OPEN) {
-    log::error("link connected Too late to cancel");
+    log::error("link connected too late to cancel {}", bda);
     return false;
   }
 
@@ -1659,24 +1622,6 @@ bool gatt_cancel_open(tGATT_IF gatt_if, const RawAddress& bda) {
     log::debug("Client reference count is zero disconnecting device gatt_if:{} peer:{}", gatt_if,
                bda);
     gatt_disconnect(p_tcb);
-  }
-
-  if (!connection_manager::direct_connect_remove(gatt_if, bda)) {
-    if (!connection_manager::is_background_connection(bda)) {
-      if (!com::android::bluetooth::flags::gatt_fix_multiple_direct_connect() ||
-          p_tcb->app_hold_link.empty()) {
-        bluetooth::shim::ACL_IgnoreLeConnectionFrom(BTM_Sec_GetAddressWithType(bda));
-      }
-      log::info(
-              "Gatt connection manager has no background record but  removed "
-              "filter acceptlist gatt_if:{} peer:{}",
-              gatt_if, bda);
-    } else {
-      log::info(
-              "Gatt connection manager maintains a background record preserving "
-              "filter acceptlist gatt_if:{} peer:{}",
-              gatt_if, bda);
-    }
   }
 
   return true;
@@ -1780,11 +1725,13 @@ bool gatt_is_outstanding_msg_in_att_send_queue(const tGATT_TCB& tcb) {
  ******************************************************************************/
 void gatt_end_operation(tGATT_CLCB* p_clcb, tGATT_STATUS status, void* p_data) {
   tGATT_CL_COMPLETE cb_data;
-  tGATT_CMPL_CBACK* p_cmpl_cb = (p_clcb->p_reg) ? p_clcb->p_reg->app_cb.p_cmpl_cb : NULL;
+  tGATT_REG* p_reg = gatt_get_regcb(gatt_get_gatt_if(p_clcb->conn_id));
+  tGATT_CMPL_CBACK* p_cmpl_cb =
+          ((p_clcb->p_reg == p_reg) && p_reg) ? p_reg->app_cb.p_cmpl_cb : NULL;
+  tGATT_DISC_CMPL_CB* p_disc_cmpl_cb =
+          ((p_clcb->p_reg == p_reg) && p_reg) ? p_clcb->p_reg->app_cb.p_disc_cmpl_cb : NULL;
   tGATTC_OPTYPE op = p_clcb->operation;
   tGATT_DISC_TYPE disc_type = GATT_DISC_MAX;
-  tGATT_DISC_CMPL_CB* p_disc_cmpl_cb =
-          (p_clcb->p_reg) ? p_clcb->p_reg->app_cb.p_disc_cmpl_cb : NULL;
   tCONN_ID conn_id;
   uint8_t operation;
 
@@ -1841,7 +1788,7 @@ void gatt_end_operation(tGATT_CLCB* p_clcb, tGATT_STATUS status, void* p_data) {
     (*p_cmpl_cb)(conn_id, op, status, &cb_data);
   } else {
     log::warn("not sent out op={} p_disc_cmpl_cb:{} p_cmpl_cb:{}", operation,
-              fmt::ptr(p_disc_cmpl_cb), fmt::ptr(p_cmpl_cb));
+              std::format_ptr(p_disc_cmpl_cb), std::format_ptr(p_cmpl_cb));
   }
 }
 
@@ -1857,12 +1804,6 @@ static void gatt_disconnect_complete_notify_user(const RawAddress& bda, tGATT_DI
         (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, bda, conn_id, kGattDisconnected, reason,
                                    transport);
       }
-
-      if (p_reg->direct_connect_request.count(bda) > 0) {
-        log::info("Removing device {} from the direct connect list of gatt_if {}", bda,
-                  p_reg->gatt_if);
-        p_reg->direct_connect_request.erase(bda);
-      }
     }
   } else {
     for (uint8_t i = 0; i < GATT_MAX_APPS; i++) {
@@ -1872,12 +1813,6 @@ static void gatt_disconnect_complete_notify_user(const RawAddress& bda, tGATT_DI
                 p_tcb ? gatt_create_conn_id(p_tcb->tcb_idx, p_reg->gatt_if) : GATT_INVALID_CONN_ID;
         (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, bda, conn_id, kGattDisconnected, reason,
                                    transport);
-      }
-
-      if (p_reg->direct_connect_request.count(bda) > 0) {
-        log::info("Removing device {} from the direct connect list of gatt_if {}", bda,
-                  p_reg->gatt_if);
-        p_reg->direct_connect_request.erase(bda);
       }
     }
   }
@@ -1933,6 +1868,9 @@ void gatt_cleanup_upon_disc(const RawAddress& bda, tGATT_DISCONN_REASON reason,
   gatt_free_pending_ind(p_tcb);
   fixed_queue_free(p_tcb->sr_cmd.multi_rsp_q, NULL);
   p_tcb->sr_cmd.multi_rsp_q = NULL;
+  if (p_tcb->sr_cmd.p_rsp_msg) {
+    osi_free_and_reset((void**)&p_tcb->sr_cmd.p_rsp_msg);
+  }
 
   gatt_disconnect_complete_notify_user(bda, reason, transport);
 
