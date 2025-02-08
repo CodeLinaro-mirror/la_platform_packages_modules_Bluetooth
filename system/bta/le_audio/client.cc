@@ -2274,6 +2274,7 @@ public:
 
       /* Guard consistency of PAC records structure */
       if (!bluetooth::le_audio::client_parser::pacs::ParsePacs(pac_recs, len, value)) {
+        log::error("Sink PACs corrupted");
         return;
       }
 
@@ -2302,6 +2303,7 @@ public:
 
       /* Guard consistency of PAC records structure */
       if (!bluetooth::le_audio::client_parser::pacs::ParsePacs(pac_recs, len, value)) {
+        log::error("Source PACs corrupted");
         return;
       }
 
@@ -5731,9 +5733,9 @@ public:
       index++;
     }
 
-    if (handles.num_attr - 1 != index) {
+    if (handles.num_attr != index) {
       log::warn("Attempted to read {} handles, but received just {} values", +handles.num_attr,
-                index + 1);
+                index);
     }
   }
 

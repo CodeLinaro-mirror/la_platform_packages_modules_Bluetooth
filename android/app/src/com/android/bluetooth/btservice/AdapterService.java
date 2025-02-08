@@ -1081,7 +1081,7 @@ public class AdapterService extends Service {
     }
 
     private void startGattProfileService() {
-        Log.d(TAG, "startGattProfileService() called");
+        Log.i(TAG, "startGattProfileService() called");
         mGattService = new GattService(this);
 
         mStartedProfiles.put(BluetoothProfile.GATT, mGattService);
@@ -1092,13 +1092,13 @@ public class AdapterService extends Service {
     }
 
     private void startScanController() {
-        Log.d(TAG, "startScanController() called");
+        Log.i(TAG, "startScanController() called");
         mScanController = new ScanController(this);
         mNativeInterface.enable();
     }
 
     private void stopGattProfileService() {
-        Log.d(TAG, "stopGattProfileService() called");
+        Log.i(TAG, "stopGattProfileService() called");
         setScanMode(SCAN_MODE_NONE, "stopGattProfileService");
 
         if (mRunningProfiles.size() == 0) {
@@ -1119,7 +1119,7 @@ public class AdapterService extends Service {
     }
 
     private void stopScanController() {
-        Log.d(TAG, "stopScanController() called");
+        Log.i(TAG, "stopScanController() called");
         setScanMode(SCAN_MODE_NONE, "stopScanController");
 
         if (mScanController == null) {

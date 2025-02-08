@@ -114,3 +114,13 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "disconnect_reason_for_encryption_failure"
+    namespace: "bluetooth"
+    description: "Change the disconnect reason for encryption failure from authentication failure to status report"
+    bug: "391764832"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
