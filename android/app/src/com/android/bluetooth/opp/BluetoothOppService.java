@@ -269,9 +269,11 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
     }
 
     @Override
-    public void stop() {
+    public void cleanup() {
+        Log.i(TAG, "Cleanup BluetoothOpp Service");
+
         if (sBluetoothOppService == null) {
-            Log.w(TAG, "stop() called before start()");
+            Log.w(TAG, "cleanup() called before initialization");
             ContentProfileErrorReportUtils.report(
                     BluetoothProfile.OPP,
                     BluetoothProtoEnums.BLUETOOTH_OPP_SERVICE,
@@ -287,6 +289,10 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
         setComponentAvailable(TRANSFER_HISTORY_ACTIVITY, false);
         setComponentAvailable(OPP_RECEIVER, false);
         setComponentAvailable(OPP_HANDOFF_RECEIVER, false);
+
+        mBatches.clear();
+        mShares.clear();
+        mHandler.removeCallbacksAndMessages(null);
     }
 
     private void startListener() {
@@ -535,15 +541,6 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
         Log.d(TAG, "mOppSdpHandle :" + mOppSdpHandle);
     }
 
-    @Override
-    public void cleanup() {
-        Log.v(TAG, "onDestroy");
-
-        mBatches.clear();
-        mShares.clear();
-        mHandler.removeCallbacksAndMessages(null);
-    }
-
     private void unregisterReceivers() {
         try {
             if (mObserver != null) {
@@ -614,7 +611,7 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
 
     /* suppose we auto accept an incoming OPUSH connection */
     private void createServerSession(ObexTransport transport) {
-        mServerSession = new BluetoothOppObexServerSession(this, transport, this);
+        mServerSession = new BluetoothOppObexServerSession(mAdapterService, transport, this);
         mServerSession.preStart();
         Log.d(
                 TAG,
@@ -909,7 +906,7 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
                 }
             }
             if (mBatches.size() == 0) {
-                BluetoothOppBatch newBatch = new BluetoothOppBatch(this, info);
+                BluetoothOppBatch newBatch = new BluetoothOppBatch(mAdapterService, info);
                 newBatch.mId = mBatchId;
                 mBatchId++;
                 mBatches.add(newBatch);
