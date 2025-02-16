@@ -16,7 +16,7 @@
  *
  *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
- *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *  SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ******************************************************************************/
@@ -2395,7 +2395,11 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
     rc_psm.rc_handle = rc_handle;
     rc_psm.cover_art_psm = cover_art_psm;
     if (p_scb == NULL) {
-      rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      if (p_cb->rcb[rc_handle].lidx > 0) {
+        rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      } else {
+        rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx].addr;
+      }
     } else {
       rc_psm.peer_addr = p_scb->PeerAddress();
     }
