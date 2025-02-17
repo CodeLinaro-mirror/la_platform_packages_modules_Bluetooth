@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bt_stack_manager"
@@ -375,6 +380,8 @@ static void event_shut_down_stack(ProfileStopCallback stopProfiles) {
 
   future_await(local_hack_future);
 
+  main_thread_shut_down();
+
   gatt_free();
   sdp_free();
   l2c_free();
@@ -430,8 +437,6 @@ static void event_clean_up_stack(std::promise<void> promise, ProfileStopCallback
   module_clean_up(get_local_module(OSI_MODULE));
   info("Gd shim module disabled");
   module_shut_down(get_local_module(GD_SHIM_MODULE));
-
-  main_thread_shut_down();
 
   module_management_stop();
   info("finished");
