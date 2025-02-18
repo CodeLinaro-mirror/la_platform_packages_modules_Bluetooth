@@ -180,6 +180,11 @@ void BTM_RemoteOobDataReply(tBTM_STATUS res, const RawAddress& bd_addr, const Oc
   inc_func_call_count(__func__);
   test::mock::stack_btm_sec::BTM_RemoteOobDataReply(res, bd_addr, c, r);
 }
+void BTM_RemoteOobExtendedDataReply(tBTM_STATUS res, const RawAddress& bd_addr,
+                                    const Octet16& c, const Octet16& r,
+                                    const Octet16& c_256, const Octet16& r_256) {
+  mock_function_count_map[__func__]++;
+}
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                         tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {
   inc_func_call_count(__func__);

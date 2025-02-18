@@ -1,4 +1,4 @@
-/******************************************************************************
+/******************************************************************************************
  *
  *  Copyright (C) 2016 The Linux Foundation
  *  Copyright 2009-2012 Broadcom Corporation
@@ -15,7 +15,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
+ ******************************************************************************************/
 
 /*******************************************************************************
  *
@@ -683,6 +688,18 @@ static int generate_local_oob_data(tBT_TRANSPORT transport) {
   return do_in_main_thread(base::BindOnce(btif_dm_generate_local_oob_data, transport));
 }
 
+static int load_remote_oob_data(const RawAddress* bd_addr, int transport,
+                                const bt_oob_data_t* p192_data,
+                                const bt_oob_data_t* p256_data) {
+  if (!interface_ready()) return BT_STATUS_NOT_READY;
+  if (btif_dm_pairing_is_busy()) return BT_STATUS_BUSY;
+  if (p192_data == nullptr || p256_data == nullptr) return BT_STATUS_PARM_INVALID;
+
+  do_in_main_thread(base::BindOnce(btif_dm_load_remote_oob_data, *bd_addr,
+                                   to_bt_transport(transport), *p192_data, *p256_data));
+  return BT_STATUS_SUCCESS;
+}
+
 static int cancel_bond(const RawAddress* bd_addr) {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
@@ -1229,6 +1246,10 @@ static void interop_database_add_remove_name(bool do_add, const char* feature_na
   }
 }
 
+static void get_link_key(const RawAddress *bd_addr){
+  btif_dm_get_link_key(bd_addr);
+}
+
 EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         sizeof(bluetoothInterface),
 #ifdef TARGET_FLOSS
@@ -1254,6 +1275,7 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .create_bond = create_bond,
         .create_bond_le = create_bond_le,
         .create_bond_out_of_band = create_bond_out_of_band,
+        .get_link_key = get_link_key,
         .remove_bond = remove_bond,
         .cancel_bond = cancel_bond,
         .pairing_is_busy = pairing_is_busy,
@@ -1299,6 +1321,7 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .interop_database_add_remove_name = interop_database_add_remove_name,
         .get_remote_pbap_pce_version = get_remote_pbap_pce_version,
         .pbap_pse_dynamic_version_upgrade_is_enabled = pbap_pse_dynamic_version_upgrade_is_enabled,
+        .load_remote_oob_data = load_remote_oob_data,
 };
 
 // callback reporting helpers
@@ -1403,6 +1426,7 @@ void invoke_ssp_request_cb(RawAddress bd_addr, bt_ssp_variant_t pairing_variant,
 }
 
 void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c, Octet16 r,
+                                Octet16 c_256, Octet16 r_256,
                                 RawAddress raw_address, uint8_t address_type) {
   log::info("");
   bt_oob_data_t oob_data = {};
@@ -1433,12 +1457,20 @@ void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c, Octet16 
     oob_data.c[i] = c[i];
     // R is optional and may be empty
     oob_data.r[i] = r[i];
+    oob_data.c_256[i] = c_256[i];
+    oob_data.r_256[i] = r_256[i];
   }
   oob_data.is_valid = valid && !c_empty;
   // The oob_data_length is 2 octets in length.  The value includes the length
   // of itself. 16 + 16 + 2 = 34 Data 0x0022 Little Endian order 0x2200
+  // If P192 and P256 both exsist, the length is  16 + 16 +16 + 16 + 2 = 66
   oob_data.oob_data_length[0] = 0;
-  oob_data.oob_data_length[1] = 34;
+  uint8_t zero[16] = {0};
+  if (memcmp(zero, oob_data.c_256, sizeof(oob_data.c_256)) &&
+          memcmp(zero, oob_data.r_256, sizeof(oob_data.r_256)))
+    oob_data.oob_data_length[1] = 66;
+  else
+    oob_data.oob_data_length[1] = 34;
   bt_status_t status = do_in_jni_thread(base::BindOnce(
           [](tBT_TRANSPORT t, bt_oob_data_t oob_data) {
             HAL_CBACK(bt_hal_cbacks, generate_local_oob_data_cb, t, oob_data);
@@ -1547,6 +1579,18 @@ void invoke_switch_codec_cb(bool is_low_latency_buffer_size) {
 void invoke_key_missing_cb(RawAddress bd_addr) {
   do_in_jni_thread(base::BindOnce(
           [](RawAddress bd_addr) { HAL_CBACK(bt_hal_cbacks, key_missing_cb, bd_addr); }, bd_addr));
+}
+
+void invoke_get_linkkey_cb(
+    RawAddress* remote_bd_addr, bool key_found,
+    int key_type, Link_Key link_key) {
+  do_in_jni_thread(base::BindOnce(
+          [](RawAddress* remote_bd_addr,
+             bool key_found, int key_type, Link_Key link_key) {
+            HAL_CBACK(bt_hal_cbacks, get_link_key_cb,
+                        remote_bd_addr, key_found, link_key, key_type);
+           },
+           remote_bd_addr, key_found, key_type, link_key));
 }
 
 namespace bluetooth::testing {

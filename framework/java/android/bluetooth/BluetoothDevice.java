@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
@@ -1390,6 +1395,101 @@ public final class BluetoothDevice implements Parcelable, Attributable {
 
     private static final String NULL_MAC_ADDRESS = "00:00:00:00:00:00";
 
+    /** @hide */
+    public static final String ACTION_LINKKEY =
+            "android.bluetooth.device.action.LINKKEY";
+
+    /**
+     * Used as an extra field in {@link #ACTION_LINKKEY} intent.
+     * intents for link key number string.
+     *
+     * @hide
+     */
+    public static final String EXTRA_KEY_LINK_KEY = "link_key";
+
+    /**
+     * Used as an extra field in {@link #ACTION_LINKKEY} intent.
+     * intents for Link Key Notification Event. Possible values are:
+     * {@link #LKEY_TYPE_COMBINATION}, {@link #LKEY_TYPE_LOCAL_UNIT},
+     * {@link #LKEY_TYPE_REMOTE_UNIT}, {@link #LKEY_TYPE_DEBUG_COMB},
+     * {@link #LKEY_TYPE_UNAUTH_COMB}, {@link #LKEY_TYPE_AUTH_COMB},
+     * {@link #LKEY_TYPE_CHANGED_COMB}, {@link #LKEY_TYPE_UNAUTH_COMB_P_256},
+     * {@link #LKEY_TYPE_AUTH_COMB_P_256}, {@link #LKEY_TYPE_NO_LINK},
+     *
+     * @hide
+     */
+    public static final String EXTRA_KEY_LINK_KEY_TYPE = "link_key_type";
+
+    /**
+     * link key type is Combination Key.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_COMBINATION = 0x00;
+
+    /**
+     * link key type is Local Unit Key.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_LOCAL_UNIT = 0x01;
+
+    /**
+     * link key type is Remote Unit Key.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_REMOTE_UNIT = 0x02;
+
+    /**
+     * link key type is Debug Combination Key.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_DEBUG_COMB = 0x03;
+
+    /**
+     * link key type is Unauthenticated Combination Key generated from P-192.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_UNAUTH_COMB = 0x04;
+
+    /**
+     * link key type is Authenticated Combination Key generated from P-192.
+     *
+     * @hide
+     */
+    public static final int TYPE_AUTH_COMB = 0x05;
+
+    /**
+     * link key type is Changed Combination Key.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_CHANGED_COMB = 0x06;
+
+    /**
+     * link key type is Unauthenticated Combination Key generated from P-256.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_UNAUTH_COMB_P_256 = 0x07;
+
+    /**
+     * link key type is Authenticated Combination Key generated from P-256.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_AUTH_COMB_P_256 = 0x08;
+
+    /**
+     * link key type is no link key.
+     *
+     * @hide
+     */
+    public static final int LKEY_TYPE_NO_LINK = -1;
+
     private final String mAddress;
     @AddressType private final int mAddressType;
 
@@ -1855,6 +1955,66 @@ public final class BluetoothDevice implements Parcelable, Attributable {
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
+        }
+        return false;
+    }
+
+   /**
+    * Get link key and key type of current device.
+    *
+    * This API is asynchronous and {@link #ACTION_LINKKEY} intent is sent with
+    * linkkey and key type.
+    *
+    * @hide
+    */
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED)
+    public void getLinkKey(@NonNull Context context) {
+        final IBluetooth service = getService();
+        if (service == null) {
+            Log.w(TAG, "BT not enabled, getLinkKey failed");
+            return;
+        }
+        try {
+            service.getLinkKey(this, context.getPackageName(), mAttributionSource);
+        } catch (RemoteException e) {
+            Log.e(TAG, "", e);
+        }
+    }
+
+    /**
+     * Load remote oob data to BT process
+     *
+     * <p>This is a synchronous call
+     * <p>There are two possible versions of OOB Data.  This data can come in as
+     * P192 or P256.  This is a reference to the cryptography used to generate the key.
+     * The caller may pass one or both.  If both types of data are passed, then the
+     * P256 data will be preferred, and thus used.
+     *
+     * @param transport - Transport to use
+     * @param remoteP192Data - Out Of Band data (P192) or null
+     * @param remoteP256Data - Out Of Band data (P256) or null
+     * @return false on immediate error, true if load success
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public boolean loadRemoteOobData(int transport, @Nullable OobData remoteP192Data,
+            @Nullable OobData remoteP256Data) {
+        if (DBG) log("loadRemoteOobData()");
+        final IBluetooth service = getService();
+        if (remoteP192Data == null && remoteP256Data == null) {
+            throw new IllegalArgumentException(
+                "One or both arguments for the OOB data types are required to not be null."
+                + "  using normal in-bind bond.");
+        }
+        if (service == null) {
+            Log.w(TAG, "BT not enabled, loadRemoteOobDataInternal failed");
+            return false;
+        }
+        try {
+            service.loadRemoteOobData(this, transport, remoteP192Data, remoteP256Data, mAttributionSource);
+            return true;
+        } catch (RemoteException e) {
+            Log.e(TAG, "", e);
         }
         return false;
     }
