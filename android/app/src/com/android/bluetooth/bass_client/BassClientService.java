@@ -268,6 +268,7 @@ public class BassClientService extends ProfileService {
                 }
                 controller.stopScanInternal(mScannerId);
                 controller.unregisterScannerInternal(mScannerId);
+                mBaasUuidFilters.clear();
                 mScannerId = SCANNER_ID_NOT_INITIALIZED;
             }
         }
@@ -405,10 +406,10 @@ public class BassClientService extends ProfileService {
                                         case MESSAGE_BROADCAST_MONITOR_TIMEOUT:
                                             {
                                                 log("MESSAGE_BROADCAST_MONITOR_TIMEOUT");
-                                                List<Integer> activeSyncedSrc =
-                                                        new ArrayList<>(getActiveSyncedSources());
-                                                if (activeSyncedSrc.contains(
-                                                        getSyncHandleForBroadcastId(broadcastId))) {
+                                                if (getActiveSyncedSources()
+                                                        .contains(
+                                                                getSyncHandleForBroadcastId(
+                                                                        broadcastId))) {
                                                     break;
                                                 }
                                                 // Clear from cache to make possible sync again
@@ -2810,6 +2811,11 @@ public class BassClientService extends ProfileService {
                         + ", hasPriority: "
                         + hasPriority);
 
+        if (getActiveSyncedSources().contains(getSyncHandleForBroadcastId(broadcastId))) {
+            log("addSelectSourceRequest: Already synced");
+            return;
+        }
+
         if (isAddedToSelectSourceRequest(broadcastId, hasPriority)) {
             log("addSelectSourceRequest: Already added");
             return;
@@ -3205,11 +3211,12 @@ public class BassClientService extends ProfileService {
         logPausedBroadcastsAndSinks();
 
         for (BluetoothDevice device : devices) {
-            List<Integer> activeSyncedSrc = getActiveSyncedSources();
             BluetoothDevice sourceDevice = sourceMetadata.getSourceDevice();
             if (!isLocalBroadcast(sourceMetadata)
-                    && (!activeSyncedSrc.contains(
-                            getSyncHandleForBroadcastId(sourceMetadata.getBroadcastId())))) {
+                    && (!getActiveSyncedSources()
+                            .contains(
+                                    getSyncHandleForBroadcastId(
+                                            sourceMetadata.getBroadcastId())))) {
                 log("Adding inactive source: " + sourceDevice);
                 int broadcastId = sourceMetadata.getBroadcastId();
                 if (broadcastId != BassConstants.INVALID_BROADCAST_ID) {
@@ -4191,14 +4198,13 @@ public class BassClientService extends ProfileService {
                         continue;
                     }
 
-                    List<Integer> activeSyncedSrc = getActiveSyncedSources();
-
                     if (receiveState.isPresent()
                             && (!leaudioBroadcastResyncHelper()
                                     || isLocalBroadcast(metadata)
-                                    || activeSyncedSrc.contains(
-                                            getSyncHandleForBroadcastId(
-                                                    metadata.getBroadcastId())))) {
+                                    || getActiveSyncedSources()
+                                            .contains(
+                                                    getSyncHandleForBroadcastId(
+                                                            metadata.getBroadcastId())))) {
                         int sourceId = receiveState.get().getSourceId();
                         updateSourceToResumeBroadcast(sink, sourceId, metadata);
                     } else {
