@@ -69,7 +69,7 @@ import java.util.stream.Collectors;
 
 // Next tag value for ContentProfileErrorReportUtils.report(): 15
 public class BluetoothMapContent {
-    private static final String TAG = "BluetoothMapContent";
+    private static final String TAG = BluetoothMapContent.class.getSimpleName();
 
     // Parameter Mask for selection of parameters to return in listings
     private static final int MASK_SUBJECT = 0x00000001;
@@ -358,7 +358,7 @@ public class BluetoothMapContent {
             mMessageColReception =
                     c.getColumnIndex(BluetoothMapContract.MessageColumns.RECEPTION_STATE);
             mMessageColDelivery =
-                    c.getColumnIndex(BluetoothMapContract.MessageColumns.DEVILERY_STATE);
+                    c.getColumnIndex(BluetoothMapContract.MessageColumns.DELIVERY_STATE);
             mMessageColThreadId = c.getColumnIndex(BluetoothMapContract.MessageColumns.THREAD_ID);
         }
 

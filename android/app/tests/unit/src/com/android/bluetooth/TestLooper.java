@@ -52,6 +52,8 @@ import java.util.concurrent.Executor;
  *     The Robolectric class also allows advancing time.
  */
 public class TestLooper {
+    private static final String TAG = TestLooper.class.getSimpleName();
+
     private final Looper mLooper;
     private final TestLooperManager mTestLooperManager;
     private final Clock mClock;
@@ -62,7 +64,6 @@ public class TestLooper {
     private static final Field MESSAGE_NEXT_FIELD;
     private static final Field MESSAGE_WHEN_FIELD;
     private static final Method MESSAGE_MARK_IN_USE_METHOD;
-    private static final String TAG = "TestLooper";
 
     private AutoDispatchThread mAutoDispatchThread;
 

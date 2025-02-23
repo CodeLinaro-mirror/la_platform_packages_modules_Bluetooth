@@ -53,7 +53,7 @@ import java.lang.annotation.RetentionPolicy;
  */
 @SystemApi
 public final class OobData implements Parcelable {
-    private static final String TAG = "OobData";
+    private static final String TAG = OobData.class.getSimpleName();
 
     /** The {@link OobData#mClassicLength} may be. (AD 3.1.1) (CSS 1.6.2) @hide */
     @SystemApi public static final int OOB_LENGTH_OCTETS = 2;
@@ -302,7 +302,7 @@ public final class OobData implements Parcelable {
          *     A 1.8 for a detailed description.
          * @return {@link OobData#Builder}
          * @throws IllegalArgumentException if the leTemporaryKey is an invalid format.
-         * @throws NullinterException if leTemporaryKey is null.
+         * @throws NullPointerException if leTemporaryKey is null.
          * @hide
          */
         @NonNull
