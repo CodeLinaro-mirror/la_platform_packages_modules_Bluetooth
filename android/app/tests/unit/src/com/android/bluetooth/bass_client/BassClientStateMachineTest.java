@@ -19,6 +19,10 @@ package com.android.bluetooth.bass_client;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.bluetooth.BluetoothGatt.GATT_FAILURE;
 import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
@@ -104,6 +108,7 @@ import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.flags.Flags;
 
 import com.google.common.primitives.Bytes;
+import com.google.common.util.concurrent.Uninterruptibles;
 
 import org.hamcrest.Matcher;
 import org.hamcrest.core.AllOf;
@@ -190,14 +195,14 @@ public class BassClientStateMachineTest {
         mBassClientStateMachine.start();
     }
 
-    private int classTypeToConnectionState(Class type) {
+    private static int classTypeToConnectionState(Class type) {
         if (type == BassClientStateMachine.Disconnected.class) {
-            return BluetoothProfile.STATE_DISCONNECTED;
+            return STATE_DISCONNECTED;
         } else if (type == BassClientStateMachine.Connecting.class) {
-            return BluetoothProfile.STATE_CONNECTING;
+            return STATE_CONNECTING;
         } else if (type == BassClientStateMachine.Connected.class
                 || type == BassClientStateMachine.ConnectedProcessing.class) {
-            return BluetoothProfile.STATE_CONNECTED;
+            return STATE_CONNECTED;
         } else {
             assertWithMessage("Invalid class type given: " + type).fail();
             return 0;
@@ -213,14 +218,14 @@ public class BassClientStateMachineTest {
         MetricsLogger.setInstanceForTesting(null);
         mBassClientStateMachine.doQuit();
         mHandlerThread.quit();
+        Uninterruptibles.joinUninterruptibly(mHandlerThread);
         TestUtils.clearAdapterService(mAdapterService);
     }
 
     /** Test that default state is disconnected */
     @Test
     public void testDefaultDisconnectedState() {
-        assertThat(mBassClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mBassClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
     }
 
     /**
@@ -288,14 +293,13 @@ public class BassClientStateMachineTest {
                         any(String[].class),
                         any(BroadcastOptions.class));
         assertThat(intentArgument1.getValue().getIntExtra(BluetoothProfile.EXTRA_STATE, -1))
-                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
+                .isEqualTo(STATE_CONNECTING);
 
         assertThat(mBassClientStateMachine.getCurrentState())
                 .isInstanceOf(BassClientStateMachine.Connecting.class);
 
         assertThat(mBassClientStateMachine.mGattCallback).isNotNull();
-        mBassClientStateMachine.notifyConnectionStateChanged(
-                GATT_SUCCESS, BluetoothProfile.STATE_CONNECTED);
+        mBassClientStateMachine.notifyConnectionStateChanged(GATT_SUCCESS, STATE_CONNECTED);
 
         // Verify that the expected number of broadcasts are executed:
         // - two calls to broadcastConnectionState(): Disconnected -> Connecting -> Connected
@@ -326,7 +330,7 @@ public class BassClientStateMachineTest {
                         any(String[].class),
                         any(BroadcastOptions.class));
         assertThat(intentArgument1.getValue().getIntExtra(BluetoothProfile.EXTRA_STATE, -1))
-                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
+                .isEqualTo(STATE_CONNECTING);
 
         assertThat(mBassClientStateMachine.getCurrentState())
                 .isInstanceOf(BassClientStateMachine.Connecting.class);
@@ -339,7 +343,7 @@ public class BassClientStateMachineTest {
                         any(String[].class),
                         any(BroadcastOptions.class));
         assertThat(intentArgument2.getValue().getIntExtra(BluetoothProfile.EXTRA_STATE, -1))
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+                .isEqualTo(STATE_DISCONNECTED);
 
         assertThat(mBassClientStateMachine.getCurrentState())
                 .isInstanceOf(BassClientStateMachine.Disconnected.class);
@@ -376,7 +380,7 @@ public class BassClientStateMachineTest {
                 mBassClientStateMachine.obtainMessage(BassClientStateMachine.DISCONNECT),
                 BassClientStateMachine.Connecting.class);
         mBassClientStateMachine.sendMessage(
-                CONNECTION_STATE_CHANGED, Integer.valueOf(BluetoothProfile.STATE_CONNECTED));
+                CONNECTION_STATE_CHANGED, Integer.valueOf(STATE_CONNECTED));
 
         // disconnected -> connecting ---CONNECTION_STATE_CHANGED(connected)---> connected -->
         // disconnected
@@ -386,13 +390,11 @@ public class BassClientStateMachineTest {
                 BassClientStateMachine.Connecting.class);
         sendMessageAndVerifyTransition(
                 mBassClientStateMachine.obtainMessage(
-                        CONNECTION_STATE_CHANGED,
-                        Integer.valueOf(BluetoothProfile.STATE_CONNECTED)),
+                        CONNECTION_STATE_CHANGED, Integer.valueOf(STATE_CONNECTED)),
                 BassClientStateMachine.Connected.class);
         sendMessageAndVerifyTransition(
                 mBassClientStateMachine.obtainMessage(
-                        CONNECTION_STATE_CHANGED,
-                        Integer.valueOf(BluetoothProfile.STATE_DISCONNECTED)),
+                        CONNECTION_STATE_CHANGED, Integer.valueOf(STATE_DISCONNECTED)),
                 BassClientStateMachine.Disconnected.class);
 
         // disconnected -> connecting ---CONNECTION_STATE_CHANGED(non-connected) --> disconnected
@@ -401,8 +403,7 @@ public class BassClientStateMachineTest {
                 BassClientStateMachine.Connecting.class);
         sendMessageAndVerifyTransition(
                 mBassClientStateMachine.obtainMessage(
-                        CONNECTION_STATE_CHANGED,
-                        Integer.valueOf(BluetoothProfile.STATE_DISCONNECTED)),
+                        CONNECTION_STATE_CHANGED, Integer.valueOf(STATE_DISCONNECTED)),
                 BassClientStateMachine.Disconnected.class);
 
         // change default state to connected for the next tests
@@ -411,8 +412,7 @@ public class BassClientStateMachineTest {
                 BassClientStateMachine.Connecting.class);
         sendMessageAndVerifyTransition(
                 mBassClientStateMachine.obtainMessage(
-                        CONNECTION_STATE_CHANGED,
-                        Integer.valueOf(BluetoothProfile.STATE_CONNECTED)),
+                        CONNECTION_STATE_CHANGED, Integer.valueOf(STATE_CONNECTED)),
                 BassClientStateMachine.Connected.class);
 
         // connected ----READ_BASS_CHARACTERISTICS---> connectedProcessing --GATT_TXN_PROCESSED
@@ -545,8 +545,8 @@ public class BassClientStateMachineTest {
 
         // disallow connection
         allowConnection(false);
-        int status = BluetoothProfile.STATE_CONNECTING;
-        int newState = BluetoothProfile.STATE_CONNECTED;
+        int status = STATE_CONNECTING;
+        int newState = STATE_CONNECTED;
         cb.onConnectionStateChange(null, status, newState);
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
 
@@ -559,8 +559,8 @@ public class BassClientStateMachineTest {
         mBassClientStateMachine.mBluetoothGatt = btGatt;
         allowConnection(true);
         mBassClientStateMachine.mDiscoveryInitiated = false;
-        status = BluetoothProfile.STATE_DISCONNECTED;
-        newState = BluetoothProfile.STATE_CONNECTED;
+        status = STATE_DISCONNECTED;
+        newState = STATE_CONNECTED;
         cb.onConnectionStateChange(null, status, newState);
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
 
@@ -581,8 +581,8 @@ public class BassClientStateMachineTest {
         mBassClientStateMachine.mBluetoothGatt = btGatt;
 
         allowConnection(false);
-        int status = BluetoothProfile.STATE_CONNECTING;
-        int newState = BluetoothProfile.STATE_DISCONNECTED;
+        int status = STATE_CONNECTING;
+        int newState = STATE_DISCONNECTED;
         cb.onConnectionStateChange(null, status, newState);
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
 
@@ -1363,7 +1363,7 @@ public class BassClientStateMachineTest {
 
         Message msgToConnectingState =
                 mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msgToConnectingState.obj = BluetoothProfile.STATE_CONNECTING;
+        msgToConnectingState.obj = STATE_CONNECTING;
 
         mBassClientStateMachine.sendMessage(msgToConnectingState);
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
@@ -1371,7 +1371,7 @@ public class BassClientStateMachineTest {
 
         Message msgToConnectedState =
                 mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msgToConnectedState.obj = BluetoothProfile.STATE_CONNECTED;
+        msgToConnectedState.obj = STATE_CONNECTED;
         sendMessageAndVerifyTransition(msgToConnectedState, BassClientStateMachine.Connected.class);
     }
 
@@ -1421,7 +1421,7 @@ public class BassClientStateMachineTest {
         initToConnectingState();
 
         Message msg = mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msg.obj = BluetoothProfile.STATE_CONNECTING;
+        msg.obj = STATE_CONNECTING;
         BassClientStateMachine.BluetoothGattTestableWrapper btGatt =
                 Mockito.mock(BassClientStateMachine.BluetoothGattTestableWrapper.class);
         mBassClientStateMachine.mBluetoothGatt = btGatt;
@@ -1435,7 +1435,7 @@ public class BassClientStateMachineTest {
         initToConnectingState();
 
         Message msg = mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msg.obj = BluetoothProfile.STATE_CONNECTED;
+        msg.obj = STATE_CONNECTED;
         sendMessageAndVerifyTransition(msg, BassClientStateMachine.Connected.class);
     }
 
@@ -1500,7 +1500,7 @@ public class BassClientStateMachineTest {
         initToConnectedState();
 
         Message connectedMsg = mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        connectedMsg.obj = BluetoothProfile.STATE_CONNECTED;
+        connectedMsg.obj = STATE_CONNECTED;
 
         mBassClientStateMachine.sendMessage(connectedMsg);
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
@@ -1510,7 +1510,7 @@ public class BassClientStateMachineTest {
                 Mockito.mock(BassClientStateMachine.BluetoothGattTestableWrapper.class);
         mBassClientStateMachine.mBluetoothGatt = btGatt;
         Message noneConnectedMsg = mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        noneConnectedMsg.obj = BluetoothProfile.STATE_DISCONNECTING;
+        noneConnectedMsg.obj = STATE_DISCONNECTING;
         sendMessageAndVerifyTransition(noneConnectedMsg, BassClientStateMachine.Disconnected.class);
         verify(btGatt).close();
         assertThat(mBassClientStateMachine.mBluetoothGatt).isNull();
@@ -1952,7 +1952,7 @@ public class BassClientStateMachineTest {
 
         Message msgToConnectedState =
                 mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msgToConnectedState.obj = BluetoothProfile.STATE_CONNECTED;
+        msgToConnectedState.obj = STATE_CONNECTED;
 
         mBassClientStateMachine.sendMessage(msgToConnectedState);
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
@@ -1963,7 +1963,7 @@ public class BassClientStateMachineTest {
         mBassClientStateMachine.mBluetoothGatt = btGatt;
         Message msgToNoneConnectedState =
                 mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msgToNoneConnectedState.obj = BluetoothProfile.STATE_DISCONNECTING;
+        msgToNoneConnectedState.obj = STATE_DISCONNECTING;
         sendMessageAndVerifyTransition(
                 msgToNoneConnectedState, BassClientStateMachine.Disconnected.class);
         verify(btGatt).close();
@@ -2633,7 +2633,7 @@ public class BassClientStateMachineTest {
         initToConnectingState();
 
         Message msg = mBassClientStateMachine.obtainMessage(CONNECTION_STATE_CHANGED);
-        msg.obj = BluetoothProfile.STATE_CONNECTED;
+        msg.obj = STATE_CONNECTED;
         sendMessageAndVerifyTransition(msg, BassClientStateMachine.Connected.class);
         Mockito.clearInvocations(mBassClientService);
     }
@@ -2656,7 +2656,7 @@ public class BassClientStateMachineTest {
         Mockito.clearInvocations(mBassClientService);
     }
 
-    private boolean isConnectionIntentExpected(Class currentType, Class nextType) {
+    private static boolean isConnectionIntentExpected(Class currentType, Class nextType) {
         if (currentType == nextType) {
             return false; // Same state, no intent expected
         }
@@ -2725,7 +2725,8 @@ public class BassClientStateMachineTest {
         return builder.build();
     }
 
-    private byte[] convertMetadataToUpdateSourceByteArray(BluetoothLeBroadcastMetadata metaData) {
+    private static byte[] convertMetadataToUpdateSourceByteArray(
+            BluetoothLeBroadcastMetadata metaData) {
         int numSubGroups = metaData.getSubgroups().size();
 
         byte[] res = new byte[UPDATE_SOURCE_FIXED_LENGTH + numSubGroups * 5];
@@ -2764,7 +2765,7 @@ public class BassClientStateMachineTest {
         return res;
     }
 
-    private BluetoothLeBroadcastMetadata getMetadataToPauseStream(
+    private static BluetoothLeBroadcastMetadata getMetadataToPauseStream(
             BluetoothLeBroadcastMetadata metadata) {
         BluetoothLeBroadcastMetadata.Builder metadataToUpdateBuilder =
                 new BluetoothLeBroadcastMetadata.Builder(metadata);
@@ -2921,7 +2922,7 @@ public class BassClientStateMachineTest {
                 .isEqualTo(Bytes.concat(metadataHeader, metadataPayload));
     }
 
-    private BluetoothLeBroadcastSubgroup createBroadcastSubgroup() {
+    private static BluetoothLeBroadcastSubgroup createBroadcastSubgroup() {
         final long testAudioLocationFrontLeft = 0x01;
         final long testAudioLocationFrontRight = 0x02;
         // For BluetoothLeAudioContentMetadata

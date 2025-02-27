@@ -24,6 +24,9 @@ import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.BLUETOOTH_SCAN;
 import static android.Manifest.permission.LOCAL_MAC_ADDRESS;
 import static android.Manifest.permission.MODIFY_PHONE_STATE;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 import static android.bluetooth.BluetoothProfile.getProfileName;
 import static android.bluetooth.BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;
 import static android.bluetooth.BluetoothUtils.executeFromBinder;
@@ -3337,7 +3340,7 @@ public final class BluetoothAdapter {
 
     @RequiresBluetoothConnectPermission
     @RequiresPermission(BLUETOOTH_CONNECT)
-    private BluetoothServerSocket createNewRfcommSocketAndRecord(
+    private static BluetoothServerSocket createNewRfcommSocketAndRecord(
             String name, UUID uuid, boolean auth, boolean encrypt) throws IOException {
         BluetoothServerSocket socket;
         socket =
@@ -4048,7 +4051,7 @@ public final class BluetoothAdapter {
         }
     }
 
-    private Set<BluetoothDevice> toDeviceSet(List<BluetoothDevice> devices) {
+    private static Set<BluetoothDevice> toDeviceSet(List<BluetoothDevice> devices) {
         Set<BluetoothDevice> deviceSet = new HashSet<BluetoothDevice>(devices);
         return Collections.unmodifiableSet(deviceSet);
     }
@@ -5560,16 +5563,16 @@ public final class BluetoothAdapter {
     public static @ConnectionPolicy int priorityToConnectionPolicy(int priority) {
         switch (priority) {
             case BluetoothProfile.PRIORITY_AUTO_CONNECT:
-                return BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+                return CONNECTION_POLICY_ALLOWED;
             case BluetoothProfile.PRIORITY_ON:
-                return BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+                return CONNECTION_POLICY_ALLOWED;
             case BluetoothProfile.PRIORITY_OFF:
-                return BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+                return CONNECTION_POLICY_FORBIDDEN;
             case BluetoothProfile.PRIORITY_UNDEFINED:
-                return BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
+                return CONNECTION_POLICY_UNKNOWN;
             default:
                 Log.e(TAG, "setPriority: Invalid priority: " + priority);
-                return BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
+                return CONNECTION_POLICY_UNKNOWN;
         }
     }
 
@@ -5582,11 +5585,11 @@ public final class BluetoothAdapter {
      */
     public static int connectionPolicyToPriority(@ConnectionPolicy int connectionPolicy) {
         switch (connectionPolicy) {
-            case BluetoothProfile.CONNECTION_POLICY_ALLOWED:
+            case CONNECTION_POLICY_ALLOWED:
                 return BluetoothProfile.PRIORITY_ON;
-            case BluetoothProfile.CONNECTION_POLICY_FORBIDDEN:
+            case CONNECTION_POLICY_FORBIDDEN:
                 return BluetoothProfile.PRIORITY_OFF;
-            case BluetoothProfile.CONNECTION_POLICY_UNKNOWN:
+            case CONNECTION_POLICY_UNKNOWN:
                 return BluetoothProfile.PRIORITY_UNDEFINED;
         }
         return BluetoothProfile.PRIORITY_UNDEFINED;
@@ -5807,7 +5810,8 @@ public final class BluetoothAdapter {
         }
 
         @RequiresPermission(BLUETOOTH_PRIVILEGED)
-        void unregisterFromService(IBluetooth service, IBluetoothHciVendorSpecificCallback stub) {
+        static void unregisterFromService(
+                IBluetooth service, IBluetoothHciVendorSpecificCallback stub) {
             if (service == null) {
                 return;
             }

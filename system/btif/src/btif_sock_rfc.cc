@@ -18,6 +18,8 @@
 
 #define LOG_TAG "bt_btif_sock_rfcomm"
 
+#include "btif_sock_rfc.h"
+
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 #include <sys/ioctl.h>
@@ -28,6 +30,7 @@
 #include <mutex>
 
 #include "bta/include/bta_jv_api.h"
+#include "bta/include/bta_jv_co.h"
 #include "bta/include/bta_rfcomm_metrics.h"
 #include "bta/include/bta_rfcomm_scn.h"
 #include "btif/include/btif_metrics_logging.h"
@@ -50,9 +53,6 @@
 #include "stack/include/port_api.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using bluetooth::Uuid;
 using namespace bluetooth;
@@ -1087,6 +1087,7 @@ static void jv_dm_cback(tBTA_JV_EVT event, tBTA_JV* p_data, uint32_t id) {
           cfg.init_credit = 0;
           cfg.rx_mtu_present = slot->mtu > 0;
           cfg.rx_mtu = slot->mtu;
+          cfg.data_path = slot->data_path;
         }
       }
       // Start the rfcomm server after sdp & channel # assigned.
@@ -1152,6 +1153,7 @@ static void handle_discovery_comp(tBTA_JV_STATUS status, int scn, uint32_t id) {
       cfg.init_credit = 0;
       cfg.rx_mtu_present = slot->mtu > 0;
       cfg.rx_mtu = slot->mtu;
+      cfg.data_path = slot->data_path;
     }
   }
 

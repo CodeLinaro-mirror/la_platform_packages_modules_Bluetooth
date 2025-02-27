@@ -130,6 +130,8 @@ static std::shared_timed_mutex interface_mutex;
 static jobject mCallbacksObj = nullptr;
 static std::shared_timed_mutex callbacks_mutex;
 
+static jclass class_LeAudioNativeInterface;
+
 jobject prepareCodecConfigObj(JNIEnv* env, btle_audio_codec_config_t codecConfig) {
   log::info(
           "ct: {}, codec_priority: {}, sample_rate: {}, bits_per_sample: {}, "
@@ -174,7 +176,7 @@ public:
     if (!sCallbackEnv.valid() || mCallbacksObj == nullptr) {
       return;
     }
-    sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onInitialized);
+    sCallbackEnv->CallStaticVoidMethod(class_LeAudioNativeInterface, method_onInitialized);
   }
 
   void OnConnectionState(ConnectionState state, const RawAddress& bd_addr) override {
@@ -233,8 +235,10 @@ public:
                                  (jint)group_id, (jint)node_status);
   }
 
-  void OnAudioConf(uint8_t direction, int group_id, uint32_t sink_audio_location,
-                   uint32_t source_audio_location, uint16_t avail_cont) override {
+  void OnAudioConf(uint8_t direction, int group_id,
+                   std::optional<std::bitset<32>> sink_audio_location,
+                   std::optional<std::bitset<32>> source_audio_location,
+                   uint16_t avail_cont) override {
     log::info("");
 
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
@@ -243,13 +247,15 @@ public:
       return;
     }
 
+    jint jni_sink_audio_location = sink_audio_location ? sink_audio_location->to_ulong() : -1;
+    jint jni_source_audio_location = source_audio_location ? source_audio_location->to_ulong() : -1;
     sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onAudioConf, (jint)direction, (jint)group_id,
-                                 (jint)sink_audio_location, (jint)source_audio_location,
+                                 jni_sink_audio_location, jni_source_audio_location,
                                  (jint)avail_cont);
   }
 
   void OnSinkAudioLocationAvailable(const RawAddress& bd_addr,
-                                    uint32_t sink_audio_location) override {
+                                    std::optional<std::bitset<32>> sink_audio_location) override {
     log::info("");
 
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
@@ -266,8 +272,9 @@ public:
     }
 
     sCallbackEnv->SetByteArrayRegion(addr.get(), 0, sizeof(RawAddress), (jbyte*)&bd_addr);
+    jint jni_sink_audio_location = sink_audio_location ? sink_audio_location->to_ulong() : -1;
     sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onSinkAudioLocationAvailable, addr.get(),
-                                 (jint)sink_audio_location);
+                                 jni_sink_audio_location);
   }
 
   void OnAudioLocalCodecCapabilities(
@@ -429,6 +436,10 @@ static void initNative(JNIEnv* env, jobject object, jobjectArray codecOffloading
     log::error("Bluetooth module is not loaded");
     return;
   }
+
+  jclass tmpControllerInterface =
+          env->FindClass("com/android/bluetooth/le_audio/LeAudioNativeInterface");
+  class_LeAudioNativeInterface = (jclass)env->NewGlobalRef(tmpControllerInterface);
 
   if (mCallbacksObj != nullptr) {
     log::info("Cleaning up LeAudio callback object");
@@ -1573,7 +1584,7 @@ int register_com_android_bluetooth_le_audio(JNIEnv* env) {
           {"onGroupNodeStatus", "([BII)V", &method_onGroupNodeStatus},
           {"onAudioConf", "(IIIII)V", &method_onAudioConf},
           {"onSinkAudioLocationAvailable", "([BI)V", &method_onSinkAudioLocationAvailable},
-          {"onInitialized", "()V", &method_onInitialized},
+          {"onInitialized", "()V", &method_onInitialized, true},
           {"onConnectionStateChanged", "(I[B)V", &method_onConnectionStateChanged},
           {"onAudioLocalCodecCapabilities",
            "([Landroid/bluetooth/BluetoothLeAudioCodecConfig;"

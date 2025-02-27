@@ -16,6 +16,9 @@
 
 package com.android.bluetooth.bass_client;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 import static android.bluetooth.BluetoothProfile.EXTRA_PREVIOUS_STATE;
 import static android.bluetooth.BluetoothProfile.EXTRA_STATE;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
@@ -304,6 +307,13 @@ public class BassClientServiceTest {
                             doReturn(true).when(stateMachine).isBassStateReady();
                             mStateMachines.put(
                                     (BluetoothDevice) invocation.getArgument(0), stateMachine);
+                            doAnswer(
+                                            inv -> {
+                                                return Message.obtain(
+                                                        (Handler) null, (int) inv.getArgument(0));
+                                            })
+                                    .when(stateMachine)
+                                    .obtainMessage(anyInt());
                             return stateMachine;
                         })
                 .when(mObjectsFactory)
@@ -325,7 +335,6 @@ public class BassClientServiceTest {
 
     @After
     public void tearDown() throws Exception {
-        android.util.Log.e("WILLIAM", "tearDown");
         mBassClientService.unregisterCallback(mCallback);
 
         mBassClientService.cleanup();
@@ -349,9 +358,9 @@ public class BassClientServiceTest {
         mBassClientService.cleanup();
         when(mDatabaseManager.getProfileConnectionPolicy(
                         mCurrentDevice, BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
+                .thenReturn(CONNECTION_POLICY_UNKNOWN);
         assertThat(mBassClientService.getConnectionPolicy(mCurrentDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
+                .isEqualTo(CONNECTION_POLICY_UNKNOWN);
     }
 
     /**
@@ -363,7 +372,7 @@ public class BassClientServiceTest {
         when(mDatabaseManager.getProfileConnectionPolicy(
                         any(BluetoothDevice.class),
                         eq(BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT)))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+                .thenReturn(CONNECTION_POLICY_ALLOWED);
 
         assertThat(mBassClientService.connect(mCurrentDevice)).isTrue();
         verify(mObjectsFactory)
@@ -380,7 +389,7 @@ public class BassClientServiceTest {
         when(mDatabaseManager.getProfileConnectionPolicy(
                         any(BluetoothDevice.class),
                         eq(BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT)))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+                .thenReturn(CONNECTION_POLICY_ALLOWED);
         BluetoothDevice nullDevice = null;
 
         assertThat(mBassClientService.connect(nullDevice)).isFalse();
@@ -395,7 +404,7 @@ public class BassClientServiceTest {
         when(mDatabaseManager.getProfileConnectionPolicy(
                         any(BluetoothDevice.class),
                         eq(BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT)))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
+                .thenReturn(CONNECTION_POLICY_FORBIDDEN);
         assertThat(mCurrentDevice).isNotNull();
 
         assertThat(mBassClientService.connect(mCurrentDevice)).isFalse();
@@ -445,7 +454,7 @@ public class BassClientServiceTest {
         when(mDatabaseManager.getProfileConnectionPolicy(
                         any(BluetoothDevice.class),
                         eq(BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT)))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+                .thenReturn(CONNECTION_POLICY_ALLOWED);
 
         // Mock the CSIP group
         List<BluetoothDevice> groupDevices = new ArrayList<>();
@@ -1227,7 +1236,7 @@ public class BassClientServiceTest {
                 .isEqualTo(TEST_BROADCAST_ID);
     }
 
-    private byte[] getScanRecord(int broadcastId) {
+    private static byte[] getScanRecord(int broadcastId) {
         return new byte[] {
             0x02,
             0x01,
@@ -1312,7 +1321,7 @@ public class BassClientServiceTest {
         generateScanResult(scanResult);
     }
 
-    private byte[] getPAScanRecord() {
+    private static byte[] getPAScanRecord() {
         return new byte[] {
             (byte) 0x02,
             (byte) 0x01,
@@ -1436,7 +1445,7 @@ public class BassClientServiceTest {
         }
     }
 
-    private BluetoothLeBroadcastReceiveState injectRemoteSourceState(
+    private static BluetoothLeBroadcastReceiveState injectRemoteSourceState(
             BassClientStateMachine sm,
             BluetoothLeBroadcastMetadata meta,
             int sourceId,
@@ -3312,9 +3321,6 @@ public class BassClientServiceTest {
     }
 
     @Test
-    @EnableFlags({
-        Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT
-    })
     public void testAddSourceForExternalBroadcast_triggerSetContextMask() {
         final int testGroupId = 1;
         prepareConnectedDeviceGroup();
@@ -4045,20 +4051,15 @@ public class BassClientServiceTest {
         verifyAddSourceForGroup(meta);
         prepareRemoteSourceState(meta, /* isPaSynced */ true, /* isBisSynced */ false);
 
-        if (Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            injectRemoteSourceStateChanged(meta, /* isPaSynced */ true, /* isBisSynced */ true);
-            verify(mLeAudioService).activeBroadcastAssistantNotification(eq(true));
-            Mockito.clearInvocations(mLeAudioService);
+        injectRemoteSourceStateChanged(meta, /* isPaSynced */ true, /* isBisSynced */ true);
+        verify(mLeAudioService).activeBroadcastAssistantNotification(eq(true));
+        Mockito.clearInvocations(mLeAudioService);
 
-            /* Imitate broadcast source stop, sink notify about loosing PA and BIS sync */
-            injectRemoteSourceStateChanged(meta, /* isPaSynced */ false, /* isBisSynced */ false);
+        /* Imitate broadcast source stop, sink notify about loosing PA and BIS sync */
+        injectRemoteSourceStateChanged(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
-            /* Unicast would like to stream */
-            mBassClientService.cacheSuspendingSources(TEST_BROADCAST_ID);
-        } else {
-            mBassClientService.suspendAllReceiversSourceSynchronization();
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
+        /* Unicast would like to stream */
+        mBassClientService.cacheSuspendingSources(TEST_BROADCAST_ID);
 
         mBassClientService.resumeReceiversSourceSynchronization();
         handleHandoverSupport();
@@ -4087,12 +4088,8 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
 
-        if (Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            /* Imitate broadcast source stop, sink notify about loosing PA and BIS sync */
-            injectRemoteSourceStateChanged(meta, /* isPaSynced */ false, /* isBisSynced */ false);
-        } else {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
+        /* Imitate broadcast source stop, sink notify about loosing PA and BIS sync */
+        injectRemoteSourceStateChanged(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
@@ -4109,7 +4106,6 @@ public class BassClientServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT)
     public void testHandleUnicastSourceStreamStatusChange_MultipleRequests() {
         prepareConnectedDeviceGroup();
         startSearchingForSources();
@@ -4306,7 +4302,6 @@ public class BassClientServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT)
     public void testLocalAddSourceWhenBroadcastIsPlaying() throws RemoteException {
         doReturn(true).when(mLeAudioService).isPlaying(TEST_BROADCAST_ID);
         if (Flags.leaudioBigDependsOnAudioState()) {
@@ -4318,7 +4313,6 @@ public class BassClientServiceTest {
 
     @Test
     @EnableFlags({
-        Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT,
         Flags.FLAG_LEAUDIO_BIG_DEPENDS_ON_AUDIO_STATE
     })
     public void testLocalAddSourceWhenBroadcastIsPaused() throws RemoteException {
@@ -4329,7 +4323,6 @@ public class BassClientServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT)
     public void testLocalAddSourceWhenBroadcastIsStopped() throws RemoteException {
         doReturn(false).when(mLeAudioService).isPlaying(TEST_BROADCAST_ID);
         if (Flags.leaudioBigDependsOnAudioState()) {
@@ -6743,9 +6736,6 @@ public class BassClientServiceTest {
         // Suspend receivers, HOST_INTENTIONAL
         mBassClientService.suspendReceiversSourceSynchronization(TEST_BROADCAST_ID);
         checkNoSinkPause();
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
         checkResumeSynchronizationByHost();
     }
 
@@ -6757,9 +6747,6 @@ public class BassClientServiceTest {
         // Suspend receivers, HOST_INTENTIONAL
         mBassClientService.suspendReceiversSourceSynchronization(TEST_BROADCAST_ID);
         checkNoSinkPause();
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
         checkResumeSynchronizationByHost();
     }
 
@@ -6771,9 +6758,6 @@ public class BassClientServiceTest {
         // Suspend all receivers, HOST_INTENTIONAL
         mBassClientService.suspendAllReceiversSourceSynchronization();
         checkNoSinkPause();
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
         checkResumeSynchronizationByHost();
     }
 
@@ -6785,9 +6769,6 @@ public class BassClientServiceTest {
         // Suspend all receivers, HOST_INTENTIONAL
         mBassClientService.suspendAllReceiversSourceSynchronization();
         checkNoSinkPause();
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
         checkResumeSynchronizationByHost();
     }
 
@@ -6800,9 +6781,6 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
         checkNoSinkPause();
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
 
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
@@ -6820,9 +6798,6 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
         checkNoSinkPause();
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verifyRemoveMessageAndInjectSourceRemoval();
-        }
 
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
@@ -6833,7 +6808,6 @@ public class BassClientServiceTest {
     @Test
     @EnableFlags({
         Flags.FLAG_LEAUDIO_BROADCAST_RESYNC_HELPER,
-        Flags.FLAG_LEAUDIO_BROADCAST_ASSISTANT_PERIPHERAL_ENTRUSTMENT,
         Flags.FLAG_LEAUDIO_MONITOR_UNICAST_SOURCE_WHEN_MANAGED_BY_BROADCAST_DELEGATOR
     })
     public void hostIntentional_handleUnicastSourceStreamStatusChange_beforeResumeCompleted() {
@@ -7678,20 +7652,14 @@ public class BassClientServiceTest {
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
         // Disconnect first sink not cause removing metadata
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Connect again first sink
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice)).isConnected();
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
@@ -7704,35 +7672,23 @@ public class BassClientServiceTest {
         }
 
         // Disconnect first sink not cause removing metadata
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Disconnect second sink cause remove metada for both devices
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice1))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice1)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice1)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice1,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice1, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice1), TEST_SOURCE_ID + 1);
 
         // Connect again both devices
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice)).isConnected();
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice1))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice1)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice1)).isConnected();
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
@@ -7768,20 +7724,14 @@ public class BassClientServiceTest {
         }
 
         // Disconnect first sink not cause removing metadata
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Connect again first sink
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice)).isConnected();
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
@@ -7802,35 +7752,23 @@ public class BassClientServiceTest {
         }
 
         // Disconnect first sink not cause removing metadata
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Disconnect second sink cause remove metada for both devices
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice1))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice1)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice1)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice1,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice1, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice1), TEST_SOURCE_ID + 1);
 
         // Connect again both devices
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice)).isConnected();
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice1))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice1)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice1)).isConnected();
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
@@ -7859,14 +7797,10 @@ public class BassClientServiceTest {
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
         // Disconnect first sink not cause removing metadata
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Remove second source should remove metadata for both
@@ -7877,9 +7811,7 @@ public class BassClientServiceTest {
         }
 
         // Connect again first sink
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice)).isConnected();
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
@@ -7916,14 +7848,10 @@ public class BassClientServiceTest {
         }
 
         // Disconnect first sink not cause removing metadata
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Remove second source should remove metadata for both
@@ -7934,9 +7862,7 @@ public class BassClientServiceTest {
         }
 
         // Connect again first sink
-        doReturn(BluetoothProfile.STATE_CONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_CONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(true).when(mStateMachines.get(mCurrentDevice)).isConnected();
         prepareRemoteSourceState(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
@@ -7966,14 +7892,10 @@ public class BassClientServiceTest {
         mBassClientService.addSource(mCurrentDevice1, meta, /* isGroupOp */ false);
 
         // Disconnect first sink should remove pendingSourceToAdd for it
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Sync established should add source on only one sink
@@ -8015,14 +7937,10 @@ public class BassClientServiceTest {
         mBassClientService.addSource(mCurrentDevice, meta, /* isGroupOp */ true);
 
         // Disconnect first sink should remove pendingSourceToAdd for it
-        doReturn(BluetoothProfile.STATE_DISCONNECTED)
-                .when(mStateMachines.get(mCurrentDevice))
-                .getConnectionState();
+        doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice)).isConnected();
         mBassClientService.connectionStateChanged(
-                mCurrentDevice,
-                BluetoothProfile.STATE_CONNECTED,
-                BluetoothProfile.STATE_DISCONNECTED);
+                mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
         // Sync established should add source on only one sink
