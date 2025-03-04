@@ -16,12 +16,11 @@
 
 package com.android.bluetooth.avrcp;
 
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.NonNull;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUtils;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -145,7 +144,7 @@ public class AvrcpTargetService extends ProfileService {
             mMediaPlayerList.init(new ListCallback());
         }
 
-        if (!mAvrcpVersion.isAtLeastVersion(AvrcpVersion.AVRCP_VERSION_1_6)) {
+        if (!mAvrcpVersion.isAtleastVersion(AvrcpVersion.AVRCP_VERSION_1_6)) {
             Log.e(TAG, "Please use AVRCP version 1.6 to enable cover art");
             mAvrcpCoverArtService = null;
         } else {
@@ -295,7 +294,7 @@ public class AvrcpTargetService extends ProfileService {
      * <p>This will be called by the native stack when a play event is received from a remote
      * device. See packages/modules/Bluetooth/system/profile/avrcp/device.cc.
      */
-    private static void setA2dpActiveDevice(@NonNull BluetoothDevice device) {
+    private void setA2dpActiveDevice(@NonNull BluetoothDevice device) {
         A2dpService service = A2dpService.getA2dpService();
         if (service == null) {
             Log.d(TAG, "setA2dpActiveDevice: A2dp service not found");
@@ -342,7 +341,7 @@ public class AvrcpTargetService extends ProfileService {
      */
     public void handleA2dpConnectionStateChanged(BluetoothDevice device, int newState) {
         if (device == null) return;
-        if (newState == STATE_DISCONNECTED) {
+        if (newState == BluetoothProfile.STATE_DISCONNECTED) {
             // If there is no connection, disconnectDevice() will do nothing
             if (mNativeInterface.disconnectDevice(device)) {
                 Log.d(TAG, "request to disconnect device " + device);

@@ -17,8 +17,6 @@
 package com.android.bluetooth.btservice;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -28,6 +26,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.Mockito.*;
 
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.HandlerThread;
@@ -168,28 +167,28 @@ public class SilenceDeviceManagerTest {
     /** Helper to indicate A2dp connected for a device. */
     private void a2dpConnected(BluetoothDevice device) {
         mSilenceDeviceManager.a2dpConnectionStateChanged(
-                device, STATE_DISCONNECTED, STATE_CONNECTED);
+                device, BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTED);
         TestUtils.waitForLooperToFinishScheduledTask(mLooper);
     }
 
     /** Helper to indicate A2dp disconnected for a device. */
     private void a2dpDisconnected(BluetoothDevice device) {
         mSilenceDeviceManager.a2dpConnectionStateChanged(
-                device, STATE_CONNECTED, STATE_DISCONNECTED);
+                device, BluetoothProfile.STATE_CONNECTED, BluetoothProfile.STATE_DISCONNECTED);
         TestUtils.waitForLooperToFinishScheduledTask(mLooper);
     }
 
     /** Helper to indicate Headset connected for a device. */
     private void headsetConnected(BluetoothDevice device) {
         mSilenceDeviceManager.hfpConnectionStateChanged(
-                device, STATE_DISCONNECTED, STATE_CONNECTED);
+                device, BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTED);
         TestUtils.waitForLooperToFinishScheduledTask(mLooper);
     }
 
     /** Helper to indicate Headset disconnected for a device. */
     private void headsetDisconnected(BluetoothDevice device) {
         mSilenceDeviceManager.hfpConnectionStateChanged(
-                device, STATE_CONNECTED, STATE_DISCONNECTED);
+                device, BluetoothProfile.STATE_CONNECTED, BluetoothProfile.STATE_DISCONNECTED);
         TestUtils.waitForLooperToFinishScheduledTask(mLooper);
     }
 }

@@ -88,7 +88,7 @@ public class AvrcpCoverArtService {
     /**
      * Stop the AVRCP Cover Art Service.
      *
-     * <p>Tear down existing connections, remove ourselves from the SDP record.
+     * <p>Tear down existing connections, remove ourselved from the SDP record.
      */
     public boolean stop() {
         debug("Stopping service");
@@ -273,12 +273,12 @@ public class AvrcpCoverArtService {
     }
 
     /** Print a message to DEBUG if debug output is enabled */
-    private static void debug(String msg) {
+    private void debug(String msg) {
         Log.d(TAG, msg);
     }
 
     /** Print a message to ERROR */
-    private static void error(String msg) {
+    private void error(String msg) {
         Log.e(TAG, msg);
     }
 }

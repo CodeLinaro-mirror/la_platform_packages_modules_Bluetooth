@@ -64,10 +64,10 @@ abstract class BipRequest {
     public abstract void execute(ClientSession session) throws IOException;
 
     /**
-     * A generic GET operation, providing overridable hooks to read response headers and content.
+     * A generica GET operation, providing overridable hooks to read response headers and content.
      */
     protected void executeGet(ClientSession session) throws IOException {
-        debug("Executing GET");
+        debug("Exeucting GET");
         setOperation(null);
         try {
             ClientOperation operation = (ClientOperation) session.get(mHeaderSet);
@@ -82,15 +82,15 @@ abstract class BipRequest {
             mResponseCode = operation.getResponseCode();
         } catch (IOException e) {
             mResponseCode = ResponseCodes.OBEX_HTTP_INTERNAL_ERROR;
-            error("GET threw an exception: " + e);
+            error("GET threw an exeception: " + e);
             throw e;
         }
         debug("GET final response code is '" + mResponseCode + "'");
     }
 
-    /** A generic PUT operation, providing overridable hooks to read response headers. */
+    /** A generica PUT operation, providing overridable hooks to read response headers. */
     protected void executePut(ClientSession session, byte[] body) throws IOException {
-        debug("Executing PUT");
+        debug("Exeucting PUT");
         setOperation(null);
         mHeaderSet.setHeader(HeaderSet.LENGTH, Long.valueOf(body.length));
         try {
@@ -104,7 +104,7 @@ abstract class BipRequest {
             mResponseCode = operation.getResponseCode();
         } catch (IOException e) {
             mResponseCode = ResponseCodes.OBEX_HTTP_INTERNAL_ERROR;
-            error("PUT threw an exception: " + e);
+            error("PUT threw an exeception: " + e);
             throw e;
         }
         debug("PUT final response code is '" + mResponseCode + "'");

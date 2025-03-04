@@ -130,7 +130,7 @@ public class MetadataTest {
         return BitmapFactory.decodeStream(imageInputStream);
     }
 
-    private static MediaMetadata getMediaMetadata() {
+    private MediaMetadata getMediaMetadata() {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID)
@@ -149,7 +149,7 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private static MediaMetadata getMediaMetadataWithBitmap(String field, Bitmap image) {
+    private MediaMetadata getMediaMetadataWithBitmap(String field, Bitmap image) {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID)
@@ -168,7 +168,7 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private static MediaMetadata getMediaMetadataWithUri(String field, Uri uri) {
+    private MediaMetadata getMediaMetadataWithUri(String field, Uri uri) {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID)
@@ -187,7 +187,7 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private static MediaDescription getMediaDescription(Bitmap bitmap, Uri uri, Bundle extras) {
+    private MediaDescription getMediaDescription(Bitmap bitmap, Uri uri, Bundle extras) {
         MediaDescription.Builder builder =
                 new MediaDescription.Builder()
                         .setMediaId(SONG_MEDIA_ID)
@@ -206,15 +206,15 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private static MediaItem getMediaItem(MediaDescription description) {
+    private MediaItem getMediaItem(MediaDescription description) {
         return new MediaItem(description, 0 /* not browsable/playable */);
     }
 
-    private static QueueItem getQueueItem(MediaDescription description) {
+    private QueueItem getQueueItem(MediaDescription description) {
         return new QueueItem(description, 1 /* queue ID */);
     }
 
-    private static Bundle getBundle() {
+    private Bundle getBundle() {
         Bundle bundle = new Bundle();
         bundle.putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID);
         bundle.putString(MediaMetadata.METADATA_KEY_TITLE, SONG_TITLE);
@@ -227,19 +227,19 @@ public class MetadataTest {
         return bundle;
     }
 
-    private static Bundle getBundleWithBitmap(String field, Bitmap image) {
+    private Bundle getBundleWithBitmap(String field, Bitmap image) {
         Bundle bundle = getBundle();
         bundle.putParcelable(field, image);
         return bundle;
     }
 
-    private static Bundle getBundleWithUri(String field, Uri uri) {
+    private Bundle getBundleWithUri(String field, Uri uri) {
         Bundle bundle = getBundle();
         bundle.putString(field, uri.toString());
         return bundle;
     }
 
-    private static void assertMetadata(
+    private void assertMetadata(
             String mediaId,
             String title,
             String artist,

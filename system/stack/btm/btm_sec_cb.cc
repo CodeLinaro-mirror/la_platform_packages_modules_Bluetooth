@@ -20,7 +20,6 @@
 #include "stack/btm/btm_sec_cb.h"
 
 #include <bluetooth/log.h>
-#include <com_android_bluetooth_flags.h>
 
 #include <cstdint>
 
@@ -118,7 +117,7 @@ tBTM_SEC_SERV_REC* tBTM_SEC_CB::find_first_serv_rec(bool is_originator, uint16_t
 
 tBTM_SEC_REC* tBTM_SEC_CB::getSecRec(const RawAddress bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
-  if (p_dev_rec != nullptr) {
+  if (p_dev_rec) {
     return &p_dev_rec->sec_rec;
   }
   return nullptr;
@@ -172,29 +171,33 @@ bool tBTM_SEC_CB::IsDeviceAuthenticated(const RawAddress bd_addr, tBT_TRANSPORT 
   return false;
 }
 
-bool tBTM_SEC_CB::IsDeviceBonded(const RawAddress bd_addr, tBT_TRANSPORT transport) {
+bool tBTM_SEC_CB::IsLinkKeyKnown(const RawAddress bd_addr, tBT_TRANSPORT transport) {
   tBTM_SEC_REC* sec_rec = getSecRec(bd_addr);
-  if (sec_rec == nullptr) {
+  if (sec_rec) {
+    if (transport == BT_TRANSPORT_BR_EDR) {
+      return sec_rec->is_link_key_known();
+    } else if (transport == BT_TRANSPORT_LE) {
+      return sec_rec->is_le_link_key_known();
+    }
+    log::error("unknown transport:{}", bt_transport_text(transport));
     return false;
   }
 
-  bool bonded = false;
+  log::error("unknown device:{}", bd_addr);
+  return false;
+}
 
-  // Check BR/EDR bond status if requested transport is BT_TRANSPORT_BR_EDR or BT_TRANSPORT_AUTO
-  if (transport != BT_TRANSPORT_LE) {
-    if (com::android::bluetooth::flags::temporary_pairing_tracking()) {
-      bonded = sec_rec->is_bond_type_persistent() && sec_rec->is_link_key_known();
-    } else {
-      bonded = sec_rec->is_link_key_known();
-    }
+bool tBTM_SEC_CB::IsDeviceBonded(const RawAddress bd_addr) {
+  tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
+  bool is_bonded = false;
+
+  if (p_dev_rec &&
+      ((p_dev_rec->sec_rec.ble_keys.key_type && p_dev_rec->sec_rec.is_le_link_key_known()) ||
+       p_dev_rec->sec_rec.is_link_key_known())) {
+    is_bonded = true;
   }
-
-  // Check LE bond status if requested transport is BT_TRANSPORT_LE or BT_TRANSPORT_AUTO
-  if (transport != BT_TRANSPORT_BR_EDR) {
-    bonded |= (sec_rec->ble_keys.key_type != BTM_LE_KEY_NONE && sec_rec->is_le_link_key_known());
-  }
-
-  return bonded;
+  log::debug("Device record bonded check peer:{} is_bonded:{}", bd_addr, is_bonded);
+  return is_bonded;
 }
 
 #define BTM_NO_AVAIL_SEC_SERVICES ((uint16_t)0xffff)

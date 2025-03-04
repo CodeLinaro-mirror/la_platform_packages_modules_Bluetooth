@@ -128,7 +128,7 @@ public final class BluetoothLeAudioCodecStatus implements Parcelable {
         return c1.containsAll(c2);
     }
 
-    private static boolean isCodecConfigSelectable(
+    private boolean isCodecConfigSelectable(
             BluetoothLeAudioCodecConfig codecConfig, BluetoothLeAudioCodecConfig selectableConfig) {
         if (codecConfig.getCodecType() != selectableConfig.getCodecType()) {
             return false;

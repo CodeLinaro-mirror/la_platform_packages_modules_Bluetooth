@@ -405,13 +405,13 @@ public class ContextMap<C> {
 
     /** Returns connect device map with addr and appid */
     Map<Integer, String> getConnectedMap() {
-        Map<Integer, String> connectedMap = new HashMap<Integer, String>();
+        Map<Integer, String> connectedmap = new HashMap<Integer, String>();
         synchronized (mConnectionsLock) {
             for (Connection conn : mConnections) {
-                connectedMap.put(conn.appId, conn.address);
+                connectedmap.put(conn.appId, conn.address);
             }
         }
-        return connectedMap;
+        return connectedmap;
     }
 
     /** Logs debug information. */

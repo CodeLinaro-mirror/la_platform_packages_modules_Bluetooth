@@ -16,10 +16,14 @@
 
 #include "main/shim/acl_interface.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 namespace bluetooth {
 namespace shim {
+namespace legacy {
 
-static acl_interface_t acl_interface_ = {
+acl_interface_t acl_interface_ = {
         .on_send_data_upwards = nullptr,
         .on_packets_completed = nullptr,
 
@@ -68,5 +72,6 @@ static acl_interface_t acl_interface_ = {
 
 const acl_interface_t& GetAclInterface() { return acl_interface_; }
 
+}  // namespace legacy
 }  // namespace shim
 }  // namespace bluetooth

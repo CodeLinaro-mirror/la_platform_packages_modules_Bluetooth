@@ -27,6 +27,9 @@
 
 // Mocked internal structures, if any
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 namespace test {
 namespace mock {
 namespace osi_future {
@@ -34,6 +37,7 @@ namespace osi_future {
 // Function state capture and return values, if needed
 struct future_await future_await;
 struct future_new future_new;
+struct future_new_named future_new_named;
 struct future_new_immediate future_new_immediate;
 struct future_ready future_ready;
 
@@ -49,6 +53,10 @@ void* future_await(future_t* future) {
 future_t* future_new(void) {
   inc_func_call_count(__func__);
   return test::mock::osi_future::future_new();
+}
+future_t* future_new_named(const char* name) {
+  inc_func_call_count(__func__);
+  return test::mock::osi_future::future_new_named(name);
 }
 future_t* future_new_immediate(void* value) {
   inc_func_call_count(__func__);

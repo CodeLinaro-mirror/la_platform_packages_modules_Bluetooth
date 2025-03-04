@@ -32,6 +32,9 @@
 #include "test/headless/messenger.h"
 #include "types/raw_address.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 //
 // Aggregate disparate variables from callback API into unified single structure
 //
@@ -66,13 +69,12 @@ std::mutex adapter_state_mutex_;
 std::condition_variable adapter_state_cv_;
 bt_state_t bt_state_{BT_STATE_OFF};
 
-static void adapter_state_changed(bt_state_t state) {
+void adapter_state_changed(bt_state_t state) {
   std::unique_lock<std::mutex> lck(adapter_state_mutex_);
   bt_state_ = state;
   adapter_state_cv_.notify_all();
 }
-static void adapter_properties(bt_status_t status, int num_properties,
-                               ::bt_property_t* properties) {
+void adapter_properties(bt_status_t status, int num_properties, ::bt_property_t* properties) {
   const size_t num_callbacks = interface_api_callback_map_.size();
   auto callback_list = interface_api_callback_map_.find(__func__);
   if (callback_list != interface_api_callback_map_.end()) {
@@ -85,8 +87,8 @@ static void adapter_properties(bt_status_t status, int num_properties,
             bt_status_text(status), num_properties, std::format_ptr(properties));
 }
 
-static void remote_device_properties(bt_status_t status, RawAddress* bd_addr, int num_properties,
-                                     ::bt_property_t* properties) {
+void remote_device_properties(bt_status_t status, RawAddress* bd_addr, int num_properties,
+                              ::bt_property_t* properties) {
   log::assert_that(bd_addr != nullptr, "assert failed: bd_addr != nullptr");
   const size_t num_callbacks = interface_api_callback_map_.size();
   auto callback_list = interface_api_callback_map_.find(__func__);
@@ -102,7 +104,7 @@ static void remote_device_properties(bt_status_t status, RawAddress* bd_addr, in
 }
 
 // Aggregate disparate variables from callback API into unified single structure
-static void device_found(int num_properties, ::bt_property_t* properties) {
+void device_found(int num_properties, ::bt_property_t* properties) {
   [[maybe_unused]] const size_t num_callbacks = interface_api_callback_map_.size();
   auto callback_list = interface_api_callback_map_.find(__func__);
   if (callback_list != interface_api_callback_map_.end()) {
@@ -115,7 +117,7 @@ static void device_found(int num_properties, ::bt_property_t* properties) {
             std::format_ptr(properties));
 }
 
-static void discovery_state_changed(bt_discovery_state_t state) {
+void discovery_state_changed(bt_discovery_state_t state) {
   auto callback_list = interface_api_callback_map_.find(__func__);
   if (callback_list != interface_api_callback_map_.end()) {
     for (auto callback : callback_list->second) {
@@ -126,42 +128,40 @@ static void discovery_state_changed(bt_discovery_state_t state) {
 }
 
 /** Bluetooth Legacy PinKey Request callback */
-static void pin_request([[maybe_unused]] RawAddress* remote_bd_addr,
-                        [[maybe_unused]] bt_bdname_t* bd_name, [[maybe_unused]] uint32_t cod,
-                        [[maybe_unused]] bool min_16_digit) {
+void pin_request([[maybe_unused]] RawAddress* remote_bd_addr, [[maybe_unused]] bt_bdname_t* bd_name,
+                 [[maybe_unused]] uint32_t cod, [[maybe_unused]] bool min_16_digit) {
   log::info("");
 }
 
-static void ssp_request([[maybe_unused]] RawAddress* remote_bd_addr,
-                        [[maybe_unused]] bt_ssp_variant_t pairing_variant,
-                        [[maybe_unused]] uint32_t pass_key) {
+void ssp_request([[maybe_unused]] RawAddress* remote_bd_addr,
+                 [[maybe_unused]] bt_ssp_variant_t pairing_variant,
+                 [[maybe_unused]] uint32_t pass_key) {
   log::info("");
 }
 
 /** Bluetooth Bond state changed callback */
 /* Invoked in response to create_bond, cancel_bond or remove_bond */
-static void bond_state_changed([[maybe_unused]] bt_status_t status,
-                               [[maybe_unused]] RawAddress* remote_bd_addr,
-                               [[maybe_unused]] bt_bond_state_t state,
-                               [[maybe_unused]] int fail_reason) {
+void bond_state_changed([[maybe_unused]] bt_status_t status,
+                        [[maybe_unused]] RawAddress* remote_bd_addr,
+                        [[maybe_unused]] bt_bond_state_t state, [[maybe_unused]] int fail_reason) {
   log::info("");
 }
 
-static void address_consolidate([[maybe_unused]] RawAddress* main_bd_addr,
-                                [[maybe_unused]] RawAddress* secondary_bd_addr) {
+void address_consolidate([[maybe_unused]] RawAddress* main_bd_addr,
+                         [[maybe_unused]] RawAddress* secondary_bd_addr) {
   log::info("");
 }
 
-static void le_address_associate([[maybe_unused]] RawAddress* main_bd_addr,
-                                 [[maybe_unused]] RawAddress* secondary_bd_addr,
-                                 [[maybe_unused]] uint8_t identity_address_type) {
+void le_address_associate([[maybe_unused]] RawAddress* main_bd_addr,
+                          [[maybe_unused]] RawAddress* secondary_bd_addr,
+                          [[maybe_unused]] uint8_t identity_address_type) {
   log::info("");
 }
 
 /** Bluetooth ACL connection state changed callback */
-static void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr, bt_acl_state_t state,
-                              int transport_link_type, bt_hci_error_code_t hci_reason,
-                              bt_conn_direction_t direction, uint16_t acl_handle) {
+void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr, bt_acl_state_t state,
+                       int transport_link_type, bt_hci_error_code_t hci_reason,
+                       bt_conn_direction_t direction, uint16_t acl_handle) {
   log::assert_that(remote_bd_addr != nullptr, "assert failed: remote_bd_addr != nullptr");
   const size_t num_callbacks = interface_api_callback_map_.size();
   auto callback_list = interface_api_callback_map_.find(__func__);
@@ -178,34 +178,33 @@ static void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr, bt
 }
 
 /** Bluetooth Link Quality Report callback */
-static void link_quality_report([[maybe_unused]] uint64_t timestamp, [[maybe_unused]] int report_id,
-                                [[maybe_unused]] int rssi, [[maybe_unused]] int snr,
-                                [[maybe_unused]] int retransmission_count,
-                                [[maybe_unused]] int packets_not_receive_count,
-                                [[maybe_unused]] int negative_acknowledgement_count) {
+void link_quality_report([[maybe_unused]] uint64_t timestamp, [[maybe_unused]] int report_id,
+                         [[maybe_unused]] int rssi, [[maybe_unused]] int snr,
+                         [[maybe_unused]] int retransmission_count,
+                         [[maybe_unused]] int packets_not_receive_count,
+                         [[maybe_unused]] int negative_acknowledgement_count) {
   log::info("");
 }
 
 /** Switch buffer size callback */
-static void switch_buffer_size([[maybe_unused]] bool is_low_latency_buffer_size) { log::info(""); }
+void switch_buffer_size([[maybe_unused]] bool is_low_latency_buffer_size) { log::info(""); }
 
 /** Switch codec callback */
-static void switch_codec([[maybe_unused]] bool is_low_latency_buffer_size) { log::info(""); }
+void switch_codec([[maybe_unused]] bool is_low_latency_buffer_size) { log::info(""); }
 
-static void thread_event([[maybe_unused]] bt_cb_thread_evt evt) { log::info(""); }
+void thread_event([[maybe_unused]] bt_cb_thread_evt evt) { log::info(""); }
 
-static void dut_mode_recv([[maybe_unused]] uint16_t opcode, [[maybe_unused]] uint8_t* buf,
-                          [[maybe_unused]] uint8_t len) {
+void dut_mode_recv([[maybe_unused]] uint16_t opcode, [[maybe_unused]] uint8_t* buf,
+                   [[maybe_unused]] uint8_t len) {
   log::info("");
 }
 
-static void le_test_mode([[maybe_unused]] bt_status_t status,
-                         [[maybe_unused]] uint16_t num_packets) {
+void le_test_mode([[maybe_unused]] bt_status_t status, [[maybe_unused]] uint16_t num_packets) {
   log::info("");
 }
 
-static void energy_info([[maybe_unused]] bt_activity_energy_info* energy_info,
-                        [[maybe_unused]] bt_uid_traffic_t* uid_data) {
+void energy_info([[maybe_unused]] bt_activity_energy_info* energy_info,
+                 [[maybe_unused]] bt_uid_traffic_t* uid_data) {
   log::info("");
 }
 
@@ -234,12 +233,12 @@ bt_callbacks_t bt_callbacks{
 // HAL HARDWARE CALLBACKS
 
 // OS CALLOUTS
-static int acquire_wake_lock_co([[maybe_unused]] const char* lock_name) {
+int acquire_wake_lock_co([[maybe_unused]] const char* lock_name) {
   log::info("");
   return 1;
 }
 
-static int release_wake_lock_co([[maybe_unused]] const char* lock_name) {
+int release_wake_lock_co([[maybe_unused]] const char* lock_name) {
   log::info("");
   return 0;
 }

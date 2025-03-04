@@ -17,11 +17,6 @@ package com.android.bluetooth.a2dpsink;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
 import static java.util.Objects.requireNonNull;
 
@@ -254,7 +249,7 @@ public class A2dpSinkService extends ProfileService {
         public int getConnectionState(BluetoothDevice device, AttributionSource source) {
             A2dpSinkService service = getService(source);
             if (service == null) {
-                return STATE_DISCONNECTED;
+                return BluetoothProfile.STATE_DISCONNECTED;
             }
             return service.getConnectionState(device);
         }
@@ -276,7 +271,7 @@ public class A2dpSinkService extends ProfileService {
         public int getConnectionPolicy(BluetoothDevice device, AttributionSource source) {
             A2dpSinkService service = getService(source);
             if (service == null) {
-                return CONNECTION_POLICY_UNKNOWN;
+                return BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
             }
 
             service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
@@ -319,7 +314,7 @@ public class A2dpSinkService extends ProfileService {
         if (device == null) {
             throw new IllegalArgumentException("Null device");
         }
-        if (getConnectionPolicy(device) == CONNECTION_POLICY_FORBIDDEN) {
+        if (getConnectionPolicy(device) == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
             Log.w(TAG, "Connection not allowed: <" + device + "> is CONNECTION_POLICY_FORBIDDEN");
             return false;
         }
@@ -359,7 +354,8 @@ public class A2dpSinkService extends ProfileService {
             return false;
         }
         int connectionState = stateMachine.getState();
-        if (connectionState == STATE_DISCONNECTED || connectionState == STATE_DISCONNECTING) {
+        if (connectionState == BluetoothProfile.STATE_DISCONNECTED
+                || connectionState == BluetoothProfile.STATE_DISCONNECTING) {
             return false;
         }
         // upon completion of disconnect, the state machine will remove itself from the available
@@ -441,12 +437,14 @@ public class A2dpSinkService extends ProfileService {
      *     BluetoothProfile#STATE_DISCONNECTING} if this profile is being disconnected
      */
     public int getConnectionState(BluetoothDevice device) {
-        if (device == null) return STATE_DISCONNECTED;
+        if (device == null) return BluetoothProfile.STATE_DISCONNECTED;
         A2dpSinkStateMachine stateMachine;
         synchronized (mDeviceStateMap) {
             stateMachine = mDeviceStateMap.get(device);
         }
-        return (stateMachine == null) ? STATE_DISCONNECTED : stateMachine.getState();
+        return (stateMachine == null)
+                ? BluetoothProfile.STATE_DISCONNECTED
+                : stateMachine.getState();
     }
 
     /**
@@ -470,9 +468,9 @@ public class A2dpSinkService extends ProfileService {
                 device, BluetoothProfile.A2DP_SINK, connectionPolicy)) {
             return false;
         }
-        if (connectionPolicy == CONNECTION_POLICY_ALLOWED) {
+        if (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
             connect(device);
-        } else if (connectionPolicy == CONNECTION_POLICY_FORBIDDEN) {
+        } else if (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
             disconnect(device);
         }
         return true;

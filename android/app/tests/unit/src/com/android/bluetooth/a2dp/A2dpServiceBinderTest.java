@@ -17,8 +17,6 @@
 package com.android.bluetooth.a2dp;
 
 import static android.bluetooth.BluetoothCodecConfig.SOURCE_CODEC_TYPE_INVALID;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -31,6 +29,7 @@ import static org.mockito.Mockito.verify;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothCodecConfig;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.content.AttributionSource;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -90,7 +89,7 @@ public class A2dpServiceBinderTest {
 
     @Test
     public void getDevicesMatchingConnectionStates() {
-        int[] states = new int[] {STATE_CONNECTED};
+        int[] states = new int[] {BluetoothProfile.STATE_CONNECTED};
 
         mBinder.getDevicesMatchingConnectionStates(states, sSource);
         verify(mA2dpService).getDevicesMatchingConnectionStates(states);
@@ -122,7 +121,7 @@ public class A2dpServiceBinderTest {
 
     @Test
     public void setConnectionPolicy() {
-        int connectionPolicy = CONNECTION_POLICY_ALLOWED;
+        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 
         mBinder.setConnectionPolicy(sDevice, connectionPolicy, sSource);
         verify(mA2dpService).setConnectionPolicy(sDevice, connectionPolicy);

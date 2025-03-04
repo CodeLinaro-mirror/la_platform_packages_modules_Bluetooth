@@ -22,8 +22,6 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.TransportBlockFilter;
 import android.os.ParcelUuid;
 
-import com.android.internal.annotations.VisibleForTesting;
-
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -32,21 +30,22 @@ import java.util.UUID;
 
 /** Helper class used to manage advertisement package filters. */
 /* package */ class ScanFilterQueue {
-    @VisibleForTesting static final int TYPE_DEVICE_ADDRESS = 0;
-    @VisibleForTesting static final int TYPE_SERVICE_DATA_CHANGED = 1;
-    @VisibleForTesting static final int TYPE_SERVICE_UUID = 2;
-    @VisibleForTesting static final int TYPE_SOLICIT_UUID = 3;
-    @VisibleForTesting static final int TYPE_LOCAL_NAME = 4;
-    @VisibleForTesting static final int TYPE_MANUFACTURER_DATA = 5;
-    @VisibleForTesting static final int TYPE_SERVICE_DATA = 6;
-    @VisibleForTesting static final int TYPE_TRANSPORT_DISCOVERY_DATA = 7;
-    @VisibleForTesting static final int TYPE_ADVERTISING_DATA_TYPE = 8;
-
-    private static final int TYPE_INVALID = 0x00; // Meta data type for Transport Block Filter
-    private static final int TYPE_WIFI_NAN_HASH = 0x01; // WIFI NAN HASH type
+    public static final int TYPE_DEVICE_ADDRESS = 0;
+    public static final int TYPE_SERVICE_DATA_CHANGED = 1;
+    public static final int TYPE_SERVICE_UUID = 2;
+    public static final int TYPE_SOLICIT_UUID = 3;
+    public static final int TYPE_LOCAL_NAME = 4;
+    public static final int TYPE_MANUFACTURER_DATA = 5;
+    public static final int TYPE_SERVICE_DATA = 6;
+    public static final int TYPE_TRANSPORT_DISCOVERY_DATA = 7;
+    public static final int TYPE_ADVERTISING_DATA_TYPE = 8;
 
     // Max length is 31 - 3(flags) - 2 (one byte for length and one byte for type).
     private static final int MAX_LEN_PER_FIELD = 26;
+
+    // Meta data type for Transport Block Filter
+    public static final int TYPE_INVALID = 0x00;
+    public static final int TYPE_WIFI_NAN_HASH = 0x01; // WIFI NAN HASH type
 
     static class Entry {
         public byte type;
@@ -68,9 +67,8 @@ import java.util.UUID;
         public byte[] meta_data;
     }
 
-    private final Set<Entry> mEntries = new HashSet<>();
+    private Set<Entry> mEntries = new HashSet<Entry>();
 
-    @VisibleForTesting
     void addDeviceAddress(String address, byte type, byte[] irk) {
         Entry entry = new Entry();
         entry.type = TYPE_DEVICE_ADDRESS;
@@ -80,12 +78,20 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
-    void addUuid(UUID uuid) {
-        addUuid(uuid, new UUID(0, 0));
+    void addServiceChanged() {
+        Entry entry = new Entry();
+        entry.type = TYPE_SERVICE_DATA_CHANGED;
+        mEntries.add(entry);
     }
 
-    @VisibleForTesting
+    void addUuid(UUID uuid) {
+        Entry entry = new Entry();
+        entry.type = TYPE_SERVICE_UUID;
+        entry.uuid = uuid;
+        entry.uuid_mask = new UUID(0, 0);
+        mEntries.add(entry);
+    }
+
     void addUuid(UUID uuid, UUID uuidMask) {
         Entry entry = new Entry();
         entry.type = TYPE_SERVICE_UUID;
@@ -94,12 +100,14 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addSolicitUuid(UUID uuid) {
-        addSolicitUuid(uuid, new UUID(0, 0));
+        Entry entry = new Entry();
+        entry.type = TYPE_SOLICIT_UUID;
+        entry.uuid = uuid;
+        entry.uuid_mask = new UUID(0, 0);
+        mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addSolicitUuid(UUID uuid, UUID uuidMask) {
         Entry entry = new Entry();
         entry.type = TYPE_SOLICIT_UUID;
@@ -108,7 +116,6 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addName(String name) {
         Entry entry = new Entry();
         entry.type = TYPE_LOCAL_NAME;
@@ -116,15 +123,17 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addManufacturerData(int company, byte[] data) {
-        int companyMask = 0xFFFF;
-        byte[] dataMask = new byte[data.length];
-        Arrays.fill(dataMask, (byte) 0xFF);
-        addManufacturerData(company, companyMask, data, dataMask);
+        Entry entry = new Entry();
+        entry.type = TYPE_MANUFACTURER_DATA;
+        entry.company = company;
+        entry.company_mask = 0xFFFF;
+        entry.data = data;
+        entry.data_mask = new byte[data.length];
+        Arrays.fill(entry.data_mask, (byte) 0xFF);
+        mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addManufacturerData(int company, int companyMask, byte[] data, byte[] dataMask) {
         Entry entry = new Entry();
         entry.type = TYPE_MANUFACTURER_DATA;
@@ -135,7 +144,6 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addServiceData(byte[] data, byte[] dataMask) {
         Entry entry = new Entry();
         entry.type = TYPE_SERVICE_DATA;
@@ -144,7 +152,6 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addTransportDiscoveryData(
             int orgId,
             int tdsFlags,
@@ -165,7 +172,6 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     void addAdvertisingDataType(int adType, byte[] data, byte[] dataMask) {
         Entry entry = new Entry();
         entry.type = TYPE_ADVERTISING_DATA_TYPE;
@@ -175,7 +181,6 @@ import java.util.UUID;
         mEntries.add(entry);
     }
 
-    @VisibleForTesting
     Entry pop() {
         if (mEntries.isEmpty()) {
             return null;
@@ -186,7 +191,7 @@ import java.util.UUID;
         return entry;
     }
 
-    // Compute feature selection based on the filters presented.
+    /** Compute feature selection based on the filters presented. */
     int getFeatureSelection() {
         int selection = 0;
         for (Entry entry : mEntries) {
@@ -199,7 +204,7 @@ import java.util.UUID;
         return mEntries.toArray(new ScanFilterQueue.Entry[mEntries.size()]);
     }
 
-    // Add ScanFilter to scan filter queue.
+    /** Add ScanFilter to scan filter queue. */
     void addScanFilter(ScanFilter filter) {
         if (filter == null) {
             return;
@@ -288,8 +293,7 @@ import java.util.UUID;
         }
     }
 
-    private static byte[] concatenate(
-            ParcelUuid serviceDataUuid, byte[] serviceData, boolean isMask) {
+    private byte[] concatenate(ParcelUuid serviceDataUuid, byte[] serviceData, boolean isMask) {
         byte[] uuid = BluetoothUuid.uuidToBytes(serviceDataUuid);
 
         int dataLen = uuid.length + serviceData.length;

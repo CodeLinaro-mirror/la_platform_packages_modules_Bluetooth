@@ -16,34 +16,29 @@
 
 package com.android.bluetooth.pbap;
 
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.*;
 
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSocket;
 import android.os.Handler;
+import android.os.HandlerThread;
 
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.bluetooth.TestLooper;
-
+import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-
-import java.io.IOException;
-import java.io.InputStream;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
@@ -51,77 +46,83 @@ public class PbapStateMachineTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private BluetoothPbapService mBluetoothPbapService;
-    @Mock private BluetoothSocket mSocket;
-    @Mock private InputStream mInputStream;
 
     private static final int TEST_NOTIFICATION_ID = 1000000;
 
     private final BluetoothDevice mDevice = getTestDevice(36);
 
+    private HandlerThread mHandlerThread;
+    private PbapStateMachine mPbapStateMachine;
     private Handler mHandler;
-    private TestLooper mLooper;
-    private PbapStateMachine mStateMachine;
+    private BluetoothSocket mSocket;
 
     @Before
-    public void setUp() throws IOException {
-        doReturn(mInputStream).when(mSocket).getInputStream();
-        doReturn(mInputStream).when(mSocket).getInputStream();
+    public void setUp() {
+        mHandlerThread = new HandlerThread("PbapTestHandlerThread");
+        mHandlerThread.start();
+        mHandler = new Handler(mHandlerThread.getLooper());
 
-        mLooper = new TestLooper();
-        mHandler = new Handler(mLooper.getLooper());
-
-        mStateMachine =
+        mPbapStateMachine =
                 PbapStateMachine.make(
                         mBluetoothPbapService,
-                        mLooper.getLooper(),
+                        mHandlerThread.getLooper(),
                         mDevice,
                         mSocket,
                         mHandler,
                         TEST_NOTIFICATION_ID);
     }
 
+    @After
+    public void tearDown() {
+        mHandlerThread.quitSafely();
+    }
+
     /** Test that initial state is WaitingForAuth */
     @Test
-    public void initialState_isConnecting() {
-        assertThat(mStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTING);
-        assertThat(mStateMachine.getCurrentState())
+    public void testInitialState() {
+        assertThat(mPbapStateMachine.getConnectionState())
+                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
+        assertThat(mPbapStateMachine.getCurrentState())
                 .isInstanceOf(PbapStateMachine.WaitingForAuth.class);
     }
 
     /** Test state transition from WaitingForAuth to Finished when the user rejected */
+    @Ignore("Class BluetoothSocket is final and cannot be mocked. b/71512958: re-enable it.")
     @Test
     public void testStateTransition_WaitingForAuthToFinished() {
-        sendAndDispatchMessage(PbapStateMachine.REJECTED);
-
-        assertThat(mStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
-        assertThat(mStateMachine.getCurrentState()).isInstanceOf(PbapStateMachine.Finished.class);
+        mPbapStateMachine.sendMessage(PbapStateMachine.REJECTED);
+        assertThat(mPbapStateMachine.getConnectionState())
+                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapStateMachine.getCurrentState())
+                .isInstanceOf(PbapStateMachine.Finished.class);
     }
 
     /** Test state transition from WaitingForAuth to Finished when the user rejected */
+    @Ignore("Class BluetoothSocket is final and cannot be mocked. b/71512958: re-enable it.")
     @Test
     public void testStateTransition_WaitingForAuthToConnected() {
-        sendAndDispatchMessage(PbapStateMachine.AUTHORIZED);
-
-        assertThat(mStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTED);
-        assertThat(mStateMachine.getCurrentState()).isInstanceOf(PbapStateMachine.Connected.class);
+        mPbapStateMachine.sendMessage(PbapStateMachine.AUTHORIZED);
+        assertThat(mPbapStateMachine.getConnectionState())
+                .isEqualTo(BluetoothProfile.STATE_CONNECTED);
+        assertThat(mPbapStateMachine.getCurrentState())
+                .isInstanceOf(PbapStateMachine.Connected.class);
     }
 
     /** Test state transition from Connected to Finished when the OBEX server is done */
+    @Ignore("Class BluetoothSocket is final and cannot be mocked. b/71512958: re-enable it.")
     @Test
     public void testStateTransition_ConnectedToFinished() {
-        sendAndDispatchMessage(PbapStateMachine.AUTHORIZED);
+        mPbapStateMachine.sendMessage(PbapStateMachine.AUTHORIZED);
+        assertThat(mPbapStateMachine.getConnectionState())
+                .isEqualTo(BluetoothProfile.STATE_CONNECTED);
+        assertThat(mPbapStateMachine.getCurrentState())
+                .isInstanceOf(PbapStateMachine.Connected.class);
 
-        assertThat(mStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTED);
-        assertThat(mStateMachine.getCurrentState()).isInstanceOf(PbapStateMachine.Connected.class);
-
-        sendAndDispatchMessage(PbapStateMachine.DISCONNECT);
-
-        assertThat(mStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
-        assertThat(mStateMachine.getCurrentState()).isInstanceOf(PbapStateMachine.Finished.class);
-    }
-
-    private void sendAndDispatchMessage(int what) {
-        mStateMachine.sendMessage(what);
-        mLooper.dispatchAll();
+        // PBAP OBEX transport is done.
+        mPbapStateMachine.sendMessage(PbapStateMachine.DISCONNECT);
+        assertThat(mPbapStateMachine.getConnectionState())
+                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapStateMachine.getCurrentState())
+                .isInstanceOf(PbapStateMachine.Finished.class);
     }
 }

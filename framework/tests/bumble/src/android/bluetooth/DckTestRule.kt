@@ -17,7 +17,6 @@
 package android.bluetooth
 
 import android.app.PendingIntent
-import android.bluetooth.BluetoothProfile.STATE_CONNECTED
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -94,7 +93,7 @@ class DckTestRule(
     fun scanWithCallback(
         scanFilter: ScanFilter,
         scanSettings: ScanSettings,
-        coroutine: CoroutineScope = scope,
+        coroutine: CoroutineScope = scope
     ) =
         callbackFlow {
                 val callback =
@@ -129,7 +128,7 @@ class DckTestRule(
     fun scanWithPendingIntent(
         scanFilter: ScanFilter,
         scanSettings: ScanSettings,
-        coroutine: CoroutineScope = scope,
+        coroutine: CoroutineScope = scope
     ) =
         callbackFlow {
                 val intentFilter = IntentFilter(ACTION_DYNAMIC_RECEIVER_SCAN_RESULT)
@@ -162,7 +161,7 @@ class DckTestRule(
                         scanIntent,
                         PendingIntent.FLAG_MUTABLE or
                             PendingIntent.FLAG_UPDATE_CURRENT or
-                            PendingIntent.FLAG_ALLOW_UNSAFE_IMPLICIT_INTENT,
+                            PendingIntent.FLAG_ALLOW_UNSAFE_IMPLICIT_INTENT
                     )
 
                 leScanner.startScan(listOf(scanFilter), scanSettings, pendingIntent)
@@ -190,7 +189,7 @@ class DckTestRule(
                         override fun onConnectionStateChange(
                             gatt: BluetoothGatt,
                             status: Int,
-                            newState: Int,
+                            newState: Int
                         ) {
                             trySend(GattState(gatt, status, newState))
                         }
@@ -295,7 +294,7 @@ class DckTestRule(
                                 trySend(
                                     intent.getIntExtra(
                                         BluetoothAdapter.EXTRA_STATE,
-                                        BluetoothAdapter.ERROR,
+                                        BluetoothAdapter.ERROR
                                     )
                                 )
                             }
@@ -314,10 +313,12 @@ class DckTestRule(
         val bumbleDevice =
             bluetoothAdapter.getRemoteLeDevice(
                 Utils.BUMBLE_RANDOM_ADDRESS,
-                BluetoothDevice.ADDRESS_TYPE_RANDOM,
+                BluetoothDevice.ADDRESS_TYPE_RANDOM
             )
 
-        withTimeout(TIMEOUT_MS) { connectGatt(bumbleDevice).first { it.state == STATE_CONNECTED } }
+        withTimeout(TIMEOUT_MS) {
+            connectGatt(bumbleDevice).first { it.state == BluetoothProfile.STATE_CONNECTED }
+        }
     }
 
     private fun reset() {

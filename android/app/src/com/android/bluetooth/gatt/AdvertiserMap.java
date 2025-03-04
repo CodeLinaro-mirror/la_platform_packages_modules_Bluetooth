@@ -77,7 +77,7 @@ class AdvertiserMap {
         return mAppAdvertiseStats.get(id);
     }
 
-    /** update the advertiser ID by the register ID */
+    /** update the advertiser ID by the regiseter ID */
     synchronized void setAdvertiserIdByRegId(int regId, int advertiserId) {
         AppAdvertiseStats stats = mAppAdvertiseStats.get(regId);
         if (stats == null) {

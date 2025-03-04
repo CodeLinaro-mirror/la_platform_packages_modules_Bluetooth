@@ -127,11 +127,11 @@ public final class BluetoothKeystoreServiceTest {
         mBluetoothKeystoreService = null;
     }
 
-    private static boolean isPrimaryUser() {
+    private boolean isPrimaryUser() {
         return Binder.getCallingUid() == Process.BLUETOOTH_UID;
     }
 
-    private static void overwriteConfigFile(List<String> data) {
+    private void overwriteConfigFile(List<String> data) {
         try {
             Files.write(Paths.get(CONFIG_FILE_PATH), data);
         } catch (IOException e) {

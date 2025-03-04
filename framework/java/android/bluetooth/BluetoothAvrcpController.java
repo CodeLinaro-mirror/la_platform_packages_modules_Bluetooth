@@ -17,7 +17,6 @@
 package android.bluetooth;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import android.annotation.RequiresNoPermission;
 import android.annotation.RequiresPermission;
@@ -195,7 +194,7 @@ public final class BluetoothAvrcpController implements BluetoothProfile {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return STATE_DISCONNECTED;
+        return BluetoothProfile.STATE_DISCONNECTED;
     }
 
     /**

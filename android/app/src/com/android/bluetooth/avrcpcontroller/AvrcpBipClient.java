@@ -16,14 +16,9 @@
 
 package com.android.bluetooth.avrcpcontroller;
 
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
-import static android.bluetooth.BluetoothProfile.getConnectionStateName;
-
 import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSocket;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -84,7 +79,7 @@ public class AvrcpBipClient {
 
     private final BluetoothDevice mDevice;
     private final int mPsm;
-    private int mState = STATE_DISCONNECTED;
+    private int mState = BluetoothProfile.STATE_DISCONNECTED;
 
     private BluetoothSocket mSocket;
     private BluetoothObexTransport mTransport;
@@ -190,7 +185,7 @@ public class AvrcpBipClient {
      * @return True if connected, False otherwise
      */
     public boolean isConnected() {
-        return getState() == STATE_CONNECTED;
+        return getState() == BluetoothProfile.STATE_CONNECTED;
     }
 
     /**
@@ -252,7 +247,7 @@ public class AvrcpBipClient {
         }
 
         try {
-            setConnectionState(STATE_CONNECTING);
+            setConnectionState(BluetoothProfile.STATE_CONNECTING);
 
             mSocket = mDevice.createL2capSocket(mPsm);
             mSocket.connect();
@@ -266,7 +261,7 @@ public class AvrcpBipClient {
             headerSet = mSession.connect(headerSet);
             int responseCode = headerSet.getResponseCode();
             if (responseCode == ResponseCodes.OBEX_HTTP_OK) {
-                setConnectionState(STATE_CONNECTED);
+                setConnectionState(BluetoothProfile.STATE_CONNECTED);
                 debug("Connection established");
             } else {
                 error("Error connecting, code: " + responseCode);
@@ -283,7 +278,7 @@ public class AvrcpBipClient {
         if (mSession == null) return;
 
         try {
-            setConnectionState(STATE_DISCONNECTING);
+            setConnectionState(BluetoothProfile.STATE_DISCONNECTING);
             mSession.disconnect(null);
             debug("Disconnected from OBEX session");
         } catch (IOException e) {
@@ -293,7 +288,7 @@ public class AvrcpBipClient {
         }
 
         try {
-            setConnectionState(STATE_CONNECTING);
+            setConnectionState(BluetoothProfile.STATE_CONNECTING);
 
             HeaderSet headerSet = new HeaderSet();
             headerSet.setHeader(HeaderSet.TARGET, BLUETOOTH_UUID_AVRCP_COVER_ART);
@@ -301,7 +296,7 @@ public class AvrcpBipClient {
             headerSet = mSession.connect(headerSet);
             int responseCode = headerSet.getResponseCode();
             if (responseCode == ResponseCodes.OBEX_HTTP_OK) {
-                setConnectionState(STATE_CONNECTED);
+                setConnectionState(BluetoothProfile.STATE_CONNECTED);
                 debug("Reconnection established");
             } else {
                 error("Error reconnecting, code: " + responseCode);
@@ -324,7 +319,7 @@ public class AvrcpBipClient {
      */
     private synchronized void disconnect() {
         if (mSession != null) {
-            setConnectionState(STATE_DISCONNECTING);
+            setConnectionState(BluetoothProfile.STATE_DISCONNECTING);
 
             try {
                 mSession.disconnect(null);
@@ -346,7 +341,7 @@ public class AvrcpBipClient {
             mTransport = null;
             mSocket = null;
         }
-        setConnectionState(STATE_DISCONNECTED);
+        setConnectionState(BluetoothProfile.STATE_DISCONNECTED);
     }
 
     private void executeRequest(BipRequest request) {
@@ -428,12 +423,28 @@ public class AvrcpBipClient {
         }
     }
 
+    @VisibleForTesting
+    String getStateName() {
+        int state = getState();
+        switch (state) {
+            case BluetoothProfile.STATE_DISCONNECTED:
+                return "Disconnected";
+            case BluetoothProfile.STATE_CONNECTING:
+                return "Connecting";
+            case BluetoothProfile.STATE_CONNECTED:
+                return "Connected";
+            case BluetoothProfile.STATE_DISCONNECTING:
+                return "Disconnecting";
+        }
+        return "Unknown";
+    }
+
     @Override
     public String toString() {
         return "<AvrcpBipClient"
                 + (" device=" + mDevice)
                 + (" psm=" + mPsm)
-                + (" state=" + getConnectionStateName(getState()))
+                + (" state=" + getStateName())
                 + ">";
     }
 

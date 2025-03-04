@@ -9,9 +9,9 @@ flag {
 }
 
 flag {
-    name: "only_start_scan_during_ble_on"
+    name: "scan_manager_refactor"
     namespace: "bluetooth"
-    description: "Instead of starting scan and gatt in ble_on, only start scan"
+    description: "Refactor scan manager as described in go/scan-manager-refactor"
     bug: "313335632"
 }
 

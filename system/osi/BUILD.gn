@@ -27,6 +27,7 @@ static_library("osi") {
     "src/mutex.cc",
     "src/properties.cc",
     "src/reactor.cc",
+    "src/ringbuffer.cc",
     "src/socket.cc",
 
     # TODO(mcchou): Remove these sources after platform specific
@@ -75,6 +76,7 @@ if (use.test) {
       "test/list_test.cc",
       "test/properties_test.cc",
       "test/reactor_test.cc",
+      "test/ringbuffer_test.cc",
       "test/thread_test.cc",
 
       "test/internal/semaphore_test.cc",

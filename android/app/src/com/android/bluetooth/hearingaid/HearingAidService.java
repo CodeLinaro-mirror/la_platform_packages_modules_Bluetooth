@@ -18,9 +18,6 @@ package com.android.bluetooth.hearingaid;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -209,7 +206,7 @@ public class HearingAidService extends ProfileService {
             return false;
         }
 
-        if (getConnectionPolicy(device) == CONNECTION_POLICY_FORBIDDEN) {
+        if (getConnectionPolicy(device) == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
             return false;
         }
         final ParcelUuid[] featureUuids = mAdapterService.getRemoteUuids(device);
@@ -349,8 +346,8 @@ public class HearingAidService extends ProfileService {
                 return false;
             }
         }
-        if (connectionPolicy != CONNECTION_POLICY_UNKNOWN
-                && connectionPolicy != CONNECTION_POLICY_ALLOWED) {
+        if (connectionPolicy != BluetoothProfile.CONNECTION_POLICY_UNKNOWN
+                && connectionPolicy != BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
             // Otherwise, reject the connection if connectionPolicy is not valid.
             Log.w(TAG, "okToConnect: return false, connectionPolicy=" + connectionPolicy);
             return false;
@@ -455,9 +452,9 @@ public class HearingAidService extends ProfileService {
                 device, BluetoothProfile.HEARING_AID, connectionPolicy)) {
             return false;
         }
-        if (connectionPolicy == CONNECTION_POLICY_ALLOWED) {
+        if (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
             connect(device);
-        } else if (connectionPolicy == CONNECTION_POLICY_FORBIDDEN) {
+        } else if (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
             disconnect(device);
         }
         return true;
@@ -532,7 +529,7 @@ public class HearingAidService extends ProfileService {
         }
         Log.d(TAG, "setActiveDevice: " + device);
         synchronized (mStateMachines) {
-            /* No action needed since this is the same device as previously activated */
+            /* No action needed since this is the same device as previousely activated */
             if (device.equals(mActiveDevice)) {
                 Log.d(TAG, "setActiveDevice: The device is already active. Ignoring.");
                 return true;
@@ -992,7 +989,7 @@ public class HearingAidService extends ProfileService {
         public int getConnectionPolicy(BluetoothDevice device, AttributionSource source) {
             HearingAidService service = getService(source);
             if (service == null) {
-                return CONNECTION_POLICY_UNKNOWN;
+                return BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
             }
 
             service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);

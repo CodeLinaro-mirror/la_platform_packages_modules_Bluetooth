@@ -285,7 +285,7 @@ public class BluetoothOppReceiver extends BroadcastReceiver {
         }
     }
 
-    private static void cancelNotification(Context context, int id) {
+    private void cancelNotification(Context context, int id) {
         NotificationManager notMgr = context.getSystemService(NotificationManager.class);
         if (notMgr == null) {
             return;

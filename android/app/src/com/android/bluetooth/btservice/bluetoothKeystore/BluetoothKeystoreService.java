@@ -246,7 +246,7 @@ public class BluetoothKeystoreService {
         }
     }
 
-    private static boolean isFactoryReset() {
+    private boolean isFactoryReset() {
         return SystemProperties.getBoolean("persist.bluetooth.factoryreset", false);
     }
 
@@ -310,7 +310,7 @@ public class BluetoothKeystoreService {
         cleanupMemory();
     }
 
-    private static void cleanupFile() throws IOException {
+    private void cleanupFile() throws IOException {
         Files.deleteIfExists(Paths.get(CONFIG_CHECKSUM_ENCRYPTION_PATH));
         Files.deleteIfExists(Paths.get(CONFIG_FILE_ENCRYPTION_PATH));
     }
@@ -676,7 +676,7 @@ public class BluetoothKeystoreService {
         return output;
     }
 
-    private static KeyStore getKeyStore() {
+    private KeyStore getKeyStore() {
         KeyStore keyStore = null;
         int counter = 0;
 

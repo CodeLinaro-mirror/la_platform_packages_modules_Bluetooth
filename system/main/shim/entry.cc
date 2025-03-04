@@ -60,7 +60,7 @@ hci::DistanceMeasurementManager* GetDistanceMeasurementManager() {
   return Stack::GetInstance()->GetInstance<hci::DistanceMeasurementManager>();
 }
 
-hal::SnoopLogger* GetSnoopLogger() { return Stack::GetInstance()->GetSnoopLogger(); }
+hal::SnoopLogger* GetSnoopLogger() { return Stack::GetInstance()->GetInstance<hal::SnoopLogger>(); }
 
 lpp::LppOffloadInterface* GetLppOffloadManager() {
   return Stack::GetInstance()->GetInstance<lpp::LppOffloadManager>();

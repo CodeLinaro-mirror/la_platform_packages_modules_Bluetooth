@@ -180,7 +180,7 @@ public class BluetoothMapAppObserver {
                                         + Thread.currentThread().getId()
                                         + " Uri: "
                                         + uri
-                                        + " selfChange: "
+                                        + " selfchange: "
                                         + selfChange);
                         if (uri != null) {
                             handleAccountChanges(uri.getHost());

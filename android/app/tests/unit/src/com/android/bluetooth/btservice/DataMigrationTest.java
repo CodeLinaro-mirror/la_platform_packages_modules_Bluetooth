@@ -172,11 +172,11 @@ public class DataMigrationTest {
         assertThat(mPrefs.getInt(DataMigration.MIGRATION_ATTEMPT_PROPERTY, -1)).isEqualTo(-1);
 
         for (int i = 0; i < DataMigration.MAX_ATTEMPT; i++) {
-            assertThat(DataMigration.incrementMigrationAttempt(mMockContext)).isTrue();
+            assertThat(DataMigration.incrementeMigrationAttempt(mMockContext)).isTrue();
             assertThat(mPrefs.getInt(DataMigration.MIGRATION_ATTEMPT_PROPERTY, -1))
                     .isEqualTo(i + 1);
         }
-        assertThat(DataMigration.incrementMigrationAttempt(mMockContext)).isFalse();
+        assertThat(DataMigration.incrementeMigrationAttempt(mMockContext)).isFalse();
         assertThat(mPrefs.getInt(DataMigration.MIGRATION_ATTEMPT_PROPERTY, -1))
                 .isEqualTo(DataMigration.MAX_ATTEMPT + 1);
 

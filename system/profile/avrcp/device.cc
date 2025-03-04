@@ -23,7 +23,6 @@
 
 #include "abstract_message_loop.h"
 #include "avrcp_common.h"
-#include "btif/include/btif_av.h"
 #include "internal_include/stack_config.h"
 #include "packet/avrcp/avrcp_reject_packet.h"
 #include "packet/avrcp/general_reject_packet.h"
@@ -36,6 +35,13 @@
 #include "packet/avrcp/set_addressed_player.h"
 #include "packet/avrcp/set_player_application_setting_value.h"
 #include "types/raw_address.h"
+
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
+extern bool btif_av_peer_is_connected_sink(const RawAddress& peer_address);
+extern bool btif_av_both_enable(void);
+extern bool btif_av_src_sink_coexist_enabled(void);
 
 template <>
 struct std::formatter<bluetooth::avrcp::PlayState> : enum_formatter<bluetooth::avrcp::PlayState> {};
@@ -84,7 +90,7 @@ void Device::SetBipClientStatus(bool connected) {
 
 bool Device::HasBipClient() const { return has_bip_client_; }
 
-static void filter_cover_art(SongInfo& s) {
+void filter_cover_art(SongInfo& s) {
   for (auto it = s.attributes.begin(); it != s.attributes.end(); it++) {
     if (it->attribute() == Attribute::DEFAULT_COVER_ART) {
       s.attributes.erase(it);
@@ -1389,8 +1395,8 @@ void Device::GetMediaPlayerListResponse(uint8_t label, std::shared_ptr<GetFolder
   send_message(label, true, std::move(builder));
 }
 
-static std::set<AttributeEntry> filter_attributes_requested(const SongInfo& song,
-                                                            const std::vector<Attribute>& attrs) {
+std::set<AttributeEntry> filter_attributes_requested(const SongInfo& song,
+                                                     const std::vector<Attribute>& attrs) {
   std::set<AttributeEntry> result;
   for (const auto& attr : attrs) {
     if (song.attributes.find(attr) != song.attributes.end()) {

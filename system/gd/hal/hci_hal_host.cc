@@ -35,7 +35,6 @@
 #include "hal/hci_hal.h"
 #include "hal/link_clocker.h"
 #include "hal/snoop_logger.h"
-#include "main/shim/entry.h"
 #include "metrics/counter_metrics.h"
 #include "os/mgmt.h"
 #include "os/reactor.h"
@@ -327,7 +326,10 @@ public:
   }
 
 protected:
-  void ListDependencies(ModuleList* list) const { list->add<LinkClocker>(); }
+  void ListDependencies(ModuleList* list) const {
+    list->add<LinkClocker>();
+    list->add<SnoopLogger>();
+  }
 
   void Start() override {
     std::lock_guard<std::mutex> lock(api_mutex_);
@@ -348,7 +350,7 @@ protected:
     hci_incoming_thread_.GetReactor()->ModifyRegistration(reactable_,
                                                           os::Reactor::REACT_ON_READ_ONLY);
     link_clocker_ = GetDependency<LinkClocker>();
-    btsnoop_logger_ = shim::GetSnoopLogger();
+    btsnoop_logger_ = GetDependency<SnoopLogger>();
     log::info("HAL opened successfully");
   }
 

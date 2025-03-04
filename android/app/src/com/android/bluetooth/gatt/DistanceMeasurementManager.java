@@ -50,8 +50,8 @@ public class DistanceMeasurementManager {
     private static final int RSSI_MEDIUM_FREQUENCY_INTERVAL_MS = 1000;
     private static final int RSSI_HIGH_FREQUENCY_INTERVAL_MS = 500;
     private static final int CS_LOW_FREQUENCY_INTERVAL_MS = 5000;
-    private static final int CS_MEDIUM_FREQUENCY_INTERVAL_MS = 200;
-    private static final int CS_HIGH_FREQUENCY_INTERVAL_MS = 100;
+    private static final int CS_MEDIUM_FREQUENCY_INTERVAL_MS = 3000;
+    private static final int CS_HIGH_FREQUENCY_INTERVAL_MS = 200;
 
     // sync with system/gd/hic/DistanceMeasurementManager
     private static final int INVALID_AZIMUTH_ANGLE_DEGREE = -1;
@@ -337,7 +337,7 @@ public class DistanceMeasurementManager {
         return BluetoothStatusCodes.SUCCESS;
     }
 
-    private static void invokeStartFail(
+    private void invokeStartFail(
             IDistanceMeasurementCallback callback, BluetoothDevice device, int reason) {
         try {
             callback.onStartFail(device, reason);
@@ -346,7 +346,7 @@ public class DistanceMeasurementManager {
         }
     }
 
-    private static void invokeOnStopped(
+    private void invokeOnStopped(
             IDistanceMeasurementCallback callback, BluetoothDevice device, int reason) {
         try {
             callback.onStopped(device, reason);
@@ -356,7 +356,7 @@ public class DistanceMeasurementManager {
     }
 
     /** Convert frequency into interval in ms */
-    private static int getIntervalValue(int frequency, int method) {
+    private int getIntervalValue(int frequency, int method) {
         switch (method) {
             case DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_AUTO:
             case DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI:

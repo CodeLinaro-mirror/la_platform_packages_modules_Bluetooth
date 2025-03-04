@@ -29,9 +29,12 @@
 #include "test/headless/headless.h"
 #include "types/raw_address.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 std::promise<tBTM_REMOTE_DEV_NAME> promise_;
 
-static void RemoteNameCallback(const tBTM_REMOTE_DEV_NAME* data) { promise_.set_value(*data); }
+void RemoteNameCallback(const tBTM_REMOTE_DEV_NAME* data) { promise_.set_value(*data); }
 
 int bluetooth::test::headless::Name::Run() {
   if (options_.loop_ < 1) {

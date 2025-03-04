@@ -16,10 +16,6 @@
 
 package com.android.bluetooth.btservice.storage;
 
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -191,9 +187,9 @@ public final class BluetoothDatabaseMigration {
         final List<Integer> allowedValue =
                 new ArrayList<>(
                         Arrays.asList(
-                                CONNECTION_POLICY_UNKNOWN,
-                                CONNECTION_POLICY_FORBIDDEN,
-                                CONNECTION_POLICY_ALLOWED));
+                                BluetoothProfile.CONNECTION_POLICY_UNKNOWN,
+                                BluetoothProfile.CONNECTION_POLICY_FORBIDDEN,
+                                BluetoothProfile.CONNECTION_POLICY_ALLOWED));
         for (Pair<Integer, String> p : CONNECTION_POLICIES) {
             final int policy = cursor.getInt(cursor.getColumnIndexOrThrow(p.second));
             if (allowedValue.contains(policy)) {

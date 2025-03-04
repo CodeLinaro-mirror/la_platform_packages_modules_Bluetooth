@@ -17,10 +17,6 @@
 package com.android.bluetooth.avrcpcontroller;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
 import static java.util.Objects.requireNonNull;
 
@@ -130,7 +126,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     protected final Disconnecting mDisconnecting;
 
     protected int mCoverArtPsm;
-    protected int mMostRecentState = STATE_DISCONNECTED;
+    protected int mMostRecentState = BluetoothProfile.STATE_DISCONNECTED;
 
     private boolean mShouldSendPlayOnFocusRecovery = false;
     private boolean mRemoteControlConnected = false;
@@ -187,7 +183,7 @@ class AvrcpControllerStateMachine extends StateMachine {
 
         mGetFolderList = new GetFolderList();
         addState(mGetFolderList, mConnected);
-        mAudioManager = mAdapterService.getSystemService(AudioManager.class);
+        mAudioManager = service.getSystemService(AudioManager.class);
         mIsVolumeFixed = mAudioManager.isVolumeFixed() || isControllerAbsoluteVolumeEnabled;
 
         setInitialState(mDisconnected);
@@ -260,7 +256,9 @@ class AvrcpControllerStateMachine extends StateMachine {
         ProfileService.println(sb, "Control: " + mRemoteControlConnected);
         ProfileService.println(sb, "Browsing: " + mBrowsingConnected);
         ProfileService.println(
-                sb, "Cover Art: " + (mCoverArtManager.getState(mDevice) == STATE_CONNECTED));
+                sb,
+                "Cover Art: "
+                        + (mCoverArtManager.getState(mDevice) == BluetoothProfile.STATE_CONNECTED));
 
         ProfileService.println(sb, "Addressed Player ID: " + mAddressedPlayerId);
         ProfileService.println(sb, "Browsed Player ID: " + mBrowseTree.getCurrentBrowsedPlayer());
@@ -323,7 +321,7 @@ class AvrcpControllerStateMachine extends StateMachine {
         // Called from "connected" state, which assumes either control or browse is connected
         if (mCoverArtManager != null
                 && mCoverArtPsm != 0
-                && mCoverArtManager.getState(mDevice) != STATE_CONNECTED) {
+                && mCoverArtManager.getState(mDevice) != BluetoothProfile.STATE_CONNECTED) {
             debug("Attempting to connect to AVRCP BIP, psm: " + mCoverArtPsm);
             mCoverArtManager.connect(mDevice, /* psm */ mCoverArtPsm);
         }
@@ -332,7 +330,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     synchronized void refreshCoverArt() {
         if (mCoverArtManager != null
                 && mCoverArtPsm != 0
-                && mCoverArtManager.getState(mDevice) == STATE_CONNECTED) {
+                && mCoverArtManager.getState(mDevice) == BluetoothProfile.STATE_CONNECTED) {
             debug("Attempting to refresh AVRCP BIP OBEX session, psm: " + mCoverArtPsm);
             mCoverArtManager.refreshSession(mDevice);
         }
@@ -417,10 +415,10 @@ class AvrcpControllerStateMachine extends StateMachine {
         @Override
         public void enter() {
             debug("Disconnected: Entered");
-            if (mMostRecentState != STATE_DISCONNECTED) {
+            if (mMostRecentState != BluetoothProfile.STATE_DISCONNECTED) {
                 sendMessage(CLEANUP);
             }
-            broadcastConnectionStateChanged(STATE_DISCONNECTED);
+            broadcastConnectionStateChanged(BluetoothProfile.STATE_DISCONNECTED);
         }
 
         @Override
@@ -450,7 +448,7 @@ class AvrcpControllerStateMachine extends StateMachine {
         @Override
         public void enter() {
             debug("Connecting: Enter Connecting");
-            broadcastConnectionStateChanged(STATE_CONNECTING);
+            broadcastConnectionStateChanged(BluetoothProfile.STATE_CONNECTING);
             transitionTo(mConnected);
         }
     }
@@ -460,8 +458,8 @@ class AvrcpControllerStateMachine extends StateMachine {
 
         @Override
         public void enter() {
-            if (mMostRecentState == STATE_CONNECTING) {
-                broadcastConnectionStateChanged(STATE_CONNECTED);
+            if (mMostRecentState == BluetoothProfile.STATE_CONNECTING) {
+                broadcastConnectionStateChanged(BluetoothProfile.STATE_CONNECTED);
                 mService.getBrowseTree().mRootNode.addChild(mBrowseTree.mRootNode);
                 BluetoothMediaBrowserService.onBrowseNodeChanged(
                         mService.getBrowseTree().mRootNode);
@@ -688,7 +686,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                     mAddressedPlayer = mAvailablePlayerList.get(mAddressedPlayerId);
 
                     // Fetch metadata including the now playing list. The specification claims that
-                    // the player feature bit only indicates if the player *natively* supports a now
+                    // the player feature bit only incidates if the player *natively* supports a now
                     // playing list. However, now playing is mandatory if browsing is supported,
                     // even if the player doesn't support it. A list of one item can be returned
                     // instead.
@@ -804,7 +802,7 @@ class AvrcpControllerStateMachine extends StateMachine {
             }
         }
 
-        private static boolean isHoldableKey(int cmd) {
+        private boolean isHoldableKey(int cmd) {
             return (cmd == AvrcpControllerService.PASS_THRU_CMD_ID_REWIND)
                     || (cmd == AvrcpControllerService.PASS_THRU_CMD_ID_FF);
         }
@@ -815,7 +813,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                     (byte) 1,
                     new byte[] {PlayerApplicationSettings.REPEAT_STATUS},
                     new byte[] {
-                        PlayerApplicationSettings.mapAvrcpPlayerSettingsToBTattribVal(
+                        PlayerApplicationSettings.mapAvrcpPlayerSettingstoBTattribVal(
                                 PlayerApplicationSettings.REPEAT_STATUS, repeatMode)
                     });
         }
@@ -826,7 +824,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                     (byte) 1,
                     new byte[] {PlayerApplicationSettings.SHUFFLE_STATUS},
                     new byte[] {
-                        PlayerApplicationSettings.mapAvrcpPlayerSettingsToBTattribVal(
+                        PlayerApplicationSettings.mapAvrcpPlayerSettingstoBTattribVal(
                                 PlayerApplicationSettings.SHUFFLE_STATUS, shuffleMode)
                     });
         }
@@ -1053,7 +1051,7 @@ class AvrcpControllerStateMachine extends StateMachine {
          * @return true: a new folder in the same scope a new player while fetching contents of a
          *     folder false: other cases, specifically Now Playing while fetching a folder
          */
-        private static boolean shouldAbort(int currentScope, int fetchScope) {
+        private boolean shouldAbort(int currentScope, int fetchScope) {
             if ((currentScope == fetchScope)
                     || (currentScope == AvrcpControllerService.BROWSE_SCOPE_VFS
                             && fetchScope == AvrcpControllerService.BROWSE_SCOPE_PLAYER_LIST)) {
@@ -1194,7 +1192,7 @@ class AvrcpControllerStateMachine extends StateMachine {
             onBrowsingDisconnected();
             mService.getBrowseTree().mRootNode.removeChild(mBrowseTree.mRootNode);
             BluetoothMediaBrowserService.onBrowseNodeChanged(mService.getBrowseTree().mRootNode);
-            broadcastConnectionStateChanged(STATE_DISCONNECTING);
+            broadcastConnectionStateChanged(BluetoothProfile.STATE_DISCONNECTING);
             transitionTo(mDisconnected);
         }
     }
@@ -1278,7 +1276,7 @@ class AvrcpControllerStateMachine extends StateMachine {
         }
     }
 
-    private static int getFocusState() {
+    private int getFocusState() {
         int focusState = AudioManager.ERROR;
         A2dpSinkService a2dpSinkService = A2dpSinkService.getA2dpSinkService();
         if (a2dpSinkService != null) {
@@ -1405,7 +1403,7 @@ class AvrcpControllerStateMachine extends StateMachine {
         if (mMostRecentState == currentState) {
             return;
         }
-        if (currentState == STATE_CONNECTED) {
+        if (currentState == BluetoothProfile.STATE_CONNECTED) {
             MetricsLogger.logProfileConnectionEvent(
                     BluetoothMetricsProto.ProfileId.AVRCP_CONTROLLER);
         }

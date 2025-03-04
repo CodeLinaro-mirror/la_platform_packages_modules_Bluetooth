@@ -27,7 +27,9 @@
 #include "osi/include/osi.h"
 #include "osi/include/wakelock.h"
 #include "osi/semaphore.h"
-#include "stack/include/main_thread.h"
+
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using base::Closure;
 using bluetooth::common::MessageLoopThread;

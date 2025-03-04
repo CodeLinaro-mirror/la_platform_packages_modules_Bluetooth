@@ -671,7 +671,7 @@ public class AdvertiseManager {
         }
     }
 
-    private static void sendToCallback(int advertiserId, CallbackWrapper wrapper) {
+    private void sendToCallback(int advertiserId, CallbackWrapper wrapper) {
         try {
             wrapper.call();
         } catch (RemoteException e) {

@@ -714,7 +714,7 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
             return;
         }
         if (address.startsWith("00:04:48")) {
-            // Polaroid Pogo
+            // Poloroid Pogo
             // Rejects filenames with more than one '.'. Rename to '_'.
             // for example: 'a.b.jpg' -> 'a_b.jpg'
             //              'abc.jpg' NOT CHANGED
@@ -740,7 +740,7 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
                                 + filename
                                 + "\" as \""
                                 + newFilename
-                                + "\" to workaround Polaroid filename quirk");
+                                + "\" to workaround Poloroid filename quirk");
             }
         }
     }

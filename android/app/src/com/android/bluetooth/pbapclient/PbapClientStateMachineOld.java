@@ -43,10 +43,6 @@ package com.android.bluetooth.pbapclient;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothPbapClient;
@@ -71,8 +67,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.IState;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
-
-import com.google.common.util.concurrent.Uninterruptibles;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -122,24 +116,20 @@ class PbapClientStateMachineOld extends StateMachine {
     private PbapClientConnectionHandler mConnectionHandler;
     private HandlerThread mHandlerThread = null;
     private UserManager mUserManager = null;
-    private final HandlerThread mSmHandlerThread;
 
     // mMostRecentState maintains previous state for broadcasting transitions.
-    private int mMostRecentState = STATE_DISCONNECTED;
+    private int mMostRecentState = BluetoothProfile.STATE_DISCONNECTED;
 
-    PbapClientStateMachineOld(
-            PbapClientService svc, BluetoothDevice device, HandlerThread handlerThread) {
-        this(svc, device, null, handlerThread);
+    PbapClientStateMachineOld(PbapClientService svc, BluetoothDevice device) {
+        this(svc, device, null);
     }
 
     @VisibleForTesting
     PbapClientStateMachineOld(
             PbapClientService svc,
             BluetoothDevice device,
-            PbapClientConnectionHandler connectionHandler,
-            HandlerThread handlerThread) {
-        super(TAG, handlerThread.getLooper());
-        mSmHandlerThread = handlerThread;
+            PbapClientConnectionHandler connectionHandler) {
+        super(TAG);
 
         if (Flags.pbapClientStorageRefactor()) {
             Log.w(TAG, "This object is no longer used in this configuration");
@@ -167,8 +157,9 @@ class PbapClientStateMachineOld extends StateMachine {
         @Override
         public void enter() {
             Log.d(TAG, "Enter Disconnected: " + getCurrentMessage().what);
-            onConnectionStateChanged(mCurrentDevice, mMostRecentState, STATE_DISCONNECTED);
-            mMostRecentState = STATE_DISCONNECTED;
+            onConnectionStateChanged(
+                    mCurrentDevice, mMostRecentState, BluetoothProfile.STATE_DISCONNECTED);
+            mMostRecentState = BluetoothProfile.STATE_DISCONNECTED;
             quit();
         }
     }
@@ -178,9 +169,10 @@ class PbapClientStateMachineOld extends StateMachine {
         @Override
         public void enter() {
             Log.d(TAG, "Enter Connecting: " + getCurrentMessage().what);
-            onConnectionStateChanged(mCurrentDevice, mMostRecentState, STATE_CONNECTING);
+            onConnectionStateChanged(
+                    mCurrentDevice, mMostRecentState, BluetoothProfile.STATE_CONNECTING);
             mCurrentDevice.sdpSearch(BluetoothUuid.PBAP_PSE);
-            mMostRecentState = STATE_CONNECTING;
+            mMostRecentState = BluetoothProfile.STATE_CONNECTING;
 
             // Create a separate handler instance and thread for performing
             // connect/download/disconnect operations as they may be time consuming and error prone.
@@ -274,8 +266,9 @@ class PbapClientStateMachineOld extends StateMachine {
         @Override
         public void enter() {
             Log.d(TAG, "Enter Disconnecting: " + getCurrentMessage().what);
-            onConnectionStateChanged(mCurrentDevice, mMostRecentState, STATE_DISCONNECTING);
-            mMostRecentState = STATE_DISCONNECTING;
+            onConnectionStateChanged(
+                    mCurrentDevice, mMostRecentState, BluetoothProfile.STATE_DISCONNECTING);
+            mMostRecentState = BluetoothProfile.STATE_DISCONNECTING;
             PbapClientConnectionHandler connectionHandler = mConnectionHandler;
             if (connectionHandler != null) {
                 connectionHandler
@@ -331,8 +324,9 @@ class PbapClientStateMachineOld extends StateMachine {
         @Override
         public void enter() {
             Log.d(TAG, "Enter Connected: " + getCurrentMessage().what);
-            onConnectionStateChanged(mCurrentDevice, mMostRecentState, STATE_CONNECTED);
-            mMostRecentState = STATE_CONNECTED;
+            onConnectionStateChanged(
+                    mCurrentDevice, mMostRecentState, BluetoothProfile.STATE_CONNECTED);
+            mMostRecentState = BluetoothProfile.STATE_CONNECTED;
             downloadIfReady();
         }
 
@@ -403,7 +397,7 @@ class PbapClientStateMachineOld extends StateMachine {
             Log.w(TAG, "onConnectionStateChanged with invalid device");
             return;
         }
-        if (prevState != state && state == STATE_CONNECTED) {
+        if (prevState != state && state == BluetoothProfile.STATE_CONNECTED) {
             MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.PBAP_CLIENT);
         }
         Log.d(TAG, "Connection state " + device + ": " + prevState + "->" + state);
@@ -442,11 +436,8 @@ class PbapClientStateMachineOld extends StateMachine {
         HandlerThread handlerThread = mHandlerThread;
         if (handlerThread != null) {
             handlerThread.quitSafely();
-            Uninterruptibles.joinUninterruptibly(handlerThread);
             mHandlerThread = null;
         }
-        mSmHandlerThread.quitSafely();
-        Uninterruptibles.joinUninterruptibly(mSmHandlerThread);
         quitNow();
     }
 
@@ -458,16 +449,16 @@ class PbapClientStateMachineOld extends StateMachine {
     public int getConnectionState() {
         IState currentState = getCurrentState();
         if (currentState instanceof Disconnected) {
-            return STATE_DISCONNECTED;
+            return BluetoothProfile.STATE_DISCONNECTED;
         } else if (currentState instanceof Connecting) {
-            return STATE_CONNECTING;
+            return BluetoothProfile.STATE_CONNECTING;
         } else if (currentState instanceof Connected) {
-            return STATE_CONNECTED;
+            return BluetoothProfile.STATE_CONNECTED;
         } else if (currentState instanceof Disconnecting) {
-            return STATE_DISCONNECTING;
+            return BluetoothProfile.STATE_DISCONNECTING;
         }
         Log.w(TAG, "Unknown State");
-        return STATE_DISCONNECTED;
+        return BluetoothProfile.STATE_DISCONNECTED;
     }
 
     public List<BluetoothDevice> getDevicesMatchingConnectionStates(int[] states) {
@@ -490,14 +481,14 @@ class PbapClientStateMachineOld extends StateMachine {
 
     public int getConnectionState(BluetoothDevice device) {
         if (device == null) {
-            return STATE_DISCONNECTED;
+            return BluetoothProfile.STATE_DISCONNECTED;
         }
         synchronized (mLock) {
             if (device.equals(mCurrentDevice)) {
                 return getConnectionState();
             }
         }
-        return STATE_DISCONNECTED;
+        return BluetoothProfile.STATE_DISCONNECTED;
     }
 
     public BluetoothDevice getDevice() {
@@ -505,7 +496,7 @@ class PbapClientStateMachineOld extends StateMachine {
          * Disconnected is the only state where device can change, and to prevent the race
          * condition of reporting a valid device while disconnected fix the report here.  Note that
          * Synchronization of the state and device is not possible with current state machine
-         * design since the actual Transition happens sometime after the transitionTo method.
+         * desingn since the actual Transition happens sometime after the transitionTo method.
          */
         if (getCurrentState() instanceof Disconnected) {
             return null;

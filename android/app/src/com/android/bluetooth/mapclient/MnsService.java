@@ -16,9 +16,8 @@
 
 package com.android.bluetooth.mapclient;
 
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSocket;
 import android.util.Log;
 
@@ -119,15 +118,15 @@ public class MnsService {
             if (stateMachine == null) {
                 Log.e(
                         TAG,
-                        "Error: NO StateMachine for device: "
+                        "Error: NO statemachine for device: "
                                 + device
                                 + " (name: "
                                 + Utils.getName(device));
                 return false;
-            } else if (stateMachine.getState() != STATE_CONNECTED) {
+            } else if (stateMachine.getState() != BluetoothProfile.STATE_CONNECTED) {
                 Log.e(
                         TAG,
-                        "Error: StateMachine for device: "
+                        "Error: statemachine for device: "
                                 + device
                                 + " (name: "
                                 + Utils.getName(device)

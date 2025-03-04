@@ -22,8 +22,6 @@ import android.annotation.SuppressLint;
 
 import androidx.test.runner.AndroidJUnit4;
 
-import com.google.common.testing.EqualsTester;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -36,8 +34,7 @@ import java.util.TimeZone;
 @RunWith(AndroidJUnit4.class)
 public class BipDatetimeTest {
 
-    private static Date makeDate(
-            int month, int day, int year, int hours, int min, int sec, TimeZone tz) {
+    private Date makeDate(int month, int day, int year, int hours, int min, int sec, TimeZone tz) {
         Calendar.Builder builder = new Calendar.Builder();
 
         /* Note that Calendar months are zero-based in Java framework */
@@ -47,12 +44,11 @@ public class BipDatetimeTest {
         return builder.build().getTime();
     }
 
-    private static Date makeDate(int month, int day, int year, int hours, int min, int sec) {
+    private Date makeDate(int month, int day, int year, int hours, int min, int sec) {
         return makeDate(month, day, year, hours, min, sec, null);
     }
 
-    private static String makeTzAdjustedString(
-            int month, int day, int year, int hours, int min, int sec) {
+    private String makeTzAdjustedString(int month, int day, int year, int hours, int min, int sec) {
         Calendar cal = Calendar.getInstance();
         cal.setTime(makeDate(month, day, year, hours, min, sec));
         cal.setTimeZone(TimeZone.getDefault());
@@ -68,8 +64,7 @@ public class BipDatetimeTest {
     }
 
     @SuppressLint("UndefinedEquals")
-    private static void testParse(
-            String date, Date expectedDate, boolean isUtc, String expectedStr) {
+    private void testParse(String date, Date expectedDate, boolean isUtc, String expectedStr) {
         BipDateTime bipDateTime = new BipDateTime(date);
         assertThat(bipDateTime.getTime()).isEqualTo(expectedDate);
         assertThat(bipDateTime.isUtc()).isEqualTo(isUtc);
@@ -77,7 +72,7 @@ public class BipDatetimeTest {
     }
 
     @SuppressLint("UndefinedEquals")
-    private static void testCreate(Date date, String dateStr) {
+    private void testCreate(Date date, String dateStr) {
         BipDateTime bipDate = new BipDateTime(date);
         assertThat(bipDate.getTime()).isEqualTo(date);
         assertThat(bipDate.isUtc()).isTrue();
@@ -215,7 +210,29 @@ public class BipDatetimeTest {
     }
 
     @Test
-    public void testEquals() {
+    public void testEquals_withSameInstance() {
+        TimeZone utc = TimeZone.getTimeZone("UTC");
+        utc.setRawOffset(0);
+
+        BipDateTime bipDate = new BipDateTime(makeDate(1, 1, 2000, 6, 1, 15, utc));
+
+        assertThat(bipDate).isEqualTo(bipDate);
+    }
+
+    @Test
+    @SuppressLint("TruthIncompatibleType") // That the point of this test
+    public void testEquals_withDifferentClass() {
+        TimeZone utc = TimeZone.getTimeZone("UTC");
+        utc.setRawOffset(0);
+
+        BipDateTime bipDate = new BipDateTime(makeDate(1, 1, 2000, 6, 1, 15, utc));
+        String notBipDate = "notBipDate";
+
+        assertThat(bipDate).isNotEqualTo(notBipDate);
+    }
+
+    @Test
+    public void testEquals_withSameInfo() {
         TimeZone utc = TimeZone.getTimeZone("UTC");
         utc.setRawOffset(0);
         Date date = makeDate(1, 1, 2000, 6, 1, 15, utc);
@@ -223,11 +240,6 @@ public class BipDatetimeTest {
         BipDateTime bipDate = new BipDateTime(date);
         BipDateTime bipDateEqual = new BipDateTime(date);
 
-        String notBipDate = "notBipDate";
-
-        new EqualsTester()
-                .addEqualityGroup(bipDate, bipDate, bipDateEqual)
-                .addEqualityGroup(notBipDate)
-                .testEquals();
+        assertThat(bipDate).isEqualTo(bipDateEqual);
     }
 }

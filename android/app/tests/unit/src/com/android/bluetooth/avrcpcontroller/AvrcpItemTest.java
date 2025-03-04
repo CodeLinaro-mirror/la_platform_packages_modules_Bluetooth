@@ -20,6 +20,7 @@ import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothDevice;
 import android.net.Uri;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
@@ -27,8 +28,6 @@ import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 
 import androidx.test.runner.AndroidJUnit4;
-
-import com.google.common.testing.EqualsTester;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -602,15 +601,33 @@ public final class AvrcpItemTest {
     }
 
     @Test
-    public void equals() {
-        AvrcpItem item = new AvrcpItem.Builder().build();
-        AvrcpItem itemEqual = new AvrcpItem.Builder().build();
+    public void equals_withItself() {
+        AvrcpItem.Builder builder = new AvrcpItem.Builder();
 
+        AvrcpItem item = builder.build();
+
+        assertThat(item).isEqualTo(item);
+    }
+
+    @Test
+    @SuppressLint("TruthIncompatibleType") // That the point of this test
+    public void equals_withDifferentInstance() {
+        AvrcpItem.Builder builder = new AvrcpItem.Builder();
         String notAvrcpItem = "notAvrcpItem";
 
-        new EqualsTester()
-                .addEqualityGroup(item, item, itemEqual)
-                .addEqualityGroup(notAvrcpItem)
-                .testEquals();
+        AvrcpItem item = builder.build();
+
+        assertThat(item).isNotEqualTo(notAvrcpItem);
+    }
+
+    @Test
+    public void equals_withItemContainingSameInfo() {
+        AvrcpItem.Builder builder = new AvrcpItem.Builder();
+        AvrcpItem.Builder builderEqual = new AvrcpItem.Builder();
+
+        AvrcpItem item = builder.build();
+        AvrcpItem itemEqual = builderEqual.build();
+
+        assertThat(item).isEqualTo(itemEqual);
     }
 }

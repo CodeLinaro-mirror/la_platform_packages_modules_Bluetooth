@@ -33,12 +33,6 @@ package com.android.bluetooth.hfpclient;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 import static android.content.pm.PackageManager.FEATURE_WATCH;
 
 import static java.util.Objects.requireNonNull;
@@ -887,7 +881,7 @@ public class HeadsetClientStateMachine extends StateMachine {
         return features;
     }
 
-    private static boolean isSupported(int bitfield, int mask) {
+    private boolean isSupported(int bitfield, int mask) {
         return (bitfield & mask) == mask;
     }
 
@@ -1059,13 +1053,21 @@ public class HeadsetClientStateMachine extends StateMachine {
             removeMessages(QUERY_CURRENT_CALLS);
 
             if (mPrevState == mConnecting) {
-                broadcastConnectionState(mCurrentDevice, STATE_DISCONNECTED, STATE_CONNECTING);
+                broadcastConnectionState(
+                        mCurrentDevice,
+                        BluetoothProfile.STATE_DISCONNECTED,
+                        BluetoothProfile.STATE_CONNECTING);
             } else if (mPrevState == mConnected || mPrevState == mAudioOn) {
-                broadcastConnectionState(mCurrentDevice, STATE_DISCONNECTED, STATE_CONNECTED);
+                broadcastConnectionState(
+                        mCurrentDevice,
+                        BluetoothProfile.STATE_DISCONNECTED,
+                        BluetoothProfile.STATE_CONNECTED);
             } else if (Flags.hfpClientDisconnectingState()) {
                 if (mPrevState == mDisconnecting) {
                     broadcastConnectionState(
-                            mCurrentDevice, STATE_DISCONNECTED, STATE_DISCONNECTING);
+                            mCurrentDevice,
+                            BluetoothProfile.STATE_DISCONNECTED,
+                            BluetoothProfile.STATE_DISCONNECTING);
                 }
             } else if (mPrevState != null) {
                 // null is the default state before Disconnected
@@ -1095,7 +1097,10 @@ public class HeadsetClientStateMachine extends StateMachine {
                     BluetoothDevice device = (BluetoothDevice) message.obj;
                     if (!mNativeInterface.connect(device)) {
                         // No state transition is involved, fire broadcast immediately
-                        broadcastConnectionState(device, STATE_DISCONNECTED, STATE_DISCONNECTED);
+                        broadcastConnectionState(
+                                device,
+                                BluetoothProfile.STATE_DISCONNECTED,
+                                BluetoothProfile.STATE_DISCONNECTED);
                         break;
                     }
                     mCurrentDevice = device;
@@ -1147,7 +1152,10 @@ public class HeadsetClientStateMachine extends StateMachine {
                         mNativeInterface.disconnect(device);
                         // the other profile connection should be initiated
                         // No state transition is involved, fire broadcast immediately
-                        broadcastConnectionState(device, STATE_DISCONNECTED, STATE_DISCONNECTED);
+                        broadcastConnectionState(
+                                device,
+                                BluetoothProfile.STATE_DISCONNECTED,
+                                BluetoothProfile.STATE_DISCONNECTED);
                     }
                     break;
                 case HeadsetClientHalConstants.CONNECTION_STATE_CONNECTING:
@@ -1175,7 +1183,10 @@ public class HeadsetClientStateMachine extends StateMachine {
             // the only transition is when connection attempt is initiated.
             sendMessageDelayed(CONNECTING_TIMEOUT, CONNECTING_TIMEOUT_MS);
             if (mPrevState == mDisconnected) {
-                broadcastConnectionState(mCurrentDevice, STATE_CONNECTING, STATE_DISCONNECTED);
+                broadcastConnectionState(
+                        mCurrentDevice,
+                        BluetoothProfile.STATE_CONNECTING,
+                        BluetoothProfile.STATE_DISCONNECTED);
             } else {
                 String prevStateName = mPrevState == null ? "null" : mPrevState.getName();
                 error(
@@ -1346,8 +1357,13 @@ public class HeadsetClientStateMachine extends StateMachine {
                         warn("incoming connection event, device: " + device);
                         // No state transition is involved, fire broadcast immediately
                         broadcastConnectionState(
-                                mCurrentDevice, STATE_DISCONNECTED, STATE_CONNECTING);
-                        broadcastConnectionState(device, STATE_CONNECTING, STATE_DISCONNECTED);
+                                mCurrentDevice,
+                                BluetoothProfile.STATE_DISCONNECTED,
+                                BluetoothProfile.STATE_CONNECTING);
+                        broadcastConnectionState(
+                                device,
+                                BluetoothProfile.STATE_CONNECTING,
+                                BluetoothProfile.STATE_DISCONNECTED);
 
                         mCurrentDevice = device;
                     }
@@ -1382,7 +1398,10 @@ public class HeadsetClientStateMachine extends StateMachine {
             mCommandedSpeakerVolume = -1;
 
             if (mPrevState == mConnecting) {
-                broadcastConnectionState(mCurrentDevice, STATE_CONNECTED, STATE_CONNECTING);
+                broadcastConnectionState(
+                        mCurrentDevice,
+                        BluetoothProfile.STATE_CONNECTED,
+                        BluetoothProfile.STATE_CONNECTING);
                 if (mHeadsetService != null) {
                     mHeadsetService.updateInbandRinging(mCurrentDevice, true);
                 }
@@ -1951,7 +1970,10 @@ public class HeadsetClientStateMachine extends StateMachine {
                             + ", message="
                             + getMessageName(getCurrentMessage().what));
             if (mPrevState == mConnected || mPrevState == mAudioOn) {
-                broadcastConnectionState(mCurrentDevice, STATE_DISCONNECTING, STATE_CONNECTED);
+                broadcastConnectionState(
+                        mCurrentDevice,
+                        BluetoothProfile.STATE_DISCONNECTING,
+                        BluetoothProfile.STATE_CONNECTED);
             } else {
                 String prevStateName = mPrevState == null ? "null" : mPrevState.getName();
                 error(
@@ -1967,7 +1989,7 @@ public class HeadsetClientStateMachine extends StateMachine {
             debug("Disconnecting: Process message: " + message.what);
 
             switch (message.what) {
-                    // Deferring messages as state machine objects are meant to be reused and after
+                    // Defering messages as state machine objects are meant to be reused and after
                     // disconnect is complete we want honor other message requests
                 case CONNECT:
                 case CONNECT_AUDIO:
@@ -2172,24 +2194,24 @@ public class HeadsetClientStateMachine extends StateMachine {
 
     public synchronized int getConnectionState(BluetoothDevice device) {
         if (device == null || !device.equals(mCurrentDevice)) {
-            return STATE_DISCONNECTED;
+            return BluetoothProfile.STATE_DISCONNECTED;
         }
 
         IState currentState = getCurrentState();
         if (currentState == mConnecting) {
-            return STATE_CONNECTING;
+            return BluetoothProfile.STATE_CONNECTING;
         }
 
         if (currentState == mConnected || currentState == mAudioOn) {
-            return STATE_CONNECTED;
+            return BluetoothProfile.STATE_CONNECTED;
         }
 
         if (Flags.hfpClientDisconnectingState()) {
             if (currentState == mDisconnecting) {
-                return STATE_DISCONNECTING;
+                return BluetoothProfile.STATE_DISCONNECTING;
             }
         }
-        return STATE_DISCONNECTED;
+        return BluetoothProfile.STATE_DISCONNECTED;
     }
 
     @VisibleForTesting
@@ -2286,7 +2308,7 @@ public class HeadsetClientStateMachine extends StateMachine {
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
 
         // add feature extras when connected
-        if (newState == STATE_CONNECTED) {
+        if (newState == BluetoothProfile.STATE_CONNECTED) {
             if ((mPeerFeatures & HeadsetClientHalConstants.PEER_FEAT_3WAY)
                     == HeadsetClientHalConstants.PEER_FEAT_3WAY) {
                 intent.putExtra(BluetoothHeadsetClient.EXTRA_AG_FEATURE_3WAY_CALLING, true);
@@ -2374,8 +2396,8 @@ public class HeadsetClientStateMachine extends StateMachine {
         // it is likely that our SDP has not completed and peer is initiating
         // the
         // connection. Allow this connection, provided the device is bonded
-        if ((CONNECTION_POLICY_FORBIDDEN < connectionPolicy)
-                || ((CONNECTION_POLICY_UNKNOWN == connectionPolicy)
+        if ((BluetoothProfile.CONNECTION_POLICY_FORBIDDEN < connectionPolicy)
+                || ((BluetoothProfile.CONNECTION_POLICY_UNKNOWN == connectionPolicy)
                         && (mAdapterService.getBondState(device) != BluetoothDevice.BOND_NONE))) {
             ret = true;
         }
@@ -2495,7 +2517,7 @@ public class HeadsetClientStateMachine extends StateMachine {
         return mAudioRouteAllowed;
     }
 
-    private static String createMaskString(BluetoothSinkAudioPolicy policies) {
+    private String createMaskString(BluetoothSinkAudioPolicy policies) {
         StringBuilder mask = new StringBuilder();
         mask.append(BluetoothSinkAudioPolicy.HFP_SET_SINK_AUDIO_POLICY_ID);
         mask.append(",").append(policies.getCallEstablishPolicy());
@@ -2560,7 +2582,7 @@ public class HeadsetClientStateMachine extends StateMachine {
     }
 
     /** handles the value of {@link BluetoothSinkAudioPolicy} from system property */
-    private static int getAudioPolicySystemProp(String propKey) {
+    private int getAudioPolicySystemProp(String propKey) {
         int mProp = SystemProperties.getInt(propKey, BluetoothSinkAudioPolicy.POLICY_UNCONFIGURED);
         if (mProp < BluetoothSinkAudioPolicy.POLICY_UNCONFIGURED
                 || mProp > BluetoothSinkAudioPolicy.POLICY_NOT_ALLOWED) {

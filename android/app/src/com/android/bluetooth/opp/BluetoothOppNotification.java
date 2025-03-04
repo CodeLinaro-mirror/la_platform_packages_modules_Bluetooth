@@ -362,7 +362,7 @@ class BluetoothOppNotification {
                                 + item.id
                                 + "; batchID="
                                 + batchID
-                                + "; totalCurrent"
+                                + "; totoalCurrent"
                                 + item.totalCurrent
                                 + "; totalTotal="
                                 + item.totalTotal);
@@ -615,8 +615,7 @@ class BluetoothOppNotification {
             }
         }
 
-        // When removing flag oppRemoveEmptyGroupNotification, remove the summary ID too.
-        if (!Flags.oppRemoveEmptyGroupNotification() && inboundNum > 0 && outboundNum > 0) {
+        if (inboundNum > 0 && outboundNum > 0) {
             Notification.Builder b =
                     new Notification.Builder(mContext, OPP_NOTIFICATION_CHANNEL)
                             .setGroup(NOTIFICATION_GROUP_KEY_TRANSFER_COMPLETE)
@@ -632,6 +631,11 @@ class BluetoothOppNotification {
                             .setLocalOnly(true);
 
             mNotificationMgr.notify(NOTIFICATION_ID_COMPLETE_SUMMARY, b.build());
+        } else if (Flags.oppRemoveEmptyGroupNotification() && inboundNum == 0 && outboundNum == 0) {
+            if (mNotificationMgr != null) {
+                mNotificationMgr.cancel(NOTIFICATION_ID_COMPLETE_SUMMARY);
+                Log.v(TAG, "empty group summary notification was removed.");
+            }
         }
     }
 

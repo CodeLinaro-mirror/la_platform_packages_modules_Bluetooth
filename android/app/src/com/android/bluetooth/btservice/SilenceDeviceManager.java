@@ -17,7 +17,6 @@
 package com.android.bluetooth.btservice;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -136,13 +135,13 @@ public class SilenceDeviceManager {
                     int prevState = msg.arg1;
                     int nextState = msg.arg2;
 
-                    if (nextState == STATE_CONNECTED) {
+                    if (nextState == BluetoothProfile.STATE_CONNECTED) {
                         // enter connected state
                         addConnectedDevice(device, BluetoothProfile.A2DP);
                         if (!mSilenceDevices.containsKey(device)) {
                             mSilenceDevices.put(device, false);
                         }
-                    } else if (prevState == STATE_CONNECTED) {
+                    } else if (prevState == BluetoothProfile.STATE_CONNECTED) {
                         // exiting from connected state
                         removeConnectedDevice(device, BluetoothProfile.A2DP);
                         if (!isBluetoothAudioConnected(device)) {
@@ -157,13 +156,13 @@ public class SilenceDeviceManager {
                     int prev = msg.arg1;
                     int next = msg.arg2;
 
-                    if (next == STATE_CONNECTED) {
+                    if (next == BluetoothProfile.STATE_CONNECTED) {
                         // enter connected state
                         addConnectedDevice(bluetoothDevice, BluetoothProfile.HEADSET);
                         if (!mSilenceDevices.containsKey(bluetoothDevice)) {
                             mSilenceDevices.put(bluetoothDevice, false);
                         }
-                    } else if (prev == STATE_CONNECTED) {
+                    } else if (prev == BluetoothProfile.STATE_CONNECTED) {
                         // exiting from connected state
                         removeConnectedDevice(bluetoothDevice, BluetoothProfile.HEADSET);
                         if (!isBluetoothAudioConnected(bluetoothDevice)) {

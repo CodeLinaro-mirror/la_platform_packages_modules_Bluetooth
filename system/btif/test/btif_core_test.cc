@@ -57,6 +57,9 @@
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 namespace bluetooth::testing {
 void set_hal_cbacks(bt_callbacks_t* callbacks);
 }  // namespace bluetooth::testing
@@ -253,7 +256,7 @@ protected:
 };
 
 std::promise<int> promise0;
-static void callback0(int val) { promise0.set_value(val); }
+void callback0(int val) { promise0.set_value(val); }
 
 TEST_F(BtifCoreTest, test_nop) {}
 

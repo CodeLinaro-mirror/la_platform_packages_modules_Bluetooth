@@ -32,6 +32,9 @@
 #include "le_audio_types.h"
 #include "stack/include/bt_types.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 using bluetooth::le_audio::types::hdl_pair;
 
 namespace bluetooth::le_audio {
@@ -65,8 +68,8 @@ static constexpr size_t LEAUDIO_STORAGE_HANDLES_ENTRIES_SZ =
         sizeof(uint16_t) /*ccc handle*/ + sizeof(uint16_t) /*available context type handle*/ +
         sizeof(uint16_t) /*ccc handle*/ + sizeof(uint16_t) /* tmas handle */;
 
-static bool serializePacs(const bluetooth::le_audio::types::PublishedAudioCapabilities& pacs,
-                          std::vector<uint8_t>& out) {
+bool serializePacs(const bluetooth::le_audio::types::PublishedAudioCapabilities& pacs,
+                   std::vector<uint8_t>& out) {
   auto num_of_pacs = pacs.size();
   if (num_of_pacs == 0 || (num_of_pacs > std::numeric_limits<uint8_t>::max())) {
     log::warn("No pacs available");
@@ -159,9 +162,8 @@ bool SerializeSourcePacs(const bluetooth::le_audio::LeAudioDevice* leAudioDevice
   return serializePacs(leAudioDevice->src_pacs_, out);
 }
 
-static bool deserializePacs(LeAudioDevice* leAudioDevice,
-                            types::PublishedAudioCapabilities& pacs_db,
-                            const std::vector<uint8_t>& in) {
+bool deserializePacs(LeAudioDevice* leAudioDevice, types::PublishedAudioCapabilities& pacs_db,
+                     const std::vector<uint8_t>& in) {
   if (in.size() < LEAUDIO_STORAGE_HEADER_WITH_ENTRIES_SZ + LEAUDIO_PACS_ENTRY_SZ) {
     log::warn("There is not single PACS stored");
     return false;
@@ -360,19 +362,11 @@ bool SerializeHandles(const LeAudioDevice* leAudioDevice, std::vector<uint8_t>& 
   UINT16_TO_STREAM(ptr, leAudioDevice->ctp_hdls_.val_hdl);
   UINT16_TO_STREAM(ptr, leAudioDevice->ctp_hdls_.ccc_hdl);
 
-  UINT16_TO_STREAM(ptr, leAudioDevice->audio_locations_.sink
-                                ? leAudioDevice->audio_locations_.sink->handles.val_hdl
-                                : 0);
-  UINT16_TO_STREAM(ptr, leAudioDevice->audio_locations_.sink
-                                ? leAudioDevice->audio_locations_.sink->handles.ccc_hdl
-                                : 0);
+  UINT16_TO_STREAM(ptr, leAudioDevice->snk_audio_locations_hdls_.val_hdl);
+  UINT16_TO_STREAM(ptr, leAudioDevice->snk_audio_locations_hdls_.ccc_hdl);
 
-  UINT16_TO_STREAM(ptr, leAudioDevice->audio_locations_.source
-                                ? leAudioDevice->audio_locations_.source->handles.val_hdl
-                                : 0);
-  UINT16_TO_STREAM(ptr, leAudioDevice->audio_locations_.source
-                                ? leAudioDevice->audio_locations_.source->handles.ccc_hdl
-                                : 0);
+  UINT16_TO_STREAM(ptr, leAudioDevice->src_audio_locations_hdls_.val_hdl);
+  UINT16_TO_STREAM(ptr, leAudioDevice->src_audio_locations_hdls_.ccc_hdl);
 
   UINT16_TO_STREAM(ptr, leAudioDevice->audio_supp_cont_hdls_.val_hdl);
   UINT16_TO_STREAM(ptr, leAudioDevice->audio_supp_cont_hdls_.ccc_hdl);
@@ -412,26 +406,21 @@ bool DeserializeHandles(LeAudioDevice* leAudioDevice, const std::vector<uint8_t>
   log::verbose("ctp.val_hdl: 0x{:04x}, ctp.ccc_hdl: 0x{:04x}", leAudioDevice->ctp_hdls_.val_hdl,
                leAudioDevice->ctp_hdls_.ccc_hdl);
 
-  uint16_t val_hdl, ccc_hdl;
-  STREAM_TO_UINT16(val_hdl, ptr);
-  STREAM_TO_UINT16(ccc_hdl, ptr);
+  STREAM_TO_UINT16(leAudioDevice->snk_audio_locations_hdls_.val_hdl, ptr);
+  STREAM_TO_UINT16(leAudioDevice->snk_audio_locations_hdls_.ccc_hdl, ptr);
   log::verbose(
-          "snk_audio_locations_hdls_.val_hdl: 0x{:04x},snk_audio_locations_hdls_.ccc_hdl: 0x{:04x}",
-          val_hdl, ccc_hdl);
-  if (val_hdl) {
-    leAudioDevice->audio_locations_.sink.emplace(hdl_pair(val_hdl, ccc_hdl),
-                                                 types::AudioLocations(0));
-  }
+          "snk_audio_locations_hdls_.val_hdl: "
+          "0x{:04x},snk_audio_locations_hdls_.ccc_hdl: 0x{:04x}",
+          leAudioDevice->snk_audio_locations_hdls_.val_hdl,
+          leAudioDevice->snk_audio_locations_hdls_.ccc_hdl);
 
-  STREAM_TO_UINT16(val_hdl, ptr);
-  STREAM_TO_UINT16(ccc_hdl, ptr);
+  STREAM_TO_UINT16(leAudioDevice->src_audio_locations_hdls_.val_hdl, ptr);
+  STREAM_TO_UINT16(leAudioDevice->src_audio_locations_hdls_.ccc_hdl, ptr);
   log::verbose(
-          "src_audio_locations_hdls_.val_hdl: 0x{:04x},src_audio_locations_hdls_.ccc_hdl: 0x{:04x}",
-          val_hdl, ccc_hdl);
-  if (val_hdl) {
-    leAudioDevice->audio_locations_.source.emplace(hdl_pair(val_hdl, ccc_hdl),
-                                                   types::AudioLocations(0));
-  }
+          "src_audio_locations_hdls_.val_hdl: "
+          "0x{:04x},src_audio_locations_hdls_.ccc_hdl: 0x{:04x}",
+          leAudioDevice->src_audio_locations_hdls_.val_hdl,
+          leAudioDevice->src_audio_locations_hdls_.ccc_hdl);
 
   STREAM_TO_UINT16(leAudioDevice->audio_supp_cont_hdls_.val_hdl, ptr);
   STREAM_TO_UINT16(leAudioDevice->audio_supp_cont_hdls_.ccc_hdl, ptr);

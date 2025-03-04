@@ -80,18 +80,18 @@ class AdvertiseHelper {
 
             byte[] manufacturerData = data.getManufacturerSpecificData().get(manufacturerId);
             int dataLen = 2 + (manufacturerData == null ? 0 : manufacturerData.length);
-            byte[] concatenated = new byte[dataLen];
+            byte[] concated = new byte[dataLen];
             // First two bytes are manufacturer id in little-endian.
-            concatenated[0] = (byte) (manufacturerId & 0xFF);
-            concatenated[1] = (byte) ((manufacturerId >> 8) & 0xFF);
+            concated[0] = (byte) (manufacturerId & 0xFF);
+            concated[1] = (byte) ((manufacturerId >> 8) & 0xFF);
             if (manufacturerData != null) {
-                System.arraycopy(manufacturerData, 0, concatenated, 2, manufacturerData.length);
+                System.arraycopy(manufacturerData, 0, concated, 2, manufacturerData.length);
             }
 
-            check_length(MANUFACTURER_SPECIFIC_DATA, concatenated.length + 1);
-            ret.write(concatenated.length + 1);
+            check_length(MANUFACTURER_SPECIFIC_DATA, concated.length + 1);
+            ret.write(concated.length + 1);
             ret.write(MANUFACTURER_SPECIFIC_DATA);
-            ret.write(concatenated, 0, concatenated.length);
+            ret.write(concated, 0, concated.length);
         }
 
         if (data.getIncludeTxPowerLevel()) {
@@ -147,29 +147,29 @@ class AdvertiseHelper {
                 int uuidLen = uuid.length;
 
                 int dataLen = uuidLen + (serviceData == null ? 0 : serviceData.length);
-                byte[] concatenated = new byte[dataLen];
+                byte[] concated = new byte[dataLen];
 
-                System.arraycopy(uuid, 0, concatenated, 0, uuidLen);
+                System.arraycopy(uuid, 0, concated, 0, uuidLen);
 
                 if (serviceData != null) {
-                    System.arraycopy(serviceData, 0, concatenated, uuidLen, serviceData.length);
+                    System.arraycopy(serviceData, 0, concated, uuidLen, serviceData.length);
                 }
 
                 if (uuid.length == BluetoothUuid.UUID_BYTES_16_BIT) {
-                    check_length(SERVICE_DATA_16_BIT_UUID, concatenated.length + 1);
-                    ret.write(concatenated.length + 1);
+                    check_length(SERVICE_DATA_16_BIT_UUID, concated.length + 1);
+                    ret.write(concated.length + 1);
                     ret.write(SERVICE_DATA_16_BIT_UUID);
-                    ret.write(concatenated, 0, concatenated.length);
+                    ret.write(concated, 0, concated.length);
                 } else if (uuid.length == BluetoothUuid.UUID_BYTES_32_BIT) {
-                    check_length(SERVICE_DATA_32_BIT_UUID, concatenated.length + 1);
-                    ret.write(concatenated.length + 1);
+                    check_length(SERVICE_DATA_32_BIT_UUID, concated.length + 1);
+                    ret.write(concated.length + 1);
                     ret.write(SERVICE_DATA_32_BIT_UUID);
-                    ret.write(concatenated, 0, concatenated.length);
+                    ret.write(concated, 0, concated.length);
                 } else /*if (uuid.length == BluetoothUuid.UUID_BYTES_128_BIT)*/ {
-                    check_length(SERVICE_DATA_128_BIT_UUID, concatenated.length + 1);
-                    ret.write(concatenated.length + 1);
+                    check_length(SERVICE_DATA_128_BIT_UUID, concated.length + 1);
+                    ret.write(concated.length + 1);
                     ret.write(SERVICE_DATA_128_BIT_UUID);
-                    ret.write(concatenated, 0, concatenated.length);
+                    ret.write(concated, 0, concated.length);
                 }
             }
         }

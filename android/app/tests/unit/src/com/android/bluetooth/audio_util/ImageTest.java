@@ -124,7 +124,7 @@ public class ImageTest {
         return BitmapFactory.decodeStream(imageInputStream);
     }
 
-    private static MediaMetadata getMediaMetadataWithoutArt() {
+    private MediaMetadata getMediaMetadataWithoutArt() {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_TITLE, "BT Test Song")
@@ -134,7 +134,7 @@ public class ImageTest {
         return builder.build();
     }
 
-    private static MediaMetadata getMediaMetadataWithBitmap(String field, Bitmap image) {
+    private MediaMetadata getMediaMetadataWithBitmap(String field, Bitmap image) {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_TITLE, "BT Test Song")
@@ -145,7 +145,7 @@ public class ImageTest {
         return builder.build();
     }
 
-    private static MediaMetadata getMediaMetadataWithUri(String field, String uri) {
+    private MediaMetadata getMediaMetadataWithUri(String field, String uri) {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_TITLE, "BT Test Song")
@@ -156,7 +156,7 @@ public class ImageTest {
         return builder.build();
     }
 
-    private static MediaDescription getMediaDescriptionWithoutArt() {
+    private MediaDescription getMediaDescriptionWithoutArt() {
         MediaDescription.Builder builder =
                 new MediaDescription.Builder()
                         .setTitle("BT Test Song")
@@ -164,7 +164,7 @@ public class ImageTest {
         return builder.build();
     }
 
-    private static MediaDescription getMediaDescriptionWithBitmap(Bitmap image) {
+    private MediaDescription getMediaDescriptionWithBitmap(Bitmap image) {
         MediaDescription.Builder builder =
                 new MediaDescription.Builder()
                         .setTitle("BT Test Song")
@@ -173,7 +173,7 @@ public class ImageTest {
         return builder.build();
     }
 
-    private static MediaDescription getMediaDescriptionWithUri(Uri uri) {
+    private MediaDescription getMediaDescriptionWithUri(Uri uri) {
         MediaDescription.Builder builder =
                 new MediaDescription.Builder()
                         .setTitle("BT Test Song")
@@ -182,13 +182,13 @@ public class ImageTest {
         return builder.build();
     }
 
-    private static Bundle getBundleWithBitmap(String field, Bitmap image) {
+    private Bundle getBundleWithBitmap(String field, Bitmap image) {
         Bundle bundle = new Bundle();
         bundle.putParcelable(field, image);
         return bundle;
     }
 
-    private static Bundle getBundleWithUri(String field, String uri) {
+    private Bundle getBundleWithUri(String field, String uri) {
         Bundle bundle = new Bundle();
         bundle.putString(field, uri);
         return bundle;

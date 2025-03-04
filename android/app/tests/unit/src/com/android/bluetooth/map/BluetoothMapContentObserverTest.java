@@ -2413,16 +2413,15 @@ public class BluetoothMapContentObserverTest {
         verify(mProviderClient, never()).query(any(), any(), any(), any(), any(), any());
     }
 
-    private static BluetoothMapContentObserver.Msg createSimpleMsg() {
+    private BluetoothMapContentObserver.Msg createSimpleMsg() {
         return new BluetoothMapContentObserver.Msg(1, 1L, 1);
     }
 
-    private static BluetoothMapContentObserver.Msg createMsgWithTypeAndThreadId(
-            int type, int threadId) {
+    private BluetoothMapContentObserver.Msg createMsgWithTypeAndThreadId(int type, int threadId) {
         return new BluetoothMapContentObserver.Msg(1, type, threadId, 1);
     }
 
-    private static void setFolderStructureWithTelecomAndMsg(
+    private void setFolderStructureWithTelecomAndMsg(
             BluetoothMapFolderElement folderElement, String folderName, long folderId) {
         folderElement.addFolder("telecom");
         folderElement.getSubFolder("telecom").addFolder("msg");

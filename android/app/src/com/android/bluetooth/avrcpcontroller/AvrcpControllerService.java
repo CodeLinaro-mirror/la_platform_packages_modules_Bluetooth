@@ -17,9 +17,6 @@
 package com.android.bluetooth.avrcpcontroller;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static java.util.Objects.requireNonNull;
 
@@ -27,6 +24,7 @@ import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothAvrcpPlayerSettings;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.IBluetoothAvrcpController;
 import android.content.AttributionSource;
 import android.content.Intent;
@@ -424,7 +422,7 @@ public class AvrcpControllerService extends ProfileService {
         public int getConnectionState(BluetoothDevice device, AttributionSource source) {
             AvrcpControllerService service = getService(source);
             if (service == null) {
-                return STATE_DISCONNECTED;
+                return BluetoothProfile.STATE_DISCONNECTED;
             }
             return service.getConnectionState(device);
         }
@@ -707,7 +705,8 @@ public class AvrcpControllerService extends ProfileService {
             return false;
         }
         int connectionState = stateMachine.getState();
-        if (connectionState != STATE_CONNECTED && connectionState != STATE_CONNECTING) {
+        if (connectionState != BluetoothProfile.STATE_CONNECTED
+                && connectionState != BluetoothProfile.STATE_CONNECTING) {
             return false;
         }
         stateMachine.disconnect();
@@ -791,7 +790,9 @@ public class AvrcpControllerService extends ProfileService {
 
     synchronized int getConnectionState(BluetoothDevice device) {
         AvrcpControllerStateMachine stateMachine = mDeviceStateMap.get(device);
-        return (stateMachine == null) ? STATE_DISCONNECTED : stateMachine.getState();
+        return (stateMachine == null)
+                ? BluetoothProfile.STATE_DISCONNECTED
+                : stateMachine.getState();
     }
 
     @Override

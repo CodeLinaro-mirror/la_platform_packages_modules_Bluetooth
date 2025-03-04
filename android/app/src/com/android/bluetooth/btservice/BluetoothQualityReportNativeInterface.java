@@ -16,8 +16,6 @@
 
 package com.android.bluetooth.btservice;
 
-import static java.util.Objects.requireNonNull;
-
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
@@ -38,11 +36,7 @@ public class BluetoothQualityReportNativeInterface {
 
     private static final Object INSTANCE_LOCK = new Object();
 
-    private final AdapterService mAdapterService;
-
-    private BluetoothQualityReportNativeInterface() {
-        mAdapterService = requireNonNull(AdapterService.getAdapterService());
-    }
+    private BluetoothQualityReportNativeInterface() {}
 
     /** Get singleton instance. */
     public static BluetoothQualityReportNativeInterface getInstance() {
@@ -90,9 +84,14 @@ public class BluetoothQualityReportNativeInterface {
             Log.e(TAG, "bqrDeliver failed: adapter is null");
             return;
         }
+        AdapterService adapterService = AdapterService.getAdapterService();
+        if (adapterService == null) {
+            Log.e(TAG, "bqrDeliver failed: adapterService is null");
+            return;
+        }
 
         BluetoothDevice device = adapter.getRemoteDevice(remoteAddress);
-        BluetoothClass remoteClass = new BluetoothClass(mAdapterService.getRemoteClass(device));
+        BluetoothClass remoteClass = new BluetoothClass(adapterService.getRemoteClass(device));
         BluetoothQualityReport bqr;
         try {
             bqr =
@@ -101,7 +100,7 @@ public class BluetoothQualityReportNativeInterface {
                             .setLmpVersion(lmpVer)
                             .setLmpSubVersion(lmpSubVer)
                             .setManufacturerId(manufacturerId)
-                            .setRemoteName(mAdapterService.getRemoteName(device))
+                            .setRemoteName(adapterService.getRemoteName(device))
                             .setBluetoothClass(remoteClass)
                             .build();
             Log.i(TAG, bqr.toString());
@@ -111,7 +110,7 @@ public class BluetoothQualityReportNativeInterface {
         }
 
         try {
-            int status = mAdapterService.bluetoothQualityReportReadyCallback(device, bqr);
+            int status = adapterService.bluetoothQualityReportReadyCallback(device, bqr);
             if (status != BluetoothStatusCodes.SUCCESS) {
                 Log.e(TAG, "bluetoothQualityReportReadyCallback failed, status: " + status);
             }

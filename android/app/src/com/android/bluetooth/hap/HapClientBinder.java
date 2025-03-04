@@ -18,10 +18,6 @@ package com.android.bluetooth.hap;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static java.util.Objects.requireNonNull;
 
@@ -30,6 +26,7 @@ import android.bluetooth.BluetoothCsipSetCoordinator;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHapClient;
 import android.bluetooth.BluetoothHapPresetInfo;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.IBluetoothHapClient;
 import android.bluetooth.IBluetoothHapClientCallback;
 import android.content.AttributionSource;
@@ -105,7 +102,7 @@ class HapClientBinder extends IBluetoothHapClient.Stub
     public int getConnectionState(BluetoothDevice device, AttributionSource source) {
         HapClientService service = getService(source);
         if (service == null) {
-            return STATE_DISCONNECTED;
+            return BluetoothProfile.STATE_DISCONNECTED;
         }
 
         requireNonNull(device);
@@ -122,8 +119,8 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-        if (connectionPolicy != CONNECTION_POLICY_ALLOWED
-                && connectionPolicy != CONNECTION_POLICY_FORBIDDEN) {
+        if (connectionPolicy != BluetoothProfile.CONNECTION_POLICY_ALLOWED
+                && connectionPolicy != BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
             throw new IllegalArgumentException(
                     "Invalid connectionPolicy value: " + connectionPolicy);
         }
@@ -135,7 +132,7 @@ class HapClientBinder extends IBluetoothHapClient.Stub
     public int getConnectionPolicy(BluetoothDevice device, AttributionSource source) {
         HapClientService service = getService(source);
         if (service == null) {
-            return CONNECTION_POLICY_UNKNOWN;
+            return BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
         }
 
         requireNonNull(device);

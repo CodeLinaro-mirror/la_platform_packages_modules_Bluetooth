@@ -16,9 +16,6 @@
 
 package com.android.bluetooth.btservice.storage;
 
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothA2dp.OptionalCodecsPreferenceStatus;
 import android.bluetooth.BluetoothA2dp.OptionalCodecsSupportStatus;
@@ -35,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity(tableName = "metadata")
+
 public class Metadata {
     @PrimaryKey @NonNull private String address;
 
@@ -76,9 +74,6 @@ public class Metadata {
     /** This is used to indicate whether device's microphone prefer to use during calls */
     public boolean is_preferred_microphone_for_calls;
 
-    /** This is used to indicate the number of times the bond has been lost */
-    public int key_missing_count;
-
     Metadata(String address) {
         this(address, false, false);
     }
@@ -98,7 +93,6 @@ public class Metadata {
         preferred_duplex_profile = 0;
         active_audio_device_policy = BluetoothDevice.ACTIVE_AUDIO_DEVICE_POLICY_DEFAULT;
         is_preferred_microphone_for_calls = true;
-        key_missing_count = 0;
     }
 
     static final class Builder {
@@ -144,9 +138,9 @@ public class Metadata {
 
     void setProfileConnectionPolicy(int profile, int connectionPolicy) {
         // We no longer support BluetoothProfile.PRIORITY_AUTO_CONNECT and are merging it into
-        // CONNECTION_POLICY_ALLOWED
-        if (connectionPolicy > CONNECTION_POLICY_ALLOWED) {
-            connectionPolicy = CONNECTION_POLICY_ALLOWED;
+        // BluetoothProfile.CONNECTION_POLICY_ALLOWED
+        if (connectionPolicy > BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+            connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
         }
 
         switch (profile) {
@@ -253,7 +247,7 @@ public class Metadata {
             case BluetoothProfile.BATTERY:
                 return profileConnectionPolicies.battery_connection_policy;
         }
-        return CONNECTION_POLICY_UNKNOWN;
+        return BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
     }
 
     void setCustomizedMeta(int key, byte[] value) {

@@ -78,10 +78,9 @@ bool CodecManager::UpdateActiveBroadcastAudioHalClient(
 void CodecManager::UpdateActiveAudioConfig(
         const types::BidirectionalPair<stream_parameters>& stream_params,
         std::function<void(const ::bluetooth::le_audio::stream_config& config, uint8_t direction)>
-                update_receiver,
-        uint8_t directions_to_update) {
+                update_receiver) {
   if (pimpl_) {
-    return pimpl_->UpdateActiveAudioConfig(stream_params, update_receiver, directions_to_update);
+    return pimpl_->UpdateActiveAudioConfig(stream_params, update_receiver);
   }
 }
 

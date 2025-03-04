@@ -15,9 +15,6 @@
  */
 package com.android.bluetooth.a2dpsink;
 
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -34,6 +31,7 @@ import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothAudioConfig;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.media.AudioFormat;
 
 import androidx.test.runner.AndroidJUnit4;
@@ -134,7 +132,7 @@ public class A2dpSinkStateMachineTest {
 
     @Test
     public void testAllowedIncomingConnectionInDisconnected() {
-        mockDeviceConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED);
+        mockDeviceConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED);
 
         sendConnectionEvent(STATE_CONNECTING);
         assertThat(mStateMachine.getState()).isEqualTo(STATE_CONNECTING);
@@ -143,7 +141,7 @@ public class A2dpSinkStateMachineTest {
 
     @Test
     public void testForbiddenIncomingConnectionInDisconnected() {
-        mockDeviceConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN);
+        mockDeviceConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
 
         sendConnectionEvent(STATE_CONNECTING);
         verify(mNativeInterface).disconnectA2dpSink(mDevice);
@@ -152,7 +150,7 @@ public class A2dpSinkStateMachineTest {
 
     @Test
     public void testUnknownIncomingConnectionInDisconnected() {
-        mockDeviceConnectionPolicy(mDevice, CONNECTION_POLICY_UNKNOWN);
+        mockDeviceConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
 
         sendConnectionEvent(STATE_CONNECTING);
         assertThat(mStateMachine.getState()).isEqualTo(STATE_CONNECTING);

@@ -1186,18 +1186,24 @@ private:
     }
 
     void OnAdvertisingDataSet(uint8_t advertiser_id, uint8_t status) {
-      if (!instance) {
-        return;
-      }
+      if (com::android::bluetooth::flags::leaudio_broadcast_update_metadata_callback()) {
+        if (!instance) {
+          return;
+        }
 
-      auto const& iter = std::find_if(instance->broadcasts_.cbegin(), instance->broadcasts_.cend(),
-                                      [advertiser_id](auto const& sm) {
-                                        return sm.second->GetAdvertisingSid() == advertiser_id;
-                                      });
-      if (iter != instance->broadcasts_.cend()) {
-        iter->second->OnUpdateAnnouncement(status);
+        auto const& iter =
+                std::find_if(instance->broadcasts_.cbegin(), instance->broadcasts_.cend(),
+                             [advertiser_id](auto const& sm) {
+                               return sm.second->GetAdvertisingSid() == advertiser_id;
+                             });
+        if (iter != instance->broadcasts_.cend()) {
+          iter->second->OnUpdateAnnouncement(status);
+        } else {
+          log::warn("Ignored OnAdvertisingDataSet callback advertiser_id:{}", advertiser_id);
+        }
       } else {
-        log::warn("Ignored OnAdvertisingDataSet callback advertiser_id:{}", advertiser_id);
+        log::warn("Not being used, ignored OnAdvertisingDataSet callback advertiser_id:{}",
+                  advertiser_id);
       }
     }
 
@@ -1220,18 +1226,25 @@ private:
     }
 
     void OnPeriodicAdvertisingDataSet(uint8_t advertiser_id, uint8_t status) {
-      if (!instance) {
-        return;
-      }
+      if (com::android::bluetooth::flags::leaudio_broadcast_update_metadata_callback()) {
+        if (!instance) {
+          return;
+        }
 
-      auto const& iter = std::find_if(instance->broadcasts_.cbegin(), instance->broadcasts_.cend(),
-                                      [advertiser_id](auto const& sm) {
-                                        return sm.second->GetAdvertisingSid() == advertiser_id;
-                                      });
-      if (iter != instance->broadcasts_.cend()) {
-        iter->second->OnUpdateAnnouncement(status);
+        auto const& iter =
+                std::find_if(instance->broadcasts_.cbegin(), instance->broadcasts_.cend(),
+                             [advertiser_id](auto const& sm) {
+                               return sm.second->GetAdvertisingSid() == advertiser_id;
+                             });
+        if (iter != instance->broadcasts_.cend()) {
+          iter->second->OnUpdateAnnouncement(status);
+        } else {
+          log::warn("Ignored OnPeriodicAdvertisingDataSet callback advertiser_id:{}",
+                    advertiser_id);
+        }
       } else {
-        log::warn("Ignored OnPeriodicAdvertisingDataSet callback advertiser_id:{}", advertiser_id);
+        log::warn("Not being used, ignored OnPeriodicAdvertisingDataSet callback advertiser_id:{}",
+                  advertiser_id);
       }
     }
 

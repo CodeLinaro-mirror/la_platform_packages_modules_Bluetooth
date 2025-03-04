@@ -381,7 +381,7 @@ public class BluetoothMapSmsPdu {
         }
 
         @SuppressWarnings("JavaUtilDate") // TODO: b/365629730 -- prefer Instant or LocalDate
-        private static void gsmWriteDate(ByteArrayOutputStream header, long time) {
+        private void gsmWriteDate(ByteArrayOutputStream header, long time) {
             SimpleDateFormat format = new SimpleDateFormat("yyMMddHHmmss");
             Date date = new Date(time);
             String timeStr = format.format(date); // Format to YYMMDDTHHMMSS UTC time
@@ -647,7 +647,7 @@ public class BluetoothMapSmsPdu {
         // We could verify that the address-length is no longer than 11 bytes
         if (addressLength >= data.length) {
             throw new IllegalArgumentException(
-                    "Length of address exceeds the length of the PDU data.");
+                    "Length of address exeeds the length of the PDU data.");
         }
         int pduLength = data.length - (1 + addressLength);
         byte[] newData = new byte[pduLength];
@@ -847,14 +847,14 @@ public class BluetoothMapSmsPdu {
     }
 
     private static class SmsConstants {
-        // User data text encoding code unit size
+        /** User data text encoding code unit size */
         public static final int ENCODING_UNKNOWN = 0;
 
         public static final int ENCODING_7BIT = 1;
         public static final int ENCODING_8BIT = 2;
         public static final int ENCODING_16BIT = 3;
 
-        // This value is not defined in global standard. Only in Korea, this is used.
+        /** This value is not defined in global standard. Only in Korea, this is used. */
         public static final int ENCODING_KSC5601 = 4;
     }
 }

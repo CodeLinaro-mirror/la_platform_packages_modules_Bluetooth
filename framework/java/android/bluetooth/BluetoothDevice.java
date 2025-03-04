@@ -896,7 +896,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
      *
      * @hide
      */
-    @SystemApi public static final int METADATA_EXCLUSIVE_MANAGER = 29;
+    @SystemApi
+    public static final int METADATA_EXCLUSIVE_MANAGER = 29;
 
     private static final int METADATA_MAX_KEY = METADATA_EXCLUSIVE_MANAGER;
 
@@ -1726,8 +1727,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
 
     /**
      * Returns the identity address and identity address type of this BluetoothDevice. An identity
-     * address is a public or static random Bluetooth LE device address that serves as a unique
-     * identifier.
+     * address is a public or static random Bluetooth LE device address that serves as a
+     * unique identifier.
      *
      * @return a {@link BluetoothAddress} containing identity address and identity address type. If
      *     Bluetooth is not enabled or identity address type is not available, it will return a
@@ -3788,31 +3789,6 @@ public final class BluetoothDevice implements Parcelable, Attributable {
             }
         }
         return true;
-    }
-
-    /**
-     * Get the number of times {@link ACTION_KEY_MISSING} intent is thrown for this device since
-     * last successful encrypted connection
-     *
-     * @return number of times {@link ACTION_KEY_MISSING} intent is thrown for this device since
-     *     last successful encrypted connection
-     *
-     * @hide
-     */
-    @RequiresPermission(BLUETOOTH_CONNECT)
-    public int getKeyMissingCount() {
-        final IBluetooth service = getService();
-        if (service == null || !isBluetoothEnabled()) {
-            Log.e(TAG, "Bluetooth is not enabled. Cannot get key missing counter.");
-            if (DBG) log(Log.getStackTraceString(new Throwable()));
-        } else {
-            try {
-                return service.getKeyMissingCount(this, mAttributionSource);
-            } catch (RemoteException e) {
-                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
-            }
-        }
-        return -1;
     }
 
     private static void log(String msg) {

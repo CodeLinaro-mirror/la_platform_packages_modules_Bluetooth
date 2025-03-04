@@ -17,7 +17,6 @@
 package com.android.bluetooth.btservice;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 
 import static com.android.bluetooth.BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__BOND_RETRY;
 import static com.android.bluetooth.BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__FAIL;
@@ -28,6 +27,7 @@ import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothProtoEnums;
 import android.bluetooth.OobData;
 import android.content.Intent;
@@ -765,7 +765,7 @@ final class BondStateMachine extends StateMachine {
         removeMessages(what);
     }
 
-    private static void clearProfilePriority(BluetoothDevice device) {
+    private void clearProfilePriority(BluetoothDevice device) {
         HidHostService hidService = HidHostService.getHidHostService();
         A2dpService a2dpService = A2dpService.getA2dpService();
         HeadsetService headsetService = HeadsetService.getHeadsetService();
@@ -779,34 +779,39 @@ final class BondStateMachine extends StateMachine {
         HapClientService hapClientService = HapClientService.getHapClientService();
 
         if (hidService != null) {
-            hidService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            hidService.setConnectionPolicy(device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (a2dpService != null) {
-            a2dpService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            a2dpService.setConnectionPolicy(device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (headsetService != null) {
-            headsetService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            headsetService.setConnectionPolicy(device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (headsetClientService != null) {
-            headsetClientService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            headsetClientService.setConnectionPolicy(
+                    device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (a2dpSinkService != null) {
-            a2dpSinkService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            a2dpSinkService.setConnectionPolicy(device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (pbapClientService != null) {
-            pbapClientService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            pbapClientService.setConnectionPolicy(
+                    device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (leAudioService != null) {
-            leAudioService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            leAudioService.setConnectionPolicy(device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (csipSetCoordinatorService != null) {
-            csipSetCoordinatorService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            csipSetCoordinatorService.setConnectionPolicy(
+                    device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (volumeControlService != null) {
-            volumeControlService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            volumeControlService.setConnectionPolicy(
+                    device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
         if (hapClientService != null) {
-            hapClientService.setConnectionPolicy(device, CONNECTION_POLICY_UNKNOWN);
+            hapClientService.setConnectionPolicy(
+                    device, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
         }
     }
 
@@ -820,19 +825,19 @@ final class BondStateMachine extends StateMachine {
         } else return "UNKNOWN(" + state + ")";
     }
 
-    private static void infoLog(String msg) {
+    private void infoLog(String msg) {
         Log.i(TAG, msg);
     }
 
-    private static void errorLog(String msg) {
+    private void errorLog(String msg) {
         Log.e(TAG, msg);
     }
 
-    private static void warnLog(String msg) {
+    private void warnLog(String msg) {
         Log.w(TAG, msg);
     }
 
-    private static int getUnbondReasonFromHALCode(int reason) {
+    private int getUnbondReasonFromHALCode(int reason) {
         if (reason == AbstractionLayer.BT_STATUS_SUCCESS) {
             return BluetoothDevice.BOND_SUCCESS;
         } else if (reason == AbstractionLayer.BT_STATUS_RMT_DEV_DOWN) {

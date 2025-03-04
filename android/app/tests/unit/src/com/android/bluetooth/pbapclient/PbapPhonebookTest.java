@@ -548,7 +548,7 @@ public class PbapPhonebookTest {
     // * Utilities
     // *********************************************************************************************
 
-    private static InputStream toUtf8Stream(String s) {
+    private InputStream toUtf8Stream(String s) {
         return new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8));
     }
 }

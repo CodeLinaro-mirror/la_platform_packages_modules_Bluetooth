@@ -23,6 +23,9 @@
 #include <array>
 #include <memory>
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 namespace testing {
 
 using bluetooth::common::BoolFromString;
@@ -266,7 +269,7 @@ TEST(StringsTest, string_format_time_with_ms_test) {
 }
 
 class ExampleClass {};
-static std::ostream& operator<<(std::ostream& os, const ExampleClass& /* obj */) {
+std::ostream& operator<<(std::ostream& os, const ExampleClass& /* obj */) {
   os << "ExampleClass";
   return os;
 }

@@ -550,7 +550,7 @@ public class BluetoothOppTransfer implements BluetoothOppBatch.BluetoothOppBatch
             mBatch.mStatus = Constants.BATCH_STATUS_FAILED;
             return;
         }
-        registerConnectionReceiver();
+        registerConnectionreceiver();
         if (mHandlerThread == null) {
             Log.v(TAG, "Create handler thread for batch " + mBatch.mId);
             mHandlerThread =
@@ -655,7 +655,7 @@ public class BluetoothOppTransfer implements BluetoothOppBatch.BluetoothOppBatch
         processCurrentShare();
     }
 
-    private void registerConnectionReceiver() {
+    private void registerConnectionreceiver() {
         /*
          * OBEX channel need to be monitored for unexpected ACL disconnection
          * such as Remote Battery removal
@@ -1019,7 +1019,7 @@ public class BluetoothOppTransfer implements BluetoothOppBatch.BluetoothOppBatch
         }
     }
 
-    private static String getBrEdrAddress(BluetoothDevice device) {
+    private String getBrEdrAddress(BluetoothDevice device) {
         if (Flags.identityAddressNullIfNotKnown()) {
             return Utils.getBrEdrAddress(device);
         }

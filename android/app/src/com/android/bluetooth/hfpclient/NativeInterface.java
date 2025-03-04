@@ -262,9 +262,9 @@ public class NativeInterface {
      *
      * @param device target device
      * @param atCmd command code
-     * @param val1 command specific argument1
-     * @param val2 command specific argument2
-     * @param arg other command specific arguments
+     * @param val1 command specific argurment1
+     * @param val2 command specific argurment2
+     * @param arg other command specific argurments
      * @return True on success, False on failure
      */
     @VisibleForTesting
@@ -512,7 +512,7 @@ public class NativeInterface {
     /**
      * CIEV (Call indicators) notifying call held states.
      *
-     * <p>Values include: 0 - No calls held 1 - Call is placed on hold or active/held calls swapped
+     * <p>Values include: 0 - No calls held 1 - Call is placed on hold or active/held calls wapped
      * (The AG has both an ACTIVE and HELD call) 2 - Call on hold, no active call
      */
     @VisibleForTesting
@@ -680,7 +680,7 @@ public class NativeInterface {
         if (service != null) {
             service.messageFromNative(event);
         } else {
-            Log.w(TAG, "onUnknownEvent: Ignoring message because service not available: " + event);
+            Log.w(TAG, "onUnknowEvent: Ignoring message because service not available: " + event);
         }
     }
 }

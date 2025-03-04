@@ -19,9 +19,6 @@ package android.bluetooth;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.BLUETOOTH_SCAN;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -473,7 +470,7 @@ public final class BluetoothHearingAid implements BluetoothProfile {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return STATE_DISCONNECTED;
+        return BluetoothProfile.STATE_DISCONNECTED;
     }
 
     /**
@@ -566,8 +563,8 @@ public final class BluetoothHearingAid implements BluetoothProfile {
             if (DBG) Log.d(TAG, Log.getStackTraceString(new Throwable()));
         } else if (isEnabled()
                 && isValidDevice(device)
-                && (connectionPolicy == CONNECTION_POLICY_FORBIDDEN
-                        || connectionPolicy == CONNECTION_POLICY_ALLOWED)) {
+                && (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN
+                        || connectionPolicy == BluetoothProfile.CONNECTION_POLICY_ALLOWED)) {
             try {
                 return service.setConnectionPolicy(device, connectionPolicy, mAttributionSource);
             } catch (RemoteException e) {
@@ -604,7 +601,29 @@ public final class BluetoothHearingAid implements BluetoothProfile {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return CONNECTION_POLICY_FORBIDDEN;
+        return BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+    }
+
+    /**
+     * Helper for converting a state to a string.
+     *
+     * <p>For debug use only - strings are not internationalized.
+     *
+     * @hide
+     */
+    public static String stateToString(int state) {
+        switch (state) {
+            case STATE_DISCONNECTED:
+                return "disconnected";
+            case STATE_CONNECTING:
+                return "connecting";
+            case STATE_CONNECTED:
+                return "connected";
+            case STATE_DISCONNECTING:
+                return "disconnecting";
+            default:
+                return "<unknown state " + state + ">";
+        }
     }
 
     /**
@@ -756,14 +775,14 @@ public final class BluetoothHearingAid implements BluetoothProfile {
         return false;
     }
 
-    private static void verifyDeviceNotNull(BluetoothDevice device, String methodName) {
+    private void verifyDeviceNotNull(BluetoothDevice device, String methodName) {
         if (device == null) {
             Log.e(TAG, methodName + ": device param is null");
             throw new IllegalArgumentException("Device cannot be null");
         }
     }
 
-    private static boolean isValidDevice(BluetoothDevice device) {
+    private boolean isValidDevice(BluetoothDevice device) {
         if (device == null) return false;
 
         if (BluetoothAdapter.checkBluetoothAddress(device.getAddress())) return true;

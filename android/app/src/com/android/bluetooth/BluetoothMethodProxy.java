@@ -294,7 +294,7 @@ public class BluetoothMethodProxy {
         return handlerThread.getLooper();
     }
 
-    /** Proxies {@link MediaSessionManager#getActiveSessions} */
+    /** Peoziws {@link MediaSessionManager#getActiveSessions} */
     public @NonNull List<MediaController> mediaSessionManagerGetActiveSessions(
             MediaSessionManager manager) {
         return manager.getActiveSessions(null);

@@ -129,7 +129,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1228"
+            line="1229"
             column="35"/>
     </issue>
 
@@ -140,7 +140,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1239"
+            line="1240"
             column="35"/>
     </issue>
 
@@ -151,7 +151,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1250"
+            line="1251"
             column="35"/>
     </issue>
 
@@ -162,7 +162,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1261"
+            line="1262"
             column="35"/>
     </issue>
 
@@ -173,7 +173,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1276"
+            line="1277"
             column="35"/>
     </issue>
 
@@ -184,7 +184,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1287"
+            line="1288"
             column="35"/>
     </issue>
 
@@ -195,7 +195,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1294"
+            line="1295"
             column="35"/>
     </issue>
 
@@ -206,7 +206,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1305"
+            line="1306"
             column="35"/>
     </issue>
 
@@ -217,7 +217,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1510"
+            line="1511"
             column="35"/>
     </issue>
 
@@ -228,7 +228,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1521"
+            line="1522"
             column="35"/>
     </issue>
 
@@ -239,7 +239,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1758"
+            line="1759"
             column="35"/>
     </issue>
 
@@ -250,7 +250,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1769"
+            line="1770"
             column="35"/>
     </issue>
 
@@ -305,7 +305,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListingElement.java"
-            line="81"
+            line="82"
             column="35"/>
     </issue>
 
@@ -426,7 +426,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="807"
+            line="824"
             column="9"/>
     </issue>
 
@@ -437,7 +437,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="807"
+            line="824"
             column="9"/>
     </issue>
 
@@ -448,7 +448,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="807"
+            line="824"
             column="9"/>
     </issue>
 
@@ -459,7 +459,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="807"
+            line="824"
             column="9"/>
     </issue>
 
@@ -470,7 +470,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapbMessage.java"
-            line="921"
+            line="922"
             column="9"/>
     </issue>
 
@@ -492,7 +492,7 @@
         errorLine2="            ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/audio_util/MediaPlayerWrapper.java"
-            line="555"
+            line="554"
             column="13"/>
     </issue>
 
@@ -569,7 +569,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpService.java"
-            line="802"
+            line="801"
             column="33"/>
     </issue>
 
@@ -580,7 +580,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpService.java"
-            line="810"
+            line="809"
             column="26"/>
     </issue>
 
@@ -591,7 +591,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpService.java"
-            line="823"
+            line="822"
             column="33"/>
     </issue>
 
@@ -602,7 +602,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpService.java"
-            line="843"
+            line="842"
             column="26"/>
     </issue>
 
@@ -613,7 +613,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpService.java"
-            line="918"
+            line="917"
             column="45"/>
     </issue>
 
@@ -624,7 +624,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1149"
+            line="1155"
             column="20"/>
     </issue>
 
@@ -635,7 +635,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1154"
+            line="1160"
             column="20"/>
     </issue>
 
@@ -646,7 +646,7 @@
         errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1996"
+            line="2004"
             column="43"/>
     </issue>
 
@@ -657,7 +657,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="2001"
+            line="2009"
             column="45"/>
     </issue>
 
@@ -668,7 +668,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="2005"
+            line="2013"
             column="34"/>
     </issue>
 
@@ -679,7 +679,7 @@
         errorLine2="                                ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="2237"
+            line="2245"
             column="33"/>
     </issue>
 
@@ -690,7 +690,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="7293"
+            line="7279"
             column="28"/>
     </issue>
 
@@ -701,7 +701,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="7295"
+            line="7281"
             column="28"/>
     </issue>
 
@@ -1020,7 +1020,7 @@
         errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapContent.java"
-            line="1261"
+            line="1262"
             column="49"/>
     </issue>
 
@@ -1031,7 +1031,7 @@
         errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListing.java"
-            line="104"
+            line="103"
             column="49"/>
     </issue>
 
@@ -1042,7 +1042,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListing.java"
-            line="153"
+            line="152"
             column="45"/>
     </issue>
 
@@ -1053,7 +1053,7 @@
         errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListingElement.java"
-            line="276"
+            line="277"
             column="41"/>
     </issue>
 
@@ -1075,7 +1075,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/BondStateMachine.java"
-            line="656"
+            line="646"
             column="28"/>
     </issue>
 
@@ -1086,7 +1086,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/BondStateMachine.java"
-            line="693"
+            line="683"
             column="28"/>
     </issue>
 
@@ -1097,7 +1097,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/BondStateMachine.java"
-            line="723"
+            line="713"
             column="28"/>
     </issue>
 
@@ -1108,7 +1108,7 @@
         errorLine2="                                                              ~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/csip/CsipSetCoordinatorService.java"
-            line="855"
+            line="859"
             column="63"/>
     </issue>
 
@@ -1130,7 +1130,7 @@
         errorLine2="                         ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfpclient/HeadsetClientService.java"
-            line="105"
+            line="106"
             column="26"/>
     </issue>
 
@@ -1141,7 +1141,7 @@
         errorLine2="                         ~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfpclient/HeadsetClientService.java"
-            line="177"
+            line="176"
             column="26"/>
     </issue>
 
@@ -1412,12 +1412,12 @@
     <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
-        errorLine1="        mHandler = new Handler(headsetService.getStateMachinesThreadLooper());"
-        errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="            mHandler = new Handler(headsetService.getStateMachinesThreadLooper());"
+        errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetPhoneState.java"
-            line="91"
-            column="47"/>
+            line="86"
+            column="51"/>
     </issue>
 
     <issue
@@ -1427,7 +1427,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="273"
+            line="272"
             column="38"/>
     </issue>
 
@@ -1438,7 +1438,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="275"
+            line="274"
             column="42"/>
     </issue>
 
@@ -1449,7 +1449,7 @@
         errorLine2="                         ~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="288"
+            line="287"
             column="26"/>
     </issue>
 
@@ -1460,7 +1460,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="436"
+            line="440"
             column="42"/>
     </issue>
 
@@ -1471,7 +1471,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="508"
+            line="512"
             column="30"/>
     </issue>
 
@@ -1482,7 +1482,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="866"
+            line="906"
             column="48"/>
     </issue>
 
@@ -1493,7 +1493,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="914"
+            line="954"
             column="48"/>
     </issue>
 
@@ -1504,8 +1504,19 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="934"
+            line="974"
             column="34"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                    devices.add(stateMachine.getDevice());"
+        errorLine2="                                             ~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="975"
+            column="46"/>
     </issue>
 
     <issue
@@ -1515,7 +1526,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="982"
+            line="1022"
             column="33"/>
     </issue>
 
@@ -1526,7 +1537,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1096"
+            line="1136"
             column="38"/>
     </issue>
 
@@ -1537,7 +1548,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1098"
+            line="1138"
             column="42"/>
     </issue>
 
@@ -1548,7 +1559,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1114"
+            line="1154"
             column="48"/>
     </issue>
 
@@ -1559,7 +1570,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1188"
+            line="1228"
             column="48"/>
     </issue>
 
@@ -1570,7 +1581,7 @@
         errorLine2="                         ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1243"
+            line="1283"
             column="26"/>
     </issue>
 
@@ -1581,7 +1592,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1379"
+            line="1419"
             column="30"/>
     </issue>
 
@@ -1592,8 +1603,19 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1422"
+            line="1462"
             column="35"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="            if (mSystemInterface.isInCall() || mSystemInterface.isRinging()) {"
+        errorLine2="                                 ~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="1473"
+            column="34"/>
     </issue>
 
     <issue
@@ -1603,7 +1625,7 @@
         errorLine2="                                                                ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1433"
+            line="1473"
             column="65"/>
     </issue>
 
@@ -1614,7 +1636,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1451"
+            line="1491"
             column="38"/>
     </issue>
 
@@ -1625,7 +1647,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1490"
+            line="1530"
             column="42"/>
     </issue>
 
@@ -1636,8 +1658,19 @@
         errorLine2="                             ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1549"
+            line="1589"
             column="30"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                    devices.add(stateMachine.getDevice());"
+        errorLine2="                                             ~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="1614"
+            column="46"/>
     </issue>
 
     <issue
@@ -1647,7 +1680,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1784"
+            line="1824"
             column="38"/>
     </issue>
 
@@ -1658,7 +1691,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1786"
+            line="1826"
             column="42"/>
     </issue>
 
@@ -1669,7 +1702,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1868"
+            line="1908"
             column="35"/>
     </issue>
 
@@ -1680,7 +1713,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1881"
+            line="1921"
             column="35"/>
     </issue>
 
@@ -1691,7 +1724,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1882"
+            line="1922"
             column="34"/>
     </issue>
 
@@ -1702,7 +1735,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1909"
+            line="1949"
             column="38"/>
     </issue>
 
@@ -1713,7 +1746,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1911"
+            line="1951"
             column="42"/>
     </issue>
 
@@ -1724,74 +1757,8 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1932"
+            line="1972"
             column="35"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    boolean isCallIdleBefore = mSystemInterface.isCallIdle();"
-        errorLine2="                                                                ~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1984"
-            column="65"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    mSystemInterface.getHeadsetPhoneState().setNumActiveCall(numActive);"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1985"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    mSystemInterface.getHeadsetPhoneState().setNumHeldCall(numHeld);"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1986"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    mSystemInterface.getHeadsetPhoneState().setCallState(callState);"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1987"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                            &amp;&amp; !mSystemInterface.isCallIdle()"
-        errorLine2="                                                 ~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1991"
-            column="50"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                            &amp;&amp; mSystemInterface.isCallIdle()"
-        errorLine2="                                                ~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2009"
-            column="49"/>
     </issue>
 
     <issue
@@ -1801,7 +1768,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2078"
+            line="2119"
             column="48"/>
     </issue>
 
@@ -1812,7 +1779,7 @@
         errorLine2="                                                                                     ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2226"
+            line="2267"
             column="86"/>
     </issue>
 
@@ -1823,8 +1790,19 @@
         errorLine2="                                                   ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2234"
+            line="2275"
             column="52"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="        return mSystemInterface.isInCall()"
+        errorLine2="                                ~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="2303"
+            column="33"/>
     </issue>
 
     <issue
@@ -1834,7 +1812,7 @@
         errorLine2="                                     ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2263"
+            line="2304"
             column="38"/>
     </issue>
 
@@ -1845,8 +1823,19 @@
         errorLine2="                                                       ~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2493"
+            line="2534"
             column="56"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                            + mSystemInterface.isInCall()"
+        errorLine2="                                               ~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="2599"
+            column="48"/>
     </issue>
 
     <issue
@@ -1856,8 +1845,19 @@
         errorLine2="                                               ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2562"
+            line="2603"
             column="48"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="            ProfileService.println(sb, &quot;Telecom.isInCall(): &quot; + mSystemInterface.isInCall());"
+        errorLine2="                                                                                 ~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="2681"
+            column="82"/>
     </issue>
 
     <issue
@@ -1867,8 +1867,30 @@
         errorLine2="                                                                                  ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2641"
+            line="2682"
             column="83"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                        sb, &quot;==== StateMachine for &quot; + stateMachine.getDevice() + &quot; ====&quot;);"
+        errorLine2="                                                                    ~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="2685"
+            column="69"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="        boolean result = mNativeInterface.enableSwb(swbCodec, enable, device);"
+        errorLine2="                                          ~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
+            line="2694"
+            column="43"/>
     </issue>
 
     <issue
@@ -1878,7 +1900,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="208"
+            line="210"
             column="34"/>
     </issue>
 
@@ -1889,7 +1911,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="212"
+            line="214"
             column="30"/>
     </issue>
 
@@ -1900,7 +1922,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="347"
+            line="349"
             column="29"/>
     </issue>
 
@@ -1911,7 +1933,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="372"
+            line="374"
             column="29"/>
     </issue>
 
@@ -1922,7 +1944,7 @@
         errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="527"
+            line="529"
             column="39"/>
     </issue>
 
@@ -1933,7 +1955,7 @@
         errorLine2="                                          ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="588"
+            line="590"
             column="43"/>
     </issue>
 
@@ -1944,7 +1966,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="663"
+            line="665"
             column="47"/>
     </issue>
 
@@ -1955,7 +1977,7 @@
         errorLine2="                                             ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="845"
+            line="847"
             column="46"/>
     </issue>
 
@@ -1966,7 +1988,7 @@
         errorLine2="                                             ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="849"
+            line="851"
             column="46"/>
     </issue>
 
@@ -1977,7 +1999,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1021"
+            line="1023"
             column="47"/>
     </issue>
 
@@ -1988,7 +2010,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1037"
+            line="1039"
             column="47"/>
     </issue>
 
@@ -1999,7 +2021,7 @@
         errorLine2="                                          ~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1047"
+            line="1049"
             column="43"/>
     </issue>
 
@@ -2010,7 +2032,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1060"
+            line="1062"
             column="38"/>
     </issue>
 
@@ -2021,7 +2043,7 @@
         errorLine2="                                         ~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1073"
+            line="1075"
             column="42"/>
     </issue>
 
@@ -2032,7 +2054,7 @@
         errorLine2="                                     ~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1081"
+            line="1083"
             column="38"/>
     </issue>
 
@@ -2043,7 +2065,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1093"
+            line="1095"
             column="42"/>
     </issue>
 
@@ -2054,7 +2076,7 @@
         errorLine2="                                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1113"
+            line="1115"
             column="46"/>
     </issue>
 
@@ -2065,7 +2087,7 @@
         errorLine2="                                             ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1147"
+            line="1149"
             column="46"/>
     </issue>
 
@@ -2076,7 +2098,18 @@
         errorLine2="                                             ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1150"
+            line="1152"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                            mSystemInterface.sendDtmf(event.valueInt, event.device);"
+        errorLine2="                                             ~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
+            line="1161"
             column="46"/>
     </issue>
 
@@ -2087,18 +2120,18 @@
         errorLine2="                                 ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1253"
+            line="1255"
             column="34"/>
     </issue>
 
     <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
-        errorLine1="                mSystemInterface.queryPhoneState(mHeadsetService);"
+        errorLine1="                mSystemInterface.queryPhoneState();"
         errorLine2="                                 ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1274"
+            line="1276"
             column="34"/>
     </issue>
 
@@ -2109,7 +2142,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1307"
+            line="1309"
             column="47"/>
     </issue>
 
@@ -2120,7 +2153,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1334"
+            line="1336"
             column="53"/>
     </issue>
 
@@ -2131,7 +2164,7 @@
         errorLine2="                                          ~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1345"
+            line="1347"
             column="43"/>
     </issue>
 
@@ -2142,7 +2175,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1377"
+            line="1379"
             column="47"/>
     </issue>
 
@@ -2153,7 +2186,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1393"
+            line="1395"
             column="47"/>
     </issue>
 
@@ -2164,7 +2197,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1581"
+            line="1583"
             column="47"/>
     </issue>
 
@@ -2175,7 +2208,7 @@
         errorLine2="                                             ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1611"
+            line="1613"
             column="46"/>
     </issue>
 
@@ -2186,7 +2219,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1923"
+            line="1926"
             column="30"/>
     </issue>
 
@@ -2197,7 +2230,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1930"
+            line="1933"
             column="34"/>
     </issue>
 
@@ -2208,7 +2241,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1938"
+            line="1941"
             column="34"/>
     </issue>
 
@@ -2219,7 +2252,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1945"
+            line="1948"
             column="34"/>
     </issue>
 
@@ -2230,7 +2263,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1957"
+            line="1960"
             column="30"/>
     </issue>
 
@@ -2241,7 +2274,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1966"
+            line="1969"
             column="34"/>
     </issue>
 
@@ -2252,7 +2285,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1970"
+            line="1973"
             column="34"/>
     </issue>
 
@@ -2263,7 +2296,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1972"
+            line="1975"
             column="34"/>
     </issue>
 
@@ -2274,7 +2307,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1975"
+            line="1978"
             column="30"/>
     </issue>
 
@@ -2285,7 +2318,7 @@
         errorLine2="                                                              ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2103"
+            line="2108"
             column="63"/>
     </issue>
 
@@ -2296,7 +2329,7 @@
         errorLine2="                         ~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2141"
+            line="2146"
             column="26"/>
     </issue>
 
@@ -2307,7 +2340,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2406"
+            line="2413"
             column="26"/>
     </issue>
 
@@ -2318,7 +2351,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2467"
+            line="2474"
             column="26"/>
     </issue>
 
@@ -2329,7 +2362,7 @@
         errorLine2="                             ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2584"
+            line="2592"
             column="30"/>
     </issue>
 
@@ -2340,8 +2373,19 @@
         errorLine2="                             ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2585"
+            line="2593"
             column="30"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="        } else if (mSystemInterface.isInCall()) {"
+        errorLine2="                                    ~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
+            line="2594"
+            column="37"/>
     </issue>
 
     <issue
@@ -2351,7 +2395,7 @@
         errorLine2="                                 ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2593"
+            line="2601"
             column="34"/>
     </issue>
 
@@ -2362,7 +2406,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2596"
+            line="2604"
             column="35"/>
     </issue>
 
@@ -2373,7 +2417,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2723"
+            line="2731"
             column="26"/>
     </issue>
 
@@ -2384,7 +2428,7 @@
         errorLine2="                                                ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2723"
+            line="2731"
             column="49"/>
     </issue>
 
@@ -2395,7 +2439,7 @@
         errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hearingaid/HearingAidService.java"
-            line="624"
+            line="623"
             column="51"/>
     </issue>
 
@@ -2406,7 +2450,7 @@
         errorLine2="           ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioObjectsFactory.java"
-            line="67"
+            line="66"
             column="12"/>
     </issue>
 
@@ -2417,7 +2461,7 @@
         errorLine2="               ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioObjectsFactory.java"
-            line="68"
+            line="67"
             column="16"/>
     </issue>
 
@@ -2428,7 +2472,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioObjectsFactory.java"
-            line="69"
+            line="68"
             column="17"/>
     </issue>
 
@@ -2439,7 +2483,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
-            line="204"
+            line="196"
             column="5"/>
     </issue>
 
@@ -2450,8 +2494,41 @@
         errorLine2="                            ~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
-            line="593"
+            line="540"
             column="29"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                LeAudioTmapGattServer.TMAP_ROLE_FLAG_CG | LeAudioTmapGattServer.TMAP_ROLE_FLAG_UMS;"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
+            line="633"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="                LeAudioTmapGattServer.TMAP_ROLE_FLAG_CG | LeAudioTmapGattServer.TMAP_ROLE_FLAG_UMS;"
+        errorLine2="                                                                                ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
+            line="633"
+            column="81"/>
+    </issue>
+
+    <issue
+        id="VisibleForTests"
+        message="This method should only be accessed from tests or within private scope"
+        errorLine1="            mTmapRoleMask |= LeAudioTmapGattServer.TMAP_ROLE_FLAG_BMS;"
+        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
+            line="646"
+            column="52"/>
     </issue>
 
     <issue
@@ -2461,7 +2538,7 @@
         errorLine2="                            ~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
-            line="683"
+            line="706"
             column="29"/>
     </issue>
 
@@ -2472,7 +2549,7 @@
         errorLine2="                                                   ~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
-            line="2775"
+            line="2808"
             column="52"/>
     </issue>
 
@@ -2483,7 +2560,7 @@
         errorLine2="                                                   ~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
-            line="3516"
+            line="3541"
             column="52"/>
     </issue>
 
@@ -2494,7 +2571,7 @@
         errorLine2="                            ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_audio/LeAudioService.java"
-            line="4765"
+            line="4790"
             column="29"/>
     </issue>
 
@@ -2593,7 +2670,7 @@
         errorLine2="                              ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfpclient/VendorCommandResponseProcessor.java"
-            line="103"
+            line="104"
             column="31"/>
     </issue>
 
@@ -2681,7 +2758,7 @@
         errorLine2="                                  ~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="467"
+            line="429"
             column="35"/>
     </issue>
 
@@ -2692,7 +2769,7 @@
         errorLine2="                          ~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppObexClientSession.java"
-            line="201"
+            line="216"
             column="27"/>
     </issue>
 
@@ -2703,7 +2780,7 @@
         errorLine2="                                  ~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/pbap/BluetoothPbapService.java"
-            line="574"
+            line="575"
             column="35"/>
     </issue>
 
@@ -2725,7 +2802,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="6561"
+            line="6560"
             column="17"/>
     </issue>
 
@@ -2736,7 +2813,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="273"
+            line="235"
             column="13"/>
     </issue>
 
@@ -2747,7 +2824,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="456"
+            line="418"
             column="25"/>
     </issue>
 
@@ -2758,7 +2835,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppObexClientSession.java"
-            line="162"
+            line="177"
             column="13"/>
     </issue>
 
@@ -2769,7 +2846,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppObexServerSession.java"
-            line="310"
+            line="325"
             column="13"/>
     </issue>
 
@@ -2780,7 +2857,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/pbap/BluetoothPbapService.java"
-            line="558"
+            line="559"
             column="25"/>
     </issue>
 
@@ -2824,7 +2901,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/MetricsLogger.java"
-            line="628"
+            line="627"
             column="5"/>
     </issue>
 
@@ -2835,7 +2912,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="755"
+            line="759"
             column="9"/>
     </issue>
 
@@ -2912,7 +2989,7 @@
         errorLine2="            ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppNotification.java"
-            line="230"
+            line="229"
             column="13"/>
     </issue>
 
@@ -2923,7 +3000,7 @@
         errorLine2="            ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppService.java"
-            line="365"
+            line="370"
             column="13"/>
     </issue>
 
@@ -2945,7 +3022,7 @@
         errorLine2="            ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hid/HidHostService.java"
-            line="335"
+            line="348"
             column="13"/>
     </issue>
 

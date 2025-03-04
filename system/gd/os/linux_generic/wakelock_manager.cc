@@ -27,13 +27,16 @@
 
 #include "os/internal/wakelock_native.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 namespace bluetooth {
 namespace os {
 
 using internal::WakelockNative;
 using StatusCode = WakelockNative::StatusCode;
 
-static uint64_t now_ms() {
+uint64_t now_ms() {
   struct timespec ts = {};
   if (clock_gettime(CLOCK_BOOTTIME, &ts) == -1) {
     log::error("unable to get current time: {}", strerror(errno));

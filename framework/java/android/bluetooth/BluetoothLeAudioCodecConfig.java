@@ -304,7 +304,7 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
         out.writeInt(mMaxOctetsPerFrame);
     }
 
-    private static String sampleRateToString(@SampleRate int sampleRateBit) {
+    private String sampleRateToString(@SampleRate int sampleRateBit) {
         switch (sampleRateBit) {
             case SAMPLE_RATE_NONE:
                 return "None";
@@ -339,7 +339,7 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
         }
     }
 
-    private static String frameDurationToString(@FrameDuration int frameDurationBit) {
+    private String frameDurationToString(@FrameDuration int frameDurationBit) {
         switch (frameDurationBit) {
             case FRAME_DURATION_NONE:
                 return "None";

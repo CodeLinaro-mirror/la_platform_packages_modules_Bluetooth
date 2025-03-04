@@ -178,7 +178,7 @@ verify(gattCallback, timeout(TIMEOUT))
     .onConnectionStateChange(
         any(),
         eq(BluetoothGatt.GATT_SUCCESS),
-        eq(STATE_CONNECTED)
+        eq(BluetoothProfile.STATE_CONNECTED)
     )
 ```
 ### 6. Discover and Verify GATT Services
@@ -209,7 +209,7 @@ verify(gattCallback, timeout(TIMEOUT))
     .onConnectionStateChange(
         any(),
         eq(BluetoothGatt.GATT_SUCCESS),
-        eq(STATE_DISCONNECTED)
+        eq(BluetoothProfile.STATE_DISCONNECTED)
     )
 ```
 

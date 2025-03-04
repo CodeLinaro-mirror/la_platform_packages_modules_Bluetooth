@@ -27,6 +27,9 @@
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 using bluetooth::groups::kGroupUnknown;
 using bluetooth::le_audio::DeviceConnectState;
 using bluetooth::le_audio::LeAudioDevice;
@@ -68,7 +71,7 @@ protected:
   LeAudioDeviceGroup* group_ = nullptr;
 };
 
-static RawAddress GetTestAddress(uint8_t index) {
+RawAddress GetTestAddress(uint8_t index) {
   EXPECT_LT(index, UINT8_MAX);
   RawAddress result = {{0xC0, 0xDE, 0xC0, 0xDE, 0x00, index}};
   return result;

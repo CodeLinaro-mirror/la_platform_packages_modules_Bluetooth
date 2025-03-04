@@ -153,8 +153,8 @@ public class BluetoothOppManagerTest {
 
         bluetoothOppManager.addToAcceptlist(address1);
         bluetoothOppManager.addToAcceptlist(address2);
-        assertThat(bluetoothOppManager.isAcceptListed(address1)).isTrue();
-        assertThat(bluetoothOppManager.isAcceptListed(address2)).isTrue();
+        assertThat(bluetoothOppManager.isAcceptlisted(address1)).isTrue();
+        assertThat(bluetoothOppManager.isAcceptlisted(address2)).isTrue();
     }
 
     @Test
@@ -162,10 +162,10 @@ public class BluetoothOppManagerTest {
         BluetoothOppManager bluetoothOppManager = BluetoothOppManager.getInstance(mContext);
         String address = "01:23:45:67:89:AB";
 
-        assertThat(bluetoothOppManager.isAcceptListed(address)).isFalse();
+        assertThat(bluetoothOppManager.isAcceptlisted(address)).isFalse();
 
         bluetoothOppManager.addToAcceptlist(address);
-        assertThat(bluetoothOppManager.isAcceptListed(address)).isTrue();
+        assertThat(bluetoothOppManager.isAcceptlisted(address)).isTrue();
     }
 
     @Test

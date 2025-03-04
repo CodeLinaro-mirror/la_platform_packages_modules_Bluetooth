@@ -20,8 +20,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothLeAudio
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.BluetoothProfile.STATE_CONNECTED
-import android.bluetooth.BluetoothProfile.STATE_DISCONNECTED
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -75,7 +73,7 @@ class LeAudio(val context: Context) : LeAudioImplBase(), Closeable {
             val device = request.connection.toBluetoothDevice(bluetoothAdapter)
             Log.i(TAG, "open: device=$device")
 
-            if (bluetoothLeAudio.getConnectionState(device) != STATE_CONNECTED) {
+            if (bluetoothLeAudio.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
                 bluetoothLeAudio.connect(device)
                 val state =
                     flow
@@ -87,10 +85,13 @@ class LeAudio(val context: Context) : LeAudioImplBase(), Closeable {
                         .map {
                             it.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothAdapter.ERROR)
                         }
-                        .filter { it == STATE_CONNECTED || it == STATE_DISCONNECTED }
+                        .filter {
+                            it == BluetoothProfile.STATE_CONNECTED ||
+                                it == BluetoothProfile.STATE_DISCONNECTED
+                        }
                         .first()
 
-                if (state == STATE_DISCONNECTED) {
+                if (state == BluetoothProfile.STATE_DISCONNECTED) {
                     throw RuntimeException("open failed, LE_AUDIO has been disconnected")
                 }
             }

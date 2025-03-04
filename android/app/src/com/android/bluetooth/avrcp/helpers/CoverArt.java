@@ -77,7 +77,7 @@ public class CoverArt {
     }
 
     /** Covert a Bitmap to a byte array with an image format without lossy compression */
-    private static byte[] toByteArray(Bitmap bitmap) {
+    private byte[] toByteArray(Bitmap bitmap) {
         if (bitmap == null) return null;
         ByteArrayOutputStream buffer =
                 new ByteArrayOutputStream(bitmap.getWidth() * bitmap.getHeight());
@@ -131,7 +131,7 @@ public class CoverArt {
     }
 
     /** Determine if a given image descriptor is valid */
-    private static boolean isDescriptorValid(BipImageDescriptor descriptor) {
+    private boolean isDescriptorValid(BipImageDescriptor descriptor) {
         debug("isDescriptorValid(descriptor=" + descriptor + ")");
         if (descriptor == null) return false;
 
@@ -196,12 +196,12 @@ public class CoverArt {
     }
 
     /** Print a message to DEBUG if debug output is enabled */
-    private static void debug(String msg) {
+    private void debug(String msg) {
         Log.d(TAG, msg);
     }
 
     /** Print a message to ERROR */
-    private static void error(String msg) {
+    private void error(String msg) {
         Log.e(TAG, msg);
     }
 }

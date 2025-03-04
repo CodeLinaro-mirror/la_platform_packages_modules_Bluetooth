@@ -16,9 +16,6 @@
 
 package com.android.bluetooth.le_scan;
 
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
 
@@ -62,7 +59,6 @@ import com.android.bluetooth.btservice.CompanionManager;
 import com.android.bluetooth.gatt.GattNativeInterface;
 import com.android.bluetooth.gatt.GattObjectsFactory;
 
-import com.google.protobuf.ByteString;
 import com.google.testing.junit.testparameterinjector.TestParameter;
 import com.google.testing.junit.testparameterinjector.TestParameterInjector;
 
@@ -120,7 +116,7 @@ public class ScanControllerTest {
         doReturn(mScanManager)
                 .when(mScanObjectsFactory)
                 .createScanManager(any(), any(), any(), any());
-        doReturn(mPeriodicScanManager).when(mScanObjectsFactory).createPeriodicScanManager();
+        doReturn(mPeriodicScanManager).when(mScanObjectsFactory).createPeriodicScanManager(any());
 
         doReturn(mResources).when(mAdapterService).getResources();
         doReturn(mContext.getPackageManager()).when(mAdapterService).getPackageManager();
@@ -195,7 +191,7 @@ public class ScanControllerTest {
                                 new ArgumentMatcher<ScanClient>() {
                                     @Override
                                     public boolean matches(ScanClient client) {
-                                        return mPiInfo.callingUid == client.mAppUid;
+                                        return mPiInfo.callingUid == client.appUid;
                                     }
                                 }));
     }
@@ -214,13 +210,14 @@ public class ScanControllerTest {
 
         Set<ScanClient> scanClientSet = new HashSet<>();
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.mAssociatedDevices = new ArrayList<>();
+        scanClient.associatedDevices = new ArrayList<>();
+        scanClient.scannerId = scannerId;
         if (expectResults) {
-            scanClient.mHasScanWithoutLocationPermission = true;
+            scanClient.hasScanWithoutLocationPermission = true;
         }
         scanClientSet.add(scanClient);
         doReturn(scanClientSet).when(mScanManager).getFullBatchScanQueue();
-        doReturn(mApp).when(mScannerMap).getById(scanClient.mScannerId);
+        doReturn(mApp).when(mScannerMap).getById(scanClient.scannerId);
         IScannerCallback callback = mock(IScannerCallback.class);
         mApp.mCallback = callback;
 
@@ -248,13 +245,14 @@ public class ScanControllerTest {
 
         Set<ScanClient> scanClientSet = new HashSet<>();
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.mAssociatedDevices = new ArrayList<>();
+        scanClient.associatedDevices = new ArrayList<>();
         if (expectResults) {
-            scanClient.mAssociatedDevices.add("02:00:00:00:00:00");
+            scanClient.associatedDevices.add("02:00:00:00:00:00");
         }
+        scanClient.scannerId = scannerId;
         scanClientSet.add(scanClient);
         doReturn(scanClientSet).when(mScanManager).getBatchScanQueue();
-        doReturn(mApp).when(mScannerMap).getById(scanClient.mScannerId);
+        doReturn(mApp).when(mScannerMap).getById(scanClient.scannerId);
         IScannerCallback callback = mock(IScannerCallback.class);
         mApp.mCallback = callback;
 
@@ -332,8 +330,9 @@ public class ScanControllerTest {
         byte[] advData = new byte[0];
 
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.mHasNetworkSettingsPermission = true;
-        scanClient.mSettings =
+        scanClient.scannerId = scannerId;
+        scanClient.hasNetworkSettingsPermission = true;
+        scanClient.settings =
                 new ScanSettings.Builder()
                         .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                         .setLegacy(false)
@@ -344,13 +343,13 @@ public class ScanControllerTest {
 
         mApp.mCallback = callback;
         mApp.mAppScanStats = appScanStats;
-        scanClient.mStats = appScanStats;
+        scanClient.stats = appScanStats;
         Set<ScanClient> scanClientSet = Collections.singleton(scanClient);
 
         doReturn(address).when(mAdapterService).getIdentityAddress(anyString());
         doReturn(scanClientSet).when(mScanManager).getRegularScanQueue();
-        doReturn(mApp).when(mScannerMap).getById(scanClient.mScannerId);
-        doReturn(appScanStats).when(mScannerMap).getAppScanStatsById(scanClient.mScannerId);
+        doReturn(mApp).when(mScannerMap).getById(scanClient.scannerId);
+        doReturn(appScanStats).when(mScannerMap).getAppScanStatsById(scanClient.scannerId);
 
         // Simulate remote client crash
         doThrow(new RemoteException()).when(callback).onScanResult(any());
@@ -368,7 +367,7 @@ public class ScanControllerTest {
                 advData,
                 address);
 
-        assertThat(scanClient.mAppDied).isTrue();
+        assertThat(scanClient.appDied).isTrue();
         verify(appScanStats).recordScanStop(scannerId);
     }
 
@@ -414,19 +413,23 @@ public class ScanControllerTest {
     @Test
     public void profileConnectionStateChanged_notifyScanManager() {
         mScanController.notifyProfileConnectionStateChange(
-                BluetoothProfile.A2DP, STATE_CONNECTING, STATE_CONNECTED);
+                BluetoothProfile.A2DP,
+                BluetoothProfile.STATE_CONNECTING,
+                BluetoothProfile.STATE_CONNECTED);
         verify(mScanManager)
                 .handleBluetoothProfileConnectionStateChanged(
-                        BluetoothProfile.A2DP, STATE_CONNECTING, STATE_CONNECTED);
+                        BluetoothProfile.A2DP,
+                        BluetoothProfile.STATE_CONNECTING,
+                        BluetoothProfile.STATE_CONNECTED);
     }
 
     @Test
     public void onTrackAdvFoundLost() throws Exception {
         int scannerId = 1;
-        int advPacketLen = 1;
-        byte[] advPacket = new byte[] {0x02};
-        int scanResponseLen = 3;
-        byte[] scanResponse = new byte[] {0x04};
+        int advPktLen = 1;
+        byte[] advPkt = new byte[] {0x02};
+        int scanRspLen = 3;
+        byte[] scanRsp = new byte[] {0x04};
         int filtIndex = 5;
 
         int advState = ScanController.ADVT_STATE_ONFOUND;
@@ -438,8 +441,8 @@ public class ScanControllerTest {
         int timeStamp = 11;
 
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.mHasNetworkSettingsPermission = true;
-        scanClient.mSettings =
+        scanClient.hasNetworkSettingsPermission = true;
+        scanClient.settings =
                 new ScanSettings.Builder()
                         .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
                         .setLegacy(false)
@@ -458,10 +461,10 @@ public class ScanControllerTest {
         AdvtFilterOnFoundOnLostInfo advtFilterOnFoundOnLostInfo =
                 new AdvtFilterOnFoundOnLostInfo(
                         scannerId,
-                        advPacketLen,
-                        ByteString.copyFrom(advPacket),
-                        scanResponseLen,
-                        ByteString.copyFrom(scanResponse),
+                        advPktLen,
+                        advPkt,
+                        scanRspLen,
+                        scanRsp,
                         filtIndex,
                         advState,
                         advInfoPresent,

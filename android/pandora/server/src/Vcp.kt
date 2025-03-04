@@ -20,7 +20,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED
-import android.bluetooth.BluetoothProfile.STATE_CONNECTED
 import android.bluetooth.BluetoothVolumeControl
 import android.content.Context
 import android.content.IntentFilter
@@ -100,14 +99,17 @@ class Vcp(val context: Context) : VCPImplBase(), Closeable {
         grpcUnary<Empty>(scope, responseObserver) {
             val device = request.connection.toBluetoothDevice(bluetoothAdapter)
             Log.i(TAG, "waitPeripheral(${device}")
-            if (bluetoothVolumeControl.getConnectionState(device) != STATE_CONNECTED) {
+            if (
+                bluetoothVolumeControl.getConnectionState(device) !=
+                    BluetoothProfile.STATE_CONNECTED
+            ) {
                 Log.d(TAG, "Manual call to setConnectionPolicy")
                 bluetoothVolumeControl.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED)
                 Log.d(TAG, "wait for bluetoothVolumeControl profile connection")
                 flow
                     .filter { it.getBluetoothDeviceExtra() == device }
                     .map { it.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothAdapter.ERROR) }
-                    .filter { it == STATE_CONNECTED }
+                    .filter { it == BluetoothProfile.STATE_CONNECTED }
                     .first()
             }
 

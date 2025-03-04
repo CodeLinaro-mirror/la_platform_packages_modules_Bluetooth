@@ -25,8 +25,10 @@
 
 #include <cstdint>
 
-#include "btif/include/btif_sock_l2cap.h"
 #include "test/common/mock_functions.h"
+
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 // Original usings
 

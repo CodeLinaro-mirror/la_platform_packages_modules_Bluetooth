@@ -16,9 +16,6 @@
 
 package com.android.bluetooth.audio_util;
 
-import static android.Manifest.permission.MEDIA_CONTENT_CONTROL;
-import static android.Manifest.permission.MODIFY_PHONE_STATE;
-
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.mockGetSystemService;
 
@@ -63,14 +60,15 @@ public class MediaPlayerListTest {
     private @Mock MediaController mMockController;
     private @Mock MediaPlayerWrapper mMockPlayerWrapper;
 
+    private final String mFlagDexmarker = System.getProperty("dexmaker.share_classloader", "false");
     private MediaPlayerWrapper.Callback mActivePlayerCallback;
     private MediaSessionManager mMediaSessionManager;
 
     @Before
     public void setUp() throws Exception {
-        InstrumentationRegistry.getInstrumentation()
-                .getUiAutomation()
-                .adoptShellPermissionIdentity(MEDIA_CONTENT_CONTROL, MODIFY_PHONE_STATE);
+        if (!mFlagDexmarker.equals("true")) {
+            System.setProperty("dexmaker.share_classloader", "true");
+        }
 
         if (Looper.myLooper() == null) {
             Looper.prepare();
@@ -126,12 +124,12 @@ public class MediaPlayerListTest {
         MediaControllerFactory.inject(null);
         MediaPlayerWrapperFactory.inject(null);
         mMediaPlayerList.cleanup();
-        InstrumentationRegistry.getInstrumentation()
-                .getUiAutomation()
-                .dropShellPermissionIdentity();
+        if (!mFlagDexmarker.equals("true")) {
+            System.setProperty("dexmaker.share_classloader", mFlagDexmarker);
+        }
     }
 
-    private static MediaData prepareMediaData(int playbackState) {
+    private MediaData prepareMediaData(int playbackState) {
         PlaybackState.Builder builder = new PlaybackState.Builder();
         builder.setState(playbackState, 0, 1);
         ArrayList<Metadata> list = new ArrayList<Metadata>();
@@ -147,7 +145,7 @@ public class MediaPlayerListTest {
         doReturn(prepareMediaData(PlaybackState.STATE_PAUSED))
                 .when(mMockPlayerWrapper)
                 .getCurrentMediaData();
-        mMediaPlayerList.injectAudioPlaybackActive(true);
+        mMediaPlayerList.injectAudioPlaybacActive(true);
         verify(mMediaUpdateCallback).run(mMediaUpdateData.capture());
         MediaData data = mMediaUpdateData.getValue();
         assertThat(data.state.getState()).isEqualTo(PlaybackState.STATE_PLAYING);
@@ -155,7 +153,7 @@ public class MediaPlayerListTest {
         // verify update media data with current media player media data
         MediaData currentMediaData = prepareMediaData(PlaybackState.STATE_PAUSED);
         doReturn(currentMediaData).when(mMockPlayerWrapper).getCurrentMediaData();
-        mMediaPlayerList.injectAudioPlaybackActive(false);
+        mMediaPlayerList.injectAudioPlaybacActive(false);
         verify(mMediaUpdateCallback, times(2)).run(mMediaUpdateData.capture());
         data = mMediaUpdateData.getValue();
         assertThat(data.metadata).isEqualTo(currentMediaData.metadata);
@@ -180,8 +178,8 @@ public class MediaPlayerListTest {
         doReturn(prepareMediaData(PlaybackState.STATE_PLAYING))
                 .when(mMockPlayerWrapper)
                 .getCurrentMediaData();
-        mMediaPlayerList.injectAudioPlaybackActive(true);
-        mMediaPlayerList.injectAudioPlaybackActive(false);
+        mMediaPlayerList.injectAudioPlaybacActive(true);
+        mMediaPlayerList.injectAudioPlaybacActive(false);
         verify(mMediaUpdateCallback, never()).run(any());
     }
 
@@ -190,7 +188,7 @@ public class MediaPlayerListTest {
         doReturn(prepareMediaData(PlaybackState.STATE_PLAYING))
                 .when(mMockPlayerWrapper)
                 .getCurrentMediaData();
-        mMediaPlayerList.injectAudioPlaybackActive(true);
+        mMediaPlayerList.injectAudioPlaybacActive(true);
         verify(mMediaUpdateCallback, never()).run(any());
 
         // Verify not update active player media data when audio playback is active

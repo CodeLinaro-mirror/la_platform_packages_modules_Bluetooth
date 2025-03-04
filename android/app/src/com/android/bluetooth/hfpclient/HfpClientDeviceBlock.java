@@ -197,7 +197,7 @@ public class HfpClientDeviceBlock {
                     || call.getState() == HfpClientCall.CALL_STATE_ACTIVE
                     || call.getState() == HfpClientCall.CALL_STATE_HELD) {
                 // This is an outgoing call. Even if it is an active call we do not have a way of
-                // putting that parcelable in a separate field.
+                // putting that parcelable in a seaprate field.
                 b.putParcelable(
                         TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, new ParcelUuid(call.getUUID()));
                 mTelecomManager.addNewUnknownCall(mPhoneAccount.getAccountHandle(), b);
@@ -270,7 +270,7 @@ public class HfpClientDeviceBlock {
         return connection;
     }
 
-    // Updates any conferenceable connections.
+    // Updates any conferencable connections.
     private void updateConferenceableConnections() {
         boolean addConf = false;
         debug("Existing connections: " + mConnections + " existing conference " + mConference);
@@ -320,7 +320,7 @@ public class HfpClientDeviceBlock {
         }
     }
 
-    private static Bundle getScoStateFromDevice(BluetoothDevice device) {
+    private Bundle getScoStateFromDevice(BluetoothDevice device) {
         Bundle bundle = new Bundle();
 
         HeadsetClientService headsetClientService = HeadsetClientService.getHeadsetClientService();

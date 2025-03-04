@@ -15,16 +15,12 @@
  */
 package com.android.bluetooth.a2dpsink;
 
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
-
 import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static com.google.common.truth.Truth.assertThat;
 
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -37,22 +33,22 @@ public class StackEventTest {
 
     @Test
     public void testCreateConnectionStateChangedDisconnectedEvent() {
-        testConnectionStateChangedBase(STATE_DISCONNECTED);
+        testConnectionStateChangedBase(BluetoothProfile.STATE_DISCONNECTED);
     }
 
     @Test
     public void testCreateConnectionStateChangedConnectingEvent() {
-        testConnectionStateChangedBase(STATE_CONNECTING);
+        testConnectionStateChangedBase(BluetoothProfile.STATE_CONNECTING);
     }
 
     @Test
     public void testCreateConnectionStateChangedConnectedEvent() {
-        testConnectionStateChangedBase(STATE_CONNECTED);
+        testConnectionStateChangedBase(BluetoothProfile.STATE_CONNECTED);
     }
 
     @Test
     public void testCreateConnectionStateChangedDisconnectingEvent() {
-        testConnectionStateChangedBase(STATE_DISCONNECTING);
+        testConnectionStateChangedBase(BluetoothProfile.STATE_DISCONNECTING);
     }
 
     private void testConnectionStateChangedBase(int state) {

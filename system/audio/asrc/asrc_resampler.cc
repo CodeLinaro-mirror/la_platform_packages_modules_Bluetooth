@@ -170,7 +170,7 @@ public:
       : state_{.id = StateId::RESET}, reference_timing_{0, 0, 0} {
     if (com::android::bluetooth::flags::run_clock_recovery_in_worker_thread()) {
       read_clock_timer_.SchedulePeriodic(
-              thread->GetWeakPtr(),
+              thread->GetWeakPtr(), FROM_HERE,
               base::BindRepeating(
                       [](void*) {
                         bluetooth::shim::GetHciLayer()->EnqueueCommand(
@@ -183,7 +183,7 @@ public:
               std::chrono::milliseconds(100));
     } else {
       read_clock_timer_.SchedulePeriodic(
-              get_main_thread()->GetWeakPtr(),
+              get_main_thread()->GetWeakPtr(), FROM_HERE,
               base::BindRepeating(
                       [](void*) {
                         bluetooth::shim::GetHciLayer()->EnqueueCommand(

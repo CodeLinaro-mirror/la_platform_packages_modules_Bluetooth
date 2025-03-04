@@ -30,7 +30,6 @@
 #include "hal/hci_hal.h"
 #include "hal/hci_hal_host.h"
 #include "hal/snoop_logger.h"
-#include "main/shim/entry.h"
 #include "metrics/counter_metrics.h"
 #include "os/reactor.h"
 #include "os/thread.h"
@@ -164,7 +163,7 @@ public:
   }
 
 protected:
-  void ListDependencies(ModuleList* /*list*/) const {}
+  void ListDependencies(ModuleList* list) const { list->add<SnoopLogger>(); }
 
   void Start() override {
     std::lock_guard<std::mutex> lock(api_mutex_);
@@ -176,7 +175,7 @@ protected:
             common::Bind(&HciHalHost::send_packet_ready, common::Unretained(this)));
     hci_incoming_thread_.GetReactor()->ModifyRegistration(reactable_,
                                                           os::Reactor::REACT_ON_READ_ONLY);
-    btsnoop_logger_ = shim::GetSnoopLogger();
+    btsnoop_logger_ = GetDependency<SnoopLogger>();
     log::info("HAL opened successfully");
   }
 

@@ -26,6 +26,9 @@
 #include "test/headless/interface.h"
 #include "test/headless/log.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 using namespace bluetooth::test::headless;
 using namespace std::chrono_literals;
 
@@ -93,7 +96,7 @@ bool await_callback(Context& context) {
 
 namespace bluetooth::test::headless {
 
-static void messenger_stats() {
+void messenger_stats() {
   //  LOG_CONSOLE("%30s cnt:%zu", "device_found",
   //  discovered::device_found_.size()); LOG_CONSOLE("%30s cnt:%zu",
   //  "remote_device_properties",

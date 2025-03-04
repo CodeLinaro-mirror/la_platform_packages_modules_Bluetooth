@@ -18,7 +18,6 @@ package android.bluetooth;
 
 import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -226,7 +225,7 @@ public class GattClientTest {
 
         gatt.disconnect();
         inOrder.verify(gattCallback, timeout(1000))
-                .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
 
         gatt.connect();
         inOrder.verify(gattCallback, timeout(1000))
@@ -236,7 +235,7 @@ public class GattClientTest {
         //  be necessary.
         gatt.disconnect();
         inOrder.verify(gattCallback, timeout(1000))
-                .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
         gatt.close();
     }
 
@@ -363,7 +362,9 @@ public class GattClientTest {
 
         verify(gattCallback, timeout(35000))
                 .onConnectionStateChange(
-                        any(), eq(BluetoothGatt.GATT_CONNECTION_TIMEOUT), eq(STATE_DISCONNECTED));
+                        any(),
+                        eq(BluetoothGatt.GATT_CONNECTION_TIMEOUT),
+                        eq(BluetoothProfile.STATE_DISCONNECTED));
     }
 
     @Test
@@ -561,7 +562,7 @@ public class GattClientTest {
 
     private void disconnectAndWaitDisconnection(
             BluetoothGatt gatt, BluetoothGattCallback callback) {
-        final int state = STATE_DISCONNECTED;
+        final int state = BluetoothProfile.STATE_DISCONNECTED;
         gatt.disconnect();
         verify(callback, timeout(1000)).onConnectionStateChange(eq(gatt), anyInt(), eq(state));
 
@@ -740,7 +741,8 @@ public class GattClientTest {
 
                 gatt.disconnect();
                 inOrder.verify(gattCallback, timeout(1000))
-                        .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
+                        .onConnectionStateChange(
+                                any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
 
                 gatt.connect();
                 inOrder.verify(gattCallback, timeout(1000))
@@ -748,7 +750,8 @@ public class GattClientTest {
 
                 gatt.disconnect();
                 inOrder.verify(gattCallback, timeout(1000))
-                        .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
+                        .onConnectionStateChange(
+                                any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
             }
         } finally {
             for (BluetoothGatt gatt : gatts) {

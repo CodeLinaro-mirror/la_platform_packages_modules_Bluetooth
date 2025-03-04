@@ -99,7 +99,12 @@ class RequestGetMessage extends Request {
     }
 
     public String getHandle() {
-        return (String) mHeaderSet.getHeader(HeaderSet.NAME);
+        try {
+            return (String) mHeaderSet.getHeader(HeaderSet.NAME);
+        } catch (IOException e) {
+            Log.e(TAG, "Unexpected exception while reading handle!", e);
+            return null;
+        }
     }
 
     @Override

@@ -41,10 +41,6 @@ package com.android.bluetooth.mapclient;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.RECEIVE_SMS;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
 import static java.util.Objects.requireNonNull;
 
@@ -169,8 +165,8 @@ class MceStateMachine extends StateMachine {
     private final AdapterService mAdapterService;
 
     // Connectivity States
-    private int mPreviousState = STATE_DISCONNECTED;
-    private int mMostRecentState = STATE_DISCONNECTED;
+    private int mPreviousState = BluetoothProfile.STATE_DISCONNECTED;
+    private int mMostRecentState = BluetoothProfile.STATE_DISCONNECTED;
     private MasClient mMasClient;
     private MapClientContent mDatabase;
 
@@ -270,7 +266,8 @@ class MceStateMachine extends StateMachine {
     }
 
     private void initStateMachine() {
-        mPreviousState = STATE_DISCONNECTED;
+        mPreviousState = BluetoothProfile.STATE_DISCONNECTED;
+
 
         addState(mDisconnected);
         addState(mConnecting);
@@ -310,7 +307,7 @@ class MceStateMachine extends StateMachine {
                         + prevState
                         + ", new="
                         + state);
-        if (prevState != state && state == STATE_CONNECTED) {
+        if (prevState != state && state == BluetoothProfile.STATE_CONNECTED) {
             MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.MAP_CLIENT);
         }
         setState(state);
@@ -363,7 +360,7 @@ class MceStateMachine extends StateMachine {
         if (contacts == null || contacts.length <= 0) {
             return false;
         }
-        if (mMostRecentState == STATE_CONNECTED) {
+        if (mMostRecentState == BluetoothProfile.STATE_CONNECTED) {
             Bmessage bmsg = new Bmessage();
             // Set type and status.
             bmsg.setType(getDefaultMessageType());
@@ -416,7 +413,7 @@ class MceStateMachine extends StateMachine {
 
     synchronized boolean getMessage(String handle) {
         Log.d(TAG, "getMessage" + handle);
-        if (mMostRecentState == STATE_CONNECTED) {
+        if (mMostRecentState == BluetoothProfile.STATE_CONNECTED) {
             sendMessage(MSG_INBOUND_MESSAGE, handle);
             return true;
         }
@@ -425,7 +422,7 @@ class MceStateMachine extends StateMachine {
 
     synchronized boolean getUnreadMessages() {
         Log.d(TAG, "getMessage");
-        if (mMostRecentState == STATE_CONNECTED) {
+        if (mMostRecentState == BluetoothProfile.STATE_CONNECTED) {
             sendMessage(MSG_GET_MESSAGE_LISTING, FOLDER_INBOX);
             return true;
         }
@@ -433,7 +430,7 @@ class MceStateMachine extends StateMachine {
     }
 
     synchronized int getSupportedFeatures() {
-        if (mMostRecentState == STATE_CONNECTED && mMasClient != null) {
+        if (mMostRecentState == BluetoothProfile.STATE_CONNECTED && mMasClient != null) {
             Log.d(TAG, "returning getSupportedFeatures from SDP record");
             return mMasClient.getSdpMasRecord().getSupportedFeatures();
         }
@@ -443,7 +440,7 @@ class MceStateMachine extends StateMachine {
 
     synchronized boolean setMessageStatus(String handle, int status) {
         Log.d(TAG, "setMessageStatus(" + handle + ", " + status + ")");
-        if (mMostRecentState == STATE_CONNECTED) {
+        if (mMostRecentState == BluetoothProfile.STATE_CONNECTED) {
             RequestSetMessageStatus.StatusIndicator statusIndicator;
             byte value;
             switch (status) {
@@ -481,11 +478,11 @@ class MceStateMachine extends StateMachine {
         return false;
     }
 
-    private static String getContactURIFromPhone(String number) {
+    private String getContactURIFromPhone(String number) {
         return PhoneAccount.SCHEME_TEL + ":" + number;
     }
 
-    private static String getContactURIFromEmail(String email) {
+    private String getContactURIFromEmail(String email) {
         return SCHEME_MAILTO + "://" + email;
     }
 
@@ -539,14 +536,14 @@ class MceStateMachine extends StateMachine {
                     Utils.getLoggableAddress(mDevice)
                             + " [Disconnected]: Entered, message="
                             + getMessageName(getCurrentMessage().what));
-            onConnectionStateChanged(mPreviousState, STATE_DISCONNECTED);
-            mPreviousState = STATE_DISCONNECTED;
+            onConnectionStateChanged(mPreviousState, BluetoothProfile.STATE_DISCONNECTED);
+            mPreviousState = BluetoothProfile.STATE_DISCONNECTED;
             quit();
         }
 
         @Override
         public void exit() {
-            mPreviousState = STATE_DISCONNECTED;
+            mPreviousState = BluetoothProfile.STATE_DISCONNECTED;
         }
     }
 
@@ -558,7 +555,7 @@ class MceStateMachine extends StateMachine {
                     Utils.getLoggableAddress(mDevice)
                             + " [Connecting]: Entered, message="
                             + getMessageName(getCurrentMessage().what));
-            onConnectionStateChanged(mPreviousState, STATE_CONNECTING);
+            onConnectionStateChanged(mPreviousState, BluetoothProfile.STATE_CONNECTING);
 
             // When commanded to connect begin SDP to find the MAS server.
             mDevice.sdpSearch(BluetoothUuid.MAS);
@@ -649,7 +646,7 @@ class MceStateMachine extends StateMachine {
 
         @Override
         public void exit() {
-            mPreviousState = STATE_CONNECTING;
+            mPreviousState = BluetoothProfile.STATE_CONNECTING;
             removeMessages(MSG_CONNECTING_TIMEOUT);
         }
     }
@@ -674,7 +671,7 @@ class MceStateMachine extends StateMachine {
             if (mDatabase == null) {
                 mDatabase = new MapClientContent(mService, callbacks, mDevice);
             }
-            onConnectionStateChanged(mPreviousState, STATE_CONNECTED);
+            onConnectionStateChanged(mPreviousState, BluetoothProfile.STATE_CONNECTED);
             if (Utils.isPtsTestMode()) return;
 
             mMasClient.makeRequest(new RequestSetPath(FOLDER_TELECOM));
@@ -865,7 +862,7 @@ class MceStateMachine extends StateMachine {
         public void exit() {
             mDatabase.cleanUp();
             mDatabase = null;
-            mPreviousState = STATE_CONNECTED;
+            mPreviousState = BluetoothProfile.STATE_CONNECTED;
         }
 
         /**
@@ -1198,7 +1195,7 @@ class MceStateMachine extends StateMachine {
          * Retrieves the URIs of all the participants of a group conversation, besides the sender of
          * the message.
          */
-        private static String[] getRecipientsUri(List<VCardEntry> recipients) {
+        private String[] getRecipientsUri(List<VCardEntry> recipients) {
             Set<String> uris = new HashSet<>();
 
             for (VCardEntry recipient : recipients) {
@@ -1275,7 +1272,7 @@ class MceStateMachine extends StateMachine {
                             + " [Disconnecting]: Entered, message="
                             + getMessageName(getCurrentMessage().what));
 
-            onConnectionStateChanged(mPreviousState, STATE_DISCONNECTING);
+            onConnectionStateChanged(mPreviousState, BluetoothProfile.STATE_DISCONNECTING);
 
             if (mMasClient != null) {
                 mMasClient.makeRequest(new RequestSetNotificationRegistration(false));
@@ -1319,7 +1316,7 @@ class MceStateMachine extends StateMachine {
 
         @Override
         public void exit() {
-            mPreviousState = STATE_DISCONNECTING;
+            mPreviousState = BluetoothProfile.STATE_DISCONNECTING;
             removeMessages(MSG_DISCONNECTING_TIMEOUT);
         }
     }
@@ -1329,7 +1326,7 @@ class MceStateMachine extends StateMachine {
         sendMessage(MSG_NOTIFICATION, ev);
     }
 
-    private static String getMessageName(int what) {
+    private String getMessageName(int what) {
         switch (what) {
             case MSG_MAS_CONNECTED:
                 return "MSG_MAS_CONNECTED";

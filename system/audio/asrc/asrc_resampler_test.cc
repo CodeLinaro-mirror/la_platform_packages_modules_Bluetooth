@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <iostream>
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
 #pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 bluetooth::common::MessageLoopThread message_loop_thread("main message loop");

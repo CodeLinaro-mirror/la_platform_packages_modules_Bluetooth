@@ -17,8 +17,6 @@
 package android.bluetooth.hid;
 
 import static android.bluetooth.BluetoothDevice.TRANSPORT_BREDR;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -315,12 +313,17 @@ public class HidHostTest {
                 hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice),
                 hasExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_BONDED));
 
-        if (a2dpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
-            assertThat(a2dpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
+        if (a2dpService.getConnectionPolicy(mDevice)
+                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+            assertThat(
+                            a2dpService.setConnectionPolicy(
+                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
-        if (hfpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
-            assertThat(hfpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
+        if (hfpService.getConnectionPolicy(mDevice) == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+            assertThat(
+                            hfpService.setConnectionPolicy(
+                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
         verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
@@ -377,7 +380,8 @@ public class HidHostTest {
     @Test
     public void hidReconnectionWhenConnectionPolicyChangeTest() throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice))
+                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
 
         mHidBlockingStub.disconnectHost(Empty.getDefaultInstance());
         verifyProfileDisconnectionState();
@@ -388,11 +392,17 @@ public class HidHostTest {
         mHidBlockingStub.disconnectHost(Empty.getDefaultInstance());
         verifyProfileDisconnectionState();
 
-        assertThat(mHidService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN)).isTrue();
+        assertThat(
+                        mHidService.setConnectionPolicy(
+                                mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+                .isTrue();
 
         reconnectionFromRemoteAndVerifyDisconnectedState();
 
-        assertThat(mHidService.setConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED)).isTrue();
+        assertThat(
+                        mHidService.setConnectionPolicy(
+                                mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED))
+                .isTrue();
         verifyIntentReceived(
                 hasAction(BluetoothHidHost.ACTION_CONNECTION_STATE_CHANGED),
                 hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice),
@@ -425,7 +435,8 @@ public class HidHostTest {
     @Test
     public void hidReconnectionAfterBTrestartWithConnectionPolicyAllowedTest() throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice))
+                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
 
         bluetoothRestart();
 
@@ -449,9 +460,13 @@ public class HidHostTest {
     public void hidReconnectionAfterBTrestartWithConnectionPolicyiDisallowedTest()
             throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice))
+                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
 
-        assertThat(mHidService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN)).isTrue();
+        assertThat(
+                        mHidService.setConnectionPolicy(
+                                mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+                .isTrue();
 
         bluetoothRestart();
         reconnectionFromRemoteAndVerifyDisconnectedState();
@@ -471,7 +486,8 @@ public class HidHostTest {
     @Test
     public void hidReconnectionAfterDeviceRemovedTest() throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice))
+                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
         mHidBlockingStub.disconnectHost(Empty.getDefaultInstance());
         verifyProfileDisconnectionState();
 

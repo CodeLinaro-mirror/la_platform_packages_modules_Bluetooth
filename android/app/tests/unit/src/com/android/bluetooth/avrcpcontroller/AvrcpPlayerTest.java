@@ -178,7 +178,7 @@ public class AvrcpPlayerTest {
         assertThat(avrcpPlayer.notifyImageDownload(uuid, uri)).isTrue();
     }
 
-    private static void setSupportedFeature(byte[] supportedFeatures, int feature) {
+    private void setSupportedFeature(byte[] supportedFeatures, int feature) {
         int byteNumber = feature / 8;
         byte bitMask = (byte) (1 << (feature % 8));
         supportedFeatures[byteNumber] = (byte) (supportedFeatures[byteNumber] | bitMask);

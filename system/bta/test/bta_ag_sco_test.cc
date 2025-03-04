@@ -24,10 +24,13 @@
 #include "bta/include/bta_le_audio_api.h"
 #include "hci/controller_interface_mock.h"
 #include "stack/btm/btm_int_types.h"
-#include "stack/btm/btm_sco.h"
 #include "test/mock/mock_device_esco_parameters.h"
 #include "test/mock/mock_main_shim_entry.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
+bool btm_peer_supports_esco_ev3(const RawAddress& /*remote_bda*/) { return true; }
 tBTM_CB btm_cb;
 LeAudioClient* LeAudioClient::Get() { return nullptr; }
 bool LeAudioClient::IsLeAudioClientInStreaming() { return false; }
@@ -39,7 +42,7 @@ class BtaAgScoParameterSelectionTest
 protected:
   void SetUp() override {
     test::mock::device_esco_parameters::esco_parameters_for_codec.body =
-            [this](esco_codec_t codec, bool /* offload */) {
+            [this](esco_codec_t codec) {
               this->codec = codec;
               return enh_esco_params_t{};
             };
@@ -101,7 +104,7 @@ TEST_P(BtaAgScoParameterSelectionTest, create_pending_sco_cvsd) {
   }
 }
 
-static std::vector<std::tuple<tBTA_AG_FEAT, tBTA_AG_PEER_FEAT, bool>>
+std::vector<std::tuple<tBTA_AG_FEAT, tBTA_AG_PEER_FEAT, bool>>
 BtaAgScoParameterSelectionTestParameters() {
   tBTA_AG_FEAT features[] = {0, BTA_AG_FEAT_ESCO_S4};
   tBTA_AG_PEER_FEAT peer_features[] = {0, BTA_AG_PEER_FEAT_ESCO_S4};

@@ -18,9 +18,6 @@ package com.android.bluetooth.mapclient;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -174,7 +171,7 @@ public class MapClientServiceTest {
 
     @Test
     public void disconnect_whenConnected_returnsTrue() {
-        int connectionState = STATE_CONNECTED;
+        int connectionState = BluetoothProfile.STATE_CONNECTED;
         MceStateMachine sm = mock(MceStateMachine.class);
         when(sm.getState()).thenReturn(connectionState);
         mService.getInstanceMap().put(mRemoteDevice, sm);
@@ -186,12 +183,13 @@ public class MapClientServiceTest {
 
     @Test
     public void getConnectionState_whenNotConnected() {
-        assertThat(mService.getConnectionState(mRemoteDevice)).isEqualTo(STATE_DISCONNECTED);
+        assertThat(mService.getConnectionState(mRemoteDevice))
+                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
     }
 
     @Test
     public void getConnectionState_whenConnected() {
-        int connectionState = STATE_CONNECTED;
+        int connectionState = BluetoothProfile.STATE_CONNECTED;
         MceStateMachine sm = mock(MceStateMachine.class);
         when(sm.getState()).thenReturn(connectionState);
         mService.getInstanceMap().put(mRemoteDevice, sm);
@@ -201,7 +199,7 @@ public class MapClientServiceTest {
 
     @Test
     public void getConnectedDevices() {
-        int connectionState = STATE_CONNECTED;
+        int connectionState = BluetoothProfile.STATE_CONNECTED;
         MceStateMachine sm = mock(MceStateMachine.class);
         BluetoothDevice[] bondedDevices = new BluetoothDevice[] {mRemoteDevice};
         when(mAdapterService.getBondedDevices()).thenReturn(bondedDevices);
@@ -280,7 +278,7 @@ public class MapClientServiceTest {
 
     @Test
     public void aclDisconnectedNoTransport_whenConnected_doesNotCallDisconnect() {
-        int connectionState = STATE_CONNECTED;
+        int connectionState = BluetoothProfile.STATE_CONNECTED;
         MceStateMachine sm = mock(MceStateMachine.class);
         mService.getInstanceMap().put(mRemoteDevice, sm);
         when(sm.getState()).thenReturn(connectionState);
@@ -293,7 +291,7 @@ public class MapClientServiceTest {
 
     @Test
     public void aclDisconnectedLeTransport_whenConnected_doesNotCallDisconnect() {
-        int connectionState = STATE_CONNECTED;
+        int connectionState = BluetoothProfile.STATE_CONNECTED;
         MceStateMachine sm = mock(MceStateMachine.class);
         mService.getInstanceMap().put(mRemoteDevice, sm);
         when(sm.getState()).thenReturn(connectionState);
@@ -306,7 +304,7 @@ public class MapClientServiceTest {
 
     @Test
     public void aclDisconnectedBrEdrTransport_whenConnected_callsDisconnect() {
-        int connectionState = STATE_CONNECTED;
+        int connectionState = BluetoothProfile.STATE_CONNECTED;
         MceStateMachine sm = mock(MceStateMachine.class);
         mService.getInstanceMap().put(mRemoteDevice, sm);
         when(sm.getState()).thenReturn(connectionState);
@@ -377,7 +375,8 @@ public class MapClientServiceTest {
         assertThat(mService.getInstanceMap().keySet()).containsExactly(mRemoteDevice);
 
         mTestLooper.dispatchAll();
-        assertThat(mService.getConnectionState(mRemoteDevice)).isEqualTo(STATE_CONNECTING);
+        assertThat(mService.getConnectionState(mRemoteDevice))
+                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
     }
 
     @Test

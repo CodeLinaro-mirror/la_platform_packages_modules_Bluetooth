@@ -185,8 +185,8 @@ public class BluetoothOppObexServerSession extends ServerRequestHandler
         } else {
             destination = "FF:FF:FF:00:00:00";
         }
-        boolean isAcceptListed =
-                BluetoothOppManager.getInstance(mContext).isAcceptListed(destination);
+        boolean isAcceptlisted =
+                BluetoothOppManager.getInstance(mContext).isAcceptlisted(destination);
 
         HeaderSet request;
         String name, mimeType;
@@ -262,7 +262,7 @@ public class BluetoothOppObexServerSession extends ServerRequestHandler
 
         // Reject anything outside the "acceptlist" plus unspecified MIME Types.
         if (mimeType == null
-                || (!isAcceptListed
+                || (!isAcceptlisted
                         && !Constants.mimeTypeMatches(
                                 mimeType, Constants.ACCEPTABLE_SHARE_INBOUND_TYPES))) {
             Log.w(TAG, "mimeType is null or in unacceptable list, reject the transfer");
@@ -291,7 +291,7 @@ public class BluetoothOppObexServerSession extends ServerRequestHandler
                     BluetoothShare.USER_CONFIRMATION_AUTO_CONFIRMED);
         }
 
-        if (isAcceptListed) {
+        if (isAcceptlisted) {
             values.put(
                     BluetoothShare.USER_CONFIRMATION,
                     BluetoothShare.USER_CONFIRMATION_HANDOVER_CONFIRMED);
@@ -620,20 +620,31 @@ public class BluetoothOppObexServerSession extends ServerRequestHandler
 
         Log.d(TAG, "onConnect");
         Constants.logHeader(request);
-        byte[] uuid = (byte[]) request.getHeader(HeaderSet.TARGET);
-        Log.v(TAG, "onConnect(): uuid =" + Arrays.toString(uuid));
-        if (uuid != null) {
-            return ResponseCodes.OBEX_HTTP_NOT_ACCEPTABLE;
-        }
+        Long objectCount = null;
+        try {
+            byte[] uuid = (byte[]) request.getHeader(HeaderSet.TARGET);
+            Log.v(TAG, "onConnect(): uuid =" + Arrays.toString(uuid));
+            if (uuid != null) {
+                return ResponseCodes.OBEX_HTTP_NOT_ACCEPTABLE;
+            }
 
-        Long objectCount = (Long) request.getHeader(HeaderSet.COUNT);
+            objectCount = (Long) request.getHeader(HeaderSet.COUNT);
+        } catch (IOException e) {
+            ContentProfileErrorReportUtils.report(
+                    BluetoothProfile.OPP,
+                    BluetoothProtoEnums.BLUETOOTH_OPP_OBEX_SERVER_SESSION,
+                    BluetoothStatsLog.BLUETOOTH_CONTENT_PROFILE_ERROR_REPORTED__TYPE__EXCEPTION,
+                    14);
+            Log.e(TAG, e.toString());
+            return ResponseCodes.OBEX_HTTP_INTERNAL_ERROR;
+        }
         String destination;
         if (mTransport instanceof BluetoothObexTransport) {
             destination = ((BluetoothObexTransport) mTransport).getRemoteAddress();
         } else {
             destination = "FF:FF:FF:00:00:00";
         }
-        boolean isHandover = BluetoothOppManager.getInstance(mContext).isAcceptListed(destination);
+        boolean isHandover = BluetoothOppManager.getInstance(mContext).isAcceptlisted(destination);
         if (isHandover) {
             // Notify the handover requester file transfer has started
             Intent intent = new Intent(Constants.ACTION_HANDOVER_STARTED);

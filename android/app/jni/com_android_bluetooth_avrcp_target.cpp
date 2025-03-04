@@ -37,6 +37,9 @@
 #include "hardware/bluetooth.h"
 #include "types/raw_address.h"
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 using bluetooth::avrcp::Attribute;
 using bluetooth::avrcp::AttributeEntry;
 using bluetooth::avrcp::FolderInfo;
@@ -318,7 +321,7 @@ static void cleanupNative(JNIEnv* env, jobject /* object */) {
   sServiceInterface = nullptr;
 }
 
-static jboolean connectDeviceNative(JNIEnv* env, jobject /* object */, jstring address) {
+jboolean connectDeviceNative(JNIEnv* env, jobject /* object */, jstring address) {
   log::debug("");
   std::unique_lock<std::shared_timed_mutex> interface_lock(interface_mutex);
   if (mServiceCallbacks == nullptr) {
@@ -338,7 +341,7 @@ static jboolean connectDeviceNative(JNIEnv* env, jobject /* object */, jstring a
   return sServiceInterface->ConnectDevice(bdaddr) == true ? JNI_TRUE : JNI_FALSE;
 }
 
-static jboolean disconnectDeviceNative(JNIEnv* env, jobject /* object */, jstring address) {
+jboolean disconnectDeviceNative(JNIEnv* env, jobject /* object */, jstring address) {
   log::debug("");
   std::unique_lock<std::shared_timed_mutex> interface_lock(interface_mutex);
   if (mServiceCallbacks == nullptr) {

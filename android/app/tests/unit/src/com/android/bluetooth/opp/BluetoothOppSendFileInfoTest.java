@@ -36,11 +36,9 @@ import android.net.Uri;
 import android.provider.OpenableColumns;
 
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.BluetoothMethodProxy;
-
-import com.google.testing.junit.testparameterinjector.TestParameter;
-import com.google.testing.junit.testparameterinjector.TestParameterInjector;
 
 import org.junit.After;
 import org.junit.Before;
@@ -52,7 +50,7 @@ import org.mockito.Mock;
 import java.io.FileInputStream;
 import java.io.IOException;
 
-@RunWith(TestParameterInjector.class)
+@RunWith(AndroidJUnit4.class)
 public class BluetoothOppSendFileInfoTest {
     Context mContext;
     MatrixCursor mCursor;
@@ -124,11 +122,10 @@ public class BluetoothOppSendFileInfoTest {
     }
 
     @Test
-    public void generateFileInfo_withContentUriForOtherUser_returnsSendFileInfoError(
-            @TestParameter boolean encodedAt) throws Exception {
+    public void generateFileInfo_withContentUriForOtherUser_returnsSendFileInfoError()
+            throws Exception {
         String type = "image/jpeg";
-        String authoritySuffix = encodedAt ? "%40media" : "@media";
-        Uri uri = buildContentUriWithEncodedAuthority((myUserId() + 1) + authoritySuffix);
+        Uri uri = buildContentUriWithEncodedAuthority((myUserId() + 1) + "@media");
 
         long fileLength = 1000;
         String fileName = "pic.jpg";
@@ -188,11 +185,10 @@ public class BluetoothOppSendFileInfoTest {
     }
 
     @Test
-    public void generateFileInfo_withContentUriForSameUser_returnsInfoWithCorrectLength(
-            @TestParameter boolean encodedAt) throws Exception {
+    public void generateFileInfo_withContentUriForSameUser_returnsInfoWithCorrectLength()
+            throws Exception {
         String type = "image/jpeg";
-        String authoritySuffix = encodedAt ? "%40media" : "@media";
-        Uri uri = buildContentUriWithEncodedAuthority(myUserId() + authoritySuffix);
+        Uri uri = buildContentUriWithEncodedAuthority(myUserId() + "@media");
 
         long fileLength = 1000;
         String fileName = "pic.jpg";

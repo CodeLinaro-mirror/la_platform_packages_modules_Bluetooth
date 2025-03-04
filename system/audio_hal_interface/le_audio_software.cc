@@ -280,17 +280,6 @@ void LeAudioClientInterface::Sink::StopSession() {
   get_aidl_client_interface(is_broadcaster_)->EndSession();
 }
 
-static inline void dumpOffloadConfig(
-        const char* msg, const ::bluetooth::audio::aidl::AudioConfiguration& offload_hal_config) {
-  const auto offload_cfg_str = offload_hal_config.toString();
-
-  constexpr size_t linelimit = 940;
-  std::string_view str_view(offload_cfg_str);
-  for (size_t offset = 0; offset < offload_cfg_str.length(); offset += linelimit) {
-    log::debug("{} {}", offset ? "    > " : msg, str_view.substr(offset, linelimit));
-  }
-}
-
 void LeAudioClientInterface::Sink::UpdateAudioConfigToHal(
         const ::bluetooth::le_audio::stream_config& offload_config) {
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
@@ -301,10 +290,8 @@ void LeAudioClientInterface::Sink::UpdateAudioConfigToHal(
     return;
   }
 
-  auto offload_hal_config = aidl::le_audio::stream_config_to_hal_audio_config(offload_config);
-  dumpOffloadConfig("Encoding config:", offload_hal_config);
-
-  get_aidl_client_interface(is_broadcaster_)->UpdateAudioConfig(offload_hal_config);
+  get_aidl_client_interface(is_broadcaster_)
+          ->UpdateAudioConfig(aidl::le_audio::stream_config_to_hal_audio_config(offload_config));
 }
 
 std::optional<::bluetooth::le_audio::broadcaster::BroadcastConfiguration>
@@ -604,11 +591,8 @@ void LeAudioClientInterface::Source::UpdateAudioConfigToHal(
       aidl::SessionType::LE_AUDIO_HARDWARE_OFFLOAD_DECODING_DATAPATH) {
     return;
   }
-
-  auto offload_hal_config = aidl::le_audio::stream_config_to_hal_audio_config(offload_config);
-  dumpOffloadConfig("Decoding config:", offload_hal_config);
-
-  aidl::le_audio::LeAudioSourceTransport::interface->UpdateAudioConfig(offload_hal_config);
+  aidl::le_audio::LeAudioSourceTransport::interface->UpdateAudioConfig(
+          aidl::le_audio::stream_config_to_hal_audio_config(offload_config));
 }
 
 size_t LeAudioClientInterface::Source::Write(const uint8_t* p_buf, uint32_t len) {

@@ -862,7 +862,8 @@ public final class OobData implements Parcelable {
      * @hide
      */
     @Override
-    public @NonNull String toString() {
+    @NonNull
+    public String toString() {
         return "OobData: \n\t"
                 // Both
                 + "Device Address With Type: "
@@ -899,11 +900,13 @@ public final class OobData implements Parcelable {
                 + "\n\t";
     }
 
-    private static @NonNull String toHexString(int b) {
+    @NonNull
+    private String toHexString(int b) {
         return toHexString(new byte[] {(byte) b});
     }
 
-    private static @NonNull String toHexString(byte[] array) {
+    @NonNull
+    private String toHexString(byte[] array) {
         if (array == null) return "null";
         StringBuilder builder = new StringBuilder(array.length * 2);
         for (byte b : array) {

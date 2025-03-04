@@ -71,12 +71,12 @@ public class HeadsetNativeInterface {
         }
     }
 
-    private static void sendMessageToService(HeadsetStackEvent event) {
+    private void sendMessageToService(HeadsetStackEvent event) {
         HeadsetService service = HeadsetService.getHeadsetService();
         if (service != null) {
             service.messageFromNative(event);
         } else {
-            // Service must call cleanup() when quitting and native stack shouldn't send any event
+            // Service must call cleanup() when quiting and native stack shouldn't send any event
             // after cleanup() -> cleanupNative() is called.
             Log.w(TAG, "Stack sent event while service is not available: " + event);
         }
@@ -500,7 +500,7 @@ public class HeadsetNativeInterface {
      * values from BtHfCallState 3. number & type: valid only for incoming & waiting call
      *
      * @param device target device for this update
-     * @param callState callState structure
+     * @param callState callstate structure
      * @return True on success, False on failure
      */
     @VisibleForTesting
@@ -557,7 +557,8 @@ public class HeadsetNativeInterface {
      * @param device current active SCO device
      * @return True on success, False on failure
      */
-    boolean enableSwb(int swbCodec, boolean enable, BluetoothDevice device) {
+    @VisibleForTesting
+    public boolean enableSwb(int swbCodec, boolean enable, BluetoothDevice device) {
         return enableSwbNative(swbCodec, enable, getByteAddress(device));
     }
 

@@ -16,8 +16,6 @@
  *
  ******************************************************************************/
 
-#include "bta_gatts_co.h"
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,6 +24,9 @@
 #include "osi/include/osi.h"
 #include "stack/include/gatt_api.h"
 #include "types/raw_address.h"
+
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 /*****************************************************************************
  *  Local type definitions

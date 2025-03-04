@@ -18,11 +18,6 @@
 package com.android.bluetooth.csip;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
-import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
-import static android.bluetooth.BluetoothProfile.getConnectionStateName;
 
 import android.bluetooth.BluetoothCsipSetCoordinator;
 import android.bluetooth.BluetoothDevice;
@@ -100,11 +95,6 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
         return CsisSm;
     }
 
-    @VisibleForTesting
-    boolean doesSuperHaveDeferredMessages(int what) {
-        return super.hasDeferredMessages(what);
-    }
-
     /** Quit state machine execution */
     public void doQuit() {
         log("doQuit for device " + mDevice);
@@ -130,7 +120,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
             removeDeferredMessages(DISCONNECT);
 
             if (mLastConnectionState != -1) {
-                csipConnectionState(STATE_DISCONNECTED, mLastConnectionState);
+                csipConnectionState(BluetoothProfile.STATE_DISCONNECTED, mLastConnectionState);
             }
         }
 
@@ -141,7 +131,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + mDevice
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
-            mLastConnectionState = STATE_DISCONNECTED;
+            mLastConnectionState = BluetoothProfile.STATE_DISCONNECTED;
         }
 
         @Override
@@ -253,7 +243,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
             sendMessageDelayed(CONNECT_TIMEOUT, sConnectTimeoutMs);
-            csipConnectionState(STATE_CONNECTING, mLastConnectionState);
+            csipConnectionState(BluetoothProfile.STATE_CONNECTING, mLastConnectionState);
         }
 
         @Override
@@ -263,7 +253,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + mDevice
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
-            mLastConnectionState = STATE_CONNECTING;
+            mLastConnectionState = BluetoothProfile.STATE_CONNECTING;
             removeMessages(CONNECT_TIMEOUT);
         }
 
@@ -351,7 +341,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
             sendMessageDelayed(CONNECT_TIMEOUT, sConnectTimeoutMs);
-            csipConnectionState(STATE_DISCONNECTING, mLastConnectionState);
+            csipConnectionState(BluetoothProfile.STATE_DISCONNECTING, mLastConnectionState);
         }
 
         @Override
@@ -361,7 +351,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + mDevice
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
-            mLastConnectionState = STATE_DISCONNECTING;
+            mLastConnectionState = BluetoothProfile.STATE_DISCONNECTING;
             removeMessages(CONNECT_TIMEOUT);
         }
 
@@ -468,7 +458,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
             removeDeferredMessages(CONNECT);
-            csipConnectionState(STATE_CONNECTED, mLastConnectionState);
+            csipConnectionState(BluetoothProfile.STATE_CONNECTED, mLastConnectionState);
         }
 
         @Override
@@ -478,7 +468,7 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                             + mDevice
                             + "): "
                             + messageWhatToString(getCurrentMessage().what));
-            mLastConnectionState = STATE_CONNECTED;
+            mLastConnectionState = BluetoothProfile.STATE_CONNECTED;
         }
 
         @Override
@@ -550,16 +540,16 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
         String currentState = getCurrentState().getName();
         switch (currentState) {
             case "Disconnected":
-                return STATE_DISCONNECTED;
+                return BluetoothProfile.STATE_DISCONNECTED;
             case "Connecting":
-                return STATE_CONNECTING;
+                return BluetoothProfile.STATE_CONNECTING;
             case "Connected":
-                return STATE_CONNECTED;
+                return BluetoothProfile.STATE_CONNECTED;
             case "Disconnecting":
-                return STATE_DISCONNECTING;
+                return BluetoothProfile.STATE_DISCONNECTING;
             default:
                 Log.e(TAG, "Bad currentState: " + currentState);
-                return STATE_DISCONNECTED;
+                return BluetoothProfile.STATE_DISCONNECTED;
         }
     }
 
@@ -569,9 +559,9 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                 "Connection state "
                         + mDevice
                         + ": "
-                        + getConnectionStateName(prevState)
+                        + profileStateToString(prevState)
                         + "->"
-                        + getConnectionStateName(newState));
+                        + profileStateToString(newState));
         mService.handleConnectionStateChanged(mDevice, prevState, newState);
 
         Intent intent =
@@ -599,6 +589,22 @@ public class CsipSetCoordinatorStateMachine extends StateMachine {
                 break;
         }
         return Integer.toString(what);
+    }
+
+    private static String profileStateToString(int state) {
+        switch (state) {
+            case BluetoothProfile.STATE_DISCONNECTED:
+                return "DISCONNECTED";
+            case BluetoothProfile.STATE_CONNECTING:
+                return "CONNECTING";
+            case BluetoothProfile.STATE_CONNECTED:
+                return "CONNECTED";
+            case BluetoothProfile.STATE_DISCONNECTING:
+                return "DISCONNECTING";
+            default:
+                break;
+        }
+        return Integer.toString(state);
     }
 
     /** Dump the state machine logs */

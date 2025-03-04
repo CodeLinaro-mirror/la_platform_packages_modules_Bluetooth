@@ -56,8 +56,7 @@ public:
                        bluetooth::le_audio::stream_parameters>& stream_params,
                std::function<void(const ::bluetooth::le_audio::stream_config& config,
                                   uint8_t direction)>
-                       update_receiver,
-               uint8_t directions_to_update));
+                       update_receiver));
   MOCK_METHOD(
           (std::unique_ptr<bluetooth::le_audio::types::AudioSetConfiguration>), GetCodecConfig,
           (const bluetooth::le_audio::CodecManager::UnicastConfigurationRequirements& requirements,

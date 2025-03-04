@@ -475,8 +475,8 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
             return ResponseCodes.OBEX_HTTP_UNAVAILABLE;
         }
 
-        // According to specification,the name header could be omitted such as
-        // sony ericssonHBH-DS980
+        // Accroding to specification,the name header could be omitted such as
+        // sony erriccsonHBH-DS980
 
         // For "x-bt/phonebook" and "x-bt/vcard-listing":
         // if name == null, guess what carkit actually want from current path
@@ -526,7 +526,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
             } else if (isSimEnabled && mCurrentPath.equals(SIM_PB_PATH)) {
                 appParamValue.needTag = ContentType.SIM_PHONEBOOK;
             } else {
-                Log.w(TAG, "mCurrentPath is not valid path!!!");
+                Log.w(TAG, "mCurrentpath is not valid path!!!");
                 ContentProfileErrorReportUtils.report(
                         BluetoothProfile.PBAP,
                         BluetoothProtoEnums.BLUETOOTH_PBAP_OBEX_SERVER,
@@ -620,7 +620,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
         }
     }
 
-    private static boolean isNameMatchTarget(String name, String target) {
+    private boolean isNameMatchTarget(String name, String target) {
         if (name == null) {
             return false;
         }
@@ -642,7 +642,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
     }
 
     /** check whether path is legal */
-    private static boolean isLegalPath(final String str) {
+    private boolean isLegalPath(final String str) {
         if (str.length() == 0) {
             return true;
         }
@@ -671,7 +671,8 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
 
         // Indicate which sorting order shall be used for the
         // <x-bt/vcard-listing> listing object.
-        // Can be "Alphabetical | Indexed | Phonetic", default value is "Indexed".
+        // Can be "Alphabetical | Indexed | Phonetical", default value is
+        // "Indexed".
         public String order;
 
         public int needTag;
@@ -1069,7 +1070,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
     }
 
     /** Function to send vcard data to client */
-    private static int pushBytes(Operation op, final String vcardString) {
+    private int pushBytes(Operation op, final String vcardString) {
         if (vcardString == null) {
             Log.w(TAG, "vcardString is null!");
             return ResponseCodes.OBEX_HTTP_OK;
@@ -1087,7 +1088,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                     BluetoothProtoEnums.BLUETOOTH_PBAP_OBEX_SERVER,
                     BluetoothStatsLog.BLUETOOTH_CONTENT_PROFILE_ERROR_REPORTED__TYPE__EXCEPTION,
                     17);
-            Log.e(TAG, "open/write outputStream failed" + e.toString());
+            Log.e(TAG, "open/write outputstrem failed" + e.toString());
             pushResult = ResponseCodes.OBEX_HTTP_INTERNAL_ERROR;
         }
 
@@ -1173,7 +1174,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                 setFolderVersionCounters(ap);
             }
             if (needSendCallHistoryVersionCounters) {
-                setCallVersionCounters(ap, appParamValue);
+                setCallversionCounters(ap, appParamValue);
             }
             reply.setHeader(HeaderSet.APPLICATION_PARAMETER, ap.getHeader());
 
@@ -1269,7 +1270,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
         }
 
         if (needSendCallHistoryVersionCounters) {
-            setCallVersionCounters(ap, appParamValue);
+            setCallversionCounters(ap, appParamValue);
             reply.setHeader(HeaderSet.APPLICATION_PARAMETER, ap.getHeader());
             try {
                 op.sendHeaders(reply);
@@ -1630,7 +1631,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
     }
 
     public static boolean closeStream(final OutputStream out, final Operation op) {
-        boolean returnValue = true;
+        boolean returnvalue = true;
         try {
             if (out != null) {
                 out.close();
@@ -1642,7 +1643,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                     BluetoothStatsLog.BLUETOOTH_CONTENT_PROFILE_ERROR_REPORTED__TYPE__EXCEPTION,
                     31);
             Log.e(TAG, "outputStream close failed" + e.toString());
-            returnValue = false;
+            returnvalue = false;
         }
         try {
             if (op != null) {
@@ -1655,9 +1656,9 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                     BluetoothStatsLog.BLUETOOTH_CONTENT_PROFILE_ERROR_REPORTED__TYPE__EXCEPTION,
                     32);
             Log.e(TAG, "operation close failed" + e.toString());
-            returnValue = false;
+            returnvalue = false;
         }
-        return returnValue;
+        return returnvalue;
     }
 
     // Reserved for future use. In case PSE challenge PCE and PCE input wrong
@@ -1737,18 +1738,28 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
 
     public static final void logHeader(HeaderSet hs) {
         Log.v(TAG, "Dumping HeaderSet " + hs.toString());
-        Log.v(TAG, "COUNT : " + hs.getHeader(HeaderSet.COUNT));
-        Log.v(TAG, "NAME : " + hs.getHeader(HeaderSet.NAME));
-        Log.v(TAG, "TYPE : " + hs.getHeader(HeaderSet.TYPE));
-        Log.v(TAG, "LENGTH : " + hs.getHeader(HeaderSet.LENGTH));
-        Log.v(TAG, "TIME_ISO_8601 : " + hs.getHeader(HeaderSet.TIME_ISO_8601));
-        Log.v(TAG, "TIME_4_BYTE : " + hs.getHeader(HeaderSet.TIME_4_BYTE));
-        Log.v(TAG, "DESCRIPTION : " + hs.getHeader(HeaderSet.DESCRIPTION));
-        Log.v(TAG, "TARGET : " + hs.getHeader(HeaderSet.TARGET));
-        Log.v(TAG, "HTTP : " + hs.getHeader(HeaderSet.HTTP));
-        Log.v(TAG, "WHO : " + hs.getHeader(HeaderSet.WHO));
-        Log.v(TAG, "OBJECT_CLASS : " + hs.getHeader(HeaderSet.OBJECT_CLASS));
-        Log.v(TAG, "APPLICATION_PARAMETER : " + hs.getHeader(HeaderSet.APPLICATION_PARAMETER));
+        try {
+
+            Log.v(TAG, "COUNT : " + hs.getHeader(HeaderSet.COUNT));
+            Log.v(TAG, "NAME : " + hs.getHeader(HeaderSet.NAME));
+            Log.v(TAG, "TYPE : " + hs.getHeader(HeaderSet.TYPE));
+            Log.v(TAG, "LENGTH : " + hs.getHeader(HeaderSet.LENGTH));
+            Log.v(TAG, "TIME_ISO_8601 : " + hs.getHeader(HeaderSet.TIME_ISO_8601));
+            Log.v(TAG, "TIME_4_BYTE : " + hs.getHeader(HeaderSet.TIME_4_BYTE));
+            Log.v(TAG, "DESCRIPTION : " + hs.getHeader(HeaderSet.DESCRIPTION));
+            Log.v(TAG, "TARGET : " + hs.getHeader(HeaderSet.TARGET));
+            Log.v(TAG, "HTTP : " + hs.getHeader(HeaderSet.HTTP));
+            Log.v(TAG, "WHO : " + hs.getHeader(HeaderSet.WHO));
+            Log.v(TAG, "OBJECT_CLASS : " + hs.getHeader(HeaderSet.OBJECT_CLASS));
+            Log.v(TAG, "APPLICATION_PARAMETER : " + hs.getHeader(HeaderSet.APPLICATION_PARAMETER));
+        } catch (IOException e) {
+            ContentProfileErrorReportUtils.report(
+                    BluetoothProfile.PBAP,
+                    BluetoothProtoEnums.BLUETOOTH_PBAP_OBEX_SERVER,
+                    BluetoothStatsLog.BLUETOOTH_CONTENT_PROFILE_ERROR_REPORTED__TYPE__EXCEPTION,
+                    33);
+            Log.e(TAG, "dump HeaderSet error " + e);
+        }
     }
 
     @VisibleForTesting
@@ -1772,7 +1783,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
     }
 
     @VisibleForTesting
-    static void setCallVersionCounters(ApplicationParameter ap, AppParamValue appParamValue) {
+    static void setCallversionCounters(ApplicationParameter ap, AppParamValue appParamValue) {
         ap.addTriplet(
                 ApplicationParameter.TRIPLET_TAGID.PRIMARYVERSIONCOUNTER_TAGID,
                 ApplicationParameter.TRIPLET_LENGTH.PRIMARYVERSIONCOUNTER_LENGTH,

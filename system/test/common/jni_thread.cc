@@ -21,6 +21,9 @@
 
 #include <map>
 
+// TODO(b/369381361) Enfore -Wmissing-prototypes
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
 std::queue<base::OnceClosure> do_in_jni_thread_task_queue;
 
 void run_one_jni_thread_task() {
@@ -34,5 +37,11 @@ void run_one_jni_thread_task() {
 void run_all_jni_thread_task() {
   while (do_in_jni_thread_task_queue.size()) {
     run_one_jni_thread_task();
+  }
+}
+
+void reset_mock_jni_thread_queue() {
+  while (do_in_jni_thread_task_queue.size()) {
+    do_in_jni_thread_task_queue.pop();
   }
 }

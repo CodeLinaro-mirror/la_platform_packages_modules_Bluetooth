@@ -315,7 +315,7 @@ class PbapClientContactsStorage {
     }
 
     @SuppressWarnings("NonApiType") // For convenience, as applyBatch above takes an ArrayList above
-    private static ArrayList<ContentProviderOperation> constructInsertOperationsForContact(
+    private ArrayList<ContentProviderOperation> constructInsertOperationsForContact(
             VCardEntry contact,
             ArrayList<ContentProviderOperation> operations,
             ContentResolver contactsProvider) {
@@ -481,7 +481,7 @@ class PbapClientContactsStorage {
     // TODO: b/365629730 -- JavaUtilDate: prefer Instant or LocalDate
     // NonApiType: For convenience, as the applyBatch API actually takes an ArrayList above
     @SuppressWarnings({"JavaUtilDate", "NonApiType"})
-    private static ArrayList<ContentProviderOperation> constructInsertOperationsForCallLog(
+    private ArrayList<ContentProviderOperation> constructInsertOperationsForCallLog(
             Account account,
             int type,
             VCardEntry call,

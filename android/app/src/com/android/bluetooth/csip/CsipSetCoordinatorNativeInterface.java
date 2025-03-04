@@ -58,14 +58,14 @@ public class CsipSetCoordinatorNativeInterface {
         return mAdapter.getRemoteDevice(address);
     }
 
-    private static byte[] getByteAddress(BluetoothDevice device) {
+    private byte[] getByteAddress(BluetoothDevice device) {
         if (device == null) {
             return Utils.getBytesFromAddress("00:00:00:00:00:00");
         }
         return Utils.getBytesFromAddress(device.getAddress());
     }
 
-    private static void sendMessageToService(CsipSetCoordinatorStackEvent event) {
+    private void sendMessageToService(CsipSetCoordinatorStackEvent event) {
         CsipSetCoordinatorService service =
                 CsipSetCoordinatorService.getCsipSetCoordinatorService();
         if (service != null) {

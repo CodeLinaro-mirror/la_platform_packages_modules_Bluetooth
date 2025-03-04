@@ -127,7 +127,7 @@ public class DistanceMeasurementNativeInterface {
                 method);
     }
 
-    private static int convertErrorCode(int errorCode) {
+    private int convertErrorCode(int errorCode) {
         switch (errorCode) {
             case REASON_FEATURE_NOT_SUPPORTED_LOCAL:
                 return BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;

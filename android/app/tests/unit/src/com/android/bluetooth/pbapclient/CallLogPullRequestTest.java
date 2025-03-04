@@ -198,7 +198,7 @@ public class CallLogPullRequestTest {
         assertThat(contact.getTimesContacted()).isEqualTo(1);
     }
 
-    private static VCardProperty createProperty(String name, String value) {
+    private VCardProperty createProperty(String name, String value) {
         VCardProperty property = new VCardProperty();
         property.setName(name);
         property.setValues(value);

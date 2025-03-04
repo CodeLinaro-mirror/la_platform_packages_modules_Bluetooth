@@ -281,10 +281,7 @@ private:
             DisableAnnouncement();
           },
           /* in ENABLING state */
-          [this](const void*) {
-            SetState(State::STOPPING);
-            callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-          },
+          [](const void*) { /* Do nothing */ },
           /* in DISABLING state */
           [](const void*) { /* Do nothing */ },
           /* in STOPPING state */
@@ -459,13 +456,6 @@ private:
     handle_it = std::next(handle_it);
 
     if (handle_it == active_config_->connection_handles.end()) {
-      if (GetState() == BroadcastStateMachine::State::STOPPING) {
-        // All ISO setup completed, but we're in stopping state, we need to tear down all ISO
-        log::warn("ISO setup in stopping state. Tearing down ISO data path.");
-        // Remain in STOPPING, BIG will be terminated in OnRemoveIsoDataPath
-        TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
-        return;
-      }
       /* It was the last BIS to set up - change state to streaming */
       SetState(State::STREAMING);
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), nullptr);
@@ -573,9 +563,8 @@ private:
                   .connection_handles = evt->conn_handles,
           };
 
-          if (GetState() == BroadcastStateMachine::State::DISABLING ||
-              GetState() == BroadcastStateMachine::State::STOPPING) {
-            log::info("Terminating BIG in state={}, big_id={}", ToString(GetState()), evt->big_id);
+          if (GetState() == BroadcastStateMachine::State::DISABLING) {
+            log::info("Terminating BIG due to stream suspending, big_id={}", evt->big_id);
             TerminateBig();
           } else {
             callbacks_->OnBigCreated(evt->conn_handles);
@@ -589,8 +578,7 @@ private:
       case HCI_BLE_TERM_BIG_CPL_EVT: {
         auto* evt = static_cast<big_terminate_cmpl_evt*>(data);
 
-        log::info("BIG terminate BIG cmpl in state={}, reason={} big_id={}", ToString(GetState()),
-                  evt->reason, evt->big_id);
+        log::info("BIG terminate BIG cmpl, reason={} big_id={}", evt->reason, evt->big_id);
 
         if (evt->big_id != GetAdvertisingSid()) {
           log::error("State={} Event={}, unknown adv.sid={}", ToString(GetState()), event,
@@ -601,11 +589,8 @@ private:
         active_config_ = std::nullopt;
         bool disabling = GetState() == BroadcastStateMachine::State::DISABLING;
 
-        /* Go back to configured if BIG is inactive (we are still announcing) and state is not
-         * stopping*/
-        if (GetState() != BroadcastStateMachine::State::STOPPING) {
-          SetState(State::CONFIGURED);
-        }
+        /* Go back to configured if BIG is inactive (we are still announcing) */
+        SetState(State::CONFIGURED);
 
         /* Check if we got this HCI event due to STOP or SUSPEND message. */
         if (disabling) {

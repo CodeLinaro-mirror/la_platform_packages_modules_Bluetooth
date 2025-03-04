@@ -38,7 +38,7 @@ public class HeadsetClientServiceInterface {
 
     public HeadsetClientServiceInterface() {}
 
-    private static boolean isServiceAvailable(HeadsetClientService service) {
+    private boolean isServiceAvailable(HeadsetClientService service) {
         if (service == null) {
             Log.w(TAG, "HeadsetClientService is not available");
             return false;

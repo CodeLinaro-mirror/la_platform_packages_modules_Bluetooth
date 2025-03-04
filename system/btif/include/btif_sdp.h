@@ -24,7 +24,8 @@
  *
  ******************************************************************************/
 
-#pragma once
+#ifndef BTIF_SDP_H
+#define BTIF_SDP_H
 
 #include <hardware/bt_sdp.h>
 
@@ -34,11 +35,4 @@ bt_status_t btif_sdp_execute_service(bool b_enable);
 bt_status_t sdp_server_init();
 void sdp_server_cleanup();
 
-int get_sdp_records_size(bluetooth_sdp_record* in_record, int count);
-void copy_sdp_records(bluetooth_sdp_record* in_records, bluetooth_sdp_record* out_records,
-                      int count);
-bt_status_t create_sdp_record(bluetooth_sdp_record* record, int* record_handle);
-bt_status_t remove_sdp_record(int record_handle);
-
-void on_create_record_event(int handle);
-void on_remove_record_event(int handle);
+#endif

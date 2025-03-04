@@ -96,7 +96,7 @@ class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
     }
 
     @Override
-    public ParcelFileDescriptor connectSocketWithOffload(
+    public ParcelFileDescriptor connectSocketwithOffload(
             BluetoothDevice device,
             int type,
             ParcelUuid uuid,
@@ -125,7 +125,7 @@ class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
 
         Log.i(
                 TAG,
-                "connectSocketWithOffload: device="
+                "connectSocketwithOffload: device="
                         + device
                         + ", type="
                         + type
