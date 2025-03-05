@@ -89,12 +89,15 @@ public class DistanceMeasurementNativeInterface {
     }
 
     void onDistanceMeasurementStarted(String address, int method) {
-        mDistanceMeasurementManager.onDistanceMeasurementStarted(address, method);
+        mDistanceMeasurementManager.postOnDistanceMeasurementThread(
+                () -> mDistanceMeasurementManager.onDistanceMeasurementStarted(address, method));
     }
 
     void onDistanceMeasurementStopped(String address, int reason, int method) {
-        mDistanceMeasurementManager.onDistanceMeasurementStopped(
-                address, convertErrorCode(reason), method);
+        mDistanceMeasurementManager.postOnDistanceMeasurementThread(
+                () ->
+                        mDistanceMeasurementManager.onDistanceMeasurementStopped(
+                                address, convertErrorCode(reason), method));
     }
 
     void onDistanceMeasurementResult(
@@ -111,23 +114,25 @@ public class DistanceMeasurementNativeInterface {
             int detectedAttackLevel,
             double velocityMetersPerSecond,
             int method) {
-        mDistanceMeasurementManager.onDistanceMeasurementResult(
-                address,
-                centimeter,
-                errorCentimeter,
-                azimuthAngle,
-                errorAzimuthAngle,
-                altitudeAngle,
-                errorAltitudeAngle,
-                elapsedRealtimeNanos,
-                confidenceLevel,
-                delayedSpreadMeters,
-                detectedAttackLevel,
-                velocityMetersPerSecond,
-                method);
+        mDistanceMeasurementManager.postOnDistanceMeasurementThread(
+                () ->
+                        mDistanceMeasurementManager.onDistanceMeasurementResult(
+                                address,
+                                centimeter,
+                                errorCentimeter,
+                                azimuthAngle,
+                                errorAzimuthAngle,
+                                altitudeAngle,
+                                errorAltitudeAngle,
+                                elapsedRealtimeNanos,
+                                confidenceLevel,
+                                delayedSpreadMeters,
+                                detectedAttackLevel,
+                                velocityMetersPerSecond,
+                                method));
     }
 
-    private int convertErrorCode(int errorCode) {
+    private static int convertErrorCode(int errorCode) {
         switch (errorCode) {
             case REASON_FEATURE_NOT_SUPPORTED_LOCAL:
                 return BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;

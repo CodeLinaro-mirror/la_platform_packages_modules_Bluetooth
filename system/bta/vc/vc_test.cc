@@ -38,11 +38,6 @@
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
 
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-
-void btif_storage_add_volume_control(const RawAddress& /*addr*/, bool /*auto_conn*/) {}
-
 struct alarm_t {
   alarm_callback_t cb = nullptr;
   void* data = nullptr;
@@ -75,7 +70,7 @@ using testing::SaveArg;
 using testing::SetArgPointee;
 using testing::WithArg;
 
-RawAddress GetTestAddress(int index) {
+static RawAddress GetTestAddress(int index) {
   EXPECT_LT(index, UINT8_MAX);
   RawAddress result = {{0xC0, 0xDE, 0xC0, 0xDE, 0x00, static_cast<uint8_t>(index)}};
   return result;
@@ -440,6 +435,7 @@ protected:
 
   void SetUp(void) override {
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
+    com::android::bluetooth::flags::provider_->reset_flags();
 
     com::android::bluetooth::flags::provider_->leaudio_add_aics_support(true);
 
@@ -449,7 +445,7 @@ protected:
     gatt::SetMockBtaGattQueue(&gatt_queue);
     reset_mock_function_count_map();
 
-    ON_CALL(btm_interface, IsLinkKeyKnown(_, _)).WillByDefault(DoAll(Return(true)));
+    ON_CALL(btm_interface, IsDeviceBonded(_, _)).WillByDefault(DoAll(Return(true)));
 
     // default action for GetCharacteristic function call
     ON_CALL(gatt_interface, GetCharacteristic(_, _))
@@ -545,7 +541,6 @@ protected:
   }
 
   void TearDown(void) override {
-    com::android::bluetooth::flags::provider_->reset_flags();
     services_map.clear();
     gatt::SetMockBtaGattQueue(nullptr);
     gatt::SetMockBtaGattInterface(nullptr);
@@ -700,7 +695,7 @@ protected:
 
   void SetEncryptionResult(const RawAddress& address, bool success) {
     ON_CALL(btm_interface, BTM_IsEncrypted(address, _)).WillByDefault(DoAll(Return(false)));
-    ON_CALL(btm_interface, IsLinkKeyKnown(address, _)).WillByDefault(DoAll(Return(true)));
+    ON_CALL(btm_interface, IsDeviceBonded(address, _)).WillByDefault(DoAll(Return(true)));
     ON_CALL(btm_interface, SetEncryption(address, _, _, _, BTM_BLE_SEC_ENCRYPT))
             .WillByDefault(
                     Invoke([&success, this](const RawAddress& bd_addr, tBT_TRANSPORT transport,
@@ -825,7 +820,7 @@ TEST_F(VolumeControlTest, test_connect_after_remove) {
   Mock::VerifyAndClearExpectations(&callbacks);
 
   EXPECT_CALL(callbacks, OnConnectionState(ConnectionState::DISCONNECTED, test_address)).Times(1);
-  ON_CALL(btm_interface, IsLinkKeyKnown(_, _)).WillByDefault(DoAll(Return(false)));
+  ON_CALL(btm_interface, IsDeviceBonded(_, _)).WillByDefault(DoAll(Return(false)));
 
   VolumeControl::Get()->Connect(test_address);
   Mock::VerifyAndClearExpectations(&callbacks);
@@ -1038,7 +1033,7 @@ TEST_F(VolumeControlTest, test_service_discovery_completed_before_encryption) {
   TestConnect(test_address);
 
   ON_CALL(btm_interface, BTM_IsEncrypted(test_address, _)).WillByDefault(DoAll(Return(false)));
-  ON_CALL(btm_interface, IsLinkKeyKnown(test_address, _)).WillByDefault(DoAll(Return(true)));
+  ON_CALL(btm_interface, IsDeviceBonded(test_address, _)).WillByDefault(DoAll(Return(true)));
   ON_CALL(btm_interface, SetEncryption(test_address, _, _, _, _))
           .WillByDefault(Return(tBTM_STATUS::BTM_SUCCESS));
 

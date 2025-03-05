@@ -18,6 +18,8 @@ package android.bluetooth.hid;
 
 import static android.bluetooth.BluetoothDevice.TRANSPORT_BREDR;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_LE;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -275,7 +277,7 @@ public class HidHeadTrackerTest {
      * <ol>
      *   <li>Bumble has Android Headtracker Service
      *   <li>Bumble does not support HID and HOGP
-     *   <li>Bummble is connectable over LE
+     *   <li>Bumble is connectable over LE
      * </ol>
      *
      * <p>Steps:
@@ -315,20 +317,14 @@ public class HidHeadTrackerTest {
         verifyConnectionState(mBumbleDevice, equalTo(TRANSPORT_LE), equalTo(STATE_CONNECTING));
         verifyConnectionState(mBumbleDevice, equalTo(TRANSPORT_LE), equalTo(STATE_CONNECTED));
 
-        // Disable a2dp and HFP connetcion policy
+        // Disable a2dp and HFP connection policy
 
-        if (mA2dpService.getConnectionPolicy(mBumbleDevice)
-                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            mA2dpService.setConnectionPolicy(
-                                    mBumbleDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (mA2dpService.getConnectionPolicy(mBumbleDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(mA2dpService.setConnectionPolicy(mBumbleDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
-        if (mHfpService.getConnectionPolicy(mBumbleDevice)
-                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            mHfpService.setConnectionPolicy(
-                                    mBumbleDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (mHfpService.getConnectionPolicy(mBumbleDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(mHfpService.setConnectionPolicy(mBumbleDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
 
@@ -368,7 +364,7 @@ public class HidHeadTrackerTest {
      * <ol>
      *   <li>Bumble has Android Headtracker Service
      *   <li>Bumble supports only HID but not HOGP
-     *   <li>Bummble is connectable over LE
+     *   <li>Bumble is connectable over LE
      * </ol>
      *
      * <p>Steps:

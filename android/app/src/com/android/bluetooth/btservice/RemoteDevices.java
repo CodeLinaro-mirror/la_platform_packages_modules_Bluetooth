@@ -19,6 +19,8 @@ package com.android.bluetooth.btservice;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.BLUETOOTH_SCAN;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.android.modules.utils.build.SdkLevel.isAtLeastV;
 
@@ -40,7 +42,6 @@ import android.bluetooth.BluetoothProtoEnums;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.bluetooth.BluetoothUtils;
 import android.bluetooth.IBluetoothConnectionCallback;
-import android.content.Context;
 import android.content.Intent;
 import android.net.MacAddress;
 import android.os.Handler;
@@ -162,7 +163,7 @@ public class RemoteDevices {
             };
 
     RemoteDevices(AdapterService service, Looper looper) {
-        mAdapter = ((Context) service).getSystemService(BluetoothManager.class).getAdapter();
+        mAdapter = service.getSystemService(BluetoothManager.class).getAdapter();
         mAdapterService = service;
         mSdpTracker = new ArrayList<>();
         mDevices = new HashMap<>();
@@ -349,6 +350,7 @@ public class RemoteDevices {
         @VisibleForTesting int mDeviceType;
         @VisibleForTesting ParcelUuid[] mUuidsBrEdr;
         @VisibleForTesting ParcelUuid[] mUuidsLe;
+        @VisibleForTesting boolean mHfpBatteryIndicator = false;
         private BluetoothSinkAudioPolicy mAudioPolicy;
 
         DeviceProperties() {
@@ -744,6 +746,21 @@ public class RemoteDevices {
             }
         }
 
+        /**
+         * @param hfpBatteryIndicator is set to true based on the HF battery indicator support
+         *     received from AT+BIND command and set to false in disconnect path.
+         */
+        void setHfpBatteryIndicatorStatus(boolean hfpBatteryIndicator) {
+            this.mHfpBatteryIndicator = hfpBatteryIndicator;
+        }
+
+        /**
+         * @return mHfpBatteryIndicator
+         */
+        boolean isHfpBatteryIndicatorEnabled() {
+            return mHfpBatteryIndicator;
+        }
+
         void setBatteryLevelFromHfp(int batteryLevel) {
             synchronized (mObject) {
                 if (mBatteryLevelFromHfp == batteryLevel) {
@@ -957,6 +974,9 @@ public class RemoteDevices {
             deviceProperties.setBatteryLevelFromHfp(BluetoothDevice.BATTERY_LEVEL_UNKNOWN);
         }
 
+        if (Flags.enableBatteryLevelUpdateOnlyThroughHfIndicator()) {
+            deviceProperties.setHfpBatteryIndicatorStatus(false);
+        }
         int newBatteryLevel = deviceProperties.getBatteryLevel();
         if (prevBatteryLevel == newBatteryLevel) {
             debugLog("Battery level was not changed due to reset, device=" + device);
@@ -980,7 +1000,7 @@ public class RemoteDevices {
      * Converts HFP's Battery Charge indicator values of {@code 0 -- 5} to an integer percentage.
      */
     @VisibleForTesting
-    static int batteryChargeIndicatorToPercentge(int indicator) {
+    static int batteryChargeIndicatorToPercentage(int indicator) {
         int percent;
         switch (indicator) {
             case 5:
@@ -1066,7 +1086,7 @@ public class RemoteDevices {
                                 MetricsLogger.getInstance().getWordBreakdownList(newName);
                         if (SdkLevel.isAtLeastU()) {
                             MetricsLogger.getInstance()
-                                    .uploadRestrictedBluetothDeviceName(wordBreakdownList);
+                                    .uploadRestrictedBluetoothDeviceName(wordBreakdownList);
                         }
                         intent = new Intent(BluetoothDevice.ACTION_NAME_CHANGED);
                         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, bdDevice);
@@ -1387,8 +1407,7 @@ public class RemoteDevices {
             if (mAdapterService.getConnectionState(device) == 0) {
                 BatteryService batteryService = BatteryService.getBatteryService();
                 if (batteryService != null
-                        && batteryService.getConnectionState(device)
-                                != BluetoothProfile.STATE_DISCONNECTED
+                        && batteryService.getConnectionState(device) != STATE_DISCONNECTED
                         && transportLinkType == BluetoothDevice.TRANSPORT_LE) {
                     batteryService.disconnect(device);
                 }
@@ -1538,6 +1557,23 @@ public class RemoteDevices {
                             .addFlags(
                                     Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
                                             | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+
+            // Log transition to key missing state, if the key missing count is 0 which indicates
+            //  that the device is bonded until now.
+            if (mAdapterService.getDatabase().getKeyMissingCount(bluetoothDevice) == 0) {
+                MetricsLogger.getInstance()
+                        .logBluetoothEvent(
+                                bluetoothDevice,
+                                BluetoothStatsLog
+                                        .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__TRANSITION,
+                                BluetoothStatsLog
+                                        .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__BOND_BONDED_TO_ACTION_KEY_MISSING,
+                                0);
+            }
+
+            // Bond loss detected, add to the count.
+            mAdapterService.getDatabase().updateKeyMissingCount(bluetoothDevice, true);
+
             if (Flags.keyMissingPublic()) {
                 mAdapterService.sendOrderedBroadcast(
                         intent,
@@ -1610,6 +1646,22 @@ public class RemoteDevices {
             } else {
                 /* Classic link using non-secure connections mode */
                 algorithm = BluetoothDevice.ENCRYPTION_ALGORITHM_E0;
+            }
+
+            // Log transition to encryption change state (bonded), if the key missing count is > 0
+            //  which indicates that the device is in key missing state.
+            if (mAdapterService.getDatabase().getKeyMissingCount(bluetoothDevice) > 0) {
+                MetricsLogger.getInstance()
+                        .logBluetoothEvent(
+                                bluetoothDevice,
+                                BluetoothStatsLog
+                                        .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__TRANSITION,
+                                BluetoothStatsLog
+                                        .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__ACTION_KEY_MISSING_TO_ENCRYPTION_CHANGE,
+                                0);
+
+                // Successful bond detected, reset the count.
+                mAdapterService.getDatabase().updateKeyMissingCount(bluetoothDevice, false);
             }
         }
 
@@ -1690,8 +1742,25 @@ public class RemoteDevices {
             Log.e(TAG, "onHeadsetConnectionStateChanged() remote device is null");
             return;
         }
-        if (toState == BluetoothProfile.STATE_DISCONNECTED && !hasBatteryService(device)) {
+        if (toState == STATE_DISCONNECTED && !hasBatteryService(device)) {
             resetBatteryLevel(device, /* isBas= */ false);
+        }
+    }
+
+    /** Handle Indicator status events from Hands-free. */
+    public void handleHfIndicatorStatus(
+            BluetoothDevice device, int indicatorId, boolean indicatorStatus) {
+        mMainHandler.post(() -> onHfIndicatorStatus(device, indicatorId, indicatorStatus));
+    }
+
+    @VisibleForTesting
+    void onHfIndicatorStatus(BluetoothDevice device, int indicatorId, boolean indicatorStatus) {
+        if (device == null) {
+            Log.e(TAG, "onHfIndicatorStatus() remote device is null");
+            return;
+        }
+        if (indicatorId == HeadsetHalConstants.HF_INDICATOR_BATTERY_LEVEL_STATUS) {
+            getDeviceProperties(device).setHfpBatteryIndicatorStatus(indicatorStatus);
         }
     }
 
@@ -1747,6 +1816,20 @@ public class RemoteDevices {
             Log.e(TAG, "onVendorSpecificHeadsetEvent() arguments are null");
             return;
         }
+
+        if (Flags.enableBatteryLevelUpdateOnlyThroughHfIndicator()) {
+            DeviceProperties deviceProperties = getDeviceProperties(device);
+            if ((deviceProperties.isHfpBatteryIndicatorEnabled())
+                    && ((BluetoothHeadset.VENDOR_SPECIFIC_HEADSET_EVENT_XEVENT.equals(cmd))
+                            || (BluetoothHeadset.VENDOR_SPECIFIC_HEADSET_EVENT_IPHONEACCEV.equals(
+                                    cmd)))) {
+                infoLog(
+                        "Ignoring Battery Level update through vendor specific command as"
+                                + "HfpBatteryIndicator support is enabled.");
+                return;
+            }
+        }
+
         int batteryPercent = BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
         switch (cmd) {
             case BluetoothHeadset.VENDOR_SPECIFIC_HEADSET_EVENT_XEVENT:
@@ -1874,7 +1957,7 @@ public class RemoteDevices {
     boolean hasBatteryService(BluetoothDevice device) {
         BatteryService batteryService = BatteryService.getBatteryService();
         return batteryService != null
-                && batteryService.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED;
+                && batteryService.getConnectionState(device) == STATE_CONNECTED;
     }
 
     /** Handles headset client connection state change event. */
@@ -1889,7 +1972,7 @@ public class RemoteDevices {
             Log.e(TAG, "onHeadsetClientConnectionStateChanged() remote device is null");
             return;
         }
-        if (toState == BluetoothProfile.STATE_DISCONNECTED && !hasBatteryService(device)) {
+        if (toState == STATE_DISCONNECTED && !hasBatteryService(device)) {
             resetBatteryLevel(device, /* isBas= */ false);
         }
     }
@@ -1906,7 +1989,7 @@ public class RemoteDevices {
             return;
         }
         updateBatteryLevel(
-                device, batteryChargeIndicatorToPercentge(batteryLevel), /* isBas= */ false);
+                device, batteryChargeIndicatorToPercentage(batteryLevel), /* isBas= */ false);
     }
 
     private static void errorLog(String msg) {

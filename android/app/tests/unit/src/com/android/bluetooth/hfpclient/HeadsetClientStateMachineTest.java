@@ -242,7 +242,7 @@ public class HeadsetClientStateMachineTest {
     public void testProcessAndroidSlcCommand() {
         initToConnectedState();
 
-        // True on correct AT command and BluetothDevice
+        // True on correct AT command and BluetoothDevice
         assertThat(processAndroidSlcCommand("+ANDROID: (SINKAUDIOPOLICY)")).isTrue();
         assertThat(processAndroidSlcCommand("+ANDROID: ()")).isTrue();
         assertThat(processAndroidSlcCommand("+ANDROID: (,,,)")).isTrue();
@@ -946,7 +946,7 @@ public class HeadsetClientStateMachineTest {
         assertThat(currentCalls.get(0)).isEqualTo(call);
     }
 
-    private void assertName(int message, String message_name) {
+    private static void assertName(int message, String message_name) {
         assertThat(HeadsetClientStateMachine.getMessageName(message)).isEqualTo(message_name);
     }
 

@@ -176,7 +176,7 @@ public class BluetoothMapbMessageMime extends BluetoothMapbMessage {
     private ArrayList<MimePart> mParts = null;
     private String mContentType = null;
     private String mBoundary = null;
-    private boolean mTextonly = false;
+    private boolean mTextOnly = false;
     private boolean mIncludeAttachments;
     private String mMyEncoding = null;
 
@@ -349,11 +349,11 @@ public class BluetoothMapbMessageMime extends BluetoothMapbMessage {
     }
 
     public void setTextOnly(boolean textOnly) {
-        this.mTextonly = textOnly;
+        this.mTextOnly = textOnly;
     }
 
     public boolean getTextOnly() {
-        return mTextonly;
+        return mTextOnly;
     }
 
     public void setIncludeAttachments(boolean includeAttachments) {
@@ -742,7 +742,7 @@ public class BluetoothMapbMessageMime extends BluetoothMapbMessage {
         newPart.mData = decodeBody(body, mMyEncoding, mCharset);
     }
 
-    private byte[] decodeBody(String body, String encoding, String charset) {
+    private static byte[] decodeBody(String body, String encoding, String charset) {
         if (encoding != null && Ascii.toUpperCase(encoding).contains("BASE64")) {
             return Base64.decode(body, Base64.DEFAULT);
         } else if (encoding != null && Ascii.toUpperCase(encoding).contains("QUOTED-PRINTABLE")) {

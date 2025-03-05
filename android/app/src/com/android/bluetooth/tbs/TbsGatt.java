@@ -18,6 +18,7 @@
 package com.android.bluetooth.tbs;
 
 import static android.bluetooth.BluetoothDevice.METADATA_GTBS_CCCD;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static java.util.Objects.requireNonNull;
 
@@ -28,7 +29,6 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothGattService;
-import android.bluetooth.BluetoothProfile;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -948,7 +948,7 @@ public class TbsGatt {
                         + requestedOpcode
                         + " callIndex="
                         + callIndex
-                        + " requesuResult="
+                        + " requestResult="
                         + requestResult);
         mCallControlPointCharacteristic.setResult(
                 device, requestedOpcode, callIndex, requestResult);
@@ -1452,8 +1452,8 @@ public class TbsGatt {
         }
     }
 
-    private void clearUnauthorizedGattOperationss(BluetoothDevice device) {
-        Log.d(TAG, "clearUnauthorizedGattOperationss device: " + device);
+    private void clearUnauthorizedGattOperations(BluetoothDevice device) {
+        Log.d(TAG, "clearUnauthorizedGattOperations device: " + device);
 
         synchronized (mPendingGattOperationsLock) {
             mPendingGattOperations.remove(device);
@@ -1474,7 +1474,7 @@ public class TbsGatt {
                         onRejectedAuthorizationGattOperation(device, op);
                     }
                 }
-                clearUnauthorizedGattOperationss(device);
+                clearUnauthorizedGattOperations(device);
             }
         }
     }
@@ -1491,8 +1491,8 @@ public class TbsGatt {
                         BluetoothDevice device, int status, int newState) {
                     super.onConnectionStateChange(device, status, newState);
                     Log.d(TAG, "BluetoothGattServerCallback: onConnectionStateChange");
-                    if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                        clearUnauthorizedGattOperationss(device);
+                    if (newState == STATE_DISCONNECTED) {
+                        clearUnauthorizedGattOperations(device);
                     }
                 }
 

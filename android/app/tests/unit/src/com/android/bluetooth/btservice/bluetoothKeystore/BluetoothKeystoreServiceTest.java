@@ -127,11 +127,11 @@ public final class BluetoothKeystoreServiceTest {
         mBluetoothKeystoreService = null;
     }
 
-    private boolean isPrimaryUser() {
+    private static boolean isPrimaryUser() {
         return Binder.getCallingUid() == Process.BLUETOOTH_UID;
     }
 
-    private void overwriteConfigFile(List<String> data) {
+    private static void overwriteConfigFile(List<String> data) {
         try {
             Files.write(Paths.get(CONFIG_FILE_PATH), data);
         } catch (IOException e) {
@@ -242,7 +242,7 @@ public final class BluetoothKeystoreServiceTest {
     @Test
     public void testParserFileAfterDisableCommonCriteriaMode() {
         // preconfiguration.
-        // need to creat encrypted file.
+        // need to create encrypted file.
         testParserFile();
         // created encrypted file
         assertThat(setEncryptKeyOrRemoveKey(CONFIG_FILE_PREFIX, CONFIG_FILE_HASH)).isTrue();
