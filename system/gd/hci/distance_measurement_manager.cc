@@ -30,7 +30,7 @@
 #include <complex>
 #include <unordered_map>
 #include <sys/time.h>
-
+#include <cutils/properties.h>
 #include "acl_manager/assembler.h"
 #include "common/strings.h"
 #include "hal/ranging_hal.h"
@@ -57,7 +57,7 @@ const ModuleFactory DistanceMeasurementManager::Factory =
 static constexpr uint16_t kIllegalConnectionHandle = 0xffff;
 static constexpr uint8_t kTxPowerNotAvailable = 0xfe;
 static constexpr int8_t kRSSIDropOffAt1M = 41;
-static constexpr uint8_t kCsMaxTxPower = 12;  // 10 dBm
+static constexpr uint8_t kCsMaxTxPower = 20;  // 10 dBm
 static constexpr CsSyncAntennaSelection kCsSyncAntennaSelection =
          CsSyncAntennaSelection::ANTENNA_2;
 static constexpr uint8_t kConfigId = 0x01;  // Use 0x01 to create config and enable procedure
@@ -80,7 +80,7 @@ static constexpr uint16_t kMtuForRasData = 507;            // 512 - 5
 static constexpr uint16_t kRangingCounterMask = 0x0FFF;
 static constexpr uint8_t kInvalidConfigId = 0xFF;
 static constexpr uint16_t kDefaultIntervalMs = 1000;  // 1s
-static constexpr uint32_t kMaxIntervalMs = 3600*1000;  // 3600
+static constexpr uint32_t kMaxIntervalMs = INT_MAX;  // INT_MAX
 static constexpr uint8_t kMaxRetryCounterForCreateConfig = 0x03;
 long long proc_start_timestampMs;
 long long curr_proc_complete_timestampMs;
@@ -430,7 +430,6 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     it->second.measurement_ongoing = true;
     it->second.waiting_for_start_callback = true;
     it->second.local_hci_role = local_hci_role;
-    it->second.config_id = kConfigId;
   }
 
   void start_distance_measurement_with_cs(const Address& cs_remote_address,
@@ -583,7 +582,14 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     }
     it->second.state = CsTrackerState::RAS_CONNECTED;
     it->second.address = identity_address;
-    it->second.local_start = false;
+    char value[92];
+    if (property_get("persist.vendor.service.bt.config.role", value, "false")) {
+      if (strncmp(value, "true", 92) == 0) {
+          it->second.local_start = true;
+      } else {
+          it->second.local_start = false;
+      }
+    }
     it->second.local_hci_role = local_hci_role;
   }
 
@@ -718,6 +724,9 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       std::array<uint8_t, 10> channel_map;
       for (int i = 0; i < CS_CHANNEL_MAP_SIZE; i++) {
         channel_map[i] = config_settings.channel_map[i];
+      }
+      if(config_settings.config_id == 4) {
+          config_settings.config_id = config_settings.config_id - 1;
       }
       cs_requester_trackers_[connection_handle].config_id = config_settings.config_id;
       hci_layer_->EnqueueCommand(

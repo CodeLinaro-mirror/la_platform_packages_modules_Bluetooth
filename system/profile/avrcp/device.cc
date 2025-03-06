@@ -911,7 +911,8 @@ void Device::PlaybackStatusNotificationResponse(uint8_t label, bool interim,
   }
 
   log::verbose("state_to_send: {}", state_to_send);
-  if (!IsActive()) state_to_send = PlayState::PAUSED;
+  if (!IsActive()||(!bluetooth::headset::IsCallIdle())) state_to_send = PlayState::PAUSED;
+  log::verbose("New state_to_send: {}", state_to_send);
   if (!interim && state_to_send == last_play_status_.state) {
     log::verbose("Not sending notification due to no state update {}",
                  address_);
