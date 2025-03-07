@@ -27,6 +27,7 @@ import static android.Manifest.permission.NETWORK_SETUP_WIZARD;
 import static android.Manifest.permission.RADIO_SCAN_WITHOUT_LOCATION;
 import static android.Manifest.permission.RENOUNCE_PERMISSIONS;
 import static android.Manifest.permission.WRITE_SMS;
+import static android.bluetooth.BluetoothUtils.RemoteExceptionIgnoringRunnable;
 import static android.bluetooth.BluetoothUtils.USER_HANDLE_NULL;
 import static android.content.pm.PackageManager.GET_PERMISSIONS;
 import static android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES;
@@ -62,7 +63,6 @@ import android.os.Build;
 import android.os.ParcelUuid;
 import android.os.PowerExemptionManager;
 import android.os.Process;
-import android.os.RemoteException;
 import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
@@ -95,7 +95,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 public final class Utils {
     public static final String TAG_PREFIX_BLUETOOTH = "Bluetooth";
@@ -1244,20 +1243,16 @@ public final class Utils {
                 || pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK);
     }
 
-    /** A {@link Consumer} that automatically ignores any {@link RemoteException}s. */
-    @FunctionalInterface
-    @SuppressWarnings("FunctionalInterfaceMethodChanged")
-    public interface RemoteExceptionIgnoringConsumer<T> extends Consumer<T> {
-        /** Called by {@code accept}. */
-        void acceptOrThrow(T t) throws RemoteException;
-
-        @Override
-        default void accept(T t) {
-            try {
-                acceptOrThrow(t);
-            } catch (RemoteException ex) {
-                // Ignore RemoteException
-            }
+    /**
+     * Reverses the elements of {@code array}. This is equivalent to {@code
+     * Collections.reverse(Bytes.asList(array))}, but is likely to be more efficient.
+     */
+    public static void reverse(byte[] array) {
+        requireNonNull(array);
+        for (int i = 0, j = array.length - 1; i < j; i++, j--) {
+            byte tmp = array[i];
+            array[i] = array[j];
+            array[j] = tmp;
         }
     }
 
@@ -1328,5 +1323,10 @@ public final class Utils {
         public long elapsedRealtime() {
             return android.os.SystemClock.elapsedRealtime();
         }
+    }
+
+    /** Execute a remote callback without propagating the RemoteException of a dead app */
+    public static void callbackToApp(RemoteExceptionIgnoringRunnable callback) {
+        callback.run();
     }
 }

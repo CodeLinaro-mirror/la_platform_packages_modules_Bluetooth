@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.telephony;
 
+import static android.platform.test.flag.junit.DeviceFlagsValueProvider.createCheckFlagsRule;
+
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.mockGetSystemService;
 import static com.android.bluetooth.telephony.BluetoothInCallService.Result;
@@ -34,8 +36,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
-import android.platform.test.annotations.EnableFlags;
-import android.platform.test.flag.junit.SetFlagsRule;
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
 import android.telecom.BluetoothCallQualityReport;
 import android.telecom.Call;
 import android.telecom.Connection;
@@ -74,6 +76,13 @@ import java.util.UUID;
 public class BluetoothInCallServiceTest {
     private static final String TAG = "BluetoothInCallServiceTest";
 
+    @Rule public final CheckFlagsRule mCheckFlagsRule = createCheckFlagsRule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
+
+    @Mock private HeadsetService mHeadsetService;
+    @Mock private BluetoothLeCallControlProxy mLeCallControl;
+    @Mock private BluetoothInCallService.CallInfo mMockCallInfo;
+
     private static final int TEST_DTMF_TONE = 0;
     private static final String TEST_ACCOUNT_ADDRESS = "//foo.com/";
     private static final int TEST_ACCOUNT_INDEX = 0;
@@ -96,14 +105,6 @@ public class BluetoothInCallServiceTest {
     private static final int CHLD_TYPE_ADDHELDTOCONF = 3;
 
     private BluetoothInCallService mBluetoothInCallService;
-
-    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
-    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
-
-    @Mock private HeadsetService mHeadsetService;
-    @Mock private BluetoothLeCallControlProxy mLeCallControl;
-    @Mock private BluetoothInCallService.CallInfo mMockCallInfo;
-
     private TelephonyManager mMockTelephonyManager;
 
     @Before
@@ -900,7 +901,7 @@ public class BluetoothInCallServiceTest {
     }
 
     @Test
-    @EnableFlags({Flags.FLAG_NON_CONFERENCE_CALL_HANGUP})
+    @RequiresFlagsEnabled(Flags.FLAG_NON_CONFERENCE_CALL_HANGUP)
     public void endActivecallWhenConferenceCallInHoldState() {
         doReturn("").when(mMockTelephonyManager).getNetworkCountryIso();
 
@@ -969,8 +970,8 @@ public class BluetoothInCallServiceTest {
     }
 
     @Test
+    @RequiresFlagsEnabled(Flags.FLAG_MAINTAIN_CALL_INDEX_AFTER_CONFERENCE)
     public void conferenceLastCallIndexIsMaintained() throws Exception {
-        mSetFlagsRule.enableFlags(Flags.FLAG_MAINTAIN_CALL_INDEX_AFTER_CONFERENCE);
         doReturn("").when(mMockTelephonyManager).getNetworkCountryIso();
 
         List<BluetoothCall> calls = new ArrayList<>();

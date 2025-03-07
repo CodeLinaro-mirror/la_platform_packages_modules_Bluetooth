@@ -593,7 +593,10 @@ public class MetricsLogger {
         deviceName = deviceName.trim().replaceAll(" +", " ");
         // remove non alphanumeric characters and spaces, and transform to lower cases.
         String[] words =
-                deviceName.replaceAll("[^a-zA-Z0-9 ]", "").toLowerCase(Locale.ROOT).split(" ");
+                deviceName
+                        .replaceAll("[^a-zA-Z0-9 ]", "")
+                        .toLowerCase(Locale.ROOT)
+                        .split(" ", MAX_WORDS_ALLOWED_IN_DEVICE_NAME + 1);
 
         if (words.length > MAX_WORDS_ALLOWED_IN_DEVICE_NAME) {
             // Validity checking here to avoid excessively long sequences
@@ -680,7 +683,8 @@ public class MetricsLogger {
                 scanDurationMillis,
                 numOngoingScan,
                 isScreenOn,
-                isAppDead);
+                isAppDead,
+                0);
     }
 
     /** Logs the radio scan stats with app attribution when the radio scan stopped. */
@@ -702,7 +706,8 @@ public class MetricsLogger {
                 scanIntervalMillis,
                 scanWindowMillis,
                 isScreenOn,
-                scanDurationMillis);
+                scanDurationMillis,
+                0);
     }
 
     /** Logs the advertise stats with app attribution when the advertise state changed. */
@@ -730,7 +735,8 @@ public class MetricsLogger {
                 hasScanResponse,
                 isExtendedAdv,
                 instanceCount,
-                advDurationMs);
+                advDurationMs,
+                0);
     }
 
     protected String getAllowlistedDeviceNameHash(
