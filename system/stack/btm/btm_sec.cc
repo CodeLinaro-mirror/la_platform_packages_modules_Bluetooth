@@ -241,42 +241,6 @@ static tBTM_SEC_DEV_REC* btm_sec_find_dev_by_sec_state(tSECURITY_STATE state) {
 
 /*******************************************************************************
  *
- * Function         btm_sec_is_device_sc_downgrade
- *
- * Description      Check for a stored device record matching the candidate
- *                  device, and return true if the stored device has reported
- *                  that it supports Secure Connections mode and the candidate
- *                  device reports that it does not.  Otherwise, return false.
- *
- * Returns          bool
- *
- ******************************************************************************/
-static bool btm_sec_is_device_sc_downgrade(uint16_t hci_handle, bool secure_connections_supported) {
-  if (secure_connections_supported) {
-    return false;
-  }
-
-  tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev_by_handle(hci_handle);
-  if (p_dev_rec == nullptr) {
-    return false;
-  }
-
-  uint8_t property_val = 0;
-  bt_property_t property = {.type = BT_PROPERTY_REMOTE_SECURE_CONNECTIONS_SUPPORTED,
-                            .len = sizeof(uint8_t),
-                            .val = &property_val};
-
-  bt_status_t cached = btif_storage_get_remote_device_property(&p_dev_rec->bd_addr, &property);
-
-  if (cached == BT_STATUS_FAIL) {
-    return false;
-  }
-
-  return (bool)property_val;
-}
-
-/*******************************************************************************
- *
  * Function         btm_sec_store_device_sc_support
  *
  * Description      Save Secure Connections support for this device to file
@@ -5174,15 +5138,6 @@ void btm_sec_set_peer_sec_caps(uint16_t hci_handle, bool ssp_supported, bool sc_
                                bool le_supported) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev_by_handle(hci_handle);
   if (p_dev_rec == nullptr) {
-    return;
-  }
-
-  // Drop the connection here if the remote attempts to downgrade from Secure
-  // Connections mode.
-  if (btm_sec_is_device_sc_downgrade(hci_handle, sc_supported)) {
-    acl_set_disconnect_reason(HCI_ERR_HOST_REJECT_SECURITY);
-    btm_sec_send_hci_disconnect(p_dev_rec, HCI_ERR_AUTH_FAILURE, hci_handle,
-                                "attempted to downgrade from Secure Connections mode");
     return;
   }
 
