@@ -18,8 +18,12 @@ package com.android.bluetooth.hfpclient;
 
 import static android.content.pm.PackageManager.FEATURE_WATCH;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
 import static com.android.bluetooth.hfpclient.HeadsetClientService.MAX_HFP_SCO_VOICE_CALL_VOLUME;
 import static com.android.bluetooth.hfpclient.HeadsetClientService.MIN_HFP_SCO_VOICE_CALL_VOLUME;
+
+import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -29,7 +33,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.content.Context;
@@ -37,8 +40,6 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.os.BatteryManager;
-import android.platform.test.annotations.EnableFlags;
-import android.platform.test.flag.junit.SetFlagsRule;
 
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
@@ -47,10 +48,8 @@ import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.RemoteDevices;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
-import com.android.bluetooth.flags.Flags;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
@@ -58,8 +57,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -68,8 +65,7 @@ import java.util.concurrent.TimeUnit;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetClientServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
-    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private HeadsetClientStateMachine mStateMachine;
@@ -107,7 +103,7 @@ public class HeadsetClientServiceTest {
     @Test
     public void testInitialize() throws Exception {
         startService();
-        Assert.assertNotNull(HeadsetClientService.getHeadsetClientService());
+        assertThat(HeadsetClientService.getHeadsetClientService()).isNotNull();
     }
 
     @Ignore("b/260202548")
@@ -116,8 +112,7 @@ public class HeadsetClientServiceTest {
         startService();
 
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         // Send battery changed intent
@@ -137,8 +132,7 @@ public class HeadsetClientServiceTest {
         // Adding a wait to prevent potential failure caused by delayed broadcast intent.
         TimeUnit.MILLISECONDS.sleep(SERVICE_START_WAIT_MILLIS);
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         mService.updateBatteryLevel();
@@ -153,8 +147,7 @@ public class HeadsetClientServiceTest {
         startService();
 
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         mService.setAudioPolicy(device, new BluetoothSinkAudioPolicy.Builder().build());
@@ -168,8 +161,7 @@ public class HeadsetClientServiceTest {
         startService();
 
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         mService.dump(new StringBuilder());
@@ -186,7 +178,7 @@ public class HeadsetClientServiceTest {
 
         verify(mAdapterService).startService(any(Intent.class));
 
-        service.stop();
+        service.cleanup();
     }
 
     @Test
@@ -200,7 +192,7 @@ public class HeadsetClientServiceTest {
 
         verify(mAdapterService, never()).startService(any(Intent.class));
 
-        service.stop();
+        service.cleanup();
     }
 
     /**
@@ -209,13 +201,12 @@ public class HeadsetClientServiceTest {
      * back HF values and checks if they match AM. This proves that the conversion is symmetric.
      */
     @Test
-    @EnableFlags(Flags.FLAG_HEADSET_CLIENT_AM_HF_VOLUME_SYMMETRIC)
     public void testAmHfVolumeSymmetric_AmLowerRange() {
         int amMin = 1;
         int amMax = 10;
         Map<Integer, Integer> amToHfMap = new HashMap<>();
 
-        Assert.assertTrue(amMax < MAX_HFP_SCO_VOICE_CALL_VOLUME);
+        assertThat(amMax).isLessThan(MAX_HFP_SCO_VOICE_CALL_VOLUME);
 
         doReturn(amMax).when(mMockAudioManager).getStreamMaxVolume(anyInt());
         doReturn(amMin).when(mMockAudioManager).getStreamMinVolume(anyInt());
@@ -229,7 +220,7 @@ public class HeadsetClientServiceTest {
 
         for (Map.Entry entry : amToHfMap.entrySet()) {
             // Convert back from collected HF to AM and check if equal the saved AM value
-            Assert.assertEquals(service.hfToAmVol((int) entry.getValue()), entry.getKey());
+            assertThat(service.hfToAmVol((int) entry.getValue())).isEqualTo(entry.getKey());
         }
     }
 
@@ -239,13 +230,12 @@ public class HeadsetClientServiceTest {
      * back AM values and checks if they match HF. This proves that the conversion is symmetric.
      */
     @Test
-    @EnableFlags(Flags.FLAG_HEADSET_CLIENT_AM_HF_VOLUME_SYMMETRIC)
     public void testAmHfVolumeSymmetric_HfLowerRange() {
         int amMin = 1;
         int amMax = 20;
         Map<Integer, Integer> hfToAmMap = new HashMap<>();
 
-        Assert.assertTrue(amMax > MAX_HFP_SCO_VOICE_CALL_VOLUME);
+        assertThat(amMax).isGreaterThan(MAX_HFP_SCO_VOICE_CALL_VOLUME);
 
         doReturn(amMax).when(mMockAudioManager).getStreamMaxVolume(anyInt());
         doReturn(amMin).when(mMockAudioManager).getStreamMinVolume(anyInt());
@@ -259,7 +249,7 @@ public class HeadsetClientServiceTest {
 
         for (Map.Entry entry : hfToAmMap.entrySet()) {
             // Convert back from collected AM to HF and check if equal the saved HF value
-            Assert.assertEquals(service.amToHfVol((int) entry.getValue()), entry.getKey());
+            assertThat(service.amToHfVol((int) entry.getValue())).isEqualTo(entry.getKey());
         }
     }
 
@@ -271,8 +261,8 @@ public class HeadsetClientServiceTest {
 
     private void stopServiceIfStarted() throws Exception {
         if (mIsHeadsetClientServiceStarted) {
-            mService.stop();
-            Assert.assertNull(HeadsetClientService.getHeadsetClientService());
+            mService.cleanup();
+            assertThat(HeadsetClientService.getHeadsetClientService()).isNull();
         }
     }
 }

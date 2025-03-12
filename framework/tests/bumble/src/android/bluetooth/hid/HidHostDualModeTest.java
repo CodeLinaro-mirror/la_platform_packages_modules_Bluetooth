@@ -57,7 +57,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.ParcelUuid;
 import android.os.Parcelable;
-import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.util.Log;
@@ -65,7 +64,6 @@ import android.util.Log;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.bluetooth.flags.Flags;
 import com.android.compatibility.common.util.AdoptShellPermissionsRule;
 
 import org.hamcrest.CustomTypeSafeMatcher;
@@ -99,6 +97,7 @@ import java.util.Arrays;
 @VirtualOnly
 public class HidHostDualModeTest {
     private static final String TAG = HidHostDualModeTest.class.getSimpleName();
+
     private static final String BUMBLE_DEVICE_NAME = "Bumble";
     private static final Duration INTENT_TIMEOUT = Duration.ofSeconds(10);
     private static final int KEYBD_RPT_ID = 1;
@@ -326,17 +325,9 @@ public class HidHostDualModeTest {
         }
 
         // Have to use Hamcrest matchers instead of Mockito matchers in MockitoHamcrest context
-        if (Flags.removeInputDeviceOnVup()) {
-            verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
-            verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTED));
-            assertThat(mHidService.getPreferredTransport(mDevice)).isEqualTo(TRANSPORT_BREDR);
-        } else {
-            // Without removeInputDeviceOnVup, previous preference on LE transport might still exist
-            verifyConnectionState(
-                    mDevice, oneOf(TRANSPORT_BREDR, TRANSPORT_LE), equalTo(STATE_CONNECTING));
-            verifyConnectionState(
-                    mDevice, oneOf(TRANSPORT_BREDR, TRANSPORT_LE), equalTo(STATE_CONNECTED));
-        }
+        verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
+        verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTED));
+        assertThat(mHidService.getPreferredTransport(mDevice)).isEqualTo(TRANSPORT_BREDR);
         // Two ACTION_UUIDs are returned after pairing with dual mode HID device
         // 2nd ACTION_UUID and ACTION_CONNECTION_STATE_CHANGED has race condition, hence unordered
         verifyIntentReceivedUnorderedAtLeast(
@@ -349,9 +340,7 @@ public class HidHostDualModeTest {
                                 Matchers.hasItemInArray(BluetoothUuid.HOGP),
                                 Matchers.hasItemInArray(BluetoothUuid.HID))));
 
-        if (Flags.removeInputDeviceOnVup()
-                || mHidService.getPreferredTransport(mDevice) == TRANSPORT_BREDR) {
-            // Cannot guarantee TRANSPORT_BREDR without removeInputDeviceOnVup, hence we need to
+        if (mHidService.getPreferredTransport(mDevice) == TRANSPORT_BREDR) {
             // Switch to LE transport to prepare for test cases
             mHidService.setPreferredTransport(mDevice, TRANSPORT_LE);
             verifyTransportSwitch(mDevice, TRANSPORT_BREDR, TRANSPORT_LE);
@@ -363,20 +352,6 @@ public class HidHostDualModeTest {
     @After
     public void tearDown() throws Exception {
         if (mDevice.getBondState() == BluetoothDevice.BOND_BONDED) {
-            // Restore transport to BR/EDR when removeInputDeviceOnVup is not enabled
-            if (!Flags.removeInputDeviceOnVup()
-                    && mHidService.getPreferredTransport(mDevice) == TRANSPORT_LE) {
-                boolean connected = mHidService.getConnectedDevices().contains(mDevice);
-                mHidService.setPreferredTransport(mDevice, TRANSPORT_BREDR);
-                if (connected) {
-                    verifyTransportSwitch(mDevice, TRANSPORT_LE, TRANSPORT_BREDR);
-                } else {
-                    verifyConnectionState(
-                            mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
-                    verifyConnectionState(
-                            mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTED));
-                }
-            }
             removeBond(mDevice);
         }
         mContext.unregisterReceiver(mReceiver);
@@ -392,10 +367,6 @@ public class HidHostDualModeTest {
      * </ol>
      */
     @Test
-    @RequiresFlagsEnabled({
-        Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP,
-        Flags.FLAG_SAVE_INITIAL_HID_CONNECTION_POLICY
-    })
     public void setPreferredTransportTest() {
         // BR/EDR transport
         mHidService.setPreferredTransport(mDevice, TRANSPORT_BREDR);
@@ -413,10 +384,6 @@ public class HidHostDualModeTest {
      * </ol>
      */
     @Test
-    @RequiresFlagsEnabled({
-        Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP,
-        Flags.FLAG_SAVE_INITIAL_HID_CONNECTION_POLICY
-    })
     public void hogpGetReportTest() throws Exception {
         // Keyboard report
         mReportData = new byte[0];
@@ -450,10 +417,6 @@ public class HidHostDualModeTest {
      * </ol>
      */
     @Test
-    @RequiresFlagsEnabled({
-        Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP,
-        Flags.FLAG_SAVE_INITIAL_HID_CONNECTION_POLICY
-    })
     public void hogpGetProtocolModeTest() {
         mHidService.getProtocolMode(mDevice);
         verifyIntentReceived(
@@ -472,10 +435,6 @@ public class HidHostDualModeTest {
      * </ol>
      */
     @Test
-    @RequiresFlagsEnabled({
-        Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP,
-        Flags.FLAG_SAVE_INITIAL_HID_CONNECTION_POLICY
-    })
     public void hogpSetProtocolModeTest() throws Exception {
         mHidService.setProtocolMode(mDevice, BluetoothHidHost.PROTOCOL_BOOT_MODE);
         // Must cast ERROR_RSP_SUCCESS, otherwise, it won't match with the int extra
@@ -494,10 +453,6 @@ public class HidHostDualModeTest {
      * </ol>
      */
     @Test
-    @RequiresFlagsEnabled({
-        Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP,
-        Flags.FLAG_SAVE_INITIAL_HID_CONNECTION_POLICY
-    })
     public void hogpSetReportTest() throws Exception {
         // Keyboard report
         mHidService.setReport(mDevice, BluetoothHidHost.REPORT_TYPE_INPUT, "010203040506070809");
@@ -524,10 +479,6 @@ public class HidHostDualModeTest {
      * </ol>
      */
     @Test
-    @RequiresFlagsEnabled({
-        Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP,
-        Flags.FLAG_SAVE_INITIAL_HID_CONNECTION_POLICY
-    })
     public void hogpVirtualUnplugFromHidHostTest() throws Exception {
         mHidService.virtualUnplug(mDevice);
         verifyIntentReceived(

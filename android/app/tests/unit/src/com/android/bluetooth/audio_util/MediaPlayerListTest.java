@@ -16,6 +16,11 @@
 
 package com.android.bluetooth.audio_util;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.mockGetSystemService;
+
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.Mockito.*;
 
 import android.content.Context;
@@ -26,12 +31,11 @@ import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.Looper;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -39,8 +43,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 
@@ -51,7 +53,7 @@ public class MediaPlayerListTest {
 
     private @Captor ArgumentCaptor<MediaPlayerWrapper.Callback> mPlayerWrapperCb;
     private @Captor ArgumentCaptor<MediaData> mMediaUpdateData;
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     private @Mock Context mMockContext;
     private @Mock MediaPlayerList.MediaUpdateCallback mMediaUpdateCallback;
@@ -71,24 +73,22 @@ public class MediaPlayerListTest {
         if (Looper.myLooper() == null) {
             Looper.prepare();
         }
-        Assert.assertNotNull(Looper.myLooper());
 
-        AudioManager mockAudioManager = mock(AudioManager.class);
-        when(mMockContext.getSystemService(Context.AUDIO_SERVICE)).thenReturn(mockAudioManager);
-        when(mMockContext.getSystemServiceName(AudioManager.class))
-                .thenReturn(Context.AUDIO_SERVICE);
-
+        // MediaSessionManager is final and Bluetooth can't use extended Mockito to mock it. Thus,
+        // using this as is risks leaking device state into the tests. To avoid this, the injected
+        // controller and player below in the factory pattern will essentially replace each found
+        // player with the *same* mock, giving us only one player in the end-- "testPlayer"
         mMediaSessionManager =
-                InstrumentationRegistry.getTargetContext()
+                InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
                         .getSystemService(MediaSessionManager.class);
         PackageManager mockPackageManager = mock(PackageManager.class);
-        when(mMockContext.getSystemService(Context.MEDIA_SESSION_SERVICE))
-                .thenReturn(mMediaSessionManager);
-        when(mMockContext.getSystemServiceName(MediaSessionManager.class))
-                .thenReturn(Context.MEDIA_SESSION_SERVICE);
-
-        mMediaPlayerList =
-                new MediaPlayerList(Looper.myLooper(), InstrumentationRegistry.getTargetContext());
+        mockGetSystemService(
+                mMockContext,
+                Context.MEDIA_SESSION_SERVICE,
+                MediaSessionManager.class,
+                mMediaSessionManager);
+        mockGetSystemService(mMockContext, Context.AUDIO_SERVICE, AudioManager.class);
 
         when(mMockContext.registerReceiver(any(), any())).thenReturn(null);
         when(mMockContext.getApplicationContext()).thenReturn(mMockContext);
@@ -97,13 +97,20 @@ public class MediaPlayerListTest {
 
         BrowsablePlayerConnector mockConnector = mock(BrowsablePlayerConnector.class);
         BrowsablePlayerConnector.setInstanceForTesting(mockConnector);
-        mMediaPlayerList.init(mMediaUpdateCallback);
 
         MediaControllerFactory.inject(mMockController);
         MediaPlayerWrapperFactory.inject(mMockPlayerWrapper);
 
         doReturn("testPlayer").when(mMockController).getPackageName();
         when(mMockPlayerWrapper.isMetadataSynced()).thenReturn(false);
+
+        // Be sure to do this setup last, after factor injections, or you risk leaking device state
+        // into the tests
+        mMediaPlayerList =
+                new MediaPlayerList(
+                        Looper.myLooper(),
+                        InstrumentationRegistry.getInstrumentation().getTargetContext());
+        mMediaPlayerList.init(mMediaUpdateCallback);
         mMediaPlayerList.setActivePlayer(mMediaPlayerList.addMediaPlayer(mMockController));
 
         verify(mMockPlayerWrapper).registerCallback(mPlayerWrapperCb.capture());
@@ -133,7 +140,7 @@ public class MediaPlayerListTest {
     }
 
     @Test
-    public void testUpdateMeidaDataForAudioPlaybackWhenAcitvePlayNotPlaying() {
+    public void testUpdateMediaDataForAudioPlaybackWhenActivePlayNotPlaying() {
         // Verify update media data with playing state
         doReturn(prepareMediaData(PlaybackState.STATE_PAUSED))
                 .when(mMockPlayerWrapper)
@@ -141,7 +148,7 @@ public class MediaPlayerListTest {
         mMediaPlayerList.injectAudioPlaybacActive(true);
         verify(mMediaUpdateCallback).run(mMediaUpdateData.capture());
         MediaData data = mMediaUpdateData.getValue();
-        Assert.assertEquals(data.state.getState(), PlaybackState.STATE_PLAYING);
+        assertThat(data.state.getState()).isEqualTo(PlaybackState.STATE_PLAYING);
 
         // verify update media data with current media player media data
         MediaData currentMediaData = prepareMediaData(PlaybackState.STATE_PAUSED);
@@ -149,9 +156,9 @@ public class MediaPlayerListTest {
         mMediaPlayerList.injectAudioPlaybacActive(false);
         verify(mMediaUpdateCallback, times(2)).run(mMediaUpdateData.capture());
         data = mMediaUpdateData.getValue();
-        Assert.assertEquals(data.metadata, currentMediaData.metadata);
-        Assert.assertEquals(data.state.toString(), currentMediaData.state.toString());
-        Assert.assertEquals(data.queue, currentMediaData.queue);
+        assertThat(data.metadata).isEqualTo(currentMediaData.metadata);
+        assertThat(data.state.toString()).isEqualTo(currentMediaData.state.toString());
+        assertThat(data.queue).isEqualTo(currentMediaData.queue);
     }
 
     @Test
@@ -166,7 +173,7 @@ public class MediaPlayerListTest {
     }
 
     @Test
-    public void testNotUdpateMediaDataForAudioPlaybackWhenActivePlayerIsPlaying() {
+    public void testNotUpdateMediaDataForAudioPlaybackWhenActivePlayerIsPlaying() {
         // Verify not update media data for Audio Playback when active player is playing
         doReturn(prepareMediaData(PlaybackState.STATE_PLAYING))
                 .when(mMockPlayerWrapper)
@@ -177,7 +184,7 @@ public class MediaPlayerListTest {
     }
 
     @Test
-    public void testNotUdpateMediaDataForActivePlayerWhenAudioPlaybackIsActive() {
+    public void testNotUpdateMediaDataForActivePlayerWhenAudioPlaybackIsActive() {
         doReturn(prepareMediaData(PlaybackState.STATE_PLAYING))
                 .when(mMockPlayerWrapper)
                 .getCurrentMediaData();
@@ -197,7 +204,7 @@ public class MediaPlayerListTest {
         // Create MediaSession with GLOBAL_PRIORITY flag.
         MediaSession session =
                 new MediaSession(
-                        InstrumentationRegistry.getTargetContext(),
+                        InstrumentationRegistry.getInstrumentation().getTargetContext(),
                         MediaPlayerListTest.class.getSimpleName());
         session.setFlags(
                 MediaSession.FLAG_EXCLUSIVE_GLOBAL_PRIORITY
@@ -220,7 +227,7 @@ public class MediaPlayerListTest {
         MediaPlayerWrapper newActiveMediaPlayer = mMediaPlayerList.getActivePlayer();
 
         // Should be the same as before.
-        Assert.assertEquals(activeMediaPlayer, newActiveMediaPlayer);
+        assertThat(activeMediaPlayer).isEqualTo(newActiveMediaPlayer);
 
         session.release();
     }

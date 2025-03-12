@@ -36,6 +36,8 @@ import static android.permission.PermissionManager.PERMISSION_HARD_DENIED;
 
 import static com.android.modules.utils.build.SdkLevel.isAtLeastV;
 
+import static java.util.Objects.requireNonNull;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.PermissionMethod;
@@ -44,6 +46,7 @@ import android.annotation.RequiresPermission;
 import android.annotation.SuppressLint;
 import android.app.BroadcastOptions;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.companion.AssociationInfo;
 import android.companion.CompanionDeviceManager;
@@ -72,6 +75,7 @@ import androidx.annotation.VisibleForTesting;
 
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
+import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.flags.Flags;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -94,7 +98,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public final class Utils {
-    private static final String TAG = "BluetoothUtils";
+    public static final String TAG_PREFIX_BLUETOOTH = "Bluetooth";
+    private static final String TAG = TAG_PREFIX_BLUETOOTH + Utils.class.getSimpleName();
+
     private static final int MICROS_PER_UNIT = 625;
     private static final String PTS_TEST_MODE_PROPERTY = "persist.bluetooth.pts";
 
@@ -166,6 +172,34 @@ public final class Utils {
     public static void setIsScoManagedByAudioEnabled(boolean enabled) {
         Log.i(TAG, "Updating isScoManagedByAudioEnabled for testing to: " + enabled);
         isScoManagedByAudioEnabled = enabled;
+    }
+
+    /**
+     * Checks CoD and metadata to determine if the device is a watch
+     *
+     * @param service Adapter service
+     * @param device the remote device
+     * @return {@code true} if it's a watch, {@code false} otherwise
+     */
+    public static boolean isWatch(
+            @NonNull AdapterService service, @NonNull BluetoothDevice device) {
+        // Check CoD
+        BluetoothClass deviceClass = new BluetoothClass(service.getRemoteClass(device));
+        if (deviceClass.getDeviceClass() == BluetoothClass.Device.WEARABLE_WRIST_WATCH) {
+            return true;
+        }
+
+        // Check metadata
+        DatabaseManager mDbManager = service.getDatabase();
+        byte[] deviceType = mDbManager.getCustomMeta(device, BluetoothDevice.METADATA_DEVICE_TYPE);
+        if (deviceType == null) {
+            return false;
+        }
+        String deviceTypeStr = new String(deviceType);
+        if (deviceTypeStr.equals(BluetoothDevice.DEVICE_TYPE_WATCH)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -550,7 +584,7 @@ public final class Utils {
         // attributionSource.enforceCallingUid();
         AttributionSource currentAttribution =
                 new AttributionSource.Builder(context.getAttributionSource())
-                        .setNext(Objects.requireNonNull(attributionSource))
+                        .setNext(requireNonNull(attributionSource))
                         .build();
         PermissionManager pm = context.getSystemService(PermissionManager.class);
         if (pm == null) {
@@ -831,7 +865,7 @@ public final class Utils {
         }
         AttributionSource currentAttribution =
                 new AttributionSource.Builder(context.getAttributionSource())
-                        .setNext(Objects.requireNonNull(attributionSource))
+                        .setNext(requireNonNull(attributionSource))
                         .build();
         // STOPSHIP(b/188391719): enable this security enforcement
         // attributionSource.enforceCallingUid();
@@ -845,10 +879,7 @@ public final class Utils {
             return true;
         }
 
-        Log.e(
-                TAG,
-                "Permission denial: Need ACCESS_COARSE_LOCATION "
-                        + "permission to get scan results");
+        Log.e(TAG, "Need ACCESS_COARSE_LOCATION permission for " + currentAttribution);
         return false;
     }
 
@@ -867,7 +898,7 @@ public final class Utils {
 
         final AttributionSource currentAttribution =
                 new AttributionSource.Builder(context.getAttributionSource())
-                        .setNext(Objects.requireNonNull(attributionSource))
+                        .setNext(requireNonNull(attributionSource))
                         .build();
         // STOPSHIP(b/188391719): enable this security enforcement
         // attributionSource.enforceCallingUid();
@@ -889,8 +920,8 @@ public final class Utils {
 
         Log.e(
                 TAG,
-                "Permission denial: Need ACCESS_COARSE_LOCATION or ACCESS_FINE_LOCATION"
-                        + "permission to get scan results");
+                "Need ACCESS_COARSE_LOCATION or ACCESS_FINE_LOCATION permission for "
+                        + currentAttribution);
         return false;
     }
 
@@ -906,7 +937,7 @@ public final class Utils {
 
         AttributionSource currentAttribution =
                 new AttributionSource.Builder(context.getAttributionSource())
-                        .setNext(Objects.requireNonNull(attributionSource))
+                        .setNext(requireNonNull(attributionSource))
                         .build();
         // STOPSHIP(b/188391719): enable this security enforcement
         // attributionSource.enforceCallingUid();
@@ -920,9 +951,7 @@ public final class Utils {
             return true;
         }
 
-        Log.e(
-                TAG,
-                "Permission denial: Need ACCESS_FINE_LOCATION " + "permission to get scan results");
+        Log.e(TAG, "Need ACCESS_FINE_LOCATION permission for " + currentAttribution);
         return false;
     }
 

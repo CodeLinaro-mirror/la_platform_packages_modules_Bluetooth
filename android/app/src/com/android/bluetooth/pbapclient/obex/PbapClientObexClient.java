@@ -19,7 +19,8 @@ package com.android.bluetooth.pbapclient;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 
-import android.accounts.Account;
+import static java.util.Objects.requireNonNull;
+
 import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -37,7 +38,6 @@ import com.android.obex.HeaderSet;
 import com.android.obex.ResponseCodes;
 
 import java.io.IOException;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -185,8 +185,8 @@ class PbapClientObexClient {
     @VisibleForTesting
     PbapClientObexClient(
             BluetoothDevice device, int supportedFeatures, Callback callback, Looper looper) {
-        mDevice = Objects.requireNonNull(device, "The device provided cannot be null");
-        mCallback = Objects.requireNonNull(callback, "The callback object provided cannot be null");
+        mDevice = requireNonNull(device);
+        mCallback = requireNonNull(callback);
         mAuth = new PbapClientObexAuthenticator();
         mLocalSupportedFeatures = supportedFeatures;
 
@@ -317,9 +317,8 @@ class PbapClientObexClient {
     }
 
     /** Enqueue a request to download the contents of a phonebook */
-    public void requestDownloadPhonebook(
-            String phonebook, PbapApplicationParameters params, Account account) {
-        RequestPullPhonebook request = new RequestPullPhonebook(phonebook, params, account);
+    public void requestDownloadPhonebook(String phonebook, PbapApplicationParameters params) {
+        RequestPullPhonebook request = new RequestPullPhonebook(phonebook, params);
         mHandler.obtainMessage(MSG_REQUEST, request).sendToTarget();
     }
 

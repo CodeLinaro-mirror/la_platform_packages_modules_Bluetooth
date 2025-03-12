@@ -15,6 +15,8 @@
  */
 package com.android.bluetooth.opp;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
 import static com.android.bluetooth.opp.BluetoothOppTransfer.TRANSPORT_CONNECTED;
 import static com.android.bluetooth.opp.BluetoothOppTransfer.TRANSPORT_ERROR;
 
@@ -58,14 +60,18 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.Objects;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothOppTransferTest {
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
+    @Rule public final SetFlagsRule mSetFlagRule = new SetFlagsRule();
+
+    @Mock BluetoothOppObexSession mSession;
+    @Mock BluetoothMethodProxy mCallProxy;
+
     private final Uri mUri = Uri.parse("file://Idontknow/Justmadeitup");
     private final String mHintString = "this is a object that take 4 bytes";
     private final String mFilename = "random.jpg";
@@ -80,11 +86,6 @@ public class BluetoothOppTransferTest {
     private final int mTimestamp = 123456789;
     private final boolean mMediaScanned = false;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
-    @Rule public final SetFlagsRule mSetFlagRule = new SetFlagsRule();
-
-    @Mock BluetoothOppObexSession mSession;
-    @Mock BluetoothMethodProxy mCallProxy;
     Context mContext;
     BluetoothOppBatch mBluetoothOppBatch;
     BluetoothOppTransfer mTransfer;
@@ -352,11 +353,7 @@ public class BluetoothOppTransferTest {
 
     @Test
     public void socketConnectThreadConstructors() {
-        String address = "AA:BB:CC:EE:DD:11";
-        BluetoothDevice device =
-                (mContext.getSystemService(BluetoothManager.class))
-                        .getAdapter()
-                        .getRemoteDevice(address);
+        BluetoothDevice device = getTestDevice(23);
         BluetoothOppTransfer transfer = new BluetoothOppTransfer(mContext, mBluetoothOppBatch);
         BluetoothOppTransfer.SocketConnectThread socketConnectThread =
                 transfer.new SocketConnectThread(device, true);
@@ -368,11 +365,7 @@ public class BluetoothOppTransferTest {
 
     @Test
     public void socketConnectThreadInterrupt() {
-        String address = "AA:BB:CC:EE:DD:11";
-        BluetoothDevice device =
-                (mContext.getSystemService(BluetoothManager.class))
-                        .getAdapter()
-                        .getRemoteDevice(address);
+        BluetoothDevice device = getTestDevice(34);
         BluetoothOppTransfer transfer = new BluetoothOppTransfer(mContext, mBluetoothOppBatch);
         BluetoothOppTransfer.SocketConnectThread socketConnectThread =
                 transfer.new SocketConnectThread(device, true);
@@ -383,11 +376,7 @@ public class BluetoothOppTransferTest {
     @Test
     @SuppressWarnings("DoNotCall")
     public void socketConnectThreadRun_bluetoothDisabled_connectionFailed() {
-        String address = "AA:BB:CC:EE:DD:11";
-        BluetoothDevice device =
-                (mContext.getSystemService(BluetoothManager.class))
-                        .getAdapter()
-                        .getRemoteDevice(address);
+        BluetoothDevice device = getTestDevice(12);
         BluetoothOppTransfer transfer = new BluetoothOppTransfer(mContext, mBluetoothOppBatch);
         BluetoothOppTransfer.SocketConnectThread socketConnectThread =
                 transfer.new SocketConnectThread(device, true);

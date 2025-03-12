@@ -49,6 +49,7 @@
 #include "hardware/distance_measurement_interface.h"
 #include "main/shim/le_scanning_manager.h"
 #include "rust/cxx.h"
+#include "src/core/ffi/module.h"
 #include "src/gatt/ffi.rs.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
@@ -120,6 +121,16 @@ static std::vector<uint8_t> toVector(JNIEnv* env, jbyteArray ba) {
   std::vector<uint8_t> data_vec(data_data, data_data + data_len);
   env->ReleaseByteArrayElements(ba, data_data, JNI_ABORT);
   return data_vec;
+}
+
+static std::string jstr_to_str(JNIEnv* env, jstring js) {
+  const char* cstr = env->GetStringUTFChars(js, NULL);
+  if (cstr == nullptr) {
+    return "";
+  }
+  std::string ret = std::string(cstr);
+  env->ReleaseStringUTFChars(js, cstr);
+  return ret;
 }
 
 namespace android {
@@ -245,28 +256,6 @@ void btgattc_register_app_cb(int status, int clientIf, const Uuid& app_uuid) {
   }
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientRegistered, status, clientIf,
                                UUID_PARAMS(app_uuid));
-}
-
-void btgattc_scan_result_cb(uint16_t event_type, uint8_t addr_type, RawAddress* bda,
-                            uint8_t primary_phy, uint8_t secondary_phy, uint8_t advertising_sid,
-                            int8_t tx_power, int8_t rssi, uint16_t periodic_adv_int,
-                            std::vector<uint8_t> adv_data, RawAddress* original_bda) {
-  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid() || !mScanCallbacksObj) {
-    return;
-  }
-
-  ScopedLocalRef<jstring> address(sCallbackEnv.get(), bdaddr2newjstr(sCallbackEnv.get(), bda));
-  ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(adv_data.size()));
-  sCallbackEnv->SetByteArrayRegion(jb.get(), 0, adv_data.size(), (jbyte*)adv_data.data());
-
-  ScopedLocalRef<jstring> original_address(sCallbackEnv.get(),
-                                           bdaddr2newjstr(sCallbackEnv.get(), original_bda));
-
-  sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onScanResult, event_type, addr_type,
-                               address.get(), primary_phy, secondary_phy, advertising_sid, tx_power,
-                               rssi, periodic_adv_int, jb.get(), original_address.get());
 }
 
 void btgattc_open_cb(int conn_id, int status, int clientIf, const RawAddress& bda) {
@@ -442,65 +431,6 @@ void btgattc_congestion_cb(int conn_id, bool congested) {
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientCongestion, conn_id, congested);
 }
 
-void btgattc_batchscan_reports_cb(int client_if, int status, int report_format, int num_records,
-                                  std::vector<uint8_t> data) {
-  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid() || !mScanCallbacksObj) {
-    return;
-  }
-  ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(data.size()));
-  sCallbackEnv->SetByteArrayRegion(jb.get(), 0, data.size(), (jbyte*)data.data());
-
-  sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onBatchScanReports, status, client_if,
-                               report_format, num_records, jb.get());
-}
-
-void btgattc_batchscan_threshold_cb(int client_if) {
-  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid() || !mScanCallbacksObj) {
-    return;
-  }
-  sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onBatchScanThresholdCrossed, client_if);
-}
-
-void btgattc_track_adv_event_cb(btgatt_track_adv_info_t* p_adv_track_info) {
-  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid() || !mScanCallbacksObj) {
-    return;
-  }
-
-  ScopedLocalRef<jstring> address(sCallbackEnv.get(),
-                                  bdaddr2newjstr(sCallbackEnv.get(), &p_adv_track_info->bd_addr));
-
-  ScopedLocalRef<jbyteArray> jb_adv_pkt(sCallbackEnv.get(),
-                                        sCallbackEnv->NewByteArray(p_adv_track_info->adv_pkt_len));
-  ScopedLocalRef<jbyteArray> jb_scan_rsp(
-          sCallbackEnv.get(), sCallbackEnv->NewByteArray(p_adv_track_info->scan_rsp_len));
-
-  sCallbackEnv->SetByteArrayRegion(jb_adv_pkt.get(), 0, p_adv_track_info->adv_pkt_len,
-                                   (jbyte*)p_adv_track_info->p_adv_pkt_data);
-
-  sCallbackEnv->SetByteArrayRegion(jb_scan_rsp.get(), 0, p_adv_track_info->scan_rsp_len,
-                                   (jbyte*)p_adv_track_info->p_scan_rsp_data);
-
-  ScopedLocalRef<jobject> trackadv_obj(
-          sCallbackEnv.get(),
-          sCallbackEnv->CallObjectMethod(
-                  mScanCallbacksObj, method_createOnTrackAdvFoundLostObject,
-                  p_adv_track_info->client_if, p_adv_track_info->adv_pkt_len, jb_adv_pkt.get(),
-                  p_adv_track_info->scan_rsp_len, jb_scan_rsp.get(), p_adv_track_info->filt_index,
-                  p_adv_track_info->advertiser_state, p_adv_track_info->advertiser_info_present,
-                  address.get(), p_adv_track_info->addr_type, p_adv_track_info->tx_power,
-                  p_adv_track_info->rssi_value, p_adv_track_info->time_stamp));
-
-  if (NULL != trackadv_obj.get()) {
-    sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onTrackAdvFoundLost, trackadv_obj.get());
-  }
-}
-
 void fillGattDbElementArray(JNIEnv* env, jobject* array, const btgatt_db_element_t* db, int count) {
   // Because JNI uses a different class loader in the callback context, we
   // cannot simply get the class.
@@ -628,13 +558,6 @@ void btgattc_subrate_change_cb(int conn_id, uint16_t subrate_factor, uint16_t la
                                latency, cont_num, timeout, status);
 }
 
-static const btgatt_scanner_callbacks_t sGattScannerCallbacks = {
-        btgattc_scan_result_cb,
-        btgattc_batchscan_reports_cb,
-        btgattc_batchscan_threshold_cb,
-        btgattc_track_adv_event_cb,
-};
-
 static const btgatt_client_callbacks_t sGattClientCallbacks = {
         btgattc_register_app_cb,
         btgattc_open_cb,
@@ -664,6 +587,11 @@ static const btgatt_client_callbacks_t sGattClientCallbacks = {
  */
 
 void btgatts_register_app_cb(int status, int server_if, const Uuid& uuid) {
+  // TODO(b/356462170): Remove this when we have fixed the bug
+  if (!is_module_started(&rust_module)) {
+    log::error("Rust module isn't started! scan_manager_refactor={}",
+               com::android::bluetooth::flags::scan_manager_refactor());
+  }
   bluetooth::gatt::open_server(server_if);
   std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -919,7 +847,6 @@ static const btgatt_callbacks_t sGattCallbacks = {
         sizeof(btgatt_callbacks_t),
         &sGattClientCallbacks,
         &sGattServerCallbacks,
-        &sGattScannerCallbacks,
 };
 
 class JniAdvertisingCallbacks : AdvertisingCallbacks {
@@ -1244,8 +1171,10 @@ public:
   void OnDistanceMeasurementResult(RawAddress address, uint32_t centimeter,
                                    uint32_t error_centimeter, int azimuth_angle,
                                    int error_azimuth_angle, int altitude_angle,
-                                   int error_altitude_angle, uint64_t elapsedRealtimeNanos,
-                                   int8_t confidence_level, uint8_t method) {
+                                   int error_altitude_angle, uint64_t elapsed_realtime_nanos,
+                                   int8_t confidence_level, double delay_spread_meters,
+                                   uint8_t detected_attack_level, double velocity_meters_per_second,
+                                   uint8_t method) {
     std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
@@ -1255,7 +1184,8 @@ public:
     sCallbackEnv->CallVoidMethod(
             mDistanceMeasurementCallbacksObj, method_onDistanceMeasurementResult, addr.get(),
             centimeter, error_centimeter, azimuth_angle, error_azimuth_angle, altitude_angle,
-            error_altitude_angle, elapsedRealtimeNanos, confidence_level, method);
+            error_altitude_angle, elapsed_realtime_nanos, confidence_level, delay_spread_meters,
+            detected_attack_level, velocity_meters_per_second, method);
   }
 };
 
@@ -1348,13 +1278,13 @@ static int gattClientGetDeviceTypeNative(JNIEnv* env, jobject /* object */, jstr
   return sGattIf->client->get_device_type(str2addr(env, address));
 }
 
-static void gattClientRegisterAppNative(JNIEnv* /* env */, jobject /* object */, jlong app_uuid_lsb,
-                                        jlong app_uuid_msb, jboolean eatt_support) {
+static void gattClientRegisterAppNative(JNIEnv* env, jobject /* object */, jlong app_uuid_lsb,
+                                        jlong app_uuid_msb, jstring name, jboolean eatt_support) {
   if (!sGattIf) {
     return;
   }
   Uuid uuid = from_java_uuid(app_uuid_msb, app_uuid_lsb);
-  sGattIf->client->register_client(uuid, eatt_support);
+  sGattIf->client->register_client(uuid, jstr_to_str(env, name).c_str(), eatt_support);
 }
 
 static void gattClientUnregisterAppNative(JNIEnv* /* env */, jobject /* object */, jint clientIf) {
@@ -1600,25 +1530,16 @@ static void gattClientReadRemoteRssiNative(JNIEnv* env, jobject /* object */, ji
   sGattIf->client->read_remote_rssi(clientif, str2addr(env, address));
 }
 
-void set_scan_params_cmpl_cb(int client_if, uint8_t status) {
-  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid() || !mScanCallbacksObj) {
-    return;
-  }
-  sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onScanParamSetupCompleted, status,
-                               client_if);
-}
-
-static void gattSetScanParametersNative(JNIEnv* /* env */, jobject /* object */, jint client_if,
-                                        jint scan_interval_unit, jint scan_window_unit,
-                                        jint scan_phy) {
+static void gattSetScanParametersNative(JNIEnv* /* env */, jobject /* object */, jint client_if_1m,
+                                        jint scan_interval_unit_1m, jint scan_window_unit_1m,
+                                        jint client_if_coded, jint scan_interval_unit_coded,
+                                        jint scan_window_unit_coded, jint scan_phy) {
   if (!sScanner) {
     return;
   }
-  sScanner->SetScanParameters(client_if, /* use active scan */ 0x01, scan_interval_unit,
-                              scan_window_unit, scan_phy,
-                              base::Bind(&set_scan_params_cmpl_cb, client_if));
+  sScanner->SetScanParameters(/* use active scan */ 0x01, client_if_1m, scan_interval_unit_1m,
+                              scan_window_unit_1m, client_if_coded, scan_interval_unit_coded,
+                              scan_window_unit_coded, scan_phy);
 }
 
 void scan_filter_param_cb(uint8_t client_if, uint8_t avbl_space, uint8_t action, uint8_t status) {
@@ -1790,6 +1711,7 @@ static void gattClientScanFilterAddNative(JNIEnv* env, jobject /* object */, jin
       for (int j = 0; j < len; j++) {
         curr.irk[j] = irkBytes[j];
       }
+      env->ReleaseByteArrayElements(irkByteArray.get(), irkBytes, JNI_ABORT);
     }
 
     ScopedLocalRef<jobject> uuid(env, env->GetObjectField(current.get(), uuidFid));
@@ -2000,6 +1922,7 @@ static void gattClientMsftAdvMonitorAddNative(JNIEnv* env, jobject /* object*/,
       for (int j = 0; j < env->GetArrayLength(patternByteArray.get()); j++) {
         native_msft_adv_monitor_pattern.pattern.push_back(patternBytes[j]);
       }
+      env->ReleaseByteArrayElements(patternByteArray.get(), patternBytes, 0);
     }
 
     patterns.push_back(native_msft_adv_monitor_pattern);
@@ -2046,14 +1969,16 @@ static void gattConnectionParameterUpdateNative(JNIEnv* env, jobject /* object *
                                          (uint16_t)max_ce_len);
 }
 
-static void gattSubrateRequestNative(JNIEnv* env, jobject /* object */, jint /* client_if */,
-                                     jstring address, jint subrate_min, jint subrate_max,
-                                     jint max_latency, jint cont_num, jint sup_timeout) {
+static int gattSubrateRequestNative(JNIEnv* env, jobject /* object */, jint /* client_if */,
+                                    jstring address, jint subrate_min, jint subrate_max,
+                                    jint max_latency, jint cont_num, jint sup_timeout) {
   if (!sGattIf) {
-    return;
+    return 1;  // BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED
   }
+  // TODO does bt_status_t align with BluetoothStatusCodes ?
   sGattIf->client->subrate_request(str2addr(env, address), subrate_min, subrate_max, max_latency,
                                    cont_num, sup_timeout);
+  return 0;  // BluetoothStatusCodes.SUCCESS
 }
 
 void batchscan_cfg_storage_cb(uint8_t client_if, uint8_t status) {
@@ -2861,7 +2786,7 @@ static int register_com_android_bluetooth_gatt_scan(JNIEnv* env) {
            (void*)gattClientScanFilterAddNative},
           {"gattClientScanFilterClearNative", "(II)V", (void*)gattClientScanFilterClearNative},
           {"gattClientScanFilterEnableNative", "(IZ)V", (void*)gattClientScanFilterEnableNative},
-          {"gattSetScanParametersNative", "(IIII)V", (void*)gattSetScanParametersNative},
+          {"gattSetScanParametersNative", "(IIIIIII)V", (void*)gattSetScanParametersNative},
           // MSFT HCI Extension functions.
           {"gattClientIsMsftSupportedNative", "()Z", (bool*)gattClientIsMsftSupportedNative},
           {"gattClientMsftAdvMonitorAddNative",
@@ -3001,7 +2926,7 @@ static int register_com_android_bluetooth_gatt_distance_measurement(JNIEnv* env)
            &method_onDistanceMeasurementStarted},
           {"onDistanceMeasurementStopped", "(Ljava/lang/String;II)V",
            &method_onDistanceMeasurementStopped},
-          {"onDistanceMeasurementResult", "(Ljava/lang/String;IIIIIIJII)V",
+          {"onDistanceMeasurementResult", "(Ljava/lang/String;IIIIIIJIDIDI)V",
            &method_onDistanceMeasurementResult},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/gatt/DistanceMeasurementNativeInterface",
@@ -3016,7 +2941,8 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"cleanupNative", "()V", (void*)cleanupNative},
           {"gattClientGetDeviceTypeNative", "(Ljava/lang/String;)I",
            (void*)gattClientGetDeviceTypeNative},
-          {"gattClientRegisterAppNative", "(JJZ)V", (void*)gattClientRegisterAppNative},
+          {"gattClientRegisterAppNative", "(JJLjava/lang/String;Z)V",
+           (void*)gattClientRegisterAppNative},
           {"gattClientUnregisterAppNative", "(I)V", (void*)gattClientUnregisterAppNative},
           {"gattClientConnectNative", "(ILjava/lang/String;IZIZII)V",
            (void*)gattClientConnectNative},
@@ -3060,7 +2986,7 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"gattServerSendIndicationNative", "(III[B)V", (void*)gattServerSendIndicationNative},
           {"gattServerSendNotificationNative", "(III[B)V", (void*)gattServerSendNotificationNative},
           {"gattServerSendResponseNative", "(IIIIII[BI)V", (void*)gattServerSendResponseNative},
-          {"gattSubrateRequestNative", "(ILjava/lang/String;IIIII)V",
+          {"gattSubrateRequestNative", "(ILjava/lang/String;IIIII)I",
            (void*)gattSubrateRequestNative},
 
           {"gattTestNative", "(IJJLjava/lang/String;IIIII)V", (void*)gattTestNative},

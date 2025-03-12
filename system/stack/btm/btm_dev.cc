@@ -35,8 +35,8 @@
 #include "btm_int_types.h"
 #include "btm_sec_api.h"
 #include "btm_sec_cb.h"
+#include "connection_manager/connection_manager.h"
 #include "internal_include/bt_target.h"
-#include "main/shim/acl_api.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/allocator.h"
 #include "stack/btm/btm_sec.h"
@@ -48,9 +48,6 @@
 #include "stack/include/gatt_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "types/raw_address.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using namespace bluetooth;
 
@@ -89,6 +86,12 @@ void BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class, LinkKey li
 
   if (!p_dev_rec) {
     p_dev_rec = btm_sec_allocate_dev_rec();
+
+    if (p_dev_rec == nullptr) {
+      log::warn("device record allocation failed bd_addr:{}", bd_addr);
+      return;
+    }
+
     log::info(
             "Caching new record from config file device: {}, dev_class: {:02x}:{:02x}:{:02x}, "
             "link_key_type: 0x{:x}",
@@ -163,7 +166,7 @@ void BTM_SecAddDevice(const RawAddress& bd_addr, DEV_CLASS dev_class, LinkKey li
  */
 bool BTM_SecDeleteDevice(const RawAddress& bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
-  if (p_dev_rec == NULL) {
+  if (p_dev_rec == nullptr) {
     log::warn("Unable to delete link key for unknown device {}", bd_addr);
     return true;
   }
@@ -181,7 +184,7 @@ bool BTM_SecDeleteDevice(const RawAddress& bd_addr) {
   RawAddress bda = p_dev_rec->bd_addr;
 
   log::info("Remove device {} from filter accept list before delete record", bd_addr);
-  bluetooth::shim::ACL_IgnoreLeConnectionFrom(BTM_Sec_GetAddressWithType(bda));
+  connection_manager::remove_unconditional(bd_addr);
 
   const auto device_type = p_dev_rec->device_type;
   const auto bond_type = p_dev_rec->sec_rec.bond_type;
@@ -192,10 +195,9 @@ bool BTM_SecDeleteDevice(const RawAddress& bd_addr) {
   /* Tell controller to get rid of the link key, if it has one stored */
   BTM_DeleteStoredLinkKey(&bda, NULL);
   log::info("{} complete", bd_addr);
-  BTM_LogHistory(
-          kBtmLogTag, bd_addr, "Device removed",
-          base::StringPrintf("device_type:%s bond_type:%s", DeviceTypeText(device_type).c_str(),
-                             bond_type_text(bond_type).c_str()));
+  BTM_LogHistory(kBtmLogTag, bd_addr, "Device removed",
+                 std::format("device_type:{} bond_type:{}", DeviceTypeText(device_type),
+                             bond_type_text(bond_type)));
 
   return true;
 }
@@ -210,7 +212,8 @@ bool BTM_SecDeleteDevice(const RawAddress& bd_addr) {
  ******************************************************************************/
 void BTM_SecClearSecurityFlags(const RawAddress& bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
-  if (p_dev_rec == NULL) {
+  if (p_dev_rec == nullptr) {
+    log::warn("Unable to clear security flags for unknown device {}", bd_addr);
     return;
   }
 
@@ -276,6 +279,11 @@ tBTM_SEC_DEV_REC* btm_sec_alloc_dev(const RawAddress& bd_addr) {
   tBTM_INQ_INFO* p_inq_info;
 
   tBTM_SEC_DEV_REC* p_dev_rec = btm_sec_allocate_dev_rec();
+
+  if (p_dev_rec == nullptr) {
+    log::warn("device record allocation failed bd_addr:{}", bd_addr);
+    return NULL;
+  }
 
   log::debug("Allocated device record bd_addr:{}", bd_addr);
 
@@ -571,7 +579,7 @@ tBTM_SEC_DEV_REC* btm_find_or_alloc_dev(const RawAddress& bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec;
   log::verbose("btm_find_or_alloc_dev");
   p_dev_rec = btm_find_dev(bd_addr);
-  if (p_dev_rec == NULL) {
+  if (p_dev_rec == nullptr) {
     /* Allocate a new device record or reuse the oldest one */
     p_dev_rec = btm_sec_alloc_dev(bd_addr);
   }
@@ -675,7 +683,7 @@ tBTM_SEC_DEV_REC* btm_sec_allocate_dev_rec(void) {
 tBTM_BOND_TYPE btm_get_bond_type_dev(const RawAddress& bd_addr) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
 
-  if (p_dev_rec == NULL) {
+  if (p_dev_rec == nullptr) {
     return BOND_TYPE_UNKNOWN;
   }
 
@@ -695,7 +703,7 @@ tBTM_BOND_TYPE btm_get_bond_type_dev(const RawAddress& bd_addr) {
 bool btm_set_bond_type_dev(const RawAddress& bd_addr, tBTM_BOND_TYPE bond_type) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bd_addr);
 
-  if (p_dev_rec == NULL) {
+  if (p_dev_rec == nullptr) {
     return false;
   }
 
@@ -746,7 +754,7 @@ bool BTM_Sec_AddressKnown(const RawAddress& address) {
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(address);
 
   // not a known device, we assume public address
-  if (p_dev_rec == NULL) {
+  if (p_dev_rec == nullptr) {
     log::warn("{}, unknown device", address);
     return true;
   }
@@ -826,11 +834,11 @@ void DumpsysRecord(int fd) {
 #undef DUMPSYS_TAG
 
 namespace bluetooth {
-namespace testing {
 namespace legacy {
+namespace testing {
 
 void wipe_secrets_and_remove(tBTM_SEC_DEV_REC* p_dev_rec) { ::wipe_secrets_and_remove(p_dev_rec); }
 
-}  // namespace legacy
 }  // namespace testing
+}  // namespace legacy
 }  // namespace bluetooth

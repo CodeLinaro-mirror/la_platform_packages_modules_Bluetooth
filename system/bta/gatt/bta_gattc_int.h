@@ -371,8 +371,8 @@ bool bta_gattc_sm_execute(tBTA_GATTC_CLCB* p_clcb, uint16_t event, const tBTA_GA
 
 /* function processed outside SM */
 void bta_gattc_disable();
-void bta_gattc_register(const bluetooth::Uuid& app_uuid, tBTA_GATTC_CBACK* p_data,
-                        BtaAppRegisterCallback cb, bool eatt_support);
+void bta_gattc_register(const bluetooth::Uuid& app_uuid, const std::string& name,
+                        tBTA_GATTC_CBACK* p_data, BtaAppRegisterCallback cb, bool eatt_support);
 void bta_gattc_process_api_open(const tBTA_GATTC_DATA* p_msg);
 void bta_gattc_process_api_open_cancel(const tBTA_GATTC_DATA* p_msg);
 void bta_gattc_deregister(tBTA_GATTC_RCB* p_clreg);
@@ -505,7 +505,7 @@ inline std::string bta_clcb_state_text(const tBTA_GATTC_STATE& state) {
     CASE_RETURN_TEXT(BTA_GATTC_CONN_ST);
     CASE_RETURN_TEXT(BTA_GATTC_DISCOVER_ST);
     default:
-      return base::StringPrintf("UNKNOWN[%hhu]", state);
+      return std::format("UNKNOWN[{}]", static_cast<int>(state));
   }
 }
 
@@ -517,7 +517,7 @@ inline std::string bta_server_state_text(const tBTA_GATTC_SERV_STATE& state) {
     CASE_RETURN_TEXT(BTA_GATTC_SERV_DISC);
     CASE_RETURN_TEXT(BTA_GATTC_SERV_DISC_ACT);
     default:
-      return base::StringPrintf("UNKNOWN[%hhu]", state);
+      return std::format("UNKNOWN[{}]", static_cast<int>(state));
   }
 }
 
@@ -528,7 +528,7 @@ inline std::string bta_gattc_state_text(const tBTA_GATTC_CB_STATE& state) {
     CASE_RETURN_TEXT(BTA_GATTC_STATE_ENABLED);
     CASE_RETURN_TEXT(BTA_GATTC_STATE_DISABLING);
     default:
-      return base::StringPrintf("UNKNOWN[%hhu]", state);
+      return std::format("UNKNOWN[{}]", static_cast<int>(state));
   }
 }
 

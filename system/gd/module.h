@@ -32,6 +32,9 @@
 #include "os/thread.h"
 
 namespace bluetooth {
+namespace shim {
+class Stack;
+}  // namespace shim
 
 class Module;
 class ModuleRegistry;
@@ -81,6 +84,9 @@ public:
   virtual ~Module() = default;
 
 protected:
+  Module() = default;
+  Module(os::Handler* handler) : handler_(handler) {}
+
   // Populate the provided list with modules that must start before yours
   virtual void ListDependencies(ModuleList* list) const = 0;
 
@@ -117,12 +123,12 @@ private:
 
   ::bluetooth::os::Handler* handler_ = nullptr;
   ModuleList dependencies_;
-  const ModuleRegistry* registry_;
+  const ModuleRegistry* registry_ = nullptr;
 };
 
 class ModuleRegistry {
   friend Module;
-  friend class StackManager;
+  friend shim::Stack;
 
 public:
   template <class T>
@@ -156,6 +162,9 @@ protected:
   std::map<const ModuleFactory*, Module*> started_modules_;
   std::vector<const ModuleFactory*> start_order_;
   std::string last_instance_;
+
+private:
+  mutable std::mutex started_modules_guard_;
 };
 
 class TestModuleRegistry : public ModuleRegistry {

@@ -87,7 +87,7 @@ public class A2dpSinkService extends ProfileService {
         mMaxConnectedAudioDevices = mAdapterService.getMaxConnectedAudioDevices();
         mNativeInterface.init(mMaxConnectedAudioDevices);
         synchronized (mStreamHandlerLock) {
-            mA2dpSinkStreamHandler = new A2dpSinkStreamHandler(this, mNativeInterface);
+            mA2dpSinkStreamHandler = new A2dpSinkStreamHandler(mAdapterService, mNativeInterface);
         }
 
         setA2dpSinkService(this);
@@ -98,7 +98,9 @@ public class A2dpSinkService extends ProfileService {
     }
 
     @Override
-    public void stop() {
+    public void cleanup() {
+        Log.i(TAG, "Cleanup A2DP Sink Service");
+
         setA2dpSinkService(null);
         mNativeInterface.cleanup();
         synchronized (mDeviceStateMap) {

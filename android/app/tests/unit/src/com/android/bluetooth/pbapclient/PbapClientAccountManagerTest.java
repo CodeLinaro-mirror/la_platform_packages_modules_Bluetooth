@@ -16,6 +16,9 @@
 
 package com.android.bluetooth.pbapclient;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
@@ -32,6 +35,7 @@ import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -40,10 +44,11 @@ import android.content.res.Resources;
 import android.os.Bundle;
 import android.os.HandlerThread;
 import android.os.UserManager;
-import android.os.test.TestLooper;
 
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.TestUtils;
 
 import org.junit.After;
@@ -53,8 +58,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.List;
 
@@ -62,7 +65,7 @@ import java.util.List;
 public class PbapClientAccountManagerTest {
     private static final String ACCOUNT_TYPE = "com.android.bluetooth.pbapclient.account";
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     private BluetoothAdapter mAdapter;
 
@@ -83,7 +86,11 @@ public class PbapClientAccountManagerTest {
 
     @Before
     public void setUp() throws Exception {
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
+        mAdapter =
+                InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
+                        .getSystemService(BluetoothManager.class)
+                        .getAdapter();
         assertThat(mAdapter).isNotNull();
 
         TestUtils.mockGetSystemService(
@@ -127,7 +134,7 @@ public class PbapClientAccountManagerTest {
 
     @Test
     public void testGetAccountForDevice_deviceAccountNameAndTypeAreValid() {
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(account.name).isEqualTo(device.getAddress());
         assertThat(account.type).isEqualTo(ACCOUNT_TYPE);
@@ -157,8 +164,8 @@ public class PbapClientAccountManagerTest {
 
     @Test
     public void testStartAccountManager_userUnlockedAccountVisibleHasAccount_accountsInitialized() {
-        BluetoothDevice device1 = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
-        BluetoothDevice device2 = TestUtils.getTestDevice(mAdapter, /* id= */ 2);
+        BluetoothDevice device1 = getTestDevice(/* id= */ 1);
+        BluetoothDevice device2 = getTestDevice(/* id= */ 2);
         Account[] accounts =
                 new Account[] {getAccountForDevice(device1), getAccountForDevice(device2)};
 
@@ -175,7 +182,7 @@ public class PbapClientAccountManagerTest {
 
         assertThat(fromAccounts).isNull();
         assertThat(toAccounts).isNotNull();
-        assertThat(toAccounts.size()).isEqualTo(2);
+        assertThat(toAccounts).hasSize(2);
         assertThat(toAccounts).contains(accounts[0]);
         assertThat(toAccounts).contains(accounts[1]);
     }
@@ -238,8 +245,8 @@ public class PbapClientAccountManagerTest {
 
     @Test
     public void testGetAccounts_storageInitializedWithAccounts_returnsAccountList() {
-        BluetoothDevice device1 = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
-        BluetoothDevice device2 = TestUtils.getTestDevice(mAdapter, /* id= */ 2);
+        BluetoothDevice device1 = getTestDevice(/* id= */ 1);
+        BluetoothDevice device2 = getTestDevice(/* id= */ 2);
         Account[] accounts =
                 new Account[] {getAccountForDevice(device1), getAccountForDevice(device2)};
 
@@ -250,7 +257,7 @@ public class PbapClientAccountManagerTest {
         mTestLooper.dispatchAll();
 
         assertThat(mAccountManager.getAccounts()).isNotNull();
-        assertThat(mAccountManager.getAccounts().size()).isEqualTo(2);
+        assertThat(mAccountManager.getAccounts()).hasSize(2);
         assertThat(mAccountManager.getAccounts()).contains(accounts[0]);
         assertThat(mAccountManager.getAccounts()).contains(accounts[1]);
     }
@@ -266,7 +273,7 @@ public class PbapClientAccountManagerTest {
     public void testAddAccount_accountDoesNotExist_accountInAccountsListAndReturnsTrue() {
         testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized();
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isTrue();
 
@@ -282,14 +289,14 @@ public class PbapClientAccountManagerTest {
     public void testAddAccount_accountAlreadyExists_accountInAccountsListAndReturnsTrue() {
         testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized();
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isTrue();
         assertThat(mAccountManager.getAccounts()).contains(account);
 
         // Add again once its already in there
         assertThat(mAccountManager.addAccount(account)).isTrue();
-        assertThat(mAccountManager.getAccounts().size()).isEqualTo(1);
+        assertThat(mAccountManager.getAccounts()).hasSize(1);
         assertThat(mAccountManager.getAccounts()).contains(account);
     }
 
@@ -302,7 +309,7 @@ public class PbapClientAccountManagerTest {
 
         testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized();
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isFalse();
         assertThat(mAccountManager.getAccounts()).isEmpty();
@@ -310,7 +317,7 @@ public class PbapClientAccountManagerTest {
 
     @Test
     public void testAddAccounts_storageNotInitialized_returnsFalse() {
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isFalse();
     }
@@ -321,7 +328,7 @@ public class PbapClientAccountManagerTest {
     public void testRemoveAccount_accountExists_accountNotInAccountsListAndReturnsTrue() {
         testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized();
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isTrue();
         assertThat(mAccountManager.getAccounts()).contains(account);
@@ -335,12 +342,12 @@ public class PbapClientAccountManagerTest {
     public void testRemoveAccount_accountDoesNotExist_accountNotInAccountsListAndReturnsTrue() {
         testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized();
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isTrue();
         assertThat(mAccountManager.getAccounts()).contains(account);
 
-        BluetoothDevice device2 = TestUtils.getTestDevice(mAdapter, /* id= */ 2);
+        BluetoothDevice device2 = getTestDevice(/* id= */ 2);
         Account account2 = mAccountManager.getAccountForDevice(device2);
         assertThat(mAccountManager.getAccounts()).doesNotContain(account2);
         assertThat(mAccountManager.removeAccount(account2)).isTrue();
@@ -351,7 +358,7 @@ public class PbapClientAccountManagerTest {
     public void testRemoveAccounts_accountManagerOperationFails_returnsFalse() {
         testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized();
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.addAccount(account)).isTrue();
         assertThat(mAccountManager.getAccounts()).contains(account);
@@ -363,7 +370,7 @@ public class PbapClientAccountManagerTest {
 
     @Test
     public void testRemoveAccounts_storageNotInitialized_returnsFalse() {
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, /* id= */ 1);
+        BluetoothDevice device = getTestDevice(/* id= */ 1);
         Account account = mAccountManager.getAccountForDevice(device);
         assertThat(mAccountManager.removeAccount(account)).isFalse();
     }

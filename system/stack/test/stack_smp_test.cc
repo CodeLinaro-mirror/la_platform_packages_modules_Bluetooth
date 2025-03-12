@@ -375,11 +375,13 @@ TEST(SmpStatusText, smp_status_text) {
           std::make_pair(SMP_NUMERIC_COMPAR_FAIL, "SMP_NUMERIC_COMPAR_FAIL"),
           std::make_pair(SMP_BR_PARING_IN_PROGR, "SMP_BR_PARING_IN_PROGR"),
           std::make_pair(SMP_XTRANS_DERIVE_NOT_ALLOW, "SMP_XTRANS_DERIVE_NOT_ALLOW"),
+          std::make_pair(SMP_KEY_REJECTED, "SMP_KEY_REJECTED"),
+          std::make_pair(SMP_BUSY, "SMP_BUSY"),
           std::make_pair(SMP_MAX_FAIL_RSN_PER_SPEC,
-                         "SMP_XTRANS_DERIVE_NOT_ALLOW"),  // NOTE: Dup
+                         "SMP_BUSY"),  // NOTE: Dup
           std::make_pair(SMP_PAIR_INTERNAL_ERR, "SMP_PAIR_INTERNAL_ERR"),
           std::make_pair(SMP_UNKNOWN_IO_CAP, "SMP_UNKNOWN_IO_CAP"),
-          std::make_pair(SMP_BUSY, "SMP_BUSY"),
+          std::make_pair(SMP_IMPL_BUSY, "SMP_IMPL_BUSY"),
           std::make_pair(SMP_ENC_FAIL, "SMP_ENC_FAIL"),
           std::make_pair(SMP_STARTED, "SMP_STARTED"),
           std::make_pair(SMP_RSP_TIMEOUT, "SMP_RSP_TIMEOUT"),
@@ -389,7 +391,7 @@ TEST(SmpStatusText, smp_status_text) {
   for (const auto& stat : status) {
     ASSERT_STREQ(stat.second.c_str(), smp_status_text(stat.first).c_str());
   }
-  auto unknown = base::StringPrintf("UNKNOWN[%hhu]", std::numeric_limits<uint8_t>::max());
+  auto unknown = std::format("UNKNOWN[{}]", std::numeric_limits<uint8_t>::max());
   ASSERT_STREQ(
           unknown.c_str(),
           smp_status_text(static_cast<tSMP_STATUS>(std::numeric_limits<uint8_t>::max())).c_str());

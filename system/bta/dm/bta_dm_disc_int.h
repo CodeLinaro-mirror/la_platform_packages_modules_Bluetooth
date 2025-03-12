@@ -16,12 +16,12 @@
 
 #pragma once
 
-#include <base/strings/stringprintf.h>
 #include <bluetooth/log.h>
 
 #include <queue>
 #include <string>
 
+#include "bta/dm/bta_dm_device_search_int.h"
 #include "bta/include/bta_api.h"
 #include "bta/sys/bta_sys.h"
 #include "macros.h"
@@ -138,3 +138,10 @@ template <>
 struct formatter<tBTA_DM_SERVICE_DISCOVERY_STATE>
     : enum_formatter<tBTA_DM_SERVICE_DISCOVERY_STATE> {};
 }  // namespace std
+
+namespace bluetooth::legacy::testing {
+
+tBT_TRANSPORT bta_dm_determine_discovery_transport(const RawAddress& bd_addr);
+void bta_dm_remote_name_cmpl(const tBTA_DM_REMOTE_NAME& remote_name_msg);
+
+}  // namespace bluetooth::legacy::testing

@@ -33,6 +33,9 @@ import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -43,7 +46,6 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothCsipSetCoordinator;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -54,12 +56,11 @@ import android.bluetooth.IBluetoothCsipSetCoordinatorLockCallback;
 import android.content.Intent;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
-import android.os.test.TestLooper;
 
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.bluetooth.TestUtils;
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ServiceFactory;
@@ -69,7 +70,6 @@ import com.android.bluetooth.le_audio.LeAudioService;
 import org.hamcrest.Matcher;
 import org.hamcrest.core.AllOf;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -78,8 +78,6 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.hamcrest.MockitoHamcrest;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.List;
 import java.util.UUID;
@@ -87,7 +85,7 @@ import java.util.UUID;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class CsipSetCoordinatorServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Spy private ServiceFactory mServiceFactory = new ServiceFactory();
     @Mock private AdapterService mAdapterService;
@@ -96,12 +94,9 @@ public class CsipSetCoordinatorServiceTest {
     @Mock private CsipSetCoordinatorNativeInterface mNativeInterface;
     @Mock private IBluetoothCsipSetCoordinatorLockCallback mCsipSetCoordinatorLockCallback;
 
-    // private final Context mTargetContext =
-    //         InstrumentationRegistry.getInstrumentation().getTargetContext();
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mDevice = TestUtils.getTestDevice(mAdapter, 0);
-    private final BluetoothDevice mDevice2 = TestUtils.getTestDevice(mAdapter, 1);
-    private final BluetoothDevice mDevice3 = TestUtils.getTestDevice(mAdapter, 2);
+    private final BluetoothDevice mDevice = getTestDevice(0);
+    private final BluetoothDevice mDevice2 = getTestDevice(1);
+    private final BluetoothDevice mDevice3 = getTestDevice(2);
 
     private CsipSetCoordinatorService mService;
     private InOrder mInOrder;
@@ -140,7 +135,7 @@ public class CsipSetCoordinatorServiceTest {
 
     @After
     public void tearDown() throws Exception {
-        mService.stop();
+        mService.cleanup();
         assertThat(CsipSetCoordinatorService.getCsipSetCoordinatorService()).isNull();
     }
 
@@ -238,12 +233,12 @@ public class CsipSetCoordinatorServiceTest {
 
         mNativeCallback.onDeviceAvailable(
                 getByteAddress(mDevice), group_id, group_size, 1, uuidLsb, uuidMsb);
-        Assert.assertFalse(mService.isGroupLocked(group_id));
+        assertThat(mService.isGroupLocked(group_id)).isFalse();
 
         UUID lock_uuid = mService.lockGroup(group_id, mCsipSetCoordinatorLockCallback);
         verify(mNativeInterface).groupLockSet(eq(group_id), eq(true));
-        Assert.assertNotNull(lock_uuid);
-        Assert.assertTrue(mService.isGroupLocked(group_id));
+        assertThat(lock_uuid).isNotNull();
+        assertThat(mService.isGroupLocked(group_id)).isTrue();
 
         lock_uuid = mService.lockGroup(group_id, mCsipSetCoordinatorLockCallback);
         verify(mNativeInterface).groupLockSet(eq(group_id), eq(true));
@@ -251,7 +246,7 @@ public class CsipSetCoordinatorServiceTest {
         verify(mCsipSetCoordinatorLockCallback)
                 .onGroupLockSet(
                         group_id, BluetoothStatusCodes.ERROR_CSIP_GROUP_LOCKED_BY_OTHER, true);
-        Assert.assertNull(lock_uuid);
+        assertThat(lock_uuid).isNull();
     }
 
     @Test

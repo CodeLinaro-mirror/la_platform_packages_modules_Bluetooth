@@ -48,7 +48,6 @@
 #include "le_audio_health_status.h"
 #include "le_audio_log_history.h"
 #include "le_audio_types.h"
-#include "os/logging/log_adapter.h"
 #include "osi/include/alarm.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
@@ -282,6 +281,9 @@ public:
           group->PrintDebugState();
           StopStream(group);
           return false;
+        } else {
+          // Even stream is already configured for the context, update the metadata.
+          group->SetMetadataContexts(metadata_context_types);
         }
 
         /* All ASEs should aim to achieve target state */
@@ -298,6 +300,8 @@ public:
         if (!group->IsMetadataChanged(metadata_context_types, ccid_lists)) {
           return true;
         }
+
+        group->SetMetadataContexts(metadata_context_types);
 
         LeAudioDevice* leAudioDevice = group->GetFirstActiveDevice();
         if (!leAudioDevice) {
@@ -644,14 +648,12 @@ public:
       return;
     }
 
-    if (com::android::bluetooth::flags::leaudio_dynamic_spatial_audio()) {
-      if (group->dsa_.active &&
-          (group->dsa_.mode == DsaMode::ISO_SW || group->dsa_.mode == DsaMode::ISO_HW) &&
-          leAudioDevice->GetDsaDataPathState() == DataPathState::CONFIGURING) {
-        log::info("Datapath configured for headtracking");
-        leAudioDevice->SetDsaDataPathState(DataPathState::CONFIGURED);
-        return;
-      }
+    if (group->dsa_.active &&
+        (group->dsa_.mode == DsaMode::ISO_SW || group->dsa_.mode == DsaMode::ISO_HW) &&
+        leAudioDevice->GetDsaDataPathState() == DataPathState::CONFIGURING) {
+      log::info("Datapath configured for headtracking");
+      leAudioDevice->SetDsaDataPathState(DataPathState::CONFIGURED);
+      return;
     }
 
     /* Update state for the given cis.*/
@@ -670,7 +672,7 @@ public:
       return;
     }
 
-    AddCisToStreamConfiguration(group, ase);
+    AddCisToStreamConfiguration(group, leAudioDevice, ase);
 
     if (group->GetState() == AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
         !group->GetFirstActiveDeviceByCisAndDataPathState(CisState::CONNECTED,
@@ -721,7 +723,7 @@ public:
         ases_pair.source->cis_state = CisState::DISCONNECTING;
         do_disconnect = true;
       }
-    } else if (com::android::bluetooth::flags::leaudio_dynamic_spatial_audio()) {
+    } else {
       if (group->dsa_.active && leAudioDevice->GetDsaDataPathState() == DataPathState::REMOVING) {
         log::info("DSA data path removed");
         leAudioDevice->SetDsaDataPathState(DataPathState::IDLE);
@@ -899,10 +901,6 @@ public:
 
   void applyDsaDataPath(LeAudioDeviceGroup* group, LeAudioDevice* leAudioDevice,
                         uint16_t conn_hdl) {
-    if (!com::android::bluetooth::flags::leaudio_dynamic_spatial_audio()) {
-      return;
-    }
-
     if (!group->dsa_.active) {
       log::info("DSA mode not used");
       return;
@@ -1076,8 +1074,7 @@ public:
     log::assert_that(ase != nullptr,
                      "shouldn't be called without an active ASE, device {}, "
                      "group id: {}, cis handle 0x{:04x}",
-                     ADDRESS_TO_LOGGABLE_CSTR(leAudioDevice->address_), event->cig_id,
-                     event->cis_conn_hdl);
+                     leAudioDevice->address_, event->cig_id, event->cis_conn_hdl);
 
     PrepareAndSendReceiverStartReady(leAudioDevice, ase);
   }
@@ -1086,13 +1083,13 @@ public:
     tGATT_WRITE_TYPE write_type = GATT_WRITE_NO_RSP;
 
     if (value.size() > (leAudioDevice->mtu_ - 3)) {
-      log::warn("{}, using long write procedure ({} > {})", leAudioDevice->address_,
-                static_cast<int>(value.size()), leAudioDevice->mtu_ - 3);
+      log::warn("{}, using long write procedure ({} > {})", leAudioDevice->address_, value.size(),
+                leAudioDevice->mtu_ - 3);
 
       /* Note, that this type is actually LONG WRITE.
        * Meaning all the Prepare Writes plus Execute is handled in the stack
        */
-      write_type = GATT_WRITE_PREPARE;
+      write_type = GATT_WRITE;
     }
 
     BtaGattQueue::WriteCharacteristic(leAudioDevice->conn_id_, leAudioDevice->ctp_hdls_.val_hdl,
@@ -1112,11 +1109,9 @@ public:
       value |= bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput;
       ases_pair.source->data_path_state = DataPathState::REMOVING;
     } else {
-      if (com::android::bluetooth::flags::leaudio_dynamic_spatial_audio()) {
-        if (leAudioDevice->GetDsaDataPathState() == DataPathState::CONFIGURED) {
-          value |= bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput;
-          leAudioDevice->SetDsaDataPathState(DataPathState::REMOVING);
-        }
+      if (leAudioDevice->GetDsaDataPathState() == DataPathState::CONFIGURED) {
+        value |= bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput;
+        leAudioDevice->SetDsaDataPathState(DataPathState::REMOVING);
       }
     }
 
@@ -1358,8 +1353,9 @@ private:
                                 "WATCHDOG STARTED");
   }
 
-  void AddCisToStreamConfiguration(LeAudioDeviceGroup* group, const struct ase* ase) {
-    group->stream_conf.codec_id = ase->codec_id;
+  void AddCisToStreamConfiguration(LeAudioDeviceGroup* group, LeAudioDevice* leAudioDevice,
+                                   const struct ase* ase) {
+    group->stream_conf.codec_id = ase->codec_config.id;
 
     auto cis_conn_hdl = ase->cis_conn_hdl;
     auto& params = group->stream_conf.stream_params.get(ase->direction);
@@ -1367,56 +1363,70 @@ private:
               ase->direction == bluetooth::le_audio::types::kLeAudioDirectionSink ? "sink"
                                                                                   : "source");
 
-    auto iter = std::find_if(params.stream_locations.begin(), params.stream_locations.end(),
-                             [cis_conn_hdl](auto& pair) { return cis_conn_hdl == pair.first; });
-    log::assert_that(iter == params.stream_locations.end(), "Stream is already there 0x{:04x}",
-                     cis_conn_hdl);
-
-    auto core_config = ase->codec_config.GetAsCoreCodecConfig();
+    auto iter = std::find_if(
+            params.stream_config.stream_map.begin(), params.stream_config.stream_map.end(),
+            [cis_conn_hdl](auto& info) { return cis_conn_hdl == info.stream_handle; });
+    log::assert_that(iter == params.stream_config.stream_map.end(),
+                     "Stream is already there 0x{:04x}", cis_conn_hdl);
 
     params.num_of_devices++;
-    params.num_of_channels += ase->channel_count;
+    params.num_of_channels += ase->codec_config.channel_count_per_iso_stream;
 
-    if (!core_config.audio_channel_allocation.has_value()) {
-      log::warn("ASE has invalid audio location");
-    }
-    auto ase_audio_channel_allocation = core_config.audio_channel_allocation.value_or(0);
+    auto ase_audio_channel_allocation = ase->codec_config.GetAudioChannelAllocation();
     params.audio_channel_allocation |= ase_audio_channel_allocation;
-    params.stream_locations.emplace_back(
-            std::make_pair(ase->cis_conn_hdl, ase_audio_channel_allocation));
 
-    if (params.sample_frequency_hz == 0) {
-      params.sample_frequency_hz = core_config.GetSamplingFrequencyHz();
-    } else {
-      log::assert_that(params.sample_frequency_hz == core_config.GetSamplingFrequencyHz(),
-                       "sample freq mismatch: {}!={}", params.sample_frequency_hz,
-                       core_config.GetSamplingFrequencyHz());
-    }
+    params.stream_config.bits_per_sample = ase->codec_config.GetBitsPerSample();
 
-    if (params.octets_per_codec_frame == 0) {
-      params.octets_per_codec_frame = *core_config.octets_per_codec_frame;
-    } else {
-      log::assert_that(params.octets_per_codec_frame == *core_config.octets_per_codec_frame,
-                       "octets per frame mismatch: {}!={}", params.octets_per_codec_frame,
-                       *core_config.octets_per_codec_frame);
-    }
+    auto address_with_type = leAudioDevice->GetAddressWithType();
+    auto info = ::bluetooth::le_audio::stream_map_info(ase->cis_conn_hdl,
+                                                       ase_audio_channel_allocation, true);
+    info.codec_config = ase->codec_config;
+    info.target_latency = ase->target_latency;
+    info.target_phy = ase->qos_config.phy;
+    info.metadata = ase->metadata;
+    info.address = address_with_type.bda;
+    info.address_type = address_with_type.type;
+    params.stream_config.stream_map.push_back(info);
 
-    if (params.codec_frames_blocks_per_sdu == 0) {
-      params.codec_frames_blocks_per_sdu = *core_config.codec_frames_blocks_per_sdu;
+    // Note that for the vendor codec some of the parameters will be missing
+    auto core_config = ase->codec_config.params.GetAsCoreCodecConfig();
+    if (params.stream_config.sampling_frequency_hz == 0) {
+      params.stream_config.sampling_frequency_hz = core_config.GetSamplingFrequencyHz();
     } else {
       log::assert_that(
-              params.codec_frames_blocks_per_sdu == *core_config.codec_frames_blocks_per_sdu,
-              "codec_frames_blocks_per_sdu: {}!={}", params.codec_frames_blocks_per_sdu,
-              *core_config.codec_frames_blocks_per_sdu);
+              params.stream_config.sampling_frequency_hz == core_config.GetSamplingFrequencyHz(),
+              "sample freq mismatch: {}!={}", params.stream_config.sampling_frequency_hz,
+              core_config.GetSamplingFrequencyHz());
     }
 
-    if (params.frame_duration_us == 0) {
-      params.frame_duration_us = core_config.GetFrameDurationUs();
+    if (params.stream_config.octets_per_codec_frame == 0) {
+      params.stream_config.octets_per_codec_frame = *core_config.octets_per_codec_frame;
     } else {
-      log::assert_that(params.frame_duration_us == core_config.GetFrameDurationUs(),
-                       "frame_duration_us: {}!={}", params.frame_duration_us,
+      log::assert_that(
+              params.stream_config.octets_per_codec_frame == *core_config.octets_per_codec_frame,
+              "octets per frame mismatch: {}!={}", params.stream_config.octets_per_codec_frame,
+              *core_config.octets_per_codec_frame);
+    }
+
+    if (params.stream_config.codec_frames_blocks_per_sdu == 0) {
+      params.stream_config.codec_frames_blocks_per_sdu = *core_config.codec_frames_blocks_per_sdu;
+    } else {
+      log::assert_that(params.stream_config.codec_frames_blocks_per_sdu ==
+                               *core_config.codec_frames_blocks_per_sdu,
+                       "codec_frames_blocks_per_sdu: {}!={}",
+                       params.stream_config.codec_frames_blocks_per_sdu,
+                       *core_config.codec_frames_blocks_per_sdu);
+    }
+
+    if (params.stream_config.frame_duration_us == 0) {
+      params.stream_config.frame_duration_us = core_config.GetFrameDurationUs();
+    } else {
+      log::assert_that(params.stream_config.frame_duration_us == core_config.GetFrameDurationUs(),
+                       "frame_duration_us: {}!={}", params.stream_config.frame_duration_us,
                        core_config.GetFrameDurationUs());
     }
+
+    params.stream_config.peer_delay_ms = group->GetRemoteDelay(ase->direction);
 
     log::info(
             "Added {} Stream Configuration. CIS Connection Handle: {}, Audio "
@@ -1441,10 +1451,6 @@ private:
 
   void ApplyDsaParams(LeAudioDeviceGroup* group,
                       bluetooth::hci::iso_manager::cig_create_params& param) {
-    if (!com::android::bluetooth::flags::leaudio_dynamic_spatial_audio()) {
-      return;
-    }
-
     log::info("DSA mode selected: {}", (int)group->dsa_.mode);
     group->dsa_.active = false;
 
@@ -1758,8 +1764,8 @@ private:
   }
 
   void SetAseState(LeAudioDevice* leAudioDevice, struct ase* ase, AseState state) {
-    log::info("{}, ase_id: {}, {} -> {}", leAudioDevice->address_, ase->id, ToString(ase->state),
-              ToString(state));
+    log::info("{} ({}), ase_id: {}, {} -> {}", leAudioDevice->address_, leAudioDevice->group_id_,
+              ase->id, ToString(ase->state), ToString(state));
 
     log_history_->AddLogHistory(kLogStateMachineTag, leAudioDevice->group_id_,
                                 leAudioDevice->address_,
@@ -1911,13 +1917,13 @@ private:
       conf.ase_id = ase->id;
       conf.target_latency = ase->target_latency;
       conf.target_phy = group->GetTargetPhy(ase->direction);
-      conf.codec_id = ase->codec_id;
+      conf.codec_id = ase->codec_config.id;
 
-      if (!ase->vendor_codec_config.empty()) {
+      if (!ase->codec_config.vendor_params.empty()) {
         log::debug("Using vendor codec configuration.");
-        conf.codec_config = ase->vendor_codec_config;
+        conf.codec_config = ase->codec_config.vendor_params;
       } else {
-        conf.codec_config = ase->codec_config.RawPacket();
+        conf.codec_config = ase->codec_config.params.RawPacket();
       }
       confs.push_back(conf);
 
@@ -2307,6 +2313,7 @@ private:
 
         if (group->GetTargetState() == AseState::BTA_LE_AUDIO_ASE_STATE_QOS_CONFIGURED) {
           cancel_watchdog_if_needed(group->group_id_);
+          group->ClearPendingConfiguration();
           state_machine_callbacks_->StatusReportCb(group->group_id_,
                                                    GroupStreamStatus::CONFIGURED_BY_USER);
           return;
@@ -2437,7 +2444,7 @@ private:
       log::debug("device: {}, ase_id: {}, cis_id: {}, ase state: {}", leAudioDevice->address_,
                  ase->id, ase->cis_id, ToString(ase->state));
       conf.ase_id = ase->id;
-      conf.metadata = ase->metadata;
+      conf.metadata = ase->metadata.RawPacket();
       confs.push_back(conf);
 
       /* Below is just for log history */
@@ -2676,7 +2683,7 @@ private:
       auto directional_audio_context = context_types.get(ase->direction) &
                                        leAudioDevice->GetAvailableContexts(ase->direction);
 
-      std::vector<uint8_t> new_metadata;
+      bluetooth::le_audio::types::LeAudioLtvMap new_metadata;
       if (directional_audio_context.any()) {
         new_metadata = leAudioDevice->GetMetadata(directional_audio_context,
                                                   ccid_lists.get(ase->direction));
@@ -2695,7 +2702,7 @@ private:
       struct bluetooth::le_audio::client_parser::ascs::ctp_update_metadata conf;
 
       conf.ase_id = ase->id;
-      conf.metadata = ase->metadata;
+      conf.metadata = ase->metadata.RawPacket();
       confs.push_back(conf);
 
       extra_stream << "meta: " << base::HexEncode(conf.metadata.data(), conf.metadata.size())
@@ -2879,8 +2886,10 @@ private:
         /* Cache current set up metadata values for for further possible
          * reconfiguration
          */
-        if (!rsp.metadata.empty()) {
-          ase->metadata = rsp.metadata;
+        if (!rsp.metadata.empty() &&
+            !ase->metadata.Parse(rsp.metadata.data(), rsp.metadata.size())) {
+          log::error("Error while parsing metadata: {}",
+                     bluetooth::common::ToHexString(rsp.metadata));
         }
 
         break;
@@ -3059,7 +3068,7 @@ private:
             log::info("Group {} is doing autonomous release", group->group_id_);
             SetTargetState(group, AseState::BTA_LE_AUDIO_ASE_STATE_IDLE);
             state_machine_callbacks_->StatusReportCb(group->group_id_,
-                                                     GroupStreamStatus::RELEASING);
+                                                     GroupStreamStatus::RELEASING_AUTONOMOUS);
           }
         }
 

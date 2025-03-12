@@ -18,13 +18,15 @@ package com.android.bluetooth.a2dp;
 
 import static android.bluetooth.BluetoothCodecConfig.SOURCE_CODEC_TYPE_INVALID;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothA2dp;
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothCodecConfig;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -33,27 +35,19 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.platform.test.flag.junit.SetFlagsRule;
 
-import com.android.bluetooth.TestUtils;
-import com.android.bluetooth.flags.Flags;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-
-import java.util.concurrent.CompletableFuture;
 
 public class A2dpServiceBinderTest {
     private static final AttributionSource sSource = new AttributionSource.Builder(0).build();
-    private static final BluetoothAdapter sAdapter = BluetoothAdapter.getDefaultAdapter();
-    private static final BluetoothDevice sDevice = TestUtils.getTestDevice(sAdapter, 0);
+    private static final BluetoothDevice sDevice = getTestDevice(0);
 
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private A2dpService mA2dpService;
     @Mock private PackageManager mPackageManager;

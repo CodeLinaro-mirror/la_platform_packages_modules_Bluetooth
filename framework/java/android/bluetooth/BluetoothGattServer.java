@@ -47,7 +47,8 @@ import java.util.UUID;
  * {@link BluetoothManager#openGattServer} to get an instance of this class.
  */
 public final class BluetoothGattServer implements BluetoothProfile {
-    private static final String TAG = "BluetoothGattServer";
+    private static final String TAG = BluetoothGattServer.class.getSimpleName();
+
     private static final boolean DBG = true;
     private static final boolean VDBG = false;
 
@@ -115,7 +116,7 @@ public final class BluetoothGattServer implements BluetoothProfile {
                                         + " connected="
                                         + connected
                                         + " device="
-                                        + address);
+                                        + BluetoothUtils.toAnonymizedAddress(address));
                     }
                     try {
                         mCallback.onConnectionStateChange(
@@ -305,7 +306,7 @@ public final class BluetoothGattServer implements BluetoothProfile {
                                 TAG,
                                 "onExecuteWrite() - "
                                         + "device="
-                                        + address
+                                        + BluetoothUtils.toAnonymizedAddress(address)
                                         + ", transId="
                                         + transId
                                         + "execWrite="
@@ -334,7 +335,7 @@ public final class BluetoothGattServer implements BluetoothProfile {
                                 TAG,
                                 "onNotificationSent() - "
                                         + "device="
-                                        + address
+                                        + BluetoothUtils.toAnonymizedAddress(address)
                                         + ", status="
                                         + status);
                     }
@@ -388,7 +389,7 @@ public final class BluetoothGattServer implements BluetoothProfile {
                                 TAG,
                                 "onPhyUpdate() - "
                                         + "device="
-                                        + address
+                                        + BluetoothUtils.toAnonymizedAddress(address)
                                         + ", txPHy="
                                         + txPhy
                                         + ", rxPHy="
@@ -417,7 +418,7 @@ public final class BluetoothGattServer implements BluetoothProfile {
                                 TAG,
                                 "onPhyUpdate() - "
                                         + "device="
-                                        + address
+                                        + BluetoothUtils.toAnonymizedAddress(address)
                                         + ", txPHy="
                                         + txPhy
                                         + ", rxPHy="
@@ -446,7 +447,7 @@ public final class BluetoothGattServer implements BluetoothProfile {
                         Log.d(
                                 TAG,
                                 "onConnectionUpdated() - Device="
-                                        + address
+                                        + BluetoothUtils.toAnonymizedAddress(address)
                                         + " interval="
                                         + interval
                                         + " latency="

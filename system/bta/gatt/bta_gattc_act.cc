@@ -26,7 +26,6 @@
 #define LOG_TAG "bt_bta_gattc"
 
 #include <base/functional/bind.h>
-#include <base/strings/stringprintf.h>
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 
@@ -49,7 +48,6 @@
 // TODO(b/369381361) Enfore -Wmissing-prototypes
 #pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
-using base::StringPrintf;
 using bluetooth::Uuid;
 using namespace bluetooth;
 
@@ -182,8 +180,8 @@ static void bta_gattc_start_if(uint8_t client_if) {
 }
 
 /** Register a GATT client application with BTA */
-void bta_gattc_register(const Uuid& app_uuid, tBTA_GATTC_CBACK* p_cback, BtaAppRegisterCallback cb,
-                        bool eatt_support) {
+void bta_gattc_register(const Uuid& app_uuid, const std::string& name, tBTA_GATTC_CBACK* p_cback,
+                        BtaAppRegisterCallback cb, bool eatt_support) {
   tGATT_STATUS status = GATT_NO_RESOURCES;
   uint8_t client_if = 0;
   log::debug("state: {}, uuid={}", bta_gattc_cb.state, app_uuid.ToString());
@@ -195,7 +193,7 @@ void bta_gattc_register(const Uuid& app_uuid, tBTA_GATTC_CBACK* p_cback, BtaAppR
   }
 
   if (com::android::bluetooth::flags::gatt_client_dynamic_allocation()) {
-    client_if = GATT_Register(app_uuid, "GattClient", &bta_gattc_cl_cback, eatt_support);
+    client_if = GATT_Register(app_uuid, name, &bta_gattc_cl_cback, eatt_support);
     if (client_if == 0) {
       log::error("Register with GATT stack failed");
       status = GATT_ERROR;
@@ -766,9 +764,8 @@ void bta_gattc_disc_close(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data
   log::verbose("Discovery cancel conn_id=0x{:x}", p_clcb->bta_conn_id);
 
   if (p_clcb->disc_active ||
-      (com::android::bluetooth::flags::gatt_rediscover_on_canceled() &&
-       (p_clcb->request_during_discovery == BTA_GATTC_DISCOVER_REQ_READ_DB_HASH ||
-        p_clcb->request_during_discovery == BTA_GATTC_DISCOVER_REQ_READ_DB_HASH_FOR_SVC_CHG))) {
+      (p_clcb->request_during_discovery == BTA_GATTC_DISCOVER_REQ_READ_DB_HASH ||
+       p_clcb->request_during_discovery == BTA_GATTC_DISCOVER_REQ_READ_DB_HASH_FOR_SVC_CHG)) {
     bta_gattc_reset_discover_st(p_clcb->p_srcb, GATT_ERROR);
   } else {
     p_clcb->state = BTA_GATTC_CONN_ST;

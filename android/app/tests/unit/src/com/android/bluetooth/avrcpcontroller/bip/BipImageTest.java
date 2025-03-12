@@ -16,16 +16,17 @@
 
 package com.android.bluetooth.avrcpcontroller;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
-import androidx.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
 
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,7 +42,8 @@ public class BipImageTest {
     @Before
     public void setUp() {
         mTestResources =
-                TestUtils.getTestApplicationResources(InstrumentationRegistry.getTargetContext());
+                TestUtils.getTestApplicationResources(
+                        InstrumentationRegistry.getInstrumentation().getTargetContext());
     }
 
     @Test
@@ -54,8 +56,8 @@ public class BipImageTest {
                 mTestResources.openRawResource(com.android.bluetooth.tests.R.raw.image_200_200);
         Bitmap bitmap = BitmapFactory.decodeStream(expectedInputStream);
 
-        Assert.assertEquals(sImageHandle, image.getImageHandle());
-        Assert.assertTrue(bitmap.sameAs(image.getImage()));
+        assertThat(image.getImageHandle()).isEqualTo(sImageHandle);
+        assertThat(bitmap.sameAs(image.getImage())).isTrue();
     }
 
     @Test
@@ -68,8 +70,8 @@ public class BipImageTest {
                 mTestResources.openRawResource(com.android.bluetooth.tests.R.raw.image_600_600);
         Bitmap bitmap = BitmapFactory.decodeStream(expectedInputStream);
 
-        Assert.assertEquals(sImageHandle, image.getImageHandle());
-        Assert.assertTrue(bitmap.sameAs(image.getImage()));
+        assertThat(image.getImageHandle()).isEqualTo(sImageHandle);
+        assertThat(bitmap.sameAs(image.getImage())).isTrue();
     }
 
     @Test
@@ -78,8 +80,8 @@ public class BipImageTest {
                 mTestResources.openRawResource(com.android.bluetooth.tests.R.raw.image_200_200);
         Bitmap bitmap = BitmapFactory.decodeStream(imageInputStream);
         BipImage image = new BipImage(sImageHandle, bitmap);
-        Assert.assertEquals(sImageHandle, image.getImageHandle());
-        Assert.assertTrue(bitmap.sameAs(image.getImage()));
+        assertThat(image.getImageHandle()).isEqualTo(sImageHandle);
+        assertThat(bitmap.sameAs(image.getImage())).isTrue();
     }
 
     @Test
@@ -88,7 +90,7 @@ public class BipImageTest {
                 mTestResources.openRawResource(com.android.bluetooth.tests.R.raw.image_600_600);
         Bitmap bitmap = BitmapFactory.decodeStream(imageInputStream);
         BipImage image = new BipImage(sImageHandle, bitmap);
-        Assert.assertEquals(sImageHandle, image.getImageHandle());
-        Assert.assertTrue(bitmap.sameAs(image.getImage()));
+        assertThat(image.getImageHandle()).isEqualTo(sImageHandle);
+        assertThat(bitmap.sameAs(image.getImage())).isTrue();
     }
 }

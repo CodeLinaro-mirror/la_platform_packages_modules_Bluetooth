@@ -19,6 +19,8 @@ package com.android.bluetooth.tbs;
 
 import static android.bluetooth.BluetoothDevice.METADATA_GTBS_CCCD;
 
+import static java.util.Objects.requireNonNull;
+
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -27,7 +29,6 @@ import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
-import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -48,12 +49,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 public class TbsGatt {
-
-    private static final String TAG = "TbsGatt";
+    private static final String TAG = TbsGatt.class.getSimpleName();
 
     private static final String UUID_PREFIX = "0000";
     private static final String UUID_SUFFIX = "-0000-1000-8000-00805f9b34fb";
@@ -66,51 +65,50 @@ public class TbsGatt {
     @VisibleForTesting static final UUID UUID_BEARER_TECHNOLOGY = makeUuid("2BB5");
     @VisibleForTesting static final UUID UUID_BEARER_URI_SCHEMES_SUPPORTED_LIST = makeUuid("2BB6");
     @VisibleForTesting static final UUID UUID_BEARER_LIST_CURRENT_CALLS = makeUuid("2BB9");
-    @VisibleForTesting static final UUID UUID_CONTENT_CONTROL_ID = makeUuid("2BBA");
+    private static final UUID UUID_CONTENT_CONTROL_ID = makeUuid("2BBA");
     @VisibleForTesting static final UUID UUID_STATUS_FLAGS = makeUuid("2BBB");
     @VisibleForTesting static final UUID UUID_CALL_STATE = makeUuid("2BBD");
     @VisibleForTesting static final UUID UUID_CALL_CONTROL_POINT = makeUuid("2BBE");
-
-    @VisibleForTesting
-    static final UUID UUID_CALL_CONTROL_POINT_OPTIONAL_OPCODES = makeUuid("2BBF");
-
+    private static final UUID UUID_CALL_CONTROL_POINT_OPTIONAL_OPCODES = makeUuid("2BBF");
     @VisibleForTesting static final UUID UUID_TERMINATION_REASON = makeUuid("2BC0");
     @VisibleForTesting static final UUID UUID_INCOMING_CALL = makeUuid("2BC1");
     @VisibleForTesting static final UUID UUID_CALL_FRIENDLY_NAME = makeUuid("2BC2");
-
     @VisibleForTesting
     static final UUID UUID_CLIENT_CHARACTERISTIC_CONFIGURATION = makeUuid("2902");
 
     @VisibleForTesting static final int STATUS_FLAG_INBAND_RINGTONE_ENABLED = 0x0001;
     @VisibleForTesting static final int STATUS_FLAG_SILENT_MODE_ENABLED = 0x0002;
 
-    @VisibleForTesting static final int CALL_CONTROL_POINT_OPTIONAL_OPCODE_LOCAL_HOLD = 0x0001;
-    @VisibleForTesting static final int CALL_CONTROL_POINT_OPTIONAL_OPCODE_JOIN = 0x0002;
+    private static final int CALL_CONTROL_POINT_OPTIONAL_OPCODE_LOCAL_HOLD = 0x0001;
+    private static final int CALL_CONTROL_POINT_OPTIONAL_OPCODE_JOIN = 0x0002;
 
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_OPCODE_ACCEPT = 0x00;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_OPCODE_TERMINATE = 0x01;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_OPCODE_LOCAL_HOLD = 0x02;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_OPCODE_LOCAL_RETRIEVE = 0x03;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_OPCODE_ORIGINATE = 0x04;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_OPCODE_JOIN = 0x05;
+    static final int CALL_CONTROL_POINT_OPCODE_ACCEPT = 0x00;
+    static final int CALL_CONTROL_POINT_OPCODE_TERMINATE = 0x01;
+    static final int CALL_CONTROL_POINT_OPCODE_LOCAL_HOLD = 0x02;
+    static final int CALL_CONTROL_POINT_OPCODE_LOCAL_RETRIEVE = 0x03;
+    static final int CALL_CONTROL_POINT_OPCODE_ORIGINATE = 0x04;
+    static final int CALL_CONTROL_POINT_OPCODE_JOIN = 0x05;
 
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_RESULT_SUCCESS = 0x00;
-
-    @VisibleForTesting
-    public static final int CALL_CONTROL_POINT_RESULT_OPCODE_NOT_SUPPORTED = 0x01;
-
-    @VisibleForTesting
-    public static final int CALL_CONTROL_POINT_RESULT_OPERATION_NOT_POSSIBLE = 0x02;
-
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_RESULT_INVALID_CALL_INDEX = 0x03;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_RESULT_STATE_MISMATCH = 0x04;
-    @VisibleForTesting public static final int CALL_CONTROL_POINT_RESULT_LACK_OF_RESOURCES = 0x05;
-
-    @VisibleForTesting
-    public static final int CALL_CONTROL_POINT_RESULT_INVALID_OUTGOING_URI = 0x06;
+    static final int CALL_CONTROL_POINT_RESULT_SUCCESS = 0x00;
+    static final int CALL_CONTROL_POINT_RESULT_OPCODE_NOT_SUPPORTED = 0x01;
+    static final int CALL_CONTROL_POINT_RESULT_OPERATION_NOT_POSSIBLE = 0x02;
+    static final int CALL_CONTROL_POINT_RESULT_INVALID_CALL_INDEX = 0x03;
+    static final int CALL_CONTROL_POINT_RESULT_STATE_MISMATCH = 0x04;
+    static final int CALL_CONTROL_POINT_RESULT_INVALID_OUTGOING_URI = 0x06;
 
     private final Object mPendingGattOperationsLock = new Object();
-    private final Context mContext;
+    private final Map<BluetoothDevice, Integer> mStatusFlagValue = new HashMap<>();
+
+    @GuardedBy("mPendingGattOperationsLock")
+    private final Map<BluetoothDevice, List<GattOpContext>> mPendingGattOperations =
+            new HashMap<>();
+
+    private final Map<BluetoothDevice, HashMap<UUID, Short>> mCccDescriptorValues = new HashMap<>();
+
+    private final AdapterService mAdapterService;
+    private final TbsService mTbsService;
+    private final Handler mHandler;
+    private final BluetoothGattServerProxy mBluetoothGattServer;
     private final GattCharacteristic mBearerProviderNameCharacteristic;
     private final GattCharacteristic mBearerUciCharacteristic;
     private final GattCharacteristic mBearerTechnologyCharacteristic;
@@ -124,18 +122,10 @@ public class TbsGatt {
     private final GattCharacteristic mTerminationReasonCharacteristic;
     private final GattCharacteristic mIncomingCallCharacteristic;
     private final GattCharacteristic mCallFriendlyNameCharacteristic;
-    private boolean mSilentMode = false;
-    private Map<BluetoothDevice, Integer> mStatusFlagValue = new HashMap<>();
 
-    @GuardedBy("mPendingGattOperationsLock")
-    private Map<BluetoothDevice, List<GattOpContext>> mPendingGattOperations = new HashMap<>();
-
-    private BluetoothGattServerProxy mBluetoothGattServer;
-    private Handler mHandler;
     private Callback mCallback;
-    private AdapterService mAdapterService;
-    private HashMap<BluetoothDevice, HashMap<UUID, Short>> mCccDescriptorValues;
-    private TbsService mTbsService;
+
+    private boolean mSilentMode = false;
 
     private static final int LOG_NB_EVENTS = 200;
     private BluetoothEventLogger mEventLogger = null;
@@ -221,14 +211,15 @@ public class TbsGatt {
                 Operation operation,
                 int requestId,
                 BluetoothGattCharacteristic characteristic,
-                BluetoothGattDescriptor descriptor) {
+                BluetoothGattDescriptor descriptor,
+                int offset) {
             mOperation = operation;
             mRequestId = requestId;
             mCharacteristic = characteristic;
             mDescriptor = descriptor;
             mPreparedWrite = false;
             mResponseNeeded = false;
-            mOffset = 0;
+            mOffset = offset;
             mValue = null;
         }
 
@@ -242,12 +233,19 @@ public class TbsGatt {
         public byte[] mValue;
     }
 
-    TbsGatt(TbsService tbsService) {
-        mContext = tbsService;
-        mAdapterService =
-                Objects.requireNonNull(
-                        AdapterService.getAdapterService(),
-                        "AdapterService shouldn't be null when creating TbsGatt");
+    TbsGatt(AdapterService adapterService, TbsService tbsService) {
+        this(adapterService, tbsService, new BluetoothGattServerProxy(adapterService));
+    }
+
+    @VisibleForTesting
+    TbsGatt(
+            AdapterService adapterService,
+            TbsService tbsService,
+            BluetoothGattServerProxy gattServerProxy) {
+        mTbsService = requireNonNull(tbsService);
+        mAdapterService = requireNonNull(adapterService);
+        mBluetoothGattServer = requireNonNull(gattServerProxy);
+        mHandler = new Handler(Looper.getMainLooper());
 
         mBearerProviderNameCharacteristic =
                 new GattCharacteristic(
@@ -317,13 +315,6 @@ public class TbsGatt {
                                 | BluetoothGattCharacteristic.PROPERTY_NOTIFY,
                         BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED);
 
-        mTbsService = tbsService;
-        mBluetoothGattServer = null;
-    }
-
-    @VisibleForTesting
-    void setBluetoothGattServerForTesting(BluetoothGattServerProxy proxy) {
-        mBluetoothGattServer = proxy;
     }
 
     public boolean init(
@@ -335,7 +326,6 @@ public class TbsGatt {
             String providerName,
             int technology,
             Callback callback) {
-        mCccDescriptorValues = new HashMap<>();
         mBearerProviderNameCharacteristic.setValue(providerName);
         mBearerTechnologyCharacteristic.setValue(new byte[] {(byte) (technology & 0xFF)});
         mBearerUciCharacteristic.setValue(uci);
@@ -344,11 +334,6 @@ public class TbsGatt {
         setCallControlPointOptionalOpcodes(isLocalHoldOpcodeSupported, isJoinOpcodeSupported);
         mStatusFlagsCharacteristic.setValue(0, BluetoothGattCharacteristic.FORMAT_UINT16, 0);
         mCallback = callback;
-        mHandler = new Handler(Looper.getMainLooper());
-
-        if (mBluetoothGattServer == null) {
-            mBluetoothGattServer = new BluetoothGattServerProxy(mContext);
-        }
 
         if (!mBluetoothGattServer.open(mGattServerCallback)) {
             Log.e(TAG, " Could not open Gatt server");
@@ -381,22 +366,14 @@ public class TbsGatt {
 
         mEventLogger.add("Initialized");
         mAdapterService.registerBluetoothStateCallback(
-                mContext.getMainExecutor(), mBluetoothStateChangeCallback);
+                mAdapterService.getMainExecutor(), mBluetoothStateChangeCallback);
         return true;
     }
 
     public void cleanup() {
         mAdapterService.unregisterBluetoothStateCallback(mBluetoothStateChangeCallback);
 
-        if (mBluetoothGattServer == null) {
-            return;
-        }
         mBluetoothGattServer.close();
-        mBluetoothGattServer = null;
-    }
-
-    public Context getContext() {
-        return mContext;
     }
 
     private void removeUuidFromMetadata(ParcelUuid charUuid, BluetoothDevice device) {
@@ -506,19 +483,14 @@ public class TbsGatt {
                 BluetoothDevice device, BluetoothGattCharacteristic characteristic, byte[] value) {
             if (getDeviceAuthorization(device) != BluetoothDevice.ACCESS_ALLOWED) return;
             if (value == null) return;
-            if (mBluetoothGattServer != null) {
-                mBluetoothGattServer.notifyCharacteristicChanged(
-                        device, characteristic, false, value);
-            }
+            mBluetoothGattServer.notifyCharacteristicChanged(device, characteristic, false, value);
         }
 
         private void notifyCharacteristicChanged(
                 BluetoothDevice device, BluetoothGattCharacteristic characteristic) {
             if (getDeviceAuthorization(device) != BluetoothDevice.ACCESS_ALLOWED) return;
 
-            if (mBluetoothGattServer != null) {
-                mBluetoothGattServer.notifyCharacteristicChanged(device, characteristic, false);
-            }
+            mBluetoothGattServer.notifyCharacteristicChanged(device, characteristic, false);
         }
 
         public void notifyWithValue(
@@ -1206,7 +1178,14 @@ public class TbsGatt {
             case READ_DESCRIPTOR:
                 byte[] value = getCccBytes(device, op.mDescriptor.getCharacteristic().getUuid());
                 if (value.length < op.mOffset) {
+                    Log.e(
+                            TAG,
+                            ("Wrong offset read for: "
+                                            + op.mDescriptor.getCharacteristic().getUuid())
+                                    + (": offset " + op.mOffset)
+                                    + (", total len: " + value.length));
                     status = BluetoothGatt.GATT_INVALID_OFFSET;
+                    value = new byte[] {};
                 } else {
                     value = Arrays.copyOfRange(value, op.mOffset, value.length);
                     status = BluetoothGatt.GATT_SUCCESS;
@@ -1305,6 +1284,12 @@ public class TbsGatt {
 
                 if (value.length < op.mOffset) {
                     status = BluetoothGatt.GATT_INVALID_OFFSET;
+                    Log.e(
+                            TAG,
+                            ("Wrong offset read for: " + op.mCharacteristic.getUuid())
+                                    + (": offset " + op.mOffset)
+                                    + (", total len: " + value.length));
+                    value = new byte[] {};
                 } else {
                     value = Arrays.copyOfRange(value, op.mOffset, value.length);
                     status = BluetoothGatt.GATT_SUCCESS;
@@ -1350,6 +1335,7 @@ public class TbsGatt {
                 value = cccd.getValue(device);
                 if (value.length < op.mOffset) {
                     status = BluetoothGatt.GATT_INVALID_OFFSET;
+                    value = new byte[] {};
                 } else {
                     value = Arrays.copyOfRange(value, op.mOffset, value.length);
                     status = BluetoothGatt.GATT_SUCCESS;
@@ -1550,7 +1536,8 @@ public class TbsGatt {
                                     GattOpContext.Operation.READ_CHARACTERISTIC,
                                     requestId,
                                     characteristic,
-                                    null);
+                                    null,
+                                    offset);
                     switch (getDeviceAuthorization(device)) {
                         case BluetoothDevice.ACCESS_REJECTED:
                             onRejectedAuthorizationGattOperation(device, op);
@@ -1644,7 +1631,8 @@ public class TbsGatt {
                                     GattOpContext.Operation.READ_DESCRIPTOR,
                                     requestId,
                                     null,
-                                    descriptor);
+                                    descriptor,
+                                    offset);
                     switch (getDeviceAuthorization(device)) {
                         case BluetoothDevice.ACCESS_REJECTED:
                             onRejectedAuthorizationGattOperation(device, op);

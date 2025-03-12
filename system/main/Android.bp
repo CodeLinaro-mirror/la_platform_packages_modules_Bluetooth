@@ -41,9 +41,7 @@ cc_library_static {
         "packages/modules/Bluetooth/system/udrv/include",
         "system/security/keystore/include",
     ],
-    apex_available: [
-        "com.android.btservices",
-    ],
+    apex_available: ["com.android.bt"],
     host_supported: true,
     min_sdk_version: "Tiramisu",
     static_libs: [
@@ -102,9 +100,7 @@ cc_library {
     sanitize: {
         scs: true,
     },
-    apex_available: [
-        "com.android.btservices",
-    ],
+    apex_available: ["com.android.bt"],
     host_supported: true,
     min_sdk_version: "30",
 }
@@ -155,7 +151,6 @@ cc_test {
         "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
-        ":BluetoothOsSources_host",
         ":TestCommonMainHandler",
         ":TestCommonMockFunctions",
         ":TestFakeOsi",
@@ -199,11 +194,13 @@ cc_test {
         "libbtdevice",
         "libchrome",
         "libcom.android.sysprop.bluetooth.wrapped",
+        "libcutils",
         "libevent",
         "libflatbuffers-cpp",
         "libgmock",
         "liblog",
         "libosi",
+        "libstatslog_bt",
     ],
     aidl: {
         libs: ["bluetooth_constants"],
@@ -216,6 +213,18 @@ cc_test {
         "libcrypto",
         "server_configurable_flags",
     ],
+    target: {
+        android: {
+            static_libs: [
+                "android.system.suspend-V1-ndk",
+                "android.system.suspend.control-V1-ndk",
+                "libperfetto_client_experimental",
+            ],
+            shared_libs: [
+                "libstatssocket",
+            ],
+        },
+    },
     sanitize: {
         address: true,
         all_undefined: true,

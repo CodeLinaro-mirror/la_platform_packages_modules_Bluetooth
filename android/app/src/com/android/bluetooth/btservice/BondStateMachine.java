@@ -18,6 +18,11 @@ package com.android.bluetooth.btservice;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 
+import static com.android.bluetooth.BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__BOND_RETRY;
+import static com.android.bluetooth.BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__FAIL;
+
+import static java.util.Objects.requireNonNull;
+
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
@@ -51,7 +56,6 @@ import com.android.internal.util.StateMachine;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -61,7 +65,8 @@ import java.util.Set;
  * state. TODO(BT) This class can be removed and this logic moved to the stack.
  */
 final class BondStateMachine extends StateMachine {
-    private static final String TAG = "BluetoothBondStateMachine";
+    private static final String TAG =
+            Utils.TAG_PREFIX_BLUETOOTH + BondStateMachine.class.getSimpleName();
 
     static final int CREATE_BOND = 1;
     static final int CANCEL_BOND = 2;
@@ -172,6 +177,12 @@ final class BondStateMachine extends StateMachine {
                             sendMessageDelayed(new_msg, BOND_RETRY_DELAY_MS);
                             return true;
                         } else {
+                            MetricsLogger.getInstance()
+                                    .logBluetoothEvent(
+                                            dev,
+                                            BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__BOND_RETRY,
+                                            BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__FAIL,
+                                            0);
                             Log.w(TAG, "Native was busy - the bond will most likely fail!");
                         }
                     }
@@ -681,7 +692,7 @@ final class BondStateMachine extends StateMachine {
         if (device == null) {
             warnLog("Device is not known for:" + Utils.getRedactedAddressStringFromByte(address));
             mRemoteDevices.addDeviceProperties(address);
-            device = Objects.requireNonNull(mRemoteDevices.getDevice(address));
+            device = requireNonNull(mRemoteDevices.getDevice(address));
         }
 
         BluetoothStatsLog.write(
@@ -711,7 +722,7 @@ final class BondStateMachine extends StateMachine {
         BluetoothDevice bdDevice = mRemoteDevices.getDevice(address);
         if (bdDevice == null) {
             mRemoteDevices.addDeviceProperties(address);
-            bdDevice = Objects.requireNonNull(mRemoteDevices.getDevice(address));
+            bdDevice = requireNonNull(mRemoteDevices.getDevice(address));
         }
 
         BluetoothStatsLog.write(

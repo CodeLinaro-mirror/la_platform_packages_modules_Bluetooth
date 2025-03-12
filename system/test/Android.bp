@@ -142,6 +142,13 @@ filegroup {
 }
 
 filegroup {
+    name: "TestMockBtaRfcMetrics",
+    srcs: [
+        "mock/mock_bta_rfc_metrics.cc",
+    ],
+}
+
+filegroup {
     name: "TestMockBtaScn",
     srcs: [
         "mock/mock_bta_scn.cc",
@@ -189,6 +196,7 @@ filegroup {
         ":TestMockBtaLeAudioHalVerifier",
         ":TestMockBtaPan",
         ":TestMockBtaRas",
+        ":TestMockBtaRfcMetrics",
         ":TestMockBtaSdp",
         ":TestMockBtaSys",
         ":TestMockBtaVc",
@@ -205,7 +213,6 @@ filegroup {
 filegroup {
     name: "TestMockMainShim",
     srcs: [
-        "mock/mock_main_shim.cc",
         "mock/mock_main_shim_BtifConfigInterface.cc",
         "mock/mock_main_shim_acl.cc",
         "mock/mock_main_shim_acl_api.cc",
@@ -291,6 +298,13 @@ filegroup {
 }
 
 filegroup {
+    name: "TestMockStackRfcommMetrics",
+    srcs: [
+        "mock/mock_stack_rfcomm_metrics.cc",
+    ],
+}
+
+filegroup {
     name: "TestMockStackRnr",
     srcs: [
         "mock/mock_stack_rnr_interface.cc",
@@ -363,15 +377,7 @@ filegroup {
 filegroup {
     name: "TestMockMainShimLeScanning",
     srcs: [
-        "mock/mock_main_shim.cc",
         "mock/mock_main_shim_le_scanning_manager.cc",
-    ],
-}
-
-filegroup {
-    name: "TestMockMainShimFlags",
-    srcs: [
-        "mock/mock_main_shim.cc",
     ],
 }
 
@@ -627,8 +633,8 @@ cc_defaults {
     name: "mts_defaults",
     target: {
         android: {
-            test_config_template: ":BluetoothTestConfigTemplate",
-            test_suites: ["mts-bluetooth"],
+            test_config_template: ":BluetoothGTestConfigTemplate",
+            test_suites: ["mts-bt"],
         },
     },
     compile_multilib: "both",

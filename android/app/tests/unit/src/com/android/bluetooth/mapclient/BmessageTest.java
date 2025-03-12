@@ -16,12 +16,13 @@
 
 package com.android.bluetooth.mapclient;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.Mockito.*;
 
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -29,6 +30,7 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class BmessageTest {
     private static final String TAG = BmessageTest.class.getSimpleName();
+
     private static final String SIMPLE_MMS_MESSAGE =
             "BEGIN:BMSG\r\nVERSION:1.0\r\nSTATUS:READ\r\nTYPE:MMS\r\nFOLDER:null\r\nBEGIN:BENV\r\n"
                     + "BEGIN:VCARD\r\nVERSION:2.1\r\nN:null;;;;\r\nTEL:555-5555\r\nEND:VCARD\r\n"
@@ -59,39 +61,33 @@ public class BmessageTest {
 
     @Test
     public void testNormalMessages() {
-        Bmessage message = BmessageParser.createBmessage(SIMPLE_MMS_MESSAGE);
-        Assert.assertNotNull(message);
+        assertThat(BmessageParser.createBmessage(SIMPLE_MMS_MESSAGE)).isNotNull();
     }
 
     @Test
     public void testParseWrongLengthMessage() {
-        Bmessage message = BmessageParser.createBmessage(WRONG_LENGTH_MESSAGE);
-        Assert.assertNull(message);
+        assertThat(BmessageParser.createBmessage(WRONG_LENGTH_MESSAGE)).isNull();
     }
 
     @Test
     public void testParseNoEndMessage() {
-        Bmessage message = BmessageParser.createBmessage(NO_END_MESSAGE);
-        Assert.assertNull(message);
+        assertThat(BmessageParser.createBmessage(NO_END_MESSAGE)).isNull();
     }
 
     @Test
     public void testParseReallyLongMessage() {
         String testMessage = new String(new char[68048]).replace('\0', 'A');
-        Bmessage message = BmessageParser.createBmessage(testMessage);
-        Assert.assertNull(message);
+        assertThat(BmessageParser.createBmessage(testMessage)).isNull();
     }
 
     @Test
     public void testNoBodyMessage() {
-        Bmessage message = BmessageParser.createBmessage(NO_BODY_MESSAGE);
-        Assert.assertNull(message);
+        assertThat(BmessageParser.createBmessage(NO_BODY_MESSAGE)).isNull();
     }
 
     @Test
     public void testNegativeLengthMessage() {
-        Bmessage message = BmessageParser.createBmessage(NEGATIVE_LENGTH_MESSAGE);
-        Assert.assertNull(message);
+        assertThat(BmessageParser.createBmessage(NEGATIVE_LENGTH_MESSAGE)).isNull();
     }
 
     @Test
@@ -100,7 +96,7 @@ public class BmessageTest {
 
         message.setCharset("UTF-8");
 
-        Assert.assertEquals(message.getCharset(), "UTF-8");
+        assertThat(message.getCharset()).isEqualTo("UTF-8");
     }
 
     @Test
@@ -109,7 +105,7 @@ public class BmessageTest {
 
         message.setEncoding("test_encoding");
 
-        Assert.assertEquals(message.getEncoding(), "test_encoding");
+        assertThat(message.getEncoding()).isEqualTo("test_encoding");
     }
 
     @Test
@@ -118,6 +114,6 @@ public class BmessageTest {
 
         message.setStatus(Bmessage.Status.READ);
 
-        Assert.assertEquals(message.getStatus(), Bmessage.Status.READ);
+        assertThat(message.getStatus()).isEqualTo(Bmessage.Status.READ);
     }
 }
