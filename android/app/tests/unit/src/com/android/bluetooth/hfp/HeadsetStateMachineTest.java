@@ -130,7 +130,7 @@ public class HeadsetStateMachineTest {
         // Stub system interface
         doReturn(mPhoneState).when(mSystemInterface).getHeadsetPhoneState();
         doReturn(mAudioManager).when(mSystemInterface).getAudioManager();
-        doReturn(true).when(mDatabaseManager).setAudioPolicyMetadata(anyObject(), anyObject());
+        doReturn(true).when(mDatabaseManager).setAudioPolicyMetadata(any(), any());
         doReturn(true).when(mNativeInterface).connectHfp(mDevice);
         doReturn(true).when(mNativeInterface).disconnectHfp(mDevice);
         doReturn(true).when(mNativeInterface).connectAudio(mDevice);
@@ -1897,7 +1897,7 @@ public class HeadsetStateMachineTest {
                         mDevice));
         expectCallTimes++;
         verify(mDatabaseManager, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(expectCallTimes))
-                .setAudioPolicyMetadata(anyObject(), anyObject());
+                .setAudioPolicyMetadata(any(), any());
 
         // receive and not set android policy
         mHeadsetStateMachine.sendMessage(
@@ -1907,7 +1907,7 @@ public class HeadsetStateMachineTest {
                         "AT+ANDROID=PROBE,1,1,\"PQGHRSBCTU__\"",
                         mDevice));
         verify(mDatabaseManager, timeout(ASYNC_CALL_TIMEOUT_MILLIS).times(expectCallTimes))
-                .setAudioPolicyMetadata(anyObject(), anyObject());
+                .setAudioPolicyMetadata(any(), any());
     }
 
     /** A test to verify whether the sink audio policy command is valid */
@@ -2200,7 +2200,7 @@ public class HeadsetStateMachineTest {
                 new HeadsetStackEvent(
                         HeadsetStackEvent.EVENT_TYPE_UNKNOWN_AT, "+ANDROID=?", mDevice));
         verify(mNativeInterface, timeout(ASYNC_CALL_TIMEOUT_MILLIS))
-                .atResponseString(anyObject(), anyString());
+                .atResponseString(any(), anyString());
     }
 
     private void configureHeadsetServiceForAptxVoice(boolean enable) {

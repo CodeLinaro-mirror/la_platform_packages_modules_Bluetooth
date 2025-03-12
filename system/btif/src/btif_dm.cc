@@ -62,7 +62,6 @@
 #include "btif_storage.h"
 #include "btif_util.h"
 #include "common/lru_cache.h"
-#include "common/metrics.h"
 #include "common/strings.h"
 #include "device/include/interop.h"
 #include "hci/controller_interface.h"
@@ -3873,29 +3872,6 @@ static void btif_stats_add_bond_event(const RawAddress& bd_addr, bt_bond_functio
   if (btif_events_end_index == btif_events_start_index) {
     btif_events_start_index = (btif_events_start_index + 1) % (MAX_BTIF_BOND_EVENT_ENTRIES + 1);
   }
-
-  int type;
-  btif_get_device_type(bd_addr, &type);
-
-  bluetooth::common::device_type_t device_type;
-  switch (type) {
-    case BT_DEVICE_TYPE_BREDR:
-      device_type = bluetooth::common::DEVICE_TYPE_BREDR;
-      break;
-    case BT_DEVICE_TYPE_BLE:
-      device_type = bluetooth::common::DEVICE_TYPE_LE;
-      break;
-    case BT_DEVICE_TYPE_DUMO:
-      device_type = bluetooth::common::DEVICE_TYPE_DUMO;
-      break;
-    default:
-      device_type = bluetooth::common::DEVICE_TYPE_UNKNOWN;
-      break;
-  }
-
-  uint32_t cod = btif_get_cod(&bd_addr);
-  uint64_t ts = event->timestamp.tv_sec * 1000 + event->timestamp.tv_nsec / 1000000;
-  bluetooth::common::BluetoothMetricsLogger::GetInstance()->LogPairEvent(0, ts, cod, device_type);
 }
 
 void btif_debug_bond_event_dump(int fd) {

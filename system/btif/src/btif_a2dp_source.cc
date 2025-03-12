@@ -71,8 +71,6 @@
 #endif
 
 using bluetooth::audio::a2dp::Status;
-using bluetooth::common::A2dpSessionMetrics;
-using bluetooth::common::BluetoothMetricsLogger;
 using bluetooth::common::RepeatingTimer;
 using namespace bluetooth;
 
@@ -492,11 +490,6 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
   if (bluetooth::audio::a2dp::is_hal_enabled()) {
     bluetooth::audio::a2dp::start_session();
     bluetooth::audio::a2dp::set_remote_delay(btif_av_get_audio_delay(A2dpType::kSource));
-    BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionStart(
-            bluetooth::common::CONNECTION_TECHNOLOGY_TYPE_BREDR, 0);
-  } else {
-    BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionStart(
-            bluetooth::common::CONNECTION_TECHNOLOGY_TYPE_BREDR, 0);
   }
 
   peer_ready_promise.set_value();
@@ -550,11 +543,6 @@ static void btif_a2dp_source_end_session_delayed(const RawAddress& peer_address)
   }
   if (bluetooth::audio::a2dp::is_hal_enabled()) {
     bluetooth::audio::a2dp::end_session();
-    BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionEnd(
-            bluetooth::common::DISCONNECT_REASON_UNKNOWN, 0);
-  } else {
-    BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionEnd(
-            bluetooth::common::DISCONNECT_REASON_UNKNOWN, 0);
   }
 }
 
@@ -1267,9 +1255,24 @@ void btif_a2dp_source_debug_dump(int fd) {
           (unsigned long long)ave_time_us / 1000);
 }
 
+struct A2dpSessionMetrics {
+  int64_t audio_duration_ms = -1;
+  int32_t media_timer_min_ms = -1;
+  int32_t media_timer_max_ms = -1;
+  int32_t media_timer_avg_ms = -1;
+  int64_t total_scheduling_count = -1;
+  int32_t buffer_overruns_max_count = -1;
+  int32_t buffer_overruns_total = -1;
+  float buffer_underruns_average = -1;
+  int32_t buffer_underruns_count = -1;
+  int64_t codec_index = -1;
+  bool is_a2dp_offload = false;
+};
+
 static void btif_a2dp_source_update_metrics(void) {
   BtifMediaStats stats = btif_a2dp_source_cb.stats;
   SchedulingStats enqueue_stats = stats.tx_queue_enqueue_stats;
+
   A2dpSessionMetrics metrics;
   metrics.codec_index = stats.codec_index;
   metrics.is_a2dp_offload = btif_av_is_a2dp_offload_running();
@@ -1303,7 +1306,6 @@ static void btif_a2dp_source_update_metrics(void) {
               (float)stats.media_read_total_underflow_bytes / metrics.buffer_underruns_count;
     }
   }
-  BluetoothMetricsLogger::GetInstance()->LogA2dpSession(metrics);
 
   if (metrics.audio_duration_ms != -1) {
     log_a2dp_session_metrics_event(btif_av_source_active_peer(), metrics.audio_duration_ms,

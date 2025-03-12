@@ -1115,14 +1115,6 @@ public class AdapterService extends Service {
         }
     }
 
-    private static void invalidateBluetoothGetStateCache() {
-        if (Flags.getStateFromSystemServer()) {
-            // State is managed by the system server
-            return;
-        }
-        BluetoothAdapter.invalidateBluetoothGetStateCache();
-    }
-
     void updateLeAudioProfileServiceState() {
         Set<Integer> nonSupportedProfiles = new HashSet<>();
 
@@ -1150,11 +1142,7 @@ public class AdapterService extends Service {
     }
 
     void updateAdapterName(String name) {
-        if (Flags.adapterPropertiesLooper()) {
-            updateAdapterNameInternal(name);
-        } else {
-            mHandler.post(() -> updateAdapterNameInternal(name));
-        }
+        updateAdapterNameInternal(name);
     }
 
     private void updateAdapterNameInternal(String name) {
@@ -1171,11 +1159,7 @@ public class AdapterService extends Service {
     }
 
     void updateAdapterAddress(String address) {
-        if (Flags.adapterPropertiesLooper()) {
-            updateAdapterAddressInternal(address);
-        } else {
-            mHandler.post(() -> updateAdapterAddressInternal(address));
-        }
+        updateAdapterAddressInternal(address);
     }
 
     private void updateAdapterAddressInternal(String address) {
@@ -1193,7 +1177,6 @@ public class AdapterService extends Service {
 
     void updateAdapterState(int prevState, int newState) {
         mAdapterProperties.setState(newState);
-        invalidateBluetoothGetStateCache();
 
         // Only BluetoothManagerService should be registered
         int n = mRemoteCallbacks.beginBroadcast();
@@ -1503,9 +1486,6 @@ public class AdapterService extends Service {
         BluetoothAdapter.invalidateGetProfileConnectionStateCache();
         BluetoothAdapter.invalidateIsOffloadedFilteringSupportedCache();
         BluetoothDevice.invalidateBluetoothGetBondStateCache();
-        if (!Flags.getStateFromSystemServer()) {
-            BluetoothAdapter.invalidateBluetoothGetStateCache();
-        }
         BluetoothAdapter.invalidateGetAdapterConnectionStateCache();
         BluetoothMap.invalidateBluetoothGetConnectionStateCache();
         BluetoothSap.invalidateBluetoothGetConnectionStateCache();
@@ -2217,11 +2197,6 @@ public class AdapterService extends Service {
 
         AdapterServiceBinder(AdapterService svc) {
             mService = svc;
-            if (Flags.getStateFromSystemServer()) {
-                return;
-            }
-            mService.invalidateBluetoothGetStateCache();
-            BluetoothAdapter.getDefaultAdapter().disableBluetoothGetStateCache();
         }
 
         public AdapterService getService() {
@@ -6695,12 +6670,6 @@ public class AdapterService extends Service {
             return;
         }
 
-        Log.v(TAG, "dumpsys arguments, check for protobuf output: " + TextUtils.join(" ", args));
-        if (args[0].equals("--proto-bin")) {
-            dumpMetrics(fd);
-            return;
-        }
-
         writer.println();
         mAdapterProperties.dump(fd, writer, args);
 
@@ -6759,39 +6728,6 @@ public class AdapterService extends Service {
         } else {
             writer.flush();
             mNativeInterface.dump(fd, args);
-        }
-    }
-
-    private void dumpMetrics(FileDescriptor fd) {
-        BluetoothMetricsProto.BluetoothLog.Builder metricsBuilder =
-                BluetoothMetricsProto.BluetoothLog.newBuilder();
-        byte[] nativeMetricsBytes = mNativeInterface.dumpMetrics();
-        Log.d(TAG, "dumpMetrics: native metrics size is " + nativeMetricsBytes.length);
-        if (nativeMetricsBytes.length > 0) {
-            try {
-                metricsBuilder.mergeFrom(nativeMetricsBytes);
-            } catch (InvalidProtocolBufferException ex) {
-                Log.w(TAG, "dumpMetrics: problem parsing metrics protobuf, " + ex.getMessage());
-                return;
-            }
-        }
-        metricsBuilder.setNumBondedDevices(getBondedDevices().length);
-        MetricsLogger.dumpProto(metricsBuilder);
-        for (ProfileService profile : mRegisteredProfiles) {
-            profile.dumpProto(metricsBuilder);
-        }
-        if (Flags.onlyStartScanDuringBleOn()) {
-            ScanController scanController = mScanController;
-            if (scanController != null) {
-                scanController.dumpProto(metricsBuilder);
-            }
-        }
-        byte[] metricsBytes = Base64.encode(metricsBuilder.build().toByteArray(), Base64.DEFAULT);
-        Log.d(TAG, "dumpMetrics: combined metrics size is " + metricsBytes.length);
-        try (FileOutputStream protoOut = new FileOutputStream(fd)) {
-            protoOut.write(metricsBytes);
-        } catch (IOException e) {
-            Log.e(TAG, "dumpMetrics: error writing combined protobuf to fd, " + e.getMessage());
         }
     }
 

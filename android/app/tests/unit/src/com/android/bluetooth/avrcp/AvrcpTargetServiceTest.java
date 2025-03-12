@@ -24,7 +24,7 @@ import static com.android.bluetooth.TestUtils.mockGetSystemService;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyObject;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
@@ -170,7 +170,7 @@ public class AvrcpTargetServiceTest {
                         mLooper.getLooper());
 
         verify(mMockAudioManager)
-                .registerAudioDeviceCallback(mAudioDeviceCb.capture(), anyObject());
+                .registerAudioDeviceCallback(mAudioDeviceCb.capture(), any());
 
         service.cleanup();
         assertThat(mAudioDeviceCb.getValue()).isNotNull();

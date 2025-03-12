@@ -170,7 +170,6 @@ cc_defaults {
     static_libs: [
         "libaconfig_storage_read_api_cc",
         "libbase",
-        "libbluetooth-protos",
         "libbluetooth-types",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_log",
@@ -417,7 +416,6 @@ cc_test {
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
         "libbase",
-        "libbluetooth-protos",
         "libbluetooth-types",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd_unit_tests",
@@ -509,7 +507,6 @@ cc_defaults {
     ],
     static_libs: [
         "bluetooth_flags_c_lib",
-        "libbluetooth-protos",
         "libbluetooth-types",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd_fuzzing",

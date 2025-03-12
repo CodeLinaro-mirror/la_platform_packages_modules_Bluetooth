@@ -1020,8 +1020,6 @@ public class AdapterServiceTest {
 
         mAdapterService.dump(fd, writer, new String[] {});
         mAdapterService.dump(fd, writer, new String[] {"set-test-mode", "enabled"});
-        doReturn(new byte[0]).when(mNativeInterface).dumpMetrics();
-        mAdapterService.dump(fd, writer, new String[] {"--proto-bin"});
         mAdapterService.dump(fd, writer, new String[] {"random", "arguments"});
         assertThat(mLooper.nextMessage()).isNull();
     }

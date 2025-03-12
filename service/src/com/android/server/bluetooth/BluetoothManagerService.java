@@ -61,7 +61,6 @@ import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
@@ -151,8 +150,6 @@ class BluetoothManagerService {
     @VisibleForTesting static final int MESSAGE_RESTART_BLUETOOTH_SERVICE = 42;
     @VisibleForTesting static final int MESSAGE_BLUETOOTH_STATE_CHANGE = 60;
     @VisibleForTesting static final int MESSAGE_TIMEOUT_BIND = 100;
-    // TODO: b/368120237 delete MESSAGE_GET_NAME_AND_ADDRESS
-    @VisibleForTesting static final int MESSAGE_GET_NAME_AND_ADDRESS = 200;
     @VisibleForTesting static final int MESSAGE_USER_SWITCHED = 300;
     @VisibleForTesting static final int MESSAGE_USER_UNLOCKED = 301;
     @VisibleForTesting static final int MESSAGE_RESTORE_USER_SETTING_OFF = 501;
@@ -513,24 +510,7 @@ class BluetoothManagerService {
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     String action = intent.getAction();
-                    if (!Flags.getNameAndAddressAsCallback()
-                            && BluetoothAdapter.ACTION_LOCAL_NAME_CHANGED.equals(action)) {
-                        String newName = intent.getStringExtra(BluetoothAdapter.EXTRA_LOCAL_NAME);
-                        if (newName != null) {
-                            Log.d(TAG, "Local name changed to: " + newName);
-                            storeNameAndAddress(newName, null);
-                        }
-                    } else if (!Flags.getNameAndAddressAsCallback()
-                            && BluetoothAdapter.ACTION_BLUETOOTH_ADDRESS_CHANGED.equals(action)) {
-                        String newAddress =
-                                intent.getStringExtra(BluetoothAdapter.EXTRA_BLUETOOTH_ADDRESS);
-                        if (newAddress != null) {
-                            Log.d(TAG, "Local address changed to: " + logAddress(newAddress));
-                            storeNameAndAddress(null, newAddress);
-                        } else {
-                            Log.e(TAG, "No Bluetooth Adapter address parameter found");
-                        }
-                    } else if (Intent.ACTION_SETTING_RESTORED.equals(action)) {
+                    if (Intent.ACTION_SETTING_RESTORED.equals(action)) {
                         final String name = intent.getStringExtra(Intent.EXTRA_SETTING_NAME);
                         if (Settings.Global.BLUETOOTH_ON.equals(name)) {
                             // The Bluetooth On state may be changed during system restore.
@@ -605,10 +585,6 @@ class BluetoothManagerService {
         }
 
         IntentFilter filter = new IntentFilter();
-        if (!Flags.getNameAndAddressAsCallback()) {
-            filter.addAction(BluetoothAdapter.ACTION_LOCAL_NAME_CHANGED);
-            filter.addAction(BluetoothAdapter.ACTION_BLUETOOTH_ADDRESS_CHANGED);
-        }
         filter.addAction(Intent.ACTION_SETTING_RESTORED);
         filter.addAction(Intent.ACTION_SHUTDOWN);
         filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
@@ -643,20 +619,15 @@ class BluetoothManagerService {
                 null,
                 mHandler);
 
-        if (Flags.getNameAndAddressAsCallback()) {
-            mName =
-                    BluetoothServerProxy.getInstance()
-                            .settingsSecureGetString(
-                                    mContentResolver, Settings.Secure.BLUETOOTH_NAME);
-            mAddress =
-                    BluetoothServerProxy.getInstance()
-                            .settingsSecureGetString(
-                                    mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS);
+        mName =
+                BluetoothServerProxy.getInstance()
+                        .settingsSecureGetString(mContentResolver, Settings.Secure.BLUETOOTH_NAME);
+        mAddress =
+                BluetoothServerProxy.getInstance()
+                        .settingsSecureGetString(
+                                mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS);
 
-            Log.d(TAG, "Local adapter: Name=" + mName + ", Address=" + logAddress(mAddress));
-        } else {
-            loadStoredNameAndAddress();
-        }
+        Log.d(TAG, "Local adapter: Name=" + mName + ", Address=" + logAddress(mAddress));
 
         if (isBluetoothPersistedStateOn()) {
             Log.i(TAG, "Startup: Bluetooth persisted state is ON.");
@@ -726,30 +697,6 @@ class BluetoothManagerService {
         BluetoothServerProxy.getInstance().setBluetoothPersistedState(mContentResolver, state);
     }
 
-    /** Returns true if the Bluetooth Adapter's name and address is locally cached */
-    private boolean isNameAndAddressSet() {
-        return mName != null && mAddress != null && mName.length() > 0 && mAddress.length() > 0;
-    }
-
-    private void loadStoredNameAndAddress() {
-        if (BluetoothProperties.isAdapterAddressValidationEnabled().orElse(false)
-                && Settings.Secure.getInt(mContentResolver, Settings.Secure.BLUETOOTH_ADDR_VALID, 0)
-                        == 0) {
-            // if the valid flag is not set, don't load the address and name
-            Log.w(TAG, "There is no valid bluetooth name and address stored");
-            return;
-        }
-        mName =
-                BluetoothServerProxy.getInstance()
-                        .settingsSecureGetString(mContentResolver, Settings.Secure.BLUETOOTH_NAME);
-        mAddress =
-                BluetoothServerProxy.getInstance()
-                        .settingsSecureGetString(
-                                mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS);
-
-        Log.d(TAG, "loadStoredNameAndAddress: Name=" + mName + ", Address=" + logAddress(mAddress));
-    }
-
     private static String logAddress(String address) {
         if (address == null) {
             return "[address is null]";
@@ -758,35 +705,6 @@ class BluetoothManagerService {
             return "[address invalid]";
         }
         return "XX:XX:XX:XX:" + address.substring(address.length() - 5);
-    }
-
-    /**
-     * Save the Bluetooth name and address in the persistent store. Only non-null values will be
-     * saved.
-     */
-    private void storeNameAndAddress(String name, String address) {
-        final String logHeader = "storeNameAndAddress(" + name + ", " + logAddress(address) + "): ";
-        if (name != null) {
-            if (Settings.Secure.putString(mContentResolver, Settings.Secure.BLUETOOTH_NAME, name)) {
-                mName = name;
-            } else {
-                Log.e(TAG, logHeader + "Failed. Name is still " + mName);
-            }
-        }
-
-        if (address != null) {
-            if (Settings.Secure.putString(
-                    mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS, address)) {
-                mAddress = address;
-            } else {
-                Log.e(TAG, logHeader + "Failed. Address is still " + logAddress(mAddress));
-            }
-        }
-
-        if ((mName != null) && (mAddress != null)) {
-            Settings.Secure.putInt(mContentResolver, Settings.Secure.BLUETOOTH_ADDR_VALID, 1);
-        }
-        Log.d(TAG, logHeader + "Completed successfully");
     }
 
     // Called from unsafe binder thread
@@ -1223,9 +1141,6 @@ class BluetoothManagerService {
         if (mEnableExternal && isBluetoothPersistedStateOnBluetooth() && !isSafeMode) {
             Log.i(TAG, "internalHandleOnBootPhase: Auto-enabling Bluetooth.");
             sendEnableMsg(mQuietEnableExternal, ENABLE_DISABLE_REASON_SYSTEM_BOOT);
-        } else if (!Flags.removeOneTimeGetNameAndAddress() && !isNameAndAddressSet()) {
-            Log.i(TAG, "internalHandleOnBootPhase: Getting adapter name and address");
-            mHandler.sendEmptyMessage(MESSAGE_GET_NAME_AND_ADDRESS);
         } else {
             autoOnSetupTimer();
         }
@@ -1284,43 +1199,11 @@ class BluetoothManagerService {
 
     // Called from unsafe binder thread
     String getAddress() {
-        if (Flags.getNameAndAddressAsCallback()) {
-            return mAddress;
-        }
-        // Copy to local variable to avoid race condition when checking for null
-        AdapterBinder adapter = mAdapter;
-        if (adapter != null) {
-            try {
-                return adapter.getAddress(mContext.getAttributionSource());
-            } catch (RemoteException e) {
-                Log.e(TAG, "getAddress(): Returning cached address", e);
-            }
-        }
-
-        // mAddress is accessed from outside.
-        // It is alright without a lock. Here, bluetooth is off, no other thread is
-        // changing mAddress
         return mAddress;
     }
 
     // Called from unsafe binder thread
     String getName() {
-        if (Flags.getNameAndAddressAsCallback()) {
-            return mName;
-        }
-        // Copy to local variable to avoid race condition when checking for null
-        AdapterBinder adapter = mAdapter;
-        if (adapter != null) {
-            try {
-                return adapter.getName(mContext.getAttributionSource());
-            } catch (RemoteException e) {
-                Log.e(TAG, "getName(): Returning cached name", e);
-            }
-        }
-
-        // mName is accessed from outside.
-        // It alright without a lock. Here, bluetooth is off, no other thread is
-        // changing mName
         return mName;
     }
 
@@ -1362,9 +1245,6 @@ class BluetoothManagerService {
 
     @VisibleForTesting
     class BluetoothHandler extends Handler {
-        // TODO: b/368120237 delete mGetNameAddressOnly
-        boolean mGetNameAddressOnly = false;
-
         BluetoothHandler(Looper looper) {
             super(looper);
         }
@@ -1372,33 +1252,6 @@ class BluetoothManagerService {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
-                case MESSAGE_GET_NAME_AND_ADDRESS:
-                    if (Flags.removeOneTimeGetNameAndAddress()) {
-                        Log.e(TAG, "MESSAGE_GET_NAME_AND_ADDRESS is not supported anymore");
-                        break;
-                    }
-                    Log.d(TAG, "MESSAGE_GET_NAME_AND_ADDRESS");
-                    if (mAdapter == null && !isBinding()) {
-                        Log.d(TAG, "Binding to service to get name and address");
-                        mGetNameAddressOnly = true;
-                        bindToAdapter();
-                    } else if (mAdapter != null) {
-                        if (!Flags.getNameAndAddressAsCallback()) {
-                            try {
-                                storeNameAndAddress(
-                                        mAdapter.getName(mContext.getAttributionSource()),
-                                        mAdapter.getAddress(mContext.getAttributionSource()));
-                            } catch (RemoteException e) {
-                                Log.e(TAG, "Unable to grab name or address", e);
-                            }
-                        }
-                        if (mGetNameAddressOnly && !mEnable) {
-                            unbindAndFinish();
-                        }
-                        mGetNameAddressOnly = false;
-                    }
-                    break;
-
                 case MESSAGE_ENABLE:
                     int quietEnable = msg.arg1;
                     int isBle = msg.arg2;
@@ -1515,15 +1368,6 @@ class BluetoothManagerService {
                     mAdapter = BluetoothServerProxy.getInstance().createAdapterBinder(service);
 
                     propagateForegroundUserId(ActivityManager.getCurrentUser());
-
-                    if (!Flags.removeOneTimeGetNameAndAddress()) {
-                        if (!isNameAndAddressSet()) {
-                            mHandler.sendEmptyMessage(MESSAGE_GET_NAME_AND_ADDRESS);
-                            if (mGetNameAddressOnly) {
-                                return;
-                            }
-                        }
-                    }
 
                     try {
                         mAdapter.registerCallback(
@@ -1815,12 +1659,7 @@ class BluetoothManagerService {
         UserHandle user = UserHandle.CURRENT;
         int flags = Context.BIND_AUTO_CREATE | Context.BIND_IMPORTANT;
         Intent intent = new Intent(IBluetooth.class.getName());
-        ComponentName comp = resolveSystemService(intent);
-        if (comp == null && !Flags.enforceResolveSystemServiceBehavior()) {
-            Log.e(TAG, "No ComponentName found for intent=" + intent);
-            return;
-        }
-        intent.setComponent(comp);
+        intent.setComponent(resolveSystemService(intent));
 
         mHandler.sendEmptyMessageDelayed(MESSAGE_TIMEOUT_BIND, TIMEOUT_BIND_MS);
         Log.d(TAG, "Start binding to the Bluetooth service with intent=" + intent);
@@ -2289,38 +2128,7 @@ class BluetoothManagerService {
         return bOptions.toBundle();
     }
 
-    private ComponentName legacyresolveSystemService(@NonNull Intent intent) {
-        List<ResolveInfo> results = mContext.getPackageManager().queryIntentServices(intent, 0);
-        if (results == null) {
-            return null;
-        }
-        ComponentName comp = null;
-        for (int i = 0; i < results.size(); i++) {
-            ResolveInfo ri = results.get(i);
-            if ((ri.serviceInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
-                continue;
-            }
-            ComponentName foundComp =
-                    new ComponentName(
-                            ri.serviceInfo.applicationInfo.packageName, ri.serviceInfo.name);
-            if (comp != null) {
-                throw new IllegalStateException(
-                        "Multiple system services handle "
-                                + intent
-                                + ": "
-                                + comp
-                                + ", "
-                                + foundComp);
-            }
-            comp = foundComp;
-        }
-        return comp;
-    }
-
     private ComponentName resolveSystemService(@NonNull Intent intent) {
-        if (!Flags.enforceResolveSystemServiceBehavior()) {
-            return legacyresolveSystemService(intent);
-        }
         List<ComponentName> results =
                 mContext.getPackageManager().queryIntentServices(intent, 0).stream()
                         .filter(

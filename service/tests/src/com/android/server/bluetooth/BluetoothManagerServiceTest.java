@@ -69,8 +69,6 @@ import android.provider.Settings;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.bluetooth.flags.Flags;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -95,10 +93,7 @@ public class BluetoothManagerServiceTest {
 
     @Parameters(name = "{0}")
     public static List<FlagsParameterization> getParams() {
-        return FlagsParameterization.allCombinationsOf(
-                Flags.FLAG_GET_NAME_AND_ADDRESS_AS_CALLBACK,
-                Flags.FLAG_ENFORCE_RESOLVE_SYSTEM_SERVICE_BEHAVIOR,
-                Flags.FLAG_REMOVE_ONE_TIME_GET_NAME_AND_ADDRESS);
+        return FlagsParameterization.allCombinationsOf();
     }
 
     public BluetoothManagerServiceTest(FlagsParameterization flags) {

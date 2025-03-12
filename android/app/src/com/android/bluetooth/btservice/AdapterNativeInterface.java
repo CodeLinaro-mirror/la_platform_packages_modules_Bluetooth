@@ -179,10 +179,6 @@ public class AdapterNativeInterface {
         dumpNative(fd, arguments);
     }
 
-    byte[] dumpMetrics() {
-        return dumpMetricsNative();
-    }
-
     byte[] obfuscateAddress(byte[] address) {
         return obfuscateAddressNative(address);
     }
@@ -400,8 +396,6 @@ public class AdapterNativeInterface {
     private native boolean factoryResetNative();
 
     private native void dumpNative(FileDescriptor fd, String[] arguments);
-
-    private native byte[] dumpMetricsNative();
 
     private native byte[] obfuscateAddressNative(byte[] address);
 

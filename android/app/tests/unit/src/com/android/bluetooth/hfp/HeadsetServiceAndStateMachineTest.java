@@ -773,7 +773,7 @@ public class HeadsetServiceAndStateMachineTest {
         verify(mSystemInterface).activateVoiceRecognition();
         verify(mNativeInterface).atResponseCode(device, HeadsetHalConstants.AT_RESPONSE_ERROR, 0);
         verifyNoMoreInteractions(ignoreStubs(mNativeInterface));
-        verifyZeroInteractions(mAudioManager);
+        verifyNoMoreInteractions(mAudioManager);
     }
 
     /**
@@ -814,7 +814,7 @@ public class HeadsetServiceAndStateMachineTest {
                         anyBoolean(),
                         eq(device));
         verifyNoMoreInteractions(ignoreStubs(mNativeInterface));
-        verifyZeroInteractions(mAudioManager);
+        verifyNoMoreInteractions(mAudioManager);
     }
 
     /**
@@ -914,7 +914,7 @@ public class HeadsetServiceAndStateMachineTest {
         assertThat(mHeadsetService.startVoiceRecognition(disconnectedDevice)).isFalse();
         mTestLooper.dispatchAll();
         verifyNoMoreInteractions(mNativeInterface);
-        verifyZeroInteractions(mAudioManager);
+        verifyNoMoreInteractions(mAudioManager);
     }
 
     /**

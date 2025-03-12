@@ -339,7 +339,8 @@ void LogMetricSocketConnectionState(const Address& address, int port, int type,
   }
   int ret = stats_write(BLUETOOTH_SOCKET_CONNECTION_STATE_CHANGED, byteField, port, type,
                         connection_state, tx_bytes, rx_bytes, uid, server_port, socket_role,
-                        metric_id);
+                        metric_id, 0 /* connection_duration_ms */, 1 /* error_code */,
+                        0 /* is_hardware_offload */);
   if (ret < 0) {
     log::warn(
             "Failed for {}, port {}, type {}, state {}, tx_bytes {}, rx_bytes {}, uid {}, "

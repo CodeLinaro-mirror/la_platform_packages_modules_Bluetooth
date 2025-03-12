@@ -36,7 +36,6 @@ cc_library_static {
     target: {
         android: {
             srcs: [
-                ":bluetooth-metrics-proto",
                 "metrics.cc",
             ],
             static_libs: ["libstatslog_bt"],
@@ -90,7 +89,6 @@ cc_test {
     ],
     target: {
         android: {
-            srcs: ["metrics_unittest.cc"],
             shared_libs: ["libstatssocket"],
         },
     },

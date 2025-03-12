@@ -97,7 +97,7 @@ public class HeadsetPhoneStateTest {
     public void testListenForPhoneState_NoneResultsNoListen() {
         BluetoothDevice device1 = getTestDevice(1);
         mHeadsetPhoneState.listenForPhoneState(device1, PhoneStateListener.LISTEN_NONE);
-        verifyZeroInteractions(mTelephonyManager);
+        verifyNoMoreInteractions(mTelephonyManager);
     }
 
     /**
