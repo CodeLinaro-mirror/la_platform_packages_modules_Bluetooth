@@ -179,6 +179,7 @@ android_library {
         "framework-tethering.stubs.module_lib",
         "framework-wifi.stubs.module_lib",
         "modules-utils-build",
+        "android.car-module.stubs.module_lib",
     ],
     static_libs: [
         "android.bluetooth.platform.flags-aconfig-java-export",
