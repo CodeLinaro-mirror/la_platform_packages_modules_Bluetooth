@@ -30,7 +30,6 @@ import android.os.BatteryStatsManager;
 import android.os.Binder;
 import android.os.WorkSource;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Utils.TimeProvider;
 import com.android.bluetooth.btservice.AdapterService;
@@ -197,16 +196,6 @@ class AppScanStats {
         return mOngoingScans.get(scannerId);
     }
 
-    private BluetoothMetricsProto.ScanEvent.Builder createBaseScanEvent(
-            BluetoothMetricsProto.ScanEvent.ScanEventType type) {
-        return BluetoothMetricsProto.ScanEvent.newBuilder()
-                .setScanEventType(type)
-                .setScanTechnologyType(
-                        BluetoothMetricsProto.ScanEvent.ScanTechnologyType.SCAN_TECH_TYPE_LE)
-                .setEventTimeMillis(System.currentTimeMillis())
-                .setInitiator(truncateAppName(mAppName));
-    }
-
     synchronized void addResult(int scannerId) {
         LastScan scan = getScanFromScannerId(scannerId);
         if (scan != null) {
@@ -318,11 +307,6 @@ class AppScanStats {
             }
         }
 
-        BluetoothMetricsProto.ScanEvent scanEvent =
-                createBaseScanEvent(BluetoothMetricsProto.ScanEvent.ScanEventType.SCAN_EVENT_START)
-                        .build();
-        mScanController.addScanEvent(scanEvent);
-
         if (!isScanning()) {
             mScanStartTime = startTime;
         }
@@ -361,12 +345,6 @@ class AppScanStats {
             mLastScans.remove(0);
         }
         mLastScans.add(scan);
-
-        BluetoothMetricsProto.ScanEvent scanEvent =
-                createBaseScanEvent(BluetoothMetricsProto.ScanEvent.ScanEventType.SCAN_EVENT_STOP)
-                        .setNumberResults(scan.results)
-                        .build();
-        mScanController.addScanEvent(scanEvent);
 
         mTotalScanTime += scanDuration;
         long activeDuration = scanDuration - scan.suspendDuration;
@@ -851,24 +829,6 @@ class AppScanStats {
         LastScan lastScan = mLastScans.get(mLastScans.size() - 1);
         return ((mTimeProvider.elapsedRealtime() - lastScan.duration - lastScan.timestamp)
                 < LARGE_SCAN_TIME_GAP_MS);
-    }
-
-    // This function truncates the app name for privacy reasons. Apps with
-    // four part package names or more get truncated to three parts, and apps
-    // with three part package names names get truncated to two. Apps with two
-    // or less package names names are untouched.
-    // Examples: one.two.three.four => one.two.three
-    //           one.two.three => one.two
-    private static String truncateAppName(String name) {
-        String initiator = name;
-        String[] nameSplit = initiator.split("\\.");
-        if (nameSplit.length > 3) {
-            initiator = nameSplit[0] + "." + nameSplit[1] + "." + nameSplit[2];
-        } else if (nameSplit.length == 3) {
-            initiator = nameSplit[0] + "." + nameSplit[1];
-        }
-
-        return initiator;
     }
 
     private static String filterToStringWithoutNullParam(ScanFilter filter) {

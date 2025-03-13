@@ -55,7 +55,6 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.util.SparseArray;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
@@ -959,7 +958,6 @@ public class BluetoothMapService extends ProfileService {
         } else if (mPermission == BluetoothDevice.ACCESS_ALLOWED) {
             // Signal to the service that we have a incoming connection.
             sendConnectMessage(masInst.getMasId());
-            MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.MAP);
         }
         return true;
     }

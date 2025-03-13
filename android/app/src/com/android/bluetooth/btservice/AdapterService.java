@@ -26,6 +26,7 @@ import static android.Manifest.permission.MODIFY_PHONE_STATE;
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE;
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_NONE;
+import static android.bluetooth.BluetoothAdapter.nameForState;
 import static android.bluetooth.BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
 import static android.bluetooth.BluetoothDevice.BOND_NONE;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_AUTO;
@@ -130,7 +131,6 @@ import android.util.Pair;
 import android.util.SparseArray;
 
 import com.android.bluetooth.BluetoothEventLogger;
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
@@ -280,7 +280,7 @@ public class AdapterService extends Service {
             mPreferredAudioProfilesCallbacks = new RemoteCallbackList<>();
     private final RemoteCallbackList<IBluetoothQualityReportReadyCallback>
             mBluetoothQualityReportReadyCallbacks = new RemoteCallbackList<>();
-    private final RemoteCallbackList<IBluetoothCallback> mRemoteCallbacks =
+    private final RemoteCallbackList<IBluetoothCallback> mSystemServerCallbacks =
             new RemoteCallbackList<>();
     private final RemoteCallbackList<IBluetoothConnectionCallback> mBluetoothConnectionCallbacks =
             new RemoteCallbackList<>();
@@ -478,7 +478,7 @@ public class AdapterService extends Service {
      */
     public void onProfileServiceStateChanged(ProfileService profile, int state) {
         if (state != BluetoothAdapter.STATE_ON && state != BluetoothAdapter.STATE_OFF) {
-            throw new IllegalArgumentException(BluetoothAdapter.nameForState(state));
+            throw new IllegalArgumentException(nameForState(state));
         }
         Message m = mHandler.obtainMessage(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
         m.obj = profile;
@@ -1109,7 +1109,7 @@ public class AdapterService extends Service {
         if (mScanController == null) {
             mAdapterStateMachine.sendMessage(AdapterState.BLE_STOPPED);
         } else {
-            mScanController.stop();
+            mScanController.cleanup();
             mScanController = null;
             mNativeInterface.disable();
         }
@@ -1141,67 +1141,40 @@ public class AdapterService extends Service {
         }
     }
 
-    void updateAdapterName(String name) {
-        updateAdapterNameInternal(name);
+    private void broadcastToSystemServerCallbacks(
+            String logAction, RemoteExceptionIgnoringConsumer<IBluetoothCallback> action) {
+        final int itemCount = mSystemServerCallbacks.beginBroadcast();
+        Log.d(TAG, "Broadcasting [" + logAction + "] to " + itemCount + " receivers.");
+        for (int i = 0; i < itemCount; i++) {
+            action.accept(mSystemServerCallbacks.getBroadcastItem(i));
+        }
+        mSystemServerCallbacks.finishBroadcast();
     }
 
-    private void updateAdapterNameInternal(String name) {
-        int n = mRemoteCallbacks.beginBroadcast();
-        Log.d(TAG, "updateAdapterName(" + name + ")");
-        for (int i = 0; i < n; i++) {
-            try {
-                mRemoteCallbacks.getBroadcastItem(i).onAdapterNameChange(name);
-            } catch (RemoteException e) {
-                Log.d(TAG, "updateAdapterName() - Callback #" + i + " failed (" + e + ")");
-            }
-        }
-        mRemoteCallbacks.finishBroadcast();
+    void updateAdapterName(String name) {
+        broadcastToSystemServerCallbacks(
+                "updateAdapterName(" + name + ")", (c) -> c.onAdapterNameChange(name));
     }
 
     void updateAdapterAddress(String address) {
-        updateAdapterAddressInternal(address);
+        broadcastToSystemServerCallbacks(
+                "updateAdapterAddress(" + BluetoothUtils.toAnonymizedAddress(address) + ")",
+                (c) -> c.onAdapterAddressChange(address));
     }
 
-    private void updateAdapterAddressInternal(String address) {
-        int n = mRemoteCallbacks.beginBroadcast();
-        Log.d(TAG, "updateAdapterAddress(" + BluetoothUtils.toAnonymizedAddress(address) + ")");
-        for (int i = 0; i < n; i++) {
-            try {
-                mRemoteCallbacks.getBroadcastItem(i).onAdapterAddressChange(address);
-            } catch (RemoteException e) {
-                Log.d(TAG, "updateAdapterAddress() - Callback #" + i + " failed (" + e + ")");
-            }
-        }
-        mRemoteCallbacks.finishBroadcast();
-    }
+    void updateAdapterState(int from, int to) {
+        mAdapterProperties.setState(to);
 
-    void updateAdapterState(int prevState, int newState) {
-        mAdapterProperties.setState(newState);
-
-        // Only BluetoothManagerService should be registered
-        int n = mRemoteCallbacks.beginBroadcast();
-        Log.d(
-                TAG,
-                "updateAdapterState() - Broadcasting state "
-                        + BluetoothAdapter.nameForState(newState)
-                        + " to "
-                        + n
-                        + " receivers.");
-        for (int i = 0; i < n; i++) {
-            try {
-                mRemoteCallbacks.getBroadcastItem(i).onBluetoothStateChange(prevState, newState);
-            } catch (RemoteException e) {
-                Log.d(TAG, "updateAdapterState() - Callback #" + i + " failed (" + e + ")");
-            }
-        }
-        mRemoteCallbacks.finishBroadcast();
+        broadcastToSystemServerCallbacks(
+                "updateAdapterState(" + nameForState(from) + ", " + nameForState(to) + ")",
+                (c) -> c.onBluetoothStateChange(from, to));
 
         for (Map.Entry<BluetoothStateCallback, Executor> e : mLocalCallbacks.entrySet()) {
-            e.getValue().execute(() -> e.getKey().onBluetoothStateChange(prevState, newState));
+            e.getValue().execute(() -> e.getKey().onBluetoothStateChange(from, to));
         }
 
         // Turn the Adapter all the way off if we are disabling and the snoop log setting changed.
-        if (newState == BluetoothAdapter.STATE_BLE_TURNING_ON) {
+        if (to == BluetoothAdapter.STATE_BLE_TURNING_ON) {
             sSnoopLogSettingAtEnable =
                     BluetoothProperties.snoop_log_mode()
                             .orElse(BluetoothProperties.snoop_log_mode_values.EMPTY);
@@ -1233,8 +1206,7 @@ public class AdapterService extends Service {
                     BluetoothProperties.snoop_default_mode(value);
                 }
             }
-        } else if (newState == BluetoothAdapter.STATE_BLE_ON
-                && prevState != BluetoothAdapter.STATE_OFF) {
+        } else if (to == BluetoothAdapter.STATE_BLE_ON && from != BluetoothAdapter.STATE_OFF) {
             var snoopLogSetting =
                     BluetoothProperties.snoop_log_mode()
                             .orElse(BluetoothProperties.snoop_log_mode_values.EMPTY);
@@ -1477,7 +1449,7 @@ public class AdapterService extends Service {
 
         mBluetoothConnectionCallbacks.kill();
 
-        mRemoteCallbacks.kill();
+        mSystemServerCallbacks.kill();
 
         mMetadataListeners.values().forEach(v -> v.kill());
     }
@@ -6135,12 +6107,12 @@ public class AdapterService extends Service {
 
     @VisibleForTesting
     void registerRemoteCallback(IBluetoothCallback callback) {
-        mRemoteCallbacks.register(callback);
+        mSystemServerCallbacks.register(callback);
     }
 
     @VisibleForTesting
     void unregisterRemoteCallback(IBluetoothCallback callback) {
-        mRemoteCallbacks.unregister(callback);
+        mSystemServerCallbacks.unregister(callback);
     }
 
     @VisibleForTesting
@@ -6720,9 +6692,7 @@ public class AdapterService extends Service {
                 || currentState == BluetoothAdapter.STATE_TURNING_OFF
                 || currentState == BluetoothAdapter.STATE_BLE_TURNING_OFF) {
             writer.println();
-            writer.println(
-                    "Impossible to dump native stack. state="
-                            + BluetoothAdapter.nameForState(currentState));
+            writer.println("Impossible to dump native stack. state=" + nameForState(currentState));
             writer.println();
             writer.flush();
         } else {

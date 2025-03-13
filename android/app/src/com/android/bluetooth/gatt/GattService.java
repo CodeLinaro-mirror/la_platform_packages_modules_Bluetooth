@@ -61,7 +61,6 @@ import android.provider.Settings;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
@@ -228,7 +227,7 @@ public class GattService extends ProfileService {
             setGattService(null);
         }
         if (mScanController != null) {
-            mScanController.stop();
+            mScanController.cleanup();
         }
         mClientMap.clear();
         mRestrictedHandles.clear();
@@ -1728,7 +1727,7 @@ public class GattService extends ProfileService {
             return Collections.emptyList();
         }
         return mHandleMap.getEntries().stream()
-                .map(entry -> new ParcelUuid(entry.uuid))
+                .map(entry -> new ParcelUuid(entry.mUuid))
                 .collect(Collectors.toList());
     }
 
@@ -2390,7 +2389,7 @@ public class GattService extends ProfileService {
 
         mHandleMap.addRequest(connId, transId, handle);
 
-        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.serverIf);
+        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.mServerIf);
         if (app == null) {
             return;
         }
@@ -2423,7 +2422,7 @@ public class GattService extends ProfileService {
 
         mHandleMap.addRequest(connId, transId, handle);
 
-        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.serverIf);
+        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.mServerIf);
         if (app == null) {
             return;
         }
@@ -2466,7 +2465,7 @@ public class GattService extends ProfileService {
 
         mHandleMap.addRequest(connId, transId, handle);
 
-        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.serverIf);
+        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.mServerIf);
         if (app == null) {
             return;
         }
@@ -2509,7 +2508,7 @@ public class GattService extends ProfileService {
 
         mHandleMap.addRequest(connId, transId, handle);
 
-        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.serverIf);
+        ContextMap<IBluetoothGattServerCallback>.App app = mServerMap.getById(entry.mServerIf);
         if (app == null) {
             return;
         }
@@ -2821,14 +2820,14 @@ public class GattService extends ProfileService {
         if (!Flags.gattServerRequestsFix()) {
             HandleMap.Entry entry = mHandleMap.getByRequestId(requestId);
             if (entry != null) {
-                handle = entry.handle;
+                handle = entry.mHandle;
             }
             connId = mServerMap.connIdByAddress(serverIf, address);
         } else {
             HandleMap.RequestData requestData = mHandleMap.getRequestDataByRequestId(requestId);
             if (requestData != null) {
-                handle = requestData.mHandle;
-                connId = requestData.mConnId;
+                handle = requestData.handle();
+                connId = requestData.connId();
             } else {
                 connId = mServerMap.connIdByAddress(serverIf, address);
             }
@@ -2998,13 +2997,13 @@ public class GattService extends ProfileService {
         }
         List<HandleMap.Entry> entries = mHandleMap.getEntries();
         for (HandleMap.Entry entry : entries) {
-            if (entry.type != HandleMap.TYPE_SERVICE
-                    || entry.serverIf != serverIf
-                    || !entry.started) {
+            if (entry.mType != HandleMap.TYPE_SERVICE
+                    || entry.mServerIf != serverIf
+                    || !entry.mStarted) {
                 continue;
             }
 
-            mNativeInterface.gattServerStopService(serverIf, entry.handle);
+            mNativeInterface.gattServerStopService(serverIf, entry.mHandle);
             return;
         }
     }
@@ -3019,10 +3018,10 @@ public class GattService extends ProfileService {
         List<Integer> handleList = new ArrayList<>();
         List<HandleMap.Entry> entries = mHandleMap.getEntries();
         for (HandleMap.Entry entry : entries) {
-            if (entry.type != HandleMap.TYPE_SERVICE || entry.serverIf != serverIf) {
+            if (entry.mType != HandleMap.TYPE_SERVICE || entry.mServerIf != serverIf) {
                 continue;
             }
-            handleList.add(entry.handle);
+            handleList.add(entry.mHandle);
         }
 
         /* Now actually delete the services.... */
@@ -3124,13 +3123,6 @@ public class GattService extends ProfileService {
                         + connectionState
                         + ", connection status="
                         + connectionStatus);
-    }
-
-    @Override
-    public void dumpProto(BluetoothMetricsProto.BluetoothLog.Builder builder) {
-        if (mScanController != null) {
-            mScanController.dumpProto(builder);
-        }
     }
 
     private BluetoothDevice getDevice(String address) {

@@ -223,8 +223,8 @@ public class PbapClientObexClientTest {
                 .onGetPhonebookMetadataComplete(
                         eq(160), eq(PbapPhonebook.LOCAL_PHONEBOOK_PATH), mMetadataCaptor.capture());
         PbapPhonebookMetadata metadata = mMetadataCaptor.getValue();
-        assertThat(metadata.getPhonebook()).isEqualTo(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
-        assertThat(metadata.getSize()).isEqualTo(2);
+        assertThat(metadata.phonebook()).isEqualTo(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
+        assertThat(metadata.size()).isEqualTo(2);
     }
 
     // *********************************************************************************************

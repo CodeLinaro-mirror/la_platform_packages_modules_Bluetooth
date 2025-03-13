@@ -34,7 +34,6 @@
 #include "btif_keystore.h"
 #include "btif_metrics_logging.h"
 #include "common/address_obfuscator.h"
-#include "common/metric_id_allocator.h"
 #include "main/shim/config.h"
 #include "main/shim/shim.h"
 #include "storage/config_keys.h"
@@ -50,7 +49,6 @@
 
 using bluetooth::bluetooth_keystore::BluetoothKeystoreInterface;
 using bluetooth::common::AddressObfuscator;
-using bluetooth::common::MetricIdAllocator;
 using namespace bluetooth;
 
 // Key attestation
@@ -124,11 +122,10 @@ static void init_metric_id_allocator() {
   }
 
   // Initialize MetricIdAllocator
-  MetricIdAllocator::Callback save_device_callback = [](const RawAddress& address, const int id) {
+  auto save_device_callback = [](const RawAddress& address, const int id) {
     return btif_config_set_int(address.ToString(), BTIF_STORAGE_KEY_METRICS_ID_KEY, id);
   };
-  MetricIdAllocator::Callback forget_device_callback = [](const RawAddress& address,
-                                                          const int /* id */) {
+  auto forget_device_callback = [](const RawAddress& address, const int /* id */) {
     return btif_config_remove(address.ToString(), BTIF_STORAGE_KEY_METRICS_ID_KEY);
   };
   if (!init_metric_id_allocator(paired_device_map, std::move(save_device_callback),

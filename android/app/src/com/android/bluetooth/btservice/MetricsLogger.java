@@ -70,10 +70,7 @@ import android.util.proto.ProtoOutputStream;
 
 import androidx.annotation.RequiresApi;
 
-import com.android.bluetooth.BluetoothMetricsProto.BluetoothLog;
 import com.android.bluetooth.BluetoothMetricsProto.BluetoothRemoteDeviceInformation;
-import com.android.bluetooth.BluetoothMetricsProto.ProfileConnectionStats;
-import com.android.bluetooth.BluetoothMetricsProto.ProfileId;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.BtRestrictedStatsLog;
 import com.android.bluetooth.Utils;
@@ -111,8 +108,6 @@ public class MetricsLogger {
     // 6 hours timeout for counter metrics
     private static final long BLUETOOTH_COUNTER_METRICS_ACTION_DURATION_MILLIS = 6L * 3600L * 1000L;
     private static final int MAX_WORDS_ALLOWED_IN_DEVICE_NAME = 7;
-
-    private static final HashMap<ProfileId, Integer> sProfileConnectionCounts = new HashMap<>();
 
     HashMap<Integer, Long> mCounters = new HashMap<>();
     private static volatile MetricsLogger sInstance = null;
@@ -387,37 +382,6 @@ public class MetricsLogger {
             mCounters.put(key, total + count);
         }
         return true;
-    }
-
-    /**
-     * Log profile connection event by incrementing an internal counter for that profile. This log
-     * persists over adapter enable/disable and only get cleared when metrics are dumped or when
-     * Bluetooth process is killed.
-     *
-     * @param profileId Bluetooth profile that is connected at this event
-     */
-    public static void logProfileConnectionEvent(ProfileId profileId) {
-        synchronized (sProfileConnectionCounts) {
-            sProfileConnectionCounts.merge(profileId, 1, Integer::sum);
-        }
-    }
-
-    /**
-     * Dump collected metrics into proto using a builder. Clean up internal data after the dump.
-     *
-     * @param metricsBuilder proto builder for {@link BluetoothLog}
-     */
-    public static void dumpProto(BluetoothLog.Builder metricsBuilder) {
-        synchronized (sProfileConnectionCounts) {
-            sProfileConnectionCounts.forEach(
-                    (key, value) ->
-                            metricsBuilder.addProfileConnectionStats(
-                                    ProfileConnectionStats.newBuilder()
-                                            .setProfileId(key)
-                                            .setNumTimesConnected(value)
-                                            .build()));
-            sProfileConnectionCounts.clear();
-        }
     }
 
     protected void scheduleDrains() {

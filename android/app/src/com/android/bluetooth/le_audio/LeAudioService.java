@@ -4242,14 +4242,6 @@ public class LeAudioService extends ProfileService {
             return;
         }
 
-        if (deviceDescriptor.mGroupId == LE_AUDIO_GROUP_ID_INVALID
-                || getConnectedPeerDevices(deviceDescriptor.mGroupId).size() == 1) {
-            // Log LE Audio connection event if we are the first device in a set
-            // Or when the GroupId has not been found
-            // MetricsLogger.logProfileConnectionEvent(
-            //         BluetoothMetricsProto.ProfileId.LE_AUDIO);
-        }
-
         LeAudioGroupDescriptor descriptor = getGroupDescriptor(deviceDescriptor.mGroupId);
         if (descriptor != null) {
             descriptor.mIsConnected = true;

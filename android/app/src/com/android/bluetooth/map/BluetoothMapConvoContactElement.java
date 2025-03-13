@@ -63,8 +63,8 @@ public class BluetoothMapConvoContactElement
         BluetoothMapConvoContactElement newElement = new BluetoothMapConvoContactElement();
         newElement.mUci = address;
         // TODO: For now we use the ID as BT-UID
-        newElement.mBtUid = new SignedLongLong(contact.getId(), 0);
-        newElement.mDisplayName = contact.getName();
+        newElement.mBtUid = new SignedLongLong(contact.id(), 0);
+        newElement.mDisplayName = contact.name();
         return newElement;
     }
 

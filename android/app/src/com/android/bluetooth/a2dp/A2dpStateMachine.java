@@ -132,9 +132,7 @@ final class A2dpStateMachine extends StateMachine {
 
     public void doQuit() {
         log("doQuit for device " + mDevice);
-        if (Flags.a2dpBroadcastConnectionStateWhenTurnedOff()
-                && mConnectionState != STATE_DISCONNECTED
-                && mLastConnectionState != -1) {
+        if (mConnectionState != STATE_DISCONNECTED && mLastConnectionState != -1) {
             // Broadcast CONNECTION_STATE_CHANGED when A2dpService is turned off while
             // the device is connected
             broadcastConnectionState(STATE_DISCONNECTED, mConnectionState);

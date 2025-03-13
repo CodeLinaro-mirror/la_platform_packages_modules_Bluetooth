@@ -48,7 +48,6 @@ import android.os.UserHandle;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
@@ -830,13 +829,6 @@ public class HearingAidService extends ProfileService {
         }
         if (toState == STATE_CONNECTED) {
             long myHiSyncId = getHiSyncId(device);
-            if (myHiSyncId == BluetoothHearingAid.HI_SYNC_ID_INVALID
-                    || getConnectedPeerDevices(myHiSyncId).size() == 1) {
-                // Log hearing aid connection event if we are the first device in a set
-                // Or when the hiSyncId has not been found
-                MetricsLogger.logProfileConnectionEvent(
-                        BluetoothMetricsProto.ProfileId.HEARING_AID);
-            }
             if (!mHiSyncIdConnectedMap.getOrDefault(myHiSyncId, false)) {
                 mHiSyncIdConnectedMap.put(myHiSyncId, true);
             }

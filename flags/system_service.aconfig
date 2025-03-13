@@ -17,3 +17,13 @@ flag {
     description: "Replace binder call to the system server with a Messenger to enforce thread safety"
     bug: "321804999"
 }
+
+flag {
+    name: "system_server_remove_extra_thread_jump"
+    namespace: "bluetooth"
+    description: "Methods are unnecessarily re-posting on the system server thread"
+    bug: "402209603"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}

@@ -57,6 +57,9 @@ struct formatter<android::bluetooth::AddressTypeEnum>
 template <>
 struct formatter<android::bluetooth::DeviceInfoSrcEnum>
     : enum_formatter<android::bluetooth::DeviceInfoSrcEnum> {};
+template <>
+struct formatter<android::bluetooth::SocketErrorEnum>
+    : enum_formatter<android::bluetooth::SocketErrorEnum> {};
 }  // namespace std
 
 namespace bluetooth {
@@ -303,7 +306,10 @@ void LogSdpAttribute(const RawAddress& address, uint16_t protocol_uuid, uint16_t
 void LogSocketConnectionState(const RawAddress& address, int port, int type,
                               android::bluetooth::SocketConnectionstateEnum connection_state,
                               int64_t tx_bytes, int64_t rx_bytes, int uid, int server_port,
-                              android::bluetooth::SocketRoleEnum socket_role) {
+                              android::bluetooth::SocketRoleEnum socket_role,
+                              uint64_t connection_duration_ms,
+                              android::bluetooth::SocketErrorEnum error_code,
+                              bool is_hardware_offload) {
   std::string obfuscated_id;
   int metric_id = 0;
   if (!address.IsEmpty()) {
@@ -315,14 +321,16 @@ void LogSocketConnectionState(const RawAddress& address, int port, int type,
                                  address.IsEmpty() ? 0 : obfuscated_id.size());
   int ret = stats_write(BLUETOOTH_SOCKET_CONNECTION_STATE_CHANGED, obfuscated_id_field, port, type,
                         connection_state, tx_bytes, rx_bytes, uid, server_port, socket_role,
-                        metric_id, 0 /* connection_duration_ms */, 1 /* error_code */,
-                        0 /* is_hardware_offload */);
+                        metric_id, static_cast<int64_t>(connection_duration_ms), error_code,
+                        is_hardware_offload);
   if (ret < 0) {
     log::warn(
             "failed for {}, port {}, type {}, state {}, tx_bytes {}, rx_bytes {}, "
-            "uid {}, server_port {}, socket_role {}, error {}",
+            "uid {}, server_port {}, socket_role {}, error {}, connection_duration_ms {}, "
+            "socket_error_code {}, "
+            "is_hardware_offload {}",
             address, port, type, connection_state, tx_bytes, rx_bytes, uid, server_port,
-            socket_role, ret);
+            socket_role, ret, connection_duration_ms, error_code, is_hardware_offload);
   }
 }
 

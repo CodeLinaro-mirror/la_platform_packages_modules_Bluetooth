@@ -337,7 +337,11 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     }
   }
 
-  void stop() { hci_layer_->UnregisterLeEventHandler(hci::SubeventCode::TRANSMIT_POWER_REPORTING); }
+  void stop() {
+    hci_layer_->UnregisterLeEventHandler(hci::SubeventCode::TRANSMIT_POWER_REPORTING);
+    cs_requester_trackers_.clear();
+    cs_responder_trackers_.clear();
+  }
 
   void register_distance_measurement_callbacks(DistanceMeasurementCallbacks* callbacks) {
     distance_measurement_callbacks_ = callbacks;
@@ -2618,17 +2622,17 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     v1.insert(v1.end(), v2.begin(), v2.end());
   }
 
-  os::Handler* handler_;
-  hal::RangingHal* ranging_hal_;
-  hci::Controller* controller_;
-  hci::HciLayer* hci_layer_;
-  hci::AclManager* acl_manager_;
-  hci::DistanceMeasurementInterface* distance_measurement_interface_;
+  os::Handler* handler_ = nullptr;
+  hal::RangingHal* ranging_hal_ = nullptr;
+  hci::Controller* controller_ = nullptr;
+  hci::HciLayer* hci_layer_ = nullptr;
+  hci::AclManager* acl_manager_ = nullptr;
+  hci::DistanceMeasurementInterface* distance_measurement_interface_ = nullptr;
   std::unordered_map<Address, RSSITracker> rssi_trackers;
   std::unordered_map<uint16_t, CsTracker> cs_requester_trackers_;
   std::unordered_map<uint16_t, CsTracker> cs_responder_trackers_;
   std::unordered_map<uint16_t, uint16_t> gatt_mtus_;
-  DistanceMeasurementCallbacks* distance_measurement_callbacks_;
+  DistanceMeasurementCallbacks* distance_measurement_callbacks_ = nullptr;
   CsOptionalSubfeaturesSupported cs_subfeature_supported_;
   uint8_t num_antennas_supported_ = 0x01;
   bool local_support_phase_based_ranging_ = false;

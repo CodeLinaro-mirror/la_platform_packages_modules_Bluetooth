@@ -137,14 +137,12 @@ public class ScanControllerTest {
         testLooper.startAutoDispatch();
 
         mScanController = new ScanController(mAdapterService);
-        // mScanController.start(testLooper.getLooper());
-
         mScanController.setScannerMap(mScannerMap);
     }
 
     @After
     public void tearDown() throws Exception {
-        mScanController.stop();
+        mScanController.cleanup();
 
         GattObjectsFactory.setInstanceForTesting(null);
         ScanObjectsFactory.setInstanceForTesting(null);

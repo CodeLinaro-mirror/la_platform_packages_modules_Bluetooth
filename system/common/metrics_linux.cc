@@ -34,7 +34,10 @@ void LogSocketConnectionState(const RawAddress& /* address */, int /* port */, i
                               android::bluetooth::SocketConnectionstateEnum /* connection_state */,
                               int64_t /* tx_bytes */, int64_t /* rx_bytes */, int /* uid */,
                               int /* server_port */,
-                              android::bluetooth::SocketRoleEnum /* socket_role */) {}
+                              android::bluetooth::SocketRoleEnum /* socket_role */,
+                              uint64_t /* connection_duration_ms */,
+                              android::bluetooth::SocketErrorEnum /* error_code */,
+                              bool /* is_hardware_offload */) {}
 
 void LogHciTimeoutEvent(uint32_t /* hci_cmd */) {}
 
