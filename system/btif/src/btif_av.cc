@@ -1789,11 +1789,8 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
         can_connect = btif_av_sink.AllowedToConnect(peer_.PeerAddress());
         if (!can_connect) {
           log::error("Sink profile doesn't allow connection to peer:{}", peer_.PeerAddress());
-          if (btif_av_src_sink_coexist_enabled()) {
-            BTA_AvCloseRc((reinterpret_cast<tBTA_AV*>(p_data))->rc_open.rc_handle);
-          } else {
-            btif_av_sink_disconnect(peer_.PeerAddress());
-          }
+          BTA_AvCloseRc((reinterpret_cast<tBTA_AV*>(p_data))->rc_open.rc_handle);
+          btif_av_sink_disconnect(peer_.PeerAddress());
         }
       }
       if (!can_connect) {
