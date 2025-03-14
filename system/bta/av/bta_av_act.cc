@@ -117,6 +117,8 @@ tBTA_AV_RCB* bta_av_get_rcb_by_shdl(uint8_t shdl) {
  *
  ******************************************************************************/
 void bta_av_del_rc(tBTA_AV_RCB* p_rcb) {
+  tBTA_AV_CB* p_cb = &bta_av_cb;
+  tBTA_AV_LCB* p_lcb_rc;
   tBTA_AV_SCB* p_scb;
   uint8_t rc_handle; /* connected AVRCP handle */
 
@@ -153,6 +155,13 @@ void bta_av_del_rc(tBTA_AV_RCB* p_rcb) {
     AVRC_Close(rc_handle);
     if (rc_handle == bta_av_cb.rc_acp_handle) {
       bta_av_cb.rc_acp_handle = BTA_AV_RC_HANDLE_NONE;
+      p_lcb_rc = &p_cb->lcb[BTA_AV_NUM_LINKS];
+      log::verbose("p_lcb_rc: bda:%s, conn_msk:%d, lidx:%d",
+                    p_lcb_rc->addr.ToString().c_str(), p_lcb_rc->conn_msk,
+                    p_lcb_rc->lidx);
+      p_lcb_rc->conn_msk = 0;
+      p_lcb_rc->lidx = 0;
+      p_lcb_rc->addr = RawAddress::kEmpty;
     }
     log::verbose("end del_rc handle: {} status=0x{:x}, rc_acp_handle:{}, lidx:{}", p_rcb->handle,
                  p_rcb->status, bta_av_cb.rc_acp_handle, p_rcb->lidx);
