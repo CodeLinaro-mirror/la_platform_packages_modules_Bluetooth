@@ -46,13 +46,13 @@
 #include "btif_av_co.h"
 #include "btif_common.h"
 #include "btif_hf.h"
-#include "btif_metrics_logging.h"
 #include "btm_iso_api.h"
 #include "common/message_loop_thread.h"
 #include "common/metrics.h"
 #include "common/repeating_timer.h"
 #include "common/time_util.h"
 #include "hardware/bt_av.h"
+#include "main/shim/metrics_api.h"
 #include "osi/include/allocator.h"
 #include "osi/include/fixed_queue.h"
 #include "osi/include/wakelock.h"
@@ -253,8 +253,6 @@ static bool btif_a2dp_source_startup(void);
 static void btif_a2dp_source_startup_delayed(void);
 static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_address,
                                                    std::promise<void> start_session_promise);
-static void btif_a2dp_source_end_session_delayed(const RawAddress& peer_address);
-static void btif_a2dp_source_shutdown_delayed(std::promise<void>);
 static void btif_a2dp_source_audio_tx_start_event(void);
 static void btif_a2dp_source_audio_tx_stop_event(void);
 static void btif_a2dp_source_audio_tx_flush_event(void);
@@ -262,7 +260,6 @@ static void btif_a2dp_source_audio_tx_flush_event(void);
 // The peer address is |peer_addr|.
 // This function should be called prior to starting A2DP streaming.
 static void btif_a2dp_source_setup_codec(const RawAddress& peer_addr);
-static void btif_a2dp_source_cleanup_codec();
 static void btif_a2dp_source_cleanup_codec_delayed();
 static void btif_a2dp_source_encoder_user_config_update_event(
         const RawAddress& peer_address,
@@ -496,7 +493,7 @@ bool btif_a2dp_source_restart_session(const RawAddress& old_peer_address,
 
   log::assert_that(!new_peer_address.IsEmpty(), "assert failed: !new_peer_address.IsEmpty()");
 
-  // Must stop first the audio streaming
+  // Must stop first the audio streaming.
   btif_a2dp_source_stop_audio_req();
 
   // If the old active peer was valid, end the old session.
@@ -516,22 +513,24 @@ bool btif_a2dp_source_restart_session(const RawAddress& old_peer_address,
 
 bool btif_a2dp_source_end_session(const RawAddress& peer_address) {
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
-  btif_a2dp_source_cleanup_codec();
-  btif_a2dp_source_end_session_delayed(peer_address);
-  return true;
-}
 
-static void btif_a2dp_source_end_session_delayed(const RawAddress& peer_address) {
-  log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
+  // Must stop first the audio streaming.
+  btif_a2dp_source_stop_audio_req();
+
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_cleanup_codec_delayed));
+
   if ((btif_a2dp_source_cb.State() == BtifA2dpSource::kStateRunning) ||
       (btif_a2dp_source_cb.State() == BtifA2dpSource::kStateShuttingDown)) {
     btif_av_stream_stop(peer_address);
   } else {
     log::error("A2DP Source media task is not running");
   }
+
   if (bluetooth::audio::a2dp::is_hal_enabled()) {
     bluetooth::audio::a2dp::end_session();
   }
+
+  return true;
 }
 
 void btif_a2dp_source_allow_low_latency_audio(bool allowed) {
@@ -549,16 +548,10 @@ void btif_a2dp_source_shutdown(std::promise<void> shutdown_complete_promise) {
     return;
   }
 
-  /* Make sure no channels are restarted while shutting down */
+  // Make sure no channels are restarted while shutting down.
   btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateShuttingDown);
 
-  btif_a2dp_source_shutdown_delayed(std::move(shutdown_complete_promise));
-}
-
-static void btif_a2dp_source_shutdown_delayed(std::promise<void> shutdown_complete_promise) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
-
-  // Stop the timer
+  // Stop the timer.
   btif_a2dp_source_cb.media_alarm.CancelAndWait();
   wakelock_release();
 
@@ -656,13 +649,6 @@ static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
                                         btif_a2dp_get_peer_mtu(a2dp_codec_config),
                                         bta_av_co_get_encoder_preferred_interval_us());
   }
-}
-
-static void btif_a2dp_source_cleanup_codec() {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
-  // Must stop media task first before cleaning up the encoder
-  btif_a2dp_source_stop_audio_req();
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_cleanup_codec_delayed));
 }
 
 static void btif_a2dp_source_cleanup_codec_delayed() {
@@ -945,8 +931,9 @@ static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len) {
     btif_a2dp_source_cb.stats.media_read_total_underflow_count++;
     btif_a2dp_source_cb.stats.media_read_last_underflow_us =
             bluetooth::common::time_get_os_boottime_us();
-    log_a2dp_audio_underrun_event(btif_av_source_active_peer(),
-                                  btif_a2dp_source_cb.encoder_interval_ms, len - bytes_read);
+    bluetooth::shim::LogMetricA2dpAudioUnderrunEvent(btif_av_source_active_peer(),
+                                                     btif_a2dp_source_cb.encoder_interval_ms,
+                                                     len - bytes_read);
   }
 
   return bytes_read;
@@ -998,9 +985,9 @@ static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
         osi_free(p_data);
       }
     }
-    log_a2dp_audio_overrun_event(btif_av_source_active_peer(),
-                                 btif_a2dp_source_cb.encoder_interval_ms, drop_n,
-                                 num_dropped_encoded_frames, num_dropped_encoded_bytes);
+    bluetooth::shim::LogMetricA2dpAudioOverrunEvent(
+            btif_av_source_active_peer(), btif_a2dp_source_cb.encoder_interval_ms, drop_n,
+            num_dropped_encoded_frames, num_dropped_encoded_bytes);
 
     // Request additional debug info if we had to flush buffers
     RawAddress peer_bda = btif_av_source_active_peer();
@@ -1290,12 +1277,12 @@ static void btif_a2dp_source_update_metrics(void) {
   }
 
   if (metrics.audio_duration_ms != -1) {
-    log_a2dp_session_metrics_event(btif_av_source_active_peer(), metrics.audio_duration_ms,
-                                   metrics.media_timer_min_ms, metrics.media_timer_max_ms,
-                                   metrics.media_timer_avg_ms, metrics.total_scheduling_count,
-                                   metrics.buffer_overruns_max_count, metrics.buffer_overruns_total,
-                                   metrics.buffer_underruns_average, metrics.buffer_underruns_count,
-                                   metrics.codec_index, metrics.is_a2dp_offload);
+    bluetooth::shim::LogMetricA2dpSessionMetricsEvent(
+            btif_av_source_active_peer(), metrics.audio_duration_ms, metrics.media_timer_min_ms,
+            metrics.media_timer_max_ms, metrics.media_timer_avg_ms, metrics.total_scheduling_count,
+            metrics.buffer_overruns_max_count, metrics.buffer_overruns_total,
+            metrics.buffer_underruns_average, metrics.buffer_underruns_count, metrics.codec_index,
+            metrics.is_a2dp_offload);
   }
 }
 
@@ -1315,8 +1302,9 @@ static void btm_read_rssi_cb(void* data) {
     return;
   }
 
-  log_read_rssi_result(result->rem_bda, bluetooth::common::kUnknownConnectionHandle,
-                       result->hci_status, result->rssi);
+  bluetooth::shim::LogMetricReadRssiResult(result->rem_bda,
+                                           bluetooth::common::kUnknownConnectionHandle,
+                                           result->hci_status, result->rssi);
 
   log::warn("device: {}, rssi: {}", result->rem_bda, result->rssi);
 }
@@ -1332,9 +1320,9 @@ static void btm_read_failed_contact_counter_cb(void* data) {
     log::error("unable to read Failed Contact Counter (status {})", result->status);
     return;
   }
-  log_read_failed_contact_counter_result(result->rem_bda,
-                                         bluetooth::common::kUnknownConnectionHandle,
-                                         result->hci_status, result->failed_contact_counter);
+  bluetooth::shim::LogMetricReadFailedContactCounterResult(
+          result->rem_bda, bluetooth::common::kUnknownConnectionHandle, result->hci_status,
+          result->failed_contact_counter);
 
   log::warn("device: {}, Failed Contact Counter: {}", result->rem_bda,
             result->failed_contact_counter);
@@ -1351,8 +1339,9 @@ static void btm_read_tx_power_cb(void* data) {
     log::error("unable to read Tx Power (status {})", result->status);
     return;
   }
-  log_read_tx_power_level_result(result->rem_bda, bluetooth::common::kUnknownConnectionHandle,
-                                 result->hci_status, result->tx_power);
+  bluetooth::shim::LogMetricReadTxPowerLevelResult(result->rem_bda,
+                                                   bluetooth::common::kUnknownConnectionHandle,
+                                                   result->hci_status, result->tx_power);
 
   log::warn("device: {}, Tx Power: {}", result->rem_bda, result->tx_power);
 }

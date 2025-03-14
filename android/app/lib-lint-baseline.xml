@@ -2,17 +2,6 @@
 <issues format="6" by="lint 8.4.0-alpha08" type="baseline" client="" dependencies="true" name="" variant="all" version="8.4.0-alpha08">
 
     <issue
-        id="UnknownIssueId"
-        message="Unknown issue id &quot;GetterSetterNullability&quot;"
-        errorLine1="  &lt;issue id=&apos;GetterSetterNullability&apos; severity=&apos;error&apos; />"
-        errorLine2="  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="./out/lint.xml"
-            line="125"
-            column="3"/>
-    </issue>
-
-    <issue
         id="GestureBackNavigation"
         message="If intercepting back events, this should be handled through the registration of callbacks on the window level; Please see https://developer.android.com/about/versions/13/features/predictive-back-gesture"
         errorLine1="        if (keyCode == KeyEvent.KEYCODE_BACK) {"
@@ -68,321 +57,13 @@
     </issue>
 
     <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="                        String.format("
-        errorLine2="                        ^">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/avrcp/AvrcpVolumeManager.java"
-            line="460"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="                offsetString = String.format(&quot;%1$02d&quot;, -(offset));"
-        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapSmsPdu.java"
-            line="403"
-            column="32"/>
-    </issue>
-
-    <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="                offsetString = String.format(&quot;%1$02d&quot;, offset);"
-        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapSmsPdu.java"
-            line="407"
-            column="32"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="            ThreadLocal.withInitial(() -> new SimpleDateFormat(&quot;MM-dd HH:mm:ss&quot;));"
-        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/le_scan/AppScanStats.java"
-            line="64"
-            column="43"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1228"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1239"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1250"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1261"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1276"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1287"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1294"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1305"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmssZ&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1510"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmssZ&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1521"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmssZ&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1758"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmssZ&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapAppParams.java"
-            line="1769"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapConvoContactElement.java"
-            line="161"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapConvoContactElement.java"
-            line="172"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapConvoListingElement.java"
-            line="149"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapConvoListingElement.java"
-            line="162"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat format = new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListingElement.java"
-            line="81"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="            SimpleDateFormat format = new SimpleDateFormat(&quot;yyMMddHHmmss&quot;);"
-        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapSmsPdu.java"
-            line="385"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="                        ? new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmssZ&quot;)"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapUtils.java"
-            line="739"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="                        : new SimpleDateFormat(&quot;yyyyMMdd&apos;T&apos;HHmmss&quot;);"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapUtils.java"
-            line="740"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        DateFormat dateFormat = new SimpleDateFormat(&quot;_hhmmss&quot;);"
-        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppReceiveFileInfo.java"
-            line="167"
-            column="33"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat df = new SimpleDateFormat(rfc2455Format);"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/pbap/BluetoothPbapCallLogComposer.java"
-            line="226"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="                SimpleDateFormat parser = new SimpleDateFormat(TIMESTAMP_FORMAT);"
-        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/pbapclient/obex/CallLogPullRequest.java"
-            line="109"
-            column="43"/>
-    </issue>
-
-    <issue
-        id="SimpleDateFormat"
-        message="To get local formatting use `getDateInstance()`, `getDateTimeInstance()`, or `getTimeInstance()`, or use `new SimpleDateFormat(String template, Locale locale)` with for example `Locale.US` for ASCII dates."
-        errorLine1="        SimpleDateFormat parser = new SimpleDateFormat(TIMESTAMP_FORMAT);"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/pbapclient/PbapClientContactsStorage.java"
-            line="508"
-            column="35"/>
-    </issue>
-
-    <issue
         id="GuardedLogInvocation"
         message="Do not guard log invocations with if blocks using log enforcement variables or isLoggable(). The Log framework does this check for you. Remove the surrounding if block and call to log completely unguarded"
         errorLine1="        if (Log.isLoggable(TAG, Log.DEBUG)) {"
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpStateMachine.java"
-            line="679"
+            line="677"
             column="9"/>
     </issue>
 
@@ -393,7 +74,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpStateMachine.java"
-            line="679"
+            line="677"
             column="9"/>
     </issue>
 
@@ -404,7 +85,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpStateMachine.java"
-            line="679"
+            line="677"
             column="9"/>
     </issue>
 
@@ -415,7 +96,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="810"
+            line="805"
             column="9"/>
     </issue>
 
@@ -426,7 +107,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="810"
+            line="805"
             column="9"/>
     </issue>
 
@@ -437,7 +118,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="810"
+            line="805"
             column="9"/>
     </issue>
 
@@ -448,7 +129,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapService.java"
-            line="810"
+            line="805"
             column="9"/>
     </issue>
 
@@ -549,94 +230,6 @@
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/pbap/BluetoothPbapActivity.java"
             line="152"
             column="68"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="            sm.sendMessage(A2dpStateMachine.MESSAGE_STACK_EVENT, stackEvent);"
-        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/a2dp/A2dpService.java"
-            line="920"
-            column="45"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="            Config.setProfileEnabled(BluetoothProfile.LE_AUDIO_BROADCAST, false);"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1141"
-            column="20"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="            Config.setProfileEnabled(profileId, false);"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1146"
-            column="20"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        mMapService = BluetoothMapService.getBluetoothMapService();"
-        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1965"
-            column="43"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        mPbapService = BluetoothPbapService.getBluetoothPbapService();"
-        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1970"
-            column="45"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        mSapService = SapService.getSapService();"
-        errorLine2="                                 ~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="1974"
-            column="34"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="            mRemoteDevices.resetBatteryLevel(device, isBas);"
-        errorLine2="                           ~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="7201"
-            column="28"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="            mRemoteDevices.updateBatteryLevel(device, batteryLevel, isBas);"
-        errorLine2="                           ~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="7203"
-            column="28"/>
     </issue>
 
     <issue
@@ -945,61 +538,6 @@
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface.java"
             line="336"
             column="26"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                            BluetoothMapService.getBluetoothMapService()"
-        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapContent.java"
-            line="1262"
-            column="49"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                            BluetoothMapService.getBluetoothMapService()"
-        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListing.java"
-            line="104"
-            column="49"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                        BluetoothMapService.getBluetoothMapService().getRemoteDevice().getAddress(),"
-        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListing.java"
-            line="153"
-            column="45"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    BluetoothMapService.getBluetoothMapService().getRemoteDevice().getAddress(),"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapMessageListingElement.java"
-            line="276"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    BluetoothMapService.getBluetoothMapService().getRemoteDevice().getAddress();"
-        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/map/BluetoothMapbMessageSms.java"
-            line="93"
-            column="41"/>
     </issue>
 
     <issue
@@ -1361,7 +899,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="276"
+            line="277"
             column="38"/>
     </issue>
 
@@ -1372,7 +910,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="278"
+            line="279"
             column="42"/>
     </issue>
 
@@ -1383,7 +921,7 @@
         errorLine2="                         ~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="291"
+            line="292"
             column="26"/>
     </issue>
 
@@ -1394,7 +932,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="439"
+            line="440"
             column="42"/>
     </issue>
 
@@ -1405,7 +943,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="511"
+            line="512"
             column="30"/>
     </issue>
 
@@ -1416,7 +954,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="869"
+            line="870"
             column="48"/>
     </issue>
 
@@ -1427,7 +965,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="916"
+            line="917"
             column="48"/>
     </issue>
 
@@ -1438,7 +976,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="935"
+            line="936"
             column="34"/>
     </issue>
 
@@ -1449,7 +987,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="983"
+            line="984"
             column="33"/>
     </issue>
 
@@ -1460,7 +998,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1097"
+            line="1098"
             column="38"/>
     </issue>
 
@@ -1471,7 +1009,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1099"
+            line="1100"
             column="42"/>
     </issue>
 
@@ -1482,7 +1020,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1115"
+            line="1116"
             column="48"/>
     </issue>
 
@@ -1493,7 +1031,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1188"
+            line="1200"
             column="48"/>
     </issue>
 
@@ -1504,7 +1042,7 @@
         errorLine2="                         ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1242"
+            line="1265"
             column="26"/>
     </issue>
 
@@ -1515,7 +1053,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1378"
+            line="1401"
             column="30"/>
     </issue>
 
@@ -1526,7 +1064,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1421"
+            line="1444"
             column="35"/>
     </issue>
 
@@ -1537,7 +1075,7 @@
         errorLine2="                                                                ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1432"
+            line="1455"
             column="65"/>
     </issue>
 
@@ -1548,7 +1086,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1450"
+            line="1473"
             column="38"/>
     </issue>
 
@@ -1559,7 +1097,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1489"
+            line="1512"
             column="42"/>
     </issue>
 
@@ -1570,7 +1108,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1548"
+            line="1571"
             column="30"/>
     </issue>
 
@@ -1581,7 +1119,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1783"
+            line="1831"
             column="38"/>
     </issue>
 
@@ -1592,7 +1130,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1785"
+            line="1833"
             column="42"/>
     </issue>
 
@@ -1603,7 +1141,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1867"
+            line="1920"
             column="35"/>
     </issue>
 
@@ -1614,7 +1152,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1880"
+            line="1933"
             column="35"/>
     </issue>
 
@@ -1625,7 +1163,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1881"
+            line="1934"
             column="34"/>
     </issue>
 
@@ -1636,7 +1174,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1908"
+            line="1966"
             column="38"/>
     </issue>
 
@@ -1647,7 +1185,7 @@
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1910"
+            line="1968"
             column="42"/>
     </issue>
 
@@ -1658,7 +1196,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1931"
+            line="1989"
             column="35"/>
     </issue>
 
@@ -1669,7 +1207,7 @@
         errorLine2="                                                                ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1983"
+            line="2046"
             column="65"/>
     </issue>
 
@@ -1680,7 +1218,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1984"
+            line="2047"
             column="38"/>
     </issue>
 
@@ -1691,7 +1229,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1985"
+            line="2048"
             column="38"/>
     </issue>
 
@@ -1702,7 +1240,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1986"
+            line="2049"
             column="38"/>
     </issue>
 
@@ -1713,7 +1251,7 @@
         errorLine2="                                                 ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="1990"
+            line="2058"
             column="50"/>
     </issue>
 
@@ -1724,7 +1262,7 @@
         errorLine2="                                                ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2008"
+            line="2076"
             column="49"/>
     </issue>
 
@@ -1735,7 +1273,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2076"
+            line="2149"
             column="48"/>
     </issue>
 
@@ -1746,7 +1284,7 @@
         errorLine2="                                                                                     ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2221"
+            line="2294"
             column="86"/>
     </issue>
 
@@ -1757,7 +1295,7 @@
         errorLine2="                                                   ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2229"
+            line="2302"
             column="52"/>
     </issue>
 
@@ -1768,7 +1306,7 @@
         errorLine2="                                     ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2258"
+            line="2331"
             column="38"/>
     </issue>
 
@@ -1779,7 +1317,7 @@
         errorLine2="                                                       ~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2488"
+            line="2561"
             column="56"/>
     </issue>
 
@@ -1790,7 +1328,7 @@
         errorLine2="                                               ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2557"
+            line="2630"
             column="48"/>
     </issue>
 
@@ -1801,7 +1339,7 @@
         errorLine2="                                                                                  ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetService.java"
-            line="2636"
+            line="2709"
             column="83"/>
     </issue>
 
@@ -2021,7 +1559,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1336"
+            line="1342"
             column="47"/>
     </issue>
 
@@ -2032,7 +1570,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1360"
+            line="1366"
             column="53"/>
     </issue>
 
@@ -2043,7 +1581,7 @@
         errorLine2="                                          ~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1371"
+            line="1377"
             column="43"/>
     </issue>
 
@@ -2054,7 +1592,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1403"
+            line="1409"
             column="47"/>
     </issue>
 
@@ -2065,7 +1603,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1419"
+            line="1425"
             column="47"/>
     </issue>
 
@@ -2076,7 +1614,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1607"
+            line="1618"
             column="47"/>
     </issue>
 
@@ -2087,7 +1625,7 @@
         errorLine2="                                             ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1637"
+            line="1648"
             column="46"/>
     </issue>
 
@@ -2098,7 +1636,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1949"
+            line="1960"
             column="30"/>
     </issue>
 
@@ -2109,7 +1647,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1956"
+            line="1967"
             column="34"/>
     </issue>
 
@@ -2120,7 +1658,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1964"
+            line="1975"
             column="34"/>
     </issue>
 
@@ -2131,7 +1669,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1971"
+            line="1982"
             column="34"/>
     </issue>
 
@@ -2142,7 +1680,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1983"
+            line="1994"
             column="30"/>
     </issue>
 
@@ -2153,7 +1691,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1992"
+            line="2003"
             column="34"/>
     </issue>
 
@@ -2164,7 +1702,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1996"
+            line="2007"
             column="34"/>
     </issue>
 
@@ -2175,7 +1713,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="1998"
+            line="2009"
             column="34"/>
     </issue>
 
@@ -2186,7 +1724,7 @@
         errorLine2="                             ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2001"
+            line="2012"
             column="30"/>
     </issue>
 
@@ -2197,7 +1735,7 @@
         errorLine2="                                                              ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2129"
+            line="2140"
             column="63"/>
     </issue>
 
@@ -2208,7 +1746,7 @@
         errorLine2="                         ~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2167"
+            line="2178"
             column="26"/>
     </issue>
 
@@ -2219,7 +1757,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2432"
+            line="2443"
             column="26"/>
     </issue>
 
@@ -2230,7 +1768,7 @@
         errorLine2="                             ~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2610"
+            line="2621"
             column="30"/>
     </issue>
 
@@ -2241,7 +1779,7 @@
         errorLine2="                             ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2611"
+            line="2622"
             column="30"/>
     </issue>
 
@@ -2252,7 +1790,7 @@
         errorLine2="                                 ~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2619"
+            line="2630"
             column="34"/>
     </issue>
 
@@ -2263,7 +1801,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2622"
+            line="2633"
             column="35"/>
     </issue>
 
@@ -2274,7 +1812,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2754"
+            line="2765"
             column="26"/>
     </issue>
 
@@ -2285,7 +1823,7 @@
         errorLine2="                                                ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/hfp/HeadsetStateMachine.java"
-            line="2754"
+            line="2765"
             column="49"/>
     </issue>
 
@@ -2428,7 +1966,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/PhonePolicy.java"
-            line="197"
+            line="198"
             column="34"/>
     </issue>
 
@@ -2439,7 +1977,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/PhonePolicy.java"
-            line="202"
+            line="203"
             column="33"/>
     </issue>
 
@@ -2450,7 +1988,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/PhonePolicy.java"
-            line="587"
+            line="588"
             column="37"/>
     </issue>
 
@@ -2461,7 +1999,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/SilenceDeviceManager.java"
-            line="248"
+            line="238"
             column="25"/>
     </issue>
 
@@ -2472,7 +2010,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/SilenceDeviceManager.java"
-            line="252"
+            line="242"
             column="28"/>
     </issue>
 
@@ -2593,7 +2131,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="6511"
+            line="6457"
             column="17"/>
     </issue>
 
@@ -2703,7 +2241,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/opp/BluetoothOppLauncherActivity.java"
-            line="353"
+            line="337"
             column="5"/>
     </issue>
 
@@ -2714,7 +2252,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/MetricsLogger.java"
-            line="584"
+            line="585"
             column="5"/>
     </issue>
 
@@ -2725,7 +2263,7 @@
         errorLine2="        ^">
         <location
             file="packages/modules/Bluetooth/android/app/src/com/android/bluetooth/btservice/AdapterService.java"
-            line="747"
+            line="746"
             column="9"/>
     </issue>
 

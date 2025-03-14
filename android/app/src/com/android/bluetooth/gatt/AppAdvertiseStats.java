@@ -225,7 +225,8 @@ class AppAdvertiseStats {
                     new int[] {mAppUid},
                     new String[] {mAppName},
                     BluetoothStatsLog.LE_ADV_ERROR_REPORTED__LE_ADV_OP_CODE__ERROR_CODE_ON_START,
-                    convertStatusCode(status));
+                    convertStatusCode(status),
+                    getAttributionTag());
         }
         MetricsLogger.getInstance().cacheCount(BluetoothProtoEnums.LE_ADV_ERROR_ON_START_COUNT, 1);
     }
@@ -355,6 +356,10 @@ class AppAdvertiseStats {
         mAppImportance = importance;
     }
 
+    private String getAttributionTag() {
+        return mAttributionTag != null ? mAttributionTag : "";
+    }
+
     private static void recordAdvertiseDurationCount(
             Duration duration, boolean isConnectable, boolean inPeriodic) {
         if (duration.compareTo(Duration.ofMinutes(1)) < 0) {
@@ -430,7 +435,8 @@ class AppAdvertiseStats {
                             !mLegacy /* isExtendedAdv */,
                             instanceCount,
                             durationMs,
-                            mAppImportance);
+                            mAppImportance,
+                            getAttributionTag());
         }
         if (enable) {
             MetricsLogger.getInstance().cacheCount(BluetoothProtoEnums.LE_ADV_COUNT_ENABLE, 1);

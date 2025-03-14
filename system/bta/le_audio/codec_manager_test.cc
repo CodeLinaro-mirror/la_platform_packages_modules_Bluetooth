@@ -559,15 +559,16 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
   };
 
   // Stream parameters
+  auto stream_map_entry_mono_bidir =
+          stream_map_info(97, codec_spec_conf::kLeAudioLocationMonoAudio, true);
+  stream_map_entry_mono_bidir.codec_config.id = kLeAudioCodecIdLc3;
   types::BidirectionalPair<stream_parameters> stream_params{
           .sink =
                   {
                           .audio_channel_allocation = codec_spec_conf::kLeAudioLocationMonoAudio,
                           .stream_config =
                                   {
-                                          .stream_map = {stream_map_info(
-                                                  97, codec_spec_conf::kLeAudioLocationMonoAudio,
-                                                  true)},
+                                          .stream_map = {stream_map_entry_mono_bidir},
                                           .bits_per_sample = 16,
                                           .sampling_frequency_hz = 16000,
                                           .frame_duration_us = 10000,
@@ -583,9 +584,7 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
                           .audio_channel_allocation = codec_spec_conf::kLeAudioLocationMonoAudio,
                           .stream_config =
                                   {
-                                          .stream_map = {stream_map_info(
-                                                  97, codec_spec_conf::kLeAudioLocationMonoAudio,
-                                                  true)},
+                                          .stream_map = {stream_map_entry_mono_bidir},
                                           .bits_per_sample = 16,
                                           .sampling_frequency_hz = 16000,
                                           .frame_duration_us = 10000,
@@ -628,6 +627,7 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
         ASSERT_EQ(codec_spec_conf::kLeAudioLocationMonoAudio, info.audio_channel_allocation);
         // The connected should be active
         ASSERT_TRUE(info.is_stream_active);
+        ASSERT_EQ(info.codec_config.id.coding_format, kLeAudioCodecIdLc3.coding_format);
 
       } else {
         ASSERT_EQ(97, info.stream_handle);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -646,7 +646,8 @@ public class MetricsLogger {
             int numOngoingScan,
             boolean isScreenOn,
             boolean isAppDead,
-            int appImportance) {
+            int appImportance,
+            String attributionTag) {
         BluetoothStatsLog.write(
                 BluetoothStatsLog.LE_APP_SCAN_STATE_CHANGED,
                 uids,
@@ -662,7 +663,8 @@ public class MetricsLogger {
                 numOngoingScan,
                 isScreenOn,
                 isAppDead,
-                convertAppImportance(appImportance));
+                convertAppImportance(appImportance),
+                attributionTag);
     }
 
     /** Logs the radio scan stats with app attribution when the radio scan stopped. */
@@ -675,7 +677,8 @@ public class MetricsLogger {
             long scanWindowMillis,
             boolean isScreenOn,
             long scanDurationMillis,
-            int appImportance) {
+            int appImportance,
+            String attributionTag) {
         BluetoothStatsLog.write(
                 BluetoothStatsLog.LE_RADIO_SCAN_STOPPED,
                 uids,
@@ -686,7 +689,8 @@ public class MetricsLogger {
                 scanWindowMillis,
                 isScreenOn,
                 scanDurationMillis,
-                convertAppImportance(appImportance));
+                convertAppImportance(appImportance),
+                attributionTag);
     }
 
     /** Logs the advertise stats with app attribution when the advertise state changed. */
@@ -702,7 +706,8 @@ public class MetricsLogger {
             boolean isExtendedAdv,
             int instanceCount,
             long advDurationMs,
-            int appImportance) {
+            int appImportance,
+            String attributionTag) {
         BluetoothStatsLog.write(
                 BluetoothStatsLog.LE_ADV_STATE_CHANGED,
                 uids,
@@ -716,7 +721,8 @@ public class MetricsLogger {
                 isExtendedAdv,
                 instanceCount,
                 advDurationMs,
-                convertAppImportance(appImportance));
+                convertAppImportance(appImportance),
+                attributionTag);
     }
 
     protected String getAllowlistedDeviceNameHash(

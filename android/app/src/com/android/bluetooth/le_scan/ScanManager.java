@@ -1295,7 +1295,7 @@ public class ScanManager {
                 if (!Flags.bleScanAdvMetricsRedesign()) {
                     if (client.mStats != null
                             && !AppScanStats.recordScanRadioStart(
-                                    client.mSettings.getScanMode(),
+                                    client.mScanModeApp,
                                     client.mScannerId,
                                     client.mStats,
                                     getScanWindowMillis(client.mSettings),

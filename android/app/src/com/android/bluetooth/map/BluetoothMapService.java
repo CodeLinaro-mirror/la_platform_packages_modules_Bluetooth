@@ -59,7 +59,6 @@ import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.content_profiles.ContentProfileErrorReportUtils;
@@ -710,11 +709,8 @@ public class BluetoothMapService extends ProfileService {
     }
 
     /**
-     * Get the current instance of {@link BluetoothMapService}
-     *
      * @return current instance of {@link BluetoothMapService}
      */
-    @VisibleForTesting
     public static synchronized BluetoothMapService getBluetoothMapService() {
         if (sBluetoothMapService == null) {
             Log.w(TAG, "getBluetoothMapService(): service is null");

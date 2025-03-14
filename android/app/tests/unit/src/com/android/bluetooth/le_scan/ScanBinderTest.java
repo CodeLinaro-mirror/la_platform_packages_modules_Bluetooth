@@ -21,7 +21,6 @@ import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothDevice;
@@ -67,7 +66,6 @@ public class ScanBinderTest {
 
     @Before
     public void setUp() {
-        when(mScanController.isAvailable()).thenReturn(true);
         mBinder = new ScanBinder(mScanController);
     }
 
@@ -187,5 +185,10 @@ public class ScanBinderTest {
     public void numHwTrackFiltersAvailable() {
         mBinder.numHwTrackFiltersAvailable(mAttributionSource);
         verify(mScanController).numHwTrackFiltersAvailable(mAttributionSource);
+    }
+
+    @Test
+    public void cleanup_doesNotCrash() {
+        mBinder.cleanup();
     }
 }

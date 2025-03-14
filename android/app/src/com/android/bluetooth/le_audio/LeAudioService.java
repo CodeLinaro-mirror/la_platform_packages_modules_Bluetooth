@@ -2531,27 +2531,21 @@ public class LeAudioService extends ProfileService {
          * broadcaster.
          */
         if (isAnyBroadcastInStreamingState()) {
-            LeAudioGroupDescriptor fallbackGroupDescriptor = getGroupDescriptor(groupId);
+            Log.w(TAG, "setActiveGroupWithDevice: Setting active device while broadcasting");
 
             // If broadcast is ongoing and need to update unicast fallback active group
             // we need to update the cached group id and skip changing the active device
-            updateFallbackUnicastGroupIdForBroadcast(groupId);
+            if (!leaudioBroadcastApiManagePrimaryGroup()) {
+                updateFallbackUnicastGroupIdForBroadcast(groupId);
 
-            if (!leaudioUseAudioRecordingListener()) {
-                if (fallbackGroupDescriptor != null) {
-                    if (groupId == LE_AUDIO_GROUP_ID_INVALID) {
-                        /* In case of removing fallback unicast group, monitoring input device
-                         * should be removed from active devices.
-                         */
-                        updateActiveDevices(
-                                groupId,
-                                fallbackGroupDescriptor.mDirection,
-                                AUDIO_DIRECTION_INPUT_BIT,
-                                false,
-                                fallbackGroupDescriptor.mHasFallbackDeviceWhenGettingInactive,
-                                true);
-                    } else {
-                        if (mActiveAudioInDevice != null) {
+                if (!leaudioUseAudioRecordingListener()) {
+                    LeAudioGroupDescriptor fallbackGroupDescriptor = getGroupDescriptor(groupId);
+
+                    if (fallbackGroupDescriptor != null) {
+                        if (groupId == LE_AUDIO_GROUP_ID_INVALID) {
+                            /* In case of removing fallback unicast group, monitoring input device
+                             * should be removed from active devices.
+                             */
                             updateActiveDevices(
                                     groupId,
                                     fallbackGroupDescriptor.mDirection,
@@ -2559,6 +2553,17 @@ public class LeAudioService extends ProfileService {
                                     false,
                                     fallbackGroupDescriptor.mHasFallbackDeviceWhenGettingInactive,
                                     true);
+                        } else {
+                            if (mActiveAudioInDevice != null) {
+                                updateActiveDevices(
+                                        groupId,
+                                        fallbackGroupDescriptor.mDirection,
+                                        AUDIO_DIRECTION_INPUT_BIT,
+                                        false,
+                                        fallbackGroupDescriptor
+                                                .mHasFallbackDeviceWhenGettingInactive,
+                                        true);
+                            }
                         }
                     }
                 }

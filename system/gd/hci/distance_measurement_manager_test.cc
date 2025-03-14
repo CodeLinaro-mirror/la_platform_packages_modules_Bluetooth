@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@
 #include "packet/packet_view.h"
 #include "ras/ras_packets.h"
 
+using testing::_;
 using testing::AtLeast;
 using testing::Return;
 
@@ -52,6 +53,9 @@ protected:
 };
 
 class TestAclManager : public testing::MockAclManager {
+public:
+  void AddDeviceToRelaxedConnectionIntervalList(const Address /*address*/) override {}
+
 protected:
   void Start() override {}
   void Stop() override {}
@@ -65,7 +69,7 @@ struct CsReadCapabilitiesCompleteEvent {
   uint8_t num_antennas_supported = 2;
   uint8_t max_antenna_paths_supported = 4;
   CsRoleSupported roles_supported = {/*initiator=*/1, /*reflector=*/1};
-  CsOptionalModesSupported modes_supported = {/*mode_3=*/1};
+  unsigned char modes_supported = {/*mode_3=*/1};
   CsRttCapability rtt_capability = {/*rtt_aa_only_n=*/1, /*rtt_sounding_n=*/1,
                                     /*rtt_random_payload_n=*/1};
   uint8_t rtt_aa_only_n = 1;
@@ -172,9 +176,55 @@ protected:
             cs_cap_complete_event.t_sw_time_supported, cs_cap_complete_event.tx_snr_capability);
   }
 
+  static std::unique_ptr<LeCsReadRemoteSupportedCapabilitiesCompleteBuilder>
+  GetRemoteSupportedCapabilitiesCompleteEvent(
+          uint16_t connection_handle,
+          const CsReadCapabilitiesCompleteEvent& cs_cap_complete_event) {
+    return LeCsReadRemoteSupportedCapabilitiesCompleteBuilder::Create(
+            cs_cap_complete_event.error_code, connection_handle,
+            cs_cap_complete_event.num_config_supported,
+            cs_cap_complete_event.max_consecutive_procedures_supported,
+            cs_cap_complete_event.num_antennas_supported,
+            cs_cap_complete_event.max_antenna_paths_supported,
+            cs_cap_complete_event.roles_supported, cs_cap_complete_event.modes_supported,
+            cs_cap_complete_event.rtt_capability, cs_cap_complete_event.rtt_aa_only_n,
+            cs_cap_complete_event.rtt_sounding_n, cs_cap_complete_event.rtt_random_payload_n,
+            cs_cap_complete_event.nadm_sounding_capability,
+            cs_cap_complete_event.nadm_random_capability,
+            cs_cap_complete_event.cs_sync_phys_supported,
+            cs_cap_complete_event.subfeatures_supported,
+            cs_cap_complete_event.t_ip1_times_supported,
+            cs_cap_complete_event.t_ip2_times_supported,
+            cs_cap_complete_event.t_fcs_times_supported, cs_cap_complete_event.t_pm_times_supported,
+            cs_cap_complete_event.t_sw_time_supported, cs_cap_complete_event.tx_snr_capability);
+  }
+
   void StartMeasurement(const StartMeasurementParameters& params) {
     dm_manager_->StartDistanceMeasurement(params.remote_address, params.connection_handle,
                                           params.local_hci_role, params.interval, params.method);
+  }
+
+  void ReceivedReadLocalCapabilitiesComplete() {
+    CsReadCapabilitiesCompleteEvent read_cs_complete_event;
+    test_hci_layer_->IncomingEvent(
+            GetLocalSupportedCapabilitiesCompleteEvent(read_cs_complete_event));
+  }
+
+  void StartMeasurementTillRasConnectedEvent(const StartMeasurementParameters& params) {
+    ReceivedReadLocalCapabilitiesComplete();
+    EXPECT_CALL(*mock_ranging_hal_, OpenSession(_, _, _))
+            .WillOnce([this](uint16_t connection_handle, uint16_t /*att_handle*/,
+                             const std::vector<hal::VendorSpecificCharacteristic>&
+                                     vendor_specific_data) {
+              mock_ranging_hal_->GetRangingHalCallback()->OnOpened(connection_handle,
+                                                                   vendor_specific_data);
+            });
+    StartMeasurement(params);
+    dm_manager_->HandleRasClientConnectedEvent(
+            params.remote_address, params.connection_handle,
+            /*att_handle=*/0,
+            /*vendor_specific_data=*/std::vector<hal::VendorSpecificCharacteristic>(),
+            /*conn_interval=*/24);
   }
 
 protected:
@@ -220,6 +270,76 @@ TEST_F(DistanceMeasurementManagerTest, fail_read_local_cs_capabilities) {
   dm_session_future.wait_for(kTimeout);
   sync_client_handler();
 }
+
+TEST_F(DistanceMeasurementManagerTest, ras_remote_not_support) {
+  ReceivedReadLocalCapabilitiesComplete();
+  StartMeasurementParameters params;
+  auto dm_session_future = GetDmSessionFuture();
+  EXPECT_CALL(mock_dm_callbacks_,
+              OnDistanceMeasurementStopped(
+                      params.remote_address,
+                      DistanceMeasurementErrorCode::REASON_FEATURE_NOT_SUPPORTED_REMOTE,
+                      DistanceMeasurementMethod::METHOD_CS))
+          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+                           DistanceMeasurementMethod /*method*/) {
+            ASSERT_NE(dm_session_promise_, nullptr);
+            dm_session_promise_->set_value();
+            dm_session_promise_.reset();
+          });
+
+  StartMeasurement(params);
+  dm_manager_->HandleRasClientDisconnectedEvent(params.remote_address,
+                                                ras::RasDisconnectReason::SERVER_NOT_AVAILABLE);
+
+  dm_session_future.wait_for(kTimeout);
+  sync_client_handler();
+}
+
+TEST_F(DistanceMeasurementManagerTest, error_read_remote_cs_caps_command) {
+  auto dm_session_future = GetDmSessionFuture();
+  StartMeasurementParameters params;
+  StartMeasurementTillRasConnectedEvent(params);
+
+  EXPECT_CALL(mock_dm_callbacks_,
+              OnDistanceMeasurementStopped(params.remote_address,
+                                           DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
+                                           DistanceMeasurementMethod::METHOD_CS))
+          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+                           DistanceMeasurementMethod /*method*/) {
+            ASSERT_NE(dm_session_promise_, nullptr);
+            dm_session_promise_->set_value();
+            dm_session_promise_.reset();
+          });
+
+  test_hci_layer_->GetCommand(OpCode::LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES);
+  test_hci_layer_->IncomingEvent(LeCsReadRemoteSupportedCapabilitiesStatusBuilder::Create(
+          /*status=*/ErrorCode::COMMAND_DISALLOWED,
+          /*num_hci_command_packets=*/0xff));
+}
+
+TEST_F(DistanceMeasurementManagerTest, fail_read_remote_cs_caps_complete) {
+  auto dm_session_future = GetDmSessionFuture();
+  StartMeasurementParameters params;
+  StartMeasurementTillRasConnectedEvent(params);
+
+  EXPECT_CALL(mock_dm_callbacks_,
+              OnDistanceMeasurementStopped(params.remote_address,
+                                           DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
+                                           DistanceMeasurementMethod::METHOD_CS))
+          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+                           DistanceMeasurementMethod /*method*/) {
+            ASSERT_NE(dm_session_promise_, nullptr);
+            dm_session_promise_->set_value();
+            dm_session_promise_.reset();
+          });
+
+  test_hci_layer_->GetCommand(OpCode::LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES);
+  CsReadCapabilitiesCompleteEvent read_cs_complete_event;
+  read_cs_complete_event.error_code = ErrorCode::COMMAND_DISALLOWED;
+  test_hci_layer_->IncomingLeMetaEvent(GetRemoteSupportedCapabilitiesCompleteEvent(
+          params.connection_handle, read_cs_complete_event));
+}
+
 }  // namespace
 }  // namespace hci
 }  // namespace bluetooth

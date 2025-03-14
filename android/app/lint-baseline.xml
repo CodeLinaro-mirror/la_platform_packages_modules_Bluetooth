@@ -2,17 +2,6 @@
 <issues format="6" by="lint 8.4.0-alpha08" type="baseline" client="" dependencies="true" name="" variant="all" version="8.4.0-alpha08">
 
     <issue
-        id="UnknownIssueId"
-        message="Unknown issue id &quot;GetterSetterNullability&quot;"
-        errorLine1="  &lt;issue id=&apos;GetterSetterNullability&apos; severity=&apos;error&apos; />"
-        errorLine2="  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="./out/lint.xml"
-            line="125"
-            column="3"/>
-    </issue>
-
-    <issue
         id="ScrollViewSize"
         message="This LinearLayout should use `android:layout_height=&quot;wrap_content&quot;`"
         errorLine1="    android:layout_height=&quot;match_parent&quot;"
@@ -120,17 +109,6 @@
             file="./out/soong/.intermediates/packages/modules/Bluetooth/android/app/Bluetooth/android_common_apex36/manifest_merger/AndroidManifest.xml"
             line="206"
             column="17"/>
-    </issue>
-
-    <issue
-        id="QueryAllPackagesPermission"
-        message="A `&lt;queries>` declaration should generally be used instead of QUERY_ALL_PACKAGES; see https://g.co/dev/packagevisibility for details"
-        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.QUERY_ALL_PACKAGES&quot; />"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="./out/soong/.intermediates/packages/modules/Bluetooth/android/app/Bluetooth/android_common_apex36/manifest_merger/AndroidManifest.xml"
-            line="61"
-            column="22"/>
     </issue>
 
     <issue

@@ -1299,7 +1299,11 @@ public class LeAudioServiceTest {
 
     /** Test update unicast fallback active group when broadcast is ongoing */
     @Test
-    @DisableFlags(Flags.FLAG_LEAUDIO_BROADCAST_PRIMARY_GROUP_SELECTION)
+    @DisableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_PRIMARY_GROUP_SELECTION,
+        Flags.FLAG_LEAUDIO_BROADCAST_API_MANAGE_PRIMARY_GROUP,
+        Flags.FLAG_LEAUDIO_USE_AUDIO_RECORDING_LISTENER
+    })
     public void testUpdateUnicastFallbackActiveDeviceGroupDuringBroadcast() {
         List<BluetoothDevice> devices = new ArrayList<>();
         int groupId = 1;

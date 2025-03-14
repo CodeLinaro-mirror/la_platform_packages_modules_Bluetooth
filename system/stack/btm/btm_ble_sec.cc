@@ -744,16 +744,28 @@ tBTM_STATUS btm_ble_start_sec_check(const RawAddress& bd_addr, uint16_t psm, boo
   bool is_encrypted = BTM_IsEncrypted(bd_addr, BT_TRANSPORT_LE);
   bool is_link_key_authed = BTM_IsLinkKeyAuthed(bd_addr, BT_TRANSPORT_LE);
   bool is_authenticated = BTM_IsAuthenticated(bd_addr, BT_TRANSPORT_LE);
+  bool is_bonded = BTM_IsBonded(bd_addr, BT_TRANSPORT_LE);
 
   if (!is_originator) {
-    if ((p_serv_rec->security_flags & BTM_SEC_IN_ENCRYPT) && !is_encrypted) {
-      log::error("BTM_NOT_ENCRYPTED. service security_flags=0x{:x}", p_serv_rec->security_flags);
-      return tBTM_STATUS::BTM_NOT_ENCRYPTED;
-    } else if ((p_serv_rec->security_flags & BTM_SEC_IN_AUTHENTICATE) &&
-               !(is_link_key_authed || is_authenticated)) {
-      log::error("tBTM_STATUS::BTM_NOT_AUTHENTICATED. service security_flags=0x{:x}",
-                 p_serv_rec->security_flags);
-      return tBTM_STATUS::BTM_NOT_AUTHENTICATED;
+    if (!com::android::bluetooth::flags::donot_mandate_auth_along_with_encryption()) {
+      if ((p_serv_rec->security_flags & BTM_SEC_IN_ENCRYPT) && !is_encrypted) {
+        log::error("BTM_NOT_ENCRYPTED. service security_flags=0x{:x}", p_serv_rec->security_flags);
+        return tBTM_STATUS::BTM_NOT_ENCRYPTED;
+      } else if ((p_serv_rec->security_flags & BTM_SEC_IN_AUTHENTICATE) &&
+                 !(is_link_key_authed || is_authenticated)) {
+        log::error("tBTM_STATUS::BTM_NOT_AUTHENTICATED. service security_flags=0x{:x}",
+                   p_serv_rec->security_flags);
+        return tBTM_STATUS::BTM_NOT_AUTHENTICATED;
+      }
+    } else {
+      if ((p_serv_rec->security_flags & BTM_SEC_IN_ENCRYPT) && !is_encrypted) {
+        log::error("BTM_NOT_ENCRYPTED. service security_flags=0x{:x}", p_serv_rec->security_flags);
+        return tBTM_STATUS::BTM_NOT_ENCRYPTED;
+      } else if ((p_serv_rec->security_flags & BTM_SEC_IN_AUTHENTICATE) && !(is_bonded)) {
+        log::error("tBTM_STATUS::BTM_NOT_AUTHENTICATED. service security_flags=0x{:x}",
+                   p_serv_rec->security_flags);
+        return tBTM_STATUS::BTM_NOT_AUTHENTICATED;
+      }
     }
     /* TODO: When security is required, then must check that the key size of our
        service is equal or smaller than the incoming connection key size. */
@@ -1677,7 +1689,6 @@ static void btm_ble_consent_req(const RawAddress& bd_addr, tBTM_LE_EVT_DATA* p_d
 
 static void btm_ble_complete_evt(const RawAddress& bd_addr, tBTM_SEC_DEV_REC* p_dev_rec,
                                  tBTM_LE_EVT_DATA* p_data) {
-
   if (btm_ble_complete_evt_ignore(p_dev_rec, p_data)) {
     return;
   }

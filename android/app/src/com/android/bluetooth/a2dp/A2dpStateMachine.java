@@ -80,7 +80,7 @@ final class A2dpStateMachine extends StateMachine {
 
     static final int MESSAGE_CONNECT = 1;
     static final int MESSAGE_DISCONNECT = 2;
-    @VisibleForTesting static final int MESSAGE_STACK_EVENT = 101;
+    static final int MESSAGE_STACK_EVENT = 101;
     private static final int MESSAGE_CONNECT_TIMEOUT = 201;
 
     @VisibleForTesting static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);

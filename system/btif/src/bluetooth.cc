@@ -71,7 +71,6 @@
 #include "btif/include/btif_hh.h"
 #include "btif/include/btif_keystore.h"
 #include "btif/include/btif_le_audio.h"
-#include "btif/include/btif_metrics_logging.h"
 #include "btif/include/btif_pan.h"
 #include "btif/include/btif_profile_storage.h"
 #include "btif/include/btif_rc.h"
@@ -99,6 +98,7 @@
 #include "hardware/bt_vc.h"
 #include "internal_include/bt_target.h"
 #include "main/shim/dumpsys.h"
+#include "main/shim/metric_id_api.h"
 #include "os/parameter_provider.h"
 #include "osi/include/alarm.h"
 #include "osi/include/allocator.h"
@@ -1099,7 +1099,7 @@ static std::string obfuscate_address(const RawAddress& address) {
 }
 
 static int get_metric_id(const RawAddress& address) {
-  return allocate_metric_id_from_metric_id_allocator(address);
+  return bluetooth::shim::AllocateIdFromMetricIdAllocator(address);
 }
 
 static int set_dynamic_audio_buffer_size(int codec, int size) {

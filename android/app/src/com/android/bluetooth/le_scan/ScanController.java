@@ -72,11 +72,9 @@ import libcore.util.HexEncoding;
 
 import com.google.protobuf.ByteString;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -137,7 +135,6 @@ public class ScanController {
 
     private volatile boolean mTestModeEnabled = false;
     private ScannerMap mScannerMap = new ScannerMap();
-    private boolean mIsAvailable;
     private Handler mTestModeHandler;
 
     public ScanController(AdapterService adapterService) {
@@ -165,7 +162,6 @@ public class ScanController {
                 };
         mMainLooper = adapterService.getMainLooper();
         mBinder = new ScanBinder(this);
-        mIsAvailable = true;
         mScanThread = new HandlerThread("BluetoothScanManager");
         mScanThread.start();
         mAppOps = mAdapterService.getSystemService(AppOpsManager.class);
@@ -182,16 +178,11 @@ public class ScanController {
 
     public void cleanup() {
         Log.i(TAG, "Cleanup ScanController");
-        mIsAvailable = false;
-        mBinder.clearScanController();
+        mBinder.cleanup();
         mScanThread.quitSafely();
         mScannerMap.clear();
         mScanManager.cleanup();
         mPeriodicScanManager.cleanup();
-    }
-
-    boolean isAvailable() {
-        return mIsAvailable;
     }
 
     ScannerMap getScannerMap() {

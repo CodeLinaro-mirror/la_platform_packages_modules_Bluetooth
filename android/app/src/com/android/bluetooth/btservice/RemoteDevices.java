@@ -910,15 +910,6 @@ public class RemoteDevices {
         properties.setBondingInitiatedLocally(true);
     }
 
-    /**
-     * Update battery level in device properties
-     *
-     * @param device The remote device to be updated
-     * @param batteryLevel Battery level Indicator between 0-100, {@link
-     *     BluetoothDevice#BATTERY_LEVEL_UNKNOWN} is error
-     * @param isBas true if the battery level is from the battery service
-     */
-    @VisibleForTesting
     void updateBatteryLevel(BluetoothDevice device, int batteryLevel, boolean isBas) {
         if (device == null || batteryLevel < 0 || batteryLevel > 100) {
             warnLog(
@@ -952,12 +943,6 @@ public class RemoteDevices {
         Log.d(TAG, "Updated device " + device + " battery level to " + newBatteryLevel + "%");
     }
 
-    /**
-     * Reset battery level property to {@link BluetoothDevice#BATTERY_LEVEL_UNKNOWN} for a device
-     *
-     * @param device device whose battery level property needs to be reset
-     */
-    @VisibleForTesting
     void resetBatteryLevel(BluetoothDevice device, boolean isBas) {
         if (device == null) {
             warnLog("Device is null");
