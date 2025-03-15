@@ -880,7 +880,7 @@ public:
   bt_status_t DisconnectAudio(RawAddress* bd_addr) override;
   bt_status_t isNoiseReductionSupported(RawAddress* bd_addr) override;
   bt_status_t isVoiceRecognitionSupported(RawAddress* bd_addr) override;
-  bt_status_t StartVoiceRecognition(RawAddress* bd_addr) override;
+  bt_status_t StartVoiceRecognition(RawAddress* bd_addr, bool sendResult) override;
   bt_status_t StopVoiceRecognition(RawAddress* bd_addr) override;
   bt_status_t VolumeControl(bthf_volume_type_t type, int volume, RawAddress* bd_addr) override;
   bt_status_t DeviceStatusNotification(bthf_network_state_t ntk_state, bthf_service_type_t svc_type,
@@ -1023,7 +1023,7 @@ bt_status_t HeadsetInterface::isVoiceRecognitionSupported(RawAddress* bd_addr) {
   return BT_STATUS_SUCCESS;
 }
 
-bt_status_t HeadsetInterface::StartVoiceRecognition(RawAddress* bd_addr) {
+bt_status_t HeadsetInterface::StartVoiceRecognition(RawAddress* bd_addr, bool sendResult) {
   CHECK_BTHF_INIT();
   int idx = btif_hf_idx_by_bdaddr(bd_addr);
   if ((idx < 0) || (idx >= BTA_AG_MAX_NUM_CLIENTS)) {
@@ -1039,9 +1039,11 @@ bt_status_t HeadsetInterface::StartVoiceRecognition(RawAddress* bd_addr) {
     return BT_STATUS_UNSUPPORTED;
   }
   btif_hf_cb[idx].is_during_voice_recognition = true;
-  tBTA_AG_RES_DATA ag_res = {};
-  ag_res.state = true;
-  BTA_AgResult(btif_hf_cb[idx].handle, BTA_AG_BVRA_RES, ag_res);
+  if (sendResult) {
+    tBTA_AG_RES_DATA ag_res = {};
+    ag_res.state = true;
+    BTA_AgResult(btif_hf_cb[idx].handle, BTA_AG_BVRA_RES, ag_res);
+  }
   return BT_STATUS_SUCCESS;
 }
 

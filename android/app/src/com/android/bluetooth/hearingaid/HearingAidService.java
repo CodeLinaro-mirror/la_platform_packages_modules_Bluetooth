@@ -1052,7 +1052,8 @@ public class HearingAidService extends ProfileService {
 
             if (!Utils.checkServiceAvailable(service, TAG)
                     || !Utils.checkCallerIsSystemOrActiveOrManagedUser(service, TAG)
-                    || !Utils.checkScanPermissionForDataDelivery(service, source, TAG)) {
+                    || !Utils.checkScanPermissionForDataDelivery(
+                            service, source, TAG, "getAdvertisementServiceData")) {
                 return null;
             }
 

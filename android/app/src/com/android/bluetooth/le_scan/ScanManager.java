@@ -1292,18 +1292,6 @@ public class ScanManager {
                     && client.mSettings.getScanMode() != ScanSettings.SCAN_MODE_OPPORTUNISTIC) {
                 Log.d(TAG, "start gattClientScanNative from startRegularScan()");
                 mNativeInterface.gattClientScan(true);
-                if (!Flags.bleScanAdvMetricsRedesign()) {
-                    if (client.mStats != null
-                            && !AppScanStats.recordScanRadioStart(
-                                    client.mScanModeApp,
-                                    client.mScannerId,
-                                    client.mStats,
-                                    getScanWindowMillis(client.mSettings),
-                                    getScanIntervalMillis(client.mSettings),
-                                    mTimeProvider)) {
-                        Log.w(TAG, "Scan radio already started");
-                    }
-                }
             }
         }
 

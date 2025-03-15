@@ -1227,7 +1227,6 @@ public class ScanManagerTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_BLE_SCAN_ADV_METRICS_REDESIGN)
     public void testMetricsAppScanScreenOn() {
         // Set filtered scan flag
         final boolean isFiltered = true;
@@ -1324,7 +1323,6 @@ public class ScanManagerTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_BLE_SCAN_ADV_METRICS_REDESIGN)
     public void testMetricsRadioScanScreenOnOffMultiScan() {
         // Set filtered scan flag
         final boolean isFiltered = true;

@@ -624,6 +624,13 @@ public final class Utils {
         return checkPermissionForDataDelivery(context, BLUETOOTH_CONNECT, source, message);
     }
 
+    @SuppressLint("AndroidFrameworkRequiresPermission") // This method enforce the permission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public static boolean checkConnectPermissionForDataDelivery(
+            Context context, AttributionSource source, String tag, String method) {
+        return checkConnectPermissionForDataDelivery(context, source, tag + "." + method + "()");
+    }
+
     /**
      * Returns true if the BLUETOOTH_SCAN permission is granted for the calling app. Returns false
      * if the result is a soft denial. Throws SecurityException if the result is a hard denial.
@@ -646,8 +653,9 @@ public final class Utils {
     @SuppressLint("AndroidFrameworkRequiresPermission") // This method enforce the permission
     @RequiresPermission(BLUETOOTH_SCAN)
     public static boolean checkScanPermissionForDataDelivery(
-            Context context, AttributionSource source, String message) {
-        return checkPermissionForDataDelivery(context, BLUETOOTH_SCAN, source, message);
+            Context context, AttributionSource source, String tag, String method) {
+        return checkPermissionForDataDelivery(
+                context, BLUETOOTH_SCAN, source, tag + "." + method + "()");
     }
 
     /**

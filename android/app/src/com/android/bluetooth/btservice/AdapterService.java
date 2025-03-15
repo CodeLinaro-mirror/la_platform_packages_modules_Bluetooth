@@ -314,10 +314,10 @@ public class AdapterService extends Service {
     private BluetoothSocketManagerBinder mBluetoothSocketManagerBinder;
 
     private BluetoothKeystoreService mBluetoothKeystoreService;
-    private A2dpService mA2dpService;
-    private A2dpSinkService mA2dpSinkService;
     private HeadsetService mHeadsetService;
     private HeadsetClientService mHeadsetClientService;
+    private A2dpService mA2dpService;
+    private A2dpSinkService mA2dpSinkService;
     private BluetoothMapService mMapService;
     private MapClientService mMapClientService;
     private HidDeviceService mHidDeviceService;
@@ -1762,20 +1762,20 @@ public class AdapterService extends Service {
      * @return false if one of profile is enabled or disabled, true otherwise
      */
     boolean isAllProfilesUnknown(BluetoothDevice device) {
-        if (mA2dpService != null
-                && mA2dpService.getConnectionPolicy(device) != CONNECTION_POLICY_UNKNOWN) {
-            return false;
-        }
-        if (mA2dpSinkService != null
-                && mA2dpSinkService.getConnectionPolicy(device) != CONNECTION_POLICY_UNKNOWN) {
-            return false;
-        }
         if (mHeadsetService != null
                 && mHeadsetService.getConnectionPolicy(device) != CONNECTION_POLICY_UNKNOWN) {
             return false;
         }
         if (mHeadsetClientService != null
                 && mHeadsetClientService.getConnectionPolicy(device) != CONNECTION_POLICY_UNKNOWN) {
+            return false;
+        }
+        if (mA2dpService != null
+                && mA2dpService.getConnectionPolicy(device) != CONNECTION_POLICY_UNKNOWN) {
+            return false;
+        }
+        if (mA2dpSinkService != null
+                && mA2dpSinkService.getConnectionPolicy(device) != CONNECTION_POLICY_UNKNOWN) {
             return false;
         }
         if (mMapClientService != null
@@ -1837,18 +1837,7 @@ public class AdapterService extends Service {
             Log.i(TAG, "connectEnabledProfiles: Connecting Coordinated Set Profile");
             mCsipSetCoordinatorService.connect(device);
         }
-        if (mA2dpService != null
-                && isProfileSupported(device, BluetoothProfile.A2DP)
-                && mA2dpService.getConnectionPolicy(device) > CONNECTION_POLICY_FORBIDDEN) {
-            Log.i(TAG, "connectEnabledProfiles: Connecting A2dp");
-            mA2dpService.connect(device);
-        }
-        if (mA2dpSinkService != null
-                && isProfileSupported(device, BluetoothProfile.A2DP_SINK)
-                && mA2dpSinkService.getConnectionPolicy(device) > CONNECTION_POLICY_FORBIDDEN) {
-            Log.i(TAG, "connectEnabledProfiles: Connecting A2dp Sink");
-            mA2dpSinkService.connect(device);
-        }
+        // Order matters, some devices do not accept A2DP connection before HFP connection
         if (mHeadsetService != null
                 && isProfileSupported(device, BluetoothProfile.HEADSET)
                 && mHeadsetService.getConnectionPolicy(device) > CONNECTION_POLICY_FORBIDDEN) {
@@ -1861,6 +1850,18 @@ public class AdapterService extends Service {
                         > CONNECTION_POLICY_FORBIDDEN) {
             Log.i(TAG, "connectEnabledProfiles: Connecting HFP");
             mHeadsetClientService.connect(device);
+        }
+        if (mA2dpService != null
+                && isProfileSupported(device, BluetoothProfile.A2DP)
+                && mA2dpService.getConnectionPolicy(device) > CONNECTION_POLICY_FORBIDDEN) {
+            Log.i(TAG, "connectEnabledProfiles: Connecting A2dp");
+            mA2dpService.connect(device);
+        }
+        if (mA2dpSinkService != null
+                && isProfileSupported(device, BluetoothProfile.A2DP_SINK)
+                && mA2dpSinkService.getConnectionPolicy(device) > CONNECTION_POLICY_FORBIDDEN) {
+            Log.i(TAG, "connectEnabledProfiles: Connecting A2dp Sink");
+            mA2dpSinkService.connect(device);
         }
         if (mMapClientService != null
                 && isProfileSupported(device, BluetoothProfile.MAP_CLIENT)
@@ -1944,10 +1945,10 @@ public class AdapterService extends Service {
     /** Initializes all the profile services fields */
     private void initProfileServices() {
         Log.i(TAG, "initProfileServices: Initializing all bluetooth profile services");
-        mA2dpService = A2dpService.getA2dpService();
-        mA2dpSinkService = A2dpSinkService.getA2dpSinkService();
         mHeadsetService = HeadsetService.getHeadsetService();
         mHeadsetClientService = HeadsetClientService.getHeadsetClientService();
+        mA2dpService = A2dpService.getA2dpService();
+        mA2dpSinkService = A2dpSinkService.getA2dpSinkService();
         mMapService = BluetoothMapService.getBluetoothMapService();
         mMapClientService = MapClientService.getMapClientService();
         mHidDeviceService = HidDeviceService.getHidDeviceService();
@@ -2754,6 +2755,15 @@ public class AdapterService extends Service {
         return new BluetoothAddress(identityAddress, identityAddressType);
     }
 
+    public boolean addAssociatedPackage(BluetoothDevice device, String packageName) {
+        DeviceProperties deviceProp = mRemoteDevices.getDeviceProperties(device);
+        if (deviceProp == null) {
+            return false;
+        }
+        deviceProp.addPackage(packageName);
+        return true;
+    }
+
     private record CallerInfo(String callerPackageName, UserHandle user) {}
 
     boolean createBond(
@@ -3203,34 +3213,31 @@ public class AdapterService extends Service {
             Log.e(TAG, "setActiveDevice: Bluetooth is not enabled");
             return false;
         }
-        boolean setA2dp = false;
         boolean setHeadset = false;
+        boolean setA2dp = false;
 
         // Determine for which profiles we want to set device as our active device
         switch (profiles) {
-            case BluetoothAdapter.ACTIVE_DEVICE_AUDIO:
-                setA2dp = true;
-                break;
-            case BluetoothAdapter.ACTIVE_DEVICE_PHONE_CALL:
+            case BluetoothAdapter.ACTIVE_DEVICE_PHONE_CALL -> setHeadset = true;
+            case BluetoothAdapter.ACTIVE_DEVICE_AUDIO -> setA2dp = true;
+            case BluetoothAdapter.ACTIVE_DEVICE_ALL -> {
                 setHeadset = true;
-                break;
-            case BluetoothAdapter.ACTIVE_DEVICE_ALL:
                 setA2dp = true;
-                setHeadset = true;
-                break;
-            default:
+            }
+            default -> {
                 return false;
+            }
         }
 
-        boolean a2dpSupported =
-                mA2dpService != null
-                        && (device == null
-                                || mA2dpService.getConnectionPolicy(device)
-                                        == CONNECTION_POLICY_ALLOWED);
         boolean hfpSupported =
                 mHeadsetService != null
                         && (device == null
                                 || mHeadsetService.getConnectionPolicy(device)
+                                        == CONNECTION_POLICY_ALLOWED);
+        boolean a2dpSupported =
+                mA2dpService != null
+                        && (device == null
+                                || mA2dpService.getConnectionPolicy(device)
                                         == CONNECTION_POLICY_ALLOWED);
         boolean leAudioSupported =
                 mLeAudioService != null
@@ -3252,6 +3259,12 @@ public class AdapterService extends Service {
                 }
                 mLeAudioService.setActiveDevice(device);
             }
+        }
+
+        // Order matters, some devices do not accept A2DP connection before HFP connection
+        if (setHeadset && hfpSupported) {
+            Log.i(TAG, "setActiveDevice: Setting active Headset " + device);
+            mHeadsetService.setActiveDevice(device);
         }
 
         if (setA2dp && a2dpSupported) {
@@ -3285,11 +3298,6 @@ public class AdapterService extends Service {
             }
         }
 
-        if (setHeadset && hfpSupported) {
-            Log.i(TAG, "setActiveDevice: Setting active Headset " + device);
-            mHeadsetService.setActiveDevice(device);
-        }
-
         return true;
     }
 
@@ -3304,8 +3312,8 @@ public class AdapterService extends Service {
         if (mLeAudioService == null) {
             return false;
         }
-        boolean a2dpSupported = isProfileSupported(leAudioDevice, BluetoothProfile.A2DP);
         boolean hfpSupported = isProfileSupported(leAudioDevice, BluetoothProfile.HEADSET);
+        boolean a2dpSupported = isProfileSupported(leAudioDevice, BluetoothProfile.A2DP);
 
         List<BluetoothDevice> groupDevices = mLeAudioService.getGroupDevices(leAudioDevice);
         if (hfpSupported && mHeadsetService != null) {
@@ -3411,26 +3419,11 @@ public class AdapterService extends Service {
         return BluetoothStatusCodes.SUCCESS;
     }
 
-    /**
-     * Connect all supported bluetooth profiles between the local and remote device
-     *
-     * @param device is the remote device with which to connect all supported profiles
-     */
+    /** All profile toggles are disabled, so connects all supported profiles */
     void connectAllSupportedProfiles(BluetoothDevice device) {
         int numProfilesConnected = 0;
 
-        // All profile toggles disabled, so connects all supported profiles
-        if (mA2dpService != null && isProfileSupported(device, BluetoothProfile.A2DP)) {
-            Log.i(TAG, "connectAllSupportedProfiles: Connecting A2dp");
-            // Set connection policy also connects the profile with CONNECTION_POLICY_ALLOWED
-            mA2dpService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
-            numProfilesConnected++;
-        }
-        if (mA2dpSinkService != null && isProfileSupported(device, BluetoothProfile.A2DP_SINK)) {
-            Log.i(TAG, "connectAllSupportedProfiles: Connecting A2dp Sink");
-            mA2dpSinkService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
-            numProfilesConnected++;
-        }
+        // Order matters, some devices do not accept A2DP connection before HFP connection
         if (mHeadsetService != null && isProfileSupported(device, BluetoothProfile.HEADSET)) {
             Log.i(TAG, "connectAllSupportedProfiles: Connecting Headset Profile");
             mHeadsetService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
@@ -3440,6 +3433,17 @@ public class AdapterService extends Service {
                 && isProfileSupported(device, BluetoothProfile.HEADSET_CLIENT)) {
             Log.i(TAG, "connectAllSupportedProfiles: Connecting HFP");
             mHeadsetClientService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
+            numProfilesConnected++;
+        }
+        if (mA2dpService != null && isProfileSupported(device, BluetoothProfile.A2DP)) {
+            Log.i(TAG, "connectAllSupportedProfiles: Connecting A2dp");
+            // Set connection policy also connects the profile with CONNECTION_POLICY_ALLOWED
+            mA2dpService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
+            numProfilesConnected++;
+        }
+        if (mA2dpSinkService != null && isProfileSupported(device, BluetoothProfile.A2DP_SINK)) {
+            Log.i(TAG, "connectAllSupportedProfiles: Connecting A2dp Sink");
+            mA2dpSinkService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
             numProfilesConnected++;
         }
         if (mMapClientService != null && isProfileSupported(device, BluetoothProfile.MAP_CLIENT)) {
@@ -3530,18 +3534,6 @@ public class AdapterService extends Service {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
         }
 
-        if (mA2dpService != null
-                && (mA2dpService.getConnectionState(device) == STATE_CONNECTED
-                        || mA2dpService.getConnectionState(device) == STATE_CONNECTING)) {
-            Log.i(TAG, "disconnectAllEnabledProfiles: Disconnecting A2dp");
-            mA2dpService.disconnect(device);
-        }
-        if (mA2dpSinkService != null
-                && (mA2dpSinkService.getConnectionState(device) == STATE_CONNECTED
-                        || mA2dpSinkService.getConnectionState(device) == STATE_CONNECTING)) {
-            Log.i(TAG, "disconnectAllEnabledProfiles: Disconnecting A2dp Sink");
-            mA2dpSinkService.disconnect(device);
-        }
         if (mHeadsetService != null
                 && (mHeadsetService.getConnectionState(device) == STATE_CONNECTED
                         || mHeadsetService.getConnectionState(device) == STATE_CONNECTING)) {
@@ -3553,6 +3545,18 @@ public class AdapterService extends Service {
                         || mHeadsetClientService.getConnectionState(device) == STATE_CONNECTING)) {
             Log.i(TAG, "disconnectAllEnabledProfiles: Disconnecting HFP");
             mHeadsetClientService.disconnect(device);
+        }
+        if (mA2dpService != null
+                && (mA2dpService.getConnectionState(device) == STATE_CONNECTED
+                        || mA2dpService.getConnectionState(device) == STATE_CONNECTING)) {
+            Log.i(TAG, "disconnectAllEnabledProfiles: Disconnecting A2dp");
+            mA2dpService.disconnect(device);
+        }
+        if (mA2dpSinkService != null
+                && (mA2dpSinkService.getConnectionState(device) == STATE_CONNECTED
+                        || mA2dpSinkService.getConnectionState(device) == STATE_CONNECTING)) {
+            Log.i(TAG, "disconnectAllEnabledProfiles: Disconnecting A2dp Sink");
+            mA2dpSinkService.disconnect(device);
         }
         if (mMapClientService != null
                 && (mMapClientService.getConnectionState(device) == STATE_CONNECTED
@@ -4206,11 +4210,11 @@ public class AdapterService extends Service {
 
     /** Handle Bluetooth profiles when bond state changes with a {@link BluetoothDevice} */
     public void handleBondStateChanged(BluetoothDevice device, int fromState, int toState) {
-        if (mA2dpService != null && mA2dpService.isAvailable()) {
-            mA2dpService.handleBondStateChanged(device, fromState, toState);
-        }
         if (mHeadsetService != null && mHeadsetService.isAvailable()) {
             mHeadsetService.handleBondStateChanged(device, fromState, toState);
+        }
+        if (mA2dpService != null && mA2dpService.isAvailable()) {
+            mA2dpService.handleBondStateChanged(device, fromState, toState);
         }
         if (mLeAudioService != null && mLeAudioService.isAvailable()) {
             mLeAudioService.handleBondStateChanged(device, fromState, toState);

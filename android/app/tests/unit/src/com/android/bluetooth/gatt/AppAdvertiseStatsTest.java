@@ -305,7 +305,6 @@ public class AppAdvertiseStatsTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_BLE_SCAN_ADV_METRICS_REDESIGN)
     public void testAdvertiseCounterMetrics() {
         int appUid = 0;
         int id = 1;

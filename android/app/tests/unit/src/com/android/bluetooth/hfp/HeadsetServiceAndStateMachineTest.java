@@ -172,7 +172,9 @@ public class HeadsetServiceAndStateMachineTest {
         doReturn(true).when(mNativeInterface).disconnectAudio(any(BluetoothDevice.class));
         doReturn(true).when(mNativeInterface).setActiveDevice(any(BluetoothDevice.class));
         doReturn(true).when(mNativeInterface).sendBsir(any(BluetoothDevice.class), anyBoolean());
-        doReturn(true).when(mNativeInterface).startVoiceRecognition(any(BluetoothDevice.class));
+        doReturn(true)
+                .when(mNativeInterface)
+                .startVoiceRecognition(any(BluetoothDevice.class), anyBoolean());
         doReturn(true).when(mNativeInterface).stopVoiceRecognition(any(BluetoothDevice.class));
         doReturn(true)
                 .when(mNativeInterface)
@@ -1138,7 +1140,7 @@ public class HeadsetServiceAndStateMachineTest {
         mTestLooper.dispatchAll();
         verify(mNativeInterface).setActiveDevice(deviceA);
         assertThat(mHeadsetService.getActiveDevice()).isEqualTo(deviceA);
-        verify(mNativeInterface).startVoiceRecognition(deviceA);
+        verify(mNativeInterface).startVoiceRecognition(deviceA, true);
         verify(mAudioManager).setA2dpSuspended(true);
         verify(mAudioManager).setLeAudioSuspended(true);
         verify(mNativeInterface).connectAudio(deviceA);
@@ -1685,6 +1687,7 @@ public class HeadsetServiceAndStateMachineTest {
         // has not add verification AudioDeviceInfo because it is final, unless add a wrapper
         mHeadsetService.startVoiceRecognition(device);
         mTestLooper.dispatchAll();
+        verify(mNativeInterface).startVoiceRecognition(device, false);
         verify(mAudioManager, times(0)).setA2dpSuspended(true);
         verify(mAudioManager, times(0)).setLeAudioSuspended(true);
         verify(mNativeInterface, times(0)).connectAudio(device);
@@ -1695,7 +1698,7 @@ public class HeadsetServiceAndStateMachineTest {
         assertThat(device).isNotNull();
         assertThat(mHeadsetService.startVoiceRecognition(device)).isTrue();
         mTestLooper.dispatchAll();
-        verify(mNativeInterface).startVoiceRecognition(device);
+        verify(mNativeInterface).startVoiceRecognition(device, true);
         verify(mAudioManager).setA2dpSuspended(true);
         verify(mAudioManager).setLeAudioSuspended(true);
         verify(mNativeInterface).connectAudio(device);
@@ -1727,7 +1730,7 @@ public class HeadsetServiceAndStateMachineTest {
         mHeadsetService.startVoiceRecognition(device);
         mTestLooper.dispatchAll();
         // has not add verification AudioDeviceInfo because it is final, unless add a wrapper
-        verify(mNativeInterface).startVoiceRecognition(device);
+        verify(mNativeInterface).startVoiceRecognition(device, true);
         verify(mAudioManager, times(0)).setA2dpSuspended(true);
         verify(mAudioManager, times(0)).setLeAudioSuspended(true);
         verify(mNativeInterface, times(0)).connectAudio(device);

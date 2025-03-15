@@ -78,7 +78,6 @@ import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.Settings;
 import android.sysprop.BluetoothProperties;
-import android.util.proto.ProtoOutputStream;
 
 import androidx.annotation.RequiresApi;
 
@@ -95,7 +94,6 @@ import kotlin.Unit;
 import kotlin.time.TimeSource;
 
 import java.io.FileDescriptor;
-import java.io.FileOutputStream;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -1228,10 +1226,10 @@ class BluetoothManagerService {
             }
 
             if (Flags.setComponentAvailableFix()) {
-                mHandler
-                    .obtainMessage(MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED,
-                        componentName.getPackageName())
-                    .sendToTarget();
+                mHandler.obtainMessage(
+                                MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED,
+                                componentName.getPackageName())
+                        .sendToTarget();
             } else {
                 mHandler.sendEmptyMessage(MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED);
             }
@@ -2254,33 +2252,34 @@ class BluetoothManagerService {
     }
 
     /**
-     * In case of a Bluetooth crash, mark it's enabled components as non longer available to
-     * trigger the PACKAGE_CHANGED intent. This should not be needed in a normal shutdown as the
-     * Bluetooth clean its components on its own
+     * In case of a Bluetooth crash, mark it's enabled components as non longer available to trigger
+     * the PACKAGE_CHANGED intent. This should not be needed in a normal shutdown as the Bluetooth
+     * clean its components on its own
      */
     private void disableBluetoothComponents(String packageName) {
         PackageManager pm = mContext.getPackageManager();
         PackageInfo packageInfo = null;
 
         try {
-            packageInfo = pm.getPackageInfo(
-                    packageName,
-                    PackageManager.GET_SERVICES |
-                            PackageManager.GET_ACTIVITIES |
-                            PackageManager.GET_RECEIVERS |
-                            PackageManager.GET_PROVIDERS);
+            packageInfo =
+                    pm.getPackageInfo(
+                            packageName,
+                            PackageManager.GET_SERVICES
+                                    | PackageManager.GET_ACTIVITIES
+                                    | PackageManager.GET_RECEIVERS
+                                    | PackageManager.GET_PROVIDERS);
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(TAG, "Package not found: " + packageName, e);
             return;
         }
 
         // Refer to updateOppLauncherComponentState()
-        List<String> baseBluetoothOppActivities = List.of(
-            "com.android.bluetooth.opp.BluetoothOppLauncherActivity",
-            "com.android.bluetooth.opp.BluetoothOppBtEnableActivity",
-            "com.android.bluetooth.opp.BluetoothOppBtEnablingActivity",
-            "com.android.bluetooth.opp.BluetoothOppBtErrorActivity"
-        );
+        List<String> baseBluetoothOppActivities =
+                List.of(
+                        "com.android.bluetooth.opp.BluetoothOppLauncherActivity",
+                        "com.android.bluetooth.opp.BluetoothOppBtEnableActivity",
+                        "com.android.bluetooth.opp.BluetoothOppBtEnablingActivity",
+                        "com.android.bluetooth.opp.BluetoothOppBtErrorActivity");
 
         disableComponents(pm, packageInfo.activities, packageName, baseBluetoothOppActivities);
         disableComponents(pm, packageInfo.services, packageName, null);
@@ -2295,17 +2294,20 @@ class BluetoothManagerService {
         }
 
         Arrays.stream(components)
-            .filter(componentInfo -> !componentInfo.enabled)
-            .map(componentInfo -> new ComponentName(packageName, componentInfo.name))
-            .filter(componentName ->
-                        (componentsToKeep == null ||
-                            !componentsToKeep.contains(componentName.getClassName())))
-            .forEach(componentName -> {
-                pm.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP);
-                Log.i(TAG, "Disabled component: " + componentName.flattenToString());
-            });
+                .filter(componentInfo -> !componentInfo.enabled)
+                .map(componentInfo -> new ComponentName(packageName, componentInfo.name))
+                .filter(
+                        componentName ->
+                                (componentsToKeep == null
+                                        || !componentsToKeep.contains(
+                                                componentName.getClassName())))
+                .forEach(
+                        componentName -> {
+                            pm.setComponentEnabledSetting(
+                                    componentName,
+                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                    PackageManager.DONT_KILL_APP);
+                            Log.i(TAG, "Disabled component: " + componentName.flattenToString());
+                        });
     }
 }

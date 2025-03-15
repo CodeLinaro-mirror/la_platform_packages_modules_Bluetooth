@@ -27,7 +27,10 @@ import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static com.android.bluetooth.ChangeIds.ENFORCE_CONNECT;
 import static com.android.bluetooth.Utils.callerIsSystem;
 import static com.android.bluetooth.Utils.callerIsSystemOrActiveOrManagedUser;
+import static com.android.bluetooth.Utils.checkConnectPermissionForDataDelivery;
+import static com.android.bluetooth.Utils.checkScanPermissionForDataDelivery;
 import static com.android.bluetooth.Utils.getBytesFromAddress;
+import static com.android.bluetooth.Utils.getUidPidString;
 
 import static java.util.Objects.requireNonNull;
 
@@ -162,7 +165,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.offToBleOn(quietMode);
     }
 
@@ -174,7 +176,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.onToBleOn();
     }
 
@@ -183,13 +184,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getAddress")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getAddress")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getAddress")) {
             return null;
         }
 
         service.enforceCallingOrSelfPermission(LOCAL_MAC_ADDRESS, null);
-
         return Utils.getAddressStringFromByte(service.getAdapterProperties().getAddress());
     }
 
@@ -198,8 +197,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getUuids")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getUuids")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getUuids")) {
             return Collections.emptyList();
         }
 
@@ -215,12 +213,14 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getIdentityAddress")
-                || !Utils.checkConnectPermissionForDataDelivery(
+                || !checkConnectPermissionForDataDelivery(
                         service,
                         Utils.getCallingAttributionSource(mService),
-                        "AdapterService getIdentityAddress")) {
+                        TAG,
+                        "getIdentityAddress")) {
             return null;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getIdentityAddress(address);
     }
@@ -231,12 +231,14 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getIdentityAddressWithType")
-                || !Utils.checkConnectPermissionForDataDelivery(
+                || !checkConnectPermissionForDataDelivery(
                         service,
                         Utils.getCallingAttributionSource(mService),
-                        "AdapterService getIdentityAddressWithType")) {
+                        TAG,
+                        "getIdentityAddressWithType")) {
             return new BluetoothAddress(null, BluetoothDevice.ADDRESS_TYPE_UNKNOWN);
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getIdentityAddressWithType(address);
     }
@@ -246,8 +248,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getName")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getName")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getName")) {
             return null;
         }
 
@@ -271,8 +272,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setName")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService setName")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "setName")) {
             return false;
         }
 
@@ -293,8 +293,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getScanMode")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "AdapterService getScanMode")) {
+                || !checkScanPermissionForDataDelivery(service, source, TAG, "getScanMode")) {
             return SCAN_MODE_NONE;
         }
 
@@ -306,13 +305,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setScanMode")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "AdapterService setScanMode")) {
+                || !checkScanPermissionForDataDelivery(service, source, TAG, "setScanMode")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_SCAN_PERMISSION;
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        String logCaller = Utils.getUidPidString() + " packageName=" + source.getPackageName();
+        String logCaller = getUidPidString() + " packageName=" + source.getPackageName();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         mService.getHandler()
                 .post(
@@ -328,8 +326,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getDiscoverableTimeout")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "AdapterService getDiscoverableTimeout")) {
+                || !checkScanPermissionForDataDelivery(
+                        service, source, TAG, "getDiscoverableTimeout")) {
             return -1;
         }
 
@@ -341,12 +339,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setDiscoverableTimeout")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "AdapterService setDiscoverableTimeout")) {
+                || !checkScanPermissionForDataDelivery(
+                        service, source, TAG, "setDiscoverableTimeout")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_SCAN_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getAdapterProperties().setDiscoverableTimeout((int) timeout)
                 ? BluetoothStatusCodes.SUCCESS
                 : BluetoothStatusCodes.ERROR_UNKNOWN;
@@ -356,15 +354,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     public boolean startDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
-                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "startDiscovery")) {
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "startDiscovery")
+                || !checkScanPermissionForDataDelivery(service, source, TAG, "startDiscovery")) {
             return false;
         }
 
-        if (!Utils.checkScanPermissionForDataDelivery(service, source, "Starting discovery.")) {
-            return false;
-        }
-
-        Log.i(TAG, "startDiscovery: from " + Utils.getUidPidString());
+        Log.i(TAG, "startDiscovery: from " + getUidPidString());
         return service.startDiscovery(source);
     }
 
@@ -373,12 +368,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "cancelDiscovery")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "AdapterService cancelDiscovery")) {
+                || !checkScanPermissionForDataDelivery(service, source, TAG, "cancelDiscovery")) {
             return false;
         }
 
-        Log.i(TAG, "cancelDiscovery: from " + Utils.getUidPidString());
+        Log.i(TAG, "cancelDiscovery: from " + getUidPidString());
         return service.getNative().cancelDiscovery();
     }
 
@@ -387,8 +381,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "isDiscovering")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "AdapterService isDiscovering")) {
+                || !checkScanPermissionForDataDelivery(service, source, TAG, "isDiscovering")) {
             return false;
         }
 
@@ -400,7 +393,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getDiscoveryEndMillis")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getDiscoveryEndMillis")) {
             return -1;
         }
 
@@ -414,8 +408,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         // don't check caller, may be called from system UI
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getMostRecentlyConnectedDevices")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getMostRecentlyConnectedDevices")) {
             return Collections.emptyList();
         }
 
@@ -429,8 +423,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         // don't check caller, may be called from system UI
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getBondedDevices")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getBondedDevices")) {
             return Collections.emptyList();
         }
 
@@ -466,8 +460,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getProfileConnectionState")
                 || (checkConnect
-                        && !Utils.checkConnectPermissionForDataDelivery(
-                                service, source, "AdapterService getProfileConnectionState"))) {
+                        && !checkConnectPermissionForDataDelivery(
+                                service, source, TAG, "getProfileConnectionState"))) {
             return STATE_DISCONNECTED;
         }
 
@@ -479,8 +473,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "createBond")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService createBond")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "createBond")) {
             return false;
         }
 
@@ -489,7 +482,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                 "createBond:"
                         + (" device=" + device)
                         + (" transport=" + transport)
-                        + (" from " + Utils.getUidPidString()));
+                        + (" from " + getUidPidString()));
         return service.createBond(device, transport, null, null, source.getPackageName());
     }
 
@@ -502,9 +495,9 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             AttributionSource source) {
         AdapterService service = getService();
         if (service == null
-                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "createBond")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService createBond")) {
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "createBondOutOfBand")
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "createBondOutOfBand")) {
             return false;
         }
 
@@ -515,7 +508,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                 "createBondOutOfBand:"
                         + (" device=" + device)
                         + (" transport=" + transport)
-                        + (" from " + Utils.getUidPidString()));
+                        + (" from " + getUidPidString()));
         return service.createBond(
                 device, transport, remoteP192Data, remoteP256Data, source.getPackageName());
     }
@@ -525,14 +518,14 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "cancelBondProcess")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService cancelBondProcess")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "cancelBondProcess")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        Log.i(TAG, "cancelBondProcess: device=" + device + ", from " + Utils.getUidPidString());
+        Log.i(TAG, "cancelBondProcess: device=" + device + ", from " + getUidPidString());
 
         DeviceProperties deviceProp = service.getRemoteDevices().getDeviceProperties(device);
         if (deviceProp != null) {
@@ -548,12 +541,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "removeBond")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService removeBond")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "removeBond")) {
             return false;
         }
 
-        Log.i(TAG, "removeBond: device=" + device + ", from " + Utils.getUidPidString());
+        Log.i(TAG, "removeBond: device=" + device + ", from " + getUidPidString());
 
         DeviceProperties deviceProp = service.getRemoteDevices().getDeviceProperties(device);
         if (deviceProp == null || deviceProp.getBondState() != BluetoothDevice.BOND_BONDED) {
@@ -582,8 +574,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         // don't check caller, may be called from system UI
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getBondState")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getBondState")) {
             return BluetoothDevice.BOND_NONE;
         }
 
@@ -595,8 +586,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         // don't check caller, may be called from system UI
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService isBondingInitiatedLocally")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "isBondingInitiatedLocally")) {
             return false;
         }
 
@@ -610,7 +601,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "generateLocalOobData")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "generateLocalOobData")) {
             return;
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
@@ -620,11 +612,13 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     @Override
     public long getSupportedProfiles(AttributionSource source) {
         AdapterService service = getService();
-        if (service == null || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (service == null
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getSupportedProfiles")) {
             return 0;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return Config.getSupportedProfilesBitMask();
     }
 
@@ -632,8 +626,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     public int getConnectionState(BluetoothDevice device, AttributionSource source) {
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getConnectionState")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getConnectionState")) {
             return BluetoothDevice.CONNECTION_STATE_DISCONNECTED;
         }
 
@@ -646,24 +640,25 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getConnectionHandle")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getConnectionHandle")) {
             return BluetoothDevice.ERROR;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.getConnectionHandle(device, transport);
     }
 
     @Override
     public boolean canBondWithoutDialog(BluetoothDevice device, AttributionSource source) {
         AdapterService service = getService();
-        if (service == null || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (service == null
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "canBondWithoutDialog")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.canBondWithoutDialog(device);
     }
 
@@ -672,12 +667,13 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             BluetoothDevice device, AttributionSource source) {
         AdapterService service = getService();
 
-        if (service == null || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (service == null
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getPackageNameOfBondingApplication")) {
             return null;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.getPackageNameOfBondingApplication(device);
     }
 
@@ -686,16 +682,15 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "removeActiveDevice")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "removeActiveDevice")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(MODIFY_PHONE_STATE, null);
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        Log.i(
-                TAG,
-                "removeActiveDevice: profiles=" + profiles + ", from " + Utils.getUidPidString());
+        Log.i(TAG, "removeActiveDevice: profiles=" + profiles + ", from " + getUidPidString());
         return service.setActiveDevice(null, profiles);
     }
 
@@ -705,7 +700,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setActiveDevice")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "setActiveDevice")) {
             return false;
         }
 
@@ -719,7 +715,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                         + ", profiles="
                         + profiles
                         + ", from "
-                        + Utils.getUidPidString());
+                        + getUidPidString());
 
         return service.setActiveDevice(device, profiles);
     }
@@ -730,12 +726,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getActiveDevices")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getActiveDevices")) {
             return Collections.emptyList();
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.getActiveDevices(profile);
     }
 
@@ -754,19 +750,15 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "connectAllEnabledProfiles")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 
         service.enforceCallingOrSelfPermission(MODIFY_PHONE_STATE, null);
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        Log.i(
-                TAG,
-                "connectAllEnabledProfiles: device="
-                        + device
-                        + ", from "
-                        + Utils.getUidPidString());
+        Log.i(TAG, "connectAllEnabledProfiles: device=" + device + ", from " + getUidPidString());
         MetricsLogger.getInstance()
                 .logBluetoothEvent(
                         device,
@@ -799,7 +791,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "disconnectAllEnabledProfiles")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 
@@ -807,10 +800,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
 
         Log.i(
                 TAG,
-                "disconnectAllEnabledProfiles: device="
-                        + device
-                        + ", from "
-                        + Utils.getUidPidString());
+                "disconnectAllEnabledProfiles: device=" + device + ", from " + getUidPidString());
 
         try {
             return service.disconnectAllEnabledProfiles(device);
@@ -826,8 +816,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getRemoteName")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getRemoteName")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getRemoteName")) {
             return null;
         }
 
@@ -839,8 +828,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getRemoteType")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getRemoteType")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getRemoteType")) {
             return BluetoothDevice.DEVICE_TYPE_UNKNOWN;
         }
 
@@ -852,8 +840,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getRemoteAlias")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getRemoteAlias")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getRemoteAlias")) {
             return null;
         }
 
@@ -874,8 +861,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             throw new IllegalArgumentException("alias cannot be the empty string");
         }
 
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                service, source, "AdapterService setRemoteAlias")) {
+        if (!checkConnectPermissionForDataDelivery(service, source, TAG, "setRemoteAlias")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 
@@ -895,8 +881,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getRemoteClass")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getRemoteClass")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getRemoteClass")) {
             return 0;
         }
 
@@ -908,8 +893,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getRemoteUuids")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getRemoteUuids")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getRemoteUuids")) {
             return Collections.emptyList();
         }
 
@@ -926,8 +910,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "fetchRemoteUuids")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService fetchRemoteUuids")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "fetchRemoteUuids")) {
             return false;
         }
         if (transport != TRANSPORT_AUTO) {
@@ -941,7 +925,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                         + ", transport="
                         + transport
                         + ", from "
-                        + Utils.getUidPidString());
+                        + getUidPidString());
 
         service.getRemoteDevices().fetchUuids(device, transport);
         MetricsLogger.getInstance().cacheCount(BluetoothProtoEnums.SDP_FETCH_UUID_REQUEST, 1);
@@ -958,8 +942,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setPin")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService setPin")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "setPin")) {
             return false;
         }
 
@@ -978,12 +961,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         service.logUserBondResponse(device, accept, source);
         Log.i(
                 TAG,
-                "setPin: device="
-                        + device
-                        + ", accept="
-                        + accept
-                        + ", from "
-                        + Utils.getUidPidString());
+                "setPin: device=" + device + ", accept=" + accept + ", from " + getUidPidString());
         return service.getNative()
                 .pinReply(getBytesFromAddress(device.getAddress()), accept, len, pinCode);
     }
@@ -998,8 +976,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setPasskey")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService setPasskey")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "setPasskey")) {
             return false;
         }
 
@@ -1021,7 +998,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                         + ", accept="
                         + accept
                         + ", from "
-                        + Utils.getUidPidString());
+                        + getUidPidString());
 
         return service.getNative()
                 .sspReply(
@@ -1037,7 +1014,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setPairingConfirmation")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "setPairingConfirmation")) {
             return false;
         }
 
@@ -1056,7 +1034,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                         + ", accept="
                         + accept
                         + ", from "
-                        + Utils.getUidPidString());
+                        + getUidPidString());
 
         return service.getNative()
                 .sspReply(
@@ -1071,12 +1049,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getSilenceMode")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getSilenceMode")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.getSilenceDeviceManager().getSilenceMode(device);
     }
 
@@ -1086,12 +1063,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setSilenceMode")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "setSilenceMode")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.getSilenceDeviceManager().setSilenceMode(device, silence);
         return true;
     }
@@ -1102,8 +1078,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "getPhonebookAccessPermission")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getPhonebookAccessPermission")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getPhonebookAccessPermission")) {
             return BluetoothDevice.ACCESS_UNKNOWN;
         }
 
@@ -1117,12 +1093,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "setPhonebookAccessPermission")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "setPhonebookAccessPermission")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.setPhonebookAccessPermission(device, value);
         return true;
     }
@@ -1132,8 +1108,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getMessageAccessPermission")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getMessageAccessPermission")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getMessageAccessPermission")) {
             return BluetoothDevice.ACCESS_UNKNOWN;
         }
 
@@ -1146,12 +1122,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setMessageAccessPermission")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "setMessageAccessPermission")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.setMessageAccessPermission(device, value);
         return true;
     }
@@ -1161,8 +1137,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getSimAccessPermission")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getSimAccessPermission")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getSimAccessPermission")) {
             return BluetoothDevice.ACCESS_UNKNOWN;
         }
 
@@ -1175,12 +1151,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setSimAccessPermission")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "setSimAccessPermission")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.setSimAccessPermission(device, value);
         return true;
     }
@@ -1270,8 +1246,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "sdpSearch")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService sdpSearch")) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "sdpSearch")) {
             return false;
         }
         return service.sdpSearch(device, uuid);
@@ -1282,8 +1257,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getBatteryLevel")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getBatteryLevel")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getBatteryLevel")) {
             return BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
         }
 
@@ -1299,8 +1274,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         // don't check caller, may be called from system UI
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService getMaxConnectedAudioDevices")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getMaxConnectedAudioDevices")) {
             return -1;
         }
 
@@ -1310,7 +1285,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     @Override
     public boolean factoryReset(AttributionSource source) {
         AdapterService service = getService();
-        if (service == null || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (service == null
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "factoryReset")) {
             return false;
         }
 
@@ -1325,7 +1301,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "registerBluetoothConnectionCallback")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "registerBluetoothConnectionCallback")) {
             return;
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
@@ -1339,7 +1316,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "unregisterBluetoothConnectionCallback")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "unregisterBluetoothConnectionCallback")) {
             return;
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
@@ -1351,12 +1329,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "registerCallback")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "registerCallback")) {
             return;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.registerRemoteCallback(callback);
     }
 
@@ -1365,12 +1343,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "unregisterCallback")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "unregisterCallback")) {
             return;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.unregisterRemoteCallback(callback);
     }
 
@@ -1510,7 +1488,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         } else if (!callerIsSystemOrActiveOrManagedUser(
                 service, TAG, "isDistanceMeasurementSupported")) {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
-        } else if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        } else if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "isDistanceMeasurementSupported")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
@@ -1540,12 +1519,13 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     @Override
     public BluetoothActivityEnergyInfo reportActivityInfo(AttributionSource source) {
         AdapterService service = getService();
-        if (service == null || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (service == null
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "reportActivityInfo")) {
             return null;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.reportActivityInfo();
     }
 
@@ -1557,19 +1537,18 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "registerMetadataListener")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "registerMetadataListener")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.getHandler()
                 .post(
                         () ->
                                 service.getMetadataListeners()
                                         .computeIfAbsent(device, k -> new RemoteCallbackList())
                                         .register(listener));
-
         return true;
     }
 
@@ -1581,12 +1560,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "unregisterMetadataListener")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "unregisterMetadataListener")) {
             return false;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.getHandler()
                 .post(
                         () ->
@@ -1609,7 +1588,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "setMetadata")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "setMetadata")) {
             return false;
         }
 
@@ -1622,12 +1601,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getMetadata")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(service, source, TAG, "getMetadata")) {
             return null;
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         return service.getMetadata(device, key);
     }
 
@@ -1638,9 +1616,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "isRequestAudioPolicyAsSinkSupported")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "isRequestAudioPolicyAsSinkSupported")) {
             return BluetoothStatusCodes.FEATURE_NOT_CONFIGURED;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.isRequestAudioPolicyAsSinkSupported(device);
     }
@@ -1653,9 +1633,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
         } else if (!callerIsSystemOrActiveOrManagedUser(service, TAG, "requestAudioPolicyAsSink")) {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
-        } else if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        } else if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "requestAudioPolicyAsSink")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.requestAudioPolicyAsSink(device, policies);
     }
@@ -1667,9 +1649,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "getRequestedAudioPolicyAsSink")
-                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "getRequestedAudioPolicyAsSink")) {
             return null;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getRequestedAudioPolicyAsSink(device);
     }
@@ -1693,7 +1677,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.bleOnToOn();
     }
 
@@ -1705,7 +1688,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
         service.bleOnToOff();
     }
 
@@ -1718,7 +1700,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(DUMP, null);
-
         service.dump(fd, writer, args);
         writer.close();
     }
@@ -1728,12 +1709,14 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "allowLowLatencyAudio")
-                || !Utils.checkConnectPermissionForDataDelivery(
+                || !checkConnectPermissionForDataDelivery(
                         service,
                         Utils.getCallingAttributionSource(service),
-                        "AdapterService allowLowLatencyAudio")) {
+                        TAG,
+                        "allowLowLatencyAudio")) {
             return false;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.allowLowLatencyAudio(allowed, device);
     }
@@ -1744,10 +1727,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "startRfcommListener")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService startRfcommListener")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "startRfcommListener")) {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.startRfcommListener(name, uuid, pendingIntent, source);
     }
@@ -1757,10 +1741,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         AdapterService service = getService();
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(service, TAG, "stopRfcommListener")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService stopRfcommListener")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "stopRfcommListener")) {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.stopRfcommListener(uuid, source);
     }
@@ -1772,10 +1757,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "retrievePendingSocketForServiceRecord")
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService retrievePendingSocketForServiceRecord")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "retrievePendingSocketForServiceRecord")) {
             return null;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.retrievePendingSocketForServiceRecord(uuid, source);
     }
@@ -1784,12 +1770,14 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     public void setForegroundUserId(int userId, AttributionSource source) {
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
+                || !checkConnectPermissionForDataDelivery(
                         service,
                         Utils.getCallingAttributionSource(mService),
-                        "AdapterService setForegroundUserId")) {
+                        TAG,
+                        "setForegroundUserId")) {
             return;
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         Utils.setForegroundUserId(userId);
     }
@@ -1812,11 +1800,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service.getBondState(device) != BluetoothDevice.BOND_BONDED) {
             return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "setPreferredAudioProfiles")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.setPreferredAudioProfiles(device, modeToProfileBundle);
     }
 
@@ -1836,11 +1825,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service.getBondState(device) != BluetoothDevice.BOND_BONDED) {
             return Bundle.EMPTY;
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "getPreferredAudioProfiles")) {
             return Bundle.EMPTY;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getPreferredAudioProfiles(device);
     }
 
@@ -1860,11 +1850,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service.getBondState(device) != BluetoothDevice.BOND_BONDED) {
             return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "notifyActiveDeviceChangeApplied")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.notifyActiveDeviceChangeApplied(device);
     }
 
@@ -1874,11 +1865,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null) {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "isDualModeAudioEnabled")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         if (!Utils.isDualModeAudioEnabled()) {
             return BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;
         }
@@ -1898,11 +1890,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
         requireNonNull(callback);
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "registerPreferredAudioProfilesChangedCallback")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         // If LE only mode is enabled, the dual mode audio feature is disabled
         if (!Utils.isDualModeAudioEnabled()) {
             return BluetoothStatusCodes.FEATURE_NOT_SUPPORTED;
@@ -1924,11 +1917,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
         requireNonNull(callback);
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "unregisterPreferredAudioProfilesChangedCallback")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         if (!service.getPreferredAudioProfilesCallbacks().unregister(callback)) {
             Log.e(
                     TAG,
@@ -1951,11 +1945,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
         requireNonNull(callback);
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "registerBluetoothQualityReportReadyCallback")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         service.getBluetoothQualityReportReadyCallbacks().register(callback);
         return BluetoothStatusCodes.SUCCESS;
     }
@@ -1972,16 +1967,16 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
         requireNonNull(callback);
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "unregisterBluetoothQualityReportReadyCallback")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         if (!service.getBluetoothQualityReportReadyCallbacks().unregister(callback)) {
             Log.e(
                     TAG,
-                    "unregisterBluetoothQualityReportReadyCallback: callback was never "
-                            + "registered");
+                    "unregisterBluetoothQualityReportReadyCallback: callback was never registered");
             return BluetoothStatusCodes.ERROR_CALLBACK_NOT_REGISTERED;
         }
         return BluetoothStatusCodes.SUCCESS;
@@ -2021,9 +2016,9 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                 service, TAG, "unregisterHciVendorSpecificCallback")) {
             throw new SecurityException("not allowed");
         }
+
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         requireNonNull(callback);
-
         service.getBluetoothHciVendorSpecificDispatcher().unregister(callback);
     }
 
@@ -2068,12 +2063,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (service == null
                 || !callerIsSystemOrActiveOrManagedUser(
                         service, TAG, "getOffloadedTransportDiscoveryDataScanSupported")
-                || !Utils.checkScanPermissionForDataDelivery(
-                        service, source, "getOffloadedTransportDiscoveryDataScanSupported")) {
+                || !checkScanPermissionForDataDelivery(
+                        service, source, TAG, "getOffloadedTransportDiscoveryDataScanSupported")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_SCAN_PERMISSION;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getOffloadedTransportDiscoveryDataScanSupported();
     }
 
@@ -2081,12 +2076,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     public boolean isMediaProfileConnected(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
-                || !Utils.checkConnectPermissionForDataDelivery(
-                        service, source, "AdapterService.isMediaProfileConnected")) {
+                || !checkConnectPermissionForDataDelivery(
+                        service, source, TAG, "isMediaProfileConnected")) {
             return false;
         }
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.isMediaProfileConnected();
     }
 
@@ -2135,7 +2130,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "setActiveAudioDevicePolicy")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 
@@ -2157,7 +2153,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "getActiveAudioDevicePolicy")) {
             return BluetoothDevice.ACTIVE_AUDIO_DEVICE_POLICY_DEFAULT;
         }
 
@@ -2179,8 +2176,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                service, source, "AdapterService setMicrophonePreferredForCalls")) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "setMicrophonePreferredForCalls")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 
@@ -2202,8 +2199,8 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                service, source, "AdapterService isMicrophonePreferredForCalls")) {
+        if (!checkConnectPermissionForDataDelivery(
+                service, source, TAG, "isMicrophonePreferredForCalls")) {
             return true;
         }
 
@@ -2256,8 +2253,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                service, source, "AdapterService getKeyMissingCount")) {
+        if (!checkConnectPermissionForDataDelivery(service, source, TAG, "getKeyMissingCount")) {
             return -1;
         }
 

@@ -357,10 +357,11 @@ public class HeadsetNativeInterface {
      * Start voice recognition
      *
      * @param device target headset
+     * @param sendResult whether a BVRA response should be sent
      * @return True on success, False on failure
      */
-    boolean startVoiceRecognition(BluetoothDevice device) {
-        return startVoiceRecognitionNative(getByteAddress(device));
+    boolean startVoiceRecognition(BluetoothDevice device, boolean sendResult) {
+        return startVoiceRecognitionNative(getByteAddress(device), sendResult);
     }
 
     /**
@@ -561,7 +562,7 @@ public class HeadsetNativeInterface {
 
     private native boolean isVoiceRecognitionSupportedNative(byte[] address);
 
-    private native boolean startVoiceRecognitionNative(byte[] address);
+    private native boolean startVoiceRecognitionNative(byte[] address, boolean sendResult);
 
     private native boolean stopVoiceRecognitionNative(byte[] address);
 

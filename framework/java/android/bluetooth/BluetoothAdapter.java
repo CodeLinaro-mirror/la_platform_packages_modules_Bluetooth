@@ -3686,6 +3686,9 @@ public final class BluetoothAdapter {
                             if (mBluetoothLeScanner != null) {
                                 mBluetoothLeScanner.cleanup();
                             }
+                            if (mDistanceMeasurementManager != null) {
+                                mDistanceMeasurementManager.cleanup();
+                            }
                         }
                     } finally {
                         mServiceLock.writeLock().unlock();

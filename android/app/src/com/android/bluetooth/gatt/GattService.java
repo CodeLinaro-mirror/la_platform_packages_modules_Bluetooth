@@ -26,6 +26,7 @@ import static android.bluetooth.BluetoothUtils.toAnonymizedAddress;
 import static com.android.bluetooth.Utils.callbackToApp;
 import static com.android.bluetooth.Utils.callerIsSystemOrActiveOrManagedUser;
 import static com.android.bluetooth.Utils.checkCallerTargetSdk;
+import static com.android.bluetooth.Utils.checkConnectPermissionForDataDelivery;
 import static com.android.bluetooth.util.AttributionSourceUtil.getLastAttributionTag;
 
 import static java.util.Objects.requireNonNull;
@@ -643,8 +644,8 @@ public class GattService extends ProfileService {
                 return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
             }
 
-            if (!Utils.checkConnectPermissionForDataDelivery(
-                    service, source, "GattService subrateModeRequest")) {
+            if (!checkConnectPermissionForDataDelivery(
+                    service, source, TAG, "subrateModeRequest")) {
                 return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
             }
 
@@ -1426,8 +1427,8 @@ public class GattService extends ProfileService {
     @RequiresPermission(BLUETOOTH_CONNECT)
     List<BluetoothDevice> getDevicesMatchingConnectionStates(
             int[] states, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService getDevicesMatchingConnectionStates")) {
+        if (!checkConnectPermissionForDataDelivery(
+                this, source, TAG, "getDevicesMatchingConnectionStates")) {
             return Collections.emptyList();
         }
 
@@ -1492,8 +1493,7 @@ public class GattService extends ProfileService {
             IBluetoothGattCallback callback,
             boolean eatt_support,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService registerClient")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "registerClient")) {
             return;
         }
         if (Flags.gattClientDynamicAllocation()
@@ -1522,8 +1522,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void unregisterClient(int clientIf, AttributionSource source, ContextMap.RemoveReason reason) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService unregisterClient")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "unregisterClient")) {
             return;
         }
 
@@ -1551,8 +1550,7 @@ public class GattService extends ProfileService {
             boolean opportunistic,
             int phy,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService clientConnect")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clientConnect")) {
             return;
         }
 
@@ -1593,9 +1591,11 @@ public class GattService extends ProfileService {
 
         int preferredMtu = 0;
 
-        // Some applications expect MTU to be exchanged immediately on connections
         String packageName = source.getPackageName();
         if (packageName != null) {
+            mAdapterService.addAssociatedPackage(getDevice(address), packageName);
+
+            // Some apps expect MTU to be exchanged immediately on connections
             for (Map.Entry<String, Integer> entry : EARLY_MTU_EXCHANGE_PACKAGES.entrySet()) {
                 if (packageName.contains(entry.getKey())) {
                     preferredMtu = entry.getValue();
@@ -1640,8 +1640,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void clientDisconnect(int clientIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService clientDisconnect")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clientDisconnect")) {
             return;
         }
 
@@ -1679,8 +1678,7 @@ public class GattService extends ProfileService {
             int rxPhy,
             int phyOptions,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService clientSetPreferredPhy")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clientSetPreferredPhy")) {
             return;
         }
 
@@ -1703,8 +1701,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void clientReadPhy(int clientIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService clientReadPhy")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clientReadPhy")) {
             return;
         }
 
@@ -1722,8 +1719,8 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     synchronized List<ParcelUuid> getRegisteredServiceUuids(AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService getRegisteredServiceUuids")) {
+        if (!checkConnectPermissionForDataDelivery(
+                this, source, TAG, "getRegisteredServiceUuids")) {
             return Collections.emptyList();
         }
         return mHandleMap.getEntries().stream()
@@ -1733,8 +1730,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     List<String> getConnectedDevices(AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService getConnectedDevices")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "getConnectedDevices")) {
             return Collections.emptyList();
         }
 
@@ -1747,8 +1743,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void refreshDevice(int clientIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService refreshDevice")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "refreshDevice")) {
             return;
         }
 
@@ -1758,8 +1753,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void discoverServices(int clientIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService discoverServices")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "discoverServices")) {
             return;
         }
 
@@ -1784,8 +1778,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void discoverServiceByUuid(int clientIf, String address, UUID uuid, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService discoverServiceByUuid")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "discoverServiceByUuid")) {
             return;
         }
 
@@ -1805,8 +1798,7 @@ public class GattService extends ProfileService {
     @RequiresPermission(BLUETOOTH_CONNECT)
     void readCharacteristic(
             int clientIf, String address, int handle, int authReq, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService readCharacteristic")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "readCharacteristic")) {
             return;
         }
 
@@ -1846,8 +1838,8 @@ public class GattService extends ProfileService {
             int endHandle,
             int authReq,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService readUsingCharacteristicUuid")) {
+        if (!checkConnectPermissionForDataDelivery(
+                this, source, TAG, "readUsingCharacteristicUuid")) {
             return;
         }
 
@@ -1893,8 +1885,7 @@ public class GattService extends ProfileService {
             int authReq,
             byte[] value,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService writeCharacteristic")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "writeCharacteristic")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 
@@ -1939,8 +1930,7 @@ public class GattService extends ProfileService {
     @RequiresPermission(BLUETOOTH_CONNECT)
     void readDescriptor(
             int clientIf, String address, int handle, int authReq, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService readDescriptor")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "readDescriptor")) {
             return;
         }
 
@@ -1977,8 +1967,7 @@ public class GattService extends ProfileService {
             int authReq,
             byte[] value,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService writeDescriptor")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "writeDescriptor")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
         Log.v(TAG, "writeDescriptor() - address=" + toAnonymizedAddress(address));
@@ -2000,8 +1989,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void beginReliableWrite(int clientIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService beginReliableWrite")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "beginReliableWrite")) {
             return;
         }
 
@@ -2011,8 +1999,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void endReliableWrite(int clientIf, String address, boolean execute, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService endReliableWrite")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "endReliableWrite")) {
             return;
         }
 
@@ -2033,8 +2020,7 @@ public class GattService extends ProfileService {
     @RequiresPermission(BLUETOOTH_CONNECT)
     void registerForNotification(
             int clientIf, String address, int handle, boolean enable, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService registerForNotification")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "registerForNotification")) {
             return;
         }
 
@@ -2072,8 +2058,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void readRemoteRssi(int clientIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService readRemoteRssi")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "readRemoteRssi")) {
             return;
         }
 
@@ -2083,8 +2068,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void configureMTU(int clientIf, String address, int mtu, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService configureMTU")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "configureMTU")) {
             return;
         }
 
@@ -2102,8 +2086,8 @@ public class GattService extends ProfileService {
     @RequiresPermission(BLUETOOTH_CONNECT)
     void connectionParameterUpdate(
             int clientIf, String address, int connectionPriority, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService connectionParameterUpdate")) {
+        if (!checkConnectPermissionForDataDelivery(
+                this, source, TAG, "connectionParameterUpdate")) {
             return;
         }
 
@@ -2150,8 +2134,7 @@ public class GattService extends ProfileService {
             int minConnectionEventLen,
             int maxConnectionEventLen,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService leConnectionUpdate")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "leConnectionUpdate")) {
             return;
         }
 
@@ -2612,8 +2595,7 @@ public class GattService extends ProfileService {
             IBluetoothGattServerCallback callback,
             boolean eatt_support,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService registerServer")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "registerServer")) {
             return;
         }
 
@@ -2625,8 +2607,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void unregisterServer(int serverIf, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService unregisterServer")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "unregisterServer")) {
             return;
         }
 
@@ -2646,8 +2627,7 @@ public class GattService extends ProfileService {
             boolean isDirect,
             int transport,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService serverConnect")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "serverConnect")) {
             return;
         }
 
@@ -2660,8 +2640,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void serverDisconnect(int serverIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService serverDisconnect")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "serverDisconnect")) {
             return;
         }
 
@@ -2684,8 +2663,7 @@ public class GattService extends ProfileService {
             int rxPhy,
             int phyOptions,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService serverSetPreferredPhy")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "serverSetPreferredPhy")) {
             return;
         }
 
@@ -2708,8 +2686,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void serverReadPhy(int serverIf, String address, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService serverReadPhy")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "serverReadPhy")) {
             return;
         }
 
@@ -2727,7 +2704,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void addService(int serverIf, BluetoothGattService service, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(this, source, "GattService addService")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "addService")) {
             return;
         }
 
@@ -2772,8 +2749,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void removeService(int serverIf, int handle, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService removeService")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "removeService")) {
             return;
         }
 
@@ -2784,8 +2760,7 @@ public class GattService extends ProfileService {
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     void clearServices(int serverIf, AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService clearServices")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clearServices")) {
             return;
         }
 
@@ -2802,8 +2777,7 @@ public class GattService extends ProfileService {
             int offset,
             byte[] value,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService sendResponse")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "sendResponse")) {
             return;
         }
 
@@ -2852,8 +2826,7 @@ public class GattService extends ProfileService {
             boolean confirm,
             byte[] value,
             AttributionSource source) {
-        if (!Utils.checkConnectPermissionForDataDelivery(
-                this, source, "GattService sendNotification")) {
+        if (!checkConnectPermissionForDataDelivery(this, source, TAG, "sendNotification")) {
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
         }
 

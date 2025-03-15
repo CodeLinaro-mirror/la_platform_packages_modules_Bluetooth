@@ -1621,8 +1621,16 @@ void btm_ble_connection_established(const RawAddress& bda) {
        !p_dev_rec->sec_rec.is_le_link_key_known())) {
     // Unknown device
     if (p_dev_rec->dev_class == kDevClassEmpty || p_dev_rec->dev_class == kDevClassUnclassified) {
-      // Class of device not known, read appearance characteristic
-      btm_ble_read_remote_cod(bda);
+      // Class of device not known, read appearance characteristic ...
+      // Unless it is one of those devices which don't respond to this request
+      BD_NAME remote_name = {};
+      if (p_dev_rec->sec_rec.is_name_known() && BTM_GetRemoteDeviceName(bda, remote_name) &&
+          interop_match_name(INTEROP_DISABLE_READ_LE_APPEARANCE, (const char*)remote_name)) {
+        log::warn("Name {} matches IOP database, not reading appearance for {}",
+                  (const char*)remote_name, bda);
+      } else {
+        btm_ble_read_remote_cod(bda);
+      }
     }
   }
 }

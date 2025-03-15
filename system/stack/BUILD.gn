@@ -210,7 +210,6 @@ source_set("stack") {
     "//bt/system/ctrlr/include",
     "//bt/system/gd",
     "//bt/system/hcis",
-    "//bt/system/linux_include",
     "//bt/system/rpc/include",
     "//bt/system/udrv/include",
     "//bt/system/vnd/ble",
@@ -367,7 +366,6 @@ if (defined(use.android) && use.android) {
 
     include_dirs = [
       "//bt/system/",
-      "//bt/system/linux_include",
       "//bt/system/bta/include",
       "//bt/system/bta/sys",
       "//bt/system/embdrv/sbc/encoder/include",

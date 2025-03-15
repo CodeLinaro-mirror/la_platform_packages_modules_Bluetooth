@@ -4876,7 +4876,8 @@ public class BassClientService extends ProfileService {
 
             if (!Utils.checkServiceAvailable(service, TAG)
                     || !Utils.checkCallerIsSystemOrActiveOrManagedUser(service, TAG)
-                    || !Utils.checkScanPermissionForDataDelivery(service, source, TAG)) {
+                    || !Utils.checkScanPermissionForDataDelivery(
+                            service, source, TAG, "getServiceAndEnforceScan")) {
                 return null;
             }
 

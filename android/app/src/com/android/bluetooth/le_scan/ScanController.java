@@ -22,6 +22,7 @@ import static android.Manifest.permission.UPDATE_DEVICE_STATS;
 import static android.bluetooth.BluetoothUtils.extractBytes;
 
 import static com.android.bluetooth.Utils.checkCallerTargetSdk;
+import static com.android.bluetooth.Utils.checkScanPermissionForDataDelivery;
 import static com.android.bluetooth.flags.Flags.leaudioBassScanWithInternalScanController;
 
 import static java.util.Objects.requireNonNull;
@@ -1082,8 +1083,7 @@ public class ScanController {
     @RequiresPermission(BLUETOOTH_SCAN)
     void registerScanner(
             IScannerCallback callback, WorkSource workSource, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController registerScanner")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "registerScanner")) {
             return;
         }
 
@@ -1116,8 +1116,8 @@ public class ScanController {
 
     @RequiresPermission(BLUETOOTH_SCAN)
     void unregisterScanner(int scannerId, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController unregisterScanner")) {
+        if (!checkScanPermissionForDataDelivery(
+                mAdapterService, source, TAG, "unregisterScanner")) {
             return;
         }
 
@@ -1163,7 +1163,7 @@ public class ScanController {
             List<ScanFilter> filters,
             AttributionSource source) {
         Log.d(TAG, "Start scan with filters");
-        if (!Utils.checkScanPermissionForDataDelivery(mAdapterService, source, "Starting scan.")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "startScan")) {
             return;
         }
 
@@ -1255,7 +1255,8 @@ public class ScanController {
             List<ScanFilter> filters,
             AttributionSource source) {
         Log.d(TAG, "Start scan with filters, for PendingIntent");
-        if (!Utils.checkScanPermissionForDataDelivery(mAdapterService, source, "Starting scan.")) {
+        if (!checkScanPermissionForDataDelivery(
+                mAdapterService, source, TAG, "registerPiAndStartScan")) {
             return;
         }
 
@@ -1359,8 +1360,8 @@ public class ScanController {
 
     @RequiresPermission(BLUETOOTH_SCAN)
     void flushPendingBatchResults(int scannerId, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController flushPendingBatchResults")) {
+        if (!checkScanPermissionForDataDelivery(
+                mAdapterService, source, TAG, "flushPendingBatchResults")) {
             return;
         }
         flushPendingBatchResultsInternal(scannerId);
@@ -1373,8 +1374,7 @@ public class ScanController {
 
     @RequiresPermission(BLUETOOTH_SCAN)
     void stopScan(int scannerId, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController stopScan")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "stopScan")) {
             return;
         }
         stopScanInternal(scannerId);
@@ -1396,8 +1396,7 @@ public class ScanController {
 
     @RequiresPermission(BLUETOOTH_SCAN)
     void stopScan(PendingIntent intent, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController stopScan")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "stopScan")) {
             return;
         }
         stopScanInternal(intent);
@@ -1426,8 +1425,7 @@ public class ScanController {
             int timeout,
             IPeriodicAdvertisingCallback callback,
             AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController registerSync")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "registerSync")) {
             return;
         }
         mPeriodicScanManager.startSync(scanResult, skip, timeout, callback);
@@ -1435,8 +1433,7 @@ public class ScanController {
 
     @RequiresPermission(BLUETOOTH_SCAN)
     void unregisterSync(IPeriodicAdvertisingCallback callback, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController unregisterSync")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "unregisterSync")) {
             return;
         }
         mPeriodicScanManager.stopSync(callback);
@@ -1445,8 +1442,7 @@ public class ScanController {
     @RequiresPermission(BLUETOOTH_SCAN)
     void transferSync(
             BluetoothDevice bda, int serviceData, int syncHandle, AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController transferSync")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "transferSync")) {
             return;
         }
         mPeriodicScanManager.transferSync(bda, serviceData, syncHandle);
@@ -1459,8 +1455,7 @@ public class ScanController {
             int advHandle,
             IPeriodicAdvertisingCallback callback,
             AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController transferSetInfo")) {
+        if (!checkScanPermissionForDataDelivery(mAdapterService, source, TAG, "transferSetInfo")) {
             return;
         }
         mPeriodicScanManager.transferSetInfo(bda, serviceData, advHandle, callback);
@@ -1468,8 +1463,8 @@ public class ScanController {
 
     @RequiresPermission(BLUETOOTH_SCAN)
     int numHwTrackFiltersAvailable(AttributionSource source) {
-        if (!Utils.checkScanPermissionForDataDelivery(
-                mAdapterService, source, "ScanController numHwTrackFiltersAvailable")) {
+        if (!checkScanPermissionForDataDelivery(
+                mAdapterService, source, TAG, "numHwTrackFiltersAvailable")) {
             return 0;
         }
         return (mAdapterService.getTotalNumOfTrackableAdvertisements()

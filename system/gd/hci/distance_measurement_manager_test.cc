@@ -21,6 +21,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "common/strings.h"
 #include "hal/ranging_hal.h"
 #include "hal/ranging_hal_mock.h"
 #include "hci/acl_manager_mock.h"
@@ -39,7 +40,8 @@ using testing::AtLeast;
 using testing::Return;
 
 namespace {
-constexpr auto kTimeout = std::chrono::seconds(1);
+static constexpr auto kTimeout = std::chrono::seconds(1);
+static constexpr uint8_t kMaxRetryCounterForCreateConfig = 0x03;
 }
 
 namespace bluetooth {
@@ -78,7 +80,7 @@ struct CsReadCapabilitiesCompleteEvent {
   CsOptionalNadmSoundingCapability nadm_sounding_capability = {
           /*normalized_attack_detector_metric=*/1};
   CsOptionalNadmRandomCapability nadm_random_capability = {/*normalized_attack_detector_metric=*/1};
-  CsOptionalCsSyncPhysSupported cs_sync_phys_supported = {/*le_2m_phy=*/1};
+  CsOptionalCsSyncPhysSupported cs_sync_phys_supported = {/*le_2m_phy=*/1, /*le_2m_2bt_phy=*/0};
   CsOptionalSubfeaturesSupported subfeatures_supported = {/*no_frequency_actuation_error=*/1,
                                                           /*channel_selection_algorithm=*/1,
                                                           /*phase_based_ranging=*/1};
@@ -103,6 +105,39 @@ struct CsReadCapabilitiesCompleteEvent {
                                                       /*support_20_microsecond=*/1};
   uint8_t t_sw_time_supported = 1;
   uint8_t tx_snr_capability = 1;
+};
+
+struct CsConfigCompleteEvent {
+  ErrorCode status = ErrorCode::SUCCESS;
+  uint8_t config_id = 0;
+  CsAction action = CsAction::CONFIG_CREATED;
+  CsMainModeType main_mode_type = CsMainModeType::MODE_2;
+  CsSubModeType sub_mode_type = CsSubModeType::UNUSED;
+  uint8_t min_main_mode_steps = 3;    // 0x02 to 0xFF
+  uint8_t max_main_mode_steps = 100;  // 0x02 to 0xFF
+  uint8_t main_mode_repetition = 0;   // 0x00 to 0x03
+  uint8_t mode_0_steps = 1;           // 0x01 to 0x03
+  CsRole cs_role = CsRole::INITIATOR;
+  CsRttType rtt_type = CsRttType::RTT_AA_ONLY;
+  CsSyncPhy sync_phy = CsSyncPhy::LE_2M_PHY;
+  std::array<uint8_t, 10> channel_map = GetChannelMap("1FFFFFFFFFFFFC7FFFFC");
+  uint8_t channel_map_repetition = 1;  // 0x01 to 0xFF
+  CsChannelSelectionType channel_selection_type = CsChannelSelectionType::TYPE_3C;
+  CsCh3cShape ch3c_shape = CsCh3cShape::HAT_SHAPE;
+  uint8_t ch3c_jump = 2;      // 0x02 to 0x08
+  uint8_t t_ip1_time = 0x0A;  // 0x0A, 0x14, 0x1E, 0x28, 0x32, 0x3C, 0x50, or 0x91
+  uint8_t t_ip2_time = 0x0A;  // 0x0A, 0x14, 0x1E, 0x28, 0x32, 0x3C, 0x50, or 0x91
+  uint8_t t_fcs_time = 0x0F;  // 0x0F, 0x14, 0x1E, 0x28, 0x32, 0x3C, 0x50, 0x64, 0x78, or 0x96
+  uint8_t t_pm_time = 0x0A;   // 0x0A, 0x14, or 0x28
+
+  static const std::array<uint8_t, 10> GetChannelMap(const std::string& hex_string) {
+    assert(hex_stinrg.length() == 20);
+    auto channel_vector = common::FromHexString(hex_string);
+    std::array<uint8_t, 10> channel_map{};
+    std::copy(channel_vector->begin(), channel_vector->end(), channel_map.begin());
+    std::reverse(channel_map.begin(), channel_map.end());
+    return channel_map;
+  }
 };
 
 struct StartMeasurementParameters {
@@ -199,6 +234,20 @@ protected:
             cs_cap_complete_event.t_sw_time_supported, cs_cap_complete_event.tx_snr_capability);
   }
 
+  static std::unique_ptr<LeCsConfigCompleteBuilder> GetConfigCompleteEvent(
+          uint16_t connection_handle, CsConfigCompleteEvent complete_event) {
+    return LeCsConfigCompleteBuilder::Create(
+            complete_event.status, connection_handle, complete_event.config_id,
+            complete_event.action, complete_event.main_mode_type, complete_event.sub_mode_type,
+            complete_event.min_main_mode_steps, complete_event.max_main_mode_steps,
+            complete_event.main_mode_repetition, complete_event.mode_0_steps,
+            complete_event.cs_role, complete_event.rtt_type, complete_event.sync_phy,
+            complete_event.channel_map, complete_event.channel_map_repetition,
+            complete_event.channel_selection_type, complete_event.ch3c_shape,
+            complete_event.ch3c_jump, complete_event.t_ip1_time, complete_event.t_ip2_time,
+            complete_event.t_fcs_time, complete_event.t_pm_time);
+  }
+
   void StartMeasurement(const StartMeasurementParameters& params) {
     dm_manager_->StartDistanceMeasurement(params.remote_address, params.connection_handle,
                                           params.local_hci_role, params.interval, params.method);
@@ -225,6 +274,15 @@ protected:
             /*att_handle=*/0,
             /*vendor_specific_data=*/std::vector<hal::VendorSpecificCharacteristic>(),
             /*conn_interval=*/24);
+  }
+
+  void StartMeasurementTillReadRemoteCaps(const StartMeasurementParameters& params) {
+    StartMeasurementTillRasConnectedEvent(params);
+
+    test_hci_layer_->GetCommand(OpCode::LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES);
+    CsReadCapabilitiesCompleteEvent read_cs_complete_event;
+    test_hci_layer_->IncomingLeMetaEvent(GetRemoteSupportedCapabilitiesCompleteEvent(
+            params.connection_handle, read_cs_complete_event));
   }
 
 protected:
@@ -338,6 +396,53 @@ TEST_F(DistanceMeasurementManagerTest, fail_read_remote_cs_caps_complete) {
   read_cs_complete_event.error_code = ErrorCode::COMMAND_DISALLOWED;
   test_hci_layer_->IncomingLeMetaEvent(GetRemoteSupportedCapabilitiesCompleteEvent(
           params.connection_handle, read_cs_complete_event));
+}
+
+TEST_F(DistanceMeasurementManagerTest, error_create_config_command) {
+  auto dm_session_future = GetDmSessionFuture();
+  StartMeasurementParameters params;
+  StartMeasurementTillReadRemoteCaps(params);
+
+  EXPECT_CALL(mock_dm_callbacks_,
+              OnDistanceMeasurementStopped(params.remote_address,
+                                           DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
+                                           DistanceMeasurementMethod::METHOD_CS))
+          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+                           DistanceMeasurementMethod /*method*/) {
+            ASSERT_NE(dm_session_promise_, nullptr);
+            dm_session_promise_->set_value();
+            dm_session_promise_.reset();
+          });
+
+  test_hci_layer_->GetCommand(OpCode::LE_CS_CREATE_CONFIG);
+  test_hci_layer_->IncomingEvent(LeCsCreateConfigStatusBuilder::Create(
+          /*status=*/ErrorCode::COMMAND_DISALLOWED,
+          /*num_hci_command_packets=*/0xff));
+}
+
+TEST_F(DistanceMeasurementManagerTest, fail_create_config_complete) {
+  auto dm_session_future = GetDmSessionFuture();
+  StartMeasurementParameters params;
+  StartMeasurementTillReadRemoteCaps(params);
+
+  EXPECT_CALL(mock_dm_callbacks_,
+              OnDistanceMeasurementStopped(params.remote_address,
+                                           DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
+                                           DistanceMeasurementMethod::METHOD_CS))
+          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+                           DistanceMeasurementMethod /*method*/) {
+            ASSERT_NE(dm_session_promise_, nullptr);
+            dm_session_promise_->set_value();
+            dm_session_promise_.reset();
+          });
+
+  CsConfigCompleteEvent cs_config_complete_event;
+  cs_config_complete_event.status = ErrorCode::COMMAND_DISALLOWED;
+  for (int i = 0; i <= kMaxRetryCounterForCreateConfig; i++) {
+    test_hci_layer_->GetCommand(OpCode::LE_CS_CREATE_CONFIG);
+    test_hci_layer_->IncomingLeMetaEvent(
+            GetConfigCompleteEvent(params.connection_handle, cs_config_complete_event));
+  }
 }
 
 }  // namespace

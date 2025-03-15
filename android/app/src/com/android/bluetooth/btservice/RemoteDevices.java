@@ -27,6 +27,7 @@ import static com.android.modules.utils.build.SdkLevel.isAtLeastV;
 
 import static java.util.Objects.requireNonNullElseGet;
 
+import android.annotation.NonNull;
 import android.annotation.RequiresPermission;
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -43,8 +44,11 @@ import android.bluetooth.BluetoothProtoEnums;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.bluetooth.BluetoothUtils;
 import android.bluetooth.IBluetoothConnectionCallback;
+import android.content.AttributionSource;
 import android.content.Intent;
+import android.content.pm.Attribution;
 import android.net.MacAddress;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -64,9 +68,13 @@ import com.android.modules.utils.build.SdkLevel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -329,6 +337,7 @@ public class RemoteDevices {
     }
 
     class DeviceProperties {
+        private static final int MAX_PACKAGE_NAMES = 4;
         private String mName;
         private byte[] mAddress;
         private String mIdentityAddress;
@@ -353,6 +362,16 @@ public class RemoteDevices {
         @VisibleForTesting ParcelUuid[] mUuidsLe;
         @VisibleForTesting boolean mHfpBatteryIndicator = false;
         private BluetoothSinkAudioPolicy mAudioPolicy;
+
+        // LRU cache of package names associated to this device
+        private final Set<String> mPackages =
+                Collections.newSetFromMap(
+                        new LinkedHashMap<String, Boolean>() {
+                            // This is called on every add. Returning true removes the eldest entry.
+                            protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                                return size() >= MAX_PACKAGE_NAMES;
+                            }
+                        });
 
         DeviceProperties() {
             mBondState = BluetoothDevice.BOND_NONE;
@@ -856,6 +875,22 @@ public class RemoteDevices {
         String getModelName() {
             synchronized (mObject) {
                 return mModelName;
+            }
+        }
+
+        @NonNull
+        public String[] getPackages() {
+            synchronized (mObject) {
+                return mPackages.toArray(new String[0]);
+            }
+        }
+
+        public void addPackage(String packageName) {
+            synchronized (mObject) {
+                // Removing the package ensures that the LRU cache order is updated. Adding it back
+                // will make it the newest.
+                mPackages.remove(packageName);
+                mPackages.add(packageName);
             }
         }
     }
@@ -1606,6 +1641,28 @@ public class RemoteDevices {
                         new String[] {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED},
                         Utils.getTempBroadcastOptions());
             }
+
+            // Some apps are not able to handle the key missing broadcast, so we need to remove
+            // the bond to prevent them from misbehaving.
+            // TODO (b/402854328): Remove when the misbehaving apps are updated
+            if (bondLossIopFixNeeded(bluetoothDevice)) {
+                DeviceProperties deviceProperties = getDeviceProperties(bluetoothDevice);
+                if (deviceProperties == null) {
+                    return;
+                }
+                String[] packages = deviceProperties.getPackages();
+                if (packages.length == 0) {
+                    return;
+                }
+
+                Log.w(
+                        TAG,
+                        "Removing device: "
+                                + bluetoothDevice
+                                + "on behalf of: "
+                                + Arrays.toString(packages));
+                bluetoothDevice.removeBond();
+            }
         }
     }
 
@@ -1990,6 +2047,52 @@ public class RemoteDevices {
         }
         updateBatteryLevel(
                 device, batteryChargeIndicatorToPercentage(batteryLevel), /* isBas= */ false);
+    }
+
+    private static final String[] BOND_LOSS_IOP_PACKAGES = {
+        "com.sjm.crmd.patientApp_Android_", "com.abbott.crm.ngq.patient.",
+    };
+
+    private static final Set<String> BOND_LOSS_IOP_DEVICE_NAMES = Set.of("CM", "DM");
+
+    // TODO (b/402854328): Remove when the misbehaving apps are updated
+    public boolean bondLossIopFixNeeded(BluetoothDevice device) {
+        DeviceProperties deviceProperties = getDeviceProperties(device);
+        if (deviceProperties == null) {
+            return false;
+        }
+
+        String deviceName = deviceProperties.getName();
+        if (deviceName == null) {
+            return false;
+        }
+
+        String[] packages = deviceProperties.getPackages();
+        if (packages.length == 0) {
+            return false;
+        }
+
+        if (!BOND_LOSS_IOP_DEVICE_NAMES.contains(deviceName)) {
+            return false;
+        }
+
+        for (String iopFixPackage : BOND_LOSS_IOP_PACKAGES) {
+            for (String packageName : packages) {
+                if (packageName.contains(iopFixPackage)
+                        && !Utils.checkCallerTargetSdk(
+                                mAdapterService, packageName, Build.VERSION_CODES.BAKLAVA)) {
+                    Log.w(
+                            TAG,
+                            "bondLossIopFixNeeded(): "
+                                    + deviceName
+                                    + " IOP fix needed for package "
+                                    + packageName);
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void errorLog(String msg) {
