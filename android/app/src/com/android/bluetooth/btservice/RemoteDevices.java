@@ -1609,6 +1609,28 @@ public class RemoteDevices {
             // Bond loss detected, add to the count.
             mAdapterService.getDatabase().updateKeyMissingCount(bluetoothDevice, true);
 
+            // Some apps are not able to handle the key missing broadcast, so we need to remove
+            // the bond to prevent them from misbehaving.
+            // TODO (b/402854328): Remove when the misbehaving apps are updated
+            if (bondLossIopFixNeeded(bluetoothDevice)) {
+                DeviceProperties deviceProperties = getDeviceProperties(bluetoothDevice);
+                if (deviceProperties == null) {
+                    return;
+                }
+                String[] packages = deviceProperties.getPackages();
+                if (packages.length == 0) {
+                    return;
+                }
+
+                Log.w(
+                        TAG,
+                        "Removing "
+                                + bluetoothDevice
+                                + " on behalf of: "
+                                + Arrays.toString(packages));
+                bluetoothDevice.removeBond();
+            }
+
             if (Flags.keyMissingPublic()) {
                 mAdapterService.sendOrderedBroadcast(
                         intent,
@@ -1640,28 +1662,6 @@ public class RemoteDevices {
                         intent,
                         new String[] {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED},
                         Utils.getTempBroadcastOptions());
-            }
-
-            // Some apps are not able to handle the key missing broadcast, so we need to remove
-            // the bond to prevent them from misbehaving.
-            // TODO (b/402854328): Remove when the misbehaving apps are updated
-            if (bondLossIopFixNeeded(bluetoothDevice)) {
-                DeviceProperties deviceProperties = getDeviceProperties(bluetoothDevice);
-                if (deviceProperties == null) {
-                    return;
-                }
-                String[] packages = deviceProperties.getPackages();
-                if (packages.length == 0) {
-                    return;
-                }
-
-                Log.w(
-                        TAG,
-                        "Removing device: "
-                                + bluetoothDevice
-                                + "on behalf of: "
-                                + Arrays.toString(packages));
-                bluetoothDevice.removeBond();
             }
         }
     }
@@ -2050,7 +2050,7 @@ public class RemoteDevices {
     }
 
     private static final String[] BOND_LOSS_IOP_PACKAGES = {
-        "com.sjm.crmd.patientApp_Android_", "com.abbott.crm.ngq.patient.",
+        "com.sjm.crmd.patientApp_Android", "com.abbott.crm.ngq.patient",
     };
 
     private static final Set<String> BOND_LOSS_IOP_DEVICE_NAMES = Set.of("CM", "DM");
@@ -2084,8 +2084,11 @@ public class RemoteDevices {
                     Log.w(
                             TAG,
                             "bondLossIopFixNeeded(): "
+                                    + " IOP fix needed for "
+                                    + device
+                                    + " name: "
                                     + deviceName
-                                    + " IOP fix needed for package "
+                                    + " package: "
                                     + packageName);
                     return true;
                 }

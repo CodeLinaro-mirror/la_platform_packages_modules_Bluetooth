@@ -36,6 +36,7 @@ import static com.android.server.bluetooth.BluetoothManagerService.MESSAGE_RESTO
 import static com.android.server.bluetooth.BluetoothManagerService.MESSAGE_TIMEOUT_BIND;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
@@ -69,11 +70,15 @@ import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.test.TestLooper;
 import android.permission.PermissionManager;
+import android.platform.test.annotations.DisableFlags;
+import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.FlagsParameterization;
 import android.platform.test.flag.junit.SetFlagsRule;
 import android.provider.Settings;
 
 import androidx.test.platform.app.InstrumentationRegistry;
+
+import com.android.bluetooth.flags.Flags;
 
 import org.hamcrest.Matcher;
 import org.hamcrest.core.AllOf;
@@ -102,7 +107,8 @@ public class BluetoothManagerServiceTest {
 
     @Parameters(name = "{0}")
     public static List<FlagsParameterization> getParams() {
-        return FlagsParameterization.allCombinationsOf();
+        return FlagsParameterization.allCombinationsOf(
+                Flags.FLAG_SYSTEM_SERVER_REMOVE_EXTRA_THREAD_JUMP);
     }
 
     public BluetoothManagerServiceTest(FlagsParameterization flags) {
@@ -258,9 +264,13 @@ public class BluetoothManagerServiceTest {
         IntStream.of(what)
                 .forEach(
                         w -> {
+                            String log = "Expecting message " + w + ": ";
+
                             Message msg = mLooper.nextMessage();
-                            assertThat(msg).isNotNull();
-                            assertThat(msg.what).isEqualTo(w);
+                            assertWithMessage(log + "but got null").that(msg).isNotNull();
+                            assertWithMessage(log + "but got " + msg.what)
+                                    .that(msg.what)
+                                    .isEqualTo(w);
                             msg.getTarget().dispatchMessage(msg);
                         });
     }
@@ -295,7 +305,9 @@ public class BluetoothManagerServiceTest {
 
         // called from SYSTEM user, should try to toggle Bluetooth off
         mManagerService.onUserRestrictionsChanged(UserHandle.SYSTEM);
-        syncHandler(MESSAGE_DISABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_DISABLE);
+        }
     }
 
     @Test
@@ -308,7 +320,9 @@ public class BluetoothManagerServiceTest {
                         anyInt(),
                         any(UserHandle.class));
         mManagerService.enableBle("enable_bindFailure_removesTimeout", mBinder);
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
         verify(mContext).unbindService(any());
         mInOrder.verify(mContext).unbindService(any());
 
@@ -320,7 +334,9 @@ public class BluetoothManagerServiceTest {
     @Test
     public void enable_bindTimeout() throws Exception {
         mManagerService.enableBle("enable_bindTimeout", mBinder);
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         mLooper.moveTimeForward(120_000); // 120 seconds
         syncHandler(MESSAGE_TIMEOUT_BIND);
@@ -414,7 +430,9 @@ public class BluetoothManagerServiceTest {
     @Test
     public void enable_whileTurningToBleOn_shouldEnable() throws Exception {
         mManagerService.enableBle("enable_whileTurningToBleOn_shouldEnable", mBinder);
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         acceptBluetoothBinding();
         IBluetoothCallback btCallback = captureBluetoothCallback();
@@ -422,7 +440,9 @@ public class BluetoothManagerServiceTest {
 
         // receive enable when Bluetooth is in BLE_TURNING_ON
         mManagerService.enable("enable_whileTurningToBleOn_shouldEnable");
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         btCallback.onBluetoothStateChange(STATE_BLE_TURNING_ON, STATE_BLE_ON);
         syncHandler(MESSAGE_BLUETOOTH_STATE_CHANGE);
@@ -433,12 +453,16 @@ public class BluetoothManagerServiceTest {
     @Test
     public void enable_whileNotYetBoundToBle_shouldEnable() throws Exception {
         mManagerService.enableBle("enable_whileTurningToBleOn_shouldEnable", mBinder);
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
         assertThat(mManagerService.getState()).isEqualTo(STATE_OFF);
 
         // receive enable when Bluetooth is OFF and not yet binded
         mManagerService.enable("enable_whileTurningToBleOn_shouldEnable");
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         acceptBluetoothBinding();
         IBluetoothCallback btCallback = captureBluetoothCallback();
@@ -453,7 +477,9 @@ public class BluetoothManagerServiceTest {
     @Test
     public void offToBleOn() throws Exception {
         mManagerService.enableBle("test_offToBleOn", mBinder);
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         transition_offToBleOn();
 
@@ -465,7 +491,9 @@ public class BluetoothManagerServiceTest {
     @Test
     public void offToOn() throws Exception {
         mManagerService.enable("test_offToOn");
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         transition_offToOn();
 
@@ -475,7 +503,9 @@ public class BluetoothManagerServiceTest {
     @Test
     public void crash_whileTransitionState_canRecover() throws Exception {
         mManagerService.enableBle("crash_whileTransitionState_canRecover", mBinder);
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
 
         BluetoothManagerService.BluetoothServiceConnection serviceConnection =
                 acceptBluetoothBinding();
@@ -504,28 +534,83 @@ public class BluetoothManagerServiceTest {
 
     @Test
     public void disableAirplane_whenNothing_startBluetooth() throws Exception {
-        mPersistedState = BluetoothManagerService.BLUETOOTH_ON_BLUETOOTH;
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            mPersistedState = BluetoothManagerService.BLUETOOTH_ON_BLUETOOTH;
+        }
         mManagerService.enable("disableAirplane_whenNothing_startBluetooth");
-        discardMessage(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            discardMessage(MESSAGE_ENABLE);
+        } else {
+            transition_offToOn();
+        }
+
+        assertThat(mLooper.nextMessage()).isNull();
 
         mManagerService.onAirplaneModeChanged(false);
-        discardMessage(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            discardMessage(MESSAGE_ENABLE);
+        }
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_SYSTEM_SERVER_REMOVE_EXTRA_THREAD_JUMP)
+    public void disable_whenBinding_bluetoothShouldStop_new() throws Exception {
+        mManagerService.enable("disable_whenBinding_bluetoothShouldStop_new");
+        mInOrder.verify(mContext).bindServiceAsUser(any(), any(), anyInt(), any());
+        mManagerService.disable("disable_whenBinding_bluetoothShouldStop_new", true);
+        mInOrder.verify(mContext).unbindService(any());
+        assertThat(mManagerService.getState()).isEqualTo(STATE_OFF);
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_SYSTEM_SERVER_REMOVE_EXTRA_THREAD_JUMP)
+    public void disable_whenTurningBleOn_bluetoothShouldStop() throws Exception {
+        mManagerService.enable("disable_whenBinding_bluetoothShouldStop_new");
+        acceptBluetoothBinding();
+        assertThat(mManagerService.getState()).isEqualTo(STATE_BLE_TURNING_ON);
+        mManagerService.disable("disable_whenBinding_bluetoothShouldStop_new", true);
+        mInOrder.verify(mContext).unbindService(any());
+        assertThat(mManagerService.getState()).isEqualTo(STATE_OFF);
+    }
+
+    @Test
+    @DisableFlags(Flags.FLAG_SYSTEM_SERVER_REMOVE_EXTRA_THREAD_JUMP)
+    public void disable_whenBinding_bluetoothShouldStop_old() throws Exception {
+        mManagerService.enable("disable_whenBinding_bluetoothShouldStop_old");
+        syncHandler(MESSAGE_ENABLE);
+        mManagerService.disable("disable_whenBinding_bluetoothShouldStop_old", true);
+        syncHandler(MESSAGE_DISABLE);
+
+        IBluetoothCallback btCallback = transition_offToBleOn();
+        assertThat(mManagerService.getState()).isEqualTo(STATE_BLE_TURNING_OFF);
+
+        btCallback.onBluetoothStateChange(STATE_BLE_TURNING_OFF, STATE_OFF);
+        syncHandler(MESSAGE_BLUETOOTH_STATE_CHANGE);
+
+        mLooper.moveTimeForward(BluetoothManagerService.ENABLE_DISABLE_DELAY_MS);
+        syncHandler(MESSAGE_DISABLE);
+
+        assertThat(mManagerService.getState()).isEqualTo(STATE_OFF);
     }
 
     @Test
     public void disableAirplane_whenFactoryReset_doesNotStartBluetooth() throws Exception {
         mManagerService.enable("disableAirplane_whenFactoryReset_doesNotStartBluetooth");
-        syncHandler(MESSAGE_ENABLE);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_ENABLE);
+        }
         IBluetoothCallback btCallback = transition_offToOn();
         assertThat(mManagerService.getState()).isEqualTo(STATE_ON);
 
         mManagerService.mHandler.sendEmptyMessage(MESSAGE_RESTORE_USER_SETTING_OFF);
         syncHandler(MESSAGE_RESTORE_USER_SETTING_OFF);
-        syncHandler(MESSAGE_DISABLE);
-        mLooper.moveTimeForward(BluetoothManagerService.ENABLE_DISABLE_DELAY_MS);
-        syncHandler(MESSAGE_HANDLE_DISABLE_DELAYED);
-        mLooper.moveTimeForward(BluetoothManagerService.ENABLE_DISABLE_DELAY_MS);
-        syncHandler(MESSAGE_HANDLE_DISABLE_DELAYED);
+        if (!Flags.systemServerRemoveExtraThreadJump()) {
+            syncHandler(MESSAGE_DISABLE);
+            mLooper.moveTimeForward(BluetoothManagerService.ENABLE_DISABLE_DELAY_MS);
+            syncHandler(MESSAGE_HANDLE_DISABLE_DELAYED);
+            mLooper.moveTimeForward(BluetoothManagerService.ENABLE_DISABLE_DELAY_MS);
+            syncHandler(MESSAGE_HANDLE_DISABLE_DELAYED);
+        }
         transition_onToOff(btCallback);
 
         mManagerService.onAirplaneModeChanged(false);

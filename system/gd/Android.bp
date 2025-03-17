@@ -357,8 +357,8 @@ cc_test {
     srcs: [
         ":BluetoothPacketTestSources",
         ":TestCommonMockFunctions",
+        ":TestMockMainShim",
         ":TestMockMainShimEntry",
-        ":TestMockStackMetrics",
         "common/bidi_queue_unittest.cc",
         "common/blocking_queue_unittest.cc",
         "common/byte_array_test.cc",
@@ -413,6 +413,9 @@ cc_test {
         "storage/legacy_config_file_test.cc",
         "storage/mutation_test.cc",
         "storage/storage_module_test.cc",
+    ],
+    cflags: [
+        "-DUSE_FAKE_TIMERS",
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
@@ -581,11 +584,12 @@ cc_fuzz {
     defaults: ["gd_fuzz_defaults"],
     srcs: [
         ":TestCommonMockFunctions",
-        ":TestMockStackMetrics",
+        ":TestMockMainShim",
         "hci/fuzz/acl_manager_fuzz_test.cc",
     ],
     include_dirs: [
         "packages/modules/Bluetooth/system",
+        "packages/modules/Bluetooth/system/include",
     ],
     static_libs: [
         "libbt-platform-protos-lite",

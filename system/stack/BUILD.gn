@@ -149,7 +149,6 @@ source_set("stack") {
     "l2cap/l2c_main.cc",
     "l2cap/l2c_utils.cc",
     "l2cap/l2cap_api.cc",
-    "metrics/stack_metrics_logging.cc",
     "pan/pan_api.cc",
     "pan/pan_main.cc",
     "pan/pan_utils.cc",

@@ -441,6 +441,8 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     it->second.measurement_ongoing = true;
     it->second.waiting_for_start_callback = true;
     it->second.local_hci_role = local_hci_role;
+    it->second.retry_counter_for_create_config = 0;
+    it->second.retry_counter_for_cs_enable = 0;
     return true;
   }
 
@@ -845,6 +847,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
   static void reset_tracker_on_stopped(CsTracker& cs_tracker) {
     cs_tracker.measurement_ongoing = false;
     cs_tracker.state = CsTrackerState::STOPPED;
+    cs_tracker.procedure_data_list.clear();
   }
 
   void handle_cs_setup_failure(uint16_t connection_handle, DistanceMeasurementErrorCode errorCode) {
@@ -906,7 +909,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       if (cs_requester_trackers_.find(connection_handle) != cs_requester_trackers_.end()) {
         reset_tracker_on_stopped(cs_requester_trackers_[connection_handle]);
       }
-    } else if (status_view.GetStatus() != ErrorCode::SUCCESS) {
+    } else if (enable == Enable::ENABLED && status_view.GetStatus() != ErrorCode::SUCCESS) {
       if (cs_requester_trackers_.count(connection_handle) == 0) {
         log::error("Error code {} for connection_handle {}. No request tracker found.",
                    ErrorCodeText(status), connection_handle);
@@ -919,6 +922,14 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       if (cs_requester_trackers_[connection_handle].retry_counter_for_cs_enable++ >=
           kMaxRetryCounterForCsEnable) {
         handle_cs_setup_failure(connection_handle, REASON_INTERNAL_ERROR);
+      } else {
+        cs_requester_trackers_[connection_handle].procedure_schedule_guard_alarm->Cancel();
+        log::info("schedule next procedure enable after {} ms",
+                  cs_requester_trackers_[connection_handle].interval_ms);
+        cs_requester_trackers_[connection_handle].procedure_schedule_guard_alarm->Schedule(
+                common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
+                             connection_handle, Enable::ENABLED),
+                std::chrono::milliseconds(cs_requester_trackers_[connection_handle].interval_ms));
       }
     }
   }
@@ -1237,25 +1248,8 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
   void on_cs_procedure_enable_complete(LeCsProcedureEnableCompleteView event_view) {
     log::assert_that(event_view.IsValid(), "assert failed: event_view.IsValid()");
     uint16_t connection_handle = event_view.GetConnectionHandle();
-    log::debug("on cs procedure enabled complete");
-    if (event_view.GetStatus() != ErrorCode::SUCCESS) {
-      std::string error_code = ErrorCodeText(event_view.GetStatus());
-      if (cs_requester_trackers_.count(connection_handle) == 0) {
-        log::warn(
-                "Received LeCsProcedureEnableCompleteView with error code {}, No request tracker "
-                "found",
-                error_code);
-        handle_cs_setup_failure(connection_handle, REASON_INTERNAL_ERROR);
-        return;
-      }
-      log::warn("Received LeCsProcedureEnableCompleteView with error code {}. Retry counter {}",
-                error_code, cs_requester_trackers_[connection_handle].retry_counter_for_cs_enable);
-      if (cs_requester_trackers_[connection_handle].retry_counter_for_cs_enable++ >=
-          kMaxRetryCounterForCsEnable) {
-        handle_cs_setup_failure(connection_handle, REASON_INTERNAL_ERROR);
-      }
-      return;
-    }
+    log::debug("Procedure enabled, {}", event_view.ToString());
+
     uint8_t config_id = event_view.GetConfigId();
 
     CsTracker* live_tracker = nullptr;
@@ -1272,7 +1266,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
                                       valid_responder_states);
       if (live_tracker == nullptr) {
-        log::error("no tracker is available for {}", connection_handle);
+        log::error("enable - no tracker is available for {}", connection_handle);
         return;
       }
       if (live_tracker->used_config_id != config_id) {
@@ -1280,7 +1274,22 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
                   live_tracker->used_config_id);
         return;
       }
-      log::debug("Procedure enabled, {}", event_view.ToString());
+
+      if (live_tracker->local_start && event_view.GetStatus() != ErrorCode::SUCCESS) {
+        log::warn("Received LeCsProcedureEnableCompleteView with error code {}. Retry counter {}",
+                  ErrorCodeText(event_view.GetStatus()), live_tracker->retry_counter_for_cs_enable);
+        if (live_tracker->retry_counter_for_cs_enable++ >= kMaxRetryCounterForCsEnable) {
+          handle_cs_setup_failure(connection_handle, REASON_INTERNAL_ERROR);
+        } else {
+          live_tracker->procedure_schedule_guard_alarm->Cancel();
+          log::info("schedule next procedure enable after {} ms", live_tracker->interval_ms);
+          live_tracker->procedure_schedule_guard_alarm->Schedule(
+                  common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
+                               connection_handle, Enable::ENABLED),
+                  std::chrono::milliseconds(live_tracker->interval_ms));
+        }
+        return;
+      }
       live_tracker->state = CsTrackerState::STARTED;
       live_tracker->selected_tx_power = event_view.GetSelectedTxPower();
       live_tracker->n_procedure_count = event_view.GetProcedureCount();
@@ -1297,38 +1306,45 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         if (live_tracker->n_procedure_count >= 1) {
           live_tracker->procedure_schedule_guard_alarm->Cancel();
           log::info("schedule next procedure enable after {} ms", schedule_interval);
-          cs_requester_trackers_[connection_handle].procedure_schedule_guard_alarm->Schedule(
+          live_tracker->procedure_schedule_guard_alarm->Schedule(
                   common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
                                connection_handle, Enable::ENABLED),
                   std::chrono::milliseconds(schedule_interval));
         }
-      }
 
-      if (live_tracker->local_start && live_tracker->waiting_for_start_callback) {
-        live_tracker->waiting_for_start_callback = false;
-        distance_measurement_callbacks_->OnDistanceMeasurementStarted(live_tracker->address,
-                                                                      METHOD_CS);
-      }
-      if (live_tracker->local_start && is_hal_v2()) {
-        // reset the procedure sequence
-        live_tracker->procedure_sequence_after_enable = -1;
-        ranging_hal_->UpdateProcedureEnableConfig(connection_handle, event_view);
+        if (live_tracker->waiting_for_start_callback) {
+          live_tracker->waiting_for_start_callback = false;
+          distance_measurement_callbacks_->OnDistanceMeasurementStarted(live_tracker->address,
+                                                                        METHOD_CS);
+        }
+        if (is_hal_v2()) {
+          // reset the procedure sequence
+          live_tracker->procedure_sequence_after_enable = -1;
+          ranging_hal_->UpdateProcedureEnableConfig(connection_handle, event_view);
+        }
       }
     } else if (event_view.GetState() == Enable::DISABLED) {
-      uint8_t valid_requester_states = static_cast<uint8_t>(CsTrackerState::STARTED);
-      uint8_t valid_responder_states = static_cast<uint8_t>(CsTrackerState::STARTED);
-      live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
-                                      valid_responder_states);
-      if (live_tracker == nullptr) {
-        log::error("no tracker is available for {}", connection_handle);
-        return;
+      if (event_view.GetStatus() == ErrorCode::SUCCESS) {
+        // local or remote host requested it.
+        uint8_t valid_requester_states = static_cast<uint8_t>(CsTrackerState::STARTED);
+        uint8_t valid_responder_states = static_cast<uint8_t>(CsTrackerState::STARTED);
+        live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
+                                        valid_responder_states);
+        if (live_tracker == nullptr) {
+          log::error("disable - no tracker is available for {}", connection_handle);
+          return;
+        }
+        reset_tracker_on_stopped(*live_tracker);
+      } else {
+        // work around, controller may send 'DISABLE' complete with error for 'ENABLE' command
+        auto req_it = cs_requester_trackers_.find(connection_handle);
+        if (req_it != cs_requester_trackers_.end() &&
+            req_it->second.state == CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED &&
+            config_id == req_it->second.used_config_id) {
+          log::warn("expect ENABLE complete, bug got DISABLE complete.");
+          handle_cs_setup_failure(connection_handle, REASON_INTERNAL_ERROR);
+        }
       }
-      reset_tracker_on_stopped(*live_tracker);
-    }
-    // reset the procedure data list.
-    std::vector<CsProcedureData>& data_list = live_tracker->procedure_data_list;
-    while (!data_list.empty()) {
-      data_list.erase(data_list.begin());
     }
   }
 
