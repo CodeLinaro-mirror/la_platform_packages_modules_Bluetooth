@@ -35,70 +35,67 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link MapClientServiceBinder} */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class MapClientServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private MapClientService mService;
 
     private final BluetoothDevice mDevice = getTestDevice(65);
 
-    MapClientService.Binder mBinder;
+    private MapClientServiceBinder mBinder;
 
     @Before
     public void setUp() {
-        mBinder = new MapClientService.Binder(mService);
+        mBinder = new MapClientServiceBinder(mService);
     }
 
     @Test
     public void connect_callsServiceMethod() {
         mBinder.connect(mDevice, null);
-
         verify(mService).connect(mDevice);
     }
 
     @Test
     public void disconnect_callsServiceMethod() {
         mBinder.disconnect(mDevice, null);
-
         verify(mService).disconnect(mDevice);
     }
 
     @Test
     public void getConnectedDevices_callsServiceMethod() {
         mBinder.getConnectedDevices(null);
-
         verify(mService).getConnectedDevices();
     }
 
     @Test
     public void getDevicesMatchingConnectionStates_callsServiceMethod() {
         int[] states = new int[] {STATE_CONNECTED};
-        mBinder.getDevicesMatchingConnectionStates(states, null);
 
+        mBinder.getDevicesMatchingConnectionStates(states, null);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState_callsServiceMethod() {
         mBinder.getConnectionState(mDevice, null);
-
         verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void setConnectionPolicy_callsServiceMethod() {
         int connectionPolicy = CONNECTION_POLICY_ALLOWED;
-        mBinder.setConnectionPolicy(mDevice, connectionPolicy, null);
 
+        mBinder.setConnectionPolicy(mDevice, connectionPolicy, null);
         verify(mService).setConnectionPolicy(mDevice, connectionPolicy);
     }
 
     @Test
     public void getConnectionPolicy_callsServiceMethod() {
         mBinder.getConnectionPolicy(mDevice, null);
-
         verify(mService).getConnectionPolicy(mDevice);
     }
 
@@ -106,13 +103,13 @@ public class MapClientServiceBinderTest {
     public void sendMessage_callsServiceMethod() {
         Uri[] contacts = new Uri[] {};
         String message = "test_message";
-        mBinder.sendMessage(mDevice, contacts, message, null, null, null);
 
+        mBinder.sendMessage(mDevice, contacts, message, null, null, null);
         verify(mService).sendMessage(mDevice, contacts, message, null, null);
     }
 
     @Test
-    public void cleanUp_doesNotCrash() {
+    public void cleanup_doesNotCrash() {
         mBinder.cleanup();
     }
 }

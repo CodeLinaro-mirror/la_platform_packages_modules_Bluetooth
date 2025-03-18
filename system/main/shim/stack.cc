@@ -170,6 +170,9 @@ void Stack::Stop() {
   is_running_ = false;
 
   stack_handler_->Clear();
+  if(com::android::bluetooth::flags::same_handler_for_all_modules()) {
+    stack_handler_->WaitUntilStopped(bluetooth::kHandlerStopTimeout);
+  }
 
   WakelockManager::Get().Acquire();
 

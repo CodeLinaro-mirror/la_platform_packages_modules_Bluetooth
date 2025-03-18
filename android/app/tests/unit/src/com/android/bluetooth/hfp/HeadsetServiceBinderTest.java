@@ -27,12 +27,20 @@ import static org.mockito.Mockito.verify;
 import android.bluetooth.BluetoothDevice;
 import android.content.AttributionSource;
 
+import androidx.test.filters.SmallTest;
+import androidx.test.runner.AndroidJUnit4;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-public class BluetoothHeadsetBinderTest {
+/** Test cases for {@link HeadsetServiceBinder} */
+@SmallTest
+@RunWith(AndroidJUnit4.class)
+public class HeadsetServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private HeadsetService mService;
@@ -40,11 +48,11 @@ public class BluetoothHeadsetBinderTest {
     private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
     private final BluetoothDevice mDevice = getTestDevice(39);
 
-    private HeadsetService.BluetoothHeadsetBinder mBinder;
+    private HeadsetServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mBinder = new HeadsetService.BluetoothHeadsetBinder(mService);
+        mBinder = new HeadsetServiceBinder(mService);
     }
 
     @Test
@@ -68,6 +76,7 @@ public class BluetoothHeadsetBinderTest {
     @Test
     public void getDevicesMatchingConnectionStates() {
         int[] states = new int[] {STATE_CONNECTED};
+
         mBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
@@ -142,6 +151,7 @@ public class BluetoothHeadsetBinderTest {
     @Test
     public void setAudioRouteAllowed() {
         boolean allowed = true;
+
         mBinder.setAudioRouteAllowed(allowed, mAttributionSource);
         verify(mService).setAudioRouteAllowed(allowed);
     }
@@ -155,6 +165,7 @@ public class BluetoothHeadsetBinderTest {
     @Test
     public void setForceScoAudio() {
         boolean forced = true;
+
         mBinder.setForceScoAudio(forced, mAttributionSource);
         verify(mService).setForceScoAudio(forced);
     }

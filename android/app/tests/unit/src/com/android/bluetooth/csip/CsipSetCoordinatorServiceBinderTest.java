@@ -30,12 +30,20 @@ import android.bluetooth.IBluetoothCsipSetCoordinatorLockCallback;
 import android.content.AttributionSource;
 import android.os.ParcelUuid;
 
+import androidx.test.filters.SmallTest;
+import androidx.test.runner.AndroidJUnit4;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-public class BluetoothCsisBinderTest {
+/** Test cases for {@link CsipSetCoordinatorServiceBinder} */
+@SmallTest
+@RunWith(AndroidJUnit4.class)
+public class CsipSetCoordinatorServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private CsipSetCoordinatorService mService;
@@ -43,11 +51,11 @@ public class BluetoothCsisBinderTest {
     private final BluetoothDevice mDevice = getTestDevice(45);
     private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
 
-    private CsipSetCoordinatorService.BluetoothCsisBinder mBinder;
+    private CsipSetCoordinatorServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mBinder = new CsipSetCoordinatorService.BluetoothCsisBinder(mService);
+        mBinder = new CsipSetCoordinatorServiceBinder(mService);
     }
 
     @Test
@@ -59,6 +67,7 @@ public class BluetoothCsisBinderTest {
     @Test
     public void getDevicesMatchingConnectionStates() {
         int[] states = new int[] {STATE_CONNECTED};
+
         mBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
@@ -72,6 +81,7 @@ public class BluetoothCsisBinderTest {
     @Test
     public void setConnectionPolicy() {
         int connectionPolicy = CONNECTION_POLICY_ALLOWED;
+
         mBinder.setConnectionPolicy(mDevice, connectionPolicy, mAttributionSource);
         verify(mService).setConnectionPolicy(mDevice, connectionPolicy);
     }
@@ -87,6 +97,7 @@ public class BluetoothCsisBinderTest {
         int groupId = 100;
         IBluetoothCsipSetCoordinatorLockCallback cb =
                 mock(IBluetoothCsipSetCoordinatorLockCallback.class);
+
         mBinder.lockGroup(groupId, cb, mAttributionSource);
         verify(mService).lockGroup(groupId, cb);
     }
@@ -94,6 +105,7 @@ public class BluetoothCsisBinderTest {
     @Test
     public void unlockGroup() {
         ParcelUuid uuid = ParcelUuid.fromString("0000110A-0000-1000-8000-00805F9B34FB");
+
         mBinder.unlockGroup(uuid, mAttributionSource);
         verify(mService).unlockGroup(uuid.getUuid());
     }
@@ -101,6 +113,7 @@ public class BluetoothCsisBinderTest {
     @Test
     public void getAllGroupIds() {
         ParcelUuid uuid = ParcelUuid.fromString("0000110A-0000-1000-8000-00805F9B34FB");
+
         mBinder.getAllGroupIds(uuid, mAttributionSource);
         verify(mService).getAllGroupIds(uuid);
     }

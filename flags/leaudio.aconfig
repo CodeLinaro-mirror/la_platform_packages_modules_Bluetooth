@@ -344,3 +344,13 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "leaudio_use_aggressive_params"
+    namespace: "bluetooth"
+    description: "use aggressive parameters for LE Audio device"
+    bug: "400607635"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}

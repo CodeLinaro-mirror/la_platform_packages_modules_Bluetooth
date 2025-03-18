@@ -35,6 +35,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link HeadsetClientServiceBinder} */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetClientServiceBinderTest {
@@ -44,11 +45,11 @@ public class HeadsetClientServiceBinderTest {
 
     private final BluetoothDevice mDevice = getTestDevice(54);
 
-    HeadsetClientService.BluetoothHeadsetClientBinder mBinder;
+    private HeadsetClientServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mBinder = new HeadsetClientService.BluetoothHeadsetClientBinder(mService);
+        mBinder = new HeadsetClientServiceBinder(mService);
     }
 
     @Test

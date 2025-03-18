@@ -36,15 +36,23 @@ import android.content.AttributionSource;
 import android.os.ParcelUuid;
 import android.platform.test.flag.junit.SetFlagsRule;
 
+import androidx.test.filters.SmallTest;
+import androidx.test.runner.AndroidJUnit4;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 
 import java.util.UUID;
 
-public class LeAudioBinderTest {
+/** Test cases for {@link LeAudioServiceBinder} */
+@SmallTest
+@RunWith(AndroidJUnit4.class)
+public class LeAudioServiceBinderTest {
+
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
@@ -53,11 +61,11 @@ public class LeAudioBinderTest {
     private static final String TEST_BROADCAST_NAME = "TEST";
     private static final int TEST_QUALITY = BluetoothLeBroadcastSubgroupSettings.QUALITY_STANDARD;
 
-    private LeAudioService.BluetoothLeAudioBinder mBinder;
+    private LeAudioServiceBinder mBinder;
 
     @Before
     public void setUp() {
-        mBinder = new LeAudioService.BluetoothLeAudioBinder(mService);
+        mBinder = new LeAudioServiceBinder(mService);
     }
 
     @Test

@@ -35,20 +35,22 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link BluetoothPbapServiceBinder} */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothPbapServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private BluetoothPbapService mService;
 
     private final BluetoothDevice mDevice = getTestDevice(60);
 
-    BluetoothPbapService.PbapBinder mBinder;
+    private BluetoothPbapServiceBinder mBinder;
 
     @Before
     public void setUp() {
-        mBinder = new BluetoothPbapService.PbapBinder(mService);
+        mBinder = new BluetoothPbapServiceBinder(mService);
     }
 
     @Test

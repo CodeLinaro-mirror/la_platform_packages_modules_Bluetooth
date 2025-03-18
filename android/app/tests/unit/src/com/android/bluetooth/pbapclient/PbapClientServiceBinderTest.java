@@ -47,29 +47,30 @@ import org.mockito.Mock;
 
 import java.util.List;
 
+/** Test cases for {@link PbapClientServiceBinder} */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
-public class PbapClientBinderTest {
+public class PbapClientServiceBinderTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private PbapClientService mMockService;
     private BluetoothDevice mTestDevice;
     private AttributionSource mAttributionSource;
 
-    private PbapClientBinder mPbapClientBinder;
+    private PbapClientServiceBinder mPbapClientServiceBinder;
 
     @Before
     public void setUp() throws Exception {
         mTestDevice = getTestDevice(1);
         mAttributionSource = new AttributionSource.Builder(1).build();
-        mPbapClientBinder = new PbapClientBinder(mMockService);
+        mPbapClientServiceBinder = new PbapClientServiceBinder(mMockService);
     }
 
     @After
     public void tearDown() throws Exception {
-        if (mPbapClientBinder != null) {
-            mPbapClientBinder.cleanup();
-            mPbapClientBinder = null;
+        if (mPbapClientServiceBinder != null) {
+            mPbapClientServiceBinder.cleanup();
+            mPbapClientServiceBinder = null;
         }
     }
 
@@ -79,45 +80,46 @@ public class PbapClientBinderTest {
 
     @Test
     public void testConnect() {
-        mPbapClientBinder.connect(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.connect(mTestDevice, mAttributionSource);
         verify(mMockService).connect(eq(mTestDevice));
     }
 
     @Test
     public void testDisconnect() {
-        mPbapClientBinder.disconnect(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.disconnect(mTestDevice, mAttributionSource);
         verify(mMockService).disconnect(eq(mTestDevice));
     }
 
     @Test
     public void testGetConnectedDevices() {
-        mPbapClientBinder.getConnectedDevices(mAttributionSource);
+        mPbapClientServiceBinder.getConnectedDevices(mAttributionSource);
         verify(mMockService).getConnectedDevices();
     }
 
     @Test
     public void testGetDevicesMatchingConnectionStates() {
         int[] states = new int[] {STATE_CONNECTED};
-        mPbapClientBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
+        mPbapClientServiceBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mMockService).getDevicesMatchingConnectionStates(eq(states));
     }
 
     @Test
     public void testGetConnectionState() {
-        mPbapClientBinder.getConnectionState(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.getConnectionState(mTestDevice, mAttributionSource);
         verify(mMockService).getConnectionState(eq(mTestDevice));
     }
 
     @Test
     public void testSetConnectionPolicy() {
         int connectionPolicy = CONNECTION_POLICY_ALLOWED;
-        mPbapClientBinder.setConnectionPolicy(mTestDevice, connectionPolicy, mAttributionSource);
+        mPbapClientServiceBinder.setConnectionPolicy(
+                mTestDevice, connectionPolicy, mAttributionSource);
         verify(mMockService).setConnectionPolicy(eq(mTestDevice), eq(connectionPolicy));
     }
 
     @Test
     public void testGetConnectionPolicy() {
-        mPbapClientBinder.getConnectionPolicy(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.getConnectionPolicy(mTestDevice, mAttributionSource);
         verify(mMockService).getConnectionPolicy(eq(mTestDevice));
     }
 
@@ -127,52 +129,54 @@ public class PbapClientBinderTest {
 
     @Test
     public void testConnect_afterCleanup_returnsFalse() {
-        mPbapClientBinder.cleanup();
-        boolean result = mPbapClientBinder.connect(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.cleanup();
+        boolean result = mPbapClientServiceBinder.connect(mTestDevice, mAttributionSource);
         verify(mMockService, never()).connect(any(BluetoothDevice.class));
         assertThat(result).isFalse();
     }
 
     @Test
     public void testDisconnect_afterCleanup_returnsFalse() {
-        mPbapClientBinder.cleanup();
-        boolean result = mPbapClientBinder.disconnect(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.cleanup();
+        boolean result = mPbapClientServiceBinder.disconnect(mTestDevice, mAttributionSource);
         verify(mMockService, never()).disconnect(any(BluetoothDevice.class));
         assertThat(result).isFalse();
     }
 
     @Test
     public void testGetConnectedDevices_afterCleanup_returnsEmptyList() {
-        mPbapClientBinder.cleanup();
-        List<BluetoothDevice> devices = mPbapClientBinder.getConnectedDevices(mAttributionSource);
+        mPbapClientServiceBinder.cleanup();
+        List<BluetoothDevice> devices =
+                mPbapClientServiceBinder.getConnectedDevices(mAttributionSource);
         verify(mMockService, never()).getConnectedDevices();
         assertThat(devices).isEmpty();
     }
 
     @Test
     public void testGetDevicesMatchingConnectionStates_afterCleanup_returnsEmptyList() {
-        mPbapClientBinder.cleanup();
+        mPbapClientServiceBinder.cleanup();
         int[] states = new int[] {STATE_CONNECTED};
         List<BluetoothDevice> devices =
-                mPbapClientBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
+                mPbapClientServiceBinder.getDevicesMatchingConnectionStates(
+                        states, mAttributionSource);
         verify(mMockService, never()).getDevicesMatchingConnectionStates(any(int[].class));
         assertThat(devices).isEmpty();
     }
 
     @Test
     public void testGetConnectionState_afterCleanup_returnsDisconnected() {
-        mPbapClientBinder.cleanup();
-        int state = mPbapClientBinder.getConnectionState(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.cleanup();
+        int state = mPbapClientServiceBinder.getConnectionState(mTestDevice, mAttributionSource);
         verify(mMockService, never()).getConnectionState(any(BluetoothDevice.class));
         assertThat(state).isEqualTo(STATE_DISCONNECTED);
     }
 
     @Test
     public void testSetConnectionPolicy_afterCleanup_returnsFalse() {
-        mPbapClientBinder.cleanup();
+        mPbapClientServiceBinder.cleanup();
         int connectionPolicy = CONNECTION_POLICY_ALLOWED;
         boolean result =
-                mPbapClientBinder.setConnectionPolicy(
+                mPbapClientServiceBinder.setConnectionPolicy(
                         mTestDevice, connectionPolicy, mAttributionSource);
         verify(mMockService, never()).setConnectionPolicy(any(BluetoothDevice.class), anyInt());
         assertThat(result).isFalse();
@@ -180,8 +184,8 @@ public class PbapClientBinderTest {
 
     @Test
     public void testGetConnectionPolicy_afterCleanup_returnsUnknown() {
-        mPbapClientBinder.cleanup();
-        int result = mPbapClientBinder.getConnectionPolicy(mTestDevice, mAttributionSource);
+        mPbapClientServiceBinder.cleanup();
+        int result = mPbapClientServiceBinder.getConnectionPolicy(mTestDevice, mAttributionSource);
         verify(mMockService, never()).getConnectionPolicy(any(BluetoothDevice.class));
         assertThat(result).isEqualTo(CONNECTION_POLICY_UNKNOWN);
     }

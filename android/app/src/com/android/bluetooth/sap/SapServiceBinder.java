@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,33 +14,36 @@
  * limitations under the License.
  */
 
-package com.android.bluetooth.pbapclient;
+package com.android.bluetooth.sap;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.IBluetoothPbapClient;
+import android.bluetooth.BluetoothSap;
+import android.bluetooth.IBluetoothSap;
 import android.content.AttributionSource;
 import android.util.Log;
 
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.ProfileService.IProfileServiceBinder;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-/** Handler for incoming service calls destined for PBAP Client */
-class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServiceBinder {
-    private static final String TAG = PbapClientBinder.class.getSimpleName();
+/**
+ * This class implements the IBluetoothSap interface - or actually it validates the preconditions
+ * for calling the actual functionality in the SapService, and calls it.
+ */
+class SapServiceBinder extends IBluetoothSap.Stub implements IProfileServiceBinder {
+    private static final String TAG = SapServiceBinder.class.getSimpleName();
 
-    private PbapClientService mService;
+    private SapService mService;
 
-    PbapClientBinder(PbapClientService service) {
+    SapServiceBinder(SapService service) {
         mService = service;
     }
 
@@ -49,45 +52,59 @@ class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServ
         mService = null;
     }
 
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    private PbapClientService getService(AttributionSource source) {
-        // Cache mService because it can change while getService is called
-        PbapClientService service = mService;
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    private SapService getService(AttributionSource source) {
+        SapService service = mService;
 
-        if (Utils.isInstrumentationTestMode()) {
-            return service;
-        }
-
-        if (!Utils.checkServiceAvailable(service, TAG)) {
-            Log.w(TAG, "getService() failed, service not available");
-            return null;
-        }
-
-        if (!Utils.checkCallerIsSystemOrActiveOrManagedUser(service, TAG)
+        if (!Utils.checkServiceAvailable(service, TAG)
+                || !Utils.checkCallerIsSystemOrActiveOrManagedUser(service, TAG)
                 || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
-            Log.w(TAG, "getService() failed, rejected due to permissions");
             return null;
         }
-
-        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
         return service;
     }
 
     @Override
-    public boolean connect(BluetoothDevice device, AttributionSource source) {
-        Log.d(TAG, "connect(device=" + device + ")");
-        PbapClientService service = getService(source);
+    public int getState(AttributionSource source) {
+        Log.v(TAG, "getState()");
+
+        SapService service = getService(source);
+        if (service == null) {
+            return BluetoothSap.STATE_DISCONNECTED;
+        }
+        return service.getState();
+    }
+
+    @Override
+    public BluetoothDevice getClient(AttributionSource source) {
+        Log.v(TAG, "getClient()");
+
+        SapService service = getService(source);
+        if (service == null) {
+            return null;
+        }
+
+        Log.v(TAG, "getClient() - returning " + service.getRemoteDevice());
+        return service.getRemoteDevice();
+    }
+
+    @Override
+    public boolean isConnected(BluetoothDevice device, AttributionSource source) {
+        Log.v(TAG, "isConnected()");
+
+        SapService service = getService(source);
         if (service == null) {
             return false;
         }
-        return service.connect(device);
+        return service.getConnectionState(device) == STATE_CONNECTED;
     }
 
     @Override
     public boolean disconnect(BluetoothDevice device, AttributionSource source) {
-        Log.d(TAG, "disconnect(device=" + device + ")");
-        PbapClientService service = getService(source);
+        Log.v(TAG, "disconnect()");
+
+        SapService service = getService(source);
         if (service == null) {
             return false;
         }
@@ -96,8 +113,9 @@ class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServ
 
     @Override
     public List<BluetoothDevice> getConnectedDevices(AttributionSource source) {
-        Log.d(TAG, "getConnectedDevices()");
-        PbapClientService service = getService(source);
+        Log.v(TAG, "getConnectedDevices()");
+
+        SapService service = getService(source);
         if (service == null) {
             return Collections.emptyList();
         }
@@ -107,8 +125,9 @@ class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServ
     @Override
     public List<BluetoothDevice> getDevicesMatchingConnectionStates(
             int[] states, AttributionSource source) {
-        Log.d(TAG, "getDevicesMatchingConnectionStates(states=" + Arrays.toString(states) + ")");
-        PbapClientService service = getService(source);
+        Log.v(TAG, "getDevicesMatchingConnectionStates()");
+
+        SapService service = getService(source);
         if (service == null) {
             return Collections.emptyList();
         }
@@ -117,8 +136,9 @@ class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServ
 
     @Override
     public int getConnectionState(BluetoothDevice device, AttributionSource source) {
-        Log.d(TAG, "getConnectionState(device=" + device + ")");
-        PbapClientService service = getService(source);
+        Log.v(TAG, "getConnectionState()");
+
+        SapService service = getService(source);
         if (service == null) {
             return STATE_DISCONNECTED;
         }
@@ -128,9 +148,7 @@ class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServ
     @Override
     public boolean setConnectionPolicy(
             BluetoothDevice device, int connectionPolicy, AttributionSource source) {
-        Log.d(TAG, "setConnectionPolicy(device=" + device + ", policy=" + connectionPolicy + ")");
-
-        PbapClientService service = getService(source);
+        SapService service = getService(source);
         if (service == null) {
             return false;
         }
@@ -139,8 +157,7 @@ class PbapClientBinder extends IBluetoothPbapClient.Stub implements IProfileServ
 
     @Override
     public int getConnectionPolicy(BluetoothDevice device, AttributionSource source) {
-        Log.d(TAG, "getConnectionPolicy(device=" + device + ")");
-        PbapClientService service = getService(source);
+        SapService service = getService(source);
         if (service == null) {
             return CONNECTION_POLICY_UNKNOWN;
         }

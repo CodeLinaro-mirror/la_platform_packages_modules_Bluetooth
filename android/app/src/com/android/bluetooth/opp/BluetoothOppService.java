@@ -121,7 +121,7 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
 
             // Since ContentObserver is created with Handler, onChange() can be called
             // even after the observer is unregistered.
-            if (Flags.oppIgnoreContentObserverAfterServiceStop() && mObserver != this) {
+            if (mObserver != this) {
                 Log.d(TAG, "onChange() called after stop() is called.");
                 return;
             }

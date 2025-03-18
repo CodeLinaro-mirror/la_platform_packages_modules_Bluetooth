@@ -130,7 +130,6 @@ public class CsipSetCoordinatorServiceTest {
                 new CsipSetCoordinatorService(
                         mAdapterService, mLooper.getLooper(), mNativeInterface, mServiceFactory);
         mService.setAvailable(true);
-
     }
 
     @After

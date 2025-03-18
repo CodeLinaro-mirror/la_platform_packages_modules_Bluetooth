@@ -44,9 +44,10 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 
+/** Test cases for {@link HapClientServiceBinder} */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
-public class HapClientBinderTest {
+public class HapClientServiceBinderTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private HapClientService mHapClientService;
@@ -59,11 +60,11 @@ public class HapClientBinderTest {
     private final AttributionSource mAttributionSource = mAdapter.getAttributionSource();
     private final BluetoothDevice mDevice = getTestDevice(0);
 
-    private HapClientBinder mBinder;
+    private HapClientServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mBinder = new HapClientBinder(mHapClientService);
+        mBinder = new HapClientServiceBinder(mHapClientService);
     }
 
     @Test

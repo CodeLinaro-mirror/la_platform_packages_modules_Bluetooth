@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.android.bluetooth.hid;
 
 import static android.bluetooth.BluetoothDevice.BOND_BONDED;
@@ -53,6 +54,7 @@ import java.util.List;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HidHostServiceTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;

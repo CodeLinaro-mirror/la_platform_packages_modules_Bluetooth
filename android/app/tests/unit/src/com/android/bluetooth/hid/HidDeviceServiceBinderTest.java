@@ -33,12 +33,20 @@ import android.bluetooth.BluetoothHidDeviceAppSdpSettings;
 import android.bluetooth.IBluetoothHidDeviceCallback;
 import android.content.AttributionSource;
 
+import androidx.test.filters.SmallTest;
+import androidx.test.runner.AndroidJUnit4;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-public class BluetoothHidDeviceBinderTest {
+/** Test cases for {@link HidDeviceServiceBinder} */
+@SmallTest
+@RunWith(AndroidJUnit4.class)
+public class HidDeviceServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private HidDeviceService mService;
@@ -46,12 +54,12 @@ public class BluetoothHidDeviceBinderTest {
     private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
     private final BluetoothDevice mDevice = getTestDevice(29);
 
-    private HidDeviceService.BluetoothHidDeviceBinder mBinder;
+    private HidDeviceServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
         when(mService.isAvailable()).thenReturn(true);
-        mBinder = new HidDeviceService.BluetoothHidDeviceBinder(mService);
+        mBinder = new HidDeviceServiceBinder(mService);
     }
 
     @Test

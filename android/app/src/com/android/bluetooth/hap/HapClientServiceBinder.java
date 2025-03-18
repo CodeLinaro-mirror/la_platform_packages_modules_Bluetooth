@@ -36,21 +36,19 @@ import android.content.AttributionSource;
 import android.util.Log;
 
 import com.android.bluetooth.Utils;
-import com.android.bluetooth.btservice.ProfileService;
+import com.android.bluetooth.btservice.ProfileService.IProfileServiceBinder;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.Collections;
 import java.util.List;
 
-/** HapClientBinder class */
 @VisibleForTesting
-class HapClientBinder extends IBluetoothHapClient.Stub
-        implements ProfileService.IProfileServiceBinder {
-    private static final String TAG = HapClientBinder.class.getSimpleName();
+class HapClientServiceBinder extends IBluetoothHapClient.Stub implements IProfileServiceBinder {
+    private static final String TAG = HapClientServiceBinder.class.getSimpleName();
 
     private HapClientService mService;
 
-    HapClientBinder(HapClientService svc) {
+    HapClientServiceBinder(HapClientService svc) {
         mService = svc;
     }
 
@@ -62,7 +60,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     private HapClientService getService(AttributionSource source) {
         requireNonNull(source);
-        // Cache mService because it can change while getService is called
         HapClientService service = mService;
 
         if (Utils.isInstrumentationTestMode()) {
@@ -86,7 +83,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         if (service == null) {
             return Collections.emptyList();
         }
-
         return service.getConnectedDevices();
     }
 
@@ -97,7 +93,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         if (service == null) {
             return Collections.emptyList();
         }
-
         return service.getDevicesMatchingConnectionStates(states);
     }
 
@@ -109,7 +104,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getConnectionState(device);
     }
 
@@ -139,7 +133,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getConnectionPolicy(device);
     }
 
@@ -151,7 +144,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getActivePresetIndex(device);
     }
 
@@ -164,7 +156,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getActivePresetInfo(device);
     }
 
@@ -176,7 +167,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getHapGroup(device);
     }
 
@@ -188,7 +178,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         service.selectPreset(device, presetIndex);
     }
 
@@ -198,7 +187,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         if (service == null) {
             return;
         }
-
         service.selectPresetForGroup(groupId, presetIndex);
     }
 
@@ -210,7 +198,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         service.switchToNextPreset(device);
     }
 
@@ -220,7 +207,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         if (service == null) {
             return;
         }
-
         service.switchToNextPresetForGroup(groupId);
     }
 
@@ -232,7 +218,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         service.switchToPreviousPreset(device);
     }
 
@@ -242,7 +227,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         if (service == null) {
             return;
         }
-
         service.switchToPreviousPresetForGroup(groupId);
     }
 
@@ -255,7 +239,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getPresetInfo(device, presetIndex);
     }
 
@@ -268,7 +251,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getAllPresetInfo(device);
     }
 
@@ -280,7 +262,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(device);
-
         return service.getFeatures(device);
     }
 
@@ -294,7 +275,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
 
         requireNonNull(device);
         requireNonNull(name);
-
         service.setPresetName(device, presetIndex, name);
     }
 
@@ -307,7 +287,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(name);
-
         service.setPresetNameForGroup(groupId, presetIndex, name);
     }
 
@@ -319,7 +298,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(callback);
-
         service.registerCallback(callback);
     }
 
@@ -331,7 +309,6 @@ class HapClientBinder extends IBluetoothHapClient.Stub
         }
 
         requireNonNull(callback);
-
         service.unregisterCallback(callback);
     }
 }

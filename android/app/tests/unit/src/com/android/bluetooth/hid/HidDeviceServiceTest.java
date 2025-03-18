@@ -76,7 +76,7 @@ import org.mockito.hamcrest.MockitoHamcrest;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
-public class HidDeviceTest {
+public class HidDeviceServiceTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;

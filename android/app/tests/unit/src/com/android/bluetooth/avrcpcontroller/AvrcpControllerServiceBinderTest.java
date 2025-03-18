@@ -34,41 +34,41 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link AvrcpControllerServiceBinder} */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class AvrcpControllerServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AvrcpControllerService mService;
 
     private final BluetoothDevice mDevice = getTestDevice(49);
 
-    AvrcpControllerService.AvrcpControllerServiceBinder mBinder;
+    private AvrcpControllerServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mBinder = new AvrcpControllerService.AvrcpControllerServiceBinder(mService);
+        mBinder = new AvrcpControllerServiceBinder(mService);
     }
 
     @Test
     public void getConnectedDevices_callsServiceMethod() {
         mBinder.getConnectedDevices(null);
-
         verify(mService).getConnectedDevices();
     }
 
     @Test
     public void getDevicesMatchingConnectionStates_callsServiceMethod() {
         int[] states = new int[] {STATE_CONNECTED};
-        mBinder.getDevicesMatchingConnectionStates(states, null);
 
+        mBinder.getDevicesMatchingConnectionStates(states, null);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState_callsServiceMethod() {
         mBinder.getConnectionState(mDevice, null);
-
         verify(mService).getConnectionState(mDevice);
     }
 

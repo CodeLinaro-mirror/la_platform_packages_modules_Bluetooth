@@ -17,8 +17,6 @@
 package com.android.bluetooth.pan;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
-import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
-import static android.Manifest.permission.TETHER_PRIVILEGED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
@@ -30,15 +28,12 @@ import static android.bluetooth.BluetoothUtils.logRemoteException;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 
-import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothPan;
 import android.bluetooth.BluetoothPan.LocalPanRole;
 import android.bluetooth.BluetoothPan.RemotePanRole;
 import android.bluetooth.BluetoothProfile;
-import android.bluetooth.IBluetoothPan;
 import android.bluetooth.IBluetoothPanCallback;
-import android.content.AttributionSource;
 import android.content.Intent;
 import android.content.res.Resources.NotFoundException;
 import android.net.TetheringInterface;
@@ -60,7 +55,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.HandlerExecutor;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -154,7 +148,7 @@ public class PanService extends ProfileService {
 
     @Override
     public IProfileServiceBinder initBinder() {
-        return new BluetoothPanBinder(this);
+        return new PanServiceBinder(this);
     }
 
     public static synchronized PanService getPanService() {
@@ -273,137 +267,6 @@ public class PanService extends ProfileService {
                             cs.remote_role);
                     break;
             }
-        }
-    }
-
-    /** Handlers for incoming service calls */
-    @VisibleForTesting
-    static class BluetoothPanBinder extends IBluetoothPan.Stub implements IProfileServiceBinder {
-        private PanService mService;
-
-        BluetoothPanBinder(PanService svc) {
-            mService = svc;
-        }
-
-        @Override
-        public void cleanup() {
-            mService = null;
-        }
-
-        @RequiresPermission(BLUETOOTH_CONNECT)
-        private PanService getService(AttributionSource source) {
-            if (Utils.isInstrumentationTestMode()) {
-                return mService;
-            }
-            if (!Utils.checkServiceAvailable(mService, TAG)
-                    || !Utils.checkCallerIsSystemOrActiveOrManagedUser(mService, TAG)
-                    || !Utils.checkConnectPermissionForDataDelivery(mService, source, TAG)) {
-                return null;
-            }
-            return mService;
-        }
-
-        @Override
-        public boolean connect(BluetoothDevice device, AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return false;
-            }
-
-            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-            return service.connect(device);
-        }
-
-        @Override
-        public boolean disconnect(BluetoothDevice device, AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return false;
-            }
-
-            return service.disconnect(device);
-        }
-
-        @Override
-        public boolean setConnectionPolicy(
-                BluetoothDevice device, int connectionPolicy, AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return false;
-            }
-
-            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
-            return service.setConnectionPolicy(device, connectionPolicy);
-        }
-
-        @Override
-        public int getConnectionState(BluetoothDevice device, AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return BluetoothPan.STATE_DISCONNECTED;
-            }
-
-            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
-            return service.getConnectionState(device);
-        }
-
-        @Override
-        public boolean isTetheringOn(AttributionSource source) {
-            // TODO(BT) have a variable marking the on/off state
-            PanService service = getService(source);
-            if (service == null) {
-                return false;
-            }
-
-            return service.isTetheringOn();
-        }
-
-        @Override
-        public void setBluetoothTethering(
-                IBluetoothPanCallback callback, int id, boolean value, AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return;
-            }
-
-            Log.d(
-                    TAG,
-                    "setBluetoothTethering:"
-                            + (" value=" + value)
-                            + (" pkgName= " + source.getPackageName())
-                            + (" mTetherOn= " + service.mTetherOn));
-
-            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-            service.enforceCallingOrSelfPermission(TETHER_PRIVILEGED, null);
-
-            service.setBluetoothTethering(callback, id, source.getUid(), value);
-        }
-
-        @Override
-        public List<BluetoothDevice> getConnectedDevices(AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return Collections.emptyList();
-            }
-
-            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
-            return service.getConnectedDevices();
-        }
-
-        @Override
-        public List<BluetoothDevice> getDevicesMatchingConnectionStates(
-                int[] states, AttributionSource source) {
-            PanService service = getService(source);
-            if (service == null) {
-                return Collections.emptyList();
-            }
-
-            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-
-            return service.getDevicesMatchingConnectionStates(states);
         }
     }
 

@@ -36,21 +36,24 @@ import android.bluetooth.IBluetoothLeBroadcastAssistantCallback;
 import android.bluetooth.le.ScanFilter;
 import android.content.AttributionSource;
 
+import androidx.test.filters.SmallTest;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.runner.AndroidJUnit4;
 
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 
 import java.util.Collections;
 import java.util.List;
 
-@RunWith(JUnit4.class)
-public class BleBroadcastAssistantBinderTest {
+/** Test cases for {@link BassClientServiceBinder} */
+@SmallTest
+@RunWith(AndroidJUnit4.class)
+public class BassClientServiceBinderTest {
 
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
@@ -64,17 +67,16 @@ public class BleBroadcastAssistantBinderTest {
 
     @Mock private BassClientService mService;
 
-    private BassClientService.BluetoothLeBroadcastAssistantBinder mBinder;
+    private BassClientServiceBinder mBinder;
 
     @Before
     public void setUp() {
-        mBinder = new BassClientService.BluetoothLeBroadcastAssistantBinder(mService);
+        mBinder = new BassClientServiceBinder(mService);
     }
 
     @Test
     public void cleanUp() {
         mBinder.cleanup();
-        assertThat(mBinder.mService).isNull();
     }
 
     @Test

@@ -118,3 +118,13 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "hh_state_update_race_fix"
+    namespace: "bluetooth"
+    description: "Fix stuck in connecting state due to race when updating state"
+    bug: "403420458"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}

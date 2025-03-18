@@ -142,7 +142,7 @@ tBTA_GATTC_CLCB* bta_gattc_find_clcb_by_cif(uint8_t client_if, const RawAddress&
 tBTA_GATTC_CLCB* bta_gattc_find_clcb_by_conn_id(tCONN_ID conn_id) {
   if (com::android::bluetooth::flags::gatt_client_dynamic_allocation()) {
     for (auto& p_clcb : bta_gattc_cb.clcb_set) {
-      if (p_clcb->in_use && p_clcb->bta_conn_id == conn_id) {
+      if (p_clcb != NULL && p_clcb->in_use && p_clcb->bta_conn_id == conn_id) {
         return p_clcb.get();
       }
     }

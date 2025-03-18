@@ -35,77 +35,73 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link BluetoothMapServiceBinder} */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothMapServiceBinderTest {
+
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private BluetoothMapService mService;
 
     private final BluetoothDevice mDevice = getTestDevice(98);
 
-    private BluetoothMapService.BluetoothMapBinder mBinder;
+    private BluetoothMapServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mBinder = new BluetoothMapService.BluetoothMapBinder(mService);
+        mBinder = new BluetoothMapServiceBinder(mService);
     }
 
     @Test
     public void disconnect_callsServiceMethod() {
         mBinder.disconnect(mDevice, null);
-
         verify(mService).disconnect(mDevice);
     }
 
     @Test
     public void getConnectedDevices_callsServiceMethod() {
         mBinder.getConnectedDevices(null);
-
         verify(mService).getConnectedDevices();
     }
 
     @Test
     public void getDevicesMatchingConnectionStates_callsServiceMethod() {
         int[] states = new int[] {STATE_CONNECTED};
-        mBinder.getDevicesMatchingConnectionStates(states, null);
 
+        mBinder.getDevicesMatchingConnectionStates(states, null);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState_callsServiceMethod() {
         mBinder.getConnectionState(mDevice, null);
-
         verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void setConnectionPolicy_callsServiceMethod() {
         int connectionPolicy = CONNECTION_POLICY_ALLOWED;
-        mBinder.setConnectionPolicy(mDevice, connectionPolicy, null);
 
+        mBinder.setConnectionPolicy(mDevice, connectionPolicy, null);
         verify(mService).setConnectionPolicy(mDevice, connectionPolicy);
     }
 
     @Test
     public void getConnectionPolicy_callsServiceMethod() {
         mBinder.getConnectionPolicy(mDevice, null);
-
         verify(mService).getConnectionPolicy(mDevice);
     }
 
     @Test
     public void getState_callsServiceMethod() {
         mBinder.getState(null);
-
         verify(mService).getState();
     }
 
     @Test
     public void isConnected_callsServiceStaticMethod() {
         mBinder.isConnected(mDevice, null);
-
         verify(mService).getConnectionState(mDevice);
     }
 
@@ -116,7 +112,7 @@ public class BluetoothMapServiceBinderTest {
     }
 
     @Test
-    public void cleanUp_doesNotCrash() {
+    public void cleanup_doesNotCrash() {
         mBinder.cleanup();
     }
 }
