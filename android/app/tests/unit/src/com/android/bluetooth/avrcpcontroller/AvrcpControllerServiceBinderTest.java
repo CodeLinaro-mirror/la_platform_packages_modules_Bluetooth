@@ -24,6 +24,7 @@ import static com.android.bluetooth.TestUtils.getTestDevice;
 import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothDevice;
+import android.content.AttributionSource;
 
 import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
@@ -43,6 +44,7 @@ public class AvrcpControllerServiceBinderTest {
 
     @Mock private AvrcpControllerService mService;
 
+    private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
     private final BluetoothDevice mDevice = getTestDevice(49);
 
     private AvrcpControllerServiceBinder mBinder;
@@ -54,7 +56,7 @@ public class AvrcpControllerServiceBinderTest {
 
     @Test
     public void getConnectedDevices_callsServiceMethod() {
-        mBinder.getConnectedDevices(null);
+        mBinder.getConnectedDevices(mAttributionSource);
         verify(mService).getConnectedDevices();
     }
 
@@ -62,24 +64,24 @@ public class AvrcpControllerServiceBinderTest {
     public void getDevicesMatchingConnectionStates_callsServiceMethod() {
         int[] states = new int[] {STATE_CONNECTED};
 
-        mBinder.getDevicesMatchingConnectionStates(states, null);
+        mBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState_callsServiceMethod() {
-        mBinder.getConnectionState(mDevice, null);
+        mBinder.getConnectionState(mDevice, mAttributionSource);
         verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void sendGroupNavigationCmd_notImplemented_doesNothing() {
-        mBinder.sendGroupNavigationCmd(mDevice, 1, 2, null);
+        mBinder.sendGroupNavigationCmd(mDevice, 1, 2, mAttributionSource);
     }
 
     @Test
     public void getPlayerSettings_notImplemented_doesNothing() {
-        mBinder.getPlayerSettings(mDevice, null);
+        mBinder.getPlayerSettings(mDevice, mAttributionSource);
     }
 
     @Test

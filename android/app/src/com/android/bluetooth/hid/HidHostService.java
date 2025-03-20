@@ -162,14 +162,6 @@ public class HidHostService extends ProfileService {
         setHidHostService(null);
     }
 
-    private byte[] getIdentityAddress(BluetoothDevice device) {
-        if (Flags.identityAddressNullIfNotKnown()) {
-            return Utils.getByteBrEdrAddress(mAdapterService, device);
-        } else {
-            return mAdapterService.getByteIdentityAddress(device);
-        }
-    }
-
     private byte[] getByteAddress(BluetoothDevice device, int transport) {
         final ParcelUuid[] uuids = mAdapterService.getRemoteUuids(device);
 
@@ -177,14 +169,14 @@ public class HidHostService extends ProfileService {
             // Use pseudo address when HOGP is to be used
             return Utils.getByteAddress(device);
         } else if (transport == BluetoothDevice.TRANSPORT_BREDR) {
-            // Use identity address if HID is to be used
-            return getIdentityAddress(device);
+            // Use BR/EDR address if HID is to be used
+            return Utils.getByteBrEdrAddress(mAdapterService, device);
         } else { // BluetoothDevice.TRANSPORT_AUTO
             boolean hidSupported = Utils.arrayContains(uuids, BluetoothUuid.HID);
             // Prefer HID over HOGP
             if (hidSupported) {
-                // Use identity address if HID is available
-                return getIdentityAddress(device);
+                // Use BR/EDR address if HID is available
+                return Utils.getByteBrEdrAddress(mAdapterService, device);
             } else {
                 // Otherwise use pseudo address
                 return Utils.getByteAddress(device);

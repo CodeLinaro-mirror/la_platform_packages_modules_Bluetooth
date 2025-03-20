@@ -1346,9 +1346,7 @@ public class BluetoothOppService extends ProfileService implements IObexConnecti
                         + socket
                         + " \n :device :"
                         + BluetoothUtils.toAnonymizedAddress(
-                                Flags.identityAddressNullIfNotKnown()
-                                        ? Utils.getBrEdrAddress(device, mAdapterService)
-                                        : mAdapterService.getIdentityAddress(device.getAddress())));
+                                Utils.getBrEdrAddress(device, mAdapterService)));
         if (!mAcceptNewConnections) {
             Log.d(TAG, " onConnect BluetoothSocket :" + socket + " rejected");
             return false;

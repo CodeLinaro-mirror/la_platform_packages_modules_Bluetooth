@@ -1709,6 +1709,11 @@ static void btm_ble_complete_evt(const RawAddress& bd_addr, tBTM_SEC_DEV_REC* p_
   }
 
   BTM_BLE_SEC_CALLBACK(BTM_LE_COMPLT_EVT, bd_addr, p_data);
+  p_dev_rec = btm_find_dev(bd_addr);  // BTM_LE_COMPLT_EVT event may have removed the device
+  if (p_dev_rec == nullptr) {
+    log::warn("Device record removed {}", bd_addr);
+    return;
+  }
 
   log::verbose("before update sec_level=0x{:x} sec_flags=0x{:x}", p_data->complt.sec_level,
                p_dev_rec->sec_rec.sec_flags);

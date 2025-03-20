@@ -1025,8 +1025,7 @@ public class GattService extends ProfileService {
         if (!checkConnectPermissionForDataDelivery(this, source, TAG, "registerClient")) {
             return;
         }
-        if (Flags.gattClientDynamicAllocation()
-                && mClientMap.countByAppUid(Binder.getCallingUid()) >= GATT_CLIENT_LIMIT_PER_APP) {
+        if (mClientMap.countByAppUid(Binder.getCallingUid()) >= GATT_CLIENT_LIMIT_PER_APP) {
             Log.w(TAG, "registerClient() - failed due to too many clients");
             callbackToApp(() -> callback.onClientRegistered(BluetoothGatt.GATT_FAILURE, 0));
             return;

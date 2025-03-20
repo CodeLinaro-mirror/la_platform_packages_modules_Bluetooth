@@ -25,6 +25,7 @@ import static com.android.bluetooth.TestUtils.getTestDevice;
 import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothDevice;
+import android.content.AttributionSource;
 
 import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
@@ -44,6 +45,7 @@ public class BluetoothMapServiceBinderTest {
 
     @Mock private BluetoothMapService mService;
 
+    private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
     private final BluetoothDevice mDevice = getTestDevice(98);
 
     private BluetoothMapServiceBinder mBinder;
@@ -55,13 +57,13 @@ public class BluetoothMapServiceBinderTest {
 
     @Test
     public void disconnect_callsServiceMethod() {
-        mBinder.disconnect(mDevice, null);
+        mBinder.disconnect(mDevice, mAttributionSource);
         verify(mService).disconnect(mDevice);
     }
 
     @Test
     public void getConnectedDevices_callsServiceMethod() {
-        mBinder.getConnectedDevices(null);
+        mBinder.getConnectedDevices(mAttributionSource);
         verify(mService).getConnectedDevices();
     }
 
@@ -69,13 +71,13 @@ public class BluetoothMapServiceBinderTest {
     public void getDevicesMatchingConnectionStates_callsServiceMethod() {
         int[] states = new int[] {STATE_CONNECTED};
 
-        mBinder.getDevicesMatchingConnectionStates(states, null);
+        mBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState_callsServiceMethod() {
-        mBinder.getConnectionState(mDevice, null);
+        mBinder.getConnectionState(mDevice, mAttributionSource);
         verify(mService).getConnectionState(mDevice);
     }
 
@@ -83,31 +85,31 @@ public class BluetoothMapServiceBinderTest {
     public void setConnectionPolicy_callsServiceMethod() {
         int connectionPolicy = CONNECTION_POLICY_ALLOWED;
 
-        mBinder.setConnectionPolicy(mDevice, connectionPolicy, null);
+        mBinder.setConnectionPolicy(mDevice, connectionPolicy, mAttributionSource);
         verify(mService).setConnectionPolicy(mDevice, connectionPolicy);
     }
 
     @Test
     public void getConnectionPolicy_callsServiceMethod() {
-        mBinder.getConnectionPolicy(mDevice, null);
+        mBinder.getConnectionPolicy(mDevice, mAttributionSource);
         verify(mService).getConnectionPolicy(mDevice);
     }
 
     @Test
     public void getState_callsServiceMethod() {
-        mBinder.getState(null);
+        mBinder.getState(mAttributionSource);
         verify(mService).getState();
     }
 
     @Test
     public void isConnected_callsServiceStaticMethod() {
-        mBinder.isConnected(mDevice, null);
+        mBinder.isConnected(mDevice, mAttributionSource);
         verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void getClient_callsServiceStaticMethod() {
-        mBinder.getClient(null);
+        mBinder.getClient(mAttributionSource);
         verify(mService).getRemoteDevice();
     }
 

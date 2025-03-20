@@ -390,7 +390,6 @@ public class BluetoothOppTransferTest {
 
     @Test
     public void oppConnectionReceiver_onReceiveWithActionSdpRecord_withoutSdpRecord() {
-        mSetFlagRule.enableFlags(Flags.FLAG_IDENTITY_ADDRESS_NULL_IF_NOT_KNOWN);
         BluetoothDevice device =
                 InstrumentationRegistry.getInstrumentation()
                         .getTargetContext()

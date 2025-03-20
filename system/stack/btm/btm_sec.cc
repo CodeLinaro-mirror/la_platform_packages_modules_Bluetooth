@@ -38,7 +38,6 @@
 #include "bta/dm/bta_dm_act.h"
 #include "bta/dm/bta_dm_sec_int.h"
 #include "btif/include/btif_storage.h"
-#include "common/metrics.h"
 #include "common/time_util.h"
 #include "device/include/device_iot_config.h"
 #include "device/include/interop.h"
@@ -49,6 +48,7 @@
 #include "main/shim/helpers.h"
 #include "main/shim/metrics_api.h"
 #include "metrics/bluetooth_event.h"
+#include "os/metrics.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
 #include "stack/btm/btm_ble_int.h"
@@ -1924,9 +1924,8 @@ void btm_create_conn_cancel_complete(uint8_t status, const RawAddress bd_addr) {
   log::verbose("btm_create_conn_cancel_complete(): in State: {}  status:{}",
                tBTM_SEC_CB::btm_pair_state_descr(btm_sec_cb.pairing_state), status);
   bluetooth::shim::LogMetricLinkLayerConnectionEvent(
-          &bd_addr, bluetooth::common::kUnknownConnectionHandle,
-          android::bluetooth::DIRECTION_OUTGOING, android::bluetooth::LINK_TYPE_ACL,
-          android::bluetooth::hci::CMD_CREATE_CONNECTION_CANCEL,
+          &bd_addr, bluetooth::os::kUnknownConnectionHandle, android::bluetooth::DIRECTION_OUTGOING,
+          android::bluetooth::LINK_TYPE_ACL, android::bluetooth::hci::CMD_CREATE_CONNECTION_CANCEL,
           android::bluetooth::hci::EVT_COMMAND_COMPLETE, android::bluetooth::hci::BLE_EVT_UNKNOWN,
           status, android::bluetooth::hci::STATUS_UNKNOWN);
 

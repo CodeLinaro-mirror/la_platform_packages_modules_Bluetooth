@@ -50,33 +50,6 @@ flag {
 }
 
 flag {
-    name: "gatt_client_dynamic_allocation"
-    namespace: "bluetooth"
-    description: "Allocate GATT clients in heap to unlimit the number of clients"
-    bug: "348559823"
-}
-
-flag {
-    name: "gatt_fix_multiple_direct_connect"
-    namespace: "bluetooth"
-    description: "Do not remove device when multiple clients attempt to connect"
-    bug: "349232327"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "pan_use_identity_address"
-    namespace: "bluetooth"
-    description: "Use identity address when communicate with native interface"
-    bug: "351961492"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "android_os_identifier"
     namespace: "bluetooth"
     description: "Add a custom service to provide Android OS identifier"
@@ -296,6 +269,16 @@ flag {
     namespace: "bluetooth"
     description: "Start discovery again when service change indication arrives."
     bug: "400828637"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "le_disconnect_notification_handling"
+    namespace: "bluetooth"
+    description: "Fix LE link disconnection notification to stack's upper layers"
+    bug: "403433488"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
