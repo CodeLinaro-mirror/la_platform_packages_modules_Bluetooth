@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
@@ -72,7 +72,8 @@ char PLATFORM_ID[][PLATFORM_ID_LENGTH] = {"msmnile",   "SA8155P",
                                           "sdmshrike", "SA8195P",
                                           "qssi",      "SA8155P",
                                           "gen4",      "SA8155P",
-                                          "gen5_gvm_gy", "SA8155P"};
+                                          "gen5_gvm_gy", "SA8155P",
+                                          "kalama",    "SA8155P"};
 
 #define INVALID_TOKEN_KEY  (0)
 
