@@ -132,3 +132,13 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "hfp_volume_control_property"
+    namespace: "bluetooth"
+    description: "Check system property before hands-free volume UI request."
+    bug: "404152232"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}

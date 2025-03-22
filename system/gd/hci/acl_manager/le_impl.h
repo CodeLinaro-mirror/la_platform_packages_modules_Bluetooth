@@ -1063,15 +1063,12 @@ public:
         add_device_to_accept_list(address_with_type);
       }
 
-      if (com::android::bluetooth::flags::
-                  improve_create_connection_for_already_connecting_device()) {
-        bool in_accept_list_due_to_direct_connect =
-                direct_connections_.find(address_with_type) != direct_connections_.end();
+      bool in_accept_list_due_to_direct_connect =
+              direct_connections_.find(address_with_type) != direct_connections_.end();
 
-        if (already_in_accept_list && (in_accept_list_due_to_direct_connect || !is_direct)) {
-          log::info("Device {} already in accept list. Stop here.", address_with_type);
-          return;
-        }
+      if (already_in_accept_list && (in_accept_list_due_to_direct_connect || !is_direct)) {
+        log::info("Device {} already in accept list. Stop here.", address_with_type);
+        return;
       }
 
       if (is_direct) {

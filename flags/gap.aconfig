@@ -70,26 +70,6 @@ flag {
 }
 
 flag {
-    name: "gatt_disconnect_fix"
-    namespace: "bluetooth"
-    description: "Fix GATT disconnect handling"
-    bug: "361538527"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "gatt_server_requests_fix"
-    namespace: "bluetooth"
-    description: "Fix GATT server handling"
-    bug: "361331170"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "le_scan_msft_support"
     namespace: "bluetooth"
     description: "Support MSFT HCI extension for LE Scanning. go/bt-msft-aosp-dd"

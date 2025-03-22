@@ -2319,21 +2319,14 @@ public class GattService extends ProfileService {
         int handle = 0;
         Integer connId = 0;
 
-        if (!Flags.gattServerRequestsFix()) {
-            HandleMap.Entry entry = mHandleMap.getByRequestId(requestId);
-            if (entry != null) {
-                handle = entry.mHandle;
-            }
-            connId = mServerMap.connIdByAddress(serverIf, address);
+        HandleMap.RequestData requestData = mHandleMap.getRequestDataByRequestId(requestId);
+        if (requestData != null) {
+            handle = requestData.handle();
+            connId = requestData.connId();
         } else {
-            HandleMap.RequestData requestData = mHandleMap.getRequestDataByRequestId(requestId);
-            if (requestData != null) {
-                handle = requestData.handle();
-                connId = requestData.connId();
-            } else {
-                connId = mServerMap.connIdByAddress(serverIf, address);
-            }
+            connId = mServerMap.connIdByAddress(serverIf, address);
         }
+
         mNativeInterface.gattServerSendResponse(
                 serverIf,
                 connId != null ? connId : 0,

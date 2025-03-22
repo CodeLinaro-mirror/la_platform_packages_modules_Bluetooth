@@ -282,7 +282,7 @@ bool gatt_disconnect(tGATT_TCB* p_tcb) {
     return true;
   }
 
-  if (com::android::bluetooth::flags::gatt_disconnect_fix() && p_tcb->eatt) {
+  if (p_tcb->eatt) {
     /* ATT is fixed channel and it is expected to drop ACL.
      * Make sure all EATT channels are disconnected before doing that.
      */
