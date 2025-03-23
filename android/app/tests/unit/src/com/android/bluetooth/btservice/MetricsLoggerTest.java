@@ -58,7 +58,7 @@ import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Unit tests for {@link MetricsLogger} */
+/** Test cases for {@link MetricsLogger}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class MetricsLoggerTest {

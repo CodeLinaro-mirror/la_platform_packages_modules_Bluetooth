@@ -42,7 +42,7 @@ import org.mockito.Mockito;
 
 import java.io.FileDescriptor;
 
-/** Test cases for {@link AdapterServiceBinder} */
+/** Test cases for {@link AdapterServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class AdapterServiceBinderTest {

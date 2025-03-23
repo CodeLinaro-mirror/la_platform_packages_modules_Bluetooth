@@ -96,6 +96,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
+/** Test cases for {@link VolumeControlService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class VolumeControlServiceTest {

@@ -80,6 +80,7 @@ import org.mockito.hamcrest.MockitoHamcrest;
 
 import java.util.List;
 
+/** Test cases for {@link HearingAidService}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class HearingAidServiceTest {

@@ -40,7 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/** Test cases for {@link TbsServiceBinder} */
+/** Test cases for {@link TbsServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class TbsServiceBinderTest {

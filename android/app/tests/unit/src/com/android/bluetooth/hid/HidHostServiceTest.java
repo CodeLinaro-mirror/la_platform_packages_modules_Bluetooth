@@ -51,6 +51,7 @@ import org.mockito.Mock;
 
 import java.util.List;
 
+/** Test cases for {@link HidHostService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HidHostServiceTest {

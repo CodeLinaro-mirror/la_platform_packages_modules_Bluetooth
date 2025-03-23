@@ -36,7 +36,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-/** Test cases for {@link HeadsetServiceBinder} */
+/** Test cases for {@link HeadsetServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetServiceBinderTest {

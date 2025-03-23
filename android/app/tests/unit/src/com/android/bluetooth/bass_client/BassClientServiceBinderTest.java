@@ -50,7 +50,7 @@ import org.mockito.Mockito;
 import java.util.Collections;
 import java.util.List;
 
-/** Test cases for {@link BassClientServiceBinder} */
+/** Test cases for {@link BassClientServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BassClientServiceBinderTest {

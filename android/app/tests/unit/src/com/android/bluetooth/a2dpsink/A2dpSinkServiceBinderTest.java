@@ -37,7 +37,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-/** Test cases for {@link A2dpSinkServiceBinder} */
+/** Test cases for {@link A2dpSinkServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class A2dpSinkServiceBinderTest {

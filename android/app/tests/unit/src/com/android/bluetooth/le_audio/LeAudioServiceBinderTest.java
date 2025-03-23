@@ -48,7 +48,7 @@ import org.mockito.Mockito;
 
 import java.util.UUID;
 
-/** Test cases for {@link LeAudioServiceBinder} */
+/** Test cases for {@link LeAudioServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class LeAudioServiceBinderTest {

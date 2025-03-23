@@ -89,6 +89,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/** Test cases for {@link HeadsetServiceAndStateMachine}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetServiceAndStateMachineTest {

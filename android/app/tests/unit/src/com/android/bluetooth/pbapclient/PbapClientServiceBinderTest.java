@@ -47,7 +47,7 @@ import org.mockito.Mock;
 
 import java.util.List;
 
-/** Test cases for {@link PbapClientServiceBinder} */
+/** Test cases for {@link PbapClientServiceBinder}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class PbapClientServiceBinderTest {

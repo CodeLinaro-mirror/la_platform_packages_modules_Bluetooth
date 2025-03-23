@@ -84,7 +84,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 
-/** Tests for {@link HeadsetService} */
+/** Test cases for {@link HeadsetService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetServiceTest {

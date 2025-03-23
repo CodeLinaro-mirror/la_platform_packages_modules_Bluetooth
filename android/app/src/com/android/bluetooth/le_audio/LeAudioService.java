@@ -348,7 +348,7 @@ public class LeAudioService extends ProfileService {
             mLostLeadDeviceWhileStreaming = null;
             mCurrentLeadDevice = null;
             mInbandRingtoneEnabled = isInbandRingtoneEnabled;
-            mAvailableContexts = Flags.leaudioUnicastNoAvailableContexts() ? null : 0;
+            mAvailableContexts = null;
             mInputSelectableConfig = new ArrayList<>();
             mOutputSelectableConfig = new ArrayList<>();
             mInactivatedDueToContextType = false;
@@ -3371,11 +3371,6 @@ public class LeAudioService extends ProfileService {
             boolean inputCodecOrFreqChanged) {
         Log.i(TAG, "notifyAudioFrameworkForCodecConfigUpdate groupId: " + groupId);
 
-        if (!Flags.leaudioCodecConfigCallbackOrderFix()) {
-            Log.d(TAG, "leaudio_codec_config_callback_order_fix is not enabled");
-            return;
-        }
-
         if (mActiveAudioOutDevice != null && outputCodecOrFreqChanged) {
             int volume = getAudioDeviceGroupVolume(groupId);
 
@@ -4347,8 +4342,7 @@ public class LeAudioService extends ProfileService {
             if (getConnectedPeerDevices(groupId).isEmpty()) {
                 descriptor.mIsConnected = false;
                 descriptor.mAutoActiveModeEnabled = true;
-                descriptor.mAvailableContexts =
-                        Flags.leaudioUnicastNoAvailableContexts() ? null : 0;
+                descriptor.mAvailableContexts = null;
                 if (descriptor.isActive()) {
                     /* Notify Native layer */
                     removeActiveDevice(hasFallbackDevice);

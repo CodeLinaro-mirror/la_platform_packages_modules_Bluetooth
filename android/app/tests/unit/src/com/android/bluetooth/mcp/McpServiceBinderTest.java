@@ -34,7 +34,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-/** Test cases for {@link McpServiceBinder} */
+/** Test cases for {@link McpServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class McpServiceBinderTest {

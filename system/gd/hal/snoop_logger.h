@@ -146,7 +146,7 @@ public:
   static const ModuleFactory Factory;
 
   static const std::string kBtSnoopMaxPacketsPerFileProperty;
-  static const std::string kIsDebuggableProperty;
+  static const std::string kRoBuildType;
   static const std::string kBtSnoopLogModeProperty;
   static const std::string kBtSnoopLogPersists;
   static const std::string kBtSnoopDefaultLogModeProperty;

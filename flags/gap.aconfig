@@ -263,3 +263,10 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "rssi_scan_filter"
+    namespace: "bluetooth"
+    description: "Add RSSI ScanFilter"
+    bug: "404986559"
+}

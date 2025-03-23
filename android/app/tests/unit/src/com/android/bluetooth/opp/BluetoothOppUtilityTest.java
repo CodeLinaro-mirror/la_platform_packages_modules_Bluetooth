@@ -64,6 +64,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/** Test cases for {@link BluetoothOppUtility}. */
 public class BluetoothOppUtilityTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 

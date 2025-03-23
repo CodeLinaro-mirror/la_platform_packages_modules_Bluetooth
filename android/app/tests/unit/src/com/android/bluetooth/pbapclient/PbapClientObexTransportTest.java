@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/** Test cases for {@link PbapClientObexTransport}. */
 @RunWith(AndroidJUnit4.class)
 public class PbapClientObexTransportTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();

@@ -74,6 +74,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.hamcrest.MockitoHamcrest;
 
+/** Test cases for {@link HidDeviceService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HidDeviceServiceTest {

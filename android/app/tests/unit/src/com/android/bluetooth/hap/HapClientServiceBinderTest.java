@@ -44,7 +44,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 
-/** Test cases for {@link HapClientServiceBinder} */
+/** Test cases for {@link HapClientServiceBinder}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HapClientServiceBinderTest {

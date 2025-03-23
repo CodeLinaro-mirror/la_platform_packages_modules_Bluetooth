@@ -46,7 +46,7 @@ import org.mockito.Mock;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Test cases for {@link HearingAidServiceBinder} */
+/** Test cases for {@link HearingAidServiceBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class HearingAidServiceBinderTest {
