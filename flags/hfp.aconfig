@@ -74,16 +74,6 @@ flag {
 }
 
 flag {
-    name: "update_active_device_in_band_ringtone"
-    namespace: "bluetooth"
-    description: "Active device update the in band ringtone, but how ringtone is played is still decided by the headset"
-    bug: "349318724"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "choose_wrong_hfp_codec_in_specific_config"
     namespace: "bluetooth"
     description: "Flag to fix codec selection in nego when the peer device only support NB and SWB."

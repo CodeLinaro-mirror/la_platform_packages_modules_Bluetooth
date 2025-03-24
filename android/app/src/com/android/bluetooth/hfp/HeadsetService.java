@@ -1105,10 +1105,7 @@ public class HeadsetService extends ProfileService {
             } else {
                 broadcastActiveDevice(null);
             }
-
-            if (Flags.updateActiveDeviceInBandRingtone()) {
-                updateInbandRinging(null, true);
-            }
+            updateInbandRinging(null, true);
         }
     }
 
@@ -1222,9 +1219,7 @@ public class HeadsetService extends ProfileService {
                     broadcastActiveDevice(mActiveDevice);
                 }
             }
-            if (Flags.updateActiveDeviceInBandRingtone()) {
-                updateInbandRinging(device, true);
-            }
+            updateInbandRinging(device, true);
         }
         return true;
     }
@@ -1941,7 +1936,7 @@ public class HeadsetService extends ProfileService {
 
             if (getConnectedDevices().size() > 1
                     || isHeadsetClientConnected()
-                    || (Flags.updateActiveDeviceInBandRingtone() && mActiveDevice == null)) {
+                    || mActiveDevice == null) {
                 mInbandRingingRuntimeDisable = true;
             } else {
                 mInbandRingingRuntimeDisable = false;
