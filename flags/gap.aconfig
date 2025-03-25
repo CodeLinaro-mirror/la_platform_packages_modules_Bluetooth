@@ -270,3 +270,13 @@ flag {
     description: "Add RSSI ScanFilter"
     bug: "404986559"
 }
+
+flag {
+    name: "fix_private_gatt_advertising_not_working"
+    namespace: "bluetooth"
+    description: "Fix that private GATT advertising is handled as a normal GATT"
+    bug: "405315235"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
