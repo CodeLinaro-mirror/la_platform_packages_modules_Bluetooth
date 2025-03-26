@@ -1735,7 +1735,10 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
       if (peer_.BtaHandle() != kBtaHandleUnknown) {
         BTA_AvClose(peer_.BtaHandle());
         if (peer_.IsSource()) {
-          BTA_AvCloseRc(peer_.BtaHandle());
+          uint8_t peer_handle = btif_rc_get_connected_peer_handle(peer_.PeerAddress());
+          if (peer_handle != BTRC_HANDLE_NONE) {
+            BTA_AvCloseRc(peer_handle);
+          }
         }
       }
       // Re-enter Idle so the peer can be deleted
@@ -1814,6 +1817,7 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
         }
       }
       if (!can_connect) {
+        BTA_AvCloseRc(((tBTA_AV*)p_data)->rc_open.rc_handle);
         log::error("Cannot connect to peer {}: too many connected peers", peer_.PeerAddress());
         break;
       }
@@ -2377,7 +2381,10 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
     case BTIF_AV_DISCONNECT_REQ_EVT:
       BTA_AvClose(peer_.BtaHandle());
       if (peer_.IsSource()) {
-        BTA_AvCloseRc(peer_.BtaHandle());
+        uint8_t peer_handle = btif_rc_get_connected_peer_handle(peer_.PeerAddress());
+        if (peer_handle != BTRC_HANDLE_NONE) {
+          BTA_AvCloseRc(peer_handle);
+        }
       }
 
       // Inform the application that we are disconnecting
@@ -2592,7 +2599,10 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
       // Request AVDTP to close
       BTA_AvClose(peer_.BtaHandle());
       if (peer_.IsSource()) {
-        BTA_AvCloseRc(peer_.BtaHandle());
+        uint8_t peer_handle = btif_rc_get_connected_peer_handle(peer_.PeerAddress());
+        if (peer_handle != BTRC_HANDLE_NONE) {
+          BTA_AvCloseRc(peer_handle);
+        }
       }
 
       // Inform the application that we are disconnecting
