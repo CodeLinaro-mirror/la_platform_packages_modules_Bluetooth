@@ -617,6 +617,10 @@ struct LeAudioCoreCodecConfig {
 
   /** Returns the audio channel allocation bitmask */
   inline uint32_t GetAudioChannelAllocation() const { return audio_channel_allocation.value_or(0); }
+  /** Returns the number of codec frame blocks */
+  inline uint8_t GetCodecFrameBlocksPerSdu() const {
+    return codec_frames_blocks_per_sdu.value_or(0);
+  }
 };
 
 struct LeAudioCoreCodecCapabilities {
@@ -1098,6 +1102,12 @@ struct hdl_pair {
   uint16_t ccc_hdl = 0;
 };
 
+template <typename T>
+struct hdl_pair_wrapper {
+  hdl_pair handles;
+  T value;
+};
+
 struct AseQosConfiguration {
   uint32_t presentation_delay = 0;
   uint32_t sdu_interval = 0;
@@ -1142,6 +1152,10 @@ struct CodecConfigSetting {
   inline uint32_t GetAudioChannelAllocation() const {
     return params.GetAsCoreCodecConfig().GetAudioChannelAllocation();
   }
+  inline uint8_t GetCodecFrameBlocksPerSdu() const {
+    return params.GetAsCoreCodecConfig().GetCodecFrameBlocksPerSdu();
+  }
+
   /* Audio channels number for a device */
   uint8_t GetChannelCountPerIsoStream() const { return channel_count_per_iso_stream; }
 
@@ -1248,12 +1262,13 @@ struct AseConfiguration {
   types::DataPathConfiguration data_path_configuration;
   CodecConfigSetting codec;
   QosConfigSetting qos;
+  types::LeAudioLtvMap metadata;
 
   bool operator!=(const AseConfiguration& other) { return !(*this == other); }
 
   bool operator==(const AseConfiguration& other) const {
     return (data_path_configuration == other.data_path_configuration) && (codec == other.codec) &&
-           (qos == other.qos);
+           (qos == other.qos) && (metadata == other.metadata);
   }
 };
 
@@ -1284,12 +1299,6 @@ const types::LeAudioCodecId LeAudioCodecIdLc3 = {
 
 static constexpr uint32_t kChannelAllocationStereo =
         codec_spec_conf::kLeAudioLocationFrontLeft | codec_spec_conf::kLeAudioLocationFrontRight;
-
-/* Declarations */
-void get_cis_count(types::LeAudioContextType context_type, uint8_t expected_direction,
-                   int expected_device_cnt, types::LeAudioConfigurationStrategy strategy,
-                   int group_ase_snk_cnt, int group_ase_src_count, uint8_t& cis_count_bidir,
-                   uint8_t& cis_count_unidir_sink, uint8_t& cis_count_unidir_source);
 }  // namespace types
 
 struct stream_map_info {
@@ -1300,11 +1309,21 @@ struct stream_map_info {
   uint16_t stream_handle;
   uint32_t audio_channel_allocation;
   bool is_stream_active;
+
+  /* The non-legacy codec extensibility feature of a stream map allows us to update the stream
+   * parameters more granularly for each CIS handle
+   */
+  types::CodecConfigSetting codec_config;
+  uint8_t target_latency;
+  uint8_t target_phy;
+  types::LeAudioLtvMap metadata;
+  RawAddress address;
+  uint8_t address_type;
 };
 
 struct stream_config {
   std::vector<stream_map_info> stream_map;
-  /* For now we have always same frequency for all the channels */
+  /* For a legacy reason we have always same frequency for all the channels */
   uint8_t bits_per_sample;
   uint32_t sampling_frequency_hz;
   uint32_t frame_duration_us;

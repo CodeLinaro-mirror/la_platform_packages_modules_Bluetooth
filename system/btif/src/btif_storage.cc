@@ -45,6 +45,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "bta/include/bta_gatts_co.h"
 #include "btif/include/btif_api.h"
 #include "btif/include/btif_config.h"
 #include "btif/include/btif_dm.h"
@@ -67,9 +68,6 @@
 
 // Default user ID to use when real user ID is not available
 #define BTIF_STORAGE_RESTRICTED_USER_ID_DEFAULT 1
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using base::Bind;
 using bluetooth::Uuid;
@@ -98,12 +96,6 @@ static const BtifStorageKey BTIF_STORAGE_LOCAL_LE_KEYS[] = {
         {BTIF_DM_LE_LOCAL_KEY_DHK, BTIF_STORAGE_KEY_LE_LOCAL_KEY_DHK, sizeof(Octet16)},
         {BTIF_DM_LE_LOCAL_KEY_ER, BTIF_STORAGE_KEY_LE_LOCAL_KEY_ER, sizeof(Octet16)},
 };
-
-/*******************************************************************************
- *  External functions
- ******************************************************************************/
-
-void btif_gatts_add_bonded_dev_from_nv(const RawAddress& bda);
 
 /*******************************************************************************
  *  Internal Functions
@@ -265,6 +257,15 @@ static bool cfg2prop(const RawAddress* remote_bd_addr, bt_property_t* prop) {
       } else {
         ret = btif_config_get_str(BTIF_STORAGE_SECTION_ADAPTER, BTIF_STORAGE_KEY_NAME,
                                   reinterpret_cast<char*>(prop->val), &len);
+      }
+      if (com::android::bluetooth::flags::empty_names_are_invalid()) {
+        if (ret && len > 1 && len <= prop->len) {  // empty names have a len of 1
+          prop->len = len - 1;
+        } else {
+          prop->len = 0;
+          ret = false;
+        }
+        break;
       }
       if (ret && len && len <= prop->len) {
         prop->len = len - 1;
@@ -575,8 +576,8 @@ size_t btif_split_uuids_string(const char* str, bluetooth::Uuid* p_uuid, size_t 
 }
 
 /** Helper function for fetching a bt_property of the adapter. */
-bt_status_t btif_storage_get_adapter_prop(bt_property_type_t type, void* buf, int size,
-                                          bt_property_t* property) {
+static bt_status_t btif_storage_get_adapter_prop(bt_property_type_t type, void* buf, int size,
+                                                 bt_property_t* property) {
   property->type = type;
   property->val = buf;
   property->len = size;
@@ -706,8 +707,8 @@ bt_status_t btif_storage_set_adapter_property(bt_property_t* property) {
 }
 
 /** Helper function for fetching a bt_property of a remote device. */
-bt_status_t btif_storage_get_remote_prop(RawAddress* remote_addr, bt_property_type_t type,
-                                         void* buf, int size, bt_property_t* property) {
+static bt_status_t btif_storage_get_remote_prop(RawAddress* remote_addr, bt_property_type_t type,
+                                                void* buf, int size, bt_property_t* property) {
   property->type = type;
   property->val = buf;
   property->len = size;
@@ -1249,8 +1250,9 @@ bt_status_t btif_in_fetch_bonded_ble_device(const std::string& remote_bd_addr, i
   return BT_STATUS_DEVICE_NOT_FOUND;
 }
 
-void btif_storage_invoke_addr_type_update(const RawAddress& remote_bd_addr,
-                                          const tBLE_ADDR_TYPE& addr_type) {
+#if TARGET_FLOSS
+static void btif_storage_invoke_addr_type_update(const RawAddress& remote_bd_addr,
+                                                 const tBLE_ADDR_TYPE& addr_type) {
   bt_property_t prop;
   prop.type = BT_PROPERTY_REMOTE_ADDR_TYPE;
   prop.val = const_cast<tBLE_ADDR_TYPE*>(reinterpret_cast<const tBLE_ADDR_TYPE*>(&addr_type));
@@ -1258,6 +1260,7 @@ void btif_storage_invoke_addr_type_update(const RawAddress& remote_bd_addr,
   GetInterfaceToProfiles()->events->invoke_remote_device_properties_cb(BT_STATUS_SUCCESS,
                                                                        remote_bd_addr, 1, &prop);
 }
+#endif  // TARGET_FLOSS
 
 bt_status_t btif_storage_set_remote_addr_type(const RawAddress* remote_bd_addr,
                                               tBLE_ADDR_TYPE addr_type) {
@@ -1272,7 +1275,7 @@ bt_status_t btif_storage_set_remote_addr_type(const RawAddress* remote_bd_addr,
   return ret ? BT_STATUS_SUCCESS : BT_STATUS_FAIL;
 }
 
-bool btif_has_ble_keys(const std::string& bdstr) {
+static bool btif_has_ble_keys(const std::string& bdstr) {
   return btif_config_exist(bdstr, BTIF_STORAGE_KEY_LE_KEY_PENC);
 }
 
@@ -1368,20 +1371,22 @@ void btif_storage_prune_devices() {
 
 // Get the name of a device from btif for interop database matching.
 bool btif_storage_get_stored_remote_name(const RawAddress& bd_addr, char* name) {
-  bt_property_t property;
-  property.type = BT_PROPERTY_BDNAME;
-  property.len = BD_NAME_LEN;
-  property.val = name;
+  bt_property_t property{
+          .type = BT_PROPERTY_BDNAME,
+          .len = BD_NAME_LEN,
+          .val = name,
+  };
 
   return btif_storage_get_remote_device_property(&bd_addr, &property) == BT_STATUS_SUCCESS;
 }
 
 // Get the Class of Device.
 bool btif_storage_get_cod(const RawAddress& bd_addr, uint32_t* cod) {
-  bt_property_t property;
-  property.type = BT_PROPERTY_CLASS_OF_DEVICE;
-  property.len = sizeof(*cod);
-  property.val = cod;
+  bt_property_t property{
+          .type = BT_PROPERTY_CLASS_OF_DEVICE,
+          .len = sizeof(*cod),
+          .val = cod,
+  };
 
   return btif_storage_get_remote_device_property(&bd_addr, &property) == BT_STATUS_SUCCESS;
 }
@@ -1452,6 +1457,43 @@ void btif_storage_remove_gatt_cl_db_hash(const RawAddress& bd_addr) {
             }
           },
           bd_addr));
+}
+
+std::vector<bluetooth::Uuid> btif_storage_get_services(const RawAddress& bd_addr,
+                                                       tBT_TRANSPORT transport) {
+  if (!com::android::bluetooth::flags::separate_service_storage()) {
+    transport = BT_TRANSPORT_BR_EDR;
+  }
+
+  // Get BR/EDR services if requested transport is BT_TRANSPORT_BR_EDR or BT_TRANSPORT_AUTO
+  bool get_bredr_services = transport != BT_TRANSPORT_LE;
+
+  // Get LE services if requested transport is BT_TRANSPORT_LE or BT_TRANSPORT_AUTO
+  bool get_le_services = transport != BT_TRANSPORT_BR_EDR;
+
+  uint8_t count = 0;
+  std::array<bluetooth::Uuid, BT_MAX_NUM_UUIDS> uuids = {};
+
+  // Get BR/EDR services from storage
+  if (get_bredr_services) {
+    bt_property_t remote_properties = {BT_PROPERTY_UUIDS, sizeof(uuids), &uuids};
+    if (btif_storage_get_remote_device_property(&bd_addr, &remote_properties) ==
+        BT_STATUS_SUCCESS) {
+      count = remote_properties.len / sizeof(uuids[0]);
+    }
+  }
+
+  // Get LE services from storage
+  if (get_le_services) {
+    int size = (uuids.size() - count) * sizeof(uuids[0]);
+    bt_property_t remote_properties = {BT_PROPERTY_UUIDS_LE, size, &uuids[count]};
+    if (btif_storage_get_remote_device_property(&bd_addr, &remote_properties) ==
+        BT_STATUS_SUCCESS) {
+      count += remote_properties.len / sizeof(uuids[0]);
+    }
+  }
+
+  return std::vector<bluetooth::Uuid>(uuids.begin(), uuids.begin() + count);
 }
 
 // TODO(b/369381361) Remove this function after all devices are migrated

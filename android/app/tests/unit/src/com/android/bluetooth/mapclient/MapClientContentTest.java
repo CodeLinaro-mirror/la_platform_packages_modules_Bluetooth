@@ -16,6 +16,10 @@
 
 package com.android.bluetooth.mapclient;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+import static com.android.bluetooth.TestUtils.mockGetSystemService;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -27,7 +31,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothMapClient;
 import android.content.ContentValues;
@@ -57,8 +60,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -67,12 +68,11 @@ import java.util.Map;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class MapClientContentTest {
+    private static final String TAG = MapClientContentTest.class.getSimpleName();
 
-    private static final String TAG = "MapClientContentTest";
     private static final int READ = 1;
 
-    private BluetoothAdapter mAdapter;
-    private BluetoothDevice mTestDevice;
+    private final BluetoothDevice mDevice = getTestDevice(68);
 
     private Bmessage mTestMessage1;
     private Bmessage mTestMessage2;
@@ -86,7 +86,7 @@ public class MapClientContentTest {
 
     private MapClientContent mMapClientContent;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private Context mMockContext;
     @Mock private MapClientContent.Callbacks mCallbacks;
@@ -106,18 +106,17 @@ public class MapClientContentTest {
         mMockMmsContentProvider = new FakeContentProvider(mMockContext);
         mMockThreadContentProvider = new FakeContentProvider(mMockContext);
 
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
-        mTestDevice = mAdapter.getRemoteDevice("00:01:02:03:04:05");
         mMockContentResolver = Mockito.spy(new MockContentResolver());
         mMockContentResolver.addProvider("sms", mMockSmsContentProvider);
         mMockContentResolver.addProvider("mms", mMockMmsContentProvider);
         mMockContentResolver.addProvider("mms-sms", mMockThreadContentProvider);
 
         when(mMockContext.getContentResolver()).thenReturn(mMockContentResolver);
-        when(mMockContext.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE))
-                .thenReturn(mMockSubscriptionManager);
-        when(mMockContext.getSystemServiceName(SubscriptionManager.class))
-                .thenReturn(Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+        mockGetSystemService(
+                mMockContext,
+                Context.TELEPHONY_SUBSCRIPTION_SERVICE,
+                SubscriptionManager.class,
+                mMockSubscriptionManager);
 
         when(mMockSubscriptionManager.getActiveSubscriptionInfoList())
                 .thenReturn(Arrays.asList(mMockSubscription));
@@ -130,7 +129,7 @@ public class MapClientContentTest {
     /** Test that everything initializes correctly with an empty content provider */
     @Test
     public void testCreateMapClientContent() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         verify(mMockSubscriptionManager)
                 .addSubscriptionInfoRecord(
                         any(),
@@ -143,7 +142,7 @@ public class MapClientContentTest {
     /** Test that a dirty database gets cleaned at startup. */
     @Test
     public void testCleanDirtyDatabase() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -153,14 +152,14 @@ public class MapClientContentTest {
                         anyInt(),
                         eq(SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM));
         assertThat(mMockSmsContentProvider.mContentValues).hasSize(1);
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         assertThat(mMockSmsContentProvider.mContentValues).isEmpty();
     }
 
     /** Test inserting 2 SMS messages and then clearing out the database. */
     @Test
     public void testStoreTwoSMS() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -184,7 +183,7 @@ public class MapClientContentTest {
     /** Test inserting 2 MMS messages and then clearing out the database. */
     @Test
     public void testStoreTwoMMS() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -206,7 +205,7 @@ public class MapClientContentTest {
     /** Test that SMS and MMS messages end up in their respective databases. */
     @Test
     public void testStoreOneSMSOneMMS() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -228,7 +227,7 @@ public class MapClientContentTest {
     /** Test read status changed */
     @Test
     public void testReadStatusChanged() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -258,7 +257,7 @@ public class MapClientContentTest {
      */
     @Test
     public void testLocalReadStatusChanged() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         assertThat(mMockMmsContentProvider.mContentValues).hasSize(1);
@@ -270,7 +269,7 @@ public class MapClientContentTest {
     /** Test if seen status is set to true in database for SMS */
     @Test
     public void testStoreSmsMessageWithSeenTrue_smsWrittenWithSeenTrue() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         assertThat(mMockSmsContentProvider.mContentValues).hasSize(1);
@@ -284,7 +283,7 @@ public class MapClientContentTest {
     /** Test if seen status is set to false in database for SMS */
     @Test
     public void testStoreSmsMessageWithSeenFalse_smsWrittenWithSeenFalse() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_NOT_SEEN);
         assertThat(mMockSmsContentProvider.mContentValues).hasSize(1);
@@ -298,7 +297,7 @@ public class MapClientContentTest {
     /** Test if seen status is set to true in database for MMS */
     @Test
     public void testStoreMmsMessageWithSeenTrue_mmsWrittenWithSeenTrue() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         assertThat(mMockMmsContentProvider.mContentValues).hasSize(1);
@@ -312,7 +311,7 @@ public class MapClientContentTest {
     /** Test if seen status is set to false in database for MMS */
     @Test
     public void testStoreMmsMessageWithSeenFalse_mmsWrittenWithSeenFalse() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_NOT_SEEN);
         assertThat(mMockMmsContentProvider.mContentValues).hasSize(1);
@@ -331,7 +330,7 @@ public class MapClientContentTest {
      */
     @Test
     public void testMessageDeleted() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -358,7 +357,7 @@ public class MapClientContentTest {
      */
     @Test
     public void testLocalMessageDeleted() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
         verify(mMockSubscriptionManager)
@@ -386,7 +385,7 @@ public class MapClientContentTest {
     public void testSetRemoteDeviceOwnNumber() {
         String testNumber = "5551212";
 
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         assertThat(mMapClientContent.mPhoneNumber).isNull();
 
         mMapClientContent.setRemoteDeviceOwnNumber(testNumber);
@@ -396,7 +395,7 @@ public class MapClientContentTest {
     /** Test to validate that some poorly formatted messages don't crash. */
     @Test
     public void testStoreBadMessage() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mTestMessage1 = new Bmessage();
         mTestMessage1.setBodyContent("HelloWorld");
         mTestMessage1.setType(Bmessage.Type.SMS_GSM);
@@ -418,7 +417,7 @@ public class MapClientContentTest {
      */
     @Test
     public void testCleanUpRemoteException() {
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         doThrow(java.lang.NullPointerException.class)
                 .when(mMockSubscriptionManager)
                 .removeSubscriptionInfoRecord(any(), anyInt());
@@ -454,7 +453,7 @@ public class MapClientContentTest {
         MissingContentProvider missingContentProvider =
                 Mockito.spy(new MissingContentProvider(mMockContext));
         mMockContentResolver.addProvider("sms", missingContentProvider);
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage1, mTestMessage1Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
 
@@ -476,7 +475,7 @@ public class MapClientContentTest {
         MissingContentProvider missingContentProvider =
                 Mockito.spy(new MissingContentProvider(mMockContext));
         mMockContentResolver.addProvider("mms", missingContentProvider);
-        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mTestDevice);
+        mMapClientContent = new MapClientContent(mMockContext, mCallbacks, mDevice);
         mMapClientContent.storeMessage(
                 mTestMessage2, mTestMessage2Handle, mTestMessage1Timestamp, MESSAGE_SEEN);
 

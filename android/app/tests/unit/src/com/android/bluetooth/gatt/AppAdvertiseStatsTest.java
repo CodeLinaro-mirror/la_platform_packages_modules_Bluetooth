@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.gatt;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.eq;
@@ -30,8 +32,8 @@ import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.SetFlagsRule;
 import android.util.Log;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.BluetoothStatsLog;
@@ -47,8 +49,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -61,7 +61,7 @@ public class AppAdvertiseStatsTest {
 
     private CountDownLatch mLatch;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
@@ -70,7 +70,7 @@ public class AppAdvertiseStatsTest {
     @Captor ArgumentCaptor<Long> mAdvDurationCaptor;
 
     private final AttributionSource mAttributionSource =
-            InstrumentationRegistry.getTargetContext().getAttributionSource();
+            InstrumentationRegistry.getInstrumentation().getTargetContext().getAttributionSource();
 
     @Before
     public void setUp() throws Exception {

@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.btservice.bluetoothkeystore;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import android.os.Binder;
@@ -30,8 +32,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,10 +44,11 @@ import java.util.Map;
 
 @RunWith(JUnit4.class)
 public final class BluetoothKeystoreServiceTest {
-    private static final String TAG = "BluetoothKeystoreServiceTest";
+    private static final String TAG = BluetoothKeystoreServiceTest.class.getSimpleName();
+
     private BluetoothKeystoreService mBluetoothKeystoreService;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private BluetoothKeystoreNativeInterface mMockNativeInterface;
 
@@ -126,11 +127,11 @@ public final class BluetoothKeystoreServiceTest {
         mBluetoothKeystoreService = null;
     }
 
-    private boolean isPrimaryUser() {
+    private static boolean isPrimaryUser() {
         return Binder.getCallingUid() == Process.BLUETOOTH_UID;
     }
 
-    private void overwriteConfigFile(List<String> data) {
+    private static void overwriteConfigFile(List<String> data) {
         try {
             Files.write(Paths.get(CONFIG_FILE_PATH), data);
         } catch (IOException e) {

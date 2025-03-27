@@ -74,11 +74,11 @@ protected:
 
     bta_ag_cb.p_cback = [](tBTA_AG_EVT /*event*/, tBTA_AG* /*p_data*/) {};
     RawAddress::FromString("00:11:22:33:44:55", addr);
-    test::mock::device_esco_parameters::esco_parameters_for_codec.body =
-            [this](esco_codec_t codec) {
-              this->codec = codec;
-              return enh_esco_params_t{};
-            };
+    test::mock::device_esco_parameters::esco_parameters_for_codec.body = [this](esco_codec_t codec,
+                                                                                bool /*offload*/) {
+      this->codec = codec;
+      return enh_esco_params_t{};
+    };
   }
   void TearDown() override {
     test::mock::device_esco_parameters::esco_parameters_for_codec = {};
@@ -393,4 +393,15 @@ TEST_F(BtaAgScoTest, codec_negotiate__aptx_disabled) {
   ASSERT_EQ(0, get_func_call_count("PORT_WriteData"));
   ASSERT_EQ(0, get_func_call_count("alarm_set_on_mloop"));
   ASSERT_FALSE(p_scb->codec_updated);
+}
+
+TEST_F_WITH_FLAGS(BtaAgScoTest, ag_sco_shutdown,
+                  REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(TEST_BT, sco_state_machine_cleanup))) {
+  tBTA_AG_SCB* p_scb = &bta_ag_cb.scb[0];
+  bta_ag_cb.sco.state = BTA_AG_SCO_OPENING_ST;
+  bta_ag_cb.sco.p_curr_scb = p_scb;
+  ASSERT_NE(bta_ag_cb.sco.p_curr_scb, nullptr);
+  bta_ag_sco_shutdown(p_scb, tBTA_AG_DATA::kEmpty);
+  ASSERT_EQ(bta_ag_cb.sco.state, BTA_AG_SCO_SHUTDOWN_ST);
+  ASSERT_EQ(bta_ag_cb.sco.p_curr_scb, nullptr);
 }

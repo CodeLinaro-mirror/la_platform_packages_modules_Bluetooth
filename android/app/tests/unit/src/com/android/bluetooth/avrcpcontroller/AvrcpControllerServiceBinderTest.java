@@ -16,11 +16,14 @@
 
 package com.android.bluetooth.avrcpcontroller;
 
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 
 import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
@@ -30,25 +33,20 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class AvrcpControllerServiceBinderTest {
-    private static final String REMOTE_DEVICE_ADDRESS = "00:00:00:00:00:00";
-
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AvrcpControllerService mService;
 
-    BluetoothDevice mRemoteDevice;
+    private final BluetoothDevice mDevice = getTestDevice(49);
 
     AvrcpControllerService.AvrcpControllerServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
-        mRemoteDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(REMOTE_DEVICE_ADDRESS);
         mBinder = new AvrcpControllerService.AvrcpControllerServiceBinder(mService);
     }
 
@@ -61,7 +59,7 @@ public class AvrcpControllerServiceBinderTest {
 
     @Test
     public void getDevicesMatchingConnectionStates_callsServiceMethod() {
-        int[] states = new int[] {BluetoothProfile.STATE_CONNECTED};
+        int[] states = new int[] {STATE_CONNECTED};
         mBinder.getDevicesMatchingConnectionStates(states, null);
 
         verify(mService).getDevicesMatchingConnectionStates(states);
@@ -69,19 +67,19 @@ public class AvrcpControllerServiceBinderTest {
 
     @Test
     public void getConnectionState_callsServiceMethod() {
-        mBinder.getConnectionState(mRemoteDevice, null);
+        mBinder.getConnectionState(mDevice, null);
 
-        verify(mService).getConnectionState(mRemoteDevice);
+        verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void sendGroupNavigationCmd_notImplemented_doesNothing() {
-        mBinder.sendGroupNavigationCmd(mRemoteDevice, 1, 2, null);
+        mBinder.sendGroupNavigationCmd(mDevice, 1, 2, null);
     }
 
     @Test
     public void getPlayerSettings_notImplemented_doesNothing() {
-        mBinder.getPlayerSettings(mRemoteDevice, null);
+        mBinder.getPlayerSettings(mDevice, null);
     }
 
     @Test

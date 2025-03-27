@@ -37,10 +37,29 @@ rust_library {
     visibility: [
         "//hardware/interfaces/bluetooth:__subpackages__",
         "//packages/modules/Bluetooth/offload:__subpackages__",
+        "//vendor:__subpackages__",
     ],
 }
 
 rust_test {
     name: "libbluetooth_offload_leaudio_hci_test",
+    target: {
+        android: {
+            test_config_template: ":BluetoothRustTestConfigTemplate",
+            test_suites: [
+                "general-tests",
+                "mts-bt",
+            ],
+        },
+    },
+    compile_multilib: "both",
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+        lib64: {
+            suffix: "64",
+        },
+    },
     defaults: ["bluetooth_offload_leaudio_hci_defaults"],
 }

@@ -16,6 +16,9 @@
 
 package com.android.bluetooth.map;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.mockGetSystemService;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
@@ -62,8 +65,6 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.Spy;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -121,7 +122,7 @@ public class BluetoothMapContentObserverTest {
     static final int TEST_PRIORITY = 1;
     static final int TEST_LAST_ONLINE = 1;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Mock private BluetoothMnsObexClient mClient;
@@ -183,11 +184,9 @@ public class BluetoothMapContentObserverTest {
         // Functions that get called when BluetoothMapContentObserver is created
         when(mUserService.isUserUnlocked()).thenReturn(true);
         when(mContext.getContentResolver()).thenReturn(mMockContentResolver);
-        when(mContext.getSystemService(Context.TELEPHONY_SERVICE)).thenReturn(mTelephonyManager);
-        when(mContext.getSystemServiceName(TelephonyManager.class))
-                .thenReturn(Context.TELEPHONY_SERVICE);
-        when(mContext.getSystemService(Context.USER_SERVICE)).thenReturn(mUserService);
-        when(mContext.getSystemServiceName(UserManager.class)).thenReturn(Context.USER_SERVICE);
+        mockGetSystemService(
+                mContext, Context.TELEPHONY_SERVICE, TelephonyManager.class, mTelephonyManager);
+        mockGetSystemService(mContext, Context.USER_SERVICE, UserManager.class, mUserService);
         when(mInstance.getMasId()).thenReturn(TEST_ID);
 
         mObserver = new BluetoothMapContentObserver(mContext, mClient, mInstance, null, true);
@@ -260,7 +259,7 @@ public class BluetoothMapContentObserverTest {
         mObserver.sendEvent(event);
         verify(mClient, never()).sendEvent(any(), anyInt());
 
-        event.eventType = BluetoothMapContentObserver.EVENT_TYPE_DELEVERY_SUCCESS;
+        event.eventType = BluetoothMapContentObserver.EVENT_TYPE_DELIVERY_SUCCESS;
         mObserver.sendEvent(event);
         verify(mClient, never()).sendEvent(any(), anyInt());
 
@@ -2414,15 +2413,16 @@ public class BluetoothMapContentObserverTest {
         verify(mProviderClient, never()).query(any(), any(), any(), any(), any(), any());
     }
 
-    private BluetoothMapContentObserver.Msg createSimpleMsg() {
+    private static BluetoothMapContentObserver.Msg createSimpleMsg() {
         return new BluetoothMapContentObserver.Msg(1, 1L, 1);
     }
 
-    private BluetoothMapContentObserver.Msg createMsgWithTypeAndThreadId(int type, int threadId) {
+    private static BluetoothMapContentObserver.Msg createMsgWithTypeAndThreadId(
+            int type, int threadId) {
         return new BluetoothMapContentObserver.Msg(1, type, threadId, 1);
     }
 
-    private void setFolderStructureWithTelecomAndMsg(
+    private static void setFolderStructureWithTelecomAndMsg(
             BluetoothMapFolderElement folderElement, String folderName, long folderId) {
         folderElement.addFolder("telecom");
         folderElement.getSubFolder("telecom").addFolder("msg");

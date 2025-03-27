@@ -29,7 +29,6 @@ import android.annotation.NonNull;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
-import android.bluetooth.pairing.utils.IntentReceiver;
 import android.content.Context;
 
 import org.mockito.ArgumentCaptor;
@@ -38,6 +37,7 @@ import java.time.Duration;
 
 public class TestUtil {
   private static final String TAG = TestUtil.class.getSimpleName();
+
   private static final Duration BOND_INTENT_TIMEOUT = Duration.ofSeconds(10);
 
   private final Context mTargetContext;
@@ -89,8 +89,10 @@ public class TestUtil {
   public void removeBond(IntentReceiver parentIntentReceiver,
       BluetoothDevice device) {
     IntentReceiver intentReceiver =
-        IntentReceiver.updateNewIntentActionsInParentReceiver(parentIntentReceiver,
-            mTargetContext, BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        IntentReceiver.update(parentIntentReceiver,
+            new IntentReceiver.Builder(
+                mTargetContext,
+                BluetoothDevice.ACTION_BOND_STATE_CHANGED));
 
     assertThat(device.removeBond()).isTrue();
     intentReceiver.verifyReceivedOrdered(

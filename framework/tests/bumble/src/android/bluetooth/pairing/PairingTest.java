@@ -16,14 +16,12 @@
 
 package android.bluetooth.pairing;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 
 import static com.google.common.truth.Truth.assertThat;
-
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
@@ -37,16 +35,15 @@ import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.PandoraDevice;
 import android.bluetooth.StreamObserverSpliterator;
 import android.bluetooth.Utils;
-import android.bluetooth.test_utils.BlockingBluetoothAdapter;
-import android.bluetooth.test_utils.EnableBluetoothRule;
 import android.bluetooth.pairing.utils.IntentReceiver;
 import android.bluetooth.pairing.utils.TestUtil;
+import android.bluetooth.test_utils.BlockingBluetoothAdapter;
+import android.bluetooth.test_utils.EnableBluetoothRule;
 import android.content.Context;
 import android.os.ParcelUuid;
 import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
-import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
@@ -64,7 +61,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -87,7 +83,8 @@ import java.util.concurrent.TimeUnit;
 
 @RunWith(TestParameterInjector.class)
 public class PairingTest {
-    private static final String TAG = "PairingTest";
+    private static final String TAG = PairingTest.class.getSimpleName();
+
     private static final Duration BOND_INTENT_TIMEOUT = Duration.ofSeconds(10);
     private static final int TEST_DELAY_MS = 1000;
 
@@ -120,7 +117,7 @@ public class PairingTest {
     @Mock private BluetoothProfile.ServiceListener mProfileServiceListener;
 
     /* Util instance for common test steps with current Context reference */
-    private TestUtil util;
+    private TestUtil mUtil;
     private BluetoothDevice mBumbleDevice;
     private BluetoothDevice mRemoteLeDevice;
     private BluetoothHidHost mHidService;
@@ -129,14 +126,14 @@ public class PairingTest {
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-        util = new TestUtil.Builder(sTargetContext)
+        mUtil = new TestUtil.Builder(sTargetContext)
                 .setProfileServiceListener(mProfileServiceListener)
                 .setBluetoothAdapter(sAdapter)
                 .build();
 
         // Get profile proxies
-        mHidService = (BluetoothHidHost) util.getProfileProxy(BluetoothProfile.HID_HOST);
-        mHfpService = (BluetoothHeadset) util.getProfileProxy(BluetoothProfile.HEADSET);
+        mHidService = (BluetoothHidHost) mUtil.getProfileProxy(BluetoothProfile.HID_HOST);
+        mHfpService = (BluetoothHeadset) mUtil.getProfileProxy(BluetoothProfile.HEADSET);
 
         mBumbleDevice = mBumble.getRemoteDevice();
         mRemoteLeDevice =
@@ -149,7 +146,7 @@ public class PairingTest {
          *  must be passed instead of NULL.
          */
         for (BluetoothDevice device : sAdapter.getBondedDevices()) {
-            util.removeBond(null, device);
+            mUtil.removeBond(null, device);
         }
     }
 
@@ -163,10 +160,10 @@ public class PairingTest {
          *  must be passed instead of NULL.
          */
         if (bondedDevices.contains(mBumbleDevice)) {
-            util.removeBond(null, mBumbleDevice);
+            mUtil.removeBond(null, mBumbleDevice);
         }
         if (bondedDevices.contains(mRemoteLeDevice)) {
-            util.removeBond(null, mRemoteLeDevice);
+            mUtil.removeBond(null, mRemoteLeDevice);
         }
         mBumbleDevice = null;
         mRemoteLeDevice = null;
@@ -791,13 +788,9 @@ public class PairingTest {
                 .build();
 
         // Disable all profiles other than A2DP as profile connections take too long
-        assertThat(
-                        mHfpService.setConnectionPolicy(
-                                mBumbleDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        assertThat(mHfpService.setConnectionPolicy(mBumbleDevice, CONNECTION_POLICY_FORBIDDEN))
                 .isTrue();
-        assertThat(
-                        mHidService.setConnectionPolicy(
-                                mBumbleDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        assertThat(mHidService.setConnectionPolicy(mBumbleDevice, CONNECTION_POLICY_FORBIDDEN))
                 .isTrue();
 
         testStep_BondBredr(intentReceiver);
@@ -855,7 +848,7 @@ public class PairingTest {
      * 2. The caller (if a test function) can initiate a fresh instance of IntentReceiver
      *  and use it for all subsequent helper/testStep functions.
      * 3. The helper function should first register all required intent actions through the
-     *  helper -> IntentReceiver.updateNewIntentActionsInParentReceiver()
+     *  helper -> IntentReceiver.update()
      *  which either modifies the intentReceiver instance, or creates
      *  one (if the caller has passed a `null`).
      * 4. At the end, all functions should call `intentReceiver.close()` which either
@@ -864,12 +857,13 @@ public class PairingTest {
 
     private void testStep_BondBredr(IntentReceiver parentIntentReceiver) {
         IntentReceiver intentReceiver =
-            IntentReceiver.updateNewIntentActionsInParentReceiver(
+            IntentReceiver.update(
                 parentIntentReceiver,
-                sTargetContext,
-                BluetoothDevice.ACTION_BOND_STATE_CHANGED,
-                BluetoothDevice.ACTION_ACL_CONNECTED,
-                BluetoothDevice.ACTION_PAIRING_REQUEST);
+                new IntentReceiver.Builder(
+                    sTargetContext,
+                    BluetoothDevice.ACTION_BOND_STATE_CHANGED,
+                    BluetoothDevice.ACTION_ACL_CONNECTED,
+                    BluetoothDevice.ACTION_PAIRING_REQUEST));
 
         StreamObserver<PairingEventAnswer> pairingEventAnswerObserver =
                 mBumble.security()
@@ -928,13 +922,14 @@ public class PairingTest {
                 IntentReceiver parentIntentReceiver) {
         // Register new actions specific to this helper function
         IntentReceiver intentReceiver =
-            IntentReceiver.updateNewIntentActionsInParentReceiver(
+            IntentReceiver.update(
                 parentIntentReceiver,
-                sTargetContext,
-                BluetoothDevice.ACTION_BOND_STATE_CHANGED,
-                BluetoothDevice.ACTION_PAIRING_REQUEST,
-                BluetoothDevice.ACTION_UUID,
-                BluetoothDevice.ACTION_ACL_CONNECTED);
+                new IntentReceiver.Builder(
+                    sTargetContext,
+                    BluetoothDevice.ACTION_BOND_STATE_CHANGED,
+                    BluetoothDevice.ACTION_PAIRING_REQUEST,
+                    BluetoothDevice.ACTION_UUID,
+                    BluetoothDevice.ACTION_ACL_CONNECTED));
 
         // Register lots of interesting GATT services on Bumble
         for (int i = 0; i < 40; i++) {
@@ -1023,12 +1018,13 @@ public class PairingTest {
     private void testStep_BondLe(IntentReceiver parentIntentReceiver,
         BluetoothDevice device, OwnAddressType ownAddressType) {
         IntentReceiver intentReceiver =
-            IntentReceiver.updateNewIntentActionsInParentReceiver(
+            IntentReceiver.update(
                 parentIntentReceiver,
-                sTargetContext,
-                BluetoothDevice.ACTION_BOND_STATE_CHANGED,
-                BluetoothDevice.ACTION_ACL_CONNECTED,
-                BluetoothDevice.ACTION_PAIRING_REQUEST);
+                new IntentReceiver.Builder(
+                    sTargetContext,
+                    BluetoothDevice.ACTION_BOND_STATE_CHANGED,
+                    BluetoothDevice.ACTION_ACL_CONNECTED,
+                    BluetoothDevice.ACTION_PAIRING_REQUEST));
 
         mBumble.gattBlocking()
                 .registerService(

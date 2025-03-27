@@ -16,12 +16,14 @@
 
 package com.android.bluetooth.gatt;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.IAdvertisingSetCallback;
@@ -29,6 +31,7 @@ import android.bluetooth.le.PeriodicAdvertisingParameters;
 import android.content.AttributionSource;
 
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.btservice.AdapterService;
@@ -38,20 +41,22 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 /** Test cases for {@link AdvertiseBinder}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class AdvertiseBinderTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private AdvertiseManager mAdvertiseManager;
 
     private final AttributionSource mAttributionSource =
-            BluetoothAdapter.getDefaultAdapter().getAttributionSource();
+            InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext()
+                    .getSystemService(BluetoothManager.class)
+                    .getAdapter()
+                    .getAttributionSource();
     private AdvertiseBinder mBinder;
 
     @Before

@@ -18,6 +18,7 @@ package com.android.bluetooth.le_scan;
 
 import static android.bluetooth.le.ScanSettings.SCAN_MODE_BALANCED;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.le_scan.ScanController.DEFAULT_REPORT_DELAY_FLOOR;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -37,8 +38,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -51,7 +50,7 @@ import java.util.stream.LongStream;
 @RunWith(TestParameterInjector.class)
 public class BatchScanThrottlerTest {
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     private FakeTimeProvider mTimeProvider;
 
@@ -165,7 +164,8 @@ public class BatchScanThrottlerTest {
                 .isEqualTo(backoffIntervals[backoffIntervals.length - 1]);
     }
 
-    private long adjustExpectedInterval(long interval, boolean isFiltered, boolean isScreenOn) {
+    private static long adjustExpectedInterval(
+            long interval, boolean isFiltered, boolean isScreenOn) {
         if (isFiltered) {
             return interval;
         }
@@ -176,13 +176,13 @@ public class BatchScanThrottlerTest {
         return Math.max(interval, threshold);
     }
 
-    private long[] getBackoffIntervals(long baseInterval) {
+    private static long[] getBackoffIntervals(long baseInterval) {
         return LongStream.range(0, BatchScanThrottler.BACKOFF_MULTIPLIERS.length)
                 .map(x -> BatchScanThrottler.BACKOFF_MULTIPLIERS[(int) x] * baseInterval)
                 .toArray();
     }
 
-    private ScanClient createBatchScanClient(long reportDelayMillis, boolean isFiltered) {
+    private static ScanClient createBatchScanClient(long reportDelayMillis, boolean isFiltered) {
         ScanSettings scanSettings =
                 new ScanSettings.Builder()
                         .setScanMode(SCAN_MODE_BALANCED)
@@ -192,7 +192,7 @@ public class BatchScanThrottlerTest {
         return new ScanClient(1, scanSettings, createScanFilterList(isFiltered), 1);
     }
 
-    private List<ScanFilter> createScanFilterList(boolean isFiltered) {
+    private static List<ScanFilter> createScanFilterList(boolean isFiltered) {
         List<ScanFilter> scanFilterList = null;
         if (isFiltered) {
             scanFilterList = List.of(new ScanFilter.Builder().setDeviceName("TestName").build());

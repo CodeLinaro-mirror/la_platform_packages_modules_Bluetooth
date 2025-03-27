@@ -17,11 +17,13 @@ package com.android.bluetooth.btservice;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.mockGetSystemService;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.*;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
@@ -32,8 +34,8 @@ import android.os.Message;
 import android.os.ParcelUuid;
 import android.os.UserHandle;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -46,8 +48,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
@@ -68,34 +68,36 @@ public class BondStateMachineTest {
     private static final int BOND_BONDING = BluetoothDevice.BOND_BONDING;
     private static final int BOND_BONDED = BluetoothDevice.BOND_BONDED;
 
-    private BluetoothManager mBluetoothManager;
+    private final Context mTargetContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
+    private final BluetoothManager mBluetoothManager =
+            mTargetContext.getSystemService(BluetoothManager.class);
+
     private AdapterProperties mAdapterProperties;
     private BluetoothDevice mDevice;
-    private Context mTargetContext;
     private RemoteDevices mRemoteDevices;
     private BondStateMachine mBondStateMachine;
     private HandlerThread mHandlerThread;
     private RemoteDevices.DeviceProperties mDeviceProperties;
     private int mVerifyCount = 0;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private AdapterNativeInterface mNativeInterface;
 
     @Before
     public void setUp() throws Exception {
-        mTargetContext = InstrumentationRegistry.getTargetContext();
         TestUtils.setAdapterService(mAdapterService);
         doReturn(mNativeInterface).when(mAdapterService).getNative();
         mHandlerThread = new HandlerThread("BondStateMachineTestHandlerThread");
         mHandlerThread.start();
 
-        mBluetoothManager = mTargetContext.getSystemService(BluetoothManager.class);
-        when(mAdapterService.getSystemService(Context.BLUETOOTH_SERVICE))
-                .thenReturn(mBluetoothManager);
-        when(mAdapterService.getSystemServiceName(BluetoothManager.class))
-                .thenReturn(Context.BLUETOOTH_SERVICE);
+        mockGetSystemService(
+                mAdapterService,
+                Context.BLUETOOTH_SERVICE,
+                BluetoothManager.class,
+                mBluetoothManager);
 
         mRemoteDevices = new RemoteDevices(mAdapterService, mHandlerThread.getLooper());
         mRemoteDevices.reset();
@@ -176,12 +178,18 @@ public class BondStateMachineTest {
         mBondStateMachine.mPendingBondedDevices.clear();
 
         BluetoothDevice device1 =
-                BluetoothAdapter.getDefaultAdapter()
+                InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
+                        .getSystemService(BluetoothManager.class)
+                        .getAdapter()
                         .getRemoteLeDevice(
                                 Utils.getAddressStringFromByte(TEST_BT_ADDR_BYTES),
                                 BluetoothDevice.ADDRESS_TYPE_PUBLIC);
         BluetoothDevice device2 =
-                BluetoothAdapter.getDefaultAdapter()
+                InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
+                        .getSystemService(BluetoothManager.class)
+                        .getAdapter()
                         .getRemoteLeDevice(
                                 Utils.getAddressStringFromByte(TEST_BT_ADDR_BYTES_2),
                                 BluetoothDevice.ADDRESS_TYPE_RANDOM);

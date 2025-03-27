@@ -16,12 +16,16 @@
 
 package com.android.bluetooth.csip;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 import android.bluetooth.IBluetoothCsipSetCoordinatorLockCallback;
 import android.content.AttributionSource;
 import android.os.ParcelUuid;
@@ -30,26 +34,20 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 public class BluetoothCsisBinderTest {
-    private static final String TEST_DEVICE_ADDRESS = "00:00:00:00:00:00";
-
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private CsipSetCoordinatorService mService;
 
-    private AttributionSource mAttributionSource;
-    private BluetoothDevice mTestDevice;
+    private final BluetoothDevice mDevice = getTestDevice(45);
+    private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
 
     private CsipSetCoordinatorService.BluetoothCsisBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
         mBinder = new CsipSetCoordinatorService.BluetoothCsisBinder(mService);
-        mAttributionSource = new AttributionSource.Builder(1).build();
-        mTestDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(TEST_DEVICE_ADDRESS);
     }
 
     @Test
@@ -60,28 +58,28 @@ public class BluetoothCsisBinderTest {
 
     @Test
     public void getDevicesMatchingConnectionStates() {
-        int[] states = new int[] {BluetoothProfile.STATE_CONNECTED};
+        int[] states = new int[] {STATE_CONNECTED};
         mBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState() {
-        mBinder.getConnectionState(mTestDevice, mAttributionSource);
-        verify(mService).getConnectionState(mTestDevice);
+        mBinder.getConnectionState(mDevice, mAttributionSource);
+        verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void setConnectionPolicy() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-        mBinder.setConnectionPolicy(mTestDevice, connectionPolicy, mAttributionSource);
-        verify(mService).setConnectionPolicy(mTestDevice, connectionPolicy);
+        int connectionPolicy = CONNECTION_POLICY_ALLOWED;
+        mBinder.setConnectionPolicy(mDevice, connectionPolicy, mAttributionSource);
+        verify(mService).setConnectionPolicy(mDevice, connectionPolicy);
     }
 
     @Test
     public void getConnectionPolicy() {
-        mBinder.getConnectionPolicy(mTestDevice, mAttributionSource);
-        verify(mService).getConnectionPolicy(mTestDevice);
+        mBinder.getConnectionPolicy(mDevice, mAttributionSource);
+        verify(mService).getConnectionPolicy(mDevice);
     }
 
     @Test
@@ -109,8 +107,8 @@ public class BluetoothCsisBinderTest {
 
     @Test
     public void getGroupUuidMapByDevice() {
-        mBinder.getGroupUuidMapByDevice(mTestDevice, mAttributionSource);
-        verify(mService).getGroupUuidMapByDevice(mTestDevice);
+        mBinder.getGroupUuidMapByDevice(mDevice, mAttributionSource);
+        verify(mService).getGroupUuidMapByDevice(mDevice);
     }
 
     @Test

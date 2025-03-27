@@ -16,13 +16,13 @@
 
 package com.android.bluetooth.mcp;
 
-import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.*;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothUuid;
 import android.content.pm.ApplicationInfo;
@@ -48,8 +48,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.HashMap;
 import java.util.UUID;
@@ -57,9 +55,6 @@ import java.util.UUID;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class MediaControlProfileTest {
-    private final String mFlagDexmarker = System.getProperty("dexmaker.share_classloader", "false");
-
-    private BluetoothAdapter mAdapter;
     private MediaControlProfile mMediaControlProfile;
 
     private String packageName = "TestPackage";
@@ -68,7 +63,7 @@ public class MediaControlProfileTest {
     private CharSequence charSequence = "TestPlayer";
     private MediaControlServiceCallbacks mMcpServiceCallbacks;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private MediaData mMockMediaData;
@@ -86,14 +81,9 @@ public class MediaControlProfileTest {
 
     @Before
     public void setUp() throws Exception {
-        if (!mFlagDexmarker.equals("true")) {
-            System.setProperty("dexmaker.share_classloader", "true");
-        }
-
         MediaControlProfile.ListCallback listCallback;
 
         TestUtils.setAdapterService(mAdapterService);
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
 
         mMockMediaData.metadata = mMockMetadata;
 
@@ -103,9 +93,6 @@ public class MediaControlProfileTest {
         doReturn(mMockMediaPlayerWrapper).when(mMockMediaPlayerList).getActivePlayer();
         doReturn(mMockMcpService).when(mMockMcpService).getApplicationContext();
         doReturn(mMockPackageManager).when(mMockMcpService).getPackageManager();
-        doReturn(getInstrumentation().getTargetContext().getMainThreadHandler())
-                .when(mMockMcpService)
-                .getMainThreadHandler();
         doReturn(packageName).when(mMockMcpService).getPackageName();
         doReturn(name).when(mMockMediaPlayerWrapper).getPackageName();
         doReturn(charSequence).when(mMockApplicationInfo).loadLabel(any(PackageManager.class));
@@ -143,10 +130,6 @@ public class MediaControlProfileTest {
         mMediaControlProfile.cleanup();
         mMediaControlProfile = null;
         reset(mMockMediaPlayerList);
-
-        if (!mFlagDexmarker.equals("true")) {
-            System.setProperty("dexmaker.share_classloader", mFlagDexmarker);
-        }
     }
 
     @Test
@@ -512,7 +495,7 @@ public class MediaControlProfileTest {
                 .getServiceUuid();
 
         // BluetoothDevice class is not mockable
-        BluetoothDevice bluetoothDevice = TestUtils.getTestDevice(mAdapter, 0);
+        BluetoothDevice bluetoothDevice = getTestDevice(0);
         mMediaControlProfile.setNotificationSubscription(ccid1, bluetoothDevice, charUuid1, true);
         assertThat(mMediaControlProfile.getNotificationSubscriptions(ccid1, bluetoothDevice))
                 .isNotNull();

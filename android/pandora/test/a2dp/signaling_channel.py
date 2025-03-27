@@ -19,13 +19,13 @@ from __future__ import annotations
 
 from bumble.device import Connection
 try:
-    from packets import avdtp as avdt_packet_module
+    from packets import avdtp as av
     from packets.avdtp import *
 except ImportError:
-    from .packets import avdtp as avdt_packet_module
+    from .packets import avdtp as av
     from .packets.avdtp import *
 from pyee import EventEmitter
-from typing import Union
+from typing import List, Literal, Union
 
 import asyncio
 import bumble.avdtp as avdtp
@@ -37,7 +37,7 @@ import logging
 # -----------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 
-avdt_packet_module.print = lambda *args, **kwargs: logger.debug(" ".join(map(str, args)))
+av.print = lambda *args, **kwargs: logger.debug(" ".join(map(str, args)))
 
 
 class Any:
@@ -58,12 +58,18 @@ class Any:
         return prefix + "_"
 
 
+RoleType = Optional[Literal["acceptor", "initiator"]]
+
+
 class SignalingChannel(EventEmitter):
     connection: Connection
     signaling_channel: Optional[l2cap.ClassicChannel] = None
     transport_channel: Optional[l2cap.ClassicChannel] = None
     avdtp_server: Optional[l2cap.ClassicChannelServer] = None
-    role: Optional[str] = None
+    role: RoleType = None
+    any: Any = Any()
+    acp_seid: int = 0
+    int_seid: int = 0
 
     def __init__(self, connection: Connection):
         super().__init__()
@@ -198,3 +204,80 @@ class SignalingChannel(EventEmitter):
 
     def _on_avdtp_packet(self, packet):
         self.transport_queue.put_nowait(packet)
+
+    async def accept_discover(self, seid_information: List[av.SeidInformation]):
+        cmd = await self.expect_signal(av.DiscoverCommand(transaction_label=self.any))
+        self.send_signal(av.DiscoverResponse(transaction_label=cmd.transaction_label,
+                                             seid_information=seid_information))
+
+    async def accept_get_all_capabilities(self, service_capabilities: List[ServiceCapability]):
+        cmd = await self.expect_signal(av.GetAllCapabilitiesCommand(acp_seid=self.any, transaction_label=self.any))
+        self.send_signal(
+            av.GetAllCapabilitiesResponse(transaction_label=cmd.transaction_label,
+                                          service_capabilities=service_capabilities))
+
+    async def accept_set_configuration(self, expected_configuration: List[ServiceCapability]):
+        cmd = await self.expect_signal(
+            av.SetConfigurationCommand(transaction_label=self.any,
+                                       acp_seid=self.any,
+                                       int_seid=self.any,
+                                       service_capabilities=expected_configuration))
+        self.acp_seid = cmd.acp_seid
+        self.int_seid = cmd.int_seid
+        self.send_signal(SetConfigurationResponse(transaction_label=cmd.transaction_label))
+
+    async def accept_open(self, timeout: float = 3.0):
+        cmd = await self.expect_signal(av.OpenCommand(transaction_label=self.any, acp_seid=self.any), timeout=timeout)
+        self.send_signal(av.OpenResponse(transaction_label=cmd.transaction_label))
+
+    async def accept_start(self, timeout: float = 3.0):
+        cmd = await self.expect_signal(av.StartCommand(transaction_label=self.any, acp_seid=self.any), timeout=timeout)
+        self.send_signal(av.StartResponse(transaction_label=cmd.transaction_label))
+
+    async def accept_suspend(self, timeout: float = 3.0):
+        cmd = await self.expect_signal(av.SuspendCommand(transaction_label=self.any, acp_seid=self.any),
+                                       timeout=timeout)
+        self.send_signal(av.SuspendResponse(transaction_label=cmd.transaction_label))
+
+    async def accept_close(self, timeout: float = 3.0):
+        cmd = await self.expect_signal(av.CloseCommand(transaction_label=self.any, acp_seid=self.any), timeout=timeout)
+        self.send_signal(av.CloseResponse(transaction_label=cmd.transaction_label))
+
+    async def accept_open_stream(self,
+                                 seid_information: List[av.SeidInformation],
+                                 service_capabilities: List[ServiceCapability],
+                                 timeout: float = 10.0):
+        avdtp_future = asyncio.get_running_loop().create_future()
+
+        def on_avdtp_connection():
+            logger.info(f"AVDTP Opened")
+            nonlocal avdtp_future
+            avdtp_future.set_result(None)
+
+        self.on('connection', on_avdtp_connection)
+
+        expected_configuration: List[ServiceCapability] = []
+        for capability in service_capabilities:
+            if isinstance(capability, av.MediaTransportCapability) or isinstance(capability,
+                                                                                 av.DelayReportingCapability):
+                expected_configuration.append(capability)
+            else:
+                expected_configuration.append(self.any)
+
+        await self.accept_discover(seid_information)
+        await self.accept_get_all_capabilities(service_capabilities)
+        await self.accept_set_configuration(expected_configuration)
+        await self.accept_open()
+
+        await asyncio.wait_for(avdtp_future, timeout=timeout)
+
+    async def initiate_delay_report(self, delay_ms: int = 100, timeout: float = 3.0):
+        delay_one_tenth = delay_ms * 10
+        delay_msb = (delay_one_tenth >> 8) & 0xff
+        delay_lsb = delay_one_tenth & 0xff
+        self.send_signal(
+            av.DelayReportCommand(transaction_label=0x01,
+                                  acp_seid=self.acp_seid,
+                                  delay_msb=delay_msb,
+                                  delay_lsb=delay_lsb))
+        await self.expect_signal(av.DelayReportResponse(transaction_label=self.any), timeout=timeout)

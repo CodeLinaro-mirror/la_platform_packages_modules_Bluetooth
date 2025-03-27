@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.gatt;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
@@ -27,13 +29,13 @@ import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.IAdvertisingSetCallback;
 import android.bluetooth.le.PeriodicAdvertisingParameters;
 import android.os.IBinder;
-import android.os.test.TestLooper;
 import android.platform.test.flag.junit.FlagsParameterization;
 import android.platform.test.flag.junit.SetFlagsRule;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.flags.Flags;
 
@@ -42,8 +44,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import platform.test.runner.parameterized.ParameterizedAndroidJunit4;
 import platform.test.runner.parameterized.Parameters;
@@ -55,7 +55,7 @@ import java.util.List;
 @RunWith(ParameterizedAndroidJunit4.class)
 public class AdvertiseManagerTest {
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
     @Rule public final SetFlagsRule mSetFlagsRule;
 
     @Mock private AdapterService mAdapterService;
@@ -111,7 +111,9 @@ public class AdvertiseManagerTest {
                 maxExtAdvEvents,
                 0,
                 mCallback,
-                InstrumentationRegistry.getTargetContext().getAttributionSource());
+                InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
+                        .getAttributionSource());
 
         mAdvertiserId = mAdvertiseManager.mTempRegistrationId;
     }

@@ -191,13 +191,19 @@ public:
 
   void UpdateActiveAudioConfig(
           const types::BidirectionalPair<stream_parameters>& stream_params,
-          std::function<void(const stream_config& config, uint8_t direction)> update_receiver) {
+          std::function<void(const stream_config& config, uint8_t direction)> update_receiver,
+          uint8_t remote_directions_to_update) {
     if (GetCodecLocation() != bluetooth::le_audio::types::CodecLocation::ADSP) {
       return;
     }
 
     for (auto direction : {bluetooth::le_audio::types::kLeAudioDirectionSink,
                            bluetooth::le_audio::types::kLeAudioDirectionSource}) {
+      /* Update only the requested directions */
+      if ((remote_directions_to_update & direction) != direction) {
+        continue;
+      }
+
       auto& stream_map = offloader_stream_maps.get(direction);
       if (!stream_map.has_changed && !stream_map.is_initial) {
         log::warn("unexpected call for direction {}, stream_map.has_changed {}", direction,
@@ -376,8 +382,7 @@ public:
     }
 
     auto codec_ext_status =
-            osi_property_get_bool("bluetooth.core.le_audio.codec_extension_aidl.enabled", false) &&
-            com::android::bluetooth::flags::leaudio_multicodec_aidl_support();
+            osi_property_get_bool("bluetooth.core.le_audio.codec_extension_aidl.enabled", false);
 
     log::debug("Using codec extensibility AIDL: {}", codec_ext_status);
     return codec_ext_status;
@@ -726,7 +731,62 @@ public:
     return -1;
   }
 
-  bool UpdateCisMonoConfiguration(const std::vector<struct types::cis>& cises, uint8_t direction) {
+  bool AppendStreamMapExtension(const std::vector<struct types::cis>& cises,
+                                const stream_parameters& stream_params, uint8_t direction) {
+    // In the legacy mode we are already done
+    if (!IsUsingCodecExtensibility()) {
+      log::verbose("Codec Extensibility is disabled");
+      return true;
+    }
+
+    const std::string tag =
+            types::BidirectionalPair<std::string>({.sink = "Sink", .source = "Source"})
+                    .get(direction);
+
+    const auto cis_type = types::BidirectionalPair<types::CisType>(
+                                  {.sink = types::CisType::CIS_TYPE_UNIDIRECTIONAL_SINK,
+                                   .source = types::CisType::CIS_TYPE_UNIDIRECTIONAL_SOURCE})
+                                  .get(direction);
+
+    auto stream_info_updater =
+            [](const bluetooth::le_audio::stream_map_info& source_info,
+               std::vector<bluetooth::le_audio::stream_map_info>& dest_info_vec) {
+              for (auto& dest_entry : dest_info_vec) {
+                if (source_info.stream_handle == dest_entry.stream_handle) {
+                  dest_entry.codec_config = source_info.codec_config;
+                  dest_entry.target_latency = source_info.target_latency;
+                  dest_entry.target_phy = source_info.target_phy;
+                  dest_entry.metadata = source_info.metadata;
+                  dest_entry.address = source_info.address;
+                  dest_entry.address_type = source_info.address_type;
+                }
+              }
+            };
+
+    auto& dest_stream_map = offloader_stream_maps.get(direction);
+    for (auto const& cis_entry : cises) {
+      if ((cis_entry.type == types::CisType::CIS_TYPE_BIDIRECTIONAL ||
+           cis_entry.type == cis_type) &&
+          cis_entry.conn_handle != 0) {
+        auto const& source_stream_map = stream_params.stream_config.stream_map;
+        auto source_info = std::find_if(source_stream_map.begin(), source_stream_map.end(),
+                                        [&cis_entry](auto const& info) {
+                                          return info.stream_handle == cis_entry.conn_handle;
+                                        });
+
+        if (source_info != source_stream_map.end()) {
+          // Update both map entries
+          stream_info_updater(*source_info, dest_stream_map.streams_map_target);
+          stream_info_updater(*source_info, dest_stream_map.streams_map_current);
+        }
+      }
+    }
+
+    return true;
+  }
+
+  bool UpdateCisMonoConfiguration(const std::vector<struct types::cis>& cises,
+                                  const stream_parameters& stream_params, uint8_t direction) {
     if (!LeAudioHalVerifier::SupportsStreamActiveApi() ||
         !com::android::bluetooth::flags::leaudio_mono_location_errata()) {
       log::error(
@@ -764,7 +824,7 @@ public:
       }
     }
 
-    return true;
+    return AppendStreamMapExtension(cises, stream_params, direction);
   }
 
   bool UpdateCisStereoConfiguration(const std::vector<struct types::cis>& cises,
@@ -841,7 +901,7 @@ public:
       }
     }
 
-    return true;
+    return AppendStreamMapExtension(cises, stream_params, direction);
   }
 
   bool UpdateCisConfiguration(const std::vector<struct types::cis>& cises,
@@ -855,7 +915,7 @@ public:
         log::error("Unsupported allocation {:#x}", stream_params.audio_channel_allocation);
         return false;
       case codec_spec_conf::kLeAudioLocationMonoAudio:
-        return UpdateCisMonoConfiguration(cises, direction);
+        return UpdateCisMonoConfiguration(cises, stream_params, direction);
       default:
         return UpdateCisStereoConfiguration(cises, stream_params, direction);
     };
@@ -999,7 +1059,7 @@ private:
   }
 
   void storeLocalCapa(
-          std::vector<::bluetooth::le_audio::types::AudioSetConfiguration>& adsp_capabilities,
+          const std::vector<::bluetooth::le_audio::types::AudioSetConfiguration>& adsp_capabilities,
           const std::vector<btle_audio_codec_config_t>& offload_preference_set) {
     log::debug("Print adsp_capabilities:");
 
@@ -1028,6 +1088,7 @@ private:
                           conf.codec.GetChannelCountPerIsoStream()),
                   .frame_duration = utils::translateToBtLeAudioCodecConfigFrameDuration(
                           conf.codec.GetDataIntervalUs()),
+                  .codec_frame_blocks_per_sdu = conf.codec.GetCodecFrameBlocksPerSdu(),
           };
 
           auto& capa_container = (direction == types::kLeAudioDirectionSink) ? codec_output_capa
@@ -1252,7 +1313,7 @@ CodecManager::GetLocalAudioOutputCodecCapa() {
 std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
 CodecManager::GetLocalAudioInputCodecCapa() {
   if (pimpl_->IsRunning()) {
-    return pimpl_->codec_manager_impl_->GetLocalAudioOutputCodecCapa();
+    return pimpl_->codec_manager_impl_->GetLocalAudioInputCodecCapa();
   }
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t> empty{};
   return empty;
@@ -1260,9 +1321,11 @@ CodecManager::GetLocalAudioInputCodecCapa() {
 
 void CodecManager::UpdateActiveAudioConfig(
         const types::BidirectionalPair<stream_parameters>& stream_params,
-        std::function<void(const stream_config& config, uint8_t direction)> update_receiver) {
+        std::function<void(const stream_config& config, uint8_t direction)> update_receiver,
+        uint8_t remote_directions_to_update) {
   if (pimpl_->IsRunning()) {
-    pimpl_->codec_manager_impl_->UpdateActiveAudioConfig(stream_params, update_receiver);
+    pimpl_->codec_manager_impl_->UpdateActiveAudioConfig(stream_params, update_receiver,
+                                                         remote_directions_to_update);
   }
 }
 

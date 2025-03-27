@@ -16,6 +16,9 @@
 
 package com.android.bluetooth.gatt;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.after;
@@ -25,7 +28,6 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.le.DistanceMeasurementMethod;
@@ -47,8 +49,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.UUID;
 
@@ -56,17 +56,18 @@ import java.util.UUID;
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class DistanceMeasurementManagerTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private DistanceMeasurementNativeInterface mDistanceMeasurementNativeInterface;
     @Mock private AdapterService mAdapterService;
     @Mock private PackageManager mPackageManager;
     @Mock private IDistanceMeasurementCallback mCallback;
+
+    private final BluetoothDevice mDevice = getTestDevice(57);
+
     private DistanceMeasurementManager mDistanceMeasurementManager;
     private UUID mUuid;
-    private BluetoothDevice mDevice;
 
-    private static final String IDENTITY_ADDRESS = "00:01:02:03:04:05";
     private static final int RSSI_FREQUENCY_LOW = 3000;
     private static final int CS_FREQUENCY_LOW = 5000;
 
@@ -75,12 +76,13 @@ public class DistanceMeasurementManagerTest {
         doReturn(mPackageManager).when(mAdapterService).getPackageManager();
         doReturn(true).when(mPackageManager).hasSystemFeature(any());
         doReturn(true).when(mAdapterService).isLeChannelSoundingSupported();
-        doReturn(IDENTITY_ADDRESS).when(mAdapterService).getIdentityAddress(IDENTITY_ADDRESS);
+        doReturn(mDevice.getAddress())
+                .when(mAdapterService)
+                .getIdentityAddress(mDevice.getAddress());
         doReturn(true).when(mAdapterService).isConnected(any());
         DistanceMeasurementNativeInterface.setInstance(mDistanceMeasurementNativeInterface);
         mDistanceMeasurementManager = new DistanceMeasurementManager(mAdapterService);
         mUuid = UUID.randomUUID();
-        mDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(IDENTITY_ADDRESS);
     }
 
     @After
@@ -100,7 +102,7 @@ public class DistanceMeasurementManagerTest {
         mDistanceMeasurementManager.startDistanceMeasurement(mUuid, params, mCallback);
         verify(mDistanceMeasurementNativeInterface)
                 .startDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         RSSI_FREQUENCY_LOW,
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
     }
@@ -118,7 +120,7 @@ public class DistanceMeasurementManagerTest {
                 mUuid, mDevice, DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI, false);
         verify(mDistanceMeasurementNativeInterface)
                 .stopDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
     }
 
@@ -133,11 +135,11 @@ public class DistanceMeasurementManagerTest {
         mDistanceMeasurementManager.startDistanceMeasurement(mUuid, params, mCallback);
         verify(mDistanceMeasurementNativeInterface)
                 .startDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         RSSI_FREQUENCY_LOW,
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         mDistanceMeasurementManager.onDistanceMeasurementStarted(
-                IDENTITY_ADDRESS, DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
+                mDevice.getAddress(), DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         verify(mCallback).onStarted(mDevice);
     }
 
@@ -152,11 +154,11 @@ public class DistanceMeasurementManagerTest {
         mDistanceMeasurementManager.startDistanceMeasurement(mUuid, params, mCallback);
         verify(mDistanceMeasurementNativeInterface)
                 .startDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         RSSI_FREQUENCY_LOW,
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         mDistanceMeasurementManager.onDistanceMeasurementStopped(
-                IDENTITY_ADDRESS,
+                mDevice.getAddress(),
                 BluetoothStatusCodes.ERROR_DISTANCE_MEASUREMENT_INTERNAL,
                 DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         verify(mCallback)
@@ -178,7 +180,7 @@ public class DistanceMeasurementManagerTest {
 
         verify(mDistanceMeasurementNativeInterface, never())
                 .startDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         CS_FREQUENCY_LOW,
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_CHANNEL_SOUNDING);
         verify(mCallback).onStartFail(mDevice, BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED);
@@ -199,15 +201,15 @@ public class DistanceMeasurementManagerTest {
 
         verify(mDistanceMeasurementNativeInterface)
                 .startDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         CS_FREQUENCY_LOW,
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_CHANNEL_SOUNDING);
 
         mDistanceMeasurementManager.onDistanceMeasurementStarted(
-                IDENTITY_ADDRESS,
+                mDevice.getAddress(),
                 DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_CHANNEL_SOUNDING);
         mDistanceMeasurementManager.onDistanceMeasurementResult(
-                IDENTITY_ADDRESS,
+                mDevice.getAddress(),
                 100,
                 0,
                 100,
@@ -245,11 +247,11 @@ public class DistanceMeasurementManagerTest {
                         .build();
         mDistanceMeasurementManager.startDistanceMeasurement(mUuid, params, mCallback);
         mDistanceMeasurementManager.onDistanceMeasurementStarted(
-                IDENTITY_ADDRESS, DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
+                mDevice.getAddress(), DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         verify(mCallback).onStarted(mDevice);
 
         mDistanceMeasurementManager.onDistanceMeasurementStopped(
-                IDENTITY_ADDRESS,
+                mDevice.getAddress(),
                 BluetoothStatusCodes.REASON_REMOTE_REQUEST,
                 DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         verify(mCallback).onStopped(mDevice, BluetoothStatusCodes.REASON_REMOTE_REQUEST);
@@ -265,11 +267,11 @@ public class DistanceMeasurementManagerTest {
                         .build();
         mDistanceMeasurementManager.startDistanceMeasurement(mUuid, params, mCallback);
         mDistanceMeasurementManager.onDistanceMeasurementStarted(
-                IDENTITY_ADDRESS, DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
+                mDevice.getAddress(), DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         verify(mCallback).onStarted(mDevice);
 
         mDistanceMeasurementManager.onDistanceMeasurementResult(
-                IDENTITY_ADDRESS,
+                mDevice.getAddress(),
                 100,
                 100,
                 -1,
@@ -312,10 +314,10 @@ public class DistanceMeasurementManagerTest {
                 mUuid, mDevice, DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI, false);
         verify(mDistanceMeasurementNativeInterface)
                 .stopDistanceMeasurement(
-                        IDENTITY_ADDRESS,
+                        mDevice.getAddress(),
                         DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI);
         mDistanceMeasurementManager.onDistanceMeasurementResult(
-                IDENTITY_ADDRESS,
+                mDevice.getAddress(),
                 100,
                 100,
                 -1,

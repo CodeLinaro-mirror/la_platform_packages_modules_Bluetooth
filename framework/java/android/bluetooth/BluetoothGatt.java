@@ -18,6 +18,8 @@ package android.bluetooth;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static android.bluetooth.BluetoothUtils.logRemoteException;
 
 import android.annotation.IntDef;
@@ -44,6 +46,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Public API for the Bluetooth GATT Profile.
@@ -56,7 +59,8 @@ import java.util.UUID;
  * discovered using the Bluetooth device discovery or BLE scan process.
  */
 public final class BluetoothGatt implements BluetoothProfile {
-    private static final String TAG = "BluetoothGatt";
+    private static final String TAG = BluetoothGatt.class.getSimpleName();
+
     private static final boolean DBG = true;
     private static final boolean VDBG = false;
 
@@ -97,7 +101,7 @@ public final class BluetoothGatt implements BluetoothProfile {
     // Max length of an attribute value, defined in gatt_api.h
     private static final int GATT_MAX_ATTR_LEN = 512;
 
-    private List<BluetoothGattService> mServices;
+    private CopyOnWriteArrayList<BluetoothGattService> mServices;
 
     /** A GATT operation completed successfully */
     public static final int GATT_SUCCESS = 0;
@@ -266,7 +270,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                                             callback.onConnectionStateChange(
                                                     BluetoothGatt.this,
                                                     GATT_FAILURE,
-                                                    BluetoothProfile.STATE_DISCONNECTED);
+                                                    STATE_DISCONNECTED);
                                         }
                                     }
                                 });
@@ -383,10 +387,7 @@ public final class BluetoothGatt implements BluetoothProfile {
                     if (!address.equals(mDevice.getAddress())) {
                         return;
                     }
-                    int profileState =
-                            connected
-                                    ? BluetoothProfile.STATE_CONNECTED
-                                    : BluetoothProfile.STATE_DISCONNECTED;
+                    int profileState = connected ? STATE_CONNECTED : STATE_DISCONNECTED;
 
                     if (Flags.unregisterGattClientDisconnected() && !connected && !mAutoConnect) {
                         unregisterApp();
@@ -1022,7 +1023,7 @@ public final class BluetoothGatt implements BluetoothProfile {
         mPhy = phy;
         mOpportunistic = opportunistic;
         mAttributionSource = attributionSource;
-        mServices = new ArrayList<BluetoothGattService>();
+        mServices = new CopyOnWriteArrayList<>();
 
         mConnState = CONN_STATE_IDLE;
         mAuthRetryState = AUTH_RETRY_STATE_IDLE;

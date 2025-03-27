@@ -15,6 +15,8 @@
  */
 package com.android.bluetooth.btservice;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.*;
@@ -25,8 +27,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.HandlerThread;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -37,8 +39,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
@@ -51,7 +51,7 @@ public class CompanionManagerTest {
 
     private HandlerThread mHandlerThread;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock SharedPreferences mSharedPreferences;
@@ -59,7 +59,7 @@ public class CompanionManagerTest {
 
     @Before
     public void setUp() throws Exception {
-        mTargetContext = InstrumentationRegistry.getTargetContext();
+        mTargetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         // Prepare the TestUtils
         TestUtils.setAdapterService(mAdapterService);
         // Start handler thread for this test

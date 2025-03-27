@@ -39,10 +39,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /** List of our registered scanners. */
 public class ScannerMap {
-    private static final String TAG = "ScannerMap";
+    private static final String TAG = ScannerMap.class.getSimpleName();
 
     /** Internal map to keep track of logging information by app name */
     private final HashMap<Integer, AppScanStats> mAppScanStatsMap = new HashMap<>();
@@ -178,7 +179,9 @@ public class ScannerMap {
 
     /** Get application contexts by the calling app's name. */
     List<ScannerApp> getByName(String name) {
-        return mApps.stream().filter(app -> app.mName.equals(name)).toList();
+        return mApps.stream()
+                .filter(app -> app.mName.equals(name))
+                .collect(Collectors.toUnmodifiableList());
     }
 
     /** Get an application context by the pending intent info object. */

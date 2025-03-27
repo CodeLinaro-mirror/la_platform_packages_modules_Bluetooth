@@ -43,7 +43,8 @@ import java.util.concurrent.TimeoutException;
 
 /** Manages Bluetooth LE advertising operations. */
 public class AdvertiseManager {
-    private static final String TAG = GattServiceConfig.TAG_PREFIX + "AdvertiseManager";
+    private static final String TAG =
+            GattServiceConfig.TAG_PREFIX + AdvertiseManager.class.getSimpleName();
 
     private static final long RUN_SYNC_WAIT_TIME_MS = 2000L;
 
@@ -623,12 +624,16 @@ public class AdvertiseManager {
     void doOnAdvertiseThread(Runnable r) {
         if (mIsAvailable) {
             if (Flags.advertiseThread()) {
-                mHandler.post(
-                        () -> {
-                            if (mIsAvailable) {
-                                r.run();
-                            }
-                        });
+                boolean posted =
+                        mHandler.post(
+                                () -> {
+                                    if (mIsAvailable) {
+                                        r.run();
+                                    }
+                                });
+                if (!posted) {
+                    Log.w(TAG, "Unable to post async task");
+                }
             } else {
                 r.run();
             }
@@ -641,11 +646,16 @@ public class AdvertiseManager {
             return;
         }
         final CompletableFuture<Void> future = new CompletableFuture<>();
-        mHandler.postAtFrontOfQueue(
-                () -> {
-                    r.run();
-                    future.complete(null);
-                });
+        boolean posted =
+                mHandler.postAtFrontOfQueue(
+                        () -> {
+                            r.run();
+                            future.complete(null);
+                        });
+        if (!posted) {
+            Log.w(TAG, "Unable to post sync task");
+            return;
+        }
         try {
             future.get(RUN_SYNC_WAIT_TIME_MS, TimeUnit.MILLISECONDS);
         } catch (InterruptedException | TimeoutException | ExecutionException e) {
@@ -661,7 +671,7 @@ public class AdvertiseManager {
         }
     }
 
-    private void sendToCallback(int advertiserId, CallbackWrapper wrapper) {
+    private static void sendToCallback(int advertiserId, CallbackWrapper wrapper) {
         try {
             wrapper.call();
         } catch (RemoteException e) {
