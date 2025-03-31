@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -116,6 +121,14 @@ bool SDP_InitDiscoveryDb(tSDP_DISCOVERY_DB* p_db, uint32_t len,
 bool SDP_CancelServiceSearch(const tSDP_DISCOVERY_DB* p_db) {
   tCONN_CB* p_ccb = sdpu_find_ccb_by_db(p_db);
   if (!p_ccb) return (false);
+
+  // Service search request in pending state is designed to reuse an existed
+  // L2CAP channel. Just release the ccb and notify SDP failure to upper layer.
+  if (p_ccb->con_state == SDP_STATE_CONN_PEND) {
+    sdpu_callback(*p_ccb, SDP_CONN_FAILED);
+    sdpu_release_ccb(*p_ccb);
+    return (true);
+  }
 
   sdp_disconnect(p_ccb, SDP_CANCEL);
   p_ccb->disc_state = SDP_DISC_WAIT_CANCEL;
