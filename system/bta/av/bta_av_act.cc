@@ -2428,7 +2428,11 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
        * we still need to send RC feature event. So we need to get BD
        * from Message.  Note that lidx is 1 based not 0 based
        */
-      rc_feat.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      if (p_cb->rcb[rc_handle].lidx > 0) {
+        rc_feat.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      } else {
+        rc_feat.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx].addr;
+      }
     } else {
       rc_feat.peer_addr = p_scb->PeerAddress();
     }
@@ -2449,7 +2453,11 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
     rc_psm.rc_handle = rc_handle;
     rc_psm.cover_art_psm = cover_art_psm;
     if (p_scb == NULL) {
-      rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      if (p_cb->rcb[rc_handle].lidx > 0) {
+        rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      } else {
+        rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx].addr;
+      }
     } else {
       rc_psm.peer_addr = p_scb->PeerAddress();
     }
