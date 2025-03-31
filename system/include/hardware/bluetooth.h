@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #ifndef ANDROID_INCLUDE_BLUETOOTH_H
@@ -61,6 +66,10 @@
 #define BT_PROFILE_LE_AUDIO_ID "le_audio"
 #define BT_PROFILE_LE_AUDIO_BROADCASTER_ID "le_audio_broadcaster"
 #define BT_BQR_ID "bqr"
+
+#define KEY_LEN 16
+//typedef uint8_t Link_Key[KEY_LEN]; /* Link Key */
+typedef std::array<uint8_t, KEY_LEN> Link_Key;
 
 /** Bluetooth Device Name */
 typedef struct { uint8_t name[249]; } __attribute__((packed)) bt_bdname_t;
@@ -616,6 +625,9 @@ typedef void (*generate_local_oob_data_callback)(tBT_TRANSPORT transport,
 
 typedef void (*key_missing_callback)(const RawAddress bd_addr);
 
+typedef void (*get_link_key_callback)(RawAddress* remote_bd_addr,
+                                      bool key_found, Link_Key link_key, int key_type);
+
 /** TODO: Add callbacks for Link Up/Down and other generic
  *  notifications/callbacks */
 
@@ -644,6 +656,7 @@ typedef struct {
   switch_codec_callback switch_codec_cb;
   le_rand_callback le_rand_cb;
   key_missing_callback key_missing_cb;
+  get_link_key_callback get_link_key_cb;
 } bt_callbacks_t;
 
 typedef int (*acquire_wake_lock_callout)(const char* lock_name);
@@ -756,6 +769,8 @@ typedef struct {
   int (*create_bond_out_of_band)(const RawAddress* bd_addr, int transport,
                                  const bt_oob_data_t* p192_data,
                                  const bt_oob_data_t* p256_data);
+  /** Get link key message */
+  void (*get_link_key)(const RawAddress* bd_addr);
 
   /** Remove Bond */
   int (*remove_bond)(const RawAddress* bd_addr);

@@ -1,4 +1,4 @@
-/******************************************************************************
+/******************************************************************************************
  *
  *  Copyright 2009-2012 Broadcom Corporation
  *
@@ -14,7 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
+ ******************************************************************************************/
 
 /*******************************************************************************
  *
@@ -425,5 +430,16 @@ bt_status_t btif_set_dynamic_audio_buffer_size(int codec, int size);
  *
  ******************************************************************************/
 void btif_debug_linkkey_type_dump(int fd);
+
+/*******************************************************************************
+ *
+ * Function         btif_dm_get_link_key
+ *
+ * Description     get link key information
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btif_dm_get_link_key(const RawAddress *bd_addr);
 
 #endif /* BTIF_API_H */

@@ -64,3 +64,10 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "get_link_key"
+    namespace: "bluetooth"
+    description: "Implement API to get linkkey"
+    bug: ""
+}
