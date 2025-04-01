@@ -178,8 +178,6 @@ bool is_local_device_atv = false;
 extern const btsock_interface_t* btif_sock_get_interface();
 /* gatt */
 extern const btgatt_interface_t* btif_gatt_get_interface();
-/* avrc target */
-extern const btrc_interface_t* btif_rc_get_interface();
 /* avrc controller */
 extern const btrc_ctrl_interface_t* btif_rc_ctrl_get_interface();
 /*SDP search client*/
@@ -349,6 +347,8 @@ struct CoreInterfaceImpl : bluetooth::core::CoreInterface {
   }
 
   void onLinkDown(const RawAddress& bd_addr, tBT_TRANSPORT transport) override {
+    btif_hh_disconnected(bd_addr, transport);
+
     if (transport != BT_TRANSPORT_BR_EDR) {
       return;
     }
@@ -510,10 +510,7 @@ static void start_rust_module(void) {
   std::promise<void> rust_up_promise;
   auto rust_up_future = rust_up_promise.get_future();
   stack_manager_get_interface()->start_up_rust_module_async(std::move(rust_up_promise));
-  auto status = rust_up_future.wait_for(std::chrono::milliseconds(1000));
-  if (status != std::future_status::ready) {
-    log::error("Failed to wait for rust initialization in time. May lead to unpredictable crash");
-  }
+  rust_up_future.wait();
 }
 
 static void stop_rust_module(void) { stack_manager_get_interface()->shut_down_rust_module_async(); }
@@ -812,6 +809,16 @@ static int disconnect_all_acls() {
   return BT_STATUS_SUCCESS;
 }
 
+static int disconnect_acl(const RawAddress& bd_addr, int transport) {
+  log::verbose("{}", bd_addr);
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+
+  do_in_main_thread(base::BindOnce(btif_dm_disconnect_acl, bd_addr, to_bt_transport(transport)));
+  return BT_STATUS_SUCCESS;
+}
+
 static void le_rand_btif_cb(uint64_t random_number) {
   log::verbose("");
   do_in_jni_thread(base::BindOnce(
@@ -975,10 +982,6 @@ static const void* get_profile_interface(const char* profile_id) {
 
   if (is_profile(profile_id, BT_PROFILE_GATT_ID)) {
     return btif_gatt_get_interface();
-  }
-
-  if (is_profile(profile_id, BT_PROFILE_AV_RC_ID)) {
-    return btif_rc_get_interface();
   }
 
   if (is_profile(profile_id, BT_PROFILE_AV_RC_CTRL_ID)) {
@@ -1284,6 +1287,7 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .clear_event_mask = clear_event_mask,
         .clear_filter_accept_list = clear_filter_accept_list,
         .disconnect_all_acls = disconnect_all_acls,
+        .disconnect_acl = disconnect_acl,
         .le_rand = le_rand,
         .set_event_filter_inquiry_result_all_devices = set_event_filter_inquiry_result_all_devices,
         .set_default_event_mask_except = set_default_event_mask_except,

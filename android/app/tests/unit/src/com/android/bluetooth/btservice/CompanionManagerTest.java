@@ -15,6 +15,10 @@
  */
 package com.android.bluetooth.btservice;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.Mockito.*;
 
 import android.bluetooth.BluetoothDevice;
@@ -23,21 +27,18 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.HandlerThread;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
@@ -50,7 +51,7 @@ public class CompanionManagerTest {
 
     private HandlerThread mHandlerThread;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock SharedPreferences mSharedPreferences;
@@ -58,7 +59,7 @@ public class CompanionManagerTest {
 
     @Before
     public void setUp() throws Exception {
-        mTargetContext = InstrumentationRegistry.getTargetContext();
+        mTargetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         // Prepare the TestUtils
         TestUtils.setAdapterService(mAdapterService);
         // Start handler thread for this test
@@ -103,13 +104,13 @@ public class CompanionManagerTest {
     @Test
     public void testIsCompanionDevice() {
         loadCompanionInfoHelper(TEST_DEVICE, CompanionManager.COMPANION_TYPE_NONE);
-        Assert.assertTrue(mCompanionManager.isCompanionDevice(TEST_DEVICE));
+        assertThat(mCompanionManager.isCompanionDevice(TEST_DEVICE)).isTrue();
 
         loadCompanionInfoHelper(TEST_DEVICE, CompanionManager.COMPANION_TYPE_PRIMARY);
-        Assert.assertTrue(mCompanionManager.isCompanionDevice(TEST_DEVICE));
+        assertThat(mCompanionManager.isCompanionDevice(TEST_DEVICE)).isTrue();
 
         loadCompanionInfoHelper(TEST_DEVICE, CompanionManager.COMPANION_TYPE_SECONDARY);
-        Assert.assertTrue(mCompanionManager.isCompanionDevice(TEST_DEVICE));
+        assertThat(mCompanionManager.isCompanionDevice(TEST_DEVICE)).isTrue();
     }
 
     @Test
@@ -158,12 +159,12 @@ public class CompanionManagerTest {
                 mCompanionManager.getGattConnParameters(
                         TEST_DEVICE, CompanionManager.GATT_CONN_LATENCY, priority);
 
-        Assert.assertTrue(max >= min);
-        Assert.assertTrue(max >= minInterval);
-        Assert.assertTrue(min >= minInterval);
-        Assert.assertTrue(max <= maxInterval);
-        Assert.assertTrue(min <= maxInterval);
-        Assert.assertTrue(latency >= minLatency);
-        Assert.assertTrue(latency <= maxLatency);
+        assertThat(max).isAtLeast(min);
+        assertThat(max).isAtLeast(minInterval);
+        assertThat(min).isAtLeast(minInterval);
+        assertThat(max).isAtMost(maxInterval);
+        assertThat(min).isAtMost(maxInterval);
+        assertThat(latency).isAtLeast(minLatency);
+        assertThat(latency).isAtMost(maxLatency);
     }
 }

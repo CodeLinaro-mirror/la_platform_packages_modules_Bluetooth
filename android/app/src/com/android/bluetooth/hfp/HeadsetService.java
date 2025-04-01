@@ -28,7 +28,6 @@ import static java.util.Objects.requireNonNull;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresPermission;
-import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothProfile;
@@ -51,7 +50,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.ParcelUuid;
-import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.sysprop.BluetoothProperties;
 import android.telecom.PhoneAccount;
@@ -71,6 +69,7 @@ import com.android.bluetooth.hfpclient.HeadsetClientService;
 import com.android.bluetooth.hfpclient.HeadsetClientStateMachine;
 import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.telephony.BluetoothInCallService;
+import com.android.bluetooth.util.SystemProperties;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.ArrayList;
@@ -110,7 +109,7 @@ import java.util.Optional;
  * Handsfree device, device running headset client, e.g. Wireless headphones or car kits
  */
 public class HeadsetService extends ProfileService {
-    private static final String TAG = "HeadsetService";
+    private static final String TAG = HeadsetService.class.getSimpleName();
 
     /** HFP AG owned/managed components */
     private static final String HFP_AG_IN_CALL_SERVICE =
@@ -238,8 +237,9 @@ public class HeadsetService extends ProfileService {
     }
 
     @Override
-    public void stop() {
-        Log.i(TAG, "stop()");
+    public void cleanup() {
+        Log.i(TAG, "Cleanup Headset Service");
+
         // Step 7: Tear down broadcast receivers
         unregisterReceiver(mHeadsetReceiver);
 
@@ -304,11 +304,6 @@ public class HeadsetService extends ProfileService {
 
         // Step 1: Clear
         setComponentAvailable(HFP_AG_IN_CALL_SERVICE, false);
-    }
-
-    @Override
-    public void cleanup() {
-        Log.i(TAG, "cleanup");
     }
 
     /**
@@ -785,25 +780,6 @@ public class HeadsetService extends ProfileService {
 
             service.enforceCallingOrSelfPermission(MODIFY_PHONE_STATE, null);
             service.phoneStateChanged(numActive, numHeld, callState, number, type, name, false);
-        }
-
-        @Override
-        public void clccResponse(
-                int index,
-                int direction,
-                int status,
-                int mode,
-                boolean mpty,
-                String number,
-                int type,
-                AttributionSource source) {
-            HeadsetService service = getService(source);
-            if (service == null) {
-                return;
-            }
-
-            service.enforceCallingOrSelfPermission(MODIFY_PHONE_STATE, null);
-            service.clccResponse(index, direction, status, mode, mpty, number, type);
         }
 
         @Override
@@ -1503,9 +1479,6 @@ public class HeadsetService extends ProfileService {
                 } else {
                     broadcastActiveDevice(mActiveDevice);
                 }
-                if (Flags.updateActiveDeviceInBandRingtone()) {
-                    updateInbandRinging(device, true);
-                }
             } else if (shouldPersistAudio()) {
                 if (Utils.isScoManagedByAudioEnabled()) {
                     // tell Audio Framework that active device changed
@@ -1547,9 +1520,9 @@ public class HeadsetService extends ProfileService {
                 } else {
                     broadcastActiveDevice(mActiveDevice);
                 }
-                if (Flags.updateActiveDeviceInBandRingtone()) {
-                    updateInbandRinging(device, true);
-                }
+            }
+            if (Flags.updateActiveDeviceInBandRingtone()) {
+                updateInbandRinging(device, true);
             }
         }
         return true;
@@ -2094,7 +2067,7 @@ public class HeadsetService extends ProfileService {
         }
     }
 
-    void clccResponse(
+    public void clccResponse(
             int index, int direction, int status, int mode, boolean mpty, String number, int type) {
         mPendingClccResponses.add(
                 stateMachine ->
@@ -2644,16 +2617,7 @@ public class HeadsetService extends ProfileService {
         List<BluetoothDevice> fallbackCandidates = getConnectedDevices();
         List<BluetoothDevice> uninterestedCandidates = new ArrayList<>();
         for (BluetoothDevice device : fallbackCandidates) {
-            byte[] deviceType =
-                    dbManager.getCustomMeta(device, BluetoothDevice.METADATA_DEVICE_TYPE);
-            BluetoothClass deviceClass =
-                    new BluetoothClass(
-                            mAdapterService.getRemoteDevices().getBluetoothClass(device));
-            if ((deviceClass != null
-                            && deviceClass.getMajorDeviceClass()
-                                    == BluetoothClass.Device.WEARABLE_WRIST_WATCH)
-                    || (deviceType != null
-                            && BluetoothDevice.DEVICE_TYPE_WATCH.equals(new String(deviceType)))) {
+            if (Utils.isWatch(mAdapterService, device)) {
                 uninterestedCandidates.add(device);
             }
         }

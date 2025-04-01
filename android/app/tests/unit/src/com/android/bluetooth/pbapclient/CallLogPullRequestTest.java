@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.pbapclient;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.doReturn;
@@ -40,8 +42,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,7 +51,7 @@ import java.util.List;
 @RunWith(AndroidJUnit4.class)
 public class CallLogPullRequestTest {
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     private final Account mAccount = mock(Account.class);
     private final HashMap<String, Integer> mCallCounter = new HashMap<>();
@@ -88,7 +88,7 @@ public class CallLogPullRequestTest {
         request.onPullComplete();
 
         // No operation has been done.
-        assertThat(mCallCounter.size()).isEqualTo(0);
+        assertThat(mCallCounter).isEmpty();
     }
 
     @Test
@@ -102,7 +102,7 @@ public class CallLogPullRequestTest {
         request.onPullComplete();
 
         // No operation has been done.
-        assertThat(mCallCounter.size()).isEqualTo(0);
+        assertThat(mCallCounter).isEmpty();
     }
 
     @Test
@@ -116,7 +116,7 @@ public class CallLogPullRequestTest {
         request.onPullComplete();
 
         // Call counter should remain same.
-        assertThat(mCallCounter.size()).isEqualTo(0);
+        assertThat(mCallCounter).isEmpty();
     }
 
     @Test
@@ -140,7 +140,7 @@ public class CallLogPullRequestTest {
         request.onPullComplete();
 
         // Call counter should remain same.
-        assertThat(mCallCounter.size()).isEqualTo(0);
+        assertThat(mCallCounter).isEmpty();
     }
 
     @Test
@@ -165,7 +165,7 @@ public class CallLogPullRequestTest {
 
         request.onPullComplete();
 
-        assertThat(mCallCounter.size()).isEqualTo(1);
+        assertThat(mCallCounter).hasSize(1);
         for (String key : mCallCounter.keySet()) {
             assertThat(mCallCounter.get(key)).isEqualTo(2);
             break;

@@ -55,7 +55,9 @@ import java.util.regex.Pattern;
 // Next tag value for ContentProfileErrorReportUtils.report(): 1
 public class Constants {
     /** Tag used for debugging/logging */
-    public static final String TAG = "BluetoothOpp";
+    public static final String TAG_PREFIX_BLUETOOTH_OPP = "BluetoothOpp";
+
+    static final String TAG = TAG_PREFIX_BLUETOOTH_OPP + Constants.class.getSimpleName();
 
     /** the permission required for others to send us handover broadcasts */
     static final String PERMISSION_ALLOWLIST_BLUETOOTH_DEVICE =
@@ -166,14 +168,6 @@ public class Constants {
     /** the intent that gets sent when declining the incoming file confirmation notification */
     static final String ACTION_DECLINE = "android.btopp.intent.action.DECLINE";
 
-    /**
-     * The intent that gets sent when deleting the notifications of outbound and inbound completed
-     * transfer.
-     */
-    // TODO(b/323096132): Remove this variable when the flag
-    //                    opp_fix_multiple_notifications_issues is ramped up.
-    static final String ACTION_COMPLETE_HIDE = "android.btopp.intent.action.HIDE_COMPLETE";
-
     /** The intent that gets sent when deleting the notifications of completed inbound transfer. */
     static final String ACTION_HIDE_COMPLETED_INBOUND_TRANSFER =
             "android.btopp.intent.action.HIDE_COMPLETED_INBOUND_TRANSFER";
@@ -262,7 +256,7 @@ public class Constants {
         if (BluetoothShare.isStatusCompleted(status)) {
             Intent intent = new Intent(BluetoothShare.TRANSFER_COMPLETED_ACTION);
             intent.setClassName(context, BluetoothOppReceiver.class.getName());
-            intent.setDataAndNormalize(contentUri);
+            intent.setData(contentUri.normalizeScheme());
             context.sendBroadcast(intent);
         }
     }

@@ -204,6 +204,8 @@ tGATT_STATUS GATTS_AddService(tGATT_IF gatt_if, btgatt_db_element_t* service, in
     s_hdl = gatt_cb.hdl_cfg.gtbs_start_hdl;
   } else if (svc_uuid == Uuid::From16Bit(UUID_SERVCLASS_TMAS_SERVER)) {
     s_hdl = gatt_cb.hdl_cfg.tmas_start_hdl;
+  } else if (svc_uuid == Uuid::From16Bit(UUID_SERVCLASS_GMAS_SERVER)) {
+    s_hdl = gatt_cb.hdl_cfg.gmas_start_hdl;
   } else {
     if (!gatt_cb.hdl_list_info->empty()) {
       s_hdl = gatt_cb.hdl_list_info->front().asgn_range.e_handle + 1;
@@ -1486,15 +1488,8 @@ bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE ad
       /* Consider to remove gatt_act_connect at all */
       ret = gatt_act_connect(p_reg, bd_addr, addr_type, transport, initiating_phys);
     } else {
-      log::verbose("Connecting without tcb address: {}", bd_addr);
-
-      if (p_reg->direct_connect_request.count(bd_addr) == 0) {
-        p_reg->direct_connect_request.insert(bd_addr);
-      } else {
-        log::warn("{} already added to gatt_if {} direct conn list", bd_addr, gatt_if);
-      }
-
-      ret = connection_manager::create_le_connection(gatt_if, bd_addr, addr_type);
+      log::verbose("Connecting without tcb to: {}", bd_addr);
+      ret = connection_manager::direct_connect_add(gatt_if, bd_addr, addr_type);
     }
 
   } else {

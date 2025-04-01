@@ -81,7 +81,7 @@ import java.util.regex.Pattern;
  */
 // Next tag value for ContentProfileErrorReportUtils.report(): 11
 public class BluetoothOppLauncherActivity extends Activity {
-    private static final String TAG = "BluetoothOppLauncherActivity";
+    private static final String TAG = BluetoothOppLauncherActivity.class.getSimpleName();
 
     // Regex that matches characters that have special meaning in HTML. '<', '>', '&' and
     // multiple continuous spaces.
@@ -299,7 +299,7 @@ public class BluetoothOppLauncherActivity extends Activity {
             Log.v(TAG, "Get ACTION_OPEN intent: Uri = " + uri);
             Intent intent1 = new Intent(Constants.ACTION_OPEN);
             intent1.setClassName(this, BluetoothOppReceiver.class.getName());
-            intent1.setDataAndNormalize(uri);
+            intent1.setData(uri.normalizeScheme());
             BluetoothMethodProxy.getInstance().contextSendBroadcast(this, intent1);
             finish();
         } else {

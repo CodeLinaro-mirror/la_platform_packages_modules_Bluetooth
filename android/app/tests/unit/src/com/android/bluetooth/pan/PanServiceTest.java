@@ -19,6 +19,9 @@ import static android.bluetooth.BluetoothPan.PAN_ROLE_NONE;
 import static android.net.TetheringManager.TETHERING_BLUETOOTH;
 import static android.net.TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -27,15 +30,15 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.net.TetheringInterface;
+import android.net.TetheringManager;
 import android.os.UserManager;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -49,53 +52,44 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class PanServiceTest {
-    private static final String REMOTE_DEVICE_ADDRESS = "00:00:00:00:00:00";
-    private static final byte[] REMOTE_DEVICE_ADDRESS_AS_ARRAY = new byte[] {0, 0, 0, 0, 0, 0};
-
-    private static final int TIMEOUT_MS = 5_000;
-
-    private PanService mService = null;
-    private BluetoothAdapter mAdapter = null;
-    private BluetoothDevice mRemoteDevice;
-
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private DatabaseManager mDatabaseManager;
     @Mock private PanNativeInterface mNativeInterface;
     @Mock private UserManager mMockUserManager;
 
-    @Before
-    public void setUp() throws Exception {
-        Context targetContext = InstrumentationRegistry.getTargetContext();
-        TestUtils.setAdapterService(mAdapterService);
-        doReturn(mDatabaseManager).when(mAdapterService).getDatabase();
-        PanNativeInterface.setInstance(mNativeInterface);
-        mService = new PanService(targetContext);
-        mService.start();
-        mService.setAvailable(true);
+    private static final byte[] REMOTE_DEVICE_ADDRESS_AS_ARRAY = new byte[] {0, 0, 0, 0, 0, 0};
 
-        // Try getting the Bluetooth adapter
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
-        assertThat(mAdapter).isNotNull();
-        mService.mUserManager = mMockUserManager;
-        mRemoteDevice = mAdapter.getRemoteDevice(REMOTE_DEVICE_ADDRESS);
+    private static final int TIMEOUT_MS = 5_000;
+
+    private final BluetoothDevice mRemoteDevice = getTestDevice(0);
+    private final Context mTargetContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
+
+    private PanService mService;
+
+    @Before
+    public void setUp() {
+        doReturn(mTargetContext.getResources()).when(mAdapterService).getResources();
+        doReturn(mDatabaseManager).when(mAdapterService).getDatabase();
+        TestUtils.mockGetSystemService(
+                mAdapterService, Context.USER_SERVICE, UserManager.class, mMockUserManager);
+        TestUtils.mockGetSystemService(
+                mAdapterService, Context.TETHERING_SERVICE, TetheringManager.class);
+
+        mService = new PanService(mAdapterService, mNativeInterface);
+        mService.setAvailable(true);
     }
 
     @After
-    public void tearDown() throws Exception {
-        mService.stop();
+    public void tearDown() {
         mService.cleanup();
-        PanNativeInterface.setInstance(null);
-        mService = PanService.getPanService();
-        assertThat(mService).isNull();
-        TestUtils.clearAdapterService(mAdapterService);
+        assertThat(PanService.getPanService()).isNull();
     }
 
     @Test
@@ -168,8 +162,8 @@ public class PanServiceTest {
     }
 
     @Test
-    public void onConnectStateChanged_doesNotCrashAfterStop() {
-        mService.stop();
+    public void onConnectStateChanged_doesNotCrashAfterCleanup() {
+        mService.cleanup();
         mService.onConnectStateChanged(REMOTE_DEVICE_ADDRESS_AS_ARRAY, 1, 2, 3, 4);
     }
 

@@ -19,7 +19,8 @@ package android.bluetooth;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 
-import android.annotation.FlaggedApi;
+import static java.util.Objects.requireNonNull;
+
 import android.annotation.NonNull;
 import android.annotation.RequiresNoPermission;
 import android.annotation.RequiresPermission;
@@ -37,11 +38,8 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
-import com.android.bluetooth.flags.Flags;
-
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * This class provides the public APIs to control the Bluetooth Input Device Profile.
@@ -55,7 +53,8 @@ import java.util.Objects;
  */
 @SystemApi
 public final class BluetoothHidHost implements BluetoothProfile {
-    private static final String TAG = "BluetoothHidHost";
+    private static final String TAG = BluetoothHidHost.class.getSimpleName();
+
     private static final boolean DBG = true;
     private static final boolean VDBG = false;
 
@@ -465,7 +464,6 @@ public final class BluetoothHidHost implements BluetoothProfile {
      * @throws IllegalArgumentException if the {@code device} invalid.
      * @hide
      */
-    @FlaggedApi(Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP)
     @SystemApi
     @RequiresBluetoothConnectPermission
     @RequiresPermission(
@@ -477,7 +475,7 @@ public final class BluetoothHidHost implements BluetoothProfile {
             @NonNull BluetoothDevice device, @Transport int transport) {
         if (DBG) log("setPreferredTransport(" + device + ", " + transport + ")");
 
-        Objects.requireNonNull(device, "device must not be null");
+        requireNonNull(device);
 
         if (transport != BluetoothDevice.TRANSPORT_AUTO
                 && transport != BluetoothDevice.TRANSPORT_BREDR
@@ -569,7 +567,6 @@ public final class BluetoothHidHost implements BluetoothProfile {
      * @throws IllegalArgumentException if the {@code device} invalid.
      * @hide
      */
-    @FlaggedApi(Flags.FLAG_ALLOW_SWITCHING_HID_AND_HOGP)
     @SystemApi
     @RequiresBluetoothConnectPermission
     @RequiresPermission(
@@ -580,7 +577,7 @@ public final class BluetoothHidHost implements BluetoothProfile {
     public @Transport int getPreferredTransport(@NonNull BluetoothDevice device) {
         if (VDBG) log("getPreferredTransport(" + device + ")");
 
-        Objects.requireNonNull(device, "device must not be null");
+        requireNonNull(device);
 
         final IBluetoothHidHost service = getService();
         if (service == null) {
@@ -793,7 +790,7 @@ public final class BluetoothHidHost implements BluetoothProfile {
     @RequiresBluetoothConnectPermission
     @RequiresPermission(BLUETOOTH_CONNECT)
     public boolean getIdleTime(BluetoothDevice device) {
-        if (DBG) log("getIdletime(" + device + ")");
+        if (DBG) log("getIdleTime(" + device + ")");
         final IBluetoothHidHost service = getService();
         if (service == null) {
             Log.w(TAG, "Proxy not attached to service");
@@ -820,7 +817,7 @@ public final class BluetoothHidHost implements BluetoothProfile {
     @RequiresBluetoothConnectPermission
     @RequiresPermission(BLUETOOTH_CONNECT)
     public boolean setIdleTime(BluetoothDevice device, byte idleTime) {
-        if (DBG) log("setIdletime(" + device + "), idleTime=" + idleTime);
+        if (DBG) log("setIdleTime(" + device + "), idleTime=" + idleTime);
         final IBluetoothHidHost service = getService();
         if (service == null) {
             Log.w(TAG, "Proxy not attached to service");

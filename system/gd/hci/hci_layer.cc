@@ -31,6 +31,7 @@
 #include "hci/class_of_device.h"
 #include "hci/hci_metrics_logging.h"
 #include "hci/inquiry_interface.h"
+#include "main/shim/entry.h"
 #include "os/alarm.h"
 #include "os/metrics.h"
 #include "os/queue.h"
@@ -294,6 +295,16 @@ struct HciLayer::impl {
   }
 
   void on_hci_timeout(OpCode op_code) {
+#ifdef TARGET_FLOSS
+    log::warn("Ignoring the timeouted HCI command {}.", OpCodeText(op_code));
+    // Terminate the process to trigger controller reset, also mark the controller
+    // is broken to prevent further error while terminating.
+    auto hal = module_.GetDependency<hal::HciHal>();
+    hal->markControllerBroken();
+    kill(getpid(), SIGTERM);
+    return;
+#endif
+
     common::StopWatch::DumpStopWatchLog();
     log::error("Timed out waiting for {} for {}ms", OpCodeText(op_code), getHciTimeoutMs().count());
 
@@ -304,16 +315,6 @@ struct HciLayer::impl {
     command_queue_.clear();
     command_credits_ = 1;
     waiting_command_ = OpCode::NONE;
-
-#ifdef TARGET_FLOSS
-    log::warn("Ignoring the timeouted HCI command {}.", OpCodeText(op_code));
-    // Terminate the process to trigger controller reset, also mark the controller
-    // is broken to prevent further error while terminating.
-    auto hal = module_.GetDependency<hal::HciHal>();
-    hal->markControllerBroken();
-    kill(getpid(), SIGTERM);
-    return;
-#endif
 
     // Ignore the response, since we don't know what might come back.
     enqueue_command(ControllerDebugInfoBuilder::Create(),
@@ -457,10 +458,9 @@ struct HciLayer::impl {
                          EventCodeText(event_code), OpCodeText(op_code));
       }
       std::unique_ptr<CommandView> no_waiting_command{nullptr};
-      log_hci_event(no_waiting_command, event, module_.GetDependency<storage::StorageModule>());
+      log_hci_event(no_waiting_command, event, shim::GetStorage());
     } else {
-      log_hci_event(command_queue_.front().command_view, event,
-                    module_.GetDependency<storage::StorageModule>());
+      log_hci_event(command_queue_.front().command_view, event, shim::GetStorage());
     }
     power_telemetry::GetInstance().LogHciEvtDetail();
     EventCode event_code = event.GetEventCode();
@@ -922,10 +922,7 @@ std::unique_ptr<InquiryInterface> HciLayer::GetInquiryInterface(
 
 const ModuleFactory HciLayer::Factory = ModuleFactory([]() { return new HciLayer(); });
 
-void HciLayer::ListDependencies(ModuleList* list) const {
-  list->add<hal::HciHal>();
-  list->add<storage::StorageModule>();
-}
+void HciLayer::ListDependencies(ModuleList* list) const { list->add<hal::HciHal>(); }
 
 void HciLayer::Start() {
   std::unique_lock<std::recursive_mutex> lock(life_cycle_guard);

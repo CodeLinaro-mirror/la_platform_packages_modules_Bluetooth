@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.le_scan;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -34,8 +36,8 @@ import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.os.IBinder;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.btservice.AdapterService;
@@ -47,14 +49,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 /** Test cases for {@link PeriodicScanManagerTest}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class PeriodicScanManagerTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private PeriodicScanNativeInterface mPeriodicScanNativeInterface;
     @Mock private AdapterService mAdapterService;
@@ -71,7 +71,7 @@ public class PeriodicScanManagerTest {
 
     @Before
     public void setUp() throws Exception {
-        mTargetContext = InstrumentationRegistry.getTargetContext();
+        mTargetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         PeriodicScanNativeInterface.setInstance(mPeriodicScanNativeInterface);
         mPeriodicScanManager = new PeriodicScanManager(mAdapterService);
 

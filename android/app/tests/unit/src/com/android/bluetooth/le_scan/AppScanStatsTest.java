@@ -16,11 +16,10 @@
 
 package com.android.bluetooth.le_scan;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.Utils.getSystemClock;
 
 import static com.google.common.truth.Truth.assertThat;
-
-import static org.mockito.Mockito.mock;
 
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanSettings;
@@ -29,20 +28,18 @@ import android.os.BatteryStatsManager;
 import android.os.WorkSource;
 
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.rule.ServiceTestRule;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.internal.app.IBatteryStats;
 
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,24 +49,23 @@ import java.util.List;
 @RunWith(AndroidJUnit4.class)
 public class AppScanStatsTest {
     @Rule public final ServiceTestRule mServiceRule = new ServiceTestRule();
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private ScannerMap map;
-    @Mock private TransitionalScanHelper mMockScanHelper;
+    @Mock private ScanController mMockScanController;
     @Mock private AdapterService mAdapterService;
-
-    // BatteryStatsManager is final and cannot be mocked with regular mockito, so just mock the
-    // underlying binder calls.
-    final BatteryStatsManager mBatteryStatsManager =
-            new BatteryStatsManager(mock(IBatteryStats.class));
 
     @Before
     public void setUp() throws Exception {
+        // BatteryStatsManager is final and cannot be mocked with regular mockito, so just return
+        // real implementation
         TestUtils.mockGetSystemService(
                 mAdapterService,
                 Context.BATTERY_STATS_SERVICE,
                 BatteryStatsManager.class,
-                mBatteryStatsManager);
+                InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
+                        .getSystemService(BatteryStatsManager.class));
     }
 
     @Test
@@ -79,10 +75,10 @@ public class AppScanStatsTest {
 
         AppScanStats appScanStats =
                 new AppScanStats(
-                        name, source, map, mAdapterService, mMockScanHelper, getSystemClock());
+                        name, source, map, mAdapterService, mMockScanController, getSystemClock());
 
         assertThat(appScanStats.mScannerMap).isEqualTo(map);
-        assertThat(appScanStats.mScanHelper).isEqualTo(mMockScanHelper);
+        assertThat(appScanStats.mScanController).isEqualTo(mMockScanController);
 
         assertThat(appScanStats.isScanning()).isEqualTo(false);
     }
@@ -94,7 +90,7 @@ public class AppScanStatsTest {
 
         AppScanStats appScanStats =
                 new AppScanStats(
-                        name, source, map, mAdapterService, mMockScanHelper, getSystemClock());
+                        name, source, map, mAdapterService, mMockScanController, getSystemClock());
 
         ScanSettings settings = new ScanSettings.Builder().build();
         List<ScanFilter> filters = new ArrayList<>();

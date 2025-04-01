@@ -38,6 +38,7 @@
 #include "hci/controller.h"
 #include "hci/hci_layer.h"
 #include "hci/remote_name_request.h"
+#include "main/shim/entry.h"
 #include "storage/config_keys.h"
 #include "storage/storage_module.h"
 
@@ -84,7 +85,7 @@ struct AclManager::impl {
                                        crash_on_unknown_handle, acl_scheduler_,
                                        remote_name_request_module_);
       le_impl_ = new le_impl(hci_layer_, controller_, handler_, round_robin_scheduler_,
-                             crash_on_unknown_handle);
+                             crash_on_unknown_handle, classic_impl_);
     }
 
     hci_queue_end_ = hci_layer_->GetAclQueueEnd();
@@ -279,8 +280,8 @@ void AclManager::SetPrivacyPolicyForInitiatorAddress(
         std::chrono::milliseconds minimum_rotation_time,
         std::chrono::milliseconds maximum_rotation_time) {
   Octet16 rotation_irk{};
-  auto irk_prop = GetDependency<storage::StorageModule>()->GetProperty(
-          BTIF_STORAGE_SECTION_ADAPTER, BTIF_STORAGE_KEY_LE_LOCAL_KEY_IRK);
+  auto irk_prop = shim::GetStorage()->GetProperty(BTIF_STORAGE_SECTION_ADAPTER,
+                                                  BTIF_STORAGE_KEY_LE_LOCAL_KEY_IRK);
   if (irk_prop.has_value()) {
     auto irk = common::ByteArray<16>::FromString(irk_prop.value());
     if (irk.has_value()) {
@@ -396,7 +397,6 @@ void AclManager::HACK_SetAclTxPriority(uint8_t handle, bool high_priority) {
 void AclManager::ListDependencies(ModuleList* list) const {
   list->add<HciLayer>();
   list->add<Controller>();
-  list->add<storage::StorageModule>();
   list->add<AclScheduler>();
   list->add<RemoteNameRequestModule>();
 }

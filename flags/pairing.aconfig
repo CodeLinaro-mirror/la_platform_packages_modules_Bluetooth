@@ -1,5 +1,5 @@
 package: "com.android.bluetooth.flags"
-container: "com.android.btservices"
+container: "com.android.bt"
 
 flag {
     name: "clear_auth_collision_state_on_pairing_complete"
@@ -12,40 +12,10 @@ flag {
 }
 
 flag {
-    name: "pairing_on_unknown_transport"
-    namespace: "bluetooth"
-    description: "Allow pairing on transport not known to be supported by the remote device"
-    bug: "335239971"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "cancel_pairing_only_on_disconnected_transport"
     namespace: "bluetooth"
     description: "Cancel pairing due to unexpected disconnection only if the transport matches"
     bug: "338152239"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "temporary_pairing_device_properties"
-    namespace: "bluetooth"
-    description: "Do not remove the device properties immediately after insecure pairing"
-    bug: "342202557"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "use_local_oob_extended_command"
-    namespace: "bluetooth"
-    description: "Use HCI Read Local OOB Extended Data command to generate local OOB when Secure Connections is supported by the controller"
-    bug: "342250775"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -232,20 +202,70 @@ flag {
 }
 
 flag {
-    name: "handle_le_enc_queueing"
+    name: "bonded_device_smp_failure_handling"
     namespace: "bluetooth"
-    description: "Handle LE Encryption queuing to handle multiple encryption requests from different profiles"
-    bug: "383889628"
+    description: "Don't remove bond on SMP failure for bonded devices in peripheral role"
+    bug: "385181815"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
 }
 
 flag {
-    name: "identity_retention_on_restart"
+    name: "peripheral_auth_req"
     namespace: "bluetooth"
-    description: "Retain identity address on BT restart"
-    bug: "383879096"
+    description: "Use appropriate authentication requirements for SMP security request in peripheral role"
+    bug: "385202199"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "le_appearance_after_ctkd"
+    namespace: "bluetooth"
+    description: "Allow read of LE appearance after CTKD if class of device is unknown"
+    bug: "386835787"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "create_metadata_after_bonding"
+    namespace: "bluetooth"
+    description: "Don't create metadata before the device is bonded"
+    bug: "387523991"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "le_encryption_refresh_failure_handling"
+    namespace: "bluetooth"
+    description: "Don't remove bond on LE encryption refresh failure"
+    bug: "393396710"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "donot_mandate_auth_along_with_encryption"
+    namespace: "bluetooth"
+    description: "Don't mandate authentication along with encryption"
+    bug: "395476774"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "temporary_pairing_tracking"
+    namespace: "bluetooth"
+    description: "Correctly track temporary pairing status"
+    bug: "397705157"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

@@ -20,6 +20,8 @@ import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.MODIFY_PHONE_STATE;
 
+import static java.util.Objects.requireNonNull;
+
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -44,7 +46,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Public API for controlling the Bluetooth Headset Service. This includes both Bluetooth Headset
@@ -59,7 +60,8 @@ import java.util.Objects;
  * its appropriate permission.
  */
 public final class BluetoothHeadset implements BluetoothProfile {
-    private static final String TAG = "BluetoothHeadset";
+    private static final String TAG = BluetoothHeadset.class.getSimpleName();
+
     private static final boolean DBG = Log.isLoggable(TAG, Log.DEBUG);
     private static final boolean VDBG = false;
 
@@ -805,7 +807,7 @@ public final class BluetoothHeadset implements BluetoothProfile {
             })
     public @GetAudioStateReturnValues int getAudioState(@NonNull BluetoothDevice device) {
         if (VDBG) log("getAudioState");
-        Objects.requireNonNull(device);
+        requireNonNull(device);
         final IBluetoothHeadset service = getService();
         if (service == null) {
             Log.w(TAG, "Proxy not attached to service");
@@ -1148,33 +1150,6 @@ public final class BluetoothHeadset implements BluetoothProfile {
             try {
                 service.phoneStateChanged(
                         numActive, numHeld, callState, number, type, name, mAttributionSource);
-            } catch (RemoteException e) {
-                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
-            }
-        }
-    }
-
-    /**
-     * Send Headset of CLCC response
-     *
-     * @hide
-     */
-    @RequiresBluetoothConnectPermission
-    @RequiresPermission(
-            allOf = {
-                BLUETOOTH_CONNECT,
-                MODIFY_PHONE_STATE,
-            })
-    public void clccResponse(
-            int index, int direction, int status, int mode, boolean mpty, String number, int type) {
-        final IBluetoothHeadset service = getService();
-        if (service == null) {
-            Log.w(TAG, "Proxy not attached to service");
-            if (DBG) log(Log.getStackTraceString(new Throwable()));
-        } else if (isEnabled()) {
-            try {
-                service.clccResponse(
-                        index, direction, status, mode, mpty, number, type, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }

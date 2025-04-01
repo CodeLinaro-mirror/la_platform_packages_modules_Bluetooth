@@ -16,6 +16,9 @@
 
 package com.android.bluetooth.hearingaid;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -23,11 +26,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 
-import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.Utils;
 
 import org.junit.After;
@@ -37,24 +38,20 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 public class HearingAidNativeInterfaceTest {
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private HearingAidService mService;
 
     private HearingAidNativeInterface mNativeInterface;
-    private BluetoothAdapter mAdapter;
 
     @Before
     public void setUp() throws Exception {
         when(mService.isAvailable()).thenReturn(true);
         HearingAidService.setHearingAidService(mService);
         mNativeInterface = HearingAidNativeInterface.getInstance();
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
     }
 
     @After
@@ -67,14 +64,14 @@ public class HearingAidNativeInterfaceTest {
         assertThat(mNativeInterface.getByteAddress(null))
                 .isEqualTo(Utils.getBytesFromAddress("00:00:00:00:00:00"));
 
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, 0);
+        BluetoothDevice device = getTestDevice(0);
         assertThat(mNativeInterface.getByteAddress(device))
                 .isEqualTo(Utils.getBytesFromAddress(device.getAddress()));
     }
 
     @Test
     public void onConnectionStateChanged() {
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, 0);
+        BluetoothDevice device = getTestDevice(0);
         mNativeInterface.onConnectionStateChanged(
                 BluetoothProfile.STATE_CONNECTED, mNativeInterface.getByteAddress(device));
 
@@ -94,7 +91,7 @@ public class HearingAidNativeInterfaceTest {
 
     @Test
     public void onDeviceAvailable() {
-        BluetoothDevice device = TestUtils.getTestDevice(mAdapter, 0);
+        BluetoothDevice device = getTestDevice(0);
         byte capabilities = 0;
         long hiSyncId = 100;
         mNativeInterface.onDeviceAvailable(

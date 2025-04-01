@@ -531,9 +531,15 @@ bool btif_a2dp_source_restart_session(const RawAddress& old_peer_address,
 
 bool btif_a2dp_source_end_session(const RawAddress& peer_address) {
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
-  local_thread()->DoInThread(FROM_HERE,
-                             base::BindOnce(&btif_a2dp_source_end_session_delayed, peer_address));
-  btif_a2dp_source_cleanup_codec();
+  if (com::android::bluetooth::flags::a2dp_source_threading_fix()) {
+    btif_a2dp_source_cleanup_codec();
+    btif_a2dp_source_end_session_delayed(peer_address);
+  } else {
+
+    local_thread()->DoInThread(FROM_HERE,
+                               base::BindOnce(&btif_a2dp_source_end_session_delayed, peer_address));
+    btif_a2dp_source_cleanup_codec();
+  }
   return true;
 }
 
@@ -574,8 +580,13 @@ void btif_a2dp_source_shutdown(std::promise<void> shutdown_complete_promise) {
   /* Make sure no channels are restarted while shutting down */
   btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateShuttingDown);
 
-  local_thread()->DoInThread(FROM_HERE, base::BindOnce(&btif_a2dp_source_shutdown_delayed,
-                                                       std::move(shutdown_complete_promise)));
+  // TODO(b/374166531) Remove the check for get_main_thread.
+  if (local_thread() != get_main_thread()) {
+    local_thread()->DoInThread(FROM_HERE, base::BindOnce(&btif_a2dp_source_shutdown_delayed,
+                                                         std::move(shutdown_complete_promise)));
+  } else {
+    btif_a2dp_source_shutdown_delayed(std::move(shutdown_complete_promise));
+  }
 }
 
 static void btif_a2dp_source_shutdown_delayed(std::promise<void> shutdown_complete_promise) {

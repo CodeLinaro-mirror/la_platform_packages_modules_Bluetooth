@@ -282,7 +282,7 @@ public class GattNativeInterface {
     private native int gattClientGetDeviceTypeNative(String address);
 
     private native void gattClientRegisterAppNative(
-            long appUuidLsb, long appUuidMsb, boolean eattSupport);
+            long appUuidLsb, long appUuidMsb, String name, boolean eattSupport);
 
     private native void gattClientUnregisterAppNative(int clientIf);
 
@@ -382,7 +382,7 @@ public class GattNativeInterface {
             byte[] val,
             int authReq);
 
-    private native void gattSubrateRequestNative(
+    private native int gattSubrateRequestNative(
             int clientIf,
             String address,
             int subrateMin,
@@ -427,8 +427,9 @@ public class GattNativeInterface {
     /**
      * Register the given client It will invoke {@link #onClientRegistered(int, int, long, long)}.
      */
-    public void gattClientRegisterApp(long appUuidLsb, long appUuidMsb, boolean eattSupport) {
-        gattClientRegisterAppNative(appUuidLsb, appUuidMsb, eattSupport);
+    public void gattClientRegisterApp(
+            long appUuidLsb, long appUuidMsb, String name, boolean eattSupport) {
+        gattClientRegisterAppNative(appUuidLsb, appUuidMsb, name, eattSupport);
     }
 
     /** Unregister the client */
@@ -570,7 +571,7 @@ public class GattNativeInterface {
     }
 
     /** Update connection parameter. */
-    public void gattSubrateRequest(
+    public int gattSubrateRequest(
             int clientIf,
             String address,
             int subrateMin,
@@ -578,7 +579,7 @@ public class GattNativeInterface {
             int maxLatency,
             int contNumber,
             int supervisionTimeout) {
-        gattSubrateRequestNative(
+        return gattSubrateRequestNative(
                 clientIf,
                 address,
                 subrateMin,

@@ -24,9 +24,7 @@ cc_library_static {
     shared_libs: [
         "libchrome",
     ],
-    apex_available: [
-        "com.android.btservices",
-    ],
+    apex_available: ["com.android.bt"],
     host_supported: true,
     min_sdk_version: "Tiramisu",
 }
@@ -89,7 +87,6 @@ cc_library_static {
         "a2dp/a2dp_vendor_aptx_hd.cc",
         "a2dp/a2dp_vendor_aptx_hd_encoder.cc",
         "a2dp/a2dp_vendor_ldac.cc",
-        "a2dp/a2dp_vendor_ldac_decoder.cc",
         "a2dp/a2dp_vendor_ldac_encoder.cc",
         "a2dp/a2dp_vendor_opus.cc",
         "a2dp/a2dp_vendor_opus_decoder.cc",
@@ -150,9 +147,7 @@ cc_library_static {
         "libldacBT_abr",
         "libldacBT_enc",
     ],
-    apex_available: [
-        "com.android.btservices",
-    ],
+    apex_available: ["com.android.bt"],
     host_supported: true,
     min_sdk_version: "Tiramisu",
 }
@@ -299,6 +294,7 @@ cc_library_static {
         "rfcomm/port_rfc.cc",
         "rfcomm/port_utils.cc",
         "rfcomm/rfc_l2cap_if.cc",
+        "rfcomm/rfc_metrics.cc",
         "rfcomm/rfc_mx_fsm.cc",
         "rfcomm/rfc_port_fsm.cc",
         "rfcomm/rfc_port_if.cc",
@@ -342,9 +338,7 @@ cc_library_static {
         "libPlatformProperties",
         "libcrypto",
     ],
-    apex_available: [
-        "com.android.btservices",
-    ],
+    apex_available: ["com.android.bt"],
     host_supported: true,
     min_sdk_version: "Tiramisu",
 }
@@ -354,6 +348,10 @@ cc_defaults {
     host_supported: true,
     defaults: [
         "bluetooth_cflags",
+    ],
+    cflags: [
+        "-Wno-missing-prototypes",
+        "-Wno-unused-parameter",
     ],
     include_dirs: [
         "packages/modules/Bluetooth/system",
@@ -497,6 +495,7 @@ cc_fuzz {
         "libbluetooth_l2cap_pdl",
         "libbluetooth_log",
         "libbluetooth_smp_pdl",
+        "libbt-common",
         "libbt-platform-protos-lite",
     ],
 }
@@ -569,6 +568,7 @@ cc_fuzz {
         ":TestCommonMockFunctions",
         ":TestCommonStackConfig",
         ":TestFakeOsi",
+        ":TestMockBtaDm",
         ":TestMockBtif",
         ":TestMockDevice",
         ":TestMockMainShim",
@@ -718,6 +718,7 @@ cc_fuzz {
         "libbluetooth_l2cap_pdl",
         "libbluetooth_log",
         "libbluetooth_smp_pdl",
+        "libbt-common",
         "libbt-platform-protos-lite",
     ],
     shared_libs: [
@@ -826,6 +827,7 @@ cc_test {
                 "android.hardware.bluetooth@1.0",
                 "android.hardware.bluetooth@1.1",
                 "libexpresslog",
+                "libperfetto_client_experimental",
                 "libstatslog_express",
                 "libtextclassifier_hash_static",
             ],
@@ -868,6 +870,7 @@ cc_test {
         ":TestMockStackBtm",
         ":TestMockStackL2capInterface",
         ":TestMockStackMetrics",
+        ":TestMockStackRfcommMetrics",
         "rfcomm/port_api.cc",
         "rfcomm/port_rfc.cc",
         "rfcomm/port_utils.cc",
@@ -919,6 +922,9 @@ cc_test {
             shared_libs: [
                 "libstatssocket",
             ],
+            static_libs: [
+                "libperfetto_client_experimental",
+            ],
         },
     },
     sanitize: {
@@ -950,6 +956,7 @@ cc_test {
     srcs: [
         ":TestCommonMainHandler",
         ":TestCommonMockFunctions",
+        ":TestMockBtaDm",
         ":TestMockBtif",
         ":TestMockDevice",
         ":TestMockMainShim",
@@ -1054,27 +1061,60 @@ cc_test {
     ],
     srcs: [
         ":TestCommonMainHandler",
-        ":TestMockStackBtmInterface",
+        ":TestCommonMockFunctions",
+        ":TestMockMainShim",
+        ":TestMockMainShimEntry",
+        ":TestMockStackBtm",
+        ":TestMockStackMetrics",
         "connection_manager/connection_manager.cc",
-        "test/common/mock_btm_api_layer.cc",
         "test/connection_manager_test.cc",
     ],
     shared_libs: [
+        "libaconfig_storage_read_api_cc",
+        "libbinder",
+        "libbinder_ndk",
+        "libcrypto",
         "libcutils",
+        "server_configurable_flags",
     ],
     static_libs: [
+        "bluetooth_flags_c_lib_for_test",
         "libbase",
         "libbluetooth-types",
+        "libbluetooth_core_rs_bridge",
+        "libbluetooth_crypto_toolbox",
         "libbluetooth_gd",
         "libbluetooth_log",
         "libbt-common",
+        "libbt-platform-protos-lite",
         "libchrome",
+        "libcom.android.sysprop.bluetooth.wrapped",
         "libevent",
         "libgmock",
         "liblog",
+        "libosi",
+        "libstatslog_bt",
     ],
     sanitize: {
         cfi: false,
+    },
+    target: {
+        android: {
+            shared_libs: [
+                "libcutils",
+                "libhidlbase",
+                "libstatssocket",
+                "libutils",
+            ],
+            static_libs: [
+                "android.hardware.bluetooth@1.0",
+                "android.hardware.bluetooth@1.1",
+                "android.system.suspend-V1-ndk",
+                "android.system.suspend.control-V1-ndk",
+                "libperfetto_client_experimental",
+                "libstatslog_bt",
+            ],
+        },
     },
     header_libs: ["libbluetooth_headers"],
 }
@@ -1104,6 +1144,7 @@ cc_test {
         ":TestMockRustFfi",
         ":TestMockStackArbiter",
         ":TestMockStackBtm",
+        ":TestMockStackConnMgr",
         ":TestMockStackSdp",
         "gatt/gatt_utils.cc",
         "test/common/mock_eatt.cc",
@@ -1355,7 +1396,6 @@ cc_test {
         "a2dp/a2dp_vendor_aptx_hd.cc",
         "a2dp/a2dp_vendor_aptx_hd_encoder.cc",
         "a2dp/a2dp_vendor_ldac.cc",
-        "a2dp/a2dp_vendor_ldac_decoder.cc",
         "a2dp/a2dp_vendor_ldac_encoder.cc",
         "a2dp/a2dp_vendor_opus.cc",
         "a2dp/a2dp_vendor_opus_decoder.cc",
@@ -1412,54 +1452,6 @@ cc_test {
     header_libs: ["libbluetooth_headers"],
 }
 
-cc_test {
-    name: "net_test_stack_a2dp_native",
-    defaults: [
-        "fluoride_defaults",
-        "mts_defaults",
-    ],
-    test_suites: ["general-tests"],
-    host_supported: true,
-    test_options: {
-        unit_test: true,
-    },
-    include_dirs: [
-        "external/libldac/inc",
-        "packages/modules/Bluetooth/system",
-        "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
-    ],
-    srcs: [
-        "a2dp/a2dp_vendor_ldac_decoder.cc",
-        "test/a2dp/a2dp_vendor_ldac_decoder_test.cc",
-        "test/a2dp/misc_fake.cc",
-    ],
-    aidl: {
-        libs: ["bluetooth_constants"],
-    },
-    shared_libs: [
-        "libbinder",
-        "libcrypto",
-        "libcutils",
-    ],
-    static_libs: [
-        "libbase",
-        "libbluetooth_crypto_toolbox",
-        "libbluetooth_log",
-        "libbt-common",
-        "libchrome",
-        "libcom.android.sysprop.bluetooth.wrapped",
-        "liblog",
-        "libosi",
-    ],
-    sanitize: {
-        address: true,
-        cfi: true,
-        misc_undefined: ["bounds"],
-    },
-    header_libs: ["libbluetooth_headers"],
-}
-
 // gatt sr hash test
 cc_test {
     name: "net_test_stack_gatt_sr_hash_native",
@@ -1486,6 +1478,7 @@ cc_test {
         ":TestMockMainShim",
         ":TestMockRustFfi",
         ":TestMockStackBtm",
+        ":TestMockStackConnMgr",
         ":TestMockStackL2cap",
         ":TestMockStackMetrics",
         "gatt/gatt_db.cc",
@@ -1637,6 +1630,7 @@ cc_test {
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
+        "libaconfig_storage_read_api_cc",
         "libbase",
         "libbluetooth-types",
         "libbluetooth_gd",
@@ -1686,10 +1680,6 @@ cc_test {
         "packages/modules/Bluetooth/system/gd",
     ],
     srcs: [
-        ":BluetoothHalSources_hci_host",
-        ":BluetoothHalSources_ranging_host",
-        ":BluetoothHciFake",
-        ":BluetoothOsSources_host",
         ":OsiCompatSources",
         ":TestCommonMainHandler",
         ":TestCommonMockFunctions",
@@ -1750,7 +1740,6 @@ cc_test {
         "test/btm/sco_hci_test.cc",
         "test/btm/sco_pkt_status_test.cc",
         "test/btm/stack_btm_dev_test.cc",
-        "test/btm/stack_btm_inq_test.cc",
         "test/btm/stack_btm_power_mode_test.cc",
         "test/btm/stack_btm_regression_tests.cc",
         "test/btm/stack_btm_sec_test.cc",
@@ -1779,6 +1768,7 @@ cc_test {
         "liblog",
         "libosi",
         "libprotobuf-cpp-lite",
+        "libstatslog_bt",
         "libudrv-uipc",
     ],
     aidl: {
@@ -1791,6 +1781,16 @@ cc_test {
         "libcutils",
         "server_configurable_flags",
     ],
+    target: {
+        android: {
+            shared_libs: [
+                "libstatssocket",
+            ],
+            static_libs: [
+                "libperfetto_client_experimental",
+            ],
+        },
+    },
     sanitize: {
         address: true,
         all_undefined: true,
@@ -1884,6 +1884,7 @@ cc_test {
         "test/hid/stack_hid_test.cc",
     ],
     static_libs: [
+        "bluetooth_flags_c_lib_for_test",
         "libbase",
         "libbluetooth-types",
         "libbluetooth_crypto_toolbox",
@@ -1902,6 +1903,7 @@ cc_test {
         "libprotobuf-cpp-lite",
     ],
     shared_libs: [
+        "libaconfig_storage_read_api_cc",
         "libcrypto",
     ],
     target: {
@@ -1959,6 +1961,7 @@ cc_test {
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
+        "libaconfig_storage_read_api_cc",
         "libbase",
         "libbluetooth-types",
         "libbluetooth_gd",
@@ -2180,6 +2183,9 @@ cc_test {
                 "libPlatformProperties",
                 "libstatssocket",
             ],
+            static_libs: [
+                "libperfetto_client_experimental",
+            ],
         },
     },
     sanitize: {
@@ -2308,10 +2314,6 @@ cc_test {
         "packages/modules/Bluetooth/system/gd",
     ],
     srcs: [
-        ":BluetoothHalSources_hci_host",
-        ":BluetoothHalSources_ranging_host",
-        ":BluetoothHciFake",
-        ":BluetoothOsSources_host",
         ":OsiCompatSources",
         ":TestCommonMainHandler",
         ":TestCommonMockFunctions",
@@ -2379,6 +2381,13 @@ cc_test {
         scs: true,
         diag: {
             undefined: true,
+        },
+    },
+    target: {
+        android: {
+            static_libs: [
+                "libperfetto_client_experimental",
+            ],
         },
     },
     header_libs: ["libbluetooth_headers"],

@@ -16,6 +16,10 @@
 
 package com.android.bluetooth.btservice;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -27,8 +31,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.telephony.TelephonyManager;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -39,13 +43,10 @@ import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.hearingaid.HearingAidNativeInterface;
 import com.android.bluetooth.hfp.HeadsetNativeInterface;
 import com.android.bluetooth.hfpclient.NativeInterface;
-import com.android.bluetooth.hid.HidDeviceNativeInterface;
 import com.android.bluetooth.hid.HidHostNativeInterface;
 import com.android.bluetooth.le_audio.LeAudioNativeInterface;
-import com.android.bluetooth.pan.PanNativeInterface;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,8 +54,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
@@ -70,9 +69,9 @@ public class ProfileServiceTest {
 
     @Spy
     private AdapterService mAdapterService =
-            new AdapterService(InstrumentationRegistry.getTargetContext());
+            new AdapterService(InstrumentationRegistry.getInstrumentation().getTargetContext());
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private DatabaseManager mDatabaseManager;
     @Mock private TelephonyManager mMockTelephonyManager;
@@ -85,9 +84,7 @@ public class ProfileServiceTest {
     @Mock private HeadsetNativeInterface mHeadsetNativeInterface;
     @Mock private NativeInterface mHeadsetClientNativeInterface;
     @Mock private HearingAidNativeInterface mHearingAidNativeInterface;
-    @Mock private HidDeviceNativeInterface mHidDeviceNativeInterface;
     @Mock private HidHostNativeInterface mHidHostNativeInterface;
-    @Mock private PanNativeInterface mPanNativeInterface;
     @Mock private LeAudioNativeInterface mLeAudioInterface;
 
     private void setProfileState(int profile, int state) {
@@ -119,9 +116,7 @@ public class ProfileServiceTest {
                         .collect(Collectors.groupingBy(Object::getClass, Collectors.counting()));
 
         counts.forEach(
-                (clazz, count) ->
-                        Assert.assertEquals(
-                                clazz.getSimpleName(), (long) invocationNumber, count.longValue()));
+                (clazz, count) -> assertThat((long) invocationNumber).isEqualTo(count.longValue()));
     }
 
     @Before
@@ -130,7 +125,6 @@ public class ProfileServiceTest {
         if (Looper.myLooper() == null) {
             Looper.prepare();
         }
-        Assert.assertNotNull(Looper.myLooper());
 
         doReturn(mDatabaseManager).when(mAdapterService).getDatabase();
         doNothing().when(mAdapterService).addProfile(any());
@@ -154,11 +148,13 @@ public class ProfileServiceTest {
                                                 && profile != BluetoothProfile.VOLUME_CONTROL
                                                 && profile != BluetoothProfile.CSIP_SET_COORDINATOR
                                                 && profile != BluetoothProfile.GATT
+                                                && profile != BluetoothProfile.HID_DEVICE
+                                                && profile != BluetoothProfile.PAN
                                                 && profile != BluetoothProfile.A2DP)
                         .toArray();
         TestUtils.setAdapterService(mAdapterService);
 
-        Assert.assertNotNull(AdapterService.getAdapterService());
+        assertThat(AdapterService.getAdapterService()).isNotNull();
 
         A2dpSinkNativeInterface.setInstance(mA2dpSinkNativeInterface);
         AvrcpNativeInterface.setInstance(mAvrcpNativeInterface);
@@ -166,9 +162,7 @@ public class ProfileServiceTest {
         HeadsetNativeInterface.setInstance(mHeadsetNativeInterface);
         /* HeadsetClient */ NativeInterface.setInstance(mHeadsetClientNativeInterface);
         HearingAidNativeInterface.setInstance(mHearingAidNativeInterface);
-        HidDeviceNativeInterface.setInstance(mHidDeviceNativeInterface);
         HidHostNativeInterface.setInstance(mHidHostNativeInterface);
-        PanNativeInterface.setInstance(mPanNativeInterface);
         LeAudioNativeInterface.setInstance(mLeAudioInterface);
     }
 
@@ -184,9 +178,7 @@ public class ProfileServiceTest {
         HeadsetNativeInterface.setInstance(null);
         /* HeadsetClient */ NativeInterface.setInstance(null);
         HearingAidNativeInterface.setInstance(null);
-        HidDeviceNativeInterface.setInstance(null);
         HidHostNativeInterface.setInstance(null);
-        PanNativeInterface.setInstance(null);
         LeAudioNativeInterface.setInstance(null);
     }
 
@@ -235,11 +227,11 @@ public class ProfileServiceTest {
 
         List<ProfileService> startedArguments = starts.getAllValues();
         List<ProfileService> stoppedArguments = stops.getAllValues();
-        Assert.assertEquals(startedArguments.size(), stoppedArguments.size());
+        assertThat(startedArguments).hasSize(stoppedArguments.size());
         for (ProfileService service : startedArguments) {
-            Assert.assertTrue(stoppedArguments.contains(service));
+            assertThat(stoppedArguments).contains(service);
             stoppedArguments.remove(service);
-            Assert.assertFalse(stoppedArguments.contains(service));
+            assertThat(stoppedArguments).doesNotContain(service);
         }
     }
 
@@ -262,7 +254,7 @@ public class ProfileServiceTest {
                 verify(mAdapterService, times(NUM_REPEATS * profileNumber + i + 1))
                         .onProfileServiceStateChanged(
                                 stop.capture(), eq(BluetoothAdapter.STATE_OFF));
-                Assert.assertEquals(start.getValue(), stop.getValue());
+                assertThat(start.getValue()).isEqualTo(stop.getValue());
             }
             profileNumber += 1;
         }
@@ -286,7 +278,7 @@ public class ProfileServiceTest {
                 ArgumentCaptor<ProfileService> stop = ArgumentCaptor.forClass(ProfileService.class);
                 verify(mAdapterService, times(NUM_REPEATS * profileNumber + i + 1))
                         .removeProfile(stop.capture());
-                Assert.assertEquals(start.getValue(), stop.getValue());
+                assertThat(start.getValue()).isEqualTo(stop.getValue());
             }
             profileNumber += 1;
         }

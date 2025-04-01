@@ -34,6 +34,9 @@ import static android.bluetooth.IBluetoothVolumeControl.VOLUME_CONTROL_UNKNOWN_V
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -47,6 +50,7 @@ import static org.mockito.Mockito.when;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.BluetoothVolumeControl;
@@ -57,13 +61,15 @@ import android.content.Intent;
 import android.media.AudioManager;
 import android.os.Binder;
 import android.os.ParcelUuid;
-import android.os.test.TestLooper;
+import android.platform.test.annotations.DisableFlags;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.SetFlagsRule;
 
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.bass_client.BassClientService;
 import com.android.bluetooth.btservice.AdapterService;
@@ -76,7 +82,6 @@ import com.android.bluetooth.le_audio.LeAudioService;
 import org.hamcrest.Matcher;
 import org.hamcrest.core.AllOf;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -85,8 +90,6 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.hamcrest.MockitoHamcrest;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -96,7 +99,7 @@ import java.util.stream.IntStream;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class VolumeControlServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Mock private AdapterService mAdapterService;
@@ -115,9 +118,13 @@ public class VolumeControlServiceTest {
     private static final int CALL_MAX_VOL = 8;
     private static final int TEST_GROUP_ID = 1;
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mDevice = TestUtils.getTestDevice(mAdapter, 134);
-    private final BluetoothDevice mDeviceTwo = TestUtils.getTestDevice(mAdapter, 231);
+    private final BluetoothAdapter mAdapter =
+            InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext()
+                    .getSystemService(BluetoothManager.class)
+                    .getAdapter();
+    private final BluetoothDevice mDevice = getTestDevice(134);
+    private final BluetoothDevice mDeviceTwo = getTestDevice(231);
 
     private AttributionSource mAttributionSource;
     private VolumeControlService mService;
@@ -173,7 +180,7 @@ public class VolumeControlServiceTest {
     @After
     public void tearDown() {
         assertThat(mLooper.nextMessage()).isNull();
-        mService.stop();
+        mService.cleanup();
         mLooper.dispatchAll();
         assertThat(VolumeControlService.getVolumeControlService()).isNull();
     }
@@ -461,7 +468,8 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    public void volumeCache() {
+    @DisableFlags(Flags.FLAG_VCP_DEVICE_VOLUME_API_IMPROVEMENTS)
+    public void volumeCacheDeprecated() {
         int groupId = 1;
         int volume = 6;
 
@@ -475,6 +483,56 @@ public class VolumeControlServiceTest {
         generateVolumeStateChanged(null, groupId, volume, 0, false, true);
 
         assertThat(mService.getGroupVolume(groupId)).isEqualTo(volume);
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_VCP_DEVICE_VOLUME_API_IMPROVEMENTS)
+    public void volumeCache() {
+        int groupId = 1;
+        int groupVolume = 6;
+        int devOneVolume = 20;
+        int devTwoVolume = 30;
+
+        // Both devices are in the same group
+        when(mCsipService.getGroupId(mDevice, BluetoothUuid.CAP)).thenReturn(groupId);
+        when(mCsipService.getGroupId(mDeviceTwo, BluetoothUuid.CAP)).thenReturn(groupId);
+        when(mCsipService.getGroupDevicesOrdered(groupId))
+                .thenReturn(Arrays.asList(mDevice, mDeviceTwo));
+
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(VOLUME_CONTROL_UNKNOWN_VOLUME);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(VOLUME_CONTROL_UNKNOWN_VOLUME);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(VOLUME_CONTROL_UNKNOWN_VOLUME);
+
+        // Set group volume
+        mService.setGroupVolume(groupId, groupVolume);
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(groupVolume);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(groupVolume);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(groupVolume);
+
+        // Send autonomous volume change.
+        int autonomousVolume = 10;
+        generateVolumeStateChanged(null, groupId, autonomousVolume, 0, false, true);
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(autonomousVolume);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(autonomousVolume);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(autonomousVolume);
+
+        // Set first device volume
+        mService.setDeviceVolume(mDevice, devOneVolume, false);
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(autonomousVolume);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(devOneVolume);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(autonomousVolume);
+
+        // Set second device volume
+        mService.setDeviceVolume(mDeviceTwo, devTwoVolume, false);
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(autonomousVolume);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(devOneVolume);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(devTwoVolume);
+
+        // Set group volume again
+        mService.setGroupVolume(groupId, groupVolume);
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(groupVolume);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(groupVolume);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(groupVolume);
     }
 
     @Test
@@ -509,7 +567,8 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    public void muteCache() {
+    @DisableFlags(Flags.FLAG_VCP_DEVICE_VOLUME_API_IMPROVEMENTS)
+    public void muteCacheDeprecated() {
         int groupId = 1;
         int volume = 6;
 
@@ -529,6 +588,61 @@ public class VolumeControlServiceTest {
         generateVolumeStateChanged(null, groupId, volume, 0, false, true);
 
         assertThat(mService.getGroupMute(groupId)).isFalse();
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_VCP_DEVICE_VOLUME_API_IMPROVEMENTS)
+    public void muteCache() {
+        int groupId = 1;
+        int groupVolume = 6;
+
+        // Both devices are in the same group
+        when(mCsipService.getGroupId(mDevice, BluetoothUuid.CAP)).thenReturn(groupId);
+        when(mCsipService.getGroupId(mDeviceTwo, BluetoothUuid.CAP)).thenReturn(groupId);
+        when(mCsipService.getGroupDevicesOrdered(groupId))
+                .thenReturn(Arrays.asList(mDevice, mDeviceTwo));
+
+        assertThat(mService.getGroupMute(groupId)).isFalse();
+        assertThat(mService.getMute(mDevice)).isFalse();
+        assertThat(mService.getMute(mDeviceTwo)).isFalse();
+
+        // Send autonomous volume change
+        generateVolumeStateChanged(null, groupId, groupVolume, 0, false, true);
+
+        // Mute
+        mService.muteGroup(groupId);
+        assertThat(mService.getGroupMute(groupId)).isTrue();
+        assertThat(mService.getMute(mDevice)).isTrue();
+        assertThat(mService.getMute(mDeviceTwo)).isTrue();
+
+        // Make sure the volume is kept even when muted
+        assertThat(mService.getGroupVolume(groupId)).isEqualTo(groupVolume);
+        assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(groupVolume);
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(groupVolume);
+
+        // Send autonomous unmute
+        generateVolumeStateChanged(null, groupId, groupVolume, 0, false, true);
+        assertThat(mService.getGroupMute(groupId)).isFalse();
+        assertThat(mService.getMute(mDevice)).isFalse();
+        assertThat(mService.getMute(mDeviceTwo)).isFalse();
+
+        // Mute first device
+        mService.mute(mDevice);
+        assertThat(mService.getGroupMute(groupId)).isFalse();
+        assertThat(mService.getMute(mDevice)).isTrue();
+        assertThat(mService.getMute(mDeviceTwo)).isFalse();
+
+        // Mute second device
+        mService.mute(mDeviceTwo);
+        assertThat(mService.getGroupMute(groupId)).isFalse();
+        assertThat(mService.getMute(mDevice)).isTrue();
+        assertThat(mService.getMute(mDeviceTwo)).isTrue();
+
+        // Unmute group should unmute devices even if group is unmuted
+        mService.unmuteGroup(groupId);
+        assertThat(mService.getGroupMute(groupId)).isFalse();
+        assertThat(mService.getMute(mDevice)).isFalse();
+        assertThat(mService.getMute(mDeviceTwo)).isFalse();
     }
 
     /** Test Volume Control with muted stream. */
@@ -612,6 +726,14 @@ public class VolumeControlServiceTest {
         InOrder inOrderAudio = inOrder(mAudioManager);
         inOrderAudio.verify(mAudioManager, never()).setStreamVolume(anyInt(), anyInt(), anyInt());
 
+        InOrder inOrderNative = inOrder(mNativeInterface);
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            // AF always call setVolume via LeAudioService at first connected remote from group
+            mService.setGroupVolume(groupId, 123);
+            // It should be ignored and not set to native
+            inOrderNative.verify(mNativeInterface, never()).setGroupVolume(anyInt(), anyInt());
+        }
+
         // Make device Active now. This will trigger setting volume to AF
         when(mLeAudioService.getActiveGroupId()).thenReturn(groupId);
         mService.setGroupActive(groupId, true);
@@ -634,7 +756,11 @@ public class VolumeControlServiceTest {
                 initialAutonomousFlag);
 
         inOrderAudio.verify(mAudioManager, never()).setStreamVolume(anyInt(), anyInt(), anyInt());
-        verify(mNativeInterface).setGroupVolume(eq(groupId), eq(volumeDevice));
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(volumeDevice));
+        } else {
+            inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(volumeDevice));
+        }
     }
 
     private void testConnectedDeviceWithResetFlag(
@@ -676,6 +802,10 @@ public class VolumeControlServiceTest {
         InOrder inOrderAudio = inOrder(mAudioManager);
         inOrderAudio.verify(mAudioManager, never()).setStreamVolume(anyInt(), anyInt(), anyInt());
         InOrder inOrderNative = inOrder(mNativeInterface);
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            // AF always call setVolume via LeAudioService at first connected remote from group
+            mService.setGroupVolume(groupId, expectedAfVol);
+        }
         inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(expectedAfVol));
 
         // Make device Active now. This will trigger setting volume to AF
@@ -698,7 +828,11 @@ public class VolumeControlServiceTest {
                 initialAutonomousFlag);
 
         inOrderAudio.verify(mAudioManager, never()).setStreamVolume(anyInt(), anyInt(), anyInt());
-        inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(expectedAfVol));
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(expectedAfVol));
+        } else {
+            inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(expectedAfVol));
+        }
     }
 
     /** Test if phone will set volume which is read from the buds */
@@ -742,8 +876,12 @@ public class VolumeControlServiceTest {
         assertThat(mService.getDevices()).contains(mDeviceTwo);
         generateVolumeStateChanged(mDeviceTwo, LE_AUDIO_GROUP_ID_INVALID, volume_2, 0, false, true);
 
-        inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(groupVolume));
-        inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(groupVolume));
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(groupVolume));
+        } else {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(groupVolume));
+            inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(groupVolume));
+        }
     }
 
     /**
@@ -817,9 +955,14 @@ public class VolumeControlServiceTest {
         generateVolumeStateChanged(mDeviceTwo, LE_AUDIO_GROUP_ID_INVALID, volume_2, 0, false, true);
 
         // Check if new device was muted
-        inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(volume));
-        inOrderNative.verify(mNativeInterface).mute(eq(mDeviceTwo));
-        inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(volume));
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(volume));
+            inOrderNative.verify(mNativeInterface).mute(eq(mDeviceTwo));
+        } else {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(volume));
+            inOrderNative.verify(mNativeInterface).mute(eq(mDeviceTwo));
+            inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(volume));
+        }
     }
 
     /**
@@ -988,13 +1131,13 @@ public class VolumeControlServiceTest {
         mBinder.setDeviceVolume(mDevice, deviceOneVolume, false, mAttributionSource);
         inOrderNative.verify(mNativeInterface).setVolume(mDevice, deviceOneVolume);
         assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(deviceOneVolume);
-        Assert.assertNotEquals(deviceOneVolume, mService.getDeviceVolume(mDeviceTwo));
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isNotEqualTo(deviceOneVolume);
         inOrderNative.verify(mNativeInterface, never()).setGroupVolume(anyInt(), anyInt());
 
         mBinder.setDeviceVolume(mDeviceTwo, deviceTwoVolume, false, mAttributionSource);
         inOrderNative.verify(mNativeInterface).setVolume(mDeviceTwo, deviceTwoVolume);
         assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(deviceTwoVolume);
-        Assert.assertNotEquals(deviceTwoVolume, mService.getDeviceVolume(mDevice));
+        assertThat(mService.getDeviceVolume(mDevice)).isNotEqualTo(deviceTwoVolume);
         inOrderNative.verify(mNativeInterface, never()).setGroupVolume(anyInt(), anyInt());
     }
 
@@ -1064,8 +1207,12 @@ public class VolumeControlServiceTest {
         generateVolumeStateChanged(
                 mDeviceTwo, LE_AUDIO_GROUP_ID_INVALID, groupVolume, 0, false, true);
 
-        inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(groupVolume));
-        inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(groupVolume));
+        if (Flags.vcpDeviceVolumeApiImprovements()) {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(groupVolume));
+        } else {
+            inOrderNative.verify(mNativeInterface).setVolume(eq(mDeviceTwo), eq(groupVolume));
+            inOrderNative.verify(mNativeInterface).setGroupVolume(eq(groupId), eq(groupVolume));
+        }
 
         // Generate events for both devices
         generateDeviceOffsetChangedMessageFromNative(mDevice, 1, 100);

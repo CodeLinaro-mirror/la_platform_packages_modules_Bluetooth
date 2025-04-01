@@ -79,12 +79,12 @@ public:
   void ConfirmStreamingRequest() override;
   void CancelStreamingRequest() override;
   void UpdateRemoteDelay(uint16_t remote_delay_ms) override;
-  void UpdateAudioConfigToHal(const ::bluetooth::le_audio::offload_config& config) override;
+  void UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) override;
   std::optional<broadcaster::BroadcastConfiguration> GetBroadcastConfig(
           const std::vector<std::pair<types::LeAudioContextType, uint8_t>>& subgroup_quality,
           const std::optional<std::vector<::bluetooth::le_audio::types::acs_ac_record>>& pacs)
           const override;
-  std::optional<::bluetooth::le_audio::set_configurations::AudioSetConfiguration> GetUnicastConfig(
+  std::optional<::bluetooth::le_audio::types::AudioSetConfiguration> GetUnicastConfig(
           const CodecManager::UnicastConfigurationRequirements& requirements) const override;
   void UpdateBroadcastAudioConfigToHal(
           const ::bluetooth::le_audio::broadcast_offload_config& config) override;
@@ -227,19 +227,12 @@ void SourceImpl::SendAudioData() {
     sStats.media_read_last_underflow_us = bluetooth::common::time_get_os_boottime_us();
   }
 
-  if (com::android::bluetooth::flags::leaudio_hal_client_asrc()) {
-    auto asrc_buffers = asrc_->Run(data);
+  auto asrc_buffers = asrc_->Run(data);
 
-    std::lock_guard<std::mutex> guard(audioSourceCallbacksMutex_);
-    for (auto buffer : asrc_buffers) {
-      if (audioSourceCallbacks_ != nullptr) {
-        audioSourceCallbacks_->OnAudioDataReady(*buffer);
-      }
-    }
-  } else {
-    std::lock_guard<std::mutex> guard(audioSourceCallbacksMutex_);
+  std::lock_guard<std::mutex> guard(audioSourceCallbacksMutex_);
+  for (auto buffer : asrc_buffers) {
     if (audioSourceCallbacks_ != nullptr) {
-      audioSourceCallbacks_->OnAudioDataReady(data);
+      audioSourceCallbacks_->OnAudioDataReady(*buffer);
     }
   }
 }
@@ -267,11 +260,9 @@ bool SourceImpl::InitAudioSinkThread() {
 
 void SourceImpl::StartAudioTicks() {
   wakelock_acquire();
-  if (com::android::bluetooth::flags::leaudio_hal_client_asrc()) {
-    asrc_ = std::make_unique<bluetooth::audio::asrc::SourceAudioHalAsrc>(
-            worker_thread_, source_codec_config_.num_channels, source_codec_config_.sample_rate,
-            source_codec_config_.bits_per_sample, source_codec_config_.data_interval_us);
-  }
+  asrc_ = std::make_unique<bluetooth::audio::asrc::SourceAudioHalAsrc>(
+          worker_thread_, source_codec_config_.num_channels, source_codec_config_.sample_rate,
+          source_codec_config_.bits_per_sample, source_codec_config_.data_interval_us);
   audio_timer_.SchedulePeriodic(
           worker_thread_->GetWeakPtr(), FROM_HERE,
           base::BindRepeating(&SourceImpl::SendAudioData, weak_factory_.GetWeakPtr()),
@@ -459,7 +450,7 @@ void SourceImpl::UpdateRemoteDelay(uint16_t remote_delay_ms) {
   halSinkInterface_->SetRemoteDelay(remote_delay_ms);
 }
 
-void SourceImpl::UpdateAudioConfigToHal(const ::bluetooth::le_audio::offload_config& config) {
+void SourceImpl::UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) {
   if ((halSinkInterface_ == nullptr) || (le_audio_sink_hal_state_ != HAL_STARTED)) {
     log::error("Audio HAL Audio sink was not started!");
     return;
@@ -481,8 +472,7 @@ std::optional<broadcaster::BroadcastConfiguration> SourceImpl::GetBroadcastConfi
   return halSinkInterface_->GetBroadcastConfig(subgroup_quality, pacs);
 }
 
-std::optional<::bluetooth::le_audio::set_configurations::AudioSetConfiguration>
-SourceImpl::GetUnicastConfig(
+std::optional<::bluetooth::le_audio::types::AudioSetConfiguration> SourceImpl::GetUnicastConfig(
         const CodecManager::UnicastConfigurationRequirements& requirements) const {
   if (halSinkInterface_ == nullptr) {
     log::error("Audio HAL Audio sink is null!");

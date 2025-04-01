@@ -1,25 +1,11 @@
 package: "com.android.bluetooth.flags"
-container: "com.android.btservices"
+container: "com.android.bt"
 
 flag {
     name: "bta_dm_defer_device_discovery_state_change_until_rnr_complete"
     namespace: "bluetooth"
     description: "Fix double-sending device discovery state change when canceling RNR"
     bug: "321170442"
-}
-
-flag {
-    name: "bt_system_context_report"
-    namespace: "bluetooth"
-    description: "Report Bluetooth system context through bta_ble_energy_info_cmpl"
-    bug: "323083457"
-}
-
-flag {
-    name: "bta_dm_discover_both"
-    namespace: "bluetooth"
-    description: "perform both LE and Classic service discovery simulteanously on capable devices"
-    bug: "339217881"
 }
 
 flag {
@@ -33,10 +19,10 @@ flag {
 }
 
 flag {
-    name: "fix_le_evt_cancelling_sdp_discovery"
+    name: "extend_and_randomize_role_switch_delay"
     namespace: "bluetooth"
-    description: "Fix LE service discovery cancelling SDP discovery"
-    bug: "360936118"
+    description: "Fix the possible conflicts between role switch and authentication"
+    bug: "388459732"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

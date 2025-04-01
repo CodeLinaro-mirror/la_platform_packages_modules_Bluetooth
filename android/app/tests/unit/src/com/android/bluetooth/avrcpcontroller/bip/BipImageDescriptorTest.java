@@ -16,9 +16,12 @@
 
 package com.android.bluetooth.avrcpcontroller;
 
+import static com.google.common.truth.Truth.assertThat;
+
+import android.annotation.SuppressLint;
+
 import androidx.test.runner.AndroidJUnit4;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -43,7 +46,7 @@ public class BipImageDescriptorTest {
         builder.setFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -61,7 +64,7 @@ public class BipImageDescriptorTest {
         builder.setFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -74,12 +77,12 @@ public class BipImageDescriptorTest {
                         + "</image-descriptor>";
 
         BipImageDescriptor.Builder builder = new BipImageDescriptor.Builder();
-        builder.setPropietaryEncoding("NOKIA-1");
+        builder.setProprietaryEncoding("NOKIA-1");
         builder.setFixedDimensions(1280, 960);
         builder.setFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -92,12 +95,12 @@ public class BipImageDescriptorTest {
                         + "</image-descriptor>";
 
         BipImageDescriptor.Builder builder = new BipImageDescriptor.Builder();
-        builder.setPropietaryEncoding("NOKIA-1");
+        builder.setProprietaryEncoding("NOKIA-1");
         builder.setFixedDimensions(1280, 960);
         builder.setTransformation(BipTransformation.STRETCH);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -110,12 +113,12 @@ public class BipImageDescriptorTest {
                         + "</image-descriptor>";
 
         BipImageDescriptor.Builder builder = new BipImageDescriptor.Builder();
-        builder.setPropietaryEncoding("NOKIA-1");
+        builder.setProprietaryEncoding("NOKIA-1");
         builder.setFixedDimensions(1280, 960);
         builder.setTransformation(BipTransformation.CROP);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -128,12 +131,12 @@ public class BipImageDescriptorTest {
                         + "</image-descriptor>";
 
         BipImageDescriptor.Builder builder = new BipImageDescriptor.Builder();
-        builder.setPropietaryEncoding("NOKIA-1");
+        builder.setProprietaryEncoding("NOKIA-1");
         builder.setFixedDimensions(1280, 960);
         builder.setTransformation(BipTransformation.FILL);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -146,13 +149,13 @@ public class BipImageDescriptorTest {
                         + "</image-descriptor>";
 
         BipImageDescriptor.Builder builder = new BipImageDescriptor.Builder();
-        builder.setPropietaryEncoding("NOKIA-1");
+        builder.setProprietaryEncoding("NOKIA-1");
         builder.setFixedDimensions(1280, 960);
         builder.setTransformation(BipTransformation.CROP);
         builder.setTransformation(BipTransformation.FILL);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -168,7 +171,7 @@ public class BipImageDescriptorTest {
         builder.setFixedDimensions(1280, 960);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -185,7 +188,7 @@ public class BipImageDescriptorTest {
         builder.setMaxFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -204,7 +207,7 @@ public class BipImageDescriptorTest {
         builder.setTransformation(BipTransformation.FILL);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(expected, descriptor.toString());
+        assertThat(descriptor.toString()).isEqualTo(expected);
     }
 
     @Test
@@ -214,7 +217,7 @@ public class BipImageDescriptorTest {
         builder.setFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(null, descriptor.toString());
+        assertThat(descriptor.toString()).isNull();
     }
 
     @Test
@@ -224,7 +227,7 @@ public class BipImageDescriptorTest {
         builder.setFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(null, descriptor.toString());
+        assertThat(descriptor.toString()).isNull();
     }
 
     @Test
@@ -233,7 +236,7 @@ public class BipImageDescriptorTest {
         builder.setFileSize(500000);
 
         BipImageDescriptor descriptor = builder.build();
-        Assert.assertEquals(null, descriptor.toString());
+        assertThat(descriptor.toString()).isNull();
     }
 
     @Test
@@ -242,17 +245,18 @@ public class BipImageDescriptorTest {
 
         BipImageDescriptor descriptor = builder.build();
 
-        Assert.assertTrue(descriptor.equals(descriptor));
+        assertThat(descriptor).isEqualTo(descriptor);
     }
 
     @Test
+    @SuppressLint("TruthIncompatibleType") // That the point of this test
     public void testEquals_differentClass() {
         BipImageDescriptor.Builder builder = new BipImageDescriptor.Builder();
 
         BipImageDescriptor descriptor = builder.build();
         String notDescriptor = "notDescriptor";
 
-        Assert.assertFalse(descriptor.equals(notDescriptor));
+        assertThat(descriptor).isNotEqualTo(notDescriptor);
     }
 
     @Test
@@ -263,6 +267,6 @@ public class BipImageDescriptorTest {
         BipImageDescriptor descriptor = builder.build();
         BipImageDescriptor descriptorEqual = builderEqual.build();
 
-        Assert.assertTrue(descriptor.equals(descriptorEqual));
+        assertThat(descriptor).isEqualTo(descriptorEqual);
     }
 }

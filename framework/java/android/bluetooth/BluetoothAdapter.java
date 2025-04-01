@@ -138,7 +138,8 @@ import java.util.function.Consumer;
  * @see BluetoothServerSocket
  */
 public final class BluetoothAdapter {
-    private static final String TAG = "BluetoothAdapter";
+    private static final String TAG = BluetoothAdapter.class.getSimpleName();
+
     private static final String DESCRIPTOR = "android.bluetooth.BluetoothAdapter";
     private static final boolean DBG = true;
     private static final boolean VDBG = false;
@@ -1124,7 +1125,7 @@ public final class BluetoothAdapter {
 
         mServiceLock.writeLock().lock();
         try {
-            mService = registerBlueoothManagerCallback(mManagerCallback);
+            mService = registerBluetoothManagerCallback(mManagerCallback);
         } finally {
             mServiceLock.writeLock().unlock();
         }
@@ -1921,7 +1922,7 @@ public final class BluetoothAdapter {
     }
 
     /**
-     * Set the local Bluetooth adapter connectablility and discoverability.
+     * Set the local Bluetooth adapter connectability and discoverability.
      *
      * <p>If the scan mode is set to {@link #SCAN_MODE_CONNECTABLE_DISCOVERABLE}, it will change to
      * {@link #SCAN_MODE_CONNECTABLE} after the discoverable timeout. The discoverable timeout can
@@ -2718,21 +2719,12 @@ public final class BluetoothAdapter {
             return false;
         }
         try {
-            if (Flags.scanManagerRefactor()) {
-                IBluetoothScan scan = getBluetoothScan();
-                if (scan == null) {
-                    // BLE is not supported
-                    return false;
-                }
-                return scan.numHwTrackFiltersAvailable(mAttributionSource) != 0;
-            } else {
-                IBluetoothGatt iGatt = getBluetoothGatt();
-                if (iGatt == null) {
-                    // BLE is not supported
-                    return false;
-                }
-                return iGatt.numHwTrackFiltersAvailable(mAttributionSource) != 0;
+            IBluetoothScan scan = getBluetoothScan();
+            if (scan == null) {
+                // BLE is not supported
+                return false;
             }
+            return scan.numHwTrackFiltersAvailable(mAttributionSource) != 0;
         } catch (RemoteException e) {
             logRemoteException(TAG, e);
         }
@@ -2757,8 +2749,8 @@ public final class BluetoothAdapter {
     public void requestControllerActivityEnergyInfo(
             @NonNull @CallbackExecutor Executor executor,
             @NonNull OnBluetoothActivityEnergyInfoCallback callback) {
-        requireNonNull(executor, "executor cannot be null");
-        requireNonNull(callback, "callback cannot be null");
+        requireNonNull(executor);
+        requireNonNull(callback);
         OnBluetoothActivityEnergyInfoProxy proxy =
                 new OnBluetoothActivityEnergyInfoProxy(executor, callback);
         mServiceLock.readLock().lock();
@@ -3799,7 +3791,7 @@ public final class BluetoothAdapter {
                 @SuppressLint("AndroidFrameworkRequiresPermission") // Internal callback
                 @RequiresNoPermission
                 public void onBluetoothServiceUp(@NonNull IBinder bluetoothService) {
-                    requireNonNull(bluetoothService, "bluetoothService cannot be null");
+                    requireNonNull(bluetoothService);
                     mServiceLock.writeLock().lock();
                     try {
                         mService = IBluetooth.Stub.asInterface(bluetoothService);
@@ -4014,7 +4006,7 @@ public final class BluetoothAdapter {
      * <p>For example, this secret can be transferred to a remote device out of band (meaning any
      * other way besides using bluetooth). Once the remote device finds this device using the
      * information given in the data, such as the PUBLIC ADDRESS, the remote device could then
-     * connect to this device using this secret when the pairing sequenece asks for the secret. This
+     * connect to this device using this secret when the pairing sequence asks for the secret. This
      * device will respond by automatically accepting the pairing due to the secret being so
      * trustworthy.
      *
@@ -4153,7 +4145,7 @@ public final class BluetoothAdapter {
     }
 
     /** Registers a IBluetoothManagerCallback and returns the cached service proxy object. */
-    IBluetooth registerBlueoothManagerCallback(IBluetoothManagerCallback cb) {
+    IBluetooth registerBluetoothManagerCallback(IBluetoothManagerCallback cb) {
         requireNonNull(cb);
         if (Flags.getProfileUseLock()) {
             sServiceLock.writeLock().lock();
@@ -4203,6 +4195,46 @@ public final class BluetoothAdapter {
         try {
             if (mService != null) {
                 return IBluetoothScan.Stub.asInterface(mService.getBluetoothScan());
+            }
+        } catch (RemoteException e) {
+            logRemoteException(TAG, e);
+        } finally {
+            mServiceLock.readLock().unlock();
+        }
+        return null;
+    }
+
+    /**
+     * Return a binder to BluetoothAdvertise
+     *
+     * @hide
+     */
+    @RequiresNoPermission
+    public @Nullable IBluetoothAdvertise getBluetoothAdvertise() {
+        mServiceLock.readLock().lock();
+        try {
+            if (mService != null) {
+                return IBluetoothAdvertise.Stub.asInterface(mService.getBluetoothAdvertise());
+            }
+        } catch (RemoteException e) {
+            logRemoteException(TAG, e);
+        } finally {
+            mServiceLock.readLock().unlock();
+        }
+        return null;
+    }
+
+    /**
+     * Return a binder to DistanceMeasurement
+     *
+     * @hide
+     */
+    @RequiresNoPermission
+    public @Nullable IDistanceMeasurement getDistanceMeasurement() {
+        mServiceLock.readLock().lock();
+        try {
+            if (mService != null) {
+                return IDistanceMeasurement.Stub.asInterface(mService.getDistanceMeasurement());
             }
         } catch (RemoteException e) {
             logRemoteException(TAG, e);
@@ -4763,7 +4795,7 @@ public final class BluetoothAdapter {
      * Unregister a {@link #OnMetadataChangedListener} from a registered {@link BluetoothDevice}.
      * Unregistration can be done when Bluetooth is either ON or OFF. {@link
      * #addOnMetadataChangedListener(OnMetadataChangedListener, BluetoothDevice, Executor)} must be
-     * called before unregisteration.
+     * called before unregistration.
      *
      * @param device {@link BluetoothDevice} that will be unregistered. It should not be null or
      *     {@link NullPointerException} will be triggered.
@@ -5014,7 +5046,7 @@ public final class BluetoothAdapter {
 
     /**
      * Sets the preferred profiles for each audio mode for system routed audio. The audio framework
-     * and Telecomm will read this preference when routing system managed audio. Not supplying an
+     * and Telecom will read this preference when routing system managed audio. Not supplying an
      * audio mode in the Bundle will reset that audio mode to the default profile preference for
      * that mode (e.g. an empty Bundle resets all audio modes to their default profiles).
      *
@@ -5133,7 +5165,7 @@ public final class BluetoothAdapter {
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public @NonNull Bundle getPreferredAudioProfiles(@NonNull BluetoothDevice device) {
         if (DBG) Log.d(TAG, "getPreferredAudioProfiles(" + device + ")");
-        requireNonNull(device, "device cannot be null");
+        requireNonNull(device);
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
@@ -5187,7 +5219,7 @@ public final class BluetoothAdapter {
     @NotifyActiveDeviceChangeAppliedReturnValues
     public int notifyActiveDeviceChangeApplied(@NonNull BluetoothDevice device) {
         if (DBG) Log.d(TAG, "notifyActiveDeviceChangeApplied(" + device + ")");
-        requireNonNull(device, "device cannot be null");
+        requireNonNull(device);
         if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
             throw new IllegalArgumentException("device cannot have an invalid address");
         }
@@ -5839,8 +5871,8 @@ public final class BluetoothAdapter {
      * Register an {@link BluetoothHciVendorCallback} to listen for HCI vendor responses and events
      *
      * @param eventCodeSet Set of vendor-specific event codes to listen for updates. Each
-     *     vendor-specific event code must be in the range 0x00 to 0x4f or 0x60 to 0xff.
-     *     The inclusive range 0x50-0x5f is reserved by the system.
+     *     vendor-specific event code must be in the range 0x00 to 0x4f or 0x60 to 0xff. The
+     *     inclusive range 0x52-0x5f is reserved by the system.
      * @param executor an {@link Executor} to execute given callback
      * @param callback user implementation of the {@link BluetoothHciVendorCallback}
      * @throws IllegalArgumentException if the callback is already registered, or event codes not in
@@ -5860,7 +5892,7 @@ public final class BluetoothAdapter {
         requireNonNull(executor);
         requireNonNull(callback);
         if (eventCodeSet.stream()
-                .anyMatch((n) -> (n < 0) || (n >= 0x50 && n < 0x60) || (n > 0xff))) {
+                .anyMatch((n) -> (n < 0) || (n >= 0x52 && n < 0x60) || (n > 0xff))) {
             throw new IllegalArgumentException("Event code not in valid range");
         }
 

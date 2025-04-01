@@ -15,6 +15,9 @@
  */
 package com.android.bluetooth.pbap;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
@@ -28,7 +31,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.app.NotificationManager;
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
@@ -36,14 +38,14 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Message;
 import android.os.UserManager;
-import android.os.test.TestLooper;
 import android.test.mock.MockContentResolver;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.BluetoothMethodProxy;
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
@@ -56,8 +58,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.List;
 
@@ -65,16 +65,16 @@ import java.util.List;
 @RunWith(AndroidJUnit4.class)
 public class BluetoothPbapServiceTest {
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private DatabaseManager mDatabaseManager;
     @Mock private NotificationManager mNotificationManager;
     @Spy private BluetoothMethodProxy mMethodProxy = BluetoothMethodProxy.getInstance();
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mRemoteDevice = TestUtils.getTestDevice(mAdapter, 42);
-    private final Context mTargetContext = InstrumentationRegistry.getTargetContext();
+    private final BluetoothDevice mRemoteDevice = getTestDevice(42);
+    private final Context mTargetContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
     private final MockContentResolver mMockContentResolver =
             new MockContentResolver(mTargetContext);
 
@@ -98,7 +98,6 @@ public class BluetoothPbapServiceTest {
         mTestLooper.startAutoDispatch();
         doReturn(mDatabaseManager).when(mAdapterService).getDatabase();
         mService = new BluetoothPbapService(mAdapterService, mNotificationManager);
-        mService.start();
         mService.setAvailable(true);
 
         PackageManager pm = mTargetContext.getPackageManager();
@@ -110,7 +109,7 @@ public class BluetoothPbapServiceTest {
     public void tearDown() throws Exception {
         mTestLooper.stopAutoDispatchAndIgnoreExceptions();
         BluetoothMethodProxy.setInstanceForTesting(null);
-        mService.stop();
+        mService.cleanup();
         assertThat(BluetoothPbapService.getBluetoothPbapService()).isNull();
     }
 

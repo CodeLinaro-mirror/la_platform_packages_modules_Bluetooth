@@ -51,7 +51,10 @@ import java.util.Objects;
  * size=“500000”/> < /image-descriptor >
  */
 public class BipImageDescriptor {
-    private static final String TAG = "avrcpcontroller.BipImageDescriptor";
+    private static final String TAG =
+            AvrcpControllerUtils.TAG_PREFIX_AVRCP_CONTROLLER
+                    + BipImageDescriptor.class.getSimpleName();
+
     private static final String sVersion = "1.0";
 
     /** A Builder for an ImageDescriptor object */
@@ -87,7 +90,7 @@ public class BipImageDescriptor {
          * @param encoding The encoding you would like to set as a BIP spec defined string
          * @return This object so you can continue building
          */
-        public Builder setPropietaryEncoding(String encoding) {
+        public Builder setProprietaryEncoding(String encoding) {
             mImageDescriptor.mEncoding = new BipEncoding(BipEncoding.USR_XXX, encoding);
             return this;
         }

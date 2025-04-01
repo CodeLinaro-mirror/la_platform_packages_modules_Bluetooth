@@ -21,7 +21,6 @@
 #include "btif/include/btif_av.h"
 
 #include <base/functional/bind.h>
-#include <base/strings/stringprintf.h>
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 #include <frameworks/proto_logging/stats/enums/bluetooth/a2dp/enums.pb.h>
@@ -65,7 +64,6 @@
 #include "hardware/bluetooth.h"
 #include "hardware/bt_av.h"
 #include "include/hardware/bt_rc.h"
-#include "os/logging/log_adapter.h"
 #include "osi/include/alarm.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
@@ -1076,7 +1074,7 @@ std::string BtifAvPeer::FlagsToString() const {
     result = "None";
   }
 
-  return base::StringPrintf("0x%x(%s)", flags_, result.c_str());
+  return std::format("0x{:x}({})", flags_, result);
 }
 
 bt_status_t BtifAvPeer::Init() {
@@ -1129,16 +1127,16 @@ void BtifAvSource::Init(btav_source_callbacks_t* callbacks, int max_connected_au
                         const std::vector<btav_a2dp_codec_config_t>& offloading_preference,
                         std::vector<btav_a2dp_codec_info_t>* supported_codecs,
                         std::promise<bt_status_t> complete_promise) {
+  callbacks_ = callbacks;
+  max_connected_peers_ = max_connected_audio_devices;
   log::info("max_connected_audio_devices={}", max_connected_audio_devices);
+
   Cleanup();
   CleanupAllPeers();
-  max_connected_peers_ = max_connected_audio_devices;
 
-  /* A2DP OFFLOAD */
   a2dp_offload_enabled_ = GetInterfaceToProfiles()->config->isA2DPOffloadEnabled();
-  log::verbose("a2dp_offload.enable = {}", a2dp_offload_enabled_);
+  log::info("a2dp_offload.enable={}", a2dp_offload_enabled_);
 
-  callbacks_ = callbacks;
   if (a2dp_offload_enabled_) {
     tBTM_BLE_VSC_CB vsc_cb = {};
     BTM_BleGetVendorCapabilities(&vsc_cb);
@@ -1147,12 +1145,14 @@ void BtifAvSource::Init(btav_source_callbacks_t* callbacks, int max_connected_au
     bluetooth::audio::a2dp::update_codec_offloading_capabilities(offloading_preference,
                                                                  supports_a2dp_hw_offload_v2);
   }
+
   bta_av_co_init(codec_priorities, supported_codecs);
 
   if (!btif_a2dp_source_init()) {
     complete_promise.set_value(BT_STATUS_FAIL);
     return;
   }
+
   enabled_ = true;
   btif_enable_service(BTA_A2DP_SOURCE_SERVICE_ID);
   complete_promise.set_value(BT_STATUS_SUCCESS);
@@ -1889,11 +1889,7 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
                                        peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
           peer_.StateMachine().TransitionTo(BtifAvStateMachine::kStateIdle);
         } else {
-          if (peer_.IsSink()) {
-            // If queued PLAY command, send it now
-            btif_rc_check_handle_pending_play(p_bta_data->open.bd_addr,
-                                              (p_bta_data->open.status == BTA_AV_SUCCESS));
-          } else if (peer_.IsSource() && (p_bta_data->open.status == BTA_AV_SUCCESS)) {
+          if (peer_.IsSource() && (p_bta_data->open.status == BTA_AV_SUCCESS)) {
             // Bring up AVRCP connection as well
             BTA_AvOpenRc(peer_.BtaHandle());
           }
@@ -2109,11 +2105,7 @@ bool BtifAvStateMachine::StateOpening::ProcessEvent(uint32_t event, void* p_data
 
       // Change state to Open/Idle based on the status
       peer_.StateMachine().TransitionTo(av_state);
-      if (peer_.IsSink()) {
-        // If queued PLAY command, send it now
-        btif_rc_check_handle_pending_play(p_bta_data->open.bd_addr,
-                                          (p_bta_data->open.status == BTA_AV_SUCCESS));
-      } else if (peer_.IsSource() && (p_bta_data->open.status == BTA_AV_SUCCESS)) {
+      if (peer_.IsSource() && (p_bta_data->open.status == BTA_AV_SUCCESS)) {
         // Bring up AVRCP connection as well
         if (btif_av_src_sink_coexist_enabled() &&
             btif_av_sink.AllowedToConnect(peer_.PeerAddress())) {
@@ -3414,6 +3406,7 @@ bt_status_t btif_av_source_init(btav_source_callbacks_t* callbacks, int max_conn
 // Initializes the AV interface for sink mode
 bt_status_t btif_av_sink_init(btav_sink_callbacks_t* callbacks, int max_connected_audio_devices) {
   log::info("");
+
   std::promise<bt_status_t> init_complete_promise;
   std::future<bt_status_t> init_complete_promise_future = init_complete_promise.get_future();
   const auto status = do_in_main_thread(
@@ -3992,7 +3985,7 @@ static void btif_debug_av_peer_dump(int fd, const BtifAvPeer& peer) {
       break;
   }
 
-  dprintf(fd, "  Peer: %s\n", ADDRESS_TO_LOGGABLE_CSTR(peer.PeerAddress()));
+  dprintf(fd, "  Peer: %s\n", peer.PeerAddress().ToRedactedStringForLogging().c_str());
   dprintf(fd, "    Connected: %s\n", peer.IsConnected() ? "true" : "false");
   dprintf(fd, "    Streaming: %s\n", peer.IsStreaming() ? "true" : "false");
   dprintf(fd, "    SEP: %d(%s)\n", peer.PeerSep(), (peer.IsSource()) ? "Source" : "Sink");
@@ -4018,7 +4011,8 @@ static void btif_debug_av_source_dump(int fd) {
   if (!enabled) {
     return;
   }
-  dprintf(fd, "  Active peer: %s\n", ADDRESS_TO_LOGGABLE_CSTR(btif_av_source.ActivePeer()));
+  dprintf(fd, "  Active peer: %s\n",
+          btif_av_source.ActivePeer().ToRedactedStringForLogging().c_str());
   dprintf(fd, "  Peers:\n");
   btif_av_source.DumpPeersInfo(fd);
 }
@@ -4030,7 +4024,8 @@ static void btif_debug_av_sink_dump(int fd) {
   if (!enabled) {
     return;
   }
-  dprintf(fd, "  Active peer: %s\n", ADDRESS_TO_LOGGABLE_CSTR(btif_av_sink.ActivePeer()));
+  dprintf(fd, "  Active peer: %s\n",
+          btif_av_sink.ActivePeer().ToRedactedStringForLogging().c_str());
   dprintf(fd, "  Peers:\n");
   btif_av_sink.DumpPeersInfo(fd);
 }

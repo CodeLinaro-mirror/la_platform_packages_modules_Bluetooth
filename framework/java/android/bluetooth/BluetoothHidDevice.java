@@ -46,6 +46,7 @@ import java.util.concurrent.Executor;
  */
 public final class BluetoothHidDevice implements BluetoothProfile {
     private static final String TAG = BluetoothHidDevice.class.getSimpleName();
+
     private static final boolean DBG = false;
 
     /**
@@ -249,8 +250,8 @@ public final class BluetoothHidDevice implements BluetoothProfile {
      * during app registration.
      */
     public abstract static class Callback {
-
-        private static final String TAG = "BluetoothHidDevCallback";
+        private static final String TAG =
+                BluetoothHidDevice.TAG + "." + Callback.class.getSimpleName();
 
         /**
          * Callback called when application registration state changes. Usually it's called due to
