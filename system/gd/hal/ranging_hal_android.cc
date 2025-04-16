@@ -309,8 +309,8 @@ class RangingHalAndroid : public RangingHal {
       packetNadmReflector_.push_back((Nadm)packetNadmReflector);
     }
 
-    log::warn("packet nadm size initiator: {}", packetNadmInitiator_.size());
-    log::warn("packet nadm size reflector: {}", packetNadmReflector_.size());
+    log::verbose("packet nadm size initiator: {}", packetNadmInitiator_.size());
+    log::verbose("packet nadm size reflector: {}", packetNadmReflector_.size());
 
     for (auto mode : raw_data.step_mode_) {
       enum ModeType type;
@@ -341,7 +341,8 @@ class RangingHalAndroid : public RangingHal {
     hal_raw_data.initiatorData.packetNadm = packetNadmInitiator_;
     hal_raw_data.reflectorData.packetNadm = packetNadmReflector_;
     hal_raw_data.timestampMs = raw_data.timestampMs_;
-    log::warn("initiator reference power: {}, reflector reference power: {}", raw_data.initiator_reference_power_level, raw_data.reflector_reference_power_level);
+    log::verbose("initiator reference power: {}, reflector reference power: {}",
+                  raw_data.initiator_reference_power_level, raw_data.reflector_reference_power_level);
     hal_raw_data.initiatorData.referencePowerDbm = raw_data.initiator_reference_power_level;
     hal_raw_data.reflectorData.referencePowerDbm = raw_data.reflector_reference_power_level;
     hal_raw_data.initiatorData.vendorSpecificCsSingleSidedata = raw_data.vendor_specific_cs_single_side_data;

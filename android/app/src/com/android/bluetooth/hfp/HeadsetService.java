@@ -65,6 +65,7 @@ import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.a2dp.A2dpService;
+import com.android.bluetooth.tbs.TbsService;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.AudioRoutingManager;
 import com.android.bluetooth.csip.CsipSetCoordinatorService;
@@ -377,11 +378,30 @@ public class HeadsetService extends ProfileService {
     }
 
     void onDeviceStateChanged(HeadsetDeviceState deviceState) {
+        TbsService tbsService = TbsService.getTbsService();
+        if (tbsService != null) {
+            tbsService.updateBearerSignalStrength(2 /*deviceState.mSignal*/);
+        }
         doForEachConnectedStateMachine(
                 stateMachine ->
                         stateMachine.sendMessage(
                                 HeadsetStateMachine.DEVICE_STATE_CHANGED, deviceState));
     }
+
+    void updateBearerTechnology(int bearertech) {
+        TbsService tbsService = TbsService.getTbsService();
+        if (tbsService != null) {
+            tbsService.updateBearerTechnology(bearertech);
+        }
+    }
+
+    void updateBearerName(String bearerName) {
+        TbsService tbsService = TbsService.getTbsService();
+        if (tbsService != null) {
+            tbsService.updateBearerName(bearerName);
+        }
+    }
+
 
     /**
      * Handle messages from native (JNI) to Java. This needs to be synchronized to avoid posting
@@ -2583,6 +2603,8 @@ public class HeadsetService extends ProfileService {
             Log.i(
                     TAG,
                     "updateInbandRinging():"
+                            + "Device="
+                            + device
                             + " ActiveDevice="
                             + mActiveDevice
                             + " enabled="
@@ -2601,6 +2623,18 @@ public class HeadsetService extends ProfileService {
             } else if (connected) {
                 // Same Inband ringing status, send +BSIR only to the new connected device
                 doForStateMachine(device, sendBsirTask);
+            }
+
+            /* If inactive device disconnected inbandringtone will be enabled, so try to
+               create sco for active device if it is in call*/
+            if (mActiveDevice != null && !mInbandRingingRuntimeDisable) {
+                int connectStatus = connectAudio(mActiveDevice);
+                if (connectStatus != BluetoothStatusCodes.SUCCESS) {
+                    Log.e(TAG, "updateInbandRinging: fail to connectAudio to "
+                                    + mActiveDevice
+                                    + " with status code "
+                                    + connectStatus);
+                }
             }
         }
     }
@@ -2929,9 +2963,15 @@ public class HeadsetService extends ProfileService {
     /** Retrieves the most recently connected device in the A2DP connected devices list. */
     public BluetoothDevice getFallbackDevice() {
         DatabaseManager dbManager = mAdapterService.getDatabase();
-        return dbManager != null
-                ? dbManager.getMostRecentlyConnectedDevicesInList(getFallbackCandidates(dbManager))
-                : null;
+        if (dbManager != null) {
+            BluetoothDevice mostRecentDevice =
+                dbManager
+                    .getMostRecentlyConnectedDevicesInList(getFallbackCandidates(dbManager));
+            if (mostRecentDevice != null) {
+                return mostRecentDevice.equals(getActiveDevice()) ? null : mostRecentDevice;
+            }
+        }
+        return null;
     }
 
     @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
