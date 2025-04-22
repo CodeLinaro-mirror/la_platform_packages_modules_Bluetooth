@@ -22,7 +22,7 @@
 #ifndef ANDROID_INCLUDE_BT_RC_H
 #define ANDROID_INCLUDE_BT_RC_H
 
-#include <raw_address.h>
+#include "types/raw_address.h"
 __BEGIN_DECLS
 
 /* Change this macro to use multiple RC */
@@ -697,7 +697,7 @@ __END_DECLS
 #if __has_include(<bluetooth/log.h>)
 #include <bluetooth/log.h>
 
-namespace fmt {
+namespace std {
 template <>
 struct formatter<btrc_status_t> : enum_formatter<btrc_status_t> {};
 template <>
@@ -706,7 +706,7 @@ template <>
 struct formatter<btrc_remote_features_t> : enum_formatter<btrc_remote_features_t> {};
 template <>
 struct formatter<btrc_notification_type_t> : enum_formatter<btrc_notification_type_t> {};
-}  // namespace fmt
+}  // namespace std
 
 #endif  // __has_include(<bluetooth/log.h>)
 
