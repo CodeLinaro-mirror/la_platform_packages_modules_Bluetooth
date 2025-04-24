@@ -29,6 +29,9 @@
 #include "packet/raw_builder.h"
 #include "types/raw_address.h"
 
+void DumpsysAcl(int fd);
+void DumpsysNeighbor(int fd);
+
 namespace bluetooth {
 namespace shim {
 
@@ -77,8 +80,6 @@ public:
   void RemoveFromAddressResolution(const hci::AddressWithType& address_with_type);
   void ClearAddressResolution();
 
-  void LeSetDefaultSubrate(uint16_t subrate_min, uint16_t subrate_max, uint16_t max_latency,
-                           uint16_t cont_num, uint16_t sup_tout);
   void LeSubrateRequest(uint16_t hci_handle, uint16_t subrate_min, uint16_t subrate_max,
                         uint16_t max_latency, uint16_t cont_num, uint16_t sup_tout);
 

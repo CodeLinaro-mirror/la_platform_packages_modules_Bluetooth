@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ import androidx.test.runner.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/** A test suite for the BipEncoding class */
+/** Test cases for {@link BipEncoding}. */
 @RunWith(AndroidJUnit4.class)
 public class BipEncodingTest {
 
-    private void testParse(
+    private static void testParse(
             String input,
             int encodingType,
             String encodingStr,
@@ -40,7 +40,7 @@ public class BipEncodingTest {
         assertThat(encoding.isAndroidSupported()).isEqualTo(isAndroidSupported);
     }
 
-    private void testParseMany(
+    private static void testParseMany(
             String[] inputs,
             int encodingType,
             String encodingStr,

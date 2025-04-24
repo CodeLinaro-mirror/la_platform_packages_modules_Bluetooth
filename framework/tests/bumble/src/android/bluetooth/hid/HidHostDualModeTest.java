@@ -18,6 +18,8 @@ package android.bluetooth.hid;
 
 import static android.bluetooth.BluetoothDevice.TRANSPORT_BREDR;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_LE;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -64,6 +66,7 @@ import android.util.Log;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.bluetooth.flags.Flags;
 import com.android.compatibility.common.util.AdoptShellPermissionsRule;
 
 import org.hamcrest.CustomTypeSafeMatcher;
@@ -310,17 +313,12 @@ public class HidHostDualModeTest {
                 hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice),
                 hasExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_BONDED));
 
-        if (a2dpService.getConnectionPolicy(mDevice)
-                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            a2dpService.setConnectionPolicy(
-                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (a2dpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(a2dpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
-        if (hfpService.getConnectionPolicy(mDevice) == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            hfpService.setConnectionPolicy(
-                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (hfpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(hfpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
 
@@ -506,8 +504,9 @@ public class HidHostDualModeTest {
      */
     private void verifyTransportSwitch(BluetoothDevice device, int fromTransport, int toTransport) {
         assertThat(fromTransport).isNotEqualTo(toTransport);
-        verifyConnectionState(mDevice, equalTo(fromTransport), equalTo(STATE_DISCONNECTING));
-
+        if (!Flags.ignoreUnselectedHidTransportStates()) {
+            verifyConnectionState(mDevice, equalTo(fromTransport), equalTo(STATE_DISCONNECTING));
+        }
         // Capture the next intent with filter
         // Filter is necessary as otherwise it will corrupt all other unordered verifications
         final Intent[] savedIntent = {null};

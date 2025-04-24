@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.Statement;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 
 import java.time.Duration;
@@ -96,6 +97,7 @@ public class TestUtils {
     /** Helper function to mock getSystemService calls */
     public static <T> void mockGetSystemService(
             Context ctx, String serviceName, Class<T> serviceClass, T mockService) {
+        doReturn(mockService).when(ctx).getSystemService(eq(serviceClass));
         doReturn(mockService).when(ctx).getSystemService(eq(serviceName));
         doReturn(serviceName).when(ctx).getSystemServiceName(eq(serviceClass));
     }
@@ -151,7 +153,7 @@ public class TestUtils {
     }
 
     /**
-     * Dispatch all the message on the Loopper and check that the `what` is expected
+     * Dispatch all the message on the Looper and check that the `what` is expected
      *
      * @param looper looper to execute the message from
      * @param what list of Messages.what that are expected to be run by the handler
@@ -327,7 +329,7 @@ public class TestUtils {
         }
     }
 
-    /** Wrapper around MockitoJUnit.rule() to be extended in follow-up. */
+    /** Wrapper around MockitoJUnit.rule() to clear the inline mock at the end of the test. */
     public static class MockitoRule implements MethodRule {
         private final org.mockito.junit.MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -338,6 +340,10 @@ public class TestUtils {
                 @Override
                 public void evaluate() throws Throwable {
                     nestedStatement.evaluate();
+
+                    // Prevent OutOfMemory errors due to mock maker leaks.
+                    // See https://github.com/mockito/mockito/issues/1614, b/259280359, b/396177821
+                    Mockito.framework().clearInlineMocks();
                 }
             };
         }

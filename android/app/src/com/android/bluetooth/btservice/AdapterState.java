@@ -17,12 +17,12 @@
 package com.android.bluetooth.btservice;
 
 import android.bluetooth.BluetoothAdapter;
-import com.android.bluetooth.flags.Flags;
 import android.os.Looper;
 import android.os.Message;
 import android.os.SystemProperties;
 import android.util.Log;
 
+import com.android.bluetooth.flags.Flags;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 
@@ -67,13 +67,13 @@ final class AdapterState extends StateMachine {
             4000 * SystemProperties.getInt("ro.hw_timeout_multiplier", 1);
 
     private AdapterService mAdapterService;
-    private TurningOnState mTurningOnState = new TurningOnState();
-    private TurningBleOnState mTurningBleOnState = new TurningBleOnState();
-    private TurningOffState mTurningOffState = new TurningOffState();
-    private TurningBleOffState mTurningBleOffState = new TurningBleOffState();
-    private OnState mOnState = new OnState();
-    private OffState mOffState = new OffState();
-    private BleOnState mBleOnState = new BleOnState();
+    private final TurningOnState mTurningOnState = new TurningOnState();
+    private final TurningBleOnState mTurningBleOnState = new TurningBleOnState();
+    private final TurningOffState mTurningOffState = new TurningOffState();
+    private final TurningBleOffState mTurningBleOffState = new TurningBleOffState();
+    private final OnState mOnState = new OnState();
+    private final OffState mOffState = new OffState();
+    private final BleOnState mBleOnState = new BleOnState();
 
     private int mPrevState = BluetoothAdapter.STATE_OFF;
 
@@ -91,7 +91,7 @@ final class AdapterState extends StateMachine {
         start();
     }
 
-    private String messageString(int message) {
+    private static String messageString(int message) {
         switch (message) {
             case BLE_TURN_ON:
                 return "BLE_TURN_ON";

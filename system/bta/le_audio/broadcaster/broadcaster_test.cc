@@ -32,17 +32,16 @@
 #include "bta/le_audio/content_control_id_keeper.h"
 #include "bta/le_audio/le_audio_types.h"
 #include "bta/le_audio/mock_codec_manager.h"
+#include "btif/include/btif_common.h"
 #include "hci/controller_interface_mock.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/include/main_thread.h"
 #include "test/common/mock_functions.h"
 #include "test/mock/mock_main_shim_entry.h"
 #include "test/mock/mock_osi_alarm.h"
 #include "test/mock/mock_stack_btm_iso.h"
 
 #define TEST_BT com::android::bluetooth::flags
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using namespace std::chrono_literals;
 
@@ -64,6 +63,8 @@ using testing::Test;
 using namespace bluetooth::le_audio;
 using namespace bluetooth;
 
+using bluetooth::hci::testing::mock_controller_;
+
 using bluetooth::le_audio::DsaMode;
 using bluetooth::le_audio::LeAudioCodecConfiguration;
 using bluetooth::le_audio::LeAudioSourceAudioHalClient;
@@ -72,6 +73,7 @@ using bluetooth::le_audio::broadcaster::BroadcastStateMachine;
 using bluetooth::le_audio::broadcaster::BroadcastSubgroupCodecConfig;
 
 // Disables most likely false-positives from base::SplitString()
+extern "C" const char* __asan_default_options();
 extern "C" const char* __asan_default_options() { return "detect_container_overflow=0"; }
 
 struct alarm_t {
@@ -96,22 +98,18 @@ void invoke_switch_buffer_size_cb(bool /*is_low_latency_buffer_size*/) {}
 bt_status_t do_in_main_thread(base::OnceClosure task) {
   // Wrap the task with task counter so we could later know if there are
   // any callbacks scheduled and we should wait before performing some actions
-  if (!message_loop_thread.DoInThread(
-              FROM_HERE, base::BindOnce(
-                                 [](base::OnceClosure task, std::atomic<int>& num_async_tasks) {
-                                   std::move(task).Run();
-                                   num_async_tasks--;
-                                 },
-                                 std::move(task), std::ref(num_async_tasks)))) {
+  if (!message_loop_thread.DoInThread(base::BindOnce(
+              [](base::OnceClosure task, std::atomic<int>& num_async_tasks) {
+                std::move(task).Run();
+                num_async_tasks--;
+              },
+              std::move(task), std::ref(num_async_tasks)))) {
     log::error("failed to post task to task runner!");
     return BT_STATUS_FAIL;
   }
   num_async_tasks++;
   return BT_STATUS_SUCCESS;
 }
-
-static base::MessageLoop* message_loop_;
-base::MessageLoop* get_main_message_loop() { return message_loop_; }
 
 static void init_message_loop_thread() {
   num_async_tasks = 0;
@@ -123,17 +121,9 @@ static void init_message_loop_thread() {
   if (!message_loop_thread.EnableRealTimeScheduling()) {
     log::error("Unable to set real time scheduling");
   }
-
-  message_loop_ = message_loop_thread.message_loop();
-  if (message_loop_ == nullptr) {
-    FAIL() << "unable to get message loop.";
-  }
 }
 
-static void cleanup_message_loop_thread() {
-  message_loop_ = nullptr;
-  message_loop_thread.ShutDown();
-}
+static void cleanup_message_loop_thread() { message_loop_thread.ShutDown(); }
 
 bool LeAudioClient::IsLeAudioClientRunning(void) { return false; }
 
@@ -263,6 +253,8 @@ public:
 class BroadcasterTest : public Test {
 protected:
   void SetUp() override {
+    com::android::bluetooth::flags::provider_->reset_flags();
+
     test::mock::osi_alarm::alarm_free.body = [](alarm_t* alarm) {
       if (alarm) {
         delete alarm;
@@ -297,8 +289,8 @@ protected:
     init_message_loop_thread();
 
     reset_mock_function_count_map();
-    bluetooth::hci::testing::mock_controller_ = &mock_controller_;
-    ON_CALL(mock_controller_, SupportsBleIsochronousBroadcaster).WillByDefault(Return(true));
+    mock_controller_ = std::make_unique<bluetooth::hci::testing::MockControllerInterface>();
+    ON_CALL(*mock_controller_, SupportsBleIsochronousBroadcaster).WillByDefault(Return(true));
 
     iso_manager_ = bluetooth::hci::IsoManager::GetInstance();
     ASSERT_NE(iso_manager_, nullptr);
@@ -360,7 +352,6 @@ protected:
   }
 
   void TearDown() override {
-    com::android::bluetooth::flags::provider_->reset_flags();
     // Message loop cleanup should wait for all the 'till now' scheduled calls
     // so it should be called right at the very begginning of teardown.
     cleanup_message_loop_thread();
@@ -377,7 +368,7 @@ protected:
 
     ContentControlIdKeeper::GetInstance()->Stop();
 
-    bluetooth::hci::testing::mock_controller_ = nullptr;
+    bluetooth::hci::testing::mock_controller_.release();
     delete mock_audio_source_;
     iso_active_callback = nullptr;
     delete mock_audio_source_;
@@ -447,7 +438,6 @@ protected:
 
 protected:
   MockLeAudioBroadcasterCallbacks mock_broadcaster_callbacks_;
-  bluetooth::hci::testing::MockControllerInterface mock_controller_;
   bluetooth::hci::IsoManager* iso_manager_;
   MockIsoManager* mock_iso_manager_;
   bluetooth::hci::iso_manager::BigCallbacks* big_callbacks_ = nullptr;

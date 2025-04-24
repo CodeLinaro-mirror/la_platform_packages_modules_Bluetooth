@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/** Test cases for {@link AvrcpBipObexServer}. */
 @RunWith(AndroidJUnit4.class)
 public class AvrcpBipObexServerTest {
     private static final String TYPE_GET_LINKED_THUMBNAIL = "x-bt/img-thm";
@@ -161,7 +162,8 @@ public class AvrcpBipObexServerTest {
      * <p>Our server will use: - getReceivedHeader - sendHeaders - getMaxPacketSize -
      * openOutputStream
      */
-    private Operation makeOperation(HeaderSet requestHeaders, OutputStream os) throws Exception {
+    private static Operation makeOperation(HeaderSet requestHeaders, OutputStream os)
+            throws Exception {
         Operation op = mock(Operation.class);
         when(op.getReceivedHeader()).thenReturn(requestHeaders);
         when(op.getMaxPacketSize()).thenReturn(256);
@@ -169,7 +171,7 @@ public class AvrcpBipObexServerTest {
         return op;
     }
 
-    private byte[] makeDescriptor(int encoding, int width, int height) {
+    private static byte[] makeDescriptor(int encoding, int width, int height) {
         return new BipImageDescriptor.Builder()
                 .setEncoding(encoding)
                 .setFixedDimensions(width, height)
@@ -197,7 +199,7 @@ public class AvrcpBipObexServerTest {
 
     /** Make sure onDisconnect notifies the callbacks in the proper way */
     @Test
-    public void testDisonnect() {
+    public void testDisconnect() {
         mAvrcpBipObexServer.onDisconnect(mRequest, mReply);
         verify(mCallback).onDisconnected();
     }
@@ -283,7 +285,7 @@ public class AvrcpBipObexServerTest {
     }
 
     /**
-     * Make sure a getImageProperties request with a valid handle returns a valie properties object
+     * Make sure a getImageProperties request with a valid handle returns a valid properties object
      */
     @Test
     public void testGetImagePropertiesWithValidHandle() throws Exception {

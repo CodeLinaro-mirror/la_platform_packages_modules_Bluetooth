@@ -18,6 +18,10 @@ package android.bluetooth;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
+import static android.bluetooth.BluetoothUtils.isValidDevice;
 
 import static java.util.Objects.requireNonNull;
 
@@ -386,7 +390,7 @@ public final class BluetoothHidHost implements BluetoothProfile {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return BluetoothProfile.STATE_DISCONNECTED;
+        return STATE_DISCONNECTED;
     }
 
     /**
@@ -441,8 +445,8 @@ public final class BluetoothHidHost implements BluetoothProfile {
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (isEnabled()
                 && isValidDevice(device)
-                && (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN
-                        || connectionPolicy == BluetoothProfile.CONNECTION_POLICY_ALLOWED)) {
+                && (connectionPolicy == CONNECTION_POLICY_FORBIDDEN
+                        || connectionPolicy == CONNECTION_POLICY_ALLOWED)) {
             try {
                 return service.setConnectionPolicy(device, connectionPolicy, mAttributionSource);
             } catch (RemoteException e) {
@@ -556,7 +560,7 @@ public final class BluetoothHidHost implements BluetoothProfile {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+        return CONNECTION_POLICY_FORBIDDEN;
     }
 
     /**
@@ -599,10 +603,6 @@ public final class BluetoothHidHost implements BluetoothProfile {
 
     private boolean isEnabled() {
         return mAdapter.getState() == BluetoothAdapter.STATE_ON;
-    }
-
-    private static boolean isValidDevice(BluetoothDevice device) {
-        return device != null && BluetoothAdapter.checkBluetoothAddress(device.getAddress());
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ import org.mockito.Mock;
 
 import java.util.List;
 
+/** Test cases for {@link PbapClientAccountManager}. */
 @RunWith(AndroidJUnit4.class)
 public class PbapClientAccountManagerTest {
     private static final String ACCOUNT_TYPE = "com.android.bluetooth.pbapclient.account";
@@ -146,7 +147,7 @@ public class PbapClientAccountManagerTest {
                 IllegalArgumentException.class, () -> mAccountManager.getAccountForDevice(null));
     }
 
-    // Start/Initialization Proceedures
+    // Start/Initialization Procedures
 
     @Test
     public void testStartAccountManager_userUnlockedAccountVisibleNoAccounts_accountsInitialized() {
@@ -402,7 +403,7 @@ public class PbapClientAccountManagerTest {
         mBroadcastReceiver.onReceive(mMockContext, intent);
     }
 
-    private Account getAccountForDevice(BluetoothDevice device) {
+    private static Account getAccountForDevice(BluetoothDevice device) {
         return new Account(device.getAddress(), "com.android.bluetooth.pbabclient.account");
     }
 

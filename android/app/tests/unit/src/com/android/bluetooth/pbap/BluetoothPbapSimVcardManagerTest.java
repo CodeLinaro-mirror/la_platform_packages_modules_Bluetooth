@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,6 +56,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/** Test cases for {@link BluetoothPbapSimVcardManager}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothPbapSimVcardManagerTest {
@@ -423,7 +424,7 @@ public class BluetoothPbapSimVcardManagerTest {
     }
 
     @Test
-    public void testComposeAndSendSIMPhonebookVcards_whenEndPointIsLessThanStartpoint() {
+    public void testComposeAndSendSIMPhonebookVcards_whenEndPointIsLessThanStartPoint() {
         Operation operation = mock(Operation.class);
         final int startPoint = 1;
         final int endPoint = 0; // Should be equal or greater than startPoint

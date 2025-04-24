@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,29 @@ using bluetooth::os::fake_timer::fake_timerfd_get_clock;
 
 namespace bluetooth {
 namespace hal {
+
+static std::string GetBtSnoopMode() {
+  // Default mode is FILTERED on userdebug/eng build, DISABLED on user build.
+  // In userdebug/eng build, it can also be overwritten by modifying the global setting
+  std::string btsnoop_mode = SnoopLogger::kBtSnoopLogModeDisabled;
+  if (os::GetSystemProperty(SnoopLogger::kRoBuildType) != "user") {
+    btsnoop_mode = os::GetSystemProperty(SnoopLogger::kBtSnoopDefaultLogModeProperty)
+                           .value_or(SnoopLogger::kBtSnoopLogModeFiltered);
+  }
+
+  btsnoop_mode = os::GetSystemProperty(SnoopLogger::kBtSnoopLogModeProperty).value_or(btsnoop_mode);
+
+  // Only allow a subset of values:
+  if (!(btsnoop_mode == SnoopLogger::kBtSnoopLogModeDisabled ||
+        btsnoop_mode == SnoopLogger::kBtSnoopLogModeFull ||
+        btsnoop_mode == SnoopLogger::kBtSnoopLogModeFiltered ||
+        btsnoop_mode == SnoopLogger::kBtSnoopLogModeKernel)) {
+    log::warn("{}: Invalid btsnoop value, default back to disabled", btsnoop_mode);
+    return SnoopLogger::kBtSnoopLogModeDisabled;
+  }
+
+  return btsnoop_mode;
+}
 
 // Adds L2CAP channel to acceptlist.
 void FilterTracker::AddL2capCid(uint16_t local_cid, uint16_t remote_cid) {
@@ -448,7 +471,7 @@ size_t get_btsnooz_packet_length_to_write(const HciPacket& packet, SnoopLogger::
 
 // system properties
 const std::string SnoopLogger::kBtSnoopMaxPacketsPerFileProperty = "persist.bluetooth.btsnoopsize";
-const std::string SnoopLogger::kIsDebuggableProperty = "ro.debuggable";
+const std::string SnoopLogger::kRoBuildType = "ro.build.type";
 const std::string SnoopLogger::kBtSnoopLogModeProperty = "persist.bluetooth.btsnooplogmode";
 const std::string SnoopLogger::kBtSnoopDefaultLogModeProperty =
         "persist.bluetooth.btsnoopdefaultmode";
@@ -492,13 +515,22 @@ const size_t SnoopLogger::PACKET_TYPE_LENGTH = 1;
 const size_t SnoopLogger::MAX_HCI_ACL_LEN = 14;
 const uint32_t SnoopLogger::L2CAP_HEADER_SIZE = 8;
 
-SnoopLogger::SnoopLogger(std::string snoop_log_path, std::string snooz_log_path,
-                         size_t max_packets_per_file, size_t max_packets_per_buffer,
-                         const std::string& btsnoop_mode, bool qualcomm_debug_log_enabled,
+SnoopLogger::SnoopLogger(os::Handler* handler)
+    : SnoopLogger(handler, os::ParameterProvider::SnoopLogFilePath(),
+                  os::ParameterProvider::SnoozLogFilePath(), GetMaxPacketsPerFile(),
+                  GetMaxPacketsPerBuffer(), GetBtSnoopMode(), IsQualcommDebugLogEnabled(),
+                  kBtSnoozLogLifeTime, kBtSnoozLogDeleteRepeatingAlarmInterval,
+                  IsBtSnoopLogPersisted()) {}
+
+SnoopLogger::SnoopLogger(os::Handler* handler, std::string snoop_log_path,
+                         std::string snooz_log_path, size_t max_packets_per_file,
+                         size_t max_packets_per_buffer, const std::string& btsnoop_mode,
+                         bool qualcomm_debug_log_enabled,
                          const std::chrono::milliseconds snooz_log_life_time,
                          const std::chrono::milliseconds snooz_log_delete_alarm_interval,
                          bool snoop_log_persists)
-    : btsnoop_mode_(btsnoop_mode),
+    : Module(handler),
+      btsnoop_mode_(btsnoop_mode),
       snoop_log_path_(std::move(snoop_log_path)),
       snooz_log_path_(std::move(snooz_log_path)),
       max_packets_per_file_(max_packets_per_file),
@@ -1164,7 +1196,7 @@ void SnoopLogger::Capture(const HciPacket& immutable_packet, Direction direction
                                   .count();
 #ifdef __ANDROID__
   if (com::android::bluetooth::flags::snoop_logger_tracing()) {
-    LogTracePoint(timestamp_us, packet, direction, type);
+    LogTracePoint(packet, direction, type);
   }
 #endif  // __ANDROID__
 
@@ -1292,10 +1324,6 @@ void SnoopLogger::DumpSnoozLogToFile() {
   }
 }
 
-void SnoopLogger::ListDependencies(ModuleList* /* list */) const {
-  // We have no dependencies
-}
-
 void SnoopLogger::Start() {
   std::lock_guard<std::recursive_mutex> lock(file_mutex_);
   if (btsnoop_mode_ != kBtSnoopLogModeDisabled && btsnoop_mode_ != kBtSnoopLogModeKernel) {
@@ -1305,17 +1333,21 @@ void SnoopLogger::Start() {
       EnableFilters();
     }
 
-    auto snoop_logger_socket = std::make_unique<SnoopLoggerSocket>(&syscall_if);
-    snoop_logger_socket_thread_ =
-            std::make_unique<SnoopLoggerSocketThread>(std::move(snoop_logger_socket));
-    auto thread_started_future = snoop_logger_socket_thread_->Start();
-    thread_started_future.wait();
-    if (thread_started_future.get()) {
-      RegisterSocket(snoop_logger_socket_thread_.get());
-    } else {
-      snoop_logger_socket_thread_->Stop();
-      snoop_logger_socket_thread_.reset();
-      snoop_logger_socket_thread_ = nullptr;
+    if (os::GetSystemProperty(kRoBuildType) != "user") {
+      // Cf b/375056207: The implementation must pass a security review
+      // in order to enable the snoop logger socket in user builds.
+      auto snoop_logger_socket = std::make_unique<SnoopLoggerSocket>(&syscall_if);
+      snoop_logger_socket_thread_ =
+              std::make_unique<SnoopLoggerSocketThread>(std::move(snoop_logger_socket));
+      auto thread_started_future = snoop_logger_socket_thread_->Start();
+      thread_started_future.wait();
+      if (thread_started_future.get()) {
+        RegisterSocket(snoop_logger_socket_thread_.get());
+      } else {
+        snoop_logger_socket_thread_->Stop();
+        snoop_logger_socket_thread_.reset();
+        snoop_logger_socket_thread_ = nullptr;
+      }
     }
   }
 
@@ -1372,37 +1404,14 @@ size_t SnoopLogger::GetMaxPacketsPerFile() {
 size_t SnoopLogger::GetMaxPacketsPerBuffer() {
   // We want to use at most 256 KB memory for btsnooz log for release builds
   // and 512 KB memory for userdebug/eng builds
-  auto is_debuggable = os::GetSystemPropertyBool(kIsDebuggableProperty, false);
+  auto is_debug_build = (os::GetSystemProperty(kRoBuildType) != "user");
 
-  size_t btsnooz_max_memory_usage_bytes = (is_debuggable ? 1024 : 256) * 1024;
+  size_t btsnooz_max_memory_usage_bytes = (is_debug_build ? 1024 : 256) * 1024;
   // Calculate max number of packets based on max memory usage and max packet size
   return btsnooz_max_memory_usage_bytes / kDefaultBtSnoozMaxBytesPerPacket;
 }
 
 std::string SnoopLogger::GetCurrentSnoopMode() { return btsnoop_mode_; }
-
-static std::string GetBtSnoopMode() {
-  // Default mode is FILTERED on userdebug/eng build, DISABLED on user build.
-  // In userdebug/eng build, it can also be overwritten by modifying the global setting
-  std::string btsnoop_mode = SnoopLogger::kBtSnoopLogModeDisabled;
-  if (os::GetSystemPropertyBool(SnoopLogger::kIsDebuggableProperty, false)) {
-    btsnoop_mode = os::GetSystemProperty(SnoopLogger::kBtSnoopDefaultLogModeProperty)
-                           .value_or(SnoopLogger::kBtSnoopLogModeFiltered);
-  }
-
-  btsnoop_mode = os::GetSystemProperty(SnoopLogger::kBtSnoopLogModeProperty).value_or(btsnoop_mode);
-
-  // Only allow a subset of values:
-  if (!(btsnoop_mode == SnoopLogger::kBtSnoopLogModeDisabled ||
-        btsnoop_mode == SnoopLogger::kBtSnoopLogModeFull ||
-        btsnoop_mode == SnoopLogger::kBtSnoopLogModeFiltered ||
-        btsnoop_mode == SnoopLogger::kBtSnoopLogModeKernel)) {
-    log::warn("{}: Invalid btsnoop value, default back to disabled", btsnoop_mode);
-    return SnoopLogger::kBtSnoopLogModeDisabled;
-  }
-
-  return btsnoop_mode;
-}
 
 void SnoopLogger::RegisterSocket(SnoopLoggerSocketInterface* socket) {
   std::lock_guard<std::recursive_mutex> lock(file_mutex_);
@@ -1410,8 +1419,8 @@ void SnoopLogger::RegisterSocket(SnoopLoggerSocketInterface* socket) {
 }
 
 bool SnoopLogger::IsBtSnoopLogPersisted() {
-  auto is_debuggable = os::GetSystemPropertyBool(kIsDebuggableProperty, false);
-  return is_debuggable && os::GetSystemPropertyBool(kBtSnoopLogPersists, false);
+  auto is_debug_build = (os::GetSystemProperty(kRoBuildType) != "user");
+  return is_debug_build && os::GetSystemPropertyBool(kBtSnoopLogPersists, false);
 }
 
 bool SnoopLogger::IsQualcommDebugLogEnabled() {
@@ -1426,17 +1435,8 @@ bool SnoopLogger::IsQualcommDebugLogEnabled() {
   return qualcomm_debug_log_enabled;
 }
 
-const ModuleFactory SnoopLogger::Factory = ModuleFactory([]() {
-  return new SnoopLogger(os::ParameterProvider::SnoopLogFilePath(),
-                         os::ParameterProvider::SnoozLogFilePath(), GetMaxPacketsPerFile(),
-                         GetMaxPacketsPerBuffer(), GetBtSnoopMode(), IsQualcommDebugLogEnabled(),
-                         kBtSnoozLogLifeTime, kBtSnoozLogDeleteRepeatingAlarmInterval,
-                         IsBtSnoopLogPersisted());
-});
-
 #ifdef __ANDROID__
-void SnoopLogger::LogTracePoint(uint64_t timestamp_us, const HciPacket& packet, Direction direction,
-                                PacketType type) {
+void SnoopLogger::LogTracePoint(const HciPacket& packet, Direction direction, PacketType type) {
   switch (type) {
     case PacketType::EVT: {
       uint8_t evt_code = packet[0];
@@ -1483,7 +1483,7 @@ void SnoopLogger::LogTracePoint(uint64_t timestamp_us, const HciPacket& packet, 
     } break;
   }
 
-  SnoopLoggerTracing::TracePacket(timestamp_us, packet, direction, type);
+  SnoopLoggerTracing::TracePacket(packet, direction, type);
 }
 #endif  // __ANDROID__
 

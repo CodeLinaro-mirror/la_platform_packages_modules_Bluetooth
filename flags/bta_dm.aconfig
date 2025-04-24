@@ -9,20 +9,20 @@ flag {
 }
 
 flag {
-    name: "cancel_open_discovery_client"
+    name: "extend_and_randomize_role_switch_delay"
     namespace: "bluetooth"
-    description: "Cancel connection from discovery client correctly"
-    bug: "356168480"
+    description: "Fix the possible conflicts between role switch and authentication"
+    bug: "388459732"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
 }
 
 flag {
-    name: "extend_and_randomize_role_switch_delay"
+    name: "bta_dm_disc_close_proper_conn_id"
     namespace: "bluetooth"
-    description: "Fix the possible conflicts between role switch and authentication"
-    bug: "388459732"
+    description: "Make sure proper connection is closed when timeout happens"
+    bug: "399687217"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

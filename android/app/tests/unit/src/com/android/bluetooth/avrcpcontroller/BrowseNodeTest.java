@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothDevice;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.SetFlagsRule;
@@ -31,6 +30,8 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.bluetooth.avrcpcontroller.BrowseTree.BrowseNode;
 import com.android.bluetooth.flags.Flags;
 
+import com.google.common.testing.EqualsTester;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -39,6 +40,7 @@ import org.junit.runner.RunWith;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Test cases for {@link BrowseNode}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BrowseNodeTest {
@@ -223,21 +225,18 @@ public class BrowseNodeTest {
     }
 
     @Test
-    @SuppressLint("TruthIncompatibleType") // That the point of this test
-    public void equals_withDifferentClass() {
-        AvrcpItem avrcpItem = new AvrcpItem.Builder().setUuid(TEST_UUID).build();
-
-        assertThat(mRootNode).isNotEqualTo(avrcpItem);
-    }
-
-    @Test
-    public void equals_withSameId() {
+    public void equals() {
         BrowseNode browseNodeOne =
                 mBrowseTree.new BrowseNode(new AvrcpItem.Builder().setUuid(TEST_UUID).build());
         BrowseNode browseNodeTwo =
                 mBrowseTree.new BrowseNode(new AvrcpItem.Builder().setUuid(TEST_UUID).build());
 
-        assertThat(browseNodeOne).isEqualTo(browseNodeTwo);
+        AvrcpItem avrcpItem = new AvrcpItem.Builder().setUuid(TEST_UUID).build();
+
+        new EqualsTester()
+                .addEqualityGroup(browseNodeOne, browseNodeTwo)
+                .addEqualityGroup(avrcpItem)
+                .testEquals();
     }
 
     @Test

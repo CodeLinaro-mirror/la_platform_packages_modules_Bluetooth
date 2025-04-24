@@ -24,7 +24,7 @@ import android.content.pm.PackageManager;
 import android.os.IBinder;
 import android.util.Log;
 
-import com.android.bluetooth.BluetoothMetricsProto;
+import com.android.bluetooth.Utils;
 
 /** Base class for a background service that runs a Bluetooth profile */
 public abstract class ProfileService extends ContextWrapper {
@@ -114,7 +114,12 @@ public abstract class ProfileService extends ContextWrapper {
      * @param enable True to enable the component, False to disable it
      */
     protected void setComponentAvailable(ComponentName component, boolean enable) {
-        Log.d(mName, "setComponentAvailable(component=" + component + ", enable=" + enable + ")");
+        // Test should not set components available for the device
+        if (Utils.isInstrumentationTestMode()) {
+            Log.w(mName, "Skip call to setComponentAvailable(" + component + ", " + enable + ")");
+            return;
+        }
+        Log.d(mName, "setComponentAvailable(" + component + ", " + enable + ")");
         if (component == null) {
             return;
         }
@@ -138,17 +143,6 @@ public abstract class ProfileService extends ContextWrapper {
         sb.append("\nProfile: ");
         sb.append(mName);
         sb.append("\n");
-    }
-
-    /**
-     * Support dumping scan events from GattService
-     *
-     * @param builder metrics proto builder
-     */
-    // Suppressed since this is called from framework
-    @SuppressLint("AndroidFrameworkRequiresPermission")
-    public void dumpProto(BluetoothMetricsProto.BluetoothLog.Builder builder) {
-        // Do nothing
     }
 
     /**

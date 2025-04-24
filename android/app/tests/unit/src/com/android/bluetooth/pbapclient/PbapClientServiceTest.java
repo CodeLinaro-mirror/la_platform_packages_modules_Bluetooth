@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** Test cases for {@link PbapClientService}. */
 @MediumTest
 @RunWith(ParameterizedAndroidJunit4.class)
 public class PbapClientServiceTest {
@@ -236,7 +237,7 @@ public class PbapClientServiceTest {
 
     @Test
     @EnableFlags(Flags.FLAG_PBAP_CLIENT_STORAGE_REFACTOR)
-    public void onConnectionStateChanged_ConnectedToDisonnecting_eventIgnored() {
+    public void onConnectionStateChanged_ConnectedToDisconnecting_eventIgnored() {
         doReturn(STATE_DISCONNECTING).when(mMockDeviceStateMachine).getConnectionState();
         mDeviceCallback.onConnectionStateChanged(STATE_CONNECTED, STATE_DISCONNECTING);
         assertThat(mDeviceMap.containsKey(mDevice)).isTrue();
@@ -254,7 +255,7 @@ public class PbapClientServiceTest {
 
     @Test
     @DisableFlags(Flags.FLAG_PBAP_CLIENT_STORAGE_REFACTOR)
-    public void onAccountsChanged_fromNulltoEmpty_tryDownloadIfConnectedCalled() {
+    public void onAccountsChanged_fromNullToEmpty_tryDownloadIfConnectedCalled() {
         PbapClientStateMachineOld sm = mock(PbapClientStateMachineOld.class);
         mService.mPbapClientStateMachineOldMap.put(mDevice, sm);
 

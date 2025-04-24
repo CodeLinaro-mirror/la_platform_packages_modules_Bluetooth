@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 The Android Open Source Project
+ * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,6 +74,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+/** Test cases for {@link BluetoothMapContentObserver}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothMapContentObserverTest {
@@ -2413,15 +2414,16 @@ public class BluetoothMapContentObserverTest {
         verify(mProviderClient, never()).query(any(), any(), any(), any(), any(), any());
     }
 
-    private BluetoothMapContentObserver.Msg createSimpleMsg() {
+    private static BluetoothMapContentObserver.Msg createSimpleMsg() {
         return new BluetoothMapContentObserver.Msg(1, 1L, 1);
     }
 
-    private BluetoothMapContentObserver.Msg createMsgWithTypeAndThreadId(int type, int threadId) {
+    private static BluetoothMapContentObserver.Msg createMsgWithTypeAndThreadId(
+            int type, int threadId) {
         return new BluetoothMapContentObserver.Msg(1, type, threadId, 1);
     }
 
-    private void setFolderStructureWithTelecomAndMsg(
+    private static void setFolderStructureWithTelecomAndMsg(
             BluetoothMapFolderElement folderElement, String folderName, long folderId) {
         folderElement.addFolder("telecom");
         folderElement.getSubFolder("telecom").addFolder("msg");

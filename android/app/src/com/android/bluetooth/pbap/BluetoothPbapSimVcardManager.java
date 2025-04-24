@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -88,7 +88,7 @@ public class BluetoothPbapSimVcardManager implements AutoCloseable {
     private static final int NUMBERLABEL_COLUMN_INDEX = 3;
 
     private final Context mContext;
-    private ContentResolver mContentResolver;
+    private final ContentResolver mContentResolver;
     private Cursor mCursor;
     private String mErrorReason = NO_ERROR;
 

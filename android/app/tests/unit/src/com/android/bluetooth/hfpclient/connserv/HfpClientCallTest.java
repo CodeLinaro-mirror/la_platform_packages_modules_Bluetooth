@@ -28,6 +28,7 @@ import androidx.test.runner.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+/** Test cases for {@link HfpClientCall}. */
 @RunWith(AndroidJUnit4.class)
 public class HfpClientCallTest {
     private static final int TEST_ID = 0;
@@ -36,7 +37,7 @@ public class HfpClientCallTest {
 
     private final BluetoothDevice mDevice = getTestDevice(32);
 
-    private void assertCall(
+    private static void assertCall(
             BluetoothDevice device,
             int id,
             int state,

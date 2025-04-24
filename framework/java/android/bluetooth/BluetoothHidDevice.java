@@ -18,7 +18,10 @@ package android.bluetooth;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothUtils.executeFromBinder;
+import static android.bluetooth.BluetoothUtils.isValidDevice;
 
 import android.annotation.NonNull;
 import android.annotation.RequiresNoPermission;
@@ -770,8 +773,8 @@ public final class BluetoothHidDevice implements BluetoothProfile {
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (isEnabled()
                 && isValidDevice(device)
-                && (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN
-                        || connectionPolicy == BluetoothProfile.CONNECTION_POLICY_ALLOWED)) {
+                && (connectionPolicy == CONNECTION_POLICY_FORBIDDEN
+                        || connectionPolicy == CONNECTION_POLICY_ALLOWED)) {
             try {
                 return service.setConnectionPolicy(device, connectionPolicy, mAttributionSource);
             } catch (RemoteException e) {
@@ -783,13 +786,6 @@ public final class BluetoothHidDevice implements BluetoothProfile {
 
     private boolean isEnabled() {
         if (mAdapter.getState() == BluetoothAdapter.STATE_ON) return true;
-        return false;
-    }
-
-    private boolean isValidDevice(BluetoothDevice device) {
-        if (device == null) return false;
-
-        if (BluetoothAdapter.checkBluetoothAddress(device.getAddress())) return true;
         return false;
     }
 

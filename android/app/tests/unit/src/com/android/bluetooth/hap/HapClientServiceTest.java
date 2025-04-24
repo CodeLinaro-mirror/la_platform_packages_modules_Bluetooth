@@ -92,6 +92,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/** Test cases for {@link HapClientService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HapClientServiceTest {
@@ -288,7 +289,7 @@ public class HapClientServiceTest {
 
         /* This one has no coordinated operation support but is part of a coordinated set with
          * mDevice, which supports it, thus mDevice will forward the operation to mDevice2.
-         * This device should also be rocognised as grouped one.
+         * This device should also be recognized as grouped one.
          */
         mNativeCallback.onFeaturesUpdate(getByteAddress(mDevice2), 0);
 
@@ -710,7 +711,7 @@ public class HapClientServiceTest {
     }
 
     /** Helper function to get byte array for a device address */
-    private byte[] getByteAddress(BluetoothDevice device) {
+    private static byte[] getByteAddress(BluetoothDevice device) {
         if (device == null) {
             return Utils.getBytesFromAddress("00:00:00:00:00:00");
         }

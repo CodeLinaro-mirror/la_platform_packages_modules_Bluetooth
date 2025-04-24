@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -198,7 +198,7 @@ public class CallLogPullRequestTest {
         assertThat(contact.getTimesContacted()).isEqualTo(1);
     }
 
-    private VCardProperty createProperty(String name, String value) {
+    private static VCardProperty createProperty(String name, String value) {
         VCardProperty property = new VCardProperty();
         property.setName(name);
         property.setValues(value);

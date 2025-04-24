@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,10 @@
 
 #include <frameworks/proto_logging/stats/enums/bluetooth/enums.pb.h>
 
+#include "bta/include/bta_hfp_api.h"
 #include "main/shim/helpers.h"
 #include "os/metrics.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+#include "stack/include/btm_api_types.h"
 
 namespace bluetooth {
 namespace metrics {
@@ -169,7 +168,7 @@ State MapErrorCodeToState(ErrorCode reason) {
   }
 }
 
-State MapHCIStatusToState(tHCI_STATUS status) {
+static State MapHCIStatusToState(tHCI_STATUS status) {
   switch (status) {
     case tHCI_STATUS::HCI_SUCCESS:
       return State::SUCCESS;
@@ -260,7 +259,7 @@ State MapHCIStatusToState(tHCI_STATUS status) {
   }
 }
 
-State MapSmpStatusCodeToState(tSMP_STATUS status) {
+static State MapSmpStatusCodeToState(tSMP_STATUS status) {
   switch (status) {
     case tSMP_STATUS::SMP_SUCCESS:
       return State::SUCCESS;
@@ -314,6 +313,50 @@ State MapSmpStatusCodeToState(tSMP_STATUS status) {
       return State::USER_CANCELLATION;
     default:
       return State::STATE_UNKNOWN;
+  }
+}
+
+State MapHfpVersionToState(uint16_t version) {
+  switch (version) {
+    case HSP_VERSION_1_0:
+      return State::VERSION_1_0;
+    case HFP_VERSION_1_1:
+      return State::VERSION_1_1;
+    case HSP_VERSION_1_2:
+      return State::VERSION_1_2;
+    case HFP_VERSION_1_5:
+      return State::VERSION_1_5;
+    case HFP_VERSION_1_6:
+      return State::VERSION_1_6;
+    case HFP_VERSION_1_7:
+      return State::VERSION_1_7;
+    case HFP_VERSION_1_8:
+      return State::VERSION_1_8;
+    case HFP_VERSION_1_9:
+      return State::VERSION_1_9;
+    default:
+      return State::VERSION_UNKNOWN;
+  }
+}
+
+State MapScoCodecToState(uint16_t codec) {
+  switch (codec) {
+    case BTM_SCO_CODEC_CVSD:
+      return State::CODEC_CVSD;
+    case BTM_SCO_CODEC_MSBC:
+      return State::CODEC_MSBC;
+    case BTM_SCO_CODEC_LC3:
+      return State::CODEC_LC3;
+    case BTA_AG_SCO_APTX_SWB_SETTINGS_Q0_MASK:
+      return State::CODEC_APTX_SWB_SETTINGS_Q0_MASK;
+    case BTA_AG_SCO_APTX_SWB_SETTINGS_Q1_MASK:
+      return State::CODEC_APTX_SWB_SETTINGS_Q1_MASK;
+    case BTA_AG_SCO_APTX_SWB_SETTINGS_Q2_MASK:
+      return State::CODEC_APTX_SWB_SETTINGS_Q2_MASK;
+    case BTA_AG_SCO_APTX_SWB_SETTINGS_Q3_MASK:
+      return State::CODEC_APTX_SWB_SETTINGS_Q3_MASK;
+    default:
+      return State::CODEC_UNKNOWN;
   }
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.List;
 
+/** Test cases for {@link BluetoothMapbMessageSms}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothMapbMessageSmsTest {
@@ -45,17 +46,17 @@ public class BluetoothMapbMessageSmsTest {
     private static final String TEST_MESSAGE = "test";
     private static final String TEST_ADDRESS = "12";
 
-    private Context mTargetContext;
+    private final Context mTargetContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
+
     private List<SmsPdu> TEST_SMS_BODY_PDUS;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         // Do not run test if sms is not supported
-        PackageManager packageManager =
-                InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageManager();
+        PackageManager packageManager = mTargetContext.getPackageManager();
         Assume.assumeTrue(packageManager.hasSystemFeature(FEATURE_TELEPHONY_MESSAGING));
 
-        mTargetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         TEST_SMS_BODY_PDUS =
                 BluetoothMapSmsPdu.getSubmitPdus(mTargetContext, TEST_MESSAGE, TEST_ADDRESS);
     }

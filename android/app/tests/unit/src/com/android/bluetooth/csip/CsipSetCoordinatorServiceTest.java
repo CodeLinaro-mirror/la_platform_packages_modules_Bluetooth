@@ -82,6 +82,7 @@ import org.mockito.hamcrest.MockitoHamcrest;
 import java.util.List;
 import java.util.UUID;
 
+/** Test cases for {@link CsipSetCoordinatorService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class CsipSetCoordinatorServiceTest {
@@ -130,7 +131,6 @@ public class CsipSetCoordinatorServiceTest {
                 new CsipSetCoordinatorService(
                         mAdapterService, mLooper.getLooper(), mNativeInterface, mServiceFactory);
         mService.setAvailable(true);
-
     }
 
     @After
@@ -443,7 +443,7 @@ public class CsipSetCoordinatorServiceTest {
     }
 
     /** Helper function to get byte array for a device address */
-    private byte[] getByteAddress(BluetoothDevice device) {
+    private static byte[] getByteAddress(BluetoothDevice device) {
         return Utils.getBytesFromAddress(device.getAddress());
     }
 

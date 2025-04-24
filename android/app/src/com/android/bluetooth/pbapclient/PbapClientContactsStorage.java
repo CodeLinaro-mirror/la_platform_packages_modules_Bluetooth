@@ -42,6 +42,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * This class owns the interface to the contacts and call history storage mechanism, namely the
@@ -315,7 +316,7 @@ class PbapClientContactsStorage {
     }
 
     @SuppressWarnings("NonApiType") // For convenience, as applyBatch above takes an ArrayList above
-    private ArrayList<ContentProviderOperation> constructInsertOperationsForContact(
+    private static ArrayList<ContentProviderOperation> constructInsertOperationsForContact(
             VCardEntry contact,
             ArrayList<ContentProviderOperation> operations,
             ContentResolver contactsProvider) {
@@ -481,7 +482,7 @@ class PbapClientContactsStorage {
     // TODO: b/365629730 -- JavaUtilDate: prefer Instant or LocalDate
     // NonApiType: For convenience, as the applyBatch API actually takes an ArrayList above
     @SuppressWarnings({"JavaUtilDate", "NonApiType"})
-    private ArrayList<ContentProviderOperation> constructInsertOperationsForCallLog(
+    private static ArrayList<ContentProviderOperation> constructInsertOperationsForCallLog(
             Account account,
             int type,
             VCardEntry call,
@@ -505,7 +506,7 @@ class PbapClientContactsStorage {
         }
 
         List<Pair<String, String>> irmc = call.getUnknownXData();
-        SimpleDateFormat parser = new SimpleDateFormat(TIMESTAMP_FORMAT);
+        SimpleDateFormat parser = new SimpleDateFormat(TIMESTAMP_FORMAT, Locale.ROOT);
         if (irmc != null) {
             for (Pair<String, String> pair : irmc) {
                 if (pair.first.startsWith(CALL_LOG_TIMESTAMP_PROPERTY)) {

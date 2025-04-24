@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,10 @@
  */
 
 package com.android.bluetooth.sap;
+
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -42,6 +46,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link SapService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class SapServiceTest {
@@ -82,20 +87,17 @@ public class SapServiceTest {
     @Test
     public void testGetConnectionPolicy() {
         when(mDatabaseManager.getProfileConnectionPolicy(mDevice, BluetoothProfile.SAP))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
-        assertThat(mService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
+                .thenReturn(CONNECTION_POLICY_UNKNOWN);
+        assertThat(mService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_UNKNOWN);
 
         when(mDatabaseManager.getProfileConnectionPolicy(mDevice, BluetoothProfile.SAP))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
-        assertThat(mService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
+                .thenReturn(CONNECTION_POLICY_FORBIDDEN);
+        assertThat(mService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_FORBIDDEN);
 
         when(mDatabaseManager.getProfileConnectionPolicy(mDevice, BluetoothProfile.SAP))
-                .thenReturn(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+                .thenReturn(CONNECTION_POLICY_ALLOWED);
 
-        assertThat(mService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+        assertThat(mService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
     }
 
     @Test

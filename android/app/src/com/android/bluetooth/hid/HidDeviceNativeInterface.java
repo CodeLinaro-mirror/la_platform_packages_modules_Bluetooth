@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import android.util.Log;
 
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.flags.Flags;
 import com.android.internal.annotations.VisibleForTesting;
 
 /** HID Device Native Interface to/from JNI. */
@@ -123,7 +122,7 @@ public class HidDeviceNativeInterface {
      * @return the result of the native call
      */
     public boolean connect(BluetoothDevice device) {
-        return connectNative(getByteAddress(device));
+        return connectNative(Utils.getByteBrEdrAddress(device));
     }
 
     /**
@@ -241,14 +240,6 @@ public class HidDeviceNativeInterface {
             return null;
         }
         return mAdapterService.getDeviceFromByte(address);
-    }
-
-    private byte[] getByteAddress(BluetoothDevice device) {
-        if (Flags.identityAddressNullIfNotKnown()) {
-            return Utils.getByteBrEdrAddress(device);
-        } else {
-            return mAdapterService.getByteIdentityAddress(device);
-        }
     }
 
     private native void initNative();

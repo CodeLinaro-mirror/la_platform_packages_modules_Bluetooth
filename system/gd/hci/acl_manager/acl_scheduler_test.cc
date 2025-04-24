@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ MATCHER(IsSet, "Future is set") {
 class AclSchedulerTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    fake_registry_.Start<AclScheduler>(&thread_);
+    fake_registry_.Start<AclScheduler>(&thread_, fake_registry_.GetTestHandler());
     ASSERT_TRUE(fake_registry_.IsStarted<AclScheduler>());
 
     client_handler_ = fake_registry_.GetTestModuleHandler(&AclScheduler::Factory);

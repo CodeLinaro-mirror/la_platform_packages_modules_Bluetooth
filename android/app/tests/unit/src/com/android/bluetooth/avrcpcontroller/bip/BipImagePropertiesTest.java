@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-/** A test suite for the BipImageProperties class */
+/** Test cases for {@link BipImageProperties}. */
 @RunWith(AndroidJUnit4.class)
 public class BipImagePropertiesTest {
     private static final String IMAGE_HANDLE = "123456789";
@@ -108,7 +108,7 @@ public class BipImagePropertiesTest {
 
     private static final String IMAGE_PROPERTIES_END = "</image-properties>";
 
-    private InputStream toUtf8Stream(String s) {
+    private static InputStream toUtf8Stream(String s) {
         return new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8));
     }
 

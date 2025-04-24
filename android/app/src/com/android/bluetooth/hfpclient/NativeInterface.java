@@ -27,7 +27,6 @@ import android.util.Log;
 
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.flags.Flags;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
@@ -262,9 +261,9 @@ public class NativeInterface {
      *
      * @param device target device
      * @param atCmd command code
-     * @param val1 command specific argurment1
-     * @param val2 command specific argurment2
-     * @param arg other command specific argurments
+     * @param val1 command specific argument1
+     * @param val2 command specific argument2
+     * @param arg other command specific arguments
      * @return True on success, False on failure
      */
     @VisibleForTesting
@@ -334,12 +333,8 @@ public class NativeInterface {
         return mAdapterService.getDeviceFromByte(address);
     }
 
-    private byte[] getByteAddress(BluetoothDevice device) {
-        if (Flags.identityAddressNullIfNotKnown()) {
-            return Utils.getByteBrEdrAddress(device);
-        } else {
-            return mAdapterService.getByteIdentityAddress(device);
-        }
+    private static byte[] getByteAddress(BluetoothDevice device) {
+        return Utils.getByteBrEdrAddress(device);
     }
 
     // Callbacks from the native back into the java framework. All callbacks are routed via the
@@ -512,7 +507,7 @@ public class NativeInterface {
     /**
      * CIEV (Call indicators) notifying call held states.
      *
-     * <p>Values include: 0 - No calls held 1 - Call is placed on hold or active/held calls wapped
+     * <p>Values include: 0 - No calls held 1 - Call is placed on hold or active/held calls swapped
      * (The AG has both an ACTIVE and HELD call) 2 - Call on hold, no active call
      */
     @VisibleForTesting
@@ -680,7 +675,7 @@ public class NativeInterface {
         if (service != null) {
             service.messageFromNative(event);
         } else {
-            Log.w(TAG, "onUnknowEvent: Ignoring message because service not available: " + event);
+            Log.w(TAG, "onUnknownEvent: Ignoring message because service not available: " + event);
         }
     }
 }
