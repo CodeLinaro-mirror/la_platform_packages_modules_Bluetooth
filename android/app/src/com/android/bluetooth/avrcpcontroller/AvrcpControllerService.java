@@ -171,8 +171,15 @@ public class AvrcpControllerService extends ProfileService {
         return BluetoothProperties.isProfileAvrcpControllerEnabled().orElse(false);
     }
 
+    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
-    public synchronized void cleanup() {
+    public void cleanup() {
+        Log.d(TAG, "cleanup");
+        mNativeInterface.stop();
+    }
+
+    // Called by JNI thread
+    public synchronized void onStop() {
         Log.i(TAG, "Cleanup AVRCP Controller Service");
 
         setActiveDevice(null);
