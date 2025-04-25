@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -62,6 +67,10 @@ public class AvrcpControllerNativeInterface {
 
     void cleanup() {
         cleanupNative();
+    }
+
+    void stop() {
+        stopNative();
     }
 
     boolean sendPassThroughCommand(byte[] address, int keyCode, int keyState) {
@@ -336,6 +345,11 @@ public class AvrcpControllerNativeInterface {
         mAvrcpController.onAvailablePlayerChanged(device);
     }
 
+    void onStop() {
+        Log.d(TAG, "onStop");
+        mAvrcpController.onStop();
+    }
+
     /*
      *  Play State Values from JNI
      */
@@ -369,6 +383,8 @@ public class AvrcpControllerNativeInterface {
     private native void initNative();
 
     private native void cleanupNative();
+
+    private native void stopNative();
 
     /**
      * Send button press commands to addressed device
