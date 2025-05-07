@@ -33,6 +33,9 @@ import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -43,7 +46,6 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothCsipSetCoordinator;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -54,12 +56,11 @@ import android.bluetooth.IBluetoothCsipSetCoordinatorLockCallback;
 import android.content.Intent;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
-import android.os.test.TestLooper;
 
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.bluetooth.TestUtils;
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ServiceFactory;
@@ -77,8 +78,6 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.hamcrest.MockitoHamcrest;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.List;
 import java.util.UUID;
@@ -86,7 +85,7 @@ import java.util.UUID;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class CsipSetCoordinatorServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Spy private ServiceFactory mServiceFactory = new ServiceFactory();
     @Mock private AdapterService mAdapterService;
@@ -95,12 +94,9 @@ public class CsipSetCoordinatorServiceTest {
     @Mock private CsipSetCoordinatorNativeInterface mNativeInterface;
     @Mock private IBluetoothCsipSetCoordinatorLockCallback mCsipSetCoordinatorLockCallback;
 
-    // private final Context mTargetContext =
-    //         InstrumentationRegistry.getInstrumentation().getTargetContext();
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mDevice = TestUtils.getTestDevice(mAdapter, 0);
-    private final BluetoothDevice mDevice2 = TestUtils.getTestDevice(mAdapter, 1);
-    private final BluetoothDevice mDevice3 = TestUtils.getTestDevice(mAdapter, 2);
+    private final BluetoothDevice mDevice = getTestDevice(0);
+    private final BluetoothDevice mDevice2 = getTestDevice(1);
+    private final BluetoothDevice mDevice3 = getTestDevice(2);
 
     private CsipSetCoordinatorService mService;
     private InOrder mInOrder;
@@ -139,7 +135,7 @@ public class CsipSetCoordinatorServiceTest {
 
     @After
     public void tearDown() throws Exception {
-        mService.stop();
+        mService.cleanup();
         assertThat(CsipSetCoordinatorService.getCsipSetCoordinatorService()).isNull();
     }
 
@@ -447,7 +443,7 @@ public class CsipSetCoordinatorServiceTest {
     }
 
     /** Helper function to get byte array for a device address */
-    private byte[] getByteAddress(BluetoothDevice device) {
+    private static byte[] getByteAddress(BluetoothDevice device) {
         return Utils.getBytesFromAddress(device.getAddress());
     }
 

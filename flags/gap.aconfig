@@ -9,13 +9,6 @@ flag {
 }
 
 flag {
-    name: "fix_nonconnectable_scannable_advertisement"
-    namespace: "bluetooth"
-    description: "Fix adv_scan_ind being reported as connectable"
-    bug: "316013235"
-}
-
-flag {
     name: "scan_manager_refactor"
     namespace: "bluetooth"
     description: "Refactor scan manager as described in go/scan-manager-refactor"
@@ -41,26 +34,6 @@ flag {
     namespace: "bluetooth"
     description: "Reimplement BLE scan and advertisement metrics logging."
     bug: "328303508"
-}
-
-flag {
-    name: "ble_context_map_remove_fix"
-    namespace: "bluetooth"
-    description: "Fix connection removal logic in ContextMap class"
-    bug: "329154715"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "scan_record_manufacturer_data_merge"
-    namespace: "bluetooth"
-    description: "If a scan record has multiple datas under same manufacturer id, merge the values"
-    bug: "331723396"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
 }
 
 flag {
@@ -125,16 +98,6 @@ flag {
     namespace: "bluetooth"
     description: "Invoke callbacks on early failure from the native stack"
     bug: "356550596"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "le_inquiry_duration"
-    namespace: "bluetooth"
-    description: "Use the same duration for LE inquiry scan that classic discovery uses"
-    bug: "357894405"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -297,6 +260,56 @@ flag {
     namespace: "bluetooth"
     description: "Fixes the advertising slot becoming unusable due to incorrect map access via [] operator."
     bug: "388615378"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "fix_bluetooth_gatt_getting_duplicate_services"
+    namespace: "bluetooth"
+    description: "Fixes BluetoothGatt getting duplicate GATT services"
+    bug: "391773937"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "batch_scan_optimization"
+    namespace: "bluetooth"
+    description: "Optimized batch scan for less wakeups"
+    bug: "392132489"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "prevent_concurrent_conn_param_updates"
+    namespace: "bluetooth"
+    description: "Makes only one connection parameter update can be processed at a time per device."
+    bug: "397316770"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "distance_measurement_thread"
+    namespace: "bluetooth"
+    description: "Makes distance measurement operations run on one thread."
+    bug: "397809459"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "scan_controller_thread"
+    namespace: "bluetooth"
+    description: "Makes scan controller operations run on one thread."
+    bug: "397863857"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.pbap;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.mock;
@@ -38,8 +40,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -47,7 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RunWith(AndroidJUnit4.class)
 public class BluetoothPbapVcardManagerNestedClassesTest {
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock Context mContext;
 
@@ -235,7 +235,7 @@ public class BluetoothPbapVcardManagerNestedClassesTest {
         assertThat(getContactsIdFromCursor(resultCursor, 2)).isEqualTo(1004);
     }
 
-    private long getContactsIdFromCursor(Cursor cursor, int position) {
+    private static long getContactsIdFromCursor(Cursor cursor, int position) {
         int index = cursor.getColumnIndex(ContactsContract.Data.CONTACT_ID);
         cursor.moveToPosition(position);
         return cursor.getLong(index);

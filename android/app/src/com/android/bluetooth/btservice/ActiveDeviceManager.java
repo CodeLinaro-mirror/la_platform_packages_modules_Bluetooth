@@ -16,10 +16,12 @@
 
 package com.android.bluetooth.btservice;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHearingAid;
 import android.bluetooth.BluetoothLeAudio;
@@ -93,6 +95,8 @@ import java.util.Set;
  * <p>8) If there is already an active device, however, if active device change notified with a null
  * device, the corresponding profile is marked as having no active device.
  *
+ * <p>TODO: Remove with com.android.bluetooth.flags.adm_remove_handling_wired
+ *
  * <p>9) If a wired audio device is connected, the audio output is switched by the Audio Framework
  * itself to that device. We detect this here, and the active device for each profile
  * (A2DP/HFP/HearingAid/LE audio) is set to null to reflect the output device state change. However,
@@ -109,6 +113,7 @@ import java.util.Set;
  */
 public class ActiveDeviceManager implements AdapterService.BluetoothStateCallback {
     private static final String TAG = ActiveDeviceManager.class.getSimpleName();
+
     @VisibleForTesting static final int A2DP_HFP_SYNC_CONNECTION_TIMEOUT_MS = 5_000;
 
     private final AdapterService mAdapterService;
@@ -178,7 +183,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
      */
     public void profileConnectionStateChanged(
             int profile, BluetoothDevice device, int fromState, int toState) {
-        if (toState == BluetoothProfile.STATE_CONNECTED) {
+        if (toState == STATE_CONNECTED) {
             switch (profile) {
                 case BluetoothProfile.A2DP:
                     mHandler.post(() -> handleA2dpConnected(device));
@@ -196,7 +201,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     mHandler.post(() -> handleHapConnected(device));
                     break;
             }
-        } else if (fromState == BluetoothProfile.STATE_CONNECTED) {
+        } else if (fromState == STATE_CONNECTED) {
             switch (profile) {
                 case BluetoothProfile.A2DP:
                     mHandler.post(() -> handleA2dpDisconnected(device));
@@ -289,7 +294,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
                 // Activate A2DP if audio mode is normal or HFP is not supported or enabled.
                 if (mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.HEADSET)
-                                != BluetoothProfile.CONNECTION_POLICY_ALLOWED
+                                != CONNECTION_POLICY_ALLOWED
                         || mAudioManager.getMode() == AudioManager.MODE_NORMAL) {
                     boolean a2dpMadeActive = setA2dpActiveDevice(device);
                     if (a2dpMadeActive && !Utils.isDualModeAudioEnabled()) {
@@ -359,9 +364,9 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
                 // Activate HFP if audio mode is not normal or A2DP is not supported or enabled.
                 if (mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.A2DP)
-                                != BluetoothProfile.CONNECTION_POLICY_ALLOWED
+                                != CONNECTION_POLICY_ALLOWED
                         || mAudioManager.getMode() != AudioManager.MODE_NORMAL) {
-                    if (isWatch(device)) {
+                    if (Utils.isWatch(mAdapterService, device)) {
                         Log.i(TAG, "Do not set hfp active for watch device " + device);
                         return;
                     }
@@ -680,7 +685,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 if (!Objects.equals(mHfpActiveDevice, device)
                         && mHfpConnectedDevices.contains(device)
                         && mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.HEADSET)
-                                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+                                == CONNECTION_POLICY_ALLOWED) {
                     mClassicDeviceToBeActivated = device;
                     setHfpActiveDevice(device);
                     mHandler.postDelayed(
@@ -751,7 +756,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 if (!Objects.equals(mA2dpActiveDevice, device)
                         && mA2dpConnectedDevices.contains(device)
                         && mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.A2DP)
-                                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+                                == CONNECTION_POLICY_ALLOWED) {
                     mClassicDeviceToBeActivated = device;
                     setA2dpActiveDevice(device);
                     mHandler.postDelayed(
@@ -857,22 +862,26 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
         @Override
         public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
             Log.d(TAG, "onAudioDevicesAdded");
-            if (!Arrays.stream(addedDevices)
-                    .anyMatch(AudioManagerAudioDeviceCallback::isWiredAudioHeadset)) {
-                return;
+            if (!Flags.admRemoveHandlingWired()) {
+                if (!Arrays.stream(addedDevices)
+                        .anyMatch(AudioManagerAudioDeviceCallback::isWiredAudioHeadset)) {
+                    return;
+                }
+                wiredAudioDeviceConnected();
             }
-            wiredAudioDeviceConnected();
         }
 
         @Override
         public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
             Log.d(TAG, "onAudioDevicesRemoved");
-            if (!Arrays.stream(removedDevices)
-                    .anyMatch(AudioManagerAudioDeviceCallback::isWiredAudioHeadset)) {
-                return;
-            }
-            synchronized (mLock) {
-                setFallbackDeviceActiveLocked(null);
+            if (!Flags.admRemoveHandlingWired()) {
+                if (!Arrays.stream(removedDevices)
+                        .anyMatch(AudioManagerAudioDeviceCallback::isWiredAudioHeadset)) {
+                    return;
+                }
+                synchronized (mLock) {
+                    setFallbackDeviceActiveLocked(null);
+                }
             }
         }
     }
@@ -1345,32 +1354,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
             return hearingAidService.getHiSyncId(mHearingAidActiveDevices.iterator().next());
         }
         return BluetoothHearingAid.HI_SYNC_ID_INVALID;
-    }
-
-    /**
-     * Checks CoD and metadata to determine if the device is a watch
-     *
-     * @param device the remote device
-     * @return {@code true} if it's a watch, {@code false} otherwise
-     */
-    private boolean isWatch(BluetoothDevice device) {
-        // Check CoD
-        BluetoothClass deviceClass = new BluetoothClass(mAdapterService.getRemoteClass(device));
-        if (deviceClass.getDeviceClass() == BluetoothClass.Device.WEARABLE_WRIST_WATCH) {
-            return true;
-        }
-
-        // Check metadata
-        byte[] deviceType = mDbManager.getCustomMeta(device, BluetoothDevice.METADATA_DEVICE_TYPE);
-        if (deviceType == null) {
-            return false;
-        }
-        String deviceTypeStr = new String(deviceType);
-        if (deviceTypeStr.equals(BluetoothDevice.DEVICE_TYPE_WATCH)) {
-            return true;
-        }
-
-        return false;
     }
 
     /**

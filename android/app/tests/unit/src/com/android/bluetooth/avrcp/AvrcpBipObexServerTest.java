@@ -27,7 +27,7 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
-import androidx.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -116,7 +116,8 @@ public class AvrcpBipObexServerTest {
     @Before
     public void setUp() throws Exception {
         mTestResources =
-                TestUtils.getTestApplicationResources(InstrumentationRegistry.getTargetContext());
+                TestUtils.getTestApplicationResources(
+                        InstrumentationRegistry.getInstrumentation().getTargetContext());
 
         mCoverArt = loadCoverArt(com.android.bluetooth.tests.R.raw.image_200_200);
 
@@ -160,7 +161,8 @@ public class AvrcpBipObexServerTest {
      * <p>Our server will use: - getReceivedHeader - sendHeaders - getMaxPacketSize -
      * openOutputStream
      */
-    private Operation makeOperation(HeaderSet requestHeaders, OutputStream os) throws Exception {
+    private static Operation makeOperation(HeaderSet requestHeaders, OutputStream os)
+            throws Exception {
         Operation op = mock(Operation.class);
         when(op.getReceivedHeader()).thenReturn(requestHeaders);
         when(op.getMaxPacketSize()).thenReturn(256);
@@ -168,7 +170,7 @@ public class AvrcpBipObexServerTest {
         return op;
     }
 
-    private byte[] makeDescriptor(int encoding, int width, int height) {
+    private static byte[] makeDescriptor(int encoding, int width, int height) {
         return new BipImageDescriptor.Builder()
                 .setEncoding(encoding)
                 .setFixedDimensions(width, height)

@@ -15,6 +15,8 @@
  */
 package com.android.bluetooth.opp;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.mockGetSystemService;
 import static com.android.bluetooth.opp.BluetoothOppService.WHERE_INVISIBLE_UNCONFIRMED;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -29,6 +31,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
+import android.app.NotificationManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.MatrixCursor;
@@ -48,24 +51,29 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothOppServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private BluetoothMethodProxy mBluetoothMethodProxy;
+    @Mock private AdapterService mAdapterService;
 
     private final Context mTargetContext =
             InstrumentationRegistry.getInstrumentation().getTargetContext();
 
     private BluetoothOppService mService;
-    private boolean mIsBluetoothOppServiceStarted;
 
     @Before
     public void setUp() throws Exception {
+        mockGetSystemService(
+                mAdapterService, Context.NOTIFICATION_SERVICE, NotificationManager.class);
+        doReturn(mTargetContext.getPackageName()).when(mAdapterService).getPackageName();
+        doReturn(mTargetContext.getPackageManager()).when(mAdapterService).getPackageManager();
+        doReturn(mTargetContext.getResources()).when(mAdapterService).getResources();
+        doReturn(mTargetContext.getContentResolver()).when(mAdapterService).getContentResolver();
+
         BluetoothMethodProxy.setInstanceForTesting(mBluetoothMethodProxy);
 
         // BluetoothOppService can create a UpdateThread, which will call
@@ -79,10 +87,8 @@ public class BluetoothOppServiceTest {
             Looper.prepare();
         }
 
-        AdapterService adapterService = new AdapterService(mTargetContext);
-        mService = new BluetoothOppService(adapterService);
+        mService = new BluetoothOppService(mAdapterService);
         mService.setAvailable(true);
-        mIsBluetoothOppServiceStarted = true;
 
         // Wait until the initial trimDatabase operation is done.
         verify(mBluetoothMethodProxy, timeout(3_000))
@@ -102,19 +108,14 @@ public class BluetoothOppServiceTest {
         // Since the update thread is not run (we mocked it), it will not clean itself on interrupt
         // (normally, the service will wait for the update thread to clean itself after
         // being interrupted). We clean it manually here
-        BluetoothOppService service = mService;
-        if (service != null) {
-            service.mUpdateThread = null;
-            Thread updateNotificationThread = service.mNotifier.mUpdateNotificationThread;
-            if (updateNotificationThread != null) {
-                updateNotificationThread.join();
-            }
+        mService.mUpdateThread = null;
+        Thread updateNotificationThread = mService.mNotifier.mUpdateNotificationThread;
+        if (updateNotificationThread != null) {
+            updateNotificationThread.join();
         }
 
         BluetoothMethodProxy.setInstanceForTesting(null);
-        if (mIsBluetoothOppServiceStarted) {
-            service.stop();
-        }
+        mService.cleanup();
     }
 
     @Test

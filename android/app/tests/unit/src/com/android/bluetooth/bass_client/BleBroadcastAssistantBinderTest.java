@@ -16,7 +16,12 @@
 
 package com.android.bluetooth.bass_client;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -26,12 +31,12 @@ import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.IBluetoothLeBroadcastAssistantCallback;
 import android.bluetooth.le.ScanFilter;
 import android.content.AttributionSource;
 
-import com.android.bluetooth.TestUtils;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -40,8 +45,6 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.Collections;
 import java.util.List;
@@ -49,11 +52,15 @@ import java.util.List;
 @RunWith(JUnit4.class)
 public class BleBroadcastAssistantBinderTest {
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
+    private final BluetoothAdapter mAdapter =
+            InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext()
+                    .getSystemService(BluetoothManager.class)
+                    .getAdapter();
     private final AttributionSource mAttributionSource = mAdapter.getAttributionSource();
-    private final BluetoothDevice mDevice = TestUtils.getTestDevice(mAdapter, 0);
+    private final BluetoothDevice mDevice = getTestDevice(0);
 
     @Mock private BassClientService mService;
 
@@ -103,16 +110,13 @@ public class BleBroadcastAssistantBinderTest {
 
     @Test
     public void setConnectionPolicy() {
-        mBinder.setConnectionPolicy(
-                mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED, mAttributionSource);
-        verify(mService).setConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+        mBinder.setConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED, mAttributionSource);
+        verify(mService).setConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED);
 
         mBinder.cleanup();
         assertThat(
                         mBinder.setConnectionPolicy(
-                                mDevice,
-                                BluetoothProfile.CONNECTION_POLICY_ALLOWED,
-                                mAttributionSource))
+                                mDevice, CONNECTION_POLICY_ALLOWED, mAttributionSource))
                 .isFalse();
     }
 
@@ -123,7 +127,7 @@ public class BleBroadcastAssistantBinderTest {
 
         mBinder.cleanup();
         assertThat(mBinder.getConnectionPolicy(mDevice, mAttributionSource))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
+                .isEqualTo(CONNECTION_POLICY_FORBIDDEN);
     }
 
     @Test

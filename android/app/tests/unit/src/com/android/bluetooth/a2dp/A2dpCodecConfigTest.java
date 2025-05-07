@@ -16,11 +16,14 @@
 
 package com.android.bluetooth.a2dp;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import static org.mockito.Mockito.*;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothCodecConfig;
 import android.bluetooth.BluetoothCodecStatus;
 import android.bluetooth.BluetoothDevice;
@@ -33,14 +36,11 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.bluetooth.R;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.Arrays;
 
@@ -48,10 +48,10 @@ import java.util.Arrays;
 @RunWith(AndroidJUnit4.class)
 public class A2dpCodecConfigTest {
 
-    private BluetoothDevice mTestDevice;
+    private final BluetoothDevice mDevice = getTestDevice(56);
     private A2dpCodecConfig mA2dpCodecConfig;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private Context mMockContext;
     @Mock private Resources mMockResources;
@@ -228,7 +228,6 @@ public class A2dpCodecConfigTest {
                 .thenReturn(OPUS_PRIORITY_DEFAULT);
 
         mA2dpCodecConfig = new A2dpCodecConfig(mMockContext, mA2dpNativeInterface);
-        mTestDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
 
         doReturn(true)
                 .when(mA2dpNativeInterface)
@@ -717,22 +716,21 @@ public class A2dpCodecConfigTest {
 
         // shouldn't invoke to native when current codec is SBC
         mA2dpCodecConfig.disableOptionalCodecs(
-                mTestDevice,
+                mDevice,
                 getDefaultCodecConfigByType(
                         BluetoothCodecConfig.SOURCE_CODEC_TYPE_SBC,
                         BluetoothCodecConfig.CODEC_PRIORITY_DEFAULT));
-        verify(mA2dpNativeInterface, times(0))
-                .setCodecConfigPreference(mTestDevice, codecConfigsArray);
+        verify(mA2dpNativeInterface, times(0)).setCodecConfigPreference(mDevice, codecConfigsArray);
 
         // should invoke to native when current codec is an optional codec
         int invokedCounter = 0;
         for (int codecType : sOptionalCodecTypes) {
             mA2dpCodecConfig.disableOptionalCodecs(
-                    mTestDevice,
+                    mDevice,
                     getDefaultCodecConfigByType(
                             codecType, BluetoothCodecConfig.CODEC_PRIORITY_DEFAULT));
             verify(mA2dpNativeInterface, times(++invokedCounter))
-                    .setCodecConfigPreference(mTestDevice, codecConfigsArray);
+                    .setCodecConfigPreference(mDevice, codecConfigsArray);
         }
     }
 
@@ -753,23 +751,24 @@ public class A2dpCodecConfigTest {
 
         // should invoke to native when current codec is SBC
         mA2dpCodecConfig.enableOptionalCodecs(
-                mTestDevice,
+                mDevice,
                 getDefaultCodecConfigByType(
                         BluetoothCodecConfig.SOURCE_CODEC_TYPE_SBC,
                         BluetoothCodecConfig.CODEC_PRIORITY_DEFAULT));
-        verify(mA2dpNativeInterface).setCodecConfigPreference(mTestDevice, codecConfigsArray);
+        verify(mA2dpNativeInterface).setCodecConfigPreference(mDevice, codecConfigsArray);
 
         // shouldn't invoke to native when current codec is already an optional
         for (int codecType : sOptionalCodecTypes) {
             mA2dpCodecConfig.enableOptionalCodecs(
-                    mTestDevice,
+                    mDevice,
                     getDefaultCodecConfigByType(
                             codecType, BluetoothCodecConfig.CODEC_PRIORITY_DEFAULT));
-            verify(mA2dpNativeInterface).setCodecConfigPreference(mTestDevice, codecConfigsArray);
+            verify(mA2dpNativeInterface).setCodecConfigPreference(mDevice, codecConfigsArray);
         }
     }
 
-    private BluetoothCodecConfig getDefaultCodecConfigByType(int codecType, int codecPriority) {
+    private static BluetoothCodecConfig getDefaultCodecConfigByType(
+            int codecType, int codecPriority) {
         for (BluetoothCodecConfig codecConfig : sDefaultCodecConfigs) {
             if (codecConfig.getCodecType() != codecType) {
                 continue;
@@ -787,14 +786,16 @@ public class A2dpCodecConfigTest {
                     codecConfig.getCodecSpecific3(),
                     codecConfig.getCodecSpecific4());
         }
-        Assert.fail(
-                "getDefaultCodecConfigByType: No such codecType="
-                        + codecType
-                        + " in sDefaultCodecConfigs");
+        assertWithMessage(
+                        "Default codec ("
+                                + Arrays.toString(sDefaultCodecConfigs)
+                                + ") does not contains "
+                                + codecType)
+                .fail();
         return null;
     }
 
-    private BluetoothCodecConfig getCodecCapabilitiesByType(int codecType) {
+    private static BluetoothCodecConfig getCodecCapabilitiesByType(int codecType) {
         for (BluetoothCodecConfig codecCapabilities : sCodecCapabilities) {
             if (codecCapabilities.getCodecType() != codecType) {
                 continue;
@@ -810,10 +811,12 @@ public class A2dpCodecConfigTest {
                     codecCapabilities.getCodecSpecific3(),
                     codecCapabilities.getCodecSpecific4());
         }
-        Assert.fail(
-                "getCodecCapabilitiesByType: No such codecType="
-                        + codecType
-                        + " in sCodecCapabilities");
+        assertWithMessage(
+                        "Codec capabilities ("
+                                + Arrays.toString(sCodecCapabilities)
+                                + ") does not contains "
+                                + codecType)
+                .fail();
         return null;
     }
 
@@ -871,10 +874,10 @@ public class A2dpCodecConfigTest {
                             Arrays.asList(sCodecCapabilities),
                             Arrays.asList(optionalCodecsArray));
             mA2dpCodecConfig.setCodecConfigPreference(
-                    mTestDevice, codecStatus, newCodecConfigsArray[0]);
+                    mDevice, codecStatus, newCodecConfigsArray[0]);
             // no mandatory codec in selectable, and should not apply
             verify(mA2dpNativeInterface, times(0))
-                    .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                    .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
         } else {
             if (oldCodecType != newCodecType) {
@@ -897,10 +900,9 @@ public class A2dpCodecConfigTest {
                         oldCodecConfig,
                         Arrays.asList(sCodecCapabilities),
                         Arrays.asList(minimumCodecsArray));
-        mA2dpCodecConfig.setCodecConfigPreference(
-                mTestDevice, codecStatus, newCodecConfigsArray[0]);
+        mA2dpCodecConfig.setCodecConfigPreference(mDevice, codecStatus, newCodecConfigsArray[0]);
         verify(mA2dpNativeInterface, times(invokeNative ? 1 : 0))
-                .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
         // 3. all codecs were selectable
         codecStatus =
@@ -908,10 +910,9 @@ public class A2dpCodecConfigTest {
                         oldCodecConfig,
                         Arrays.asList(sCodecCapabilities),
                         Arrays.asList(sCodecCapabilities));
-        mA2dpCodecConfig.setCodecConfigPreference(
-                mTestDevice, codecStatus, newCodecConfigsArray[0]);
+        mA2dpCodecConfig.setCodecConfigPreference(mDevice, codecStatus, newCodecConfigsArray[0]);
         verify(mA2dpNativeInterface, times(invokeNative ? 2 : 0))
-                .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                .setCodecConfigPreference(mDevice, newCodecConfigsArray);
     }
 
     private void testCodecSpecificParametersChangeHelper(
@@ -952,10 +953,9 @@ public class A2dpCodecConfigTest {
                         oldCodecConfig,
                         Arrays.asList(sCodecCapabilities),
                         Arrays.asList(sCodecCapabilities));
-        mA2dpCodecConfig.setCodecConfigPreference(
-                mTestDevice, codecStatus, newCodecConfigsArray[0]);
+        mA2dpCodecConfig.setCodecConfigPreference(mDevice, codecStatus, newCodecConfigsArray[0]);
         verify(mA2dpNativeInterface, times(invokeNative ? 1 : 0))
-                .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                .setCodecConfigPreference(mDevice, newCodecConfigsArray);
     }
 
     private void testCodecPriorityChangeHelper(
@@ -987,9 +987,9 @@ public class A2dpCodecConfigTest {
                                 Arrays.asList(sCodecCapabilities),
                                 Arrays.asList(poorCodecsArray));
                 mA2dpCodecConfig.setCodecConfigPreference(
-                        mTestDevice, codecStatus, newCodecConfigsArray[0]);
+                        mDevice, codecStatus, newCodecConfigsArray[0]);
                 verify(mA2dpNativeInterface, times(0))
-                        .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                        .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
                 // selectable: {+mandatory, +oldCodec = newCodec}, or
                 // selectable: {+mandatory = newCodec, +oldCodec}.
@@ -1011,9 +1011,9 @@ public class A2dpCodecConfigTest {
                                 Arrays.asList(sCodecCapabilities),
                                 Arrays.asList(poorCodecsArray));
                 mA2dpCodecConfig.setCodecConfigPreference(
-                        mTestDevice, codecStatus, newCodecConfigsArray[0]);
+                        mDevice, codecStatus, newCodecConfigsArray[0]);
                 verify(mA2dpNativeInterface, times(0))
-                        .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                        .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
                 // selectable: {+mandatory, +oldCodec, -newCodec}. Not applied
                 poorCodecsArray =
@@ -1027,9 +1027,9 @@ public class A2dpCodecConfigTest {
                                 Arrays.asList(sCodecCapabilities),
                                 Arrays.asList(poorCodecsArray));
                 mA2dpCodecConfig.setCodecConfigPreference(
-                        mTestDevice, codecStatus, newCodecConfigsArray[0]);
+                        mDevice, codecStatus, newCodecConfigsArray[0]);
                 verify(mA2dpNativeInterface, times(0))
-                        .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                        .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
                 // selectable: {+mandatory, +oldCodec, +newCodec}.
                 minimumCodecsArray =
@@ -1061,9 +1061,9 @@ public class A2dpCodecConfigTest {
                             Arrays.asList(sCodecCapabilities),
                             Arrays.asList(poorCodecsArray));
             mA2dpCodecConfig.setCodecConfigPreference(
-                    mTestDevice, codecStatus, newCodecConfigsArray[0]);
+                    mDevice, codecStatus, newCodecConfigsArray[0]);
             verify(mA2dpNativeInterface, times(0))
-                    .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                    .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
             // selectable: {+mandatory = oldCodec, +newCodec}.
             minimumCodecsArray =
@@ -1088,10 +1088,9 @@ public class A2dpCodecConfigTest {
                         oldCodecConfig,
                         Arrays.asList(sCodecCapabilities),
                         Arrays.asList(minimumCodecsArray));
-        mA2dpCodecConfig.setCodecConfigPreference(
-                mTestDevice, codecStatus, newCodecConfigsArray[0]);
+        mA2dpCodecConfig.setCodecConfigPreference(mDevice, codecStatus, newCodecConfigsArray[0]);
         verify(mA2dpNativeInterface, times(invokedCounter))
-                .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                .setCodecConfigPreference(mDevice, newCodecConfigsArray);
 
         // 4. all codecs were selectable
         invokedCounter += (shouldApplyWhenAllSelectable ? 1 : 0);
@@ -1100,10 +1099,9 @@ public class A2dpCodecConfigTest {
                         oldCodecConfig,
                         Arrays.asList(sCodecCapabilities),
                         Arrays.asList(sCodecCapabilities));
-        mA2dpCodecConfig.setCodecConfigPreference(
-                mTestDevice, codecStatus, newCodecConfigsArray[0]);
+        mA2dpCodecConfig.setCodecConfigPreference(mDevice, codecStatus, newCodecConfigsArray[0]);
         verify(mA2dpNativeInterface, times(invokedCounter))
-                .setCodecConfigPreference(mTestDevice, newCodecConfigsArray);
+                .setCodecConfigPreference(mDevice, newCodecConfigsArray);
     }
 
     private static BluetoothCodecConfig buildBluetoothCodecConfig(

@@ -34,6 +34,9 @@ import static android.bluetooth.IBluetoothVolumeControl.VOLUME_CONTROL_UNKNOWN_V
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -47,6 +50,7 @@ import static org.mockito.Mockito.when;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.BluetoothVolumeControl;
@@ -57,14 +61,15 @@ import android.content.Intent;
 import android.media.AudioManager;
 import android.os.Binder;
 import android.os.ParcelUuid;
-import android.os.test.TestLooper;
 import android.platform.test.annotations.DisableFlags;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.SetFlagsRule;
 
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.bass_client.BassClientService;
 import com.android.bluetooth.btservice.AdapterService;
@@ -77,7 +82,6 @@ import com.android.bluetooth.le_audio.LeAudioService;
 import org.hamcrest.Matcher;
 import org.hamcrest.core.AllOf;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -86,8 +90,6 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.hamcrest.MockitoHamcrest;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -97,7 +99,7 @@ import java.util.stream.IntStream;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class VolumeControlServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Mock private AdapterService mAdapterService;
@@ -116,9 +118,13 @@ public class VolumeControlServiceTest {
     private static final int CALL_MAX_VOL = 8;
     private static final int TEST_GROUP_ID = 1;
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mDevice = TestUtils.getTestDevice(mAdapter, 134);
-    private final BluetoothDevice mDeviceTwo = TestUtils.getTestDevice(mAdapter, 231);
+    private final BluetoothAdapter mAdapter =
+            InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext()
+                    .getSystemService(BluetoothManager.class)
+                    .getAdapter();
+    private final BluetoothDevice mDevice = getTestDevice(134);
+    private final BluetoothDevice mDeviceTwo = getTestDevice(231);
 
     private AttributionSource mAttributionSource;
     private VolumeControlService mService;
@@ -174,7 +180,7 @@ public class VolumeControlServiceTest {
     @After
     public void tearDown() {
         assertThat(mLooper.nextMessage()).isNull();
-        mService.stop();
+        mService.cleanup();
         mLooper.dispatchAll();
         assertThat(VolumeControlService.getVolumeControlService()).isNull();
     }
@@ -688,7 +694,6 @@ public class VolumeControlServiceTest {
 
     /** Test if phone will set volume which is read from the buds */
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_VOLUME_CONTROL_PRIMARY_GROUP_ONLY)
     public void connectedDeviceWithUserPersistFlagSet() {
         int groupId = 1;
         int volumeDevice = 56;
@@ -1125,13 +1130,13 @@ public class VolumeControlServiceTest {
         mBinder.setDeviceVolume(mDevice, deviceOneVolume, false, mAttributionSource);
         inOrderNative.verify(mNativeInterface).setVolume(mDevice, deviceOneVolume);
         assertThat(mService.getDeviceVolume(mDevice)).isEqualTo(deviceOneVolume);
-        Assert.assertNotEquals(deviceOneVolume, mService.getDeviceVolume(mDeviceTwo));
+        assertThat(mService.getDeviceVolume(mDeviceTwo)).isNotEqualTo(deviceOneVolume);
         inOrderNative.verify(mNativeInterface, never()).setGroupVolume(anyInt(), anyInt());
 
         mBinder.setDeviceVolume(mDeviceTwo, deviceTwoVolume, false, mAttributionSource);
         inOrderNative.verify(mNativeInterface).setVolume(mDeviceTwo, deviceTwoVolume);
         assertThat(mService.getDeviceVolume(mDeviceTwo)).isEqualTo(deviceTwoVolume);
-        Assert.assertNotEquals(deviceTwoVolume, mService.getDeviceVolume(mDevice));
+        assertThat(mService.getDeviceVolume(mDevice)).isNotEqualTo(deviceTwoVolume);
         inOrderNative.verify(mNativeInterface, never()).setGroupVolume(anyInt(), anyInt());
     }
 
@@ -1434,7 +1439,6 @@ public class VolumeControlServiceTest {
 
     /** Test Volume Control changed for broadcast primary group. */
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_VOLUME_CONTROL_PRIMARY_GROUP_ONLY)
     public void volumeControlChangedForBroadcastPrimaryGroup() {
         int groupId = 1;
         int groupVolume = 30;

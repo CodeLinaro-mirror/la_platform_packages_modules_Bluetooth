@@ -22,10 +22,9 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.telephony.SmsManager;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.map.BluetoothMapSmsPdu.SmsPdu;
@@ -46,19 +45,17 @@ public class BluetoothMapbMessageSmsTest {
     private static final String TEST_MESSAGE = "test";
     private static final String TEST_ADDRESS = "12";
 
-    private SmsManager mSmsManager = SmsManager.getDefault();
-    private Context mTargetContext;
+    private final Context mTargetContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
+
     private List<SmsPdu> TEST_SMS_BODY_PDUS;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         // Do not run test if sms is not supported
-        PackageManager packageManager =
-                InstrumentationRegistry.getTargetContext().getPackageManager();
-        Assume.assumeTrue(packageManager.isPackageAvailable(FEATURE_TELEPHONY_MESSAGING));
-        Assume.assumeTrue(mSmsManager.isImsSmsSupported());
+        PackageManager packageManager = mTargetContext.getPackageManager();
+        Assume.assumeTrue(packageManager.hasSystemFeature(FEATURE_TELEPHONY_MESSAGING));
 
-        mTargetContext = InstrumentationRegistry.getTargetContext();
         TEST_SMS_BODY_PDUS =
                 BluetoothMapSmsPdu.getSubmitPdus(mTargetContext, TEST_MESSAGE, TEST_ADDRESS);
     }

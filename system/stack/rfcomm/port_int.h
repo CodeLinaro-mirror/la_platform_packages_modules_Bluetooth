@@ -168,9 +168,10 @@ typedef struct {
 
   tPORT_CONNECTION_STATE state; /* State of the application */
 
-  uint8_t scn;      /* Service channel number */
-  uint16_t uuid;    /* Service UUID */
-  uint32_t app_uid; /* UID of the app for which this socket was created */
+  uint8_t scn;              /* Service channel number */
+  uint16_t uuid;            /* Service UUID */
+  uint32_t app_uid;         /* UID of the app for which this socket was created */
+  uint64_t sdp_duration_ms; /* Time it took to perform SDP (for metrics) */
 
   RawAddress bd_addr; /* BD ADDR of the device for the multiplexer channel */
   bool is_server;     /* true if the server application */
@@ -196,6 +197,8 @@ typedef struct {
 #define PORT_CTRL_REQ_CONFIRMED 0x02
 #define PORT_CTRL_IND_RECEIVED 0x04
 #define PORT_CTRL_IND_RESPONDED 0x08
+#define PORT_CTRL_SETUP_COMPLETED \
+  (PORT_CTRL_REQ_SENT | PORT_CTRL_REQ_CONFIRMED | PORT_CTRL_IND_RECEIVED | PORT_CTRL_IND_RESPONDED)
 
   uint8_t port_ctrl; /* Modem Status Command  */
 

@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.opp;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
@@ -33,6 +35,7 @@ import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
@@ -55,29 +58,27 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class BluetoothOppUtilityTest {
-
-    private static final Uri CORRECT_FORMAT_BUT_INVALID_FILE_URI =
-            Uri.parse("content://com.android.bluetooth.opp/btopp/0123455343467");
-    private static final Uri INCORRECT_FORMAT_URI = Uri.parse("www.google.com");
-
-    Context mContext;
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock Cursor mCursor;
 
     @Spy BluetoothMethodProxy mCallProxy = BluetoothMethodProxy.getInstance();
 
+    private static final Uri CORRECT_FORMAT_BUT_INVALID_FILE_URI =
+            Uri.parse("content://com.android.bluetooth.opp/btopp/0123455343467");
+    private static final Uri INCORRECT_FORMAT_URI = Uri.parse("www.google.com");
+
+    private final Context mContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
+
     @Before
     public void setUp() throws Exception {
-        mContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         BluetoothMethodProxy.setInstanceForTesting(mCallProxy);
         TestUtils.setUpUiTest();
     }
@@ -280,7 +281,7 @@ public class BluetoothOppUtilityTest {
 
     @Test
     public void fillRecord_filledAllProperties() {
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        BluetoothAdapter adapter = mContext.getSystemService(BluetoothManager.class).getAdapter();
         int idValue = 1234;
         int directionValue = BluetoothShare.DIRECTION_OUTBOUND;
         long totalBytesValue = 10;
@@ -324,12 +325,6 @@ public class BluetoothOppUtilityTest {
         assertThat(info.mDeviceName).isEqualTo(deviceNameValue);
         assertThat(info.mHandoverInitiated).isEqualTo(false);
         assertThat(info.mFileName).isEqualTo(fileNameValue);
-    }
-
-    @Test
-    public void fileExists_returnFalse() {
-        assertThat(BluetoothOppUtility.fileExists(mContext, CORRECT_FORMAT_BUT_INVALID_FILE_URI))
-                .isFalse();
     }
 
     @Test

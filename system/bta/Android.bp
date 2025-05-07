@@ -194,6 +194,7 @@ cc_library_static {
         "gatt/database_builder.cc",
         "jv/bta_jv_act.cc",
         "jv/bta_jv_api.cc",
+        "rfcomm/bta_rfcomm_metrics.cc",
         "rfcomm/bta_rfcomm_scn.cc",
         "sdp/bta_sdp.cc",
         "sdp/bta_sdp_act.cc",
@@ -350,6 +351,7 @@ cc_test {
         "mts_defaults",
     ],
     test_suites: ["general-tests"],
+    host_supported: true,
     srcs: [
         ":LegacyStackSdp",
         ":TestCommonMockFunctions",
@@ -399,6 +401,7 @@ cc_test {
         "mts_defaults",
     ],
     test_suites: ["general-tests"],
+    host_supported: true,
     srcs: [
         ":TestCommonMockFunctions",
         ":TestMockBtif",
@@ -413,6 +416,7 @@ cc_test {
         "libbase",
         "libcrypto",
         "libcutils",
+        "libevent",
         "liblog",
         "libprotobuf-cpp-lite",
         "libstatssocket",
@@ -456,6 +460,7 @@ cc_test {
     srcs: [
         ":TestCommonMockFunctions",
         ":TestFakeOsi",
+        ":TestMockBtaRfcMetrics",
         ":TestMockBtaSys",
         ":TestMockBtif",
         ":TestMockStackBtm",
@@ -1063,6 +1068,99 @@ cc_test {
 }
 
 cc_test {
+    name: "bluetooth_ras_test",
+    test_suites: ["general-tests"],
+    defaults: [
+        "fluoride_bta_defaults",
+        "mts_defaults",
+    ],
+    host_supported: true,
+    isolated: false,
+    include_dirs: [
+        "packages/modules/Bluetooth/system",
+        "packages/modules/Bluetooth/system/bta/include",
+        "packages/modules/Bluetooth/system/bta/test/common",
+        "packages/modules/Bluetooth/system/stack/include",
+    ],
+    srcs: [
+        ":TestCommonMockFunctions",
+        ":TestMockMainShim",
+        ":TestMockMainShimEntry",
+        ":TestMockStackBtm",
+        ":TestMockStackBtmInterface",
+        ":TestMockStackBtmIso",
+        ":TestMockStackGatt",
+        ":TestMockStackL2cap",
+        ":TestStubOsi",
+        "gatt/database.cc",
+        "gatt/database_builder.cc",
+        "ras/ras_client.cc",
+        "ras/ras_client_test.cc",
+        "ras/ras_server.cc",
+        "ras/ras_server_test.cc",
+        "ras/ras_utils.cc",
+        "ras/ras_utils_test.cc",
+        "test/common/bta_gatt_api_mock.cc",
+        "test/common/bta_gatt_queue_mock.cc",
+        "test/common/btif_storage_mock.cc",
+        "test/common/mock_device_groups.cc",
+    ],
+    shared_libs: [
+        "libaconfig_storage_read_api_cc",
+        "libbase",
+        "libcrypto",
+        "libcutils",
+        "libhidlbase",
+        "liblog",
+    ],
+    static_libs: [
+        "bluetooth_flags_c_lib_for_test",
+        "libbluetooth-types",
+        "libbluetooth_crypto_toolbox",
+        "libbluetooth_gd",
+        "libbluetooth_log",
+        "libbt-audio-hal-interface",
+        "libbt-common",
+        "libbt-platform-protos-lite",
+        "libchrome",
+        "libcom.android.sysprop.bluetooth.wrapped",
+        "libevent",
+        "libflagtest",
+        "libflatbuffers-cpp",
+        "libgmock",
+        "libgtest",
+        "liblc3",
+        "libosi",
+        "server_configurable_flags",
+    ],
+    target: {
+        android: {
+            shared_libs: [
+                "libbinder_ndk",
+            ],
+            static_libs: [
+                "libPlatformProperties",
+            ],
+        },
+        host: {
+            static_libs: [
+                "libbinder_ndk",
+            ],
+        },
+    },
+    sanitize: {
+        cfi: true,
+        scs: true,
+        address: true,
+        all_undefined: true,
+        integer_overflow: true,
+        diag: {
+            undefined: true,
+        },
+    },
+}
+
+cc_test {
     name: "bluetooth_test_broadcaster_state_machine",
     test_suites: ["general-tests"],
     defaults: [
@@ -1366,6 +1464,7 @@ cc_test {
         ":TestFakeOsi",
         ":TestMockBtaGatt",
         ":TestMockBtaLeAudio",
+        ":TestMockBtaRfcMetrics",
         ":TestMockBtaScn",
         ":TestMockBtaSdp",
         ":TestMockBtaSys",

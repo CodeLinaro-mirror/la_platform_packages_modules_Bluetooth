@@ -15,12 +15,6 @@ flag {
     bug: "315234036"
 }
 
-flag {
-    name: "retry_esco_with_zero_retransmission_effort"
-    namespace: "bluetooth"
-    description: "retry eSCO connection based on retransmission_effort"
-    bug: "316498257"
-}
 
 flag {
     name: "hfp_software_datapath"
@@ -100,20 +94,50 @@ flag {
 }
 
 flag {
-    name: "hfp_allow_volume_change_without_sco"
+    name: "choose_wrong_hfp_codec_in_specific_config"
     namespace: "bluetooth"
-    description: "Allow Audio Fwk to change SCO volume when HFP profile is connected and SCO not connected"
-    bug: "362313390"
+    description: "Flag to fix codec selection in nego when the peer device only support NB and SWB."
+    bug: "354070098"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
 }
 
 flag {
-    name: "choose_wrong_hfp_codec_in_specific_config"
+    name: "sco_state_machine_cleanup"
     namespace: "bluetooth"
-    description: "Flag to fix codec selection in nego when the peer device only support NB and SWB."
-    bug: "354070098"
+    description: "Cleanup SCO SM if headset disconnected during opening."
+    bug: "391090332"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "non_conference_call_hangup"
+    namespace: "bluetooth"
+    description: "Active call hangup when conference call is in holding state "
+    bug: "388159341"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "check_peer_hf_indicator"
+    namespace: "bluetooth"
+    description: "Flag to check the peer HF indicator before setting feature mask"
+    bug: "383933502"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "enable_battery_level_update_only_through_hf_indicator"
+    namespace: "bluetooth"
+    description: "Flag to ignore vendor specific battery level update when HF indicator support is enabled."
+    bug: "385870861"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

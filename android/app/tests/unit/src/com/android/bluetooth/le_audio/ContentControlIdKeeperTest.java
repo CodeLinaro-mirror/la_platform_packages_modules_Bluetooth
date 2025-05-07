@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.le_audio;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.*;
@@ -30,14 +32,11 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.bluetooth.btservice.ServiceFactory;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.Map;
 import java.util.UUID;
@@ -45,7 +44,7 @@ import java.util.UUID;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class ContentControlIdKeeperTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock ServiceFactory mServiceFactoryMock;
     @Mock LeAudioService mLeAudioServiceMock;
@@ -64,7 +63,7 @@ public class ContentControlIdKeeperTest {
 
     public int testCcidAcquire(ParcelUuid uuid, int context, int expectedListSize) {
         int ccid = ContentControlIdKeeper.acquireCcid(uuid, context);
-        Assert.assertNotEquals(ccid, ContentControlIdKeeper.CCID_INVALID);
+        assertThat(ccid).isNotEqualTo(ContentControlIdKeeper.CCID_INVALID);
 
         verify(mLeAudioServiceMock).setCcidInformation(eq(uuid), eq(ccid), eq(context));
         Map<ParcelUuid, Pair<Integer, Integer>> uuidToCcidContextPair =
@@ -98,7 +97,7 @@ public class ContentControlIdKeeperTest {
 
         int ccid_one = testCcidAcquire(uuid_one, BluetoothLeAudio.CONTEXT_TYPE_MEDIA, 1);
         int ccid_two = testCcidAcquire(uuid_two, BluetoothLeAudio.CONTEXT_TYPE_RINGTONE, 2);
-        Assert.assertNotEquals(ccid_one, ccid_two);
+        assertThat(ccid_one).isNotEqualTo(ccid_two);
 
         testCcidRelease(uuid_one, ccid_one, 1);
         testCcidRelease(uuid_two, ccid_two, 0);

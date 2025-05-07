@@ -430,16 +430,26 @@ tGATT_TCB* gatt_find_tcb_by_addr(const RawAddress& bda, tBT_TRANSPORT transport)
   return p_tcb;
 }
 
+/* This is  for connection manager */
+std::string get_client_name(uint8_t gatt_if) {
+  if (gatt_if == CONN_MGR_ID_L2CAP) {
+    return "L2CAP";
+  }
+
+  tGATT_REG* reg = gatt_get_regcb(gatt_if);
+  return (reg == nullptr) ? "" : reg->name;
+}
+
 std::string gatt_tcb_get_holders_info_string(const tGATT_TCB* p_tcb) {
   std::stringstream stream;
 
   if (p_tcb->app_hold_link.size() == 0) {
     stream << "No ACL holders";
   } else {
-    stream << "ACL holders gatt_if:";
+    stream << "ACL holders gatt_if: ";
 
     for (auto gatt_if : p_tcb->app_hold_link) {
-      stream << static_cast<int>(gatt_if) << ",";
+      stream << get_client_name(gatt_if) << " (" << +gatt_if << "), ";
     }
   }
   return stream.str();
@@ -857,7 +867,7 @@ std::list<tGATT_SRV_LIST_ELEM>::iterator gatt_sr_find_i_rcb_by_handle(uint16_t h
 void gatt_sr_get_sec_info(const RawAddress& rem_bda, tBT_TRANSPORT transport,
                           tGATT_SEC_FLAG* p_sec_flag, uint8_t* p_key_size) {
   tGATT_SEC_FLAG flags = {};
-  flags.is_link_key_known = BTM_IsLinkKeyKnown(rem_bda, transport);
+  flags.is_link_key_known = BTM_IsBonded(rem_bda, transport);
   flags.is_link_key_authed = BTM_IsLinkKeyAuthed(rem_bda, transport);
   flags.is_encrypted = BTM_IsEncrypted(rem_bda, transport);
   flags.can_read_discoverable_characteristics = BTM_CanReadDiscoverableCharacteristics(rem_bda);

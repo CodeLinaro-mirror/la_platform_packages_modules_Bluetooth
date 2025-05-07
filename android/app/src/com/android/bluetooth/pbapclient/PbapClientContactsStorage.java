@@ -269,6 +269,9 @@ class PbapClientContactsStorage {
                     break;
                 }
 
+                // Associate the storage account with this contact
+                contact.setAccount(account);
+
                 // Append current vcard to list of insert operations.
                 int numberOfOperations = operations.size();
                 constructInsertOperationsForContact(contact, operations, contactsProvider);
@@ -312,7 +315,7 @@ class PbapClientContactsStorage {
     }
 
     @SuppressWarnings("NonApiType") // For convenience, as applyBatch above takes an ArrayList above
-    private ArrayList<ContentProviderOperation> constructInsertOperationsForContact(
+    private static ArrayList<ContentProviderOperation> constructInsertOperationsForContact(
             VCardEntry contact,
             ArrayList<ContentProviderOperation> operations,
             ContentResolver contactsProvider) {
@@ -478,7 +481,7 @@ class PbapClientContactsStorage {
     // TODO: b/365629730 -- JavaUtilDate: prefer Instant or LocalDate
     // NonApiType: For convenience, as the applyBatch API actually takes an ArrayList above
     @SuppressWarnings({"JavaUtilDate", "NonApiType"})
-    private ArrayList<ContentProviderOperation> constructInsertOperationsForCallLog(
+    private static ArrayList<ContentProviderOperation> constructInsertOperationsForCallLog(
             Account account,
             int type,
             VCardEntry call,

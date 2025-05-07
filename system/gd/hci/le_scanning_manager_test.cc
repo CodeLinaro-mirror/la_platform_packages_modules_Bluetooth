@@ -383,9 +383,6 @@ TEST_F(LeScanningManagerTest, legacy_adv_scan_ind_report_with_scan_response) {
 
   // The 'connectable' bit should NOT be set.
   uint16_t extended_event_type = kLegacy | kScannable | kScanResponse;
-  if (!com::android::bluetooth::flags::fix_nonconnectable_scannable_advertisement()) {
-    extended_event_type |= kConnectable;
-  }
   EXPECT_CALL(mock_callbacks_, OnScanResult(extended_event_type, _, _, _, _, _, _, _, _, _));
 
   test_hci_layer_->IncomingLeMetaEvent(LeAdvertisingReportBuilder::Create({scan_response}));
@@ -432,11 +429,12 @@ TEST_F(LeScanningManagerTest, scan_filter_add_ad_type_not_supported_test) {
   le_scanning_manager->ScanFilterAdd(0x01, filters);
 }
 
-TEST_F(LeScanningManagerExtendedTest, is_nonstandard_phy_supported_test) {
-  int scan_phy = 2;
+TEST_F(LeScanningManagerExtendedTest, is_coded_phy_supported_test) {
+  int scan_phy = 4;  // BluetoothDevice.PHY_LE_CODED_MASK
 
   start_le_scanning_manager();
-  le_scanning_manager->SetScanParameters(1, LeScanType::ACTIVE, 0x0004, 4800, scan_phy);
+  le_scanning_manager->SetScanParameters(LeScanType::ACTIVE, 1, 0x0004, 4800, 1, 0x0004, 4800,
+                                         scan_phy);
   le_scanning_manager->Scan(true);
 
   auto command_view = LeSetExtendedScanParametersView::Create(
@@ -449,10 +447,11 @@ TEST_F(LeScanningManagerExtendedTest, is_nonstandard_phy_supported_test) {
 }
 
 TEST_F(LeScanningManagerExtendedTest, is_multiple_phy_supported_test) {
-  int scan_phy = 3;
+  int scan_phy = 5;  // BluetoothDevice.PHY_LE_1M_MASK | BluetoothDevice.PHY_LE_CODED_MASK
 
   start_le_scanning_manager();
-  le_scanning_manager->SetScanParameters(1, LeScanType::ACTIVE, 0x0004, 4800, scan_phy);
+  le_scanning_manager->SetScanParameters(LeScanType::ACTIVE, 1, 0x0004, 4800, 1, 0x0004, 4800,
+                                         scan_phy);
   le_scanning_manager->Scan(true);
 
   auto command_view = LeSetExtendedScanParametersView::Create(

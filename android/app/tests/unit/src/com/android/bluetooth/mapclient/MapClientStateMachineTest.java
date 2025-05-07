@@ -29,6 +29,9 @@ import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasPackage;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.hamcrest.Matchers.nullValue;
@@ -39,7 +42,6 @@ import static org.mockito.Mockito.inOrder;
 import android.app.Activity;
 import android.app.BroadcastOptions;
 import android.app.PendingIntent;
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothMapClient;
 import android.bluetooth.SdpMasRecord;
@@ -50,7 +52,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.test.TestLooper;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.FlagsParameterization;
 import android.platform.test.flag.junit.SetFlagsRule;
@@ -61,11 +62,12 @@ import android.test.mock.MockContentProvider;
 import android.test.mock.MockContentResolver;
 import android.util.Log;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.rule.ServiceTestRule;
 
 import com.android.bluetooth.ObexAppParameters;
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.flags.Flags;
 import com.android.obex.HeaderSet;
@@ -87,8 +89,6 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.hamcrest.MockitoHamcrest;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import platform.test.runner.parameterized.ParameterizedAndroidJunit4;
 import platform.test.runner.parameterized.Parameters;
@@ -104,8 +104,10 @@ import java.util.concurrent.TimeUnit;
 @MediumTest
 @RunWith(ParameterizedAndroidJunit4.class)
 public class MapClientStateMachineTest {
+    private static final String TAG = MapClientStateMachineTest.class.getSimpleName();
+
     @Rule public final SetFlagsRule mSetFlagsRule;
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
     @Rule public final ServiceTestRule mServiceRule = new ServiceTestRule();
 
     @Mock private AdapterService mAdapterService;
@@ -119,11 +121,12 @@ public class MapClientStateMachineTest {
     @Mock private RequestGetMessage mRequestGetMessage;
     @Mock private RequestGetMessagesListing mRequestGetMessagesListing;
 
-    private static final String TAG = "MapClientStateMachineTest";
-
     private static final long PENDING_INTENT_TIMEOUT_MS = 3_000;
     private static final boolean MESSAGE_SEEN = true;
     private static final boolean MESSAGE_NOT_SEEN = false;
+
+    private static final String SMS_HANDLE = "0001";
+    private static final String MMS_HANDLE = "0002";
 
     private static final String TEST_MESSAGE_HANDLE = "0123456789000032";
     private static final String TEST_MESSAGE = "Hello World!";
@@ -140,12 +143,9 @@ public class MapClientStateMachineTest {
     private static final String ACTION_MESSAGE_DELIVERED =
             "com.android.bluetooth.mapclient.MapClientStateMachineTest.action.MESSAGE_DELIVERED";
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mDevice = mAdapter.getRemoteDevice("00:01:02:03:04:05");
-    private final Context mTargetContext = InstrumentationRegistry.getTargetContext();
-    private final String mTestMessageSmsHandle = "0001";
-    private final String mTestMessageMmsHandle = "0002";
-    private final String mTestMessageUnknownHandle = "0003";
+    private final BluetoothDevice mDevice = getTestDevice(74);
+    private final Context mTargetContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
 
     private Bmessage mTestIncomingSmsBmessage;
     private Bmessage mTestIncomingMmsBmessage;
@@ -231,7 +231,7 @@ public class MapClientStateMachineTest {
         createTestMessages();
 
         when(mRequestGetMessage.getMessage()).thenReturn(mTestIncomingSmsBmessage);
-        when(mRequestGetMessage.getHandle()).thenReturn(mTestMessageSmsHandle);
+        when(mRequestGetMessage.getHandle()).thenReturn(SMS_HANDLE);
 
         when(mService.getSystemService(Context.TELEPHONY_SERVICE)).thenReturn(mTelephonyManager);
         when(mTelephonyManager.isSmsCapable()).thenReturn(false);
@@ -369,16 +369,13 @@ public class MapClientStateMachineTest {
     public void testSMSMessageSent() {
         masConnected_whenConnecting_isConnected(); // transition to the connected state
 
-        when(mRequestPushMessage.getMsgHandle()).thenReturn(mTestMessageSmsHandle);
+        when(mRequestPushMessage.getMsgHandle()).thenReturn(SMS_HANDLE);
         when(mRequestPushMessage.getBMsg()).thenReturn(mTestIncomingSmsBmessage);
         sendAndDispatchMessage(MceStateMachine.MSG_MAS_REQUEST_COMPLETED, mRequestPushMessage);
 
         verify(mDatabase)
                 .storeMessage(
-                        eq(mTestIncomingSmsBmessage),
-                        eq(mTestMessageSmsHandle),
-                        any(),
-                        eq(MESSAGE_SEEN));
+                        eq(mTestIncomingSmsBmessage), eq(SMS_HANDLE), any(), eq(MESSAGE_SEEN));
     }
 
     /**
@@ -518,12 +515,7 @@ public class MapClientStateMachineTest {
         String dateTime = new ObexTime(Instant.now()).toString();
         EventReport event =
                 createNewEventReport(
-                        "NewMessage",
-                        dateTime,
-                        mTestMessageSmsHandle,
-                        "telecom/msg/inbox",
-                        null,
-                        "SMS_GSM");
+                        "NewMessage", dateTime, SMS_HANDLE, "telecom/msg/inbox", null, "SMS_GSM");
 
         sendAndDispatchEvent(event);
 
@@ -533,10 +525,7 @@ public class MapClientStateMachineTest {
 
         verify(mDatabase)
                 .storeMessage(
-                        eq(mTestIncomingSmsBmessage),
-                        eq(mTestMessageSmsHandle),
-                        any(),
-                        eq(MESSAGE_NOT_SEEN));
+                        eq(mTestIncomingSmsBmessage), eq(SMS_HANDLE), any(), eq(MESSAGE_NOT_SEEN));
     }
 
     /** Test seen status set for new MMS */
@@ -547,15 +536,10 @@ public class MapClientStateMachineTest {
         String dateTime = new ObexTime(Instant.now()).toString();
         EventReport event =
                 createNewEventReport(
-                        "NewMessage",
-                        dateTime,
-                        mTestMessageMmsHandle,
-                        "telecom/msg/inbox",
-                        null,
-                        "MMS");
+                        "NewMessage", dateTime, MMS_HANDLE, "telecom/msg/inbox", null, "MMS");
 
         when(mRequestGetMessage.getMessage()).thenReturn(mTestIncomingMmsBmessage);
-        when(mRequestGetMessage.getHandle()).thenReturn(mTestMessageMmsHandle);
+        when(mRequestGetMessage.getHandle()).thenReturn(MMS_HANDLE);
 
         sendAndDispatchEvent(event);
 
@@ -565,10 +549,7 @@ public class MapClientStateMachineTest {
 
         verify(mDatabase)
                 .storeMessage(
-                        eq(mTestIncomingMmsBmessage),
-                        eq(mTestMessageMmsHandle),
-                        any(),
-                        eq(MESSAGE_NOT_SEEN));
+                        eq(mTestIncomingMmsBmessage), eq(MMS_HANDLE), any(), eq(MESSAGE_NOT_SEEN));
     }
 
     @Test
@@ -579,15 +560,10 @@ public class MapClientStateMachineTest {
         String dateTime = new ObexTime(Instant.now()).toString();
         EventReport event =
                 createNewEventReport(
-                        "NewMessage",
-                        dateTime,
-                        mTestMessageMmsHandle,
-                        "telecom/msg/inbox",
-                        null,
-                        "MMS");
+                        "NewMessage", dateTime, MMS_HANDLE, "telecom/msg/inbox", null, "MMS");
 
         // Prepare to send back message content, but use handle B
-        when(mRequestGetMessage.getHandle()).thenReturn(mTestMessageUnknownHandle);
+        when(mRequestGetMessage.getHandle()).thenReturn("0003"); // unknown handle
         when(mRequestGetMessage.getMessage()).thenReturn(mTestIncomingMmsBmessage);
 
         sendAndDispatchEvent(event);
@@ -607,7 +583,7 @@ public class MapClientStateMachineTest {
         masConnected_whenConnecting_isConnected(); // transition to the connected state
 
         com.android.bluetooth.mapclient.Message testMessageListingSms =
-                createNewMessage("SMS_GSM", mTestMessageSmsHandle);
+                createNewMessage("SMS_GSM", SMS_HANDLE);
         ArrayList<com.android.bluetooth.mapclient.Message> messageListSms = new ArrayList<>();
         messageListSms.add(testMessageListingSms);
         when(mRequestGetMessagesListing.getList()).thenReturn(messageListSms);
@@ -633,12 +609,12 @@ public class MapClientStateMachineTest {
         masConnected_whenConnecting_isConnected(); // transition to the connected state
 
         com.android.bluetooth.mapclient.Message testMessageListingMms =
-                createNewMessage("MMS", mTestMessageMmsHandle);
+                createNewMessage("MMS", MMS_HANDLE);
         ArrayList<com.android.bluetooth.mapclient.Message> messageListMms = new ArrayList<>();
         messageListMms.add(testMessageListingMms);
 
         when(mRequestGetMessage.getMessage()).thenReturn(mTestIncomingMmsBmessage);
-        when(mRequestGetMessage.getHandle()).thenReturn(mTestMessageMmsHandle);
+        when(mRequestGetMessage.getHandle()).thenReturn(MMS_HANDLE);
         when(mRequestGetMessagesListing.getList()).thenReturn(messageListMms);
 
         sendAndDispatchMessage(
@@ -665,20 +641,14 @@ public class MapClientStateMachineTest {
         String dateTime = new ObexTime(Instant.now()).toString();
         EventReport event =
                 createNewEventReport(
-                        "NewMessage",
-                        dateTime,
-                        mTestMessageSmsHandle,
-                        "telecom/msg/inbox",
-                        null,
-                        "SMS_GSM");
+                        "NewMessage", dateTime, SMS_HANDLE, "telecom/msg/inbox", null, "SMS_GSM");
 
         sendAndDispatchEvent(event);
 
         verify(mMasClient).makeRequest(any(RequestGetMessage.class));
 
-        MceStateMachine.MessageMetadata messageMetadata =
-                mStateMachine.mMessages.get(mTestMessageSmsHandle);
-        assertThat(messageMetadata.getHandle()).isEqualTo(mTestMessageSmsHandle);
+        MceStateMachine.MessageMetadata messageMetadata = mStateMachine.mMessages.get(SMS_HANDLE);
+        assertThat(messageMetadata.getHandle()).isEqualTo(SMS_HANDLE);
         assertThat(new ObexTime(Instant.ofEpochMilli(messageMetadata.getTimestamp())).toString())
                 .isEqualTo(dateTime);
     }
@@ -725,12 +695,7 @@ public class MapClientStateMachineTest {
         String dateTime = new ObexTime(Instant.now()).toString();
         EventReport event =
                 createNewEventReport(
-                        "NewMessage",
-                        dateTime,
-                        mTestMessageSmsHandle,
-                        "telecom/msg/inbox",
-                        null,
-                        "SMS_GSM");
+                        "NewMessage", dateTime, SMS_HANDLE, "telecom/msg/inbox", null, "SMS_GSM");
 
         sendAndDispatchEvent(event);
 

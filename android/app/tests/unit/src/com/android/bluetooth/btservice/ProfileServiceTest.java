@@ -16,6 +16,10 @@
 
 package com.android.bluetooth.btservice;
 
+import static android.Manifest.permission.MEDIA_CONTENT_CONTROL;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -29,8 +33,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.telephony.TelephonyManager;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -41,9 +45,9 @@ import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.hearingaid.HearingAidNativeInterface;
 import com.android.bluetooth.hfp.HeadsetNativeInterface;
 import com.android.bluetooth.hfpclient.NativeInterface;
-import com.android.bluetooth.hid.HidDeviceNativeInterface;
 import com.android.bluetooth.hid.HidHostNativeInterface;
 import com.android.bluetooth.le_audio.LeAudioNativeInterface;
+import com.android.bluetooth.sdp.SdpManagerNativeInterface;
 
 import org.junit.After;
 import org.junit.Before;
@@ -53,8 +57,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
@@ -70,9 +72,9 @@ public class ProfileServiceTest {
 
     @Spy
     private AdapterService mAdapterService =
-            new AdapterService(InstrumentationRegistry.getTargetContext());
+            new AdapterService(InstrumentationRegistry.getInstrumentation().getTargetContext());
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private DatabaseManager mDatabaseManager;
     @Mock private TelephonyManager mMockTelephonyManager;
@@ -85,7 +87,7 @@ public class ProfileServiceTest {
     @Mock private HeadsetNativeInterface mHeadsetNativeInterface;
     @Mock private NativeInterface mHeadsetClientNativeInterface;
     @Mock private HearingAidNativeInterface mHearingAidNativeInterface;
-    @Mock private HidDeviceNativeInterface mHidDeviceNativeInterface;
+    @Mock private SdpManagerNativeInterface mSdpManagerNativeInterface;
     @Mock private HidHostNativeInterface mHidHostNativeInterface;
     @Mock private LeAudioNativeInterface mLeAudioInterface;
 
@@ -124,6 +126,9 @@ public class ProfileServiceTest {
     @Before
     public void setUp()
             throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .adoptShellPermissionIdentity(MEDIA_CONTENT_CONTROL);
         if (Looper.myLooper() == null) {
             Looper.prepare();
         }
@@ -150,6 +155,7 @@ public class ProfileServiceTest {
                                                 && profile != BluetoothProfile.VOLUME_CONTROL
                                                 && profile != BluetoothProfile.CSIP_SET_COORDINATOR
                                                 && profile != BluetoothProfile.GATT
+                                                && profile != BluetoothProfile.HID_DEVICE
                                                 && profile != BluetoothProfile.PAN
                                                 && profile != BluetoothProfile.A2DP)
                         .toArray();
@@ -163,7 +169,7 @@ public class ProfileServiceTest {
         HeadsetNativeInterface.setInstance(mHeadsetNativeInterface);
         /* HeadsetClient */ NativeInterface.setInstance(mHeadsetClientNativeInterface);
         HearingAidNativeInterface.setInstance(mHearingAidNativeInterface);
-        HidDeviceNativeInterface.setInstance(mHidDeviceNativeInterface);
+        SdpManagerNativeInterface.setInstance(mSdpManagerNativeInterface);
         HidHostNativeInterface.setInstance(mHidHostNativeInterface);
         LeAudioNativeInterface.setInstance(mLeAudioInterface);
     }
@@ -180,9 +186,12 @@ public class ProfileServiceTest {
         HeadsetNativeInterface.setInstance(null);
         /* HeadsetClient */ NativeInterface.setInstance(null);
         HearingAidNativeInterface.setInstance(null);
-        HidDeviceNativeInterface.setInstance(null);
+        SdpManagerNativeInterface.setInstance(null);
         HidHostNativeInterface.setInstance(null);
         LeAudioNativeInterface.setInstance(null);
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .dropShellPermissionIdentity();
     }
 
     /**

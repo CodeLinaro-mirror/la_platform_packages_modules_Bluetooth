@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.audio_util;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.*;
@@ -36,11 +38,10 @@ import android.os.HandlerThread;
 import android.test.mock.MockContentProvider;
 import android.test.mock.MockContentResolver;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.bluetooth.R;
 import com.android.bluetooth.TestUtils;
 
 import org.junit.After;
@@ -51,8 +52,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -67,7 +66,7 @@ public class BrowserPlayerWrapperTest {
     @Captor ArgumentCaptor<MediaController.Callback> mControllerCb;
     @Captor ArgumentCaptor<Handler> mTimeoutHandler;
     @Captor ArgumentCaptor<List<ListItem>> mWrapperBrowseCb;
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock MediaBrowser mMockBrowser;
     @Mock BrowsedPlayerWrapper.ConnectionCallback mConnCb;
@@ -75,7 +74,6 @@ public class BrowserPlayerWrapperTest {
     private HandlerThread mThread;
 
     @Mock Context mMockContext;
-    @Mock Resources mMockResources;
     private Context mTargetContext;
     private Resources mTestResources;
     private MockContentResolver mTestContentResolver;
@@ -95,7 +93,7 @@ public class BrowserPlayerWrapperTest {
     @Before
     public void setUp() {
 
-        mTargetContext = InstrumentationRegistry.getTargetContext();
+        mTargetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         mTestResources = TestUtils.getTestApplicationResources(mTargetContext);
 
         mTestBitmap = loadImage(com.android.bluetooth.tests.R.raw.image_200_200);
@@ -116,8 +114,7 @@ public class BrowserPlayerWrapperTest {
                 });
 
         when(mMockContext.getContentResolver()).thenReturn(mTestContentResolver);
-        when(mMockResources.getBoolean(R.bool.avrcp_target_cover_art_uri_images)).thenReturn(true);
-        when(mMockContext.getResources()).thenReturn(mMockResources);
+        Util.sUriImagesSupport = true;
 
         // Set up Looper thread for the timeout handler
         mThread = new HandlerThread("MediaPlayerWrapperTestThread");
@@ -138,6 +135,7 @@ public class BrowserPlayerWrapperTest {
         mTestBitmap = null;
         mTestResources = null;
         mTargetContext = null;
+        Util.sUriImagesSupport = false;
     }
 
     private Bitmap loadImage(int resId) {
@@ -145,7 +143,7 @@ public class BrowserPlayerWrapperTest {
         return BitmapFactory.decodeStream(imageInputStream);
     }
 
-    private MediaDescription getMediaDescription(
+    private static MediaDescription getMediaDescription(
             String id,
             String title,
             String artist,
@@ -171,7 +169,7 @@ public class BrowserPlayerWrapperTest {
         return builder.build();
     }
 
-    private MediaItem getMediaItem(MediaDescription description, int flags) {
+    private static MediaItem getMediaItem(MediaDescription description, int flags) {
         return new MediaItem(description, flags);
     }
 

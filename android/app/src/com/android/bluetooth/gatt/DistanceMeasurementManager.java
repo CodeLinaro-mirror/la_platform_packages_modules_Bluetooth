@@ -35,6 +35,7 @@ import com.android.bluetooth.flags.Flags;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -51,6 +52,10 @@ public class DistanceMeasurementManager {
     private static final int CS_LOW_FREQUENCY_INTERVAL_MS = 5000;
     private static final int CS_MEDIUM_FREQUENCY_INTERVAL_MS = 3000;
     private static final int CS_HIGH_FREQUENCY_INTERVAL_MS = 200;
+
+    // sync with system/gd/hic/DistanceMeasurementManager
+    private static final int INVALID_AZIMUTH_ANGLE_DEGREE = -1;
+    private static final int INVALID_ALTITUDE_ANGLE_DEGREE = -91;
 
     private final AdapterService mAdapterService;
     private final HandlerThread mHandlerThread;
@@ -107,7 +112,7 @@ public class DistanceMeasurementManager {
         return mDistanceMeasurementBinder;
     }
 
-    DistanceMeasurementMethod[] getSupportedDistanceMeasurementMethods() {
+    List<DistanceMeasurementMethod> getSupportedDistanceMeasurementMethods() {
         ArrayList<DistanceMeasurementMethod> methods = new ArrayList<DistanceMeasurementMethod>();
         methods.add(
                 new DistanceMeasurementMethod.Builder(
@@ -120,7 +125,7 @@ public class DistanceMeasurementManager {
                                             .DISTANCE_MEASUREMENT_METHOD_CHANNEL_SOUNDING)
                             .build());
         }
-        return methods.toArray(new DistanceMeasurementMethod[0]);
+        return methods;
     }
 
     void startDistanceMeasurement(
@@ -332,7 +337,7 @@ public class DistanceMeasurementManager {
         return BluetoothStatusCodes.SUCCESS;
     }
 
-    private void invokeStartFail(
+    private static void invokeStartFail(
             IDistanceMeasurementCallback callback, BluetoothDevice device, int reason) {
         try {
             callback.onStartFail(device, reason);
@@ -341,7 +346,7 @@ public class DistanceMeasurementManager {
         }
     }
 
-    private void invokeOnStopped(
+    private static void invokeOnStopped(
             IDistanceMeasurementCallback callback, BluetoothDevice device, int reason) {
         try {
             callback.onStopped(device, reason);
@@ -351,7 +356,7 @@ public class DistanceMeasurementManager {
     }
 
     /** Convert frequency into interval in ms */
-    private int getIntervalValue(int frequency, int method) {
+    private static int getIntervalValue(int frequency, int method) {
         switch (method) {
             case DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_AUTO:
             case DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI:
@@ -500,6 +505,9 @@ public class DistanceMeasurementManager {
             int errorAltitudeAngle,
             long elapsedRealtimeNanos,
             int confidenceLevel,
+            double delaySpreadMeters,
+            int detectedAttackLevel,
+            double velocityMetersPerSecond,
             int method) {
         logd(
                 "onDistanceMeasurementResult "
@@ -511,16 +519,31 @@ public class DistanceMeasurementManager {
         DistanceMeasurementResult.Builder builder =
                 new DistanceMeasurementResult.Builder(centimeter / 100.0, errorCentimeter / 100.0)
                         .setMeasurementTimestampNanos(elapsedRealtimeNanos);
-        if (confidenceLevel != -1) {
-            builder.setConfidenceLevel(confidenceLevel / 100.0);
-        }
-        DistanceMeasurementResult result = builder.build();
+
         switch (method) {
             case DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_RSSI:
-                handleRssiResult(address, result);
+                handleRssiResult(address, builder.build());
                 break;
             case DistanceMeasurementMethod.DISTANCE_MEASUREMENT_METHOD_CHANNEL_SOUNDING:
-                handleCsResult(address, result);
+                if (azimuthAngle != INVALID_AZIMUTH_ANGLE_DEGREE) {
+                    builder.setAzimuthAngle(azimuthAngle);
+                    builder.setErrorAzimuthAngle(errorAzimuthAngle);
+                }
+                if (altitudeAngle != INVALID_ALTITUDE_ANGLE_DEGREE) {
+                    builder.setAltitudeAngle(altitudeAngle);
+                    builder.setErrorAltitudeAngle(errorAltitudeAngle);
+                }
+                if (confidenceLevel != -1) {
+                    builder.setConfidenceLevel(confidenceLevel / 100.0);
+                }
+                if (delaySpreadMeters >= 0) {
+                    builder.setDelaySpreadMeters(delaySpreadMeters);
+                }
+                if (velocityMetersPerSecond >= 0) {
+                    builder.setVelocityMetersPerSecond(velocityMetersPerSecond);
+                }
+                builder.setDetectedAttackLevel(detectedAttackLevel);
+                handleCsResult(address, builder.build());
                 break;
             default:
                 Log.w(TAG, "onDistanceMeasurementResult: invalid method " + method);

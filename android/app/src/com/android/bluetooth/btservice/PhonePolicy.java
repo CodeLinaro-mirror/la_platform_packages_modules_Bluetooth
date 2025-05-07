@@ -40,7 +40,6 @@ import android.bluetooth.BluetoothUuid;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
-import android.os.SystemProperties;
 import android.util.Log;
 
 import com.android.bluetooth.R;
@@ -57,6 +56,7 @@ import com.android.bluetooth.hfp.HeadsetService;
 import com.android.bluetooth.hid.HidHostService;
 import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.pan.PanService;
+import com.android.bluetooth.util.SystemProperties;
 import com.android.bluetooth.vc.VolumeControlService;
 import com.android.internal.annotations.VisibleForTesting;
 
@@ -77,7 +77,8 @@ import java.util.List;
 // will try to connect other profiles on the same device. This is to avoid collision if devices
 // somehow end up trying to connect at same time or general connection issues.
 public class PhonePolicy implements AdapterService.BluetoothStateCallback {
-    private static final String TAG = "BluetoothPhonePolicy";
+    private static final String TAG =
+            Utils.TAG_PREFIX_BLUETOOTH + PhonePolicy.class.getSimpleName();
 
     private static final String AUTO_CONNECT_PROFILES_PROPERTY =
             "bluetooth.auto_connect_profiles.enabled";
@@ -272,6 +273,27 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
 
         return Utils.arrayContains(uuids, BluetoothUuid.HAS)
                 && hap.getConnectionPolicy(device) != CONNECTION_POLICY_FORBIDDEN;
+    }
+
+    private boolean shouldBlockBroadcastForHapDevice(BluetoothDevice device, ParcelUuid[] uuids) {
+        if (!Flags.leaudioDisableBroadcastForHapDevice()) {
+            Log.i(TAG, "disableBroadcastForHapDevice: Flag is disabled");
+            return false;
+        }
+
+        HapClientService hap = mFactory.getHapClientService();
+        if (hap == null) {
+            Log.e(TAG, "shouldBlockBroadcastForHapDevice: No HapClientService");
+            return false;
+        }
+
+        if (!SystemProperties.getBoolean(SYSPROP_HAP_ENABLED, true)) {
+            Log.i(TAG, "shouldBlockBroadcastForHapDevice: SystemProperty is overridden to false");
+            return false;
+        }
+
+        return Utils.arrayContains(uuids, BluetoothUuid.HAS)
+                && hap.getConnectionPolicy(device) == CONNECTION_POLICY_ALLOWED;
     }
 
     // Policy implementation, all functions MUST be private
@@ -518,7 +540,7 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
         if ((bcService != null)
                 && Utils.arrayContains(uuids, BluetoothUuid.BASS)
                 && (bcService.getConnectionPolicy(device) == CONNECTION_POLICY_UNKNOWN)) {
-            if (isLeAudioProfileAllowed) {
+            if (isLeAudioProfileAllowed && !shouldBlockBroadcastForHapDevice(device, uuids)) {
                 Log.d(TAG, log + "Setting BASS priority");
                 if (mAutoConnectProfilesSupported) {
                     bcService.setConnectionPolicy(device, CONNECTION_POLICY_ALLOWED);
@@ -531,7 +553,7 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
                                     CONNECTION_POLICY_ALLOWED);
                 }
             } else {
-                Log.d(TAG, log + "LE_AUDIO is not allowed: Clear BASS priority");
+                Log.d(TAG, log + "LE_AUDIO Broadcast is not allowed: Clear BASS priority");
                 mAdapterService
                         .getDatabase()
                         .setProfileConnectionPolicy(
@@ -986,9 +1008,8 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
                 List<BluetoothDevice> connectedDevices = hapClientService.getConnectedDevices();
                 if (!connectedDevices.contains(device)
                         && (hapClientService.getConnectionPolicy(device)
-                                == BluetoothProfile.CONNECTION_POLICY_ALLOWED)
-                        && (hapClientService.getConnectionState(device)
-                                == BluetoothProfile.STATE_DISCONNECTED)) {
+                                == CONNECTION_POLICY_ALLOWED)
+                        && (hapClientService.getConnectionState(device) == STATE_DISCONNECTED)) {
                     Log.d(TAG, log + "Retrying HAP connection");
                     hapClientService.connect(device);
                 }
@@ -1010,7 +1031,7 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
             return;
         }
         int bondState = mAdapterService.getBondState(device);
-        if (!Flags.unbondedProfileForbidFix() || bondState != BluetoothDevice.BOND_NONE) {
+        if (bondState != BluetoothDevice.BOND_NONE) {
             Log.d(TAG, log + "Services discovered. bondState=" + bondStateToString(bondState));
             processInitProfilePriorities(device, uuids);
         } else {
@@ -1035,11 +1056,10 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
                 profileId < BluetoothProfile.MAX_PROFILE_ID;
                 profileId++) {
             if (mAdapterService.getDatabase().getProfileConnectionPolicy(device, profileId)
-                    == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+                    == CONNECTION_POLICY_ALLOWED) {
                 mAdapterService
                         .getDatabase()
-                        .setProfileConnectionPolicy(
-                                device, profileId, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
+                        .setProfileConnectionPolicy(device, profileId, CONNECTION_POLICY_FORBIDDEN);
             }
         }
     }

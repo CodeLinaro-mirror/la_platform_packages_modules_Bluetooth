@@ -81,10 +81,10 @@ class Module {
   friend TestModuleRegistry;
 
 public:
-  Module() = default;
   virtual ~Module() = default;
 
 protected:
+  Module() = default;
   Module(os::Handler* handler) : handler_(handler) {}
 
   // Populate the provided list with modules that must start before yours
@@ -123,7 +123,7 @@ private:
 
   ::bluetooth::os::Handler* handler_ = nullptr;
   ModuleList dependencies_;
-  const ModuleRegistry* registry_;
+  const ModuleRegistry* registry_ = nullptr;
 };
 
 class ModuleRegistry {
@@ -162,6 +162,9 @@ protected:
   std::map<const ModuleFactory*, Module*> started_modules_;
   std::vector<const ModuleFactory*> start_order_;
   std::string last_instance_;
+
+private:
+  mutable std::mutex started_modules_guard_;
 };
 
 class TestModuleRegistry : public ModuleRegistry {

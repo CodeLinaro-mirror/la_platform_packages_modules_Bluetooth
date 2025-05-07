@@ -20,6 +20,8 @@ import static android.bluetooth.BluetoothA2dp.OPTIONAL_CODECS_NOT_SUPPORTED;
 import static android.bluetooth.BluetoothA2dp.OPTIONAL_CODECS_PREF_DISABLED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
@@ -40,8 +42,8 @@ import android.test.mock.MockCursor;
 import android.util.Log;
 import android.util.Pair;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.btservice.storage.Metadata;
@@ -54,8 +56,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,7 +64,7 @@ import java.util.List;
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class DataMigrationTest {
-    private static final String TAG = "DataMigrationTest";
+    private static final String TAG = DataMigrationTest.class.getSimpleName();
 
     private static final String AUTHORITY = "bluetooth_legacy.provider";
 
@@ -75,14 +75,14 @@ public class DataMigrationTest {
     private Context mTargetContext;
     private SharedPreferences mPrefs;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private Context mMockContext;
 
     @Before
     public void setUp() throws Exception {
 
-        mTargetContext = InstrumentationRegistry.getTargetContext();
+        mTargetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
         mTargetContext.deleteSharedPreferences(TEST_PREF);
         mPrefs = mTargetContext.getSharedPreferences(TEST_PREF, Context.MODE_PRIVATE);
         mPrefs.edit().clear().apply();
@@ -215,8 +215,6 @@ public class DataMigrationTest {
 
         assertThat(DataMigration.sharedPreferencesMigration("Invalid", mMockContext)).isFalse();
 
-        assertThat(DataMigration.sharedPreferencesMigration("null", mMockContext)).isFalse();
-
         assertThat(DataMigration.sharedPreferencesMigration("empty", mMockContext)).isFalse();
 
         assertThat(DataMigration.sharedPreferencesMigration("anything else", mMockContext))
@@ -265,9 +263,6 @@ public class DataMigrationTest {
                     break;
                 case "String2":
                     b.putString(key, "42");
-                    break;
-                case "null":
-                    b.putObject(key, null);
                     break;
                 case "Invalid":
                     // Put anything different from Boolean/Long/Integer/String

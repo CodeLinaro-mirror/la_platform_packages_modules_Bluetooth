@@ -59,7 +59,7 @@ using ::aidl::android::hardware::bluetooth::audio::LeAudioCodecConfiguration;
 using ::aidl::android::hardware::bluetooth::audio::SessionType;
 
 using ::bluetooth::le_audio::CodecManager;
-using ::bluetooth::le_audio::set_configurations::AudioSetConfiguration;
+using ::bluetooth::le_audio::types::AudioSetConfiguration;
 using ::bluetooth::le_audio::types::CodecLocation;
 }  // namespace
 
@@ -280,8 +280,19 @@ void LeAudioClientInterface::Sink::StopSession() {
   get_aidl_client_interface(is_broadcaster_)->EndSession();
 }
 
+static inline void dumpOffloadConfig(
+        const char* msg, const ::bluetooth::audio::aidl::AudioConfiguration& offload_hal_config) {
+  const auto offload_cfg_str = offload_hal_config.toString();
+
+  constexpr size_t linelimit = 940;
+  std::string_view str_view(offload_cfg_str);
+  for (size_t offset = 0; offset < offload_cfg_str.length(); offset += linelimit) {
+    log::debug("{} {}", offset ? "    > " : msg, str_view.substr(offset, linelimit));
+  }
+}
+
 void LeAudioClientInterface::Sink::UpdateAudioConfigToHal(
-        const ::bluetooth::le_audio::offload_config& offload_config) {
+        const ::bluetooth::le_audio::stream_config& offload_config) {
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     return;
   }
@@ -290,8 +301,10 @@ void LeAudioClientInterface::Sink::UpdateAudioConfigToHal(
     return;
   }
 
-  get_aidl_client_interface(is_broadcaster_)
-          ->UpdateAudioConfig(aidl::le_audio::offload_config_to_hal_audio_config(offload_config));
+  auto offload_hal_config = aidl::le_audio::stream_config_to_hal_audio_config(offload_config);
+  dumpOffloadConfig("Encoding config:", offload_hal_config);
+
+  get_aidl_client_interface(is_broadcaster_)->UpdateAudioConfig(offload_hal_config);
 }
 
 std::optional<::bluetooth::le_audio::broadcaster::BroadcastConfiguration>
@@ -320,7 +333,7 @@ LeAudioClientInterface::Sink::GetBroadcastConfig(
 
 // This API is for requesting a single configuration.
 // Note: We need a bulk API as well to get multiple configurations for caching
-std::optional<::bluetooth::le_audio::set_configurations::AudioSetConfiguration>
+std::optional<::bluetooth::le_audio::types::AudioSetConfiguration>
 LeAudioClientInterface::Sink::GetUnicastConfig(
         const ::bluetooth::le_audio::CodecManager::UnicastConfigurationRequirements& requirements)
         const {
@@ -582,7 +595,7 @@ void LeAudioClientInterface::Source::StopSession() {
 }
 
 void LeAudioClientInterface::Source::UpdateAudioConfigToHal(
-        const ::bluetooth::le_audio::offload_config& offload_config) {
+        const ::bluetooth::le_audio::stream_config& offload_config) {
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     return;
   }
@@ -591,8 +604,11 @@ void LeAudioClientInterface::Source::UpdateAudioConfigToHal(
       aidl::SessionType::LE_AUDIO_HARDWARE_OFFLOAD_DECODING_DATAPATH) {
     return;
   }
-  aidl::le_audio::LeAudioSourceTransport::interface->UpdateAudioConfig(
-          aidl::le_audio::offload_config_to_hal_audio_config(offload_config));
+
+  auto offload_hal_config = aidl::le_audio::stream_config_to_hal_audio_config(offload_config);
+  dumpOffloadConfig("Decoding config:", offload_hal_config);
+
+  aidl::le_audio::LeAudioSourceTransport::interface->UpdateAudioConfig(offload_hal_config);
 }
 
 size_t LeAudioClientInterface::Source::Write(const uint8_t* p_buf, uint32_t len) {

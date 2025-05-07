@@ -27,16 +27,6 @@ flag {
 }
 
 flag {
-    name: "remove_input_device_on_vup"
-    namespace: "bluetooth"
-    description: "Remove the input device entry on device removal"
-    bug: "354758065"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "initiate_multiple_hid_connections"
     namespace: "bluetooth"
     description: "Allow HID host to initiate multiple HID connections at a time"
@@ -131,6 +121,36 @@ flag {
     namespace: "bluetooth"
     description: "Only disconnect control channel after interrupt channel disconnection is acked"
     bug: "387937345"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "vup_for_pending_connection"
+    namespace: "bluetooth"
+    description: "Generate HID VUP for pending connections as well"
+    bug: "396747085"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "ignore_unselected_hid_transport_states"
+    namespace: "bluetooth"
+    description: "Ignore HID state transitions for transports that are not selected"
+    bug: "397460323"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "early_incoming_hid_connection"
+    namespace: "bluetooth"
+    description: "Allow early incoming HID connection"
+    bug: "398105207"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

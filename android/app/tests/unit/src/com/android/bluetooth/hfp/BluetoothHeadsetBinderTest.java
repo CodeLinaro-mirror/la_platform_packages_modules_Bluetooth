@@ -16,49 +16,47 @@
 
 package com.android.bluetooth.hfp;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 import android.content.AttributionSource;
 
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 public class BluetoothHeadsetBinderTest {
-    private static final String TEST_DEVICE_ADDRESS = "00:00:00:00:00:00";
-
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private HeadsetService mService;
 
-    private AttributionSource mAttributionSource;
-    private BluetoothDevice mTestDevice;
+    private final AttributionSource mAttributionSource = new AttributionSource.Builder(1).build();
+    private BluetoothDevice mDevice = getTestDevice(39);
 
     private HeadsetService.BluetoothHeadsetBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
         mBinder = new HeadsetService.BluetoothHeadsetBinder(mService);
-        mAttributionSource = new AttributionSource.Builder(1).build();
-        mTestDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(TEST_DEVICE_ADDRESS);
     }
 
     @Test
     public void connect() {
-        mBinder.connect(mTestDevice, mAttributionSource);
-        verify(mService).connect(mTestDevice);
+        mBinder.connect(mDevice, mAttributionSource);
+        verify(mService).connect(mDevice);
     }
 
     @Test
     public void disconnect() {
-        mBinder.disconnect(mTestDevice, mAttributionSource);
-        verify(mService).disconnect(mTestDevice);
+        mBinder.disconnect(mDevice, mAttributionSource);
+        verify(mService).disconnect(mDevice);
     }
 
     @Test
@@ -69,64 +67,64 @@ public class BluetoothHeadsetBinderTest {
 
     @Test
     public void getDevicesMatchingConnectionStates() {
-        int[] states = new int[] {BluetoothProfile.STATE_CONNECTED};
+        int[] states = new int[] {STATE_CONNECTED};
         mBinder.getDevicesMatchingConnectionStates(states, mAttributionSource);
         verify(mService).getDevicesMatchingConnectionStates(states);
     }
 
     @Test
     public void getConnectionState() {
-        mBinder.getConnectionState(mTestDevice, mAttributionSource);
-        verify(mService).getConnectionState(mTestDevice);
+        mBinder.getConnectionState(mDevice, mAttributionSource);
+        verify(mService).getConnectionState(mDevice);
     }
 
     @Test
     public void setConnectionPolicy() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
-        mBinder.setConnectionPolicy(mTestDevice, connectionPolicy, mAttributionSource);
-        verify(mService).setConnectionPolicy(mTestDevice, connectionPolicy);
+        int connectionPolicy = CONNECTION_POLICY_ALLOWED;
+        mBinder.setConnectionPolicy(mDevice, connectionPolicy, mAttributionSource);
+        verify(mService).setConnectionPolicy(mDevice, connectionPolicy);
     }
 
     @Test
     public void getConnectionPolicy() {
-        mBinder.getConnectionPolicy(mTestDevice, mAttributionSource);
-        verify(mService).getConnectionPolicy(mTestDevice);
+        mBinder.getConnectionPolicy(mDevice, mAttributionSource);
+        verify(mService).getConnectionPolicy(mDevice);
     }
 
     @Test
     public void isNoiseReductionSupported() {
-        mBinder.isNoiseReductionSupported(mTestDevice, mAttributionSource);
-        verify(mService).isNoiseReductionSupported(mTestDevice);
+        mBinder.isNoiseReductionSupported(mDevice, mAttributionSource);
+        verify(mService).isNoiseReductionSupported(mDevice);
     }
 
     @Test
     public void isVoiceRecognitionSupported() {
-        mBinder.isVoiceRecognitionSupported(mTestDevice, mAttributionSource);
-        verify(mService).isVoiceRecognitionSupported(mTestDevice);
+        mBinder.isVoiceRecognitionSupported(mDevice, mAttributionSource);
+        verify(mService).isVoiceRecognitionSupported(mDevice);
     }
 
     @Test
     public void startVoiceRecognition() {
-        mBinder.startVoiceRecognition(mTestDevice, mAttributionSource);
-        verify(mService).startVoiceRecognition(mTestDevice);
+        mBinder.startVoiceRecognition(mDevice, mAttributionSource);
+        verify(mService).startVoiceRecognition(mDevice);
     }
 
     @Test
     public void stopVoiceRecognition() {
-        mBinder.stopVoiceRecognition(mTestDevice, mAttributionSource);
-        verify(mService).stopVoiceRecognition(mTestDevice);
+        mBinder.stopVoiceRecognition(mDevice, mAttributionSource);
+        verify(mService).stopVoiceRecognition(mDevice);
     }
 
     @Test
     public void isAudioConnected() {
-        mBinder.isAudioConnected(mTestDevice, mAttributionSource);
-        verify(mService).isAudioConnected(mTestDevice);
+        mBinder.isAudioConnected(mDevice, mAttributionSource);
+        verify(mService).isAudioConnected(mDevice);
     }
 
     @Test
     public void getAudioState() {
-        mBinder.getAudioState(mTestDevice, mAttributionSource);
-        verify(mService).getAudioState(mTestDevice);
+        mBinder.getAudioState(mDevice, mAttributionSource);
+        verify(mService).getAudioState(mDevice);
     }
 
     @Test
@@ -171,19 +169,5 @@ public class BluetoothHeadsetBinderTest {
     public void stopScoUsingVirtualVoiceCall() {
         mBinder.stopScoUsingVirtualVoiceCall(mAttributionSource);
         verify(mService).stopScoUsingVirtualVoiceCall();
-    }
-
-    @Test
-    public void phoneStateChanged() {
-        int numActive = 2;
-        int numHeld = 5;
-        int callState = HeadsetHalConstants.CALL_STATE_IDLE;
-        String number = "000-000-0000";
-        int type = 0;
-        String name = "Unknown";
-        mBinder.phoneStateChanged(
-                numActive, numHeld, callState, number, type, name, mAttributionSource);
-        verify(mService)
-                .phoneStateChanged(numActive, numHeld, callState, number, type, name, false);
     }
 }

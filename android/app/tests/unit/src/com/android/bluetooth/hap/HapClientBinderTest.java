@@ -16,6 +16,12 @@
 
 package com.android.bluetooth.hap;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_UNKNOWN;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static org.junit.Assert.assertThrows;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
@@ -23,14 +29,13 @@ import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.IBluetoothHapClientCallback;
 import android.content.AttributionSource;
 
 import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
-
-import com.android.bluetooth.TestUtils;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -38,19 +43,21 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HapClientBinderTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private HapClientService mHapClientService;
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
+    private final BluetoothAdapter mAdapter =
+            InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext()
+                    .getSystemService(BluetoothManager.class)
+                    .getAdapter();
     private final AttributionSource mAttributionSource = mAdapter.getAttributionSource();
-    private final BluetoothDevice mDevice = TestUtils.getTestDevice(mAdapter, 0);
+    private final BluetoothDevice mDevice = getTestDevice(0);
 
     private HapClientBinder mBinder;
 
@@ -90,28 +97,20 @@ public class HapClientBinderTest {
     public void setConnectionPolicy() {
         assertThrows(
                 NullPointerException.class,
-                () ->
-                        mBinder.setConnectionPolicy(
-                                mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED, null));
+                () -> mBinder.setConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED, null));
         assertThrows(
                 NullPointerException.class,
                 () ->
                         mBinder.setConnectionPolicy(
-                                null,
-                                BluetoothProfile.CONNECTION_POLICY_ALLOWED,
-                                mAttributionSource));
+                                null, CONNECTION_POLICY_ALLOWED, mAttributionSource));
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
                         mBinder.setConnectionPolicy(
-                                mDevice,
-                                BluetoothProfile.CONNECTION_POLICY_UNKNOWN,
-                                mAttributionSource));
+                                mDevice, CONNECTION_POLICY_UNKNOWN, mAttributionSource));
 
-        mBinder.setConnectionPolicy(
-                mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED, mAttributionSource);
-        verify(mHapClientService)
-                .setConnectionPolicy(eq(mDevice), eq(BluetoothProfile.CONNECTION_POLICY_ALLOWED));
+        mBinder.setConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED, mAttributionSource);
+        verify(mHapClientService).setConnectionPolicy(eq(mDevice), eq(CONNECTION_POLICY_ALLOWED));
     }
 
     @Test

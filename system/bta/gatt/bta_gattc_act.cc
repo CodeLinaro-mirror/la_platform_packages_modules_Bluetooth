@@ -45,9 +45,6 @@
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
 
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-
 using bluetooth::Uuid;
 using namespace bluetooth;
 
@@ -109,8 +106,6 @@ static const char* bta_gattc_op_code_name[] = {
 /*****************************************************************************
  *  Action Functions
  ****************************************************************************/
-
-void bta_gattc_reset_discover_st(tBTA_GATTC_SERV* p_srcb, tGATT_STATUS status);
 
 /** Enables GATTC module */
 static void bta_gattc_enable() {
@@ -180,8 +175,8 @@ static void bta_gattc_start_if(uint8_t client_if) {
 }
 
 /** Register a GATT client application with BTA */
-void bta_gattc_register(const Uuid& app_uuid, tBTA_GATTC_CBACK* p_cback, BtaAppRegisterCallback cb,
-                        bool eatt_support) {
+void bta_gattc_register(const Uuid& app_uuid, const std::string& name, tBTA_GATTC_CBACK* p_cback,
+                        BtaAppRegisterCallback cb, bool eatt_support) {
   tGATT_STATUS status = GATT_NO_RESOURCES;
   uint8_t client_if = 0;
   log::debug("state: {}, uuid={}", bta_gattc_cb.state, app_uuid.ToString());
@@ -193,7 +188,7 @@ void bta_gattc_register(const Uuid& app_uuid, tBTA_GATTC_CBACK* p_cback, BtaAppR
   }
 
   if (com::android::bluetooth::flags::gatt_client_dynamic_allocation()) {
-    client_if = GATT_Register(app_uuid, "GattClient", &bta_gattc_cl_cback, eatt_support);
+    client_if = GATT_Register(app_uuid, name, &bta_gattc_cl_cback, eatt_support);
     if (client_if == 0) {
       log::error("Register with GATT stack failed");
       status = GATT_ERROR;

@@ -22,7 +22,7 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
-import androidx.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.bluetooth.TestUtils;
@@ -58,7 +58,8 @@ public class CoverArtTest {
     @Before
     public void setUp() throws Exception {
         mTestResources =
-                TestUtils.getTestApplicationResources(InstrumentationRegistry.getTargetContext());
+                TestUtils.getTestApplicationResources(
+                        InstrumentationRegistry.getInstrumentation().getTargetContext());
 
         m200by200Image = loadImage(com.android.bluetooth.tests.R.raw.image_200_200);
         m200by200ImageBlue = loadImage(com.android.bluetooth.tests.R.raw.image_200_200_blue);
@@ -80,19 +81,19 @@ public class CoverArtTest {
         return BitmapFactory.decodeStream(imageInputStream);
     }
 
-    private Bitmap toBitmap(byte[] imageBytes) {
+    private static Bitmap toBitmap(byte[] imageBytes) {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(imageBytes);
         return BitmapFactory.decodeStream(inputStream);
     }
 
-    private BipImageDescriptor getDescriptor(int encoding, int width, int height) {
+    private static BipImageDescriptor getDescriptor(int encoding, int width, int height) {
         return new BipImageDescriptor.Builder()
                 .setEncoding(encoding)
                 .setFixedDimensions(width, height)
                 .build();
     }
 
-    private boolean containsThumbnailFormat(BipImageProperties properties) {
+    private static boolean containsThumbnailFormat(BipImageProperties properties) {
         if (properties == null) return false;
 
         for (BipImageFormat format : properties.getNativeFormats()) {
@@ -116,7 +117,7 @@ public class CoverArtTest {
         return false;
     }
 
-    private boolean isThumbnailFormat(Bitmap image) {
+    private static boolean isThumbnailFormat(Bitmap image) {
         if (image == null) return false;
         return (200 == image.getHeight() && 200 == image.getWidth());
     }

@@ -83,6 +83,8 @@ java_library {
     optimize: {
         enabled: true,
         shrink: true,
+        proguard_compatibility: true,
+        ignore_warnings: false,
         proguard_flags_files: ["proguard.flags"],
     },
 
@@ -103,6 +105,8 @@ java_library {
     optimize: {
         enabled: true,
         shrink: true,
+        proguard_compatibility: true,
+        ignore_warnings: false,
         proguard_flags_files: ["proguard.flags"],
     },
 

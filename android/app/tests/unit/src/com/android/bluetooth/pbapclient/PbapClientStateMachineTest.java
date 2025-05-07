@@ -16,6 +16,14 @@
 
 package com.android.bluetooth.pbapclient;
 
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
@@ -34,17 +42,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import android.accounts.Account;
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 import android.bluetooth.SdpPseRecord;
 import android.content.Context;
-import android.os.test.TestLooper;
 
 import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.bluetooth.TestUtils;
+import com.android.bluetooth.TestLooper;
 import com.android.obex.ResponseCodes;
 import com.android.vcard.VCardEntry;
 
@@ -54,8 +59,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -83,9 +86,8 @@ public class PbapClientStateMachineTest {
     private static final int SDP_BUSY = 2;
     private static final int SDP_UNKNOWN = -1;
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
-    private BluetoothAdapter mAdapter;
     private BluetoothDevice mTestDevice;
 
     @Mock private Context mMockContext;
@@ -106,8 +108,7 @@ public class PbapClientStateMachineTest {
 
     @Before
     public void setUp() throws Exception {
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
-        mTestDevice = TestUtils.getTestDevice(mAdapter, 1);
+        mTestDevice = getTestDevice(1);
 
         doNothing().when(mMockObexClient).connectL2cap(anyInt());
         doNothing().when(mMockObexClient).connectRfcomm(anyInt());
@@ -171,8 +172,7 @@ public class PbapClientStateMachineTest {
         mPbapClientStateMachine.disconnect();
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
         verify(mMockCallback, never()).onConnectionStateChanged(anyInt(), anyInt());
     }
 
@@ -181,12 +181,9 @@ public class PbapClientStateMachineTest {
         mPbapClientStateMachine.connect();
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTING);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTED),
-                        eq(BluetoothProfile.STATE_CONNECTING));
+                .onConnectionStateChanged(eq(STATE_DISCONNECTED), eq(STATE_CONNECTING));
     }
 
     // *********************************************************************************************
@@ -240,15 +237,10 @@ public class PbapClientStateMachineTest {
 
         verify(mMockObexClient, never()).connectL2cap(eq(L2CAP_PSM));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_DISCONNECTING));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
     }
 
     @Test
@@ -263,8 +255,7 @@ public class PbapClientStateMachineTest {
         // We can't currently mock a BluetoothDevice to verify the sdpSearch() call, but we can
         // validate that the state machine stays in the same state and will adequately receive the
         // next valid SDP record that arrives.
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_CONNECTING);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTING);
 
         mPbapClientStateMachine.onSdpResultReceived(
                 SDP_SUCCESS,
@@ -286,32 +277,22 @@ public class PbapClientStateMachineTest {
 
         verify(mMockObexClient, never()).connectL2cap(eq(L2CAP_PSM));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_DISCONNECTING));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
     }
 
     @Test
     public void testConnecting_receivedObexConnection_transitionToConnected() {
         testConnecting_receivedSdpResultWithTransportL2cap_connectionReqOnL2cap();
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_CONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTED);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_CONNECTED));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_CONNECTED));
     }
 
     @Test
@@ -321,15 +302,10 @@ public class PbapClientStateMachineTest {
         mTestLooper.dispatchAll();
 
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_DISCONNECTING));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
     }
 
     @Test
@@ -339,36 +315,24 @@ public class PbapClientStateMachineTest {
         mTestLooper.dispatchAll();
 
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_DISCONNECTING));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
     }
 
     @Test
     public void testConnecting_receivedObexDisconnection_transitionToDisconnected() {
         testConnecting_receivedSdpResultWithTransportL2cap_connectionReqOnL2cap();
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_DISCONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_DISCONNECTED);
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_DISCONNECTING));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
     }
 
     // *********************************************************************************************
@@ -437,33 +401,23 @@ public class PbapClientStateMachineTest {
         mStorageCallback.onStorageAccountsChanged(mMockedAccounts, new ArrayList<Account>());
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTING);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTING);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTED),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTED), eq(STATE_DISCONNECTING));
     }
 
     @Test
     public void testConnected_receivedObexDisconnection_transitionToDisconnected() {
         testConnecting_receivedObexConnection_transitionToConnected();
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_DISCONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_DISCONNECTED);
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTED),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTED), eq(STATE_DISCONNECTING));
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
     }
 
     @Test
@@ -472,12 +426,9 @@ public class PbapClientStateMachineTest {
         mPbapClientStateMachine.disconnect();
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTING);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTING);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTED),
-                        eq(BluetoothProfile.STATE_DISCONNECTING));
+                .onConnectionStateChanged(eq(STATE_CONNECTED), eq(STATE_DISCONNECTING));
     }
 
     // *********************************************************************************************
@@ -523,10 +474,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_FAVORITES));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         verify(mMockStorage, times(1)).insertFavorites(any(Account.class), anyList());
@@ -550,10 +499,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_LOCAL_PHONEBOOK));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         verify(mMockStorage, times(1)).insertLocalContacts(any(Account.class), anyList());
@@ -577,10 +524,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_LOCAL_PHONEBOOK));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         verify(mMockStorage, never()).insertLocalContacts(any(Account.class), anyList());
@@ -607,10 +552,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_SIM_CARD));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         verify(mMockStorage, times(1)).insertSimContacts(any(Account.class), anyList());
@@ -634,10 +577,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_SIM_CARD));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         verify(mMockStorage, times(1)).insertMissedCallHistory(any(Account.class), anyList());
@@ -659,10 +600,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_FAVORITES));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         verify(mMockStorage, times(4)).insertFavorites(any(Account.class), anyList());
@@ -679,19 +618,14 @@ public class PbapClientStateMachineTest {
                 SDP_SUCCESS,
                 makeSdpRecord(
                         L2CAP_PSM, INVALID_RFCOMM, SUPPORTED_FEATURES, NO_REPOSITORIES_SUPPORTED));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         // Verify we're connected
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_CONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_CONNECTED);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_CONNECTING),
-                        eq(BluetoothProfile.STATE_CONNECTED));
+                .onConnectionStateChanged(eq(STATE_CONNECTING), eq(STATE_CONNECTED));
 
         // Verify storage not hit
         verify(mMockStorage, never()).insertFavorites(any(Account.class), anyList());
@@ -715,10 +649,8 @@ public class PbapClientStateMachineTest {
                         INVALID_RFCOMM,
                         SUPPORTED_FEATURES,
                         PbapSdpRecord.REPOSITORY_FAVORITES));
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+        setAndNotifyObexClientStatus(STATE_DISCONNECTED, STATE_CONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_CONNECTED);
         mTestLooper.dispatchAll();
 
         // Get storage callback
@@ -760,18 +692,13 @@ public class PbapClientStateMachineTest {
     @Test
     public void testDisconnecting_clientDisconnects_transitionToDisconnected() {
         testEnterDisconnecting_clientConnected_disconnectIssued();
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTED, BluetoothProfile.STATE_DISCONNECTING);
-        setAndNotifyObexClientStatus(
-                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_DISCONNECTED);
+        setAndNotifyObexClientStatus(STATE_CONNECTED, STATE_DISCONNECTING);
+        setAndNotifyObexClientStatus(STATE_CONNECTING, STATE_DISCONNECTED);
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
     }
 
     @Test
@@ -780,12 +707,9 @@ public class PbapClientStateMachineTest {
         mTestLooper.moveTimeForward(PbapClientStateMachine.DISCONNECT_TIMEOUT_MS);
         mTestLooper.dispatchAll();
 
-        assertThat(mPbapClientStateMachine.getConnectionState())
-                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mPbapClientStateMachine.getConnectionState()).isEqualTo(STATE_DISCONNECTED);
         verify(mMockCallback, times(1))
-                .onConnectionStateChanged(
-                        eq(BluetoothProfile.STATE_DISCONNECTING),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChanged(eq(STATE_DISCONNECTING), eq(STATE_DISCONNECTED));
     }
 
     @Test
@@ -832,7 +756,7 @@ public class PbapClientStateMachineTest {
         return new PbapSdpRecord(mTestDevice, sdpRecord);
     }
 
-    private Account getAccountForDevice(BluetoothDevice device) {
+    private static Account getAccountForDevice(BluetoothDevice device) {
         return new Account(device.getAddress(), "com.android.bluetooth.pbabclient.account");
     }
 
@@ -893,7 +817,6 @@ public class PbapClientStateMachineTest {
                             return null;
                         })
                 .when(mMockObexClient)
-                .requestDownloadPhonebook(
-                        eq(phonebook), any(PbapApplicationParameters.class), any(Account.class));
+                .requestDownloadPhonebook(eq(phonebook), any(PbapApplicationParameters.class));
     }
 }

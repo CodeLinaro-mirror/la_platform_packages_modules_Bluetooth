@@ -18,6 +18,8 @@ package android.bluetooth.hid;
 
 import static android.bluetooth.BluetoothDevice.TRANSPORT_BREDR;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_LE;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -64,7 +66,6 @@ import android.util.Log;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.bluetooth.flags.Flags;
 import com.android.compatibility.common.util.AdoptShellPermissionsRule;
 
 import org.hamcrest.CustomTypeSafeMatcher;
@@ -98,6 +99,7 @@ import java.util.Arrays;
 @VirtualOnly
 public class HidHostDualModeTest {
     private static final String TAG = HidHostDualModeTest.class.getSimpleName();
+
     private static final String BUMBLE_DEVICE_NAME = "Bumble";
     private static final Duration INTENT_TIMEOUT = Duration.ofSeconds(10);
     private static final int KEYBD_RPT_ID = 1;
@@ -310,32 +312,19 @@ public class HidHostDualModeTest {
                 hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice),
                 hasExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_BONDED));
 
-        if (a2dpService.getConnectionPolicy(mDevice)
-                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            a2dpService.setConnectionPolicy(
-                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (a2dpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(a2dpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
-        if (hfpService.getConnectionPolicy(mDevice) == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            hfpService.setConnectionPolicy(
-                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (hfpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(hfpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
 
         // Have to use Hamcrest matchers instead of Mockito matchers in MockitoHamcrest context
-        if (Flags.removeInputDeviceOnVup()) {
-            verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
-            verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTED));
-            assertThat(mHidService.getPreferredTransport(mDevice)).isEqualTo(TRANSPORT_BREDR);
-        } else {
-            // Without removeInputDeviceOnVup, previous preference on LE transport might still exist
-            verifyConnectionState(
-                    mDevice, oneOf(TRANSPORT_BREDR, TRANSPORT_LE), equalTo(STATE_CONNECTING));
-            verifyConnectionState(
-                    mDevice, oneOf(TRANSPORT_BREDR, TRANSPORT_LE), equalTo(STATE_CONNECTED));
-        }
+        verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
+        verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTED));
+        assertThat(mHidService.getPreferredTransport(mDevice)).isEqualTo(TRANSPORT_BREDR);
         // Two ACTION_UUIDs are returned after pairing with dual mode HID device
         // 2nd ACTION_UUID and ACTION_CONNECTION_STATE_CHANGED has race condition, hence unordered
         verifyIntentReceivedUnorderedAtLeast(
@@ -348,9 +337,7 @@ public class HidHostDualModeTest {
                                 Matchers.hasItemInArray(BluetoothUuid.HOGP),
                                 Matchers.hasItemInArray(BluetoothUuid.HID))));
 
-        if (Flags.removeInputDeviceOnVup()
-                || mHidService.getPreferredTransport(mDevice) == TRANSPORT_BREDR) {
-            // Cannot guarantee TRANSPORT_BREDR without removeInputDeviceOnVup, hence we need to
+        if (mHidService.getPreferredTransport(mDevice) == TRANSPORT_BREDR) {
             // Switch to LE transport to prepare for test cases
             mHidService.setPreferredTransport(mDevice, TRANSPORT_LE);
             verifyTransportSwitch(mDevice, TRANSPORT_BREDR, TRANSPORT_LE);
@@ -362,20 +349,6 @@ public class HidHostDualModeTest {
     @After
     public void tearDown() throws Exception {
         if (mDevice.getBondState() == BluetoothDevice.BOND_BONDED) {
-            // Restore transport to BR/EDR when removeInputDeviceOnVup is not enabled
-            if (!Flags.removeInputDeviceOnVup()
-                    && mHidService.getPreferredTransport(mDevice) == TRANSPORT_LE) {
-                boolean connected = mHidService.getConnectedDevices().contains(mDevice);
-                mHidService.setPreferredTransport(mDevice, TRANSPORT_BREDR);
-                if (connected) {
-                    verifyTransportSwitch(mDevice, TRANSPORT_LE, TRANSPORT_BREDR);
-                } else {
-                    verifyConnectionState(
-                            mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
-                    verifyConnectionState(
-                            mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTED));
-                }
-            }
             removeBond(mDevice);
         }
         mContext.unregisterReceiver(mReceiver);

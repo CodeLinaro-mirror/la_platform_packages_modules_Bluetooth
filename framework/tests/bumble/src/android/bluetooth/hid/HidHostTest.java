@@ -17,6 +17,8 @@
 package android.bluetooth.hid;
 
 import static android.bluetooth.BluetoothDevice.TRANSPORT_BREDR;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -51,7 +53,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.platform.test.annotations.RequiresFlagsEnabled;
 import android.platform.test.flag.junit.CheckFlagsRule;
 import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.util.Log;
@@ -59,7 +60,6 @@ import android.util.Log;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.bluetooth.flags.Flags;
 import com.android.compatibility.common.util.AdoptShellPermissionsRule;
 
 import com.google.protobuf.Empty;
@@ -96,6 +96,7 @@ import java.util.concurrent.TimeUnit;
 @VirtualOnly
 public class HidHostTest {
     private static final String TAG = HidHostTest.class.getSimpleName();
+
     private static final Duration INTENT_TIMEOUT = Duration.ofSeconds(10);
     private BluetoothDevice mDevice;
     private BluetoothHidHost mHidService;
@@ -114,6 +115,7 @@ public class HidHostTest {
     private static final int INVALID_RPT_ID = 3;
     private static final int CONNECTION_TIMEOUT_MS = 2_000;
     private static final int BT_ON_DELAY_MS = 3000;
+    private static final int REPORT_UPDATE_TIMEOUT_MS = 100;
 
     private static final Duration PROTO_MODE_TIMEOUT = Duration.ofSeconds(10);
 
@@ -132,6 +134,7 @@ public class HidHostTest {
     @Mock private BroadcastReceiver mReceiver;
     private InOrder mInOrder = null;
     private byte[] mReportData = {};
+    private CompletableFuture<Boolean> mIsReportUpdated;
     @Mock private BluetoothProfile.ServiceListener mProfileServiceListener;
 
     @SuppressLint("MissingPermission")
@@ -241,6 +244,9 @@ public class HidHostTest {
                                         + device
                                         + " reportBufferSize "
                                         + reportBufferSize);
+                        if (mIsReportUpdated != null) {
+                            mIsReportUpdated.complete(true);
+                        }
                         break;
                     case BluetoothDevice.ACTION_ACL_DISCONNECTED:
                         device =
@@ -309,17 +315,12 @@ public class HidHostTest {
                 hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice),
                 hasExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_BONDED));
 
-        if (a2dpService.getConnectionPolicy(mDevice)
-                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            a2dpService.setConnectionPolicy(
-                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (a2dpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(a2dpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
-        if (hfpService.getConnectionPolicy(mDevice) == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
-            assertThat(
-                            hfpService.setConnectionPolicy(
-                                    mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
+        if (hfpService.getConnectionPolicy(mDevice) == CONNECTION_POLICY_ALLOWED) {
+            assertThat(hfpService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN))
                     .isTrue();
         }
         verifyConnectionState(mDevice, equalTo(TRANSPORT_BREDR), equalTo(STATE_CONNECTING));
@@ -376,8 +377,7 @@ public class HidHostTest {
     @Test
     public void hidReconnectionWhenConnectionPolicyChangeTest() throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
 
         mHidBlockingStub.disconnectHost(Empty.getDefaultInstance());
         verifyProfileDisconnectionState();
@@ -388,17 +388,11 @@ public class HidHostTest {
         mHidBlockingStub.disconnectHost(Empty.getDefaultInstance());
         verifyProfileDisconnectionState();
 
-        assertThat(
-                        mHidService.setConnectionPolicy(
-                                mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
-                .isTrue();
+        assertThat(mHidService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN)).isTrue();
 
         reconnectionFromRemoteAndVerifyDisconnectedState();
 
-        assertThat(
-                        mHidService.setConnectionPolicy(
-                                mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED))
-                .isTrue();
+        assertThat(mHidService.setConnectionPolicy(mDevice, CONNECTION_POLICY_ALLOWED)).isTrue();
         verifyIntentReceived(
                 hasAction(BluetoothHidHost.ACTION_CONNECTION_STATE_CHANGED),
                 hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice),
@@ -431,8 +425,7 @@ public class HidHostTest {
     @Test
     public void hidReconnectionAfterBTrestartWithConnectionPolicyAllowedTest() throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
 
         bluetoothRestart();
 
@@ -456,13 +449,9 @@ public class HidHostTest {
     public void hidReconnectionAfterBTrestartWithConnectionPolicyiDisallowedTest()
             throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
 
-        assertThat(
-                        mHidService.setConnectionPolicy(
-                                mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN))
-                .isTrue();
+        assertThat(mHidService.setConnectionPolicy(mDevice, CONNECTION_POLICY_FORBIDDEN)).isTrue();
 
         bluetoothRestart();
         reconnectionFromRemoteAndVerifyDisconnectedState();
@@ -482,8 +471,7 @@ public class HidHostTest {
     @Test
     public void hidReconnectionAfterDeviceRemovedTest() throws Exception {
 
-        assertThat(mHidService.getConnectionPolicy(mDevice))
-                .isEqualTo(BluetoothProfile.CONNECTION_POLICY_ALLOWED);
+        assertThat(mHidService.getConnectionPolicy(mDevice)).isEqualTo(CONNECTION_POLICY_ALLOWED);
         mHidBlockingStub.disconnectHost(Empty.getDefaultInstance());
         verifyProfileDisconnectionState();
 
@@ -524,7 +512,6 @@ public class HidHostTest {
      */
     @SuppressLint("MissingPermission")
     @Test
-    @RequiresFlagsEnabled({Flags.FLAG_REMOVE_INPUT_DEVICE_ON_VUP})
     public void hidVirtualUnplugFromHidDeviceTest() throws Exception {
         mHidBlockingStub.virtualCableUnplugHost(Empty.getDefaultInstance());
         verifyIntentReceived(
@@ -598,22 +585,30 @@ public class HidHostTest {
     public void hidGetReportTest() throws Exception {
         // Keyboard report
         mReportData = new byte[0];
+        mIsReportUpdated = new CompletableFuture<>();
         mHidService.getReport(mDevice, BluetoothHidHost.REPORT_TYPE_INPUT, (byte) KEYBD_RPT_ID, 0);
         // Report Buffer = Report ID (1 byte) + Report Data (KEYBD_RPT_SIZE byte)
         verifyIntentReceived(
                 hasAction(BluetoothHidHost.ACTION_REPORT),
                 hasExtra(BluetoothHidHost.EXTRA_REPORT_BUFFER_SIZE, KEYBD_RPT_SIZE + 1));
+        mIsReportUpdated
+                .completeOnTimeout(null, REPORT_UPDATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .join();
         assertThat(mReportData).isNotNull();
         assertThat(mReportData.length).isGreaterThan(0);
         assertThat(mReportData[0]).isEqualTo(KEYBD_RPT_ID);
 
         // Mouse report
         mReportData = new byte[0];
+        mIsReportUpdated = new CompletableFuture<>();
         mHidService.getReport(mDevice, BluetoothHidHost.REPORT_TYPE_INPUT, (byte) MOUSE_RPT_ID, 0);
         // Report Buffer = Report ID (1 byte) + Report Data (MOUSE_RPT_SIZE byte)
         verifyIntentReceived(
                 hasAction(BluetoothHidHost.ACTION_REPORT),
                 hasExtra(BluetoothHidHost.EXTRA_REPORT_BUFFER_SIZE, MOUSE_RPT_SIZE + 1));
+        mIsReportUpdated
+                .completeOnTimeout(null, REPORT_UPDATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .join();
         assertThat(mReportData).isNotNull();
         assertThat(mReportData.length).isGreaterThan(0);
         assertThat(mReportData[0]).isEqualTo(MOUSE_RPT_ID);

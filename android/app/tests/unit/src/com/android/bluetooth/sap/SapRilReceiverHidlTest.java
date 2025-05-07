@@ -16,6 +16,7 @@
 
 package com.android.bluetooth.sap;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.sap.SapMessage.CON_STATUS_OK;
 import static com.android.bluetooth.sap.SapMessage.DISC_GRACEFULL;
 import static com.android.bluetooth.sap.SapMessage.ID_CONNECT_RESP;
@@ -49,14 +50,13 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
+import android.hardware.radio.V1_0.ISap;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
 
 import androidx.test.filters.LargeTest;
 import androidx.test.runner.AndroidJUnit4;
-
-import com.android.bluetooth.jarjar.android.hardware.radio.V1_0.ISap;
 
 import org.junit.After;
 import org.junit.Before;
@@ -66,8 +66,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
 import org.mockito.Spy;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -83,7 +81,7 @@ public class SapRilReceiverHidlTest {
 
     @Spy private TestHandlerCallback mCallback = new TestHandlerCallback();
 
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private Handler mServiceHandler;
 

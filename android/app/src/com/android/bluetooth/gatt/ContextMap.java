@@ -27,7 +27,6 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.util.Log;
 
-import com.android.bluetooth.flags.Flags;
 import com.android.internal.annotations.GuardedBy;
 
 import java.time.Instant;
@@ -51,7 +50,9 @@ import java.util.function.Predicate;
  * @param <C> the callback type for this map
  */
 public class ContextMap<C> {
-    private static final String TAG = GattServiceConfig.TAG_PREFIX + "ContextMap";
+    private static final String TAG =
+            GattServiceConfig.TAG_PREFIX + ContextMap.class.getSimpleName();
+
     private static final DateTimeFormatter sDateFormat =
             DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
     private static final int MAX_LAST_RECORDS = 5;
@@ -271,18 +272,7 @@ public class ContextMap<C> {
     /** Remove a connection with the given ID. */
     void removeConnection(int id, int connId) {
         synchronized (mConnectionsLock) {
-            if (Flags.bleContextMapRemoveFix()) {
-                mConnections.removeIf(conn -> conn.appId == id && conn.connId == connId);
-            } else {
-                Iterator<Connection> i = mConnections.iterator();
-                while (i.hasNext()) {
-                    Connection connection = i.next();
-                    if (connection.connId == connId) {
-                        i.remove();
-                        break;
-                    }
-                }
-            }
+            mConnections.removeIf(conn -> conn.appId == id && conn.connId == connId);
         }
     }
 

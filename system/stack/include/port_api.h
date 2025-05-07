@@ -24,6 +24,8 @@
 #ifndef PORT_API_H
 #define PORT_API_H
 
+#include <hardware/bt_sock.h>
+
 #include <cstdint>
 
 #include "include/macros.h"
@@ -188,6 +190,7 @@ struct RfcommCfgInfo {
   uint16_t init_credit;
   bool rx_mtu_present;
   uint16_t rx_mtu;
+  btsock_data_path_t data_path{BTSOCK_DATA_PATH_NO_OFFLOAD};
 };
 
 namespace std {
@@ -334,19 +337,6 @@ typedef void(tPORT_MGMT_CALLBACK)(const tPORT_RESULT code, uint16_t port_handle)
 
 /*******************************************************************************
  *
- * Function         PORT_IsOpening
- *
- * Description      This function returns true if there is any RFCOMM connection
- *                  opening in process.
- *
- * Parameters:      true if any connection opening is found
- *                  bd_addr    - bd_addr of the peer
- *
- ******************************************************************************/
-[[nodiscard]] bool PORT_IsOpening(RawAddress* bd_addr);
-
-/*******************************************************************************
- *
  * Function         PORT_IsCollisionDetected
  *
  * Description      This function returns true if there is already an incoming
@@ -362,14 +352,26 @@ typedef void(tPORT_MGMT_CALLBACK)(const tPORT_RESULT code, uint16_t port_handle)
  *
  * Function         PORT_SetAppUid
  *
- * Description      This function configures connection according to the
- *                  specifications in the tPORT_STATE structure.
+ * Description      This function sets app_uid in port structure
  *
  * Parameters:      handle     - Handle returned in the RFCOMM_CreateConnection
  *                  app_uid    - Uid of app that requested the socket
  *
  ******************************************************************************/
 [[nodiscard]] int PORT_SetAppUid(uint16_t handle, uint32_t app_uid);
+
+/*******************************************************************************
+ *
+ * Function         PORT_SetSdpDuration
+ *
+ * Description      This function saves calculated sdp duration (in
+ *                  milliseconds) to port structure
+ *
+ * Parameters:      handle          - Handle returned in RFCOMM_CreateConnection
+ *                  sdp_duration_ms - Time spent doing sdp
+ *
+ ******************************************************************************/
+[[nodiscard]] int PORT_SetSdpDuration(uint16_t handle, uint64_t sdp_duration_ms);
 
 /*******************************************************************************
  *

@@ -43,9 +43,6 @@
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
 
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-
 using bluetooth::Uuid;
 extern bt_interface_t bluetoothInterface;
 
@@ -1025,7 +1022,7 @@ static bt_os_callouts_t sBluetoothOsCallouts = {
         release_wake_lock_callout,
 };
 
-int hal_util_load_bt_library(const bt_interface_t** interface) {
+static int hal_util_load_bt_library(const bt_interface_t** interface) {
   *interface = &bluetoothInterface;
   return 0;
 }
@@ -1216,13 +1213,16 @@ static jboolean set_data(JNIEnv* env, jobject oobData, jint transport, bt_oob_da
   }
 
   // Convert the address from byte[]
-  jbyte* addressBytes = env->GetByteArrayElements(address, NULL);
-  if (addressBytes == NULL) {
-    log::error("addressBytes cannot be null!");
-    jniThrowIOException(env, EINVAL);
-    return JNI_FALSE;
+  {
+    jbyte* addressBytes = env->GetByteArrayElements(address, NULL);
+    if (addressBytes == NULL) {
+      log::error("addressBytes cannot be null!");
+      jniThrowIOException(env, EINVAL);
+      return JNI_FALSE;
+    }
+    memcpy(oob_data->address, addressBytes, len);
+    env->ReleaseByteArrayElements(address, addressBytes, 0);
   }
-  memcpy(oob_data->address, addressBytes, len);
 
   // Get the device name byte[] java object
   jbyteArray deviceName =
@@ -1291,7 +1291,6 @@ static jboolean set_data(JNIEnv* env, jobject oobData, jint transport, bt_oob_da
     if (oobDataLength == NULL || env->GetArrayLength(oobDataLength) != OOB_DATA_LEN_SIZE) {
       log::info("wrong length of oobDataLength, should be empty or {} bytes.", OOB_DATA_LEN_SIZE);
       jniThrowIOException(env, EINVAL);
-      env->ReleaseByteArrayElements(oobDataLength, NULL, 0);
       return JNI_FALSE;
     }
 
@@ -1410,6 +1409,10 @@ static jboolean createBondOutOfBandNative(JNIEnv* env, jobject /* obj */, jbyteA
     return JNI_FALSE;
   }
 
+  RawAddress addr_obj = {};
+  addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
+
   // Convert P192 data from Java POJO to C Struct
   bt_oob_data_t p192_data = {};
   if (p192Data != NULL) {
@@ -1428,9 +1431,8 @@ static jboolean createBondOutOfBandNative(JNIEnv* env, jobject /* obj */, jbyteA
     }
   }
 
-  return ((sBluetoothInterface->create_bond_out_of_band(reinterpret_cast<RawAddress*>(addr),
-                                                        transport, &p192_data, &p256_data)) ==
-          BT_STATUS_SUCCESS)
+  return ((sBluetoothInterface->create_bond_out_of_band(&addr_obj, transport, &p192_data,
+                                                        &p256_data)) == BT_STATUS_SUCCESS)
                  ? JNI_TRUE
                  : JNI_FALSE;
 }
@@ -1761,6 +1763,7 @@ static jbyteArray obfuscateAddressNative(JNIEnv* env, jobject /* obj */, jbyteAr
   }
   RawAddress addr_obj = {};
   addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
   std::string output = sBluetoothInterface->obfuscate_address(addr_obj);
   jsize output_size = output.size() * sizeof(char);
   jbyteArray output_bytes = env->NewByteArray(output_size);
@@ -1898,6 +1901,7 @@ static int getMetricIdNative(JNIEnv* env, jobject /* obj */, jbyteArray address)
   }
   RawAddress addr_obj = {};
   addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
   return sBluetoothInterface->get_metric_id(addr_obj);
 }
 
@@ -1915,6 +1919,7 @@ static jboolean allowLowLatencyAudioNative(JNIEnv* env, jobject /* obj */, jbool
 
   RawAddress addr_obj = {};
   addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
   sBluetoothInterface->allow_low_latency_audio(allowed, addr_obj);
   return true;
 }
@@ -1932,6 +1937,7 @@ static void metadataChangedNative(JNIEnv* env, jobject /* obj */, jbyteArray add
   }
   RawAddress addr_obj = {};
   addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
 
   if (value == NULL) {
     log::error("metadataChangedNative() ignoring NULL array");
@@ -2228,6 +2234,26 @@ static jboolean disconnectAllAclsNative(JNIEnv* /* env */, jobject /* obj */) {
   return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
+static jboolean disconnectAclNative(JNIEnv* env, jobject /* obj */, jbyteArray address,
+                                    jint transport) {
+  log::verbose("");
+
+  if (!sBluetoothInterface) {
+    return JNI_FALSE;
+  }
+
+  jbyte* addr = env->GetByteArrayElements(address, nullptr);
+  if (addr == nullptr) {
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+  RawAddress addr_obj = {};
+  addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
+
+  return sBluetoothInterface->disconnect_acl(addr_obj, transport);
+}
+
 static jboolean allowWakeByHidNative(JNIEnv* /* env */, jobject /* obj */) {
   log::verbose("");
 
@@ -2250,7 +2276,7 @@ static jboolean restoreFilterAcceptListNative(JNIEnv* /* env */, jobject /* obj 
   return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
-int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) {
+static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "(ZZIZ)Z", reinterpret_cast<void*>(initNative)},
           {"cleanupNative", "()V", reinterpret_cast<void*>(cleanupNative)},
@@ -2320,6 +2346,7 @@ int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) {
           {"clearFilterAcceptListNative", "()Z",
            reinterpret_cast<void*>(clearFilterAcceptListNative)},
           {"disconnectAllAclsNative", "()Z", reinterpret_cast<void*>(disconnectAllAclsNative)},
+          {"disconnectAclNative", "([BI)Z", reinterpret_cast<void*>(disconnectAclNative)},
           {"allowWakeByHidNative", "()Z", reinterpret_cast<void*>(allowWakeByHidNative)},
           {"restoreFilterAcceptListNative", "()Z",
            reinterpret_cast<void*>(restoreFilterAcceptListNative)},

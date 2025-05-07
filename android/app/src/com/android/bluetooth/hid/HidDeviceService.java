@@ -18,6 +18,14 @@ package com.android.bluetooth.hid;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
+
+import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElseGet;
 
 import android.annotation.RequiresPermission;
 import android.app.ActivityManager;
@@ -29,7 +37,6 @@ import android.bluetooth.BluetoothProfile;
 import android.bluetooth.IBluetoothHidDevice;
 import android.bluetooth.IBluetoothHidDeviceCallback;
 import android.content.AttributionSource;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.Handler;
@@ -55,7 +62,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 
 public class HidDeviceService extends ProfileService {
     private static final String TAG = HidDeviceService.class.getSimpleName();
@@ -74,21 +80,40 @@ public class HidDeviceService extends ProfileService {
 
     private static HidDeviceService sHidDeviceService;
 
-    private DatabaseManager mDatabaseManager;
-    private HidDeviceNativeInterface mHidDeviceNativeInterface;
+    private final HidDeviceServiceHandler mHandler;
+    private final AdapterService mAdapterService;
+    private final DatabaseManager mDatabaseManager;
+    private final ActivityManager mActivityManager;
+    private final HidDeviceNativeInterface mHidDeviceNativeInterface;
 
-    private boolean mNativeAvailable = false;
     private BluetoothDevice mHidDevice;
     private int mHidDeviceState = BluetoothHidDevice.STATE_DISCONNECTED;
     private int mUserUid = 0;
     private IBluetoothHidDeviceCallback mCallback;
     private BluetoothHidDeviceDeathRecipient mDeathRcpt;
-    private ActivityManager mActivityManager;
 
-    private HidDeviceServiceHandler mHandler;
+    public HidDeviceService(AdapterService adapterService) {
+        this(adapterService, Looper.getMainLooper(), null);
+    }
 
-    public HidDeviceService(Context ctx) {
-        super(ctx);
+    @VisibleForTesting
+    HidDeviceService(
+            AdapterService adapterService,
+            Looper looper,
+            HidDeviceNativeInterface nativeInterface) {
+        super(requireNonNull(adapterService));
+        mAdapterService = adapterService;
+        mDatabaseManager = requireNonNull(mAdapterService.getDatabase());
+
+        mHandler = new HidDeviceServiceHandler(requireNonNull(looper));
+        mHidDeviceNativeInterface =
+                requireNonNullElseGet(
+                        nativeInterface, () -> new HidDeviceNativeInterface(adapterService));
+        mHidDeviceNativeInterface.init();
+        mActivityManager = requireNonNull(getSystemService(ActivityManager.class));
+        mActivityManager.addOnUidImportanceListener(
+                mUidImportanceListener, FOREGROUND_IMPORTANCE_CUTOFF);
+        setHidDeviceService(this);
     }
 
     public static boolean isEnabled() {
@@ -473,8 +498,7 @@ public class HidDeviceService extends ProfileService {
         public List<BluetoothDevice> getConnectedDevices(AttributionSource source) {
             Log.d(TAG, "getConnectedDevices()");
 
-            return getDevicesMatchingConnectionStates(
-                    new int[] {BluetoothProfile.STATE_CONNECTED}, source);
+            return getDevicesMatchingConnectionStates(new int[] {STATE_CONNECTED}, source);
         }
 
         @Override
@@ -663,7 +687,7 @@ public class HidDeviceService extends ProfileService {
                 device, BluetoothProfile.HID_DEVICE, connectionPolicy)) {
             return false;
         }
-        if (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
+        if (connectionPolicy == CONNECTION_POLICY_FORBIDDEN) {
             disconnect(device);
         }
         return true;
@@ -706,38 +730,16 @@ public class HidDeviceService extends ProfileService {
     }
 
     @Override
-    public void start() {
-        Log.d(TAG, "start()");
-
-        mDatabaseManager =
-                Objects.requireNonNull(
-                        AdapterService.getAdapterService().getDatabase(),
-                        "DatabaseManager cannot be null when HidDeviceService starts");
-
-        mHandler = new HidDeviceServiceHandler(Looper.getMainLooper());
-        mHidDeviceNativeInterface = HidDeviceNativeInterface.getInstance();
-        mHidDeviceNativeInterface.init();
-        mNativeAvailable = true;
-        mActivityManager = getSystemService(ActivityManager.class);
-        mActivityManager.addOnUidImportanceListener(
-                mUidImportanceListener, FOREGROUND_IMPORTANCE_CUTOFF);
-        setHidDeviceService(this);
-    }
-
-    @Override
-    public void stop() {
-        Log.d(TAG, "stop()");
+    public void cleanup() {
+        Log.i(TAG, "Cleanup HidDevice Service");
 
         if (sHidDeviceService == null) {
-            Log.w(TAG, "stop() called before start()");
+            Log.w(TAG, "cleanup() called before initialization");
             return;
         }
 
         setHidDeviceService(null);
-        if (mNativeAvailable) {
-            mHidDeviceNativeInterface.cleanup();
-            mNativeAvailable = false;
-        }
+        mHidDeviceNativeInterface.cleanup();
         mActivityManager.removeOnUidImportanceListener(mUidImportanceListener);
     }
 
@@ -767,7 +769,7 @@ public class HidDeviceService extends ProfileService {
     /**
      * Gets the connections state for the hid device profile for the passed in device
      *
-     * @param device is the device whose conenction state we want to verify
+     * @param device is the device whose connection state we want to verify
      * @return current connection state, one of {@link BluetoothProfile#STATE_DISCONNECTED}, {@link
      *     BluetoothProfile#STATE_CONNECTING}, {@link BluetoothProfile#STATE_CONNECTED}, or {@link
      *     BluetoothProfile#STATE_DISCONNECTING}
@@ -883,13 +885,10 @@ public class HidDeviceService extends ProfileService {
             return;
         }
 
-        AdapterService adapterService = AdapterService.getAdapterService();
-        if (adapterService != null) {
-            adapterService.updateProfileConnectionAdapterProperties(
-                    device, BluetoothProfile.HID_DEVICE, newState, prevState);
-        }
+        mAdapterService.updateProfileConnectionAdapterProperties(
+                device, BluetoothProfile.HID_DEVICE, newState, prevState);
 
-        if (newState == BluetoothProfile.STATE_CONNECTED) {
+        if (newState == STATE_CONNECTED) {
             MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.HID_DEVICE);
         }
 
@@ -904,15 +903,15 @@ public class HidDeviceService extends ProfileService {
     private static int convertHalState(int halState) {
         switch (halState) {
             case HAL_CONN_STATE_CONNECTED:
-                return BluetoothProfile.STATE_CONNECTED;
+                return STATE_CONNECTED;
             case HAL_CONN_STATE_CONNECTING:
-                return BluetoothProfile.STATE_CONNECTING;
+                return STATE_CONNECTING;
             case HAL_CONN_STATE_DISCONNECTED:
-                return BluetoothProfile.STATE_DISCONNECTED;
+                return STATE_DISCONNECTED;
             case HAL_CONN_STATE_DISCONNECTING:
-                return BluetoothProfile.STATE_DISCONNECTING;
+                return STATE_DISCONNECTING;
             default:
-                return BluetoothProfile.STATE_DISCONNECTED;
+                return STATE_DISCONNECTED;
         }
     }
 

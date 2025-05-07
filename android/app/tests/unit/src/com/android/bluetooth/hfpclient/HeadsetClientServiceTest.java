@@ -18,6 +18,8 @@ package com.android.bluetooth.hfpclient;
 
 import static android.content.pm.PackageManager.FEATURE_WATCH;
 
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
 import static com.android.bluetooth.hfpclient.HeadsetClientService.MAX_HFP_SCO_VOICE_CALL_VOLUME;
 import static com.android.bluetooth.hfpclient.HeadsetClientService.MIN_HFP_SCO_VOICE_CALL_VOLUME;
 
@@ -31,7 +33,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.content.Context;
@@ -56,8 +57,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -66,7 +65,7 @@ import java.util.concurrent.TimeUnit;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetClientServiceTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
     @Mock private AdapterService mAdapterService;
     @Mock private HeadsetClientStateMachine mStateMachine;
@@ -113,8 +112,7 @@ public class HeadsetClientServiceTest {
         startService();
 
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         // Send battery changed intent
@@ -134,8 +132,7 @@ public class HeadsetClientServiceTest {
         // Adding a wait to prevent potential failure caused by delayed broadcast intent.
         TimeUnit.MILLISECONDS.sleep(SERVICE_START_WAIT_MILLIS);
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         mService.updateBatteryLevel();
@@ -150,8 +147,7 @@ public class HeadsetClientServiceTest {
         startService();
 
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         mService.setAudioPolicy(device, new BluetoothSinkAudioPolicy.Builder().build());
@@ -165,8 +161,7 @@ public class HeadsetClientServiceTest {
         startService();
 
         // Put mock state machine
-        BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter().getRemoteDevice("00:01:02:03:04:05");
+        BluetoothDevice device = getTestDevice(3);
         mService.getStateMachineMap().put(device, mStateMachine);
 
         mService.dump(new StringBuilder());
@@ -183,7 +178,7 @@ public class HeadsetClientServiceTest {
 
         verify(mAdapterService).startService(any(Intent.class));
 
-        service.stop();
+        service.cleanup();
     }
 
     @Test
@@ -197,7 +192,7 @@ public class HeadsetClientServiceTest {
 
         verify(mAdapterService, never()).startService(any(Intent.class));
 
-        service.stop();
+        service.cleanup();
     }
 
     /**
@@ -266,7 +261,7 @@ public class HeadsetClientServiceTest {
 
     private void stopServiceIfStarted() throws Exception {
         if (mIsHeadsetClientServiceStarted) {
-            mService.stop();
+            mService.cleanup();
             assertThat(HeadsetClientService.getHeadsetClientService()).isNull();
         }
     }

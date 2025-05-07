@@ -16,6 +16,12 @@
 
 package com.android.bluetooth.le_scan;
 
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
+
+import static com.android.bluetooth.TestUtils.MockitoRule;
+import static com.android.bluetooth.TestUtils.getTestDevice;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -26,10 +32,12 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.IPeriodicAdvertisingCallback;
 import android.bluetooth.le.IScannerCallback;
@@ -42,18 +50,21 @@ import android.location.LocationManager;
 import android.os.Binder;
 import android.os.RemoteException;
 import android.os.WorkSource;
-import android.os.test.TestLooper;
 import android.platform.test.flag.junit.SetFlagsRule;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
-import androidx.test.runner.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.CompanionManager;
 import com.android.bluetooth.gatt.GattNativeInterface;
 import com.android.bluetooth.gatt.GattObjectsFactory;
+
+import com.google.protobuf.ByteString;
+import com.google.testing.junit.testparameterinjector.TestParameter;
+import com.google.testing.junit.testparameterinjector.TestParameterInjector;
 
 import org.junit.After;
 import org.junit.Before;
@@ -63,8 +74,6 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -73,9 +82,9 @@ import java.util.Set;
 
 /** Test cases for {@link ScanController}. */
 @SmallTest
-@RunWith(AndroidJUnit4.class)
+@RunWith(TestParameterInjector.class)
 public class ScanControllerTest {
-    @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Mock private ScannerMap mScannerMap;
@@ -89,10 +98,15 @@ public class ScanControllerTest {
     @Mock private ScanObjectsFactory mScanObjectsFactory;
     @Mock private GattNativeInterface mNativeInterface;
 
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
-    private final BluetoothDevice mDevice = mAdapter.getRemoteDevice("00:01:02:03:04:05");
+    private final BluetoothAdapter mAdapter =
+            InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext()
+                    .getSystemService(BluetoothManager.class)
+                    .getAdapter();
+    private final BluetoothDevice mDevice = getTestDevice(89);
     private final AttributionSource mAttributionSource = mAdapter.getAttributionSource();
-    private final Context mContext = InstrumentationRegistry.getTargetContext();
+    private final Context mContext =
+            InstrumentationRegistry.getInstrumentation().getTargetContext();
 
     private ScanController mScanController;
     private CompanionManager mBtCompanionManager;
@@ -106,7 +120,7 @@ public class ScanControllerTest {
         doReturn(mScanManager)
                 .when(mScanObjectsFactory)
                 .createScanManager(any(), any(), any(), any());
-        doReturn(mPeriodicScanManager).when(mScanObjectsFactory).createPeriodicScanManager(any());
+        doReturn(mPeriodicScanManager).when(mScanObjectsFactory).createPeriodicScanManager();
 
         doReturn(mResources).when(mAdapterService).getResources();
         doReturn(mContext.getPackageManager()).when(mAdapterService).getPackageManager();
@@ -181,13 +195,14 @@ public class ScanControllerTest {
                                 new ArgumentMatcher<ScanClient>() {
                                     @Override
                                     public boolean matches(ScanClient client) {
-                                        return mPiInfo.callingUid == client.appUid;
+                                        return mPiInfo.callingUid == client.mAppUid;
                                     }
                                 }));
     }
 
     @Test
-    public void onBatchScanReportsInternal_deliverBatchScan() throws RemoteException {
+    public void onBatchScanReportsInternal_deliverBatchScan_full(
+            @TestParameter boolean expectResults) throws RemoteException {
         int status = 1;
         int scannerId = 2;
         int reportType = ScanManager.SCAN_RESULT_TYPE_FULL;
@@ -199,29 +214,58 @@ public class ScanControllerTest {
 
         Set<ScanClient> scanClientSet = new HashSet<>();
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.associatedDevices = new ArrayList<>();
-        scanClient.associatedDevices.add("02:00:00:00:00:00");
-        scanClient.scannerId = scannerId;
+        scanClient.mAssociatedDevices = new ArrayList<>();
+        if (expectResults) {
+            scanClient.mHasScanWithoutLocationPermission = true;
+        }
         scanClientSet.add(scanClient);
         doReturn(scanClientSet).when(mScanManager).getFullBatchScanQueue();
-        doReturn(mApp).when(mScannerMap).getById(scanClient.scannerId);
-
-        mScanController.onBatchScanReportsInternal(
-                status, scannerId, reportType, numRecords, recordData);
-        verify(mScanManager).callbackDone(scannerId, status);
-
-        reportType = ScanManager.SCAN_RESULT_TYPE_TRUNCATED;
-        recordData =
-                new byte[] {
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x06, 0x04, 0x02, 0x02, 0x00, 0x00, 0x02
-                };
-        doReturn(scanClientSet).when(mScanManager).getBatchScanQueue();
+        doReturn(mApp).when(mScannerMap).getById(scanClient.mScannerId);
         IScannerCallback callback = mock(IScannerCallback.class);
         mApp.mCallback = callback;
 
         mScanController.onBatchScanReportsInternal(
                 status, scannerId, reportType, numRecords, recordData);
-        verify(callback).onBatchScanResults(any());
+        verify(mScanManager).callbackDone(scannerId, status);
+        if (expectResults) {
+            verify(callback).onBatchScanResults(any());
+        } else {
+            verify(callback, never()).onBatchScanResults(any());
+        }
+    }
+
+    @Test
+    public void onBatchScanReportsInternal_deliverBatchScan_truncated(
+            @TestParameter boolean expectResults) throws RemoteException {
+        int status = 1;
+        int scannerId = 2;
+        int reportType = ScanManager.SCAN_RESULT_TYPE_TRUNCATED;
+        int numRecords = 1;
+        byte[] recordData =
+                new byte[] {
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x06, 0x04, 0x02, 0x02, 0x00, 0x00, 0x02
+                };
+
+        Set<ScanClient> scanClientSet = new HashSet<>();
+        ScanClient scanClient = new ScanClient(scannerId);
+        scanClient.mAssociatedDevices = new ArrayList<>();
+        if (expectResults) {
+            scanClient.mAssociatedDevices.add("02:00:00:00:00:00");
+        }
+        scanClientSet.add(scanClient);
+        doReturn(scanClientSet).when(mScanManager).getBatchScanQueue();
+        doReturn(mApp).when(mScannerMap).getById(scanClient.mScannerId);
+        IScannerCallback callback = mock(IScannerCallback.class);
+        mApp.mCallback = callback;
+
+        mScanController.onBatchScanReportsInternal(
+                status, scannerId, reportType, numRecords, recordData);
+        verify(mScanManager).callbackDone(scannerId, status);
+        if (expectResults) {
+            verify(callback).onBatchScanResults(any());
+        } else {
+            verify(callback, never()).onBatchScanResults(any());
+        }
     }
 
     @Test
@@ -288,9 +332,8 @@ public class ScanControllerTest {
         byte[] advData = new byte[0];
 
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.scannerId = scannerId;
-        scanClient.hasNetworkSettingsPermission = true;
-        scanClient.settings =
+        scanClient.mHasNetworkSettingsPermission = true;
+        scanClient.mSettings =
                 new ScanSettings.Builder()
                         .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                         .setLegacy(false)
@@ -301,13 +344,13 @@ public class ScanControllerTest {
 
         mApp.mCallback = callback;
         mApp.mAppScanStats = appScanStats;
-        scanClient.stats = appScanStats;
+        scanClient.mStats = appScanStats;
         Set<ScanClient> scanClientSet = Collections.singleton(scanClient);
 
         doReturn(address).when(mAdapterService).getIdentityAddress(anyString());
         doReturn(scanClientSet).when(mScanManager).getRegularScanQueue();
-        doReturn(mApp).when(mScannerMap).getById(scanClient.scannerId);
-        doReturn(appScanStats).when(mScannerMap).getAppScanStatsById(scanClient.scannerId);
+        doReturn(mApp).when(mScannerMap).getById(scanClient.mScannerId);
+        doReturn(appScanStats).when(mScannerMap).getAppScanStatsById(scanClient.mScannerId);
 
         // Simulate remote client crash
         doThrow(new RemoteException()).when(callback).onScanResult(any());
@@ -325,7 +368,7 @@ public class ScanControllerTest {
                 advData,
                 address);
 
-        assertThat(scanClient.appDied).isTrue();
+        assertThat(scanClient.mAppDied).isTrue();
         verify(appScanStats).recordScanStop(scannerId);
     }
 
@@ -371,23 +414,19 @@ public class ScanControllerTest {
     @Test
     public void profileConnectionStateChanged_notifyScanManager() {
         mScanController.notifyProfileConnectionStateChange(
-                BluetoothProfile.A2DP,
-                BluetoothProfile.STATE_CONNECTING,
-                BluetoothProfile.STATE_CONNECTED);
+                BluetoothProfile.A2DP, STATE_CONNECTING, STATE_CONNECTED);
         verify(mScanManager)
                 .handleBluetoothProfileConnectionStateChanged(
-                        BluetoothProfile.A2DP,
-                        BluetoothProfile.STATE_CONNECTING,
-                        BluetoothProfile.STATE_CONNECTED);
+                        BluetoothProfile.A2DP, STATE_CONNECTING, STATE_CONNECTED);
     }
 
     @Test
     public void onTrackAdvFoundLost() throws Exception {
         int scannerId = 1;
-        int advPktLen = 1;
-        byte[] advPkt = new byte[] {0x02};
-        int scanRspLen = 3;
-        byte[] scanRsp = new byte[] {0x04};
+        int advPacketLen = 1;
+        byte[] advPacket = new byte[] {0x02};
+        int scanResponseLen = 3;
+        byte[] scanResponse = new byte[] {0x04};
         int filtIndex = 5;
 
         int advState = ScanController.ADVT_STATE_ONFOUND;
@@ -399,8 +438,8 @@ public class ScanControllerTest {
         int timeStamp = 11;
 
         ScanClient scanClient = new ScanClient(scannerId);
-        scanClient.hasNetworkSettingsPermission = true;
-        scanClient.settings =
+        scanClient.mHasNetworkSettingsPermission = true;
+        scanClient.mSettings =
                 new ScanSettings.Builder()
                         .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
                         .setLegacy(false)
@@ -419,10 +458,10 @@ public class ScanControllerTest {
         AdvtFilterOnFoundOnLostInfo advtFilterOnFoundOnLostInfo =
                 new AdvtFilterOnFoundOnLostInfo(
                         scannerId,
-                        advPktLen,
-                        advPkt,
-                        scanRspLen,
-                        scanRsp,
+                        advPacketLen,
+                        ByteString.copyFrom(advPacket),
+                        scanResponseLen,
+                        ByteString.copyFrom(scanResponse),
                         filtIndex,
                         advState,
                         advInfoPresent,

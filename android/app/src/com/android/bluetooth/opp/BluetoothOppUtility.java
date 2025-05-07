@@ -75,7 +75,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /** This class has some utilities for Opp application; */
 // Next tag value for ContentProfileErrorReportUtils.report(): 10
 public class BluetoothOppUtility {
-    private static final String TAG = "BluetoothOppUtility";
+    private static final String TAG = BluetoothOppUtility.class.getSimpleName();
 
     /** Whether the device has the "nosdcard" characteristic, or null if not-yet-known. */
     private static Boolean sNoSdCard = null;
@@ -263,7 +263,8 @@ public class BluetoothOppUtility {
 
         if (isRecognizedFileType(context, path, mimetype)) {
             Intent activityIntent = new Intent(Intent.ACTION_VIEW);
-            activityIntent.setDataAndTypeAndNormalize(path, mimetype);
+            activityIntent.setDataAndType(
+                    path.normalizeScheme(), Intent.normalizeMimeType(mimetype));
             activityIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activityIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
@@ -313,7 +314,8 @@ public class BluetoothOppUtility {
         Log.d(TAG, "RecognizedFileType() fileUri: " + fileUri + " mimetype: " + mimetype);
 
         Intent mimetypeIntent = new Intent(Intent.ACTION_VIEW);
-        mimetypeIntent.setDataAndTypeAndNormalize(fileUri, mimetype);
+        mimetypeIntent.setDataAndType(
+                fileUri.normalizeScheme(), Intent.normalizeMimeType(mimetype));
         List<ResolveInfo> list =
                 context.getPackageManager()
                         .queryIntentActivities(mimetypeIntent, PackageManager.MATCH_DEFAULT_ONLY);

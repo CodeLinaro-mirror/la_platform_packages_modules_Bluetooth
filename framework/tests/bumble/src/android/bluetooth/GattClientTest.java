@@ -18,6 +18,7 @@ package android.bluetooth;
 
 import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -82,7 +83,8 @@ import java.util.UUID;
 
 @RunWith(TestParameterInjector.class)
 public class GattClientTest {
-    private static final String TAG = "GattClientTest";
+    private static final String TAG = GattClientTest.class.getSimpleName();
+
     private static final int ANDROID_MTU = 517;
     private static final int MTU_REQUESTED = 23;
     private static final int ANOTHER_MTU_REQUESTED = 42;
@@ -139,6 +141,7 @@ public class GattClientTest {
         if (bondedDevices.contains(mRemoteLeDevice)) {
             mRemoteLeDevice.removeBond();
         }
+        mHost.close();
     }
 
     @Test
@@ -223,7 +226,7 @@ public class GattClientTest {
 
         gatt.disconnect();
         inOrder.verify(gattCallback, timeout(1000))
-                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
 
         gatt.connect();
         inOrder.verify(gattCallback, timeout(1000))
@@ -233,7 +236,7 @@ public class GattClientTest {
         //  be necessary.
         gatt.disconnect();
         inOrder.verify(gattCallback, timeout(1000))
-                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
         gatt.close();
     }
 
@@ -360,9 +363,7 @@ public class GattClientTest {
 
         verify(gattCallback, timeout(35000))
                 .onConnectionStateChange(
-                        any(),
-                        eq(BluetoothGatt.GATT_CONNECTION_TIMEOUT),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
+                        any(), eq(BluetoothGatt.GATT_CONNECTION_TIMEOUT), eq(STATE_DISCONNECTED));
     }
 
     @Test
@@ -560,7 +561,7 @@ public class GattClientTest {
 
     private void disconnectAndWaitDisconnection(
             BluetoothGatt gatt, BluetoothGattCallback callback) {
-        final int state = BluetoothProfile.STATE_DISCONNECTED;
+        final int state = STATE_DISCONNECTED;
         gatt.disconnect();
         verify(callback, timeout(1000)).onConnectionStateChange(eq(gatt), anyInt(), eq(state));
 
@@ -717,6 +718,42 @@ public class GattClientTest {
         } finally {
             // it's okay to close twice.
             gatt.close();
+        }
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_UNREGISTER_GATT_CLIENT_DISCONNECTED)
+    public void connectAndDisconnectManyClientsWithoutClose() throws Exception {
+        advertiseWithBumble();
+
+        List<BluetoothGatt> gatts = new ArrayList<>();
+        try {
+            for (int i = 0; i < 100; i++) {
+                BluetoothGattCallback gattCallback = mock(BluetoothGattCallback.class);
+                InOrder inOrder = inOrder(gattCallback);
+
+                BluetoothGatt gatt = mRemoteLeDevice.connectGatt(mContext, false, gattCallback);
+                gatts.add(gatt);
+
+                inOrder.verify(gattCallback, timeout(1000))
+                        .onConnectionStateChange(any(), anyInt(), eq(STATE_CONNECTED));
+
+                gatt.disconnect();
+                inOrder.verify(gattCallback, timeout(1000))
+                        .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
+
+                gatt.connect();
+                inOrder.verify(gattCallback, timeout(1000))
+                        .onConnectionStateChange(any(), anyInt(), eq(STATE_CONNECTED));
+
+                gatt.disconnect();
+                inOrder.verify(gattCallback, timeout(1000))
+                        .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
+            }
+        } finally {
+            for (BluetoothGatt gatt : gatts) {
+                gatt.close();
+            }
         }
     }
 
