@@ -13,7 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <base/functional/bind.h>
+#include <base/functional/callback.h>
 
 #include "bta/include/bta_gatt_api.h"
 #include "bta/include/bta_ras_api.h"
@@ -56,7 +58,7 @@ public:
   struct RasTracker {
     RasTracker(const RawAddress& address, const RawAddress& address_for_cs)
         : address_(address), address_for_cs_(address_for_cs) {}
-    uint16_t conn_id_;
+    tCONN_ID conn_id_;
     RawAddress address_;
     RawAddress address_for_cs_;
     const gatt::Service* service_ = nullptr;
@@ -217,6 +219,7 @@ public:
       BTA_GATTC_Close(evt.conn_id);
       return;
     }
+    callbacks_->OnDisconnected(tracker->address_for_cs_);
     trackers_.remove(tracker);
   }
 
@@ -263,10 +266,9 @@ public:
                 vendor_specific_characteristic.characteristicUuid_);
         BTA_GATTC_ReadCharacteristic(
                 tracker->conn_id_, characteristic->value_handle, GATT_AUTH_REQ_NO_MITM,
-                [](uint16_t conn_id, tGATT_STATUS status, uint16_t handle, uint16_t len,
+                [](tCONN_ID conn_id, tGATT_STATUS status, uint16_t handle, uint16_t len,
                    uint8_t* value, void* data) {
-                  instance->OnReadCharacteristicCallback(conn_id, status, handle, len, value,
-                                                         data);
+                  instance->OnReadCharacteristicCallback(conn_id, status, handle, len, value, data);
                 },
                 nullptr);
       }
@@ -424,7 +426,7 @@ public:
     }
   }
 
-  void GattWriteCallbackForVendorSpecificData(uint16_t conn_id, tGATT_STATUS status,
+  void GattWriteCallbackForVendorSpecificData(tCONN_ID conn_id, tGATT_STATUS status,
                                               uint16_t handle, const uint8_t* value,
                                               GattWriteCallbackData* data) {
     if (data != nullptr) {
@@ -459,7 +461,7 @@ public:
     }
   }
 
-  void GattWriteCallback(uint16_t conn_id, tGATT_STATUS status, uint16_t handle,
+  void GattWriteCallback(tCONN_ID conn_id, tGATT_STATUS status, uint16_t handle,
                          const uint8_t* value) {
     if (status != GATT_SUCCESS) {
       log::error("Fail to write conn_id {}, status {}, handle {}", conn_id,
@@ -483,7 +485,7 @@ public:
     }
   }
 
-  static void GattWriteCallback(uint16_t conn_id, tGATT_STATUS status, uint16_t handle,
+  static void GattWriteCallback(tCONN_ID conn_id, tGATT_STATUS status, uint16_t handle,
                                 uint16_t len, const uint8_t* value, void* data) {
     if (instance != nullptr) {
       if (data != nullptr) {
@@ -527,7 +529,7 @@ public:
     }
     BTA_GATTC_WriteCharDescr(
             tracker->conn_id_, ccc_handle, value, GATT_AUTH_REQ_NONE,
-            [](uint16_t conn_id, tGATT_STATUS status, uint16_t handle, uint16_t len,
+            [](tCONN_ID conn_id, tGATT_STATUS status, uint16_t handle, uint16_t len,
                const uint8_t* value, void* data) {
               if (instance) {
                 instance->OnDescriptorWrite(conn_id, status, handle, len, value, data);
@@ -536,7 +538,7 @@ public:
             nullptr);
   }
 
-  void OnDescriptorWrite(uint16_t conn_id, tGATT_STATUS status, uint16_t handle, uint16_t len,
+  void OnDescriptorWrite(tCONN_ID conn_id, tGATT_STATUS status, uint16_t handle, uint16_t len,
                          const uint8_t* value, void* data) {
     log::info("conn_id:{}, handle:{}, status:{}", conn_id, handle, gatt_status_text(status));
   }
@@ -570,7 +572,7 @@ public:
     maybe_resolve_address(&ble_bd_addr.bda, &ble_bd_addr.type);
   }
 
-  void OnReadCharacteristicCallback(uint16_t conn_id, tGATT_STATUS status, uint16_t handle,
+  void OnReadCharacteristicCallback(tCONN_ID conn_id, tGATT_STATUS status, uint16_t handle,
                                     uint16_t len, uint8_t* value, void* data) {
     log::info("conn_id: {}, handle: {}, len: {}", conn_id, handle, len);
     if (status != GATT_SUCCESS) {
@@ -702,7 +704,7 @@ public:
     return GAP_INVALID_HANDLE;
   }
 
-  std::shared_ptr<RasTracker> FindTrackerByHandle(uint16_t conn_id) const {
+  std::shared_ptr<RasTracker> FindTrackerByHandle(tCONN_ID conn_id) const {
     for (auto tracker : trackers_) {
       if (tracker->conn_id_ == conn_id) {
         return tracker;

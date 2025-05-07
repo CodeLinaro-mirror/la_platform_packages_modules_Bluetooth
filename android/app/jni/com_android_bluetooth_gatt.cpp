@@ -26,7 +26,6 @@
 
 #include "com_android_bluetooth.h"
 #include "com_android_bluetooth_flags.h"
-#include "common/init_flags.h"
 #include "hardware/bt_gatt.h"
 #include "hardware/bt_gatt_types.h"
 #include "main/shim/le_scanning_manager.h"
@@ -1286,6 +1285,7 @@ static void initializeNative(JNIEnv* env, jobject object) {
   }
 
   if (com::android::bluetooth::flags::scan_manager_refactor()) {
+    log::info("Starting rust module");
     btIf->start_rust_module();
   }
 
@@ -1304,6 +1304,7 @@ static void cleanupNative(JNIEnv* env, jobject /* object */) {
   }
 
   if (com::android::bluetooth::flags::scan_manager_refactor()) {
+    log::info("Stopping rust module");
     btIf->stop_rust_module();
   }
 
@@ -1383,13 +1384,14 @@ static void gattClientScanNative(JNIEnv* /* env */, jobject /* object */, jboole
 
 static void gattClientConnectNative(JNIEnv* env, jobject /* object */, jint clientif,
                                     jstring address, jint addressType, jboolean isDirect,
-                                    jint transport, jboolean opportunistic, jint initiating_phys) {
+                                    jint transport, jboolean opportunistic, jint initiating_phys,
+                                    jint preferred_mtu) {
   if (!sGattIf) {
     return;
   }
 
   sGattIf->client->connect(clientif, str2addr(env, address), addressType, isDirect, transport,
-                           opportunistic, initiating_phys);
+                           opportunistic, initiating_phys, preferred_mtu);
 }
 
 static void gattClientDisconnectNative(JNIEnv* env, jobject /* object */, jint clientIf,
@@ -2838,7 +2840,7 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
            (void*)gattClientGetDeviceTypeNative},
           {"gattClientRegisterAppNative", "(JJZ)V", (void*)gattClientRegisterAppNative},
           {"gattClientUnregisterAppNative", "(I)V", (void*)gattClientUnregisterAppNative},
-          {"gattClientConnectNative", "(ILjava/lang/String;IZIZI)V",
+          {"gattClientConnectNative", "(ILjava/lang/String;IZIZII)V",
            (void*)gattClientConnectNative},
           {"gattClientDisconnectNative", "(ILjava/lang/String;I)V",
            (void*)gattClientDisconnectNative},

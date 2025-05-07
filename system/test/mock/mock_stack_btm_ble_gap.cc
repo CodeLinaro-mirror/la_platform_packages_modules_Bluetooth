@@ -19,6 +19,8 @@
  *   Functions generated:47
  */
 
+#include <base/functional/callback.h>
+
 #include <cstdint>
 #include <vector>
 
@@ -50,6 +52,10 @@ bool BTM_BleConfigPrivacy(bool /* privacy_mode */) {
   return false;
 }
 bool BTM_BleLocalPrivacyEnabled(void) {
+  inc_func_call_count(__func__);
+  return false;
+}
+bool btm_ble_read_remote_cod(const RawAddress& /* remote_bda */) {
   inc_func_call_count(__func__);
   return false;
 }

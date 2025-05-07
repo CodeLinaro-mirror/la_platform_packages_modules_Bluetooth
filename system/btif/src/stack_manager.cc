@@ -61,14 +61,11 @@
 #include "bta/dm/bta_dm_int.h"
 #include "device/include/interop.h"
 #include "internal_include/stack_config.h"
+#include "os/system_properties.h"
 #include "rust/src/core/ffi/module.h"
 #include "stack/btm/btm_ble_int.h"
 #include "stack/include/ais_api.h"
 #include "stack/include/smp_api.h"
-
-#ifndef BT_STACK_CLEANUP_WAIT_MS
-#define BT_STACK_CLEANUP_WAIT_MS 1000
-#endif
 
 // Validate or respond to various conditional compilation flags
 
@@ -173,7 +170,9 @@ static void clean_up_stack(ProfileStopCallback stopProfiles) {
   management_thread.DoInThread(
           FROM_HERE, base::BindOnce(event_clean_up_stack, std::move(promise), stopProfiles));
 
-  auto status = future.wait_for(std::chrono::milliseconds(BT_STACK_CLEANUP_WAIT_MS));
+  auto status = future.wait_for(std::chrono::milliseconds(
+          bluetooth::os::GetSystemPropertyUint32("bluetooth.cleanup_timeout",
+                                                 /* default_value = */ 1000)));
   if (status == std::future_status::ready) {
     management_thread.ShutDown();
   } else {
@@ -325,6 +324,7 @@ static void event_start_up_stack(bluetooth::core::CoreInterface* interface,
   }
 
   if (!com::android::bluetooth::flags::scan_manager_refactor()) {
+    info("Starting rust module");
     module_start_up(get_local_module(RUST_MODULE));
   }
   if (com::android::bluetooth::flags::channel_sounding_in_stack()) {
@@ -350,6 +350,7 @@ static void event_shut_down_stack(ProfileStopCallback stopProfiles) {
   stack_is_running = false;
 
   if (!com::android::bluetooth::flags::scan_manager_refactor()) {
+    info("Stopping rust module");
     module_shut_down(get_local_module(RUST_MODULE));
   }
 
