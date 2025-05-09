@@ -57,12 +57,10 @@
 #include "btif_api.h"
 #include "btif_bqr.h"
 #include "btif_config.h"
-#include "btif_metrics_logging.h"
 #include "btif_sdp.h"
 #include "btif_storage.h"
 #include "btif_util.h"
 #include "common/lru_cache.h"
-#include "common/metrics.h"
 #include "common/strings.h"
 #include "device/include/interop.h"
 #include "hci/controller_interface.h"
@@ -73,6 +71,8 @@
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
 #include "main/shim/le_advertising_manager.h"
+#include "main/shim/metric_id_api.h"
+#include "main/shim/metrics_api.h"
 #include "main_thread.h"
 #include "metrics/bluetooth_event.h"
 #include "os/system_properties.h"
@@ -572,18 +572,22 @@ static void bond_state_changed(bt_status_t status, const RawAddress& bd_addr,
 
   if (pairing_cb.bond_type == BOND_TYPE_TEMPORARY) {
     state = BT_BOND_STATE_NONE;
+  } else if (com::android::bluetooth::flags::reset_security_flags_on_pairing_failure() &&
+             state == BT_BOND_STATE_NONE) {
+    get_security_client_interface().BTM_SecClearSecurityFlags(bd_addr);
   }
+
   log::info(
           "Bond state changed to state={}[0:none, 1:bonding, "
           "2:bonded],prev_state={}, sdp_attempts={}",
           state, pairing_cb.state, pairing_cb.sdp_attempts);
 
   if (state == BT_BOND_STATE_NONE) {
-    forget_device_from_metric_id_allocator(bd_addr);
+    bluetooth::shim::ForgetDeviceFromMetricIdAllocator(bd_addr);
     btif_config_remove_device(bd_addr.ToString());
   } else if (state == BT_BOND_STATE_BONDED) {
-    allocate_metric_id_from_metric_id_allocator(bd_addr);
-    if (!save_metric_id_from_metric_id_allocator(bd_addr)) {
+    bluetooth::shim::AllocateIdFromMetricIdAllocator(bd_addr);
+    if (!bluetooth::shim::SaveDeviceOnMetricIdAllocator(bd_addr)) {
       log::error("Fail to save metric id for device:{}", bd_addr);
     }
   }
@@ -1482,7 +1486,7 @@ static void btif_dm_search_devices_evt(tBTA_DM_SEARCH_EVT event, tBTA_DM_SEARCH*
             auto triple = eir_uuids_cache.try_emplace(bdaddr, std::set<Uuid>{});
             uuid_iter = std::get<0>(triple);
           }
-          log::info("EIR UUIDs for {}:", bdaddr);
+          log::info("EIR UUIDs for {}", bdaddr);
           for (int i = 0; i < num_uuids; ++i) {
             Uuid uuid = Uuid::From16Bit(p_uuid16[i]);
             log::info("{}", uuid.ToString());
@@ -1605,7 +1609,7 @@ static void btif_on_service_discovery_results(RawAddress bd_addr,
   if (results_for_bonding_device) {
     // success for SDP
     bluetooth::metrics::LogSDPComplete(bd_addr, tBTA_STATUS::BTA_SUCCESS);
-    log::info("SDP finished for {}:", bd_addr);
+    log::info("SDP finished for {}", bd_addr);
     pairing_cb.sdp_over_classic = btif_dm_pairing_cb_t::ServiceDiscoveryState::FINISHED;
   }
 
@@ -1616,7 +1620,7 @@ static void btif_on_service_discovery_results(RawAddress bd_addr,
   bt_property_t& le_prop = uuid_props[1];
 
   if ((result == BTA_SUCCESS) && !uuids_param.empty()) {
-    log::info("New UUIDs for {}:", bd_addr);
+    log::info("New UUIDs for {}", bd_addr);
     for (const auto& uuid : uuids_param) {
       if (btif_should_ignore_uuid(uuid)) {
         continue;
@@ -1754,7 +1758,7 @@ static void btif_on_gatt_results(RawAddress bd_addr, std::vector<bluetooth::Uuid
   bool lea_supported = is_le_audio_capable_during_service_discovery(bd_addr);
 
   if (is_transport_le) {
-    log::info("New GATT over LE UUIDs for {}:", bd_addr);
+    log::info("New GATT over LE UUIDs for {}", bd_addr);
     BTM_LogHistory(kBtmLogTag, bd_addr, "Discovered GATT services using LE transport");
     if (btif_is_gatt_service_discovery_post_pairing(bd_addr)) {
       pairing_cb.gatt_over_le = btif_dm_pairing_cb_t::ServiceDiscoveryState::FINISHED;
@@ -1782,7 +1786,7 @@ static void btif_on_gatt_results(RawAddress bd_addr, std::vector<bluetooth::Uuid
       }
     }
   } else {
-    log::debug("New GATT over SDP UUIDs for {}:", bd_addr);
+    log::debug("New GATT over SDP UUIDs for {}", bd_addr);
     BTM_LogHistory(kBtmLogTag, bd_addr, "Discovered GATT services using SDP transport");
   }
 
@@ -3869,29 +3873,6 @@ static void btif_stats_add_bond_event(const RawAddress& bd_addr, bt_bond_functio
   if (btif_events_end_index == btif_events_start_index) {
     btif_events_start_index = (btif_events_start_index + 1) % (MAX_BTIF_BOND_EVENT_ENTRIES + 1);
   }
-
-  int type;
-  btif_get_device_type(bd_addr, &type);
-
-  bluetooth::common::device_type_t device_type;
-  switch (type) {
-    case BT_DEVICE_TYPE_BREDR:
-      device_type = bluetooth::common::DEVICE_TYPE_BREDR;
-      break;
-    case BT_DEVICE_TYPE_BLE:
-      device_type = bluetooth::common::DEVICE_TYPE_LE;
-      break;
-    case BT_DEVICE_TYPE_DUMO:
-      device_type = bluetooth::common::DEVICE_TYPE_DUMO;
-      break;
-    default:
-      device_type = bluetooth::common::DEVICE_TYPE_UNKNOWN;
-      break;
-  }
-
-  uint32_t cod = btif_get_cod(&bd_addr);
-  uint64_t ts = event->timestamp.tv_sec * 1000 + event->timestamp.tv_nsec / 1000000;
-  bluetooth::common::BluetoothMetricsLogger::GetInstance()->LogPairEvent(0, ts, cod, device_type);
 }
 
 void btif_debug_bond_event_dump(int fd) {

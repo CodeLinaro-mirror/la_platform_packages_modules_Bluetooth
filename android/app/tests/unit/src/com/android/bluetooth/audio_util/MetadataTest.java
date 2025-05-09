@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,7 @@ import org.mockito.Mock;
 
 import java.io.InputStream;
 
+/** Test cases for {@link Metadata}. */
 @RunWith(AndroidJUnit4.class)
 public class MetadataTest {
     private Context mTargetContext;
@@ -532,7 +533,7 @@ public class MetadataTest {
     }
 
     /**
-     * Make sure you can create a Metadata object from a MediaDesciption with a bundle of extras
+     * Make sure you can create a Metadata object from a MediaDescription with a bundle of extras
      * that provide more detailed information about the item.
      */
     @Test
@@ -977,7 +978,7 @@ public class MetadataTest {
      * cover art.
      */
     @Test
-    public void testBuildMetadataFromQueueItemWithIconUriandUrisDisabled() {
+    public void testBuildMetadataFromQueueItemWithIconUriAndUrisDisabled() {
         Util.sUriImagesSupport = false;
         MediaDescription description = getMediaDescription(null, IMAGE_URI_1, null);
         QueueItem queueItem = getQueueItem(description);

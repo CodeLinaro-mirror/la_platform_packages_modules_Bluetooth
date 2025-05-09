@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -291,7 +291,7 @@ protected:
     vendor_capabilities_.reset();
     fake_registry_.InjectTestModule(&HciLayer::Factory, test_hci_layer_);
     client_handler_ = fake_registry_.GetTestModuleHandler(&HciLayer::Factory);
-    fake_registry_.Start<Controller>(&thread_);
+    fake_registry_.Start<Controller>(&thread_, fake_registry_.GetTestHandler());
     controller_ = static_cast<Controller*>(fake_registry_.GetModuleUnderTest(&Controller::Factory));
   }
 

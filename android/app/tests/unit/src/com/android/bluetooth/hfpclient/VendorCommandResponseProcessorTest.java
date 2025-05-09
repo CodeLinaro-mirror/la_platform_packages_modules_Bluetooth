@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link VendorCommandResponseProcessor}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class VendorCommandResponseProcessorTest {
@@ -48,7 +49,7 @@ public class VendorCommandResponseProcessorTest {
     @Mock private AdapterService mAdapterService;
     @Mock private HeadsetClientService mHeadsetClientService;
 
-    private static int TEST_VENDOR_ID = BluetoothAssignedNumbers.APPLE;
+    private static final int TEST_VENDOR_ID = BluetoothAssignedNumbers.APPLE;
 
     private final BluetoothDevice mDevice = getTestDevice(65);
 

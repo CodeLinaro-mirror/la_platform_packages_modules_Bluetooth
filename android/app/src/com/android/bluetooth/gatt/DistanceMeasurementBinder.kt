@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 The Android Open Source Project
+ * Copyright (C) 2025 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.android.bluetooth.gatt
 
 import android.Manifest
@@ -69,7 +70,13 @@ class DistanceMeasurementBinder(
     ): List<DistanceMeasurementMethod> {
         val manager: DistanceMeasurementManager =
             getManager(source, "getSupportedDistanceMeasurementMethods") ?: return emptyList()
-        return manager.getSupportedDistanceMeasurementMethods()
+
+        val result =
+            manager.runOnDistanceMeasurementThreadAndWaitForResult {
+                manager.getSupportedDistanceMeasurementMethods()
+            }
+
+        return result ?: ArrayList()
     }
 
     override fun startDistanceMeasurement(
@@ -80,7 +87,10 @@ class DistanceMeasurementBinder(
     ) {
         val manager: DistanceMeasurementManager =
             getManager(source, "startDistanceMeasurement") ?: return
-        manager.startDistanceMeasurement(uuid.uuid, distanceMeasurementParams, callback)
+
+        manager.postOnDistanceMeasurementThread {
+            manager.startDistanceMeasurement(uuid.uuid, distanceMeasurementParams, callback)
+        }
     }
 
     override fun stopDistanceMeasurement(
@@ -105,7 +115,18 @@ class DistanceMeasurementBinder(
             return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION
         }
         mContext.enforceCallingOrSelfPermission(Manifest.permission.BLUETOOTH_PRIVILEGED, null)
-        return mDistanceMeasurementManager.stopDistanceMeasurement(uuid.uuid, device, method, false)
+
+        val result =
+            mDistanceMeasurementManager.runOnDistanceMeasurementThreadAndWaitForResult {
+                mDistanceMeasurementManager.stopDistanceMeasurement(
+                    uuid.uuid,
+                    device,
+                    method,
+                    false,
+                )
+            }
+
+        return result ?: BluetoothStatusCodes.ERROR_UNKNOWN
     }
 
     override fun getChannelSoundingMaxSupportedSecurityLevel(
@@ -115,25 +136,38 @@ class DistanceMeasurementBinder(
         val manager: DistanceMeasurementManager =
             getManager(source, "getChannelSoundingMaxSupportedSecurityLevel")
                 ?: return ChannelSoundingParams.CS_SECURITY_LEVEL_UNKNOWN
-        return manager.getChannelSoundingMaxSupportedSecurityLevel(remoteDevice)
+
+        val result =
+            manager.runOnDistanceMeasurementThreadAndWaitForResult {
+                manager.getChannelSoundingMaxSupportedSecurityLevel(remoteDevice)
+            }
+
+        return result ?: ChannelSoundingParams.CS_SECURITY_LEVEL_UNKNOWN
     }
 
     override fun getLocalChannelSoundingMaxSupportedSecurityLevel(source: AttributionSource): Int {
         val manager: DistanceMeasurementManager =
             getManager(source, "getLocalChannelSoundingMaxSupportedSecurityLevel")
                 ?: return ChannelSoundingParams.CS_SECURITY_LEVEL_UNKNOWN
-        return manager.getLocalChannelSoundingMaxSupportedSecurityLevel()
+
+        val result =
+            manager.runOnDistanceMeasurementThreadAndWaitForResult {
+                manager.getLocalChannelSoundingMaxSupportedSecurityLevel()
+            }
+
+        return result ?: ChannelSoundingParams.CS_SECURITY_LEVEL_UNKNOWN
     }
 
     override fun getChannelSoundingSupportedSecurityLevels(source: AttributionSource): IntArray {
         val manager: DistanceMeasurementManager =
             getManager(source, "getChannelSoundingSupportedSecurityLevels") ?: return IntArray(0)
 
-        return manager
-            .getChannelSoundingSupportedSecurityLevels()
-            .stream()
-            .mapToInt { i -> i }
-            .toArray()
+        val result =
+            manager.runOnDistanceMeasurementThreadAndWaitForResult {
+                manager.getChannelSoundingSupportedSecurityLevels()
+            }
+
+        return result?.stream()?.mapToInt { i -> i }?.toArray() ?: IntArray(0)
     }
 
     companion object {

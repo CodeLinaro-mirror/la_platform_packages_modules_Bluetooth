@@ -123,7 +123,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/** Tests for {@link BassClientService} */
+/** Test cases for {@link BassClientService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class BassClientServiceTest {
@@ -994,7 +994,7 @@ public class BassClientServiceTest {
                         any(), any(), anyInt(), anyInt(), any(), any());
 
         // Error in syncEstablished causes sourceLost, sourceAddFailed notification
-        // and not removing cache because scanning is inactice
+        // and not removing cache because scanning is inactive
         onSyncEstablishedFailed(device1, handle1);
         TestUtils.waitForLooperToFinishScheduledTask(mBassClientService.getCallbacks().getLooper());
         inOrderCallback.verify(mCallback).onSourceLost(eq(broadcastId1));
@@ -1347,28 +1347,28 @@ public class BassClientServiceTest {
             // LEVEL 1
             (byte) 0x01,
             (byte) 0x02,
-            (byte) 0x03, // presentationDelay
-            (byte) 0x01, // numSubGroups
+            (byte) 0x03, // mPresentationDelay
+            (byte) 0x01, // mNumSubGroups
             // LEVEL 2
-            (byte) 0x01, // numSubGroups
+            (byte) 0x01, // mNumSubGroups
             (byte) 0x00,
             (byte) 0x00,
             (byte) 0x00,
             (byte) 0x00,
             (byte) 0x00, // UNKNOWN_CODEC
-            (byte) 0x02, // codecConfigLength
+            (byte) 0x02, // mCodecConfigLength
             (byte) 0x01,
-            (byte) 'A', // codecConfigInfo
-            (byte) 0x03, // metaDataLength
+            (byte) 'A', // mCodecConfigInfo
+            (byte) 0x03, // mMetaDataLength
             (byte) 0x06,
             (byte) 0x07,
-            (byte) 0x08, // metaData
+            (byte) 0x08, // mMetaData
             // LEVEL 3
-            (byte) 0x04, // index
-            (byte) 0x03, // codecConfigLength
+            (byte) 0x04, // mIndex
+            (byte) 0x03, // mCodecConfigLength
             (byte) 0x02,
             (byte) 'B',
-            (byte) 'C', // codecConfigInfo
+            (byte) 'C', // mCodecConfigInfo
             (byte) 0x05,
             (byte) 0xff,
             (byte) 0xe0,
@@ -1423,7 +1423,7 @@ public class BassClientServiceTest {
         // Add broadcast source
         mBassClientService.addSource(mCurrentDevice, meta, /* isGroupOp */ true);
 
-        /* In case if device supporth handover, Source stream status needs to be updated */
+        /* In case if device supports handover, Source stream status needs to be updated */
         handleHandoverSupport();
 
         // Verify all group members getting ADD_BCAST_SOURCE message
@@ -1535,38 +1535,44 @@ public class BassClientServiceTest {
     }
 
     private void injectRemoteSourceStateChanged(
+            BassClientStateMachine sm,
+            BluetoothLeBroadcastMetadata meta,
+            boolean isPaSynced,
+            boolean isBisSynced) {
+        // Update receiver state
+        if (sm.getDevice().equals(mCurrentDevice)) {
+            injectRemoteSourceStateChanged(
+                    sm,
+                    meta,
+                    TEST_SOURCE_ID,
+                    isPaSynced
+                            ? BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED
+                            : BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                    meta.isEncrypted()
+                            ? BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_DECRYPTING
+                            : BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                    null,
+                    isBisSynced ? (long) 0x00000001 : (long) 0x00000000);
+        } else if (sm.getDevice().equals(mCurrentDevice1)) {
+            injectRemoteSourceStateChanged(
+                    sm,
+                    meta,
+                    TEST_SOURCE_ID + 1,
+                    isPaSynced
+                            ? BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED
+                            : BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                    meta.isEncrypted()
+                            ? BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_DECRYPTING
+                            : BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                    null,
+                    isBisSynced ? (long) 0x00000002 : (long) 0x00000000);
+        }
+    }
+
+    private void injectRemoteSourceStateChanged(
             BluetoothLeBroadcastMetadata meta, boolean isPaSynced, boolean isBisSynced) {
         for (BassClientStateMachine sm : mStateMachines.values()) {
-            // Update receiver state
-            if (sm.getDevice().equals(mCurrentDevice)) {
-                injectRemoteSourceStateChanged(
-                        sm,
-                        meta,
-                        TEST_SOURCE_ID,
-                        isPaSynced
-                                ? BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED
-                                : BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
-                        meta.isEncrypted()
-                                ? BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_DECRYPTING
-                                : BluetoothLeBroadcastReceiveState
-                                        .BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
-                        null,
-                        isBisSynced ? (long) 0x00000001 : (long) 0x00000000);
-            } else if (sm.getDevice().equals(mCurrentDevice1)) {
-                injectRemoteSourceStateChanged(
-                        sm,
-                        meta,
-                        TEST_SOURCE_ID + 1,
-                        isPaSynced
-                                ? BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED
-                                : BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
-                        meta.isEncrypted()
-                                ? BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_DECRYPTING
-                                : BluetoothLeBroadcastReceiveState
-                                        .BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
-                        null,
-                        isBisSynced ? (long) 0x00000002 : (long) 0x00000000);
-            }
+            injectRemoteSourceStateChanged(sm, meta, isPaSynced, isBisSynced);
         }
     }
 
@@ -1920,6 +1926,29 @@ public class BassClientServiceTest {
         }
     }
 
+    private void verifyModifyMessageAndInjectSourceModfified() {
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+            verify(sm, atLeast(1)).sendMessage(messageCaptor.capture());
+
+            Optional<Message> msg =
+                    messageCaptor.getAllValues().stream()
+                            .filter(m -> m.what == BassClientStateMachine.UPDATE_BCAST_SOURCE)
+                            .findFirst();
+            assertThat(msg.isPresent()).isEqualTo(true);
+
+            if (sm.getDevice().equals(mCurrentDevice)) {
+                assertThat(msg.get().arg1).isEqualTo(TEST_SOURCE_ID);
+                injectRemoteSourceStateChanged(
+                        sm, createBroadcastMetadata(TEST_BROADCAST_ID), false, false);
+            } else if (sm.getDevice().equals(mCurrentDevice1)) {
+                assertThat(msg.get().arg1).isEqualTo(TEST_SOURCE_ID + 1);
+                injectRemoteSourceStateChanged(
+                        sm, createBroadcastMetadata(TEST_BROADCAST_ID), false, false);
+            }
+        }
+    }
+
     /**
      * Test whether service.removeSource() does send modify source if source is from remote receive
      * state. In this case, assistant should be able to remove source which was not managed by BASS
@@ -2027,7 +2056,7 @@ public class BassClientServiceTest {
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         Optional<Message> msg;
 
-        // Verrify that one device got the message...
+        // Verify that one device got the message...
         verify(mStateMachines.get(mCurrentDevice), atLeast(1)).sendMessage(messageCaptor.capture());
         msg =
                 messageCaptor.getAllValues().stream()
@@ -4128,26 +4157,19 @@ public class BassClientServiceTest {
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
 
         /* Imitate broadcast source stop, sink notify about loosing BIS sync */
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
 
         assertThat(mStateMachines).hasSize(2);
         for (BassClientStateMachine sm : mStateMachines.values()) {
             Mockito.clearInvocations(sm);
         }
         // Make another stream request with no context validate
-        // and verify sm didn't get REMOVE_BCAST_SOURCE
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
 
         // Make another stream request
-        // and verify sinks to resume remain unchanged later
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
-
-        assertThat(mStateMachines).hasSize(2);
-        for (BassClientStateMachine sm : mStateMachines.values()) {
-            verify(sm, never()).sendMessage(any());
-        }
 
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
@@ -4162,7 +4184,7 @@ public class BassClientServiceTest {
                     messageCaptor.getAllValues().stream()
                             .filter(
                                     m ->
-                                            (m.what == BassClientStateMachine.ADD_BCAST_SOURCE)
+                                            (m.what == BassClientStateMachine.UPDATE_BCAST_SOURCE)
                                                     && (m.obj == meta))
                             .findFirst()
                             .orElse(null);
@@ -4215,7 +4237,7 @@ public class BassClientServiceTest {
         verifyAddSourceForGroup(meta);
         prepareRemoteSourceState(metaNoBroadcast, /* isPaSynced */ true, /* isBisSynced */ false);
 
-        // Verify getSyncedBroadcastSinks returns empty device list if no broadcst ID
+        // Verify getSyncedBroadcastSinks returns empty device list if no broadcast ID
         assertThat(mBassClientService.getSyncedBroadcastSinks().isEmpty()).isTrue();
         assertThat(mBassClientService.getSyncedBroadcastSinks(TEST_BROADCAST_ID).isEmpty())
                 .isTrue();
@@ -4312,9 +4334,7 @@ public class BassClientServiceTest {
     }
 
     @Test
-    @EnableFlags({
-        Flags.FLAG_LEAUDIO_BIG_DEPENDS_ON_AUDIO_STATE
-    })
+    @EnableFlags({Flags.FLAG_LEAUDIO_BIG_DEPENDS_ON_AUDIO_STATE})
     public void testLocalAddSourceWhenBroadcastIsPaused() throws RemoteException {
         doReturn(false).when(mLeAudioService).isPlaying(TEST_BROADCAST_ID);
         doReturn(true).when(mLeAudioService).isPaused(TEST_BROADCAST_ID);
@@ -4353,7 +4373,7 @@ public class BassClientServiceTest {
 
         prepareTwoSynchronizedDevicesForLocalBroadcast();
 
-        /* Imitiate scenario when if there would be broadcast - stop would be called */
+        /* Imitate scenario when if there would be broadcast - stop would be called */
         mBassClientService.handleDeviceDisconnection(mCurrentDevice, true);
         mBassClientService.handleDeviceDisconnection(mCurrentDevice1, true);
 
@@ -4369,7 +4389,7 @@ public class BassClientServiceTest {
 
         prepareTwoSynchronizedDevicesForLocalBroadcast();
 
-        /* Imitiate scenario when if there would be broadcast - stop would be called */
+        /* Imitate scenario when if there would be broadcast - stop would be called */
         mBassClientService.handleDeviceDisconnection(mCurrentDevice, true);
         mBassClientService.handleDeviceDisconnection(mCurrentDevice1, true);
 
@@ -4388,7 +4408,7 @@ public class BassClientServiceTest {
 
         doReturn(false).when(mLeAudioService).isPlaying(TEST_BROADCAST_ID);
 
-        /* Imitiate scenario when if there would be broadcast - stop would be called */
+        /* Imitate scenario when if there would be broadcast - stop would be called */
         mBassClientService.handleDeviceDisconnection(mCurrentDevice, true);
         mBassClientService.handleDeviceDisconnection(mCurrentDevice1, true);
 
@@ -4513,7 +4533,7 @@ public class BassClientServiceTest {
         mBassClientService.notifyBroadcastStateChanged(
                 0 /* BROADCAST_STATE_STOPPED */, TEST_BROADCAST_ID);
 
-        /* Imitiate scenario when if there would be broadcast - stop would be called */
+        /* Imitate scenario when if there would be broadcast - stop would be called */
         mBassClientService.handleDeviceDisconnection(mCurrentDevice, true);
         mBassClientService.handleDeviceDisconnection(mCurrentDevice1, true);
 
@@ -4656,14 +4676,14 @@ public class BassClientServiceTest {
                     // LEVEL 1
                     (byte) 0x01,
                     (byte) 0x02,
-                    (byte) 0x03, // presentationDelay
-                    (byte) 0x01, // numSubGroups
+                    (byte) 0x03, // mPresentationDelay
+                    (byte) 0x01, // mNumSubGroups
                     // LEVEL 3
-                    (byte) 0x04, // index
-                    (byte) 0x03, // codecConfigLength
+                    (byte) 0x04, // mIndex
+                    (byte) 0x03, // mCodecConfigLength
                     (byte) 0x02,
                     (byte) 'B',
-                    (byte) 'C', // codecConfigInfo
+                    (byte) 'C', // mCodecConfigInfo
                     (byte) 0x05,
                     (byte) 0xff,
                     (byte) 0xe0,
@@ -4825,14 +4845,14 @@ public class BassClientServiceTest {
                     // LEVEL 1
                     (byte) 0x01,
                     (byte) 0x02,
-                    (byte) 0x03, // presentationDelay
-                    (byte) 0x01, // numSubGroups
+                    (byte) 0x03, // mPresentationDelay
+                    (byte) 0x01, // mNumSubGroups
                     // LEVEL 3
-                    (byte) 0x04, // index
-                    (byte) 0x03, // codecConfigLength
+                    (byte) 0x04, // mIndex
+                    (byte) 0x03, // mCodecConfigLength
                     (byte) 0x02,
                     (byte) 'B',
-                    (byte) 'C', // codecConfigInfo
+                    (byte) 'C', // mCodecConfigInfo
                     (byte) 0x05,
                     (byte) 0xff,
                     (byte) 0xe0,
@@ -5380,7 +5400,7 @@ public class BassClientServiceTest {
         BluetoothLeBroadcastMetadata meta = createBroadcastMetadata(TEST_BROADCAST_ID);
         verifyAddSourceForGroup(meta);
 
-        // Bis syned
+        // Bis synced
         prepareRemoteSourceState(meta, /* isPaSynced */ true, /* isBisSynced */ true);
         verify(mLeAudioService).activeBroadcastAssistantNotification(eq(true));
     }
@@ -5647,7 +5667,7 @@ public class BassClientServiceTest {
         // Suspend receivers, HOST_INTENTIONAL
         mBassClientService.suspendReceiversSourceSynchronization(TEST_BROADCAST_ID);
         verifyStopBigMonitoringWithUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         checkNoResumeSynchronizationByBig();
         checkResumeSynchronizationByHost();
     }
@@ -5660,7 +5680,7 @@ public class BassClientServiceTest {
         // Suspend receivers, HOST_INTENTIONAL
         mBassClientService.suspendReceiversSourceSynchronization(TEST_BROADCAST_ID);
         verifyStopBigMonitoringWithoutUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         checkNoResumeSynchronizationByBig();
         checkResumeSynchronizationByHost();
     }
@@ -5673,7 +5693,7 @@ public class BassClientServiceTest {
         // Suspend all receivers, HOST_INTENTIONAL
         mBassClientService.suspendAllReceiversSourceSynchronization();
         verifyStopBigMonitoringWithUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         checkNoResumeSynchronizationByBig();
         checkResumeSynchronizationByHost();
     }
@@ -5686,7 +5706,7 @@ public class BassClientServiceTest {
         // Suspend all receivers, HOST_INTENTIONAL
         mBassClientService.suspendAllReceiversSourceSynchronization();
         verifyStopBigMonitoringWithoutUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         checkNoResumeSynchronizationByBig();
         checkResumeSynchronizationByHost();
     }
@@ -5967,7 +5987,7 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
         verifyStopBigMonitoringWithUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         checkNoResumeSynchronizationByBig();
 
         /* Unicast finished streaming */
@@ -5986,7 +6006,7 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
         verifyStopBigMonitoringWithoutUnsync();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         checkNoResumeSynchronizationByBig();
 
         /* Unicast finished streaming */
@@ -6075,7 +6095,7 @@ public class BassClientServiceTest {
                                 BassConstants.PENDING_SYNC_HANDLE))
                 .isEqualTo(BassConstants.INVALID_BROADCAST_ID);
 
-        // Resumue without another register sync is possible
+        // Resume without another register sync is possible
         mBassClientService.resumeReceiversSourceSynchronization();
         mInOrderMethodProxy
                 .verify(mMethodProxy, never())
@@ -6603,9 +6623,9 @@ public class BassClientServiceTest {
 
         // Suspend all receivers, HOST_INTENTIONAL
         mBassClientService.suspendAllReceiversSourceSynchronization();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
 
-        // Start searching sources sync to paused broadcaser and remain cache
+        // Start searching sources sync to paused broadcaster and remain cache
         startSearchingForSources();
         mInOrderMethodProxy
                 .verify(mMethodProxy)
@@ -6850,7 +6870,7 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
         checkNoSinkPause();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
 
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
@@ -6868,7 +6888,7 @@ public class BassClientServiceTest {
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
         checkNoSinkPause();
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
 
         /* Unicast finished streaming */
         mBassClientService.handleUnicastSourceStreamStatusChange(
@@ -7037,7 +7057,7 @@ public class BassClientServiceTest {
         startSearchingForSources();
         checkTimeout(TEST_BROADCAST_ID, BassClientService.MESSAGE_BIG_MONITOR_TIMEOUT);
 
-        // Check sync to another braodcaster during OOR monitoring
+        // Check sync to another broadcaster during OOR monitoring
         ArgumentCaptor<ScanResult> resultCaptor = ArgumentCaptor.forClass(ScanResult.class);
         checkTimeout(TEST_BROADCAST_ID, BassClientService.MESSAGE_BIG_MONITOR_TIMEOUT);
         onScanResult(mSourceDevice2, TEST_BROADCAST_ID + 1);
@@ -7251,7 +7271,7 @@ public class BassClientServiceTest {
     }
 
     @Test
-    public void testIsLocalBroadacst() {
+    public void testIsLocalBroadcast() {
         int broadcastId = 12345;
 
         BluetoothLeBroadcastMetadata metadata = createBroadcastMetadata(broadcastId);
@@ -7376,7 +7396,7 @@ public class BassClientServiceTest {
                 0 /* STATUS_LOCAL_STREAM_REQUESTED */);
         injectRemoteSourceStateChanged(meta, /* isPaSynced */ false, /* isBisSynced */ false);
 
-        // Resume source will force syncing to broadcaser and put pending source to add
+        // Resume source will force syncing to broadcaster and put pending source to add
         mBassClientService.resumeReceiversSourceSynchronization();
         mInOrderMethodProxy
                 .verify(mMethodProxy)
@@ -7549,7 +7569,7 @@ public class BassClientServiceTest {
         /* Unicast would like to stream */
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         for (BassClientStateMachine sm : mStateMachines.values()) {
             clearInvocations(sm);
         }
@@ -7678,7 +7698,7 @@ public class BassClientServiceTest {
                 mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
-        // Disconnect second sink cause remove metada for both devices
+        // Disconnect second sink cause remove metadata for both devices
         doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice1)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice1)).isConnected();
         mBassClientService.connectionStateChanged(
@@ -7718,7 +7738,7 @@ public class BassClientServiceTest {
         /* Unicast would like to stream */
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         for (BassClientStateMachine sm : mStateMachines.values()) {
             clearInvocations(sm);
         }
@@ -7746,7 +7766,7 @@ public class BassClientServiceTest {
         /* Unicast would like to stream */
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         for (BassClientStateMachine sm : mStateMachines.values()) {
             clearInvocations(sm);
         }
@@ -7758,7 +7778,7 @@ public class BassClientServiceTest {
                 mCurrentDevice, STATE_CONNECTED, STATE_DISCONNECTED);
         injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
 
-        // Disconnect second sink cause remove metada for both devices
+        // Disconnect second sink cause remove metadata for both devices
         doReturn(STATE_DISCONNECTED).when(mStateMachines.get(mCurrentDevice1)).getConnectionState();
         doReturn(false).when(mStateMachines.get(mCurrentDevice1)).isConnected();
         mBassClientService.connectionStateChanged(
@@ -7842,7 +7862,7 @@ public class BassClientServiceTest {
         /* Unicast would like to stream */
         mBassClientService.handleUnicastSourceStreamStatusChange(
                 3 /* STATUS_LOCAL_STREAM_REQUESTED_NO_CONTEXT_VALIDATE */);
-        verifyRemoveMessageAndInjectSourceRemoval();
+        verifyModifyMessageAndInjectSourceModfified();
         for (BassClientStateMachine sm : mStateMachines.values()) {
             clearInvocations(sm);
         }
@@ -7992,7 +8012,7 @@ public class BassClientServiceTest {
 
     @Test
     @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_RESYNC_HELPER)
-    public void sinkDisconnectionDuringReasuming() {
+    public void sinkDisconnectionDuringResuming() {
         prepareSynchronizedPairAndStopSearching();
 
         BluetoothLeBroadcastMetadata meta = createBroadcastMetadata(TEST_BROADCAST_ID);

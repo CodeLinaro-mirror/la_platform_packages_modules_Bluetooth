@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Spy;
 
+/** Test cases for {@link SmsMmsContacts}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class SmsMmsContactsTest {
@@ -126,7 +127,7 @@ public class SmsMmsContactsTest {
         doReturn(cursor)
                 .when(mMapMethodProxy)
                 .contentResolverQuery(any(), any(), any(), any(), any(), any());
-        MapContact contact = MapContact.create(TEST_ID, TEST_PHONE);
+        MapContact contact = new MapContact(TEST_ID, TEST_PHONE);
 
         mContacts.mNames.put(TEST_PHONE, contact);
         mContacts.fillPhoneCache(mResolver);
@@ -148,7 +149,7 @@ public class SmsMmsContactsTest {
                 .when(mMapMethodProxy)
                 .contentResolverQuery(any(), any(), any(), any(), any(), any());
 
-        MapContact expected = MapContact.create(TEST_ID, TEST_NAME);
+        MapContact expected = new MapContact(TEST_ID, TEST_NAME);
         assertThat(
                         mContacts
                                 .getContactNameFromPhone(
@@ -181,7 +182,7 @@ public class SmsMmsContactsTest {
     @Test
     public void getContactNameFromPhone_withNonNullContact_andZeroId() {
         long zeroId = 0;
-        MapContact contact = MapContact.create(zeroId, TEST_PHONE);
+        MapContact contact = new MapContact(zeroId, TEST_PHONE);
         mContacts.mNames.put(TEST_PHONE, contact);
 
         assertThat(
@@ -192,7 +193,7 @@ public class SmsMmsContactsTest {
 
     @Test
     public void getContactNameFromPhone_withNonNullContact_andNullFilter() {
-        MapContact contact = MapContact.create(TEST_ID, TEST_PHONE);
+        MapContact contact = new MapContact(TEST_ID, TEST_PHONE);
         mContacts.mNames.put(TEST_PHONE, contact);
 
         assertThat(mContacts.getContactNameFromPhone(TEST_PHONE, mResolver, null))
@@ -201,7 +202,7 @@ public class SmsMmsContactsTest {
 
     @Test
     public void getContactNameFromPhone_withNonNullContact_andNonMatchingFilter() {
-        MapContact contact = MapContact.create(TEST_ID, TEST_PHONE);
+        MapContact contact = new MapContact(TEST_ID, TEST_PHONE);
         mContacts.mNames.put(TEST_PHONE, contact);
         String nonMatchingFilter = "non_matching_filter";
 

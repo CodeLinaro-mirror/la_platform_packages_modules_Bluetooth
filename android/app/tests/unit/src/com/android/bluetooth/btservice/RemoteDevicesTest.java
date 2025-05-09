@@ -57,6 +57,7 @@ import org.mockito.hamcrest.MockitoHamcrest;
 
 import java.util.ArrayList;
 
+/** Test cases for {@link RemoteDevices}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class RemoteDevicesTest {
@@ -752,7 +753,7 @@ public class RemoteDevicesTest {
                         mIntentArgument.capture(), mStringArgument.capture(), any(Bundle.class));
         verifyBatteryLevelChangedIntent(
                 mDevice,
-                RemoteDevices.batteryChargeIndicatorToPercentge(batteryLevel),
+                RemoteDevices.batteryChargeIndicatorToPercentage(batteryLevel),
                 mIntentArgument);
         assertThat(mStringArgument.getValue()).isEqualTo(BLUETOOTH_CONNECT);
     }
@@ -770,7 +771,7 @@ public class RemoteDevicesTest {
     }
 
     @Test
-    public void testSetgetHfAudioPolicyForRemoteAg() {
+    public void testSetGetHfAudioPolicyForRemoteAg() {
         // Verify that device property is null initially
         assertThat(mRemoteDevices.getDeviceProperties(mDevice)).isNull();
 

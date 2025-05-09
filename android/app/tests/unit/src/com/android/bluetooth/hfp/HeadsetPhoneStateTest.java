@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
-/** Unit test to verify various methods in {@link HeadsetPhoneState} */
+/** Test cases for {@link HeadsetPhoneState}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetPhoneStateTest {
@@ -97,7 +97,7 @@ public class HeadsetPhoneStateTest {
     public void testListenForPhoneState_NoneResultsNoListen() {
         BluetoothDevice device1 = getTestDevice(1);
         mHeadsetPhoneState.listenForPhoneState(device1, PhoneStateListener.LISTEN_NONE);
-        verifyZeroInteractions(mTelephonyManager);
+        verifyNoMoreInteractions(mTelephonyManager);
     }
 
     /**
@@ -136,7 +136,7 @@ public class HeadsetPhoneStateTest {
     }
 
     /**
-     * Verify that partially turnning off {@link PhoneStateListener#LISTEN_SIGNAL_STRENGTHS} update
+     * Verify that partially turning off {@link PhoneStateListener#LISTEN_SIGNAL_STRENGTHS} update
      * should only unsubscribe signal strength update
      */
     @Test
@@ -187,7 +187,7 @@ public class HeadsetPhoneStateTest {
 
     /**
      * Verify that when multiple devices tries to subscribe to the same indicator, the same
-     * subscription is not triggered twice. Also, when one of the device is unsubsidised from an
+     * subscription is not triggered twice. Also, when one of the device is unsubsidized from an
      * indicator, the other device still remain subscribed.
      */
     @Test

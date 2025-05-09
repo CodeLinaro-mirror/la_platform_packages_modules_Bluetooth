@@ -101,6 +101,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+/** Test cases for {@link MapClientStateMachine}. */
 @MediumTest
 @RunWith(ParameterizedAndroidJunit4.class)
 public class MapClientStateMachineTest {
@@ -155,7 +156,7 @@ public class MapClientStateMachineTest {
     private InOrder mInOrder;
 
     private static class SentDeliveryReceiver extends BroadcastReceiver {
-        private CountDownLatch mActionReceivedLatch;
+        private final CountDownLatch mActionReceivedLatch;
 
         SentDeliveryReceiver() {
             mActionReceivedLatch = new CountDownLatch(1);
@@ -768,8 +769,8 @@ public class MapClientStateMachineTest {
     /**
      * Preconditions: - In {@code STATE_CONNECTED}.
      *
-     * <p>Actions: - {@link #sendMapMessage} with 'Sent' {@link PendingIntents}. - {@link
-     * #receiveEvent} of type {@link SENDING_SUCCESS}.
+     * <p>Actions: - {@link MceStateMachine#sendMapMessage} with 'Sent' {@link PendingIntents}. -
+     * {@link MceStateMachine#receiveEvent} of type {@link SENDING_SUCCESS}.
      *
      * <p>Outcome: - SENT_STATUS Intent was broadcast with 'Success' result code.
      */
@@ -785,8 +786,8 @@ public class MapClientStateMachineTest {
     /**
      * Preconditions: - In {@code STATE_CONNECTED}.
      *
-     * <p>Actions: - {@link #sendMapMessage} with 'Delivery' {@link PendingIntents}. - {@link
-     * #receiveEvent} of type {@link DELIVERY_SUCCESS}.
+     * <p>Actions: - {@link MceStateMachine#sendMapMessage} with 'Delivery' {@link PendingIntents}.
+     * - {@link MceStateMachine#receiveEvent} of type {@link DELIVERY_SUCCESS}.
      *
      * <p>Outcome: - DELIVERY_STATUS Intent was broadcast with 'Success' result code.
      */
@@ -802,9 +803,9 @@ public class MapClientStateMachineTest {
     /**
      * Preconditions: - In {@code STATE_CONNECTED}.
      *
-     * <p>Actions: - {@link #sendMapMessage} with 'null' {@link PendingIntents}. - {@link
-     * #receiveEvent} of type {@link SENDING_SUCCESS}. - {@link #receiveEvent} of type {@link
-     * DELIVERY_SUCCESS}.
+     * <p>Actions: - {@link MceStateMachine#sendMapMessage} with 'null' {@link PendingIntents}. -
+     * {@link MceStateMachine#receiveEvent} of type {@link SENDING_SUCCESS}. - {@link
+     * MceStateMachine#receiveEvent} of type {@link DELIVERY_SUCCESS}.
      *
      * <p>Outcome: - No Intent was broadcast.
      */
@@ -818,8 +819,8 @@ public class MapClientStateMachineTest {
     /**
      * Preconditions: - In {@code STATE_CONNECTED}.
      *
-     * <p>Actions: - {@link #sendMapMessage} with 'Sent' {@link PendingIntents}. - {@link
-     * #receiveEvent} of type {@link SENDING_FAILURE}.
+     * <p>Actions: - {@link MceStateMachine#sendMapMessage} with 'Sent' {@link PendingIntents}. -
+     * {@link MceStateMachine#receiveEvent} of type {@link SENDING_FAILURE}.
      *
      * <p>Outcome: - SENT_STATUS Intent was broadcast with 'Failure' result code.
      */
@@ -837,8 +838,8 @@ public class MapClientStateMachineTest {
     /**
      * Preconditions: - In {@code STATE_CONNECTED}.
      *
-     * <p>Actions: - {@link #sendMapMessage} with 'Delivery' {@link PendingIntents}. - {@link
-     * #receiveEvent} of type {@link DELIVERY_FAILURE}.
+     * <p>Actions: - {@link MceStateMachine#sendMapMessage} with 'Delivery' {@link PendingIntents}.
+     * - {@link MceStateMachine#receiveEvent} of type {@link DELIVERY_FAILURE}.
      *
      * <p>Outcome: - DELIVERY_STATUS Intent was broadcast with 'Failure' result code.
      */
@@ -943,7 +944,7 @@ public class MapClientStateMachineTest {
     }
 
     private static class MockSmsContentProvider extends MockContentProvider {
-        Map<Uri, ContentValues> mContentValues = new HashMap<>();
+        final Map<Uri, ContentValues> mContentValues = new HashMap<>();
         int mInsertOperationCount = 0;
 
         @Override

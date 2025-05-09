@@ -10,31 +10,11 @@ flag {
 }
 
 flag {
-    name: "identity_address_null_if_not_known"
-    namespace: "bluetooth"
-    description: "Return null for identity address if identity address is not known"
-    bug: "317120534"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "support_bluetooth_quality_report_v6"
     is_exported: true
     namespace: "bluetooth"
     description: "Enhanced Bluetooth Framework Support for Accessing Bluetooth Quality Report v6 Information"
     bug: "364517559"
-}
-
-flag {
-    name: "get_profile_use_lock"
-    namespace: "bluetooth"
-    description: "Instead of bloating the main thread, use the binder thread with a synchronization lock"
-    bug: "370815283"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
 }
 
 flag {
@@ -105,6 +85,16 @@ flag {
     namespace: "bluetooth"
     description: "Fix Unhandled BQR subevent on bqr report"
     bug: "397854116"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "same_handler_for_all_modules"
+    namespace: "bluetooth"
+    description: "Update all modules to use the same handler"
+    bug: "398195386"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

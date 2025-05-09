@@ -16,6 +16,8 @@
 
 package com.android.bluetooth.opp;
 
+import static android.platform.test.flag.junit.DeviceFlagsValueProvider.createCheckFlagsRule;
+
 import static androidx.test.espresso.intent.Intents.intended;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasComponent;
@@ -41,9 +43,10 @@ import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.platform.test.annotations.DisableFlags;
-import android.platform.test.annotations.EnableFlags;
-import android.platform.test.flag.junit.SetFlagsRule;
+import android.platform.test.annotations.RequiresFlagsDisabled;
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.provider.Settings;
 import android.sysprop.BluetoothProperties;
 
 import androidx.lifecycle.Lifecycle;
@@ -71,25 +74,25 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/** Test cases for {@link BluetoothOppLauncherActivity}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothOppLauncherActivityTest {
-    public static final String CONTENT_TYPE = "image/png";
-
-    Context mTargetContext;
-    Intent mIntent;
-
-    BluetoothMethodProxy mMethodProxy;
-    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
-
-    @Mock BluetoothOppManager mBluetoothOppManager;
-
     // Activity tests can sometimes flaky because of external factors like system dialog, etc.
     // making the expected Espresso's root not focused or the activity doesn't show up.
     // Add retry rule to resolve this problem.
     @Rule public TestUtils.RetryTestRule mRetryTestRule = new TestUtils.RetryTestRule();
 
-    @Rule public SetFlagsRule.ClassRule mSetFlagsClassRule = new SetFlagsRule.ClassRule();
+    @Rule public final CheckFlagsRule mCheckFlagsRule = createCheckFlagsRule();
+    @Rule public final MockitoRule mMockitoRule = new MockitoRule();
+
+    @Mock BluetoothOppManager mBluetoothOppManager;
+
+    private static final String CONTENT_TYPE = "image/png";
+
+    Context mTargetContext;
+    Intent mIntent;
+    BluetoothMethodProxy mMethodProxy;
 
     @Before
     public void setUp() throws Exception {
@@ -144,7 +147,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsEnabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSend_checkEnabled_noPermission_doesNotSaveFileInfo()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -163,7 +166,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsEnabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSend_checkEnabled_hasPermission_savesFileInfo()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -182,7 +185,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsDisabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSend_checkNotEnabled_noPermission_savesFileInfo()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -201,7 +204,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsDisabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSend_checkNotEnabled_hasPermission_savesFileInfo()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -227,7 +230,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsEnabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSendMultiple_checkEnabled_noPermission_doesNotSaveFileInfos()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -249,7 +252,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsEnabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSendMultiple_checkEnabled_hasPermission_savesFileInfos()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -271,7 +274,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsEnabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void
             onCreate_withActionSendMultiple_checkEnabled_partialPermission_savesPermittedFileInfo()
                     throws Exception {
@@ -294,7 +297,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsDisabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSendMultiple_checkNotEnabled_noPermission_savesFileInfos()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -316,7 +319,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsDisabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSendMultiple_checkNotEnabled_hasPermission_savesFileInfos()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -338,7 +341,7 @@ public class BluetoothOppLauncherActivityTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
+    @RequiresFlagsDisabled(Flags.FLAG_OPP_CHECK_CONTENT_URI_PERMISSIONS)
     public void onCreate_withActionSendMultiple_checkNotEnabled_partialPermission_savesFileInfos()
             throws Exception {
         doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
@@ -379,6 +382,30 @@ public class BluetoothOppLauncherActivityTest {
         assertThat(argument.getValue().getComponent().getClassName())
                 .isEqualTo(BluetoothOppReceiver.class.getName());
         assertThat(argument.getValue().getData()).isEqualTo(Uri.EMPTY);
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_SEND_OPP_DEVICE_PICKER_EXTRA_INTENT)
+    public void onCreate_withActionSend_grantUriPermissionToNearbyComponent() {
+        doReturn(true).when(mMethodProxy).bluetoothAdapterIsEnabled(any());
+        doReturn(PackageManager.PERMISSION_GRANTED)
+                .when(mMethodProxy)
+                .componentCallerCheckContentUriPermission(any(), any(), anyInt());
+        String uriString = "content://test.provider/1";
+        Settings.Secure.putString(
+                mTargetContext.getContentResolver(),
+                "nearby_sharing_component",
+                "com.example/.BComponent");
+
+        ActivityScenario<BluetoothOppLauncherActivity> unused =
+                ActivityScenario.launch(createSendIntent(uriString));
+
+        verify(mMethodProxy)
+                .grantUriPermission(
+                        any(),
+                        eq("com.example"),
+                        eq(Uri.parse(uriString)),
+                        eq(Intent.FLAG_GRANT_READ_URI_PERMISSION));
     }
 
     @Ignore("b/263724420")

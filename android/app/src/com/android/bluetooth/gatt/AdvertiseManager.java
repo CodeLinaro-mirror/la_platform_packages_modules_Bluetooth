@@ -16,12 +16,16 @@
 
 package com.android.bluetooth.gatt;
 
+import static com.android.bluetooth.gatt.AdvertiseHelper.advertiseDataToBytes;
+
+import android.app.ActivityManager;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.IAdvertisingSetCallback;
 import android.bluetooth.le.PeriodicAdvertisingParameters;
 import android.content.AttributionSource;
+import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
@@ -48,14 +52,15 @@ public class AdvertiseManager {
 
     private static final long RUN_SYNC_WAIT_TIME_MS = 2000L;
 
+    private final Map<IBinder, AdvertiserInfo> mAdvertisers = new HashMap<>();
+
     private final AdapterService mService;
     private final AdvertiseManagerNativeInterface mNativeInterface;
     private final AdvertiseBinder mAdvertiseBinder;
     private final AdvertiserMap mAdvertiserMap;
-
-    private final Map<IBinder, AdvertiserInfo> mAdvertisers = new HashMap<>();
-
+    private final ActivityManager mActivityManager;
     private final Handler mHandler;
+
     private volatile boolean mIsAvailable = true;
     @VisibleForTesting int mTempRegistrationId = -1;
 
@@ -77,7 +82,7 @@ public class AdvertiseManager {
         mService = service;
         mNativeInterface = nativeInterface;
         mAdvertiserMap = advertiserMap;
-
+        mActivityManager = mService.getSystemService(ActivityManager.class);
         mNativeInterface.init(this);
         mHandler = new Handler(advertiseLooper);
         mAdvertiseBinder = new AdvertiseBinder(service, this);
@@ -104,22 +109,12 @@ public class AdvertiseManager {
         return mAdvertiseBinder;
     }
 
-    static class AdvertiserInfo {
-        /* When id is negative, the registration is ongoing. When the registration finishes, id
-         * becomes equal to advertiser_id */
-        public Integer id;
-        public AdvertisingSetDeathRecipient deathRecipient;
-        public IAdvertisingSetCallback callback;
-
-        AdvertiserInfo(
-                Integer id,
-                AdvertisingSetDeathRecipient deathRecipient,
-                IAdvertisingSetCallback callback) {
-            this.id = id;
-            this.deathRecipient = deathRecipient;
-            this.callback = callback;
-        }
-    }
+    private record AdvertiserInfo(
+            /* When id is negative, the registration is ongoing. When the registration finishes, id
+             * becomes equal to advertiser_id */
+            Integer id,
+            AdvertisingSetDeathRecipient deathRecipient,
+            IAdvertisingSetCallback callback) {}
 
     private interface CallbackWrapper {
         void call() throws RemoteException;
@@ -131,7 +126,7 @@ public class AdvertiseManager {
 
     class AdvertisingSetDeathRecipient implements IBinder.DeathRecipient {
         public IAdvertisingSetCallback callback;
-        private String mPackageName;
+        private final String mPackageName;
 
         AdvertisingSetDeathRecipient(IAdvertisingSetCallback callback, String packageName) {
             this.callback = callback;
@@ -146,14 +141,10 @@ public class AdvertiseManager {
     }
 
     private Map.Entry<IBinder, AdvertiserInfo> findAdvertiser(int advertiserId) {
-        Map.Entry<IBinder, AdvertiserInfo> entry = null;
-        for (Map.Entry<IBinder, AdvertiserInfo> e : mAdvertisers.entrySet()) {
-            if (e.getValue().id == advertiserId) {
-                entry = e;
-                break;
-            }
-        }
-        return entry;
+        return mAdvertisers.entrySet().stream()
+                .filter(e -> e.getValue().id == advertiserId)
+                .findFirst()
+                .orElse(null);
     }
 
     void onAdvertisingSetStarted(int regId, int advertiserId, int txPower, int status) {
@@ -168,7 +159,6 @@ public class AdvertiseManager {
         checkThread();
 
         Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(regId);
-
         if (entry == null) {
             Log.i(TAG, "onAdvertisingSetStarted() - no callback found for regId " + regId);
             // Advertising set was stopped before it was properly registered.
@@ -176,15 +166,14 @@ public class AdvertiseManager {
             return;
         }
 
+        AdvertisingSetDeathRecipient deathRecipient = entry.getValue().deathRecipient;
         IAdvertisingSetCallback callback = entry.getValue().callback;
         if (status == 0) {
-            entry.setValue(
-                    new AdvertiserInfo(advertiserId, entry.getValue().deathRecipient, callback));
-
+            entry.setValue(new AdvertiserInfo(advertiserId, deathRecipient, callback));
             mAdvertiserMap.setAdvertiserIdByRegId(regId, advertiserId);
         } else {
             IBinder binder = entry.getKey();
-            binder.unlinkToDeath(entry.getValue().deathRecipient, 0);
+            binder.unlinkToDeath(deathRecipient, 0);
             mAdvertisers.remove(binder);
 
             AppAdvertiseStats stats = mAdvertiserMap.getAppAdvertiseStatsById(regId);
@@ -234,6 +223,26 @@ public class AdvertiseManager {
         }
     }
 
+    private void fetchAppForegroundState(int id) {
+        PackageManager packageManager = mService.getPackageManager();
+        if (mActivityManager == null || packageManager == null) {
+            return;
+        }
+        int appUid = Binder.getCallingUid();
+        String[] packages = packageManager.getPackagesForUid(appUid);
+        if (packages == null || packages.length == 0) {
+            return;
+        }
+        int importance = ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED;
+        for (String packageName : packages) {
+            importance = Math.min(importance, mActivityManager.getPackageImportance(packageName));
+        }
+        AppAdvertiseStats stats = mAdvertiserMap.getAppAdvertiseStatsById(id);
+        if (stats != null) {
+            stats.setAppImportance(importance);
+        }
+    }
+
     void startAdvertisingSet(
             AdvertisingSetParameters parameters,
             AdvertiseData advertiseData,
@@ -280,13 +289,11 @@ public class AdvertiseManager {
             throw new IllegalArgumentException("Can't link to advertiser's death");
         }
 
-        String deviceName = mService.getName();
+        final String deviceName = mService.getName();
         try {
-            byte[] advDataBytes = AdvertiseHelper.advertiseDataToBytes(advertiseData, deviceName);
-            byte[] scanResponseBytes =
-                    AdvertiseHelper.advertiseDataToBytes(scanResponse, deviceName);
-            byte[] periodicDataBytes =
-                    AdvertiseHelper.advertiseDataToBytes(periodicData, deviceName);
+            byte[] advDataBytes = advertiseDataToBytes(advertiseData, deviceName);
+            byte[] scanResponseBytes = advertiseDataToBytes(scanResponse, deviceName);
+            byte[] periodicDataBytes = advertiseDataToBytes(periodicData, deviceName);
 
             int cbId = --mTempRegistrationId;
             mAdvertisers.put(binder, new AdvertiserInfo(cbId, deathRecipient, callback));
@@ -294,6 +301,7 @@ public class AdvertiseManager {
             Log.d(TAG, "startAdvertisingSet() - reg_id=" + cbId + ", callback: " + binder);
 
             mAdvertiserMap.addAppAdvertiseStats(cbId, mService, attrSource);
+            fetchAppForegroundState(cbId);
             mAdvertiserMap.recordAdvertiseStart(
                     cbId,
                     parameters,
@@ -392,6 +400,7 @@ public class AdvertiseManager {
             Log.w(TAG, "enableAdvertisingSet() - bad advertiserId " + advertiserId);
             return;
         }
+        fetchAppForegroundState(advertiserId);
         mNativeInterface.enableAdvertisingSet(advertiserId, enable, duration, maxExtAdvEvents);
 
         mAdvertiserMap.enableAdvertisingSet(advertiserId, enable, duration, maxExtAdvEvents);
@@ -404,10 +413,10 @@ public class AdvertiseManager {
             Log.w(TAG, "setAdvertisingData() - bad advertiserId " + advertiserId);
             return;
         }
-        String deviceName = mService.getName();
+        final String deviceName = mService.getName();
         try {
             mNativeInterface.setAdvertisingData(
-                    advertiserId, AdvertiseHelper.advertiseDataToBytes(data, deviceName));
+                    advertiserId, advertiseDataToBytes(data, deviceName));
 
             mAdvertiserMap.setAdvertisingData(advertiserId, data);
         } catch (IllegalArgumentException e) {
@@ -427,10 +436,10 @@ public class AdvertiseManager {
             Log.w(TAG, "setScanResponseData() - bad advertiserId " + advertiserId);
             return;
         }
-        String deviceName = mService.getName();
+        final String deviceName = mService.getName();
         try {
             mNativeInterface.setScanResponseData(
-                    advertiserId, AdvertiseHelper.advertiseDataToBytes(data, deviceName));
+                    advertiserId, advertiseDataToBytes(data, deviceName));
 
             mAdvertiserMap.setScanResponseData(advertiserId, data);
         } catch (IllegalArgumentException e) {
@@ -475,10 +484,10 @@ public class AdvertiseManager {
             Log.w(TAG, "setPeriodicAdvertisingData() - bad advertiserId " + advertiserId);
             return;
         }
-        String deviceName = mService.getName();
+        final String deviceName = mService.getName();
         try {
             mNativeInterface.setPeriodicAdvertisingData(
-                    advertiserId, AdvertiseHelper.advertiseDataToBytes(data, deviceName));
+                    advertiserId, advertiseDataToBytes(data, deviceName));
 
             mAdvertiserMap.setPeriodicAdvertisingData(advertiserId, data);
         } catch (IllegalArgumentException e) {

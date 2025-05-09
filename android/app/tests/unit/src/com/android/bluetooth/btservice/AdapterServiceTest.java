@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,6 +113,7 @@ import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+/** Test cases for {@link AdapterService}. */
 @MediumTest
 @RunWith(ParameterizedAndroidJunit4.class)
 public class AdapterServiceTest {
@@ -395,7 +396,7 @@ public class AdapterServiceTest {
     }
 
     private List<ProfileService> listOfMockServices() {
-        return Flags.scanManagerRefactor()
+        return Flags.onlyStartScanDuringBleOn()
                 ? List.of(mMockGattService, mMockService, mMockService2)
                 : List.of(mMockService, mMockService2);
     }
@@ -412,7 +413,7 @@ public class AdapterServiceTest {
         TestUtils.syncHandler(looper, AdapterState.BLE_TURN_ON);
         verifyStateChange(callback, STATE_OFF, STATE_BLE_TURNING_ON);
 
-        if (!Flags.scanManagerRefactor()) {
+        if (!Flags.onlyStartScanDuringBleOn()) {
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_REGISTERED);
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
         }
@@ -436,7 +437,7 @@ public class AdapterServiceTest {
         verifyStateChange(callback, STATE_ON, STATE_TURNING_OFF);
 
         if (!onlyGatt) {
-            // Stop (if Flags.scanManagerRefactor GATT), PBAP, and PAN services
+            // Stop (if Flags.onlyStartScanDuringBleOn GATT), PBAP, and PAN services
             assertThat(adapter.mSetProfileServiceStateCounter).isEqualTo(services.size() * 2);
 
             for (ProfileService service : services) {
@@ -487,7 +488,7 @@ public class AdapterServiceTest {
         verifyStateChange(callback, STATE_BLE_ON, STATE_TURNING_ON);
 
         if (!onlyGatt) {
-            // Start Mock (if Flags.scanManagerRefactor GATT), PBAP, and PAN services
+            // Start Mock (if Flags.onlyStartScanDuringBleOn GATT), PBAP, and PAN services
             assertThat(adapter.mSetProfileServiceStateCounter).isEqualTo(services.size());
 
             for (ProfileService service : services) {
@@ -540,7 +541,7 @@ public class AdapterServiceTest {
         TestUtils.syncHandler(looper, AdapterState.BLE_TURN_OFF);
         verifyStateChange(callback, STATE_BLE_ON, STATE_BLE_TURNING_OFF);
 
-        if (!Flags.scanManagerRefactor()) {
+        if (!Flags.onlyStartScanDuringBleOn()) {
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_UNREGISTERED);
         }
@@ -592,7 +593,7 @@ public class AdapterServiceTest {
      * started and stopped.
      */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testEnableDisableOnlyGatt() {
         Context mockContext = mock(Context.class);
         Resources mockResources = mock(Resources.class);
@@ -615,7 +616,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't start GATT Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testGattStartTimeout() {
         assertThat(mAdapterService.getState()).isEqualTo(STATE_OFF);
 
@@ -647,7 +648,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't stop GATT Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testGattStopTimeout() {
         doEnable(false);
 
@@ -680,8 +681,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBleOnly_whenScanManagerRefactorFlagIsOff_onlyStartGattProfile() {
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBleOnly_whenOnlyStartScanDuringBleOnFlagIsOff_onlyStartGattProfile() {
         mAdapterService.bringUpBle();
 
         assertThat(mAdapterService.getBluetoothGatt()).isNotNull();
@@ -692,8 +693,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBleOnly_whenScanManagerRefactorFlagIsOn_onlyStartScanController() {
+    @EnableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBleOnly_whenOnlyStartScanDuringBleOnFlagIsOn_onlyStartScanController() {
         mAdapterService.bringUpBle();
 
         assertThat(mAdapterService.getBluetoothGatt()).isNull();
@@ -702,8 +703,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBleOnly_whenScanManagerRefactorFlagIsOn_startAndStopScanController() {
+    @EnableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBleOnly_whenOnlyStartScanDuringBleOnFlagIsOn_startAndStopScanController() {
         assertThat(mAdapterService.getBluetoothScan()).isNull();
         assertThat(mAdapterService.getBluetoothGatt()).isNull();
 
@@ -744,8 +745,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBrDr_whenScanManagerRefactorFlagIsOn_startAndStopScanController() {
+    @EnableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBrDr_whenOnlyStartScanDuringBleOnFlagIsOn_startAndStopScanController() {
         assertThat(mAdapterService.getBluetoothScan()).isNull();
         assertThat(mAdapterService.getBluetoothGatt()).isNull();
 
@@ -813,7 +814,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't start a classic profile Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testProfileStartTimeout() {
         assertThat(mAdapterService.getState()).isEqualTo(STATE_OFF);
 
@@ -857,7 +858,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't stop a classic profile Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testProfileStopTimeout() {
         doEnable(false);
 
@@ -906,10 +907,6 @@ public class AdapterServiceTest {
         // Create device properties
         RemoteDevices remoteDevices = mAdapterService.getRemoteDevices();
         remoteDevices.addDeviceProperties(Utils.getBytesFromAddress((TEST_BT_ADDR_1)));
-        String identityAddress = mAdapterService.getIdentityAddress(TEST_BT_ADDR_1);
-        if (!Flags.identityAddressNullIfNotKnown()) {
-            assertThat(identityAddress).isEqualTo(TEST_BT_ADDR_1);
-        }
 
         // Trigger address consolidate callback
         remoteDevices.addressConsolidateCallback(
@@ -917,7 +914,7 @@ public class AdapterServiceTest {
                 Utils.getBytesFromAddress(TEST_BT_ADDR_2));
 
         // Verify we can get correct identity address
-        identityAddress = mAdapterService.getIdentityAddress(TEST_BT_ADDR_1);
+        String identityAddress = mAdapterService.getIdentityAddress(TEST_BT_ADDR_1);
         assertThat(identityAddress).isEqualTo(TEST_BT_ADDR_2);
         assertThat(mLooper.nextMessage()).isNull();
     }
@@ -954,7 +951,6 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_IDENTITY_ADDRESS_NULL_IF_NOT_KNOWN)
     public void testIdentityAddressNullIfUnknown() {
         BluetoothDevice device = getTestDevice(0);
 
@@ -1020,8 +1016,6 @@ public class AdapterServiceTest {
 
         mAdapterService.dump(fd, writer, new String[] {});
         mAdapterService.dump(fd, writer, new String[] {"set-test-mode", "enabled"});
-        doReturn(new byte[0]).when(mNativeInterface).dumpMetrics();
-        mAdapterService.dump(fd, writer, new String[] {"--proto-bin"});
         mAdapterService.dump(fd, writer, new String[] {"random", "arguments"});
         assertThat(mLooper.nextMessage()).isNull();
     }

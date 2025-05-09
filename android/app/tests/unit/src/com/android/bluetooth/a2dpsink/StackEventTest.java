@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import androidx.test.runner.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+/** Test cases for {@link StackEvent}. */
 @RunWith(AndroidJUnit4.class)
 public class StackEventTest {
     private final BluetoothDevice mDevice = getTestDevice(21);
@@ -70,7 +71,7 @@ public class StackEventTest {
     }
 
     @Test
-    public void testCreateAudioStateStartedvent() {
+    public void testCreateAudioStateStartedEvent() {
         testAudioStateChangedBase(StackEvent.AUDIO_STATE_STARTED);
     }
 

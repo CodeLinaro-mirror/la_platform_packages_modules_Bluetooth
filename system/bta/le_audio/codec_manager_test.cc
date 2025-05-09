@@ -300,10 +300,12 @@ public:
 
     bluetooth::legacy::hci::testing::SetMock(legacy_hci_mock_);
 
-    ON_CALL(controller_interface, SupportsBleIsochronousBroadcaster).WillByDefault(Return(true));
-    ON_CALL(controller_interface, IsSupported(OpCode::CONFIGURE_DATA_PATH))
+    bluetooth::hci::testing::mock_controller_ =
+            std::make_unique<NiceMock<bluetooth::hci::testing::MockControllerInterface>>();
+    ON_CALL(*bluetooth::hci::testing::mock_controller_, SupportsBleIsochronousBroadcaster)
             .WillByDefault(Return(true));
-    bluetooth::hci::testing::mock_controller_ = &controller_interface;
+    ON_CALL(*bluetooth::hci::testing::mock_controller_, IsSupported(OpCode::CONFIGURE_DATA_PATH))
+            .WillByDefault(Return(true));
 
     codec_manager = CodecManager::GetInstance();
 
@@ -311,9 +313,11 @@ public:
     RegisterSinkHalClientMock();
   }
 
-  virtual void TearDown() override { codec_manager->Stop(); }
+  virtual void TearDown() override {
+    codec_manager->Stop();
+    bluetooth::hci::testing::mock_controller_.release();
+  }
 
-  NiceMock<bluetooth::hci::testing::MockControllerInterface> controller_interface;
   CodecManager* codec_manager;
   bluetooth::legacy::hci::testing::MockInterface legacy_hci_mock_;
 
@@ -364,8 +368,6 @@ public:
 
     // Disable codec extensibility by default
     osi_property_set_bool(kPropLeAudioCodecExtensibility, false);
-
-    com::android::bluetooth::flags::provider_->leaudio_mono_location_errata(false);
 
     CodecManagerTestBase::SetUp();
   }
@@ -538,7 +540,6 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationAdspDownMix) {
 }
 
 TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
-  com::android::bluetooth::flags::provider_->leaudio_mono_location_errata(true);
   const std::vector<bluetooth::le_audio::btle_audio_codec_config_t> offloading_preference(0);
   codec_manager->Start(offloading_preference);
 
@@ -559,15 +560,16 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
   };
 
   // Stream parameters
+  auto stream_map_entry_mono_bidir =
+          stream_map_info(97, codec_spec_conf::kLeAudioLocationMonoAudio, true);
+  stream_map_entry_mono_bidir.codec_config.id = kLeAudioCodecIdLc3;
   types::BidirectionalPair<stream_parameters> stream_params{
           .sink =
                   {
                           .audio_channel_allocation = codec_spec_conf::kLeAudioLocationMonoAudio,
                           .stream_config =
                                   {
-                                          .stream_map = {stream_map_info(
-                                                  97, codec_spec_conf::kLeAudioLocationMonoAudio,
-                                                  true)},
+                                          .stream_map = {stream_map_entry_mono_bidir},
                                           .bits_per_sample = 16,
                                           .sampling_frequency_hz = 16000,
                                           .frame_duration_us = 10000,
@@ -583,9 +585,7 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
                           .audio_channel_allocation = codec_spec_conf::kLeAudioLocationMonoAudio,
                           .stream_config =
                                   {
-                                          .stream_map = {stream_map_info(
-                                                  97, codec_spec_conf::kLeAudioLocationMonoAudio,
-                                                  true)},
+                                          .stream_map = {stream_map_entry_mono_bidir},
                                           .bits_per_sample = 16,
                                           .sampling_frequency_hz = 16000,
                                           .frame_duration_us = 10000,
@@ -628,6 +628,7 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
         ASSERT_EQ(codec_spec_conf::kLeAudioLocationMonoAudio, info.audio_channel_allocation);
         // The connected should be active
         ASSERT_TRUE(info.is_stream_active);
+        ASSERT_EQ(info.codec_config.id.coding_format, kLeAudioCodecIdLc3.coding_format);
 
       } else {
         ASSERT_EQ(97, info.stream_handle);
@@ -1339,7 +1340,6 @@ TEST_F(CodecManagerTestHost, test_dont_call_hal_for_config) {
 }
 
 TEST_F(CodecManagerTestAdsp, testStreamConfigurationVendor) {
-  com::android::bluetooth::flags::provider_->leaudio_mono_location_errata(true);
   osi_property_set_bool(kPropLeAudioCodecExtensibility, true);
 
   const std::vector<bluetooth::le_audio::btle_audio_codec_config_t> offloading_preference(0);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 
 package com.android.bluetooth.hfp;
-
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothHeadset;
@@ -46,7 +45,7 @@ class HeadsetSystemInterface {
     private final HeadsetService mHeadsetService;
     private final AudioManager mAudioManager;
     private final HeadsetPhoneState mHeadsetPhoneState;
-    private PowerManager.WakeLock mVoiceRecognitionWakeLock;
+    private final PowerManager.WakeLock mVoiceRecognitionWakeLock;
     private final TelephonyManager mTelephonyManager;
     private final TelecomManager mTelecomManager;
 

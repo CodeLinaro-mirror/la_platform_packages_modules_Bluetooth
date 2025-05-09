@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,6 +62,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/** Test cases for {@link BluetoothOppObexServerSession}. */
 @RunWith(AndroidJUnit4.class)
 public class BluetoothOppObexServerSessionTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
@@ -337,7 +338,7 @@ public class BluetoothOppObexServerSessionTest {
         request.setHeader(HeaderSet.TARGET, null);
         BluetoothOppManager bluetoothOppManager = mock(BluetoothOppManager.class);
         BluetoothOppManager.setInstance(bluetoothOppManager);
-        doReturn(true).when(bluetoothOppManager).isAcceptlisted(any());
+        doReturn(true).when(bluetoothOppManager).isAcceptListed(any());
 
         assertThat(mServerSession.onConnect(request, reply)).isEqualTo(ResponseCodes.OBEX_HTTP_OK);
         BluetoothOppManager.setInstance(null);

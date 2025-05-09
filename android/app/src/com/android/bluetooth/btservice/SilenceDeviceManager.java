@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,10 +31,7 @@ import android.util.Log;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.hfp.HeadsetService;
-import com.android.internal.annotations.VisibleForTesting;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,8 +53,7 @@ public class SilenceDeviceManager {
 
     private final AdapterService mAdapterService;
     private final ServiceFactory mFactory;
-    private Handler mHandler = null;
-    private Looper mLooper = null;
+    private final Handler mHandler;
 
     private final Map<BluetoothDevice, Boolean> mSilenceDevices = new HashMap<>();
     private final List<BluetoothDevice> mA2dpConnectedDevices = new ArrayList<>();
@@ -115,6 +111,7 @@ public class SilenceDeviceManager {
     }
 
     class SilenceDeviceManagerHandler extends Handler {
+
         SilenceDeviceManagerHandler(Looper looper) {
             super(looper);
         }
@@ -199,12 +196,7 @@ public class SilenceDeviceManager {
     SilenceDeviceManager(AdapterService service, ServiceFactory factory, Looper looper) {
         mAdapterService = service;
         mFactory = factory;
-        mLooper = looper;
-    }
-
-    void start() {
-        Log.v(TAG, "start()");
-        mHandler = new SilenceDeviceManagerHandler(mLooper);
+        mHandler = new SilenceDeviceManagerHandler(looper);
     }
 
     void cleanup() {
@@ -212,20 +204,14 @@ public class SilenceDeviceManager {
         mSilenceDevices.clear();
     }
 
-    @VisibleForTesting
     boolean setSilenceMode(BluetoothDevice device, boolean silence) {
-        if (mHandler == null) {
-            Log.e(TAG, "setSilenceMode() mHandler is null!");
-            return false;
-        }
         Log.d(TAG, "setSilenceMode: " + device + ", " + silence);
-        Message message =
-                mHandler.obtainMessage(
+        mHandler.obtainMessage(
                         MSG_SILENCE_DEVICE_STATE_CHANGED,
                         silence ? ENABLE_SILENCE : DISABLE_SILENCE,
                         0,
-                        device);
-        mHandler.sendMessage(message);
+                        device)
+                .sendToTarget();
         return true;
     }
 
@@ -254,10 +240,10 @@ public class SilenceDeviceManager {
             headsetService.setSilenceMode(device, state);
         }
         Log.i(TAG, "Silence mode change " + device + ": " + oldState + " -> " + state);
-        broadcastSilenceStateChange(device, state);
+        broadcastSilenceStateChange(device);
     }
 
-    void broadcastSilenceStateChange(BluetoothDevice device, boolean state) {
+    private void broadcastSilenceStateChange(BluetoothDevice device) {
         Intent intent = new Intent(BluetoothDevice.ACTION_SILENCE_MODE_CHANGED);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
         mAdapterService.sendBroadcastAsUser(
@@ -267,7 +253,6 @@ public class SilenceDeviceManager {
                 Utils.getTempBroadcastOptions().toBundle());
     }
 
-    @VisibleForTesting
     boolean getSilenceMode(BluetoothDevice device) {
         boolean state = false;
         if (mSilenceDevices.containsKey(device)) {
@@ -276,7 +261,7 @@ public class SilenceDeviceManager {
         return state;
     }
 
-    void addConnectedDevice(BluetoothDevice device, int profile) {
+    private void addConnectedDevice(BluetoothDevice device, int profile) {
         Log.d(
                 TAG,
                 "addConnectedDevice: "
@@ -297,7 +282,7 @@ public class SilenceDeviceManager {
         }
     }
 
-    void removeConnectedDevice(BluetoothDevice device, int profile) {
+    private void removeConnectedDevice(BluetoothDevice device, int profile) {
         Log.d(
                 TAG,
                 "removeConnectedDevice: "
@@ -318,15 +303,19 @@ public class SilenceDeviceManager {
         }
     }
 
-    boolean isBluetoothAudioConnected(BluetoothDevice device) {
+    private boolean isBluetoothAudioConnected(BluetoothDevice device) {
         return (mA2dpConnectedDevices.contains(device) || mHfpConnectedDevices.contains(device));
     }
 
-    protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
-        writer.println("\nSilenceDeviceManager:");
-        writer.println("  Address            | Is silenced?");
+    protected void dump(StringBuilder sb) {
+        sb.append("SilenceDeviceManager:\n");
+        sb.append("  Address            | Is silenced?\n");
         for (BluetoothDevice device : mSilenceDevices.keySet()) {
-            writer.println("  " + device + "  | " + getSilenceMode(device));
+            sb.append("  ")
+                    .append(device)
+                    .append("  | ")
+                    .append(getSilenceMode(device))
+                    .append("\n");
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,6 +63,7 @@ import org.mockito.Mock;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Test cases for {@link PbapClientStateMachine}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class PbapClientStateMachineTest {
@@ -97,7 +98,7 @@ public class PbapClientStateMachineTest {
     ArgumentCaptor<PbapClientContactsStorage.Callback> mCaptor =
             ArgumentCaptor.forClass(PbapClientContactsStorage.Callback.class);
     private PbapClientContactsStorage.Callback mStorageCallback;
-    private List<Account> mMockedAccounts = new ArrayList<>();
+    private final List<Account> mMockedAccounts = new ArrayList<>();
 
     @Mock private PbapClientObexClient mMockObexClient;
 
@@ -227,7 +228,7 @@ public class PbapClientStateMachineTest {
     }
 
     @Test
-    public void testConnecting_receivedSdpResultWithFailedStatus_transitiontoDisconnecting() {
+    public void testConnecting_receivedSdpResultWithFailedStatus_transitionToDisconnecting() {
         testDisconnected_receivedConnect_connectionStateChangesToConnecting();
         mPbapClientStateMachine.onSdpResultReceived(
                 SDP_FAILED,
@@ -267,7 +268,7 @@ public class PbapClientStateMachineTest {
     }
 
     @Test
-    public void testConnecting_receivedSdpResultWithUnknownStatus_transitiontoDisconnecting() {
+    public void testConnecting_receivedSdpResultWithUnknownStatus_transitionToDisconnecting() {
         testDisconnected_receivedConnect_connectionStateChangesToConnecting();
         mPbapClientStateMachine.onSdpResultReceived(
                 SDP_UNKNOWN,
@@ -421,7 +422,7 @@ public class PbapClientStateMachineTest {
     }
 
     @Test
-    public void testConnected_receivedDisconnect_transitiontoDisconnecting() {
+    public void testConnected_receivedDisconnect_transitionToDisconnecting() {
         testConnecting_receivedObexConnection_transitionToConnected();
         mPbapClientStateMachine.disconnect();
         mTestLooper.dispatchAll();
@@ -685,7 +686,7 @@ public class PbapClientStateMachineTest {
 
     @Test
     public void testEnterDisconnecting_clientConnected_disconnectIssued() {
-        testConnected_receivedDisconnect_transitiontoDisconnecting();
+        testConnected_receivedDisconnect_transitionToDisconnecting();
         verify(mMockObexClient, times(1)).disconnect();
     }
 

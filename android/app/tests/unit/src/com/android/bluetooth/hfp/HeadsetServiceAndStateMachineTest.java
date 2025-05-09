@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,6 +89,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/** Test cases for {@link HeadsetServiceAndStateMachine}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HeadsetServiceAndStateMachineTest {
@@ -172,7 +173,9 @@ public class HeadsetServiceAndStateMachineTest {
         doReturn(true).when(mNativeInterface).disconnectAudio(any(BluetoothDevice.class));
         doReturn(true).when(mNativeInterface).setActiveDevice(any(BluetoothDevice.class));
         doReturn(true).when(mNativeInterface).sendBsir(any(BluetoothDevice.class), anyBoolean());
-        doReturn(true).when(mNativeInterface).startVoiceRecognition(any(BluetoothDevice.class));
+        doReturn(true)
+                .when(mNativeInterface)
+                .startVoiceRecognition(any(BluetoothDevice.class), anyBoolean());
         doReturn(true).when(mNativeInterface).stopVoiceRecognition(any(BluetoothDevice.class));
         doReturn(true)
                 .when(mNativeInterface)
@@ -488,7 +491,6 @@ public class HeadsetServiceAndStateMachineTest {
     /** Test the value of isInbandRingingEnabled will be changed with the change of active device */
     @Test
     public void testIsInbandRingingEnabled_SwitchActiveDevice() {
-        mSetFlagsRule.enableFlags(Flags.FLAG_UPDATE_ACTIVE_DEVICE_IN_BAND_RINGTONE);
         BluetoothDevice device = getTestDevice(0);
         connectTestDevice(device);
 
@@ -773,7 +775,7 @@ public class HeadsetServiceAndStateMachineTest {
         verify(mSystemInterface).activateVoiceRecognition();
         verify(mNativeInterface).atResponseCode(device, HeadsetHalConstants.AT_RESPONSE_ERROR, 0);
         verifyNoMoreInteractions(ignoreStubs(mNativeInterface));
-        verifyZeroInteractions(mAudioManager);
+        verifyNoMoreInteractions(mAudioManager);
     }
 
     /**
@@ -814,7 +816,7 @@ public class HeadsetServiceAndStateMachineTest {
                         anyBoolean(),
                         eq(device));
         verifyNoMoreInteractions(ignoreStubs(mNativeInterface));
-        verifyZeroInteractions(mAudioManager);
+        verifyNoMoreInteractions(mAudioManager);
     }
 
     /**
@@ -914,7 +916,7 @@ public class HeadsetServiceAndStateMachineTest {
         assertThat(mHeadsetService.startVoiceRecognition(disconnectedDevice)).isFalse();
         mTestLooper.dispatchAll();
         verifyNoMoreInteractions(mNativeInterface);
-        verifyZeroInteractions(mAudioManager);
+        verifyNoMoreInteractions(mAudioManager);
     }
 
     /**
@@ -934,14 +936,8 @@ public class HeadsetServiceAndStateMachineTest {
         BluetoothDevice deviceB = getTestDevice(1);
         connectTestDevice(deviceB);
         InOrder inOrder = inOrder(mNativeInterface);
-        if (!Flags.updateActiveDeviceInBandRingtone()) {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(true));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-        } else {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-        }
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
         // Set active device to device B
         assertThat(mHeadsetService.setActiveDevice(deviceB)).isTrue();
         mTestLooper.dispatchAll();
@@ -1001,14 +997,8 @@ public class HeadsetServiceAndStateMachineTest {
         connectTestDevice(deviceA);
         BluetoothDevice deviceB = getTestDevice(1);
         connectTestDevice(deviceB);
-        if (!Flags.updateActiveDeviceInBandRingtone()) {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(true));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-        } else {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-        }
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
         // Set active device to device B
         assertThat(mHeadsetService.setActiveDevice(deviceB)).isTrue();
         mTestLooper.dispatchAll();
@@ -1068,14 +1058,8 @@ public class HeadsetServiceAndStateMachineTest {
         BluetoothDevice deviceB = getTestDevice(1);
         connectTestDevice(deviceB);
         InOrder inOrder = inOrder(mNativeInterface);
-        if (!Flags.updateActiveDeviceInBandRingtone()) {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(true));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-        } else {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-        }
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
         // Set active device to device B
         assertThat(mHeadsetService.setActiveDevice(deviceB)).isTrue();
         mTestLooper.dispatchAll();
@@ -1120,14 +1104,8 @@ public class HeadsetServiceAndStateMachineTest {
         BluetoothDevice deviceB = getTestDevice(1);
         connectTestDevice(deviceB);
         InOrder inOrder = inOrder(mNativeInterface);
-        if (!Flags.updateActiveDeviceInBandRingtone()) {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(true));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-        } else {
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
-            inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
-        }
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceA), eq(false));
+        inOrder.verify(mNativeInterface).sendBsir(eq(deviceB), eq(false));
         // Set active device to device B
         assertThat(mHeadsetService.setActiveDevice(deviceB)).isTrue();
         mTestLooper.dispatchAll();
@@ -1138,7 +1116,7 @@ public class HeadsetServiceAndStateMachineTest {
         mTestLooper.dispatchAll();
         verify(mNativeInterface).setActiveDevice(deviceA);
         assertThat(mHeadsetService.getActiveDevice()).isEqualTo(deviceA);
-        verify(mNativeInterface).startVoiceRecognition(deviceA);
+        verify(mNativeInterface).startVoiceRecognition(deviceA, true);
         verify(mAudioManager).setA2dpSuspended(true);
         verify(mAudioManager).setLeAudioSuspended(true);
         verify(mNativeInterface).connectAudio(deviceA);
@@ -1685,6 +1663,7 @@ public class HeadsetServiceAndStateMachineTest {
         // has not add verification AudioDeviceInfo because it is final, unless add a wrapper
         mHeadsetService.startVoiceRecognition(device);
         mTestLooper.dispatchAll();
+        verify(mNativeInterface).startVoiceRecognition(device, false);
         verify(mAudioManager, times(0)).setA2dpSuspended(true);
         verify(mAudioManager, times(0)).setLeAudioSuspended(true);
         verify(mNativeInterface, times(0)).connectAudio(device);
@@ -1695,7 +1674,7 @@ public class HeadsetServiceAndStateMachineTest {
         assertThat(device).isNotNull();
         assertThat(mHeadsetService.startVoiceRecognition(device)).isTrue();
         mTestLooper.dispatchAll();
-        verify(mNativeInterface).startVoiceRecognition(device);
+        verify(mNativeInterface).startVoiceRecognition(device, true);
         verify(mAudioManager).setA2dpSuspended(true);
         verify(mAudioManager).setLeAudioSuspended(true);
         verify(mNativeInterface).connectAudio(device);
@@ -1727,7 +1706,7 @@ public class HeadsetServiceAndStateMachineTest {
         mHeadsetService.startVoiceRecognition(device);
         mTestLooper.dispatchAll();
         // has not add verification AudioDeviceInfo because it is final, unless add a wrapper
-        verify(mNativeInterface).startVoiceRecognition(device);
+        verify(mNativeInterface).startVoiceRecognition(device, true);
         verify(mAudioManager, times(0)).setA2dpSuspended(true);
         verify(mAudioManager, times(0)).setLeAudioSuspended(true);
         verify(mNativeInterface, times(0)).connectAudio(device);

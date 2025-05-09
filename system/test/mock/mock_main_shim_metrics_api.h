@@ -274,17 +274,23 @@ struct LogMetricSocketConnectionState {
   std::function<void(const RawAddress& raw_address, int port, int type,
                      android::bluetooth::SocketConnectionstateEnum connection_state,
                      int64_t tx_bytes, int64_t rx_bytes, int uid, int server_port,
-                     android::bluetooth::SocketRoleEnum socket_role)>
+                     android::bluetooth::SocketRoleEnum socket_role,
+                     uint64_t connection_duration_ms,
+                     android::bluetooth::SocketErrorEnum error_code, bool is_hardware_offload)>
           body{[](const RawAddress& /* raw_address */, int /* port */, int /* type */,
                   android::bluetooth::SocketConnectionstateEnum /* connection_state */,
                   int64_t /* tx_bytes */, int64_t /* rx_bytes */, int /* uid */,
-                  int /* server_port */, android::bluetooth::SocketRoleEnum /* socket_role */) {}};
+                  int /* server_port */, android::bluetooth::SocketRoleEnum /* socket_role */,
+                  uint64_t /* connection_duration_ms */,
+                  android::bluetooth::SocketErrorEnum /* error_code */,
+                  bool /* is_hardware_offload */) {}};
   void operator()(const RawAddress& raw_address, int port, int type,
                   android::bluetooth::SocketConnectionstateEnum connection_state, int64_t tx_bytes,
                   int64_t rx_bytes, int uid, int server_port,
-                  android::bluetooth::SocketRoleEnum socket_role) {
+                  android::bluetooth::SocketRoleEnum socket_role, uint64_t connection_duration_ms,
+                  android::bluetooth::SocketErrorEnum error_code, bool is_hardware_offload) {
     body(raw_address, port, type, connection_state, tx_bytes, rx_bytes, uid, server_port,
-         socket_role);
+         socket_role, connection_duration_ms, error_code, is_hardware_offload);
   }
 };
 extern struct LogMetricSocketConnectionState LogMetricSocketConnectionState;
@@ -473,6 +479,36 @@ struct LogMetricHfpSlcFail {
   void operator()(bluetooth::hci::Address address) { body(address); }
 };
 extern struct LogMetricHfpSlcFail LogMetricHfpSlcFail;
+
+// Name: LogMetricScoCodec
+// Params: bluetooth::hci::Address, uint16_t codec
+// Returns: void
+struct LogMetricScoCodec {
+  std::function<void(bluetooth::hci::Address address, uint16_t codec)> body{
+          [](bluetooth::hci::Address /* address */, uint16_t /* codec */) {}};
+  void operator()(bluetooth::hci::Address address, uint16_t codec) { body(address, codec); }
+};
+extern struct LogMetricScoCodec LogMetricScoCodec;
+
+// Name: LogMetricScoLinkCreated
+// Params: bluetooth::hci::Address
+// Returns: void
+struct LogMetricScoLinkCreated {
+  std::function<void(bluetooth::hci::Address address)> body{
+          [](bluetooth::hci::Address /* address */) {}};
+  void operator()(bluetooth::hci::Address address) { body(address); }
+};
+extern struct LogMetricScoLinkCreated LogMetricScoLinkCreated;
+
+// Name: LogMetricScoLinkRemoved
+// Params: bluetooth::hci::Address
+// Returns: void
+struct LogMetricScoLinkRemoved {
+  std::function<void(bluetooth::hci::Address address)> body{
+          [](bluetooth::hci::Address /* address */) {}};
+  void operator()(bluetooth::hci::Address address) { body(address); }
+};
+extern struct LogMetricScoLinkRemoved LogMetricScoLinkRemoved;
 
 }  // namespace main_shim_metrics_api
 }  // namespace mock

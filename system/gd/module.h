@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,9 @@
 #include "os/thread.h"
 
 namespace bluetooth {
+// Timeout for waiting for a handler to stop, used in Handler::WaitUntilStopped()
+constexpr std::chrono::milliseconds kHandlerStopTimeout = std::chrono::milliseconds(2000);
+
 namespace shim {
 class Stack;
 }  // namespace shim
@@ -140,14 +143,14 @@ public:
 
   // Start all the modules on this list and their dependencies
   // in dependency order
-  void Start(ModuleList* modules, ::bluetooth::os::Thread* thread);
+  void Start(ModuleList* modules, ::bluetooth::os::Thread* thread, os::Handler* handler);
 
   template <class T>
-  T* Start(::bluetooth::os::Thread* thread) {
-    return static_cast<T*>(Start(&T::Factory, thread));
+  T* Start(::bluetooth::os::Thread* thread, os::Handler* handler) {
+    return static_cast<T*>(Start(&T::Factory, thread, handler));
   }
 
-  Module* Start(const ModuleFactory* id, ::bluetooth::os::Thread* thread);
+  Module* Start(const ModuleFactory* id, ::bluetooth::os::Thread* thread, os::Handler* handler);
 
   // Stop all running modules in reverse order of start
   void StopAll();
@@ -155,7 +158,8 @@ public:
 protected:
   Module* Get(const ModuleFactory* module) const;
 
-  void set_registry_and_handler(Module* instance, ::bluetooth::os::Thread* thread) const;
+  void set_registry_and_handler(Module* instance, ::bluetooth::os::Thread* thread,
+                                os::Handler* handler) const;
 
   os::Handler* GetModuleHandler(const ModuleFactory* module) const;
 
@@ -172,7 +176,7 @@ public:
   void InjectTestModule(const ModuleFactory* module, Module* instance) {
     start_order_.push_back(module);
     started_modules_[module] = instance;
-    set_registry_and_handler(instance, &test_thread);
+    set_registry_and_handler(instance, &test_thread, test_handler_);
     instance->Start();
   }
 
@@ -188,6 +192,10 @@ public:
   }
 
   os::Thread& GetTestThread() { return test_thread; }
+  os::Handler* GetTestHandler() { return test_handler_; }
+
+  // Override the StopAll method to use the test thread and handler.
+  void StopAll();
 
   bool SynchronizeModuleHandler(const ModuleFactory* module,
                                 std::chrono::milliseconds timeout) const {
@@ -203,6 +211,7 @@ public:
 
 private:
   os::Thread test_thread{"test_thread", os::Thread::Priority::NORMAL};
+  os::Handler* test_handler_ = new os::Handler(&test_thread);
 };
 
 class FuzzTestModuleRegistry : public TestModuleRegistry {
@@ -216,7 +225,7 @@ public:
 
   template <class T>
   T* Start() {
-    return ModuleRegistry::Start<T>(&GetTestThread());
+    return ModuleRegistry::Start<T>(&GetTestThread(), GetTestHandler());
   }
 
   void WaitForIdleAndStopAll() {

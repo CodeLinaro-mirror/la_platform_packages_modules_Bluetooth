@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -153,7 +153,7 @@ public class TestUtils {
     }
 
     /**
-     * Dispatch all the message on the Loopper and check that the `what` is expected
+     * Dispatch all the message on the Looper and check that the `what` is expected
      *
      * @param looper looper to execute the message from
      * @param what list of Messages.what that are expected to be run by the handler

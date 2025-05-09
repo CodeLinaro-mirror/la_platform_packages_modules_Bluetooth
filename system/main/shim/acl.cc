@@ -865,6 +865,7 @@ struct shim::Acl::impl {
       disconnect_handles.push_back(connection.first);
     }
 
+#ifndef TARGET_FLOSS
     // Since this is a suspend disconnect, we immediately also call
     // |OnClassicSuspendInitiatedDisconnect| without waiting for it to happen.
     // We want the stack to clean up ahead of the link layer (since we will mask
@@ -877,7 +878,7 @@ struct shim::Acl::impl {
                 found->first, hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST);
       }
     }
-
+#endif
     promise.set_value();
   }
 
@@ -898,6 +899,7 @@ struct shim::Acl::impl {
       disconnect_handles.push_back(connection.first);
     }
 
+#ifndef TARGET_FLOSS
     // Since this is a suspend disconnect, we immediately also call
     // |OnLeSuspendInitiatedDisconnect| without waiting for it to happen. We
     // want the stack to clean up ahead of the link layer (since we will mask
@@ -910,6 +912,7 @@ struct shim::Acl::impl {
                 found->first, hci::ErrorCode::CONNECTION_TERMINATED_BY_LOCAL_HOST);
       }
     }
+#endif
     promise.set_value();
   }
 
@@ -964,11 +967,6 @@ struct shim::Acl::impl {
     log::assert_that(IsClassicAcl(handle), "handle {} is not a classic connection", handle);
     handle_to_classic_connection_map_[handle]->SniffSubrating(
             maximum_latency, minimum_remote_timeout, minimum_local_timeout);
-  }
-
-  void LeSetDefaultSubrate(uint16_t subrate_min, uint16_t subrate_max, uint16_t max_latency,
-                           uint16_t cont_num, uint16_t sup_tout) {
-    GetAclManager()->LeSetDefaultSubrate(subrate_min, subrate_max, max_latency, cont_num, sup_tout);
   }
 
   void LeSubrateRequest(HciHandle handle, uint16_t subrate_min, uint16_t subrate_max,
@@ -1568,12 +1566,6 @@ void shim::Acl::UpdateConnectionParameters(uint16_t handle, uint16_t conn_int_mi
                                            uint16_t max_ce_len) {
   handler_->CallOn(pimpl_.get(), &Acl::impl::update_connection_parameters, handle, conn_int_min,
                    conn_int_max, conn_latency, conn_timeout, min_ce_len, max_ce_len);
-}
-
-void shim::Acl::LeSetDefaultSubrate(uint16_t subrate_min, uint16_t subrate_max,
-                                    uint16_t max_latency, uint16_t cont_num, uint16_t sup_tout) {
-  handler_->CallOn(pimpl_.get(), &Acl::impl::LeSetDefaultSubrate, subrate_min, subrate_max,
-                   max_latency, cont_num, sup_tout);
 }
 
 void shim::Acl::LeSubrateRequest(uint16_t hci_handle, uint16_t subrate_min, uint16_t subrate_max,

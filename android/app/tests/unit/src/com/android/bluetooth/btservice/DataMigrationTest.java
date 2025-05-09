@@ -61,6 +61,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/** Test cases for {@link DataMigration}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class DataMigrationTest {
@@ -172,11 +173,11 @@ public class DataMigrationTest {
         assertThat(mPrefs.getInt(DataMigration.MIGRATION_ATTEMPT_PROPERTY, -1)).isEqualTo(-1);
 
         for (int i = 0; i < DataMigration.MAX_ATTEMPT; i++) {
-            assertThat(DataMigration.incrementeMigrationAttempt(mMockContext)).isTrue();
+            assertThat(DataMigration.incrementMigrationAttempt(mMockContext)).isTrue();
             assertThat(mPrefs.getInt(DataMigration.MIGRATION_ATTEMPT_PROPERTY, -1))
                     .isEqualTo(i + 1);
         }
-        assertThat(DataMigration.incrementeMigrationAttempt(mMockContext)).isFalse();
+        assertThat(DataMigration.incrementMigrationAttempt(mMockContext)).isFalse();
         assertThat(mPrefs.getInt(DataMigration.MIGRATION_ATTEMPT_PROPERTY, -1))
                 .isEqualTo(DataMigration.MAX_ATTEMPT + 1);
 
@@ -448,7 +449,7 @@ public class DataMigrationTest {
 
     private static class FakeCursor extends MockCursor {
         int mNumItem = 1;
-        List<Pair<String, Object>> mRows;
+        final List<Pair<String, Object>> mRows;
 
         FakeCursor(List<Pair<String, Object>> rows) {
             mRows = rows;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,6 +77,7 @@ import org.mockito.Spy;
 import java.io.IOException;
 import java.io.OutputStream;
 
+/** Test cases for {@link BluetoothPbapObexServer}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BluetoothPbapObexServerTest {
@@ -689,13 +690,13 @@ public class BluetoothPbapObexServerTest {
     }
 
     @Test
-    public void setCallversionCounters() {
+    public void setCallVersionCounters() {
         ApplicationParameter param = new ApplicationParameter();
         AppParamValue value = new AppParamValue();
         value.callHistoryVersionCounter =
                 new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 
-        BluetoothPbapObexServer.setCallversionCounters(param, value);
+        BluetoothPbapObexServer.setCallVersionCounters(param, value);
 
         byte[] expectedResult =
                 new byte[] {
