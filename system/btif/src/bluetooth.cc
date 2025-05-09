@@ -15,9 +15,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *  SPDX-License-Identifier: BSD-3-Clause-Clear.
  *
  ****************************************************************************************/
@@ -703,7 +703,7 @@ static int load_remote_oob_data(const RawAddress* bd_addr, int transport,
   if (p192_data == nullptr || p256_data == nullptr) return BT_STATUS_PARM_INVALID;
 
   do_in_main_thread(base::BindOnce(btif_dm_load_remote_oob_data, *bd_addr,
-                    transport, *p192_data, *p256_data));
+                    to_bt_transport(transport), *p192_data, *p256_data));
   return BT_STATUS_SUCCESS;
 }
 
