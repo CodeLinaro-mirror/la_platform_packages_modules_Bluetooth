@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
@@ -185,15 +185,8 @@ public class AvrcpControllerService extends ProfileService {
         setActiveDevice(null);
     }
 
-    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
-    public void stop() {
-        Log.d(TAG, "stop");
-        mNativeInterface.stop();
-    }
-
-    // Called by JNI thread
-    public synchronized void onStop() {
+    public synchronized void stop() {
         setActiveDevice(null);
         Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
         stopService(stopIntent);
