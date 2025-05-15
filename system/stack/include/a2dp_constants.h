@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 #pragma once
@@ -54,11 +57,13 @@ constexpr static uint64_t VendorCodecId(uint16_t company_id, uint16_t codec_id) 
 
 static constexpr uint16_t kAptxCompanyId = 0x004F;
 static constexpr uint16_t kAptxHdCompanyId = 0x00D7;
+static constexpr uint16_t kAptxAdaptiveCompanyId = 0x00D7;
 static constexpr uint16_t kLdacCompanyId = 0x012D;
 static constexpr uint16_t kOpusCompanyId = 0x00E0;
 
 static constexpr uint16_t kAptxCodecId = 0x0001;
 static constexpr uint16_t kAptxHdCodecId = 0x0024;
+static constexpr uint16_t kAptxAdaptiveCodecId = 0x00AD;
 static constexpr uint16_t kLdacCodecId = 0x00AA;
 static constexpr uint16_t kOpusCodecId = 0x0001;
 
@@ -84,6 +89,7 @@ enum class CodecId : uint64_t {
   AAC = 0x02,
   APTX = VendorCodecId(kAptxCompanyId, kAptxCodecId),
   APTX_HD = VendorCodecId(kAptxHdCompanyId, kAptxHdCodecId),
+  APTX_ADAPTIVE = VendorCodecId(kAptxAdaptiveCompanyId, kAptxAdaptiveCodecId),
   LDAC = VendorCodecId(kLdacCompanyId, kLdacCodecId),
   OPUS = VendorCodecId(kOpusCompanyId, kOpusCodecId),
 };

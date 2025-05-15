@@ -39,6 +39,7 @@
 #include "a2dp_vendor_aptx_constants.h"
 #include "a2dp_vendor_aptx_hd.h"
 #include "a2dp_vendor_aptx_hd_constants.h"
+#include "a2dp_vendor_aptx_adaptive.h"
 #include "a2dp_vendor_ldac.h"
 #include "a2dp_vendor_ldac_constants.h"
 #include "a2dp_vendor_opus.h"
@@ -59,6 +60,10 @@ inline bool A2DP_IsAptxHdCodec(uint32_t vendor_id, uint16_t codec_id) {
     return vendor_id == A2DP_APTX_HD_VENDOR_ID && codec_id == A2DP_APTX_HD_CODEC_ID_BLUETOOTH;
 }
 
+inline bool A2DP_IsAptxAdaptiveCodec(uint32_t vendor_id, uint16_t codec_id) {
+    return vendor_id == A2DP_APTX_ADAPTIVE_VENDOR_ID && codec_id == A2DP_APTX_ADAPTIVE_CODEC_ID_BLUETOOTH;
+}
+
 bool A2DP_IsVendorSourceCodecValid(const uint8_t* p_codec_info) {
   uint32_t vendor_id = A2DP_VendorCodecGetVendorId(p_codec_info);
   uint16_t codec_id = A2DP_VendorCodecGetCodecId(p_codec_info);
@@ -71,6 +76,11 @@ bool A2DP_IsVendorSourceCodecValid(const uint8_t* p_codec_info) {
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_IsCodecValidAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_IsCodecValidAptxAdaptive(p_codec_info);
   }
 
   // Check for LDAC
@@ -103,6 +113,11 @@ bool A2DP_IsVendorPeerSourceCodecValid(const uint8_t* p_codec_info) {
     return A2DP_IsCodecValidAptxHd(p_codec_info);
   }
 
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_IsCodecValidAptxAdaptive(p_codec_info);
+  }
+
   // Check for LDAC
   if (vendor_id == A2DP_LDAC_VENDOR_ID && codec_id == A2DP_LDAC_CODEC_ID) {
     return A2DP_IsCodecValidLdac(p_codec_info);
@@ -128,6 +143,11 @@ bool A2DP_IsVendorPeerSinkCodecValid(const uint8_t* p_codec_info) {
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_IsCodecValidAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_IsCodecValidAptxAdaptive(p_codec_info);
   }
 
   // Check for LDAC
@@ -159,6 +179,11 @@ tA2DP_STATUS A2DP_IsVendorSinkCodecSupported(const uint8_t* p_codec_info) {
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_IsSinkCodecSupportedAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_IsSinkCodecSupportedAptxAdaptive(p_codec_info);
   }
 
   // Check for Opus
@@ -206,6 +231,12 @@ bool A2DP_VendorUsesRtpHeader(bool content_protection_enabled, const uint8_t* p_
     return A2DP_VendorUsesRtpHeaderAptxHd(content_protection_enabled, p_codec_info);
   }
 
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorUsesRtpHeaderAptxAdaptive(content_protection_enabled,
+                                                p_codec_info);
+  }
+
   // Check for LDAC
   if (vendor_id == A2DP_LDAC_VENDOR_ID && codec_id == A2DP_LDAC_CODEC_ID) {
     return A2DP_VendorUsesRtpHeaderLdac(content_protection_enabled, p_codec_info);
@@ -233,6 +264,11 @@ const char* A2DP_VendorCodecName(const uint8_t* p_codec_info) {
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_VendorCodecNameAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorCodecNameAptxAdaptive(p_codec_info);
   }
 
   // Check for LDAC
@@ -277,6 +313,11 @@ bool A2DP_VendorCodecTypeEquals(const uint8_t* p_codec_info_a, const uint8_t* p_
     return A2DP_VendorCodecTypeEqualsAptxHd(p_codec_info_a, p_codec_info_b);
   }
 
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id_a, codec_id_a)) {
+    return A2DP_VendorCodecTypeEqualsAptxAdaptive(p_codec_info_a, p_codec_info_b);
+  }
+
   // Check for LDAC
   if (vendor_id_a == A2DP_LDAC_VENDOR_ID && codec_id_a == A2DP_LDAC_CODEC_ID) {
     return A2DP_VendorCodecTypeEqualsLdac(p_codec_info_a, p_codec_info_b);
@@ -305,6 +346,11 @@ int A2DP_VendorGetBitRate(const RawAddress& peer_address, const uint8_t* p_codec
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_VendorGetBitRateAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorGetBitRateAptxAdaptive(p_codec_info);
   }
 
   // Check for LDAC
@@ -337,6 +383,11 @@ int A2DP_VendorGetSinkTrackChannelType(const uint8_t* p_codec_info) {
     return A2DP_VendorGetTrackChannelTypeAptxHd(p_codec_info);
   }
 
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorGetTrackChannelTypeAptxAdaptive(p_codec_info);
+  }
+
   // Check for Opus
   if (vendor_id == A2DP_OPUS_VENDOR_ID && codec_id == A2DP_OPUS_CODEC_ID) {
     return A2DP_VendorGetSinkTrackChannelTypeOpus(p_codec_info);
@@ -358,6 +409,12 @@ bool A2DP_VendorBuildCodecHeader(const uint8_t* p_codec_info, BT_HDR* p_buf,
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_VendorBuildCodecHeaderAptxHd(p_codec_info, p_buf, frames_per_packet);
+  }
+
+    // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorBuildCodecHeaderAptxAdaptive(p_codec_info, p_buf,
+                                                   frames_per_packet);
   }
 
   // Check for LDAC
@@ -424,6 +481,11 @@ const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterface(const uint8_t* p_c
     return A2DP_VendorGetDecoderInterfaceAptxHd(p_codec_info);
   }
 
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorGetDecoderInterfaceAptxAdaptive(p_codec_info);
+  }
+
   // Check for Opus
   if (vendor_id == A2DP_OPUS_VENDOR_ID && codec_id == A2DP_OPUS_CODEC_ID) {
     return A2DP_VendorGetDecoderInterfaceOpus(p_codec_info);
@@ -444,6 +506,11 @@ bool A2DP_VendorAdjustCodec(uint8_t* p_codec_info) {
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_VendorAdjustCodecAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorAdjustCodecAptxAdaptive(p_codec_info);
   }
 
   // Check for LDAC
@@ -507,6 +574,11 @@ btav_a2dp_codec_index_t A2DP_VendorSinkCodecIndex(const uint8_t* p_codec_info) {
     return A2DP_VendorSinkCodecIndexAptxHd(p_codec_info);
   }
 
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorSinkCodecIndexAptxAdaptive(p_codec_info);
+  }
+
   // Check for Opus
   if (vendor_id == A2DP_OPUS_VENDOR_ID && codec_id == A2DP_OPUS_CODEC_ID) {
     return A2DP_VendorSinkCodecIndexOpus(p_codec_info);
@@ -531,6 +603,8 @@ const char* A2DP_VendorCodecIndexStr(btav_a2dp_codec_index_t codec_index) {
       return A2DP_VendorCodecIndexStrAptxHd();
     case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
       return A2DP_VendorCodecIndexStrAptxHdSink();
+    case BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE:
+      return A2DP_VendorCodecIndexStrAptxAdaptiveSink();
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
       return A2DP_VendorCodecIndexStrLdac();
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LC3:
@@ -567,6 +641,8 @@ bool A2DP_VendorInitCodecConfig(btav_a2dp_codec_index_t codec_index, AvdtpSepCon
       return A2DP_VendorInitCodecConfigAptxHd(p_cfg);
     case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
       return A2DP_VendorInitCodecConfigAptxHdSink(p_cfg);
+    case BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE:
+      return A2DP_VendorInitCodecConfigAptxAdaptiveSink(p_cfg);
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
       return A2DP_VendorInitCodecConfigLdac(p_cfg);
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LC3:
@@ -598,6 +674,11 @@ std::string A2DP_VendorCodecInfoString(const uint8_t* p_codec_info) {
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
     return A2DP_VendorCodecInfoStringAptxHd(p_codec_info);
+  }
+
+  // Check for aptX-Adaptive
+  if (A2DP_IsAptxAdaptiveCodec(vendor_id, codec_id)) {
+    return A2DP_VendorCodecInfoStringAptxAdaptive(p_codec_info);
   }
 
   // Check for LDAC
