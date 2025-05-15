@@ -15,9 +15,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *  SPDX-License-Identifier: BSD-3-Clause-Clear.
  ******************************************************************************/
 
@@ -35,6 +35,7 @@
 
 #include "a2dp_vendor.h"
 #include "a2dp_vendor_aptx.h"
+#include "a2dp_vendor_aptx_adaptive.h"
 #include "btif/include/btif_av.h"
 #include "btif/include/btif_av_co.h"
 #include "btif/include/btif_avrcp_audio_track.h"
@@ -126,6 +127,7 @@ public:
   fixed_queue_t* rx_audio_queue;
   bool rx_flush; /* discards any incoming data when true */
   alarm_t* decode_alarm;
+  btav_a2dp_codec_index_t codec_index;
   int sample_rate;                             // 32000, 44100, 48000, 96000
   int bits_per_sample;                         // 16, 24, 32
   int channel_count;                           // 1, 2
@@ -699,6 +701,8 @@ static void btif_a2dp_sink_decoder_update_event_old(tBTIF_MEDIA_SINK_DECODER_UPD
     log::error("cannot get the Sink channel type");
     return;
   }
+
+  btif_a2dp_sink_cb.codec_index = A2DP_SinkCodecIndex(p_buf->codec_info);
   btif_a2dp_sink_cb.codec_type = codec_type;
   btif_a2dp_sink_cb.sample_rate = sample_rate;
   btif_a2dp_sink_cb.bits_per_sample = bits_per_sample;
@@ -768,11 +772,36 @@ uint8_t btif_a2dp_sink_enqueue_buf(BT_HDR* p_pkt) {
   }
 
   log::verbose("+");
+  log::verbose("p_pkt->len = {} offset is {}", p_pkt->len, p_pkt->offset);
+
   /* Allocate and queue this buffer */
-  BT_HDR* p_msg = reinterpret_cast<BT_HDR*>(osi_malloc(sizeof(*p_msg) + p_pkt->len));
-  memcpy(p_msg, p_pkt, sizeof(*p_msg));
+  BT_HDR* p_msg = nullptr;
+  if (btif_a2dp_sink_cb.codec_index == BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE) {
+    log::verbose("Using Aptx Adaptive codec");
+    // Transmit RTP header when using Aptx Adaptive
+    size_t total_len = sizeof(*p_msg) + p_pkt->len + A2DP_APTX_ADAPTIVE_RTP_HEADER_LEN;
+    p_msg = reinterpret_cast<BT_HDR*>(osi_malloc(total_len));
+    if (p_msg == nullptr) {
+        log::error("Failed to allocate memory for Aptx Adaptive packet");
+        return fixed_queue_length(btif_a2dp_sink_cb.rx_audio_queue);
+    }
+    memcpy(p_msg, p_pkt, sizeof(*p_msg));
+    memcpy(p_msg->data,
+            p_pkt->data + (p_pkt->offset - A2DP_APTX_ADAPTIVE_RTP_HEADER_LEN),
+            A2DP_APTX_ADAPTIVE_RTP_HEADER_LEN + p_pkt->len);
+  } else {
+    // Standard codec handling
+    size_t total_len = sizeof(*p_msg) + p_pkt->len;
+    p_msg = reinterpret_cast<BT_HDR*>(osi_malloc(total_len));
+    if (p_msg == nullptr) {
+        log::error("Failed to allocate memory for standard packet");
+        return fixed_queue_length(btif_a2dp_sink_cb.rx_audio_queue);
+    }
+    memcpy(p_msg, p_pkt, sizeof(*p_msg));
+    memcpy(p_msg->data, p_pkt->data + p_pkt->offset, p_pkt->len);
+  }
+
   p_msg->offset = 0;
-  memcpy(p_msg->data, p_pkt->data + p_pkt->offset, p_pkt->len);
   fixed_queue_enqueue(btif_a2dp_sink_cb.rx_audio_queue, p_msg);
 
   if (fixed_queue_length(btif_a2dp_sink_cb.rx_audio_queue) == MAX_INPUT_A2DP_FRAME_QUEUE_SZ) {

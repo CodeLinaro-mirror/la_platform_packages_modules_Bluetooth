@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 #pragma once
@@ -58,6 +61,7 @@ enum tA2DP_CODEC_ID : uint64_t {
   A2DP_CODEC_ID_AAC = 0x0000000002,
   A2DP_CODEC_ID_APTX = 0x0001004fff,
   A2DP_CODEC_ID_APTX_HD = 0x002400d7ff,
+  A2DP_CODEC_ID_APTX_ADAPTIVE = 0x002400d7ad,
   A2DP_CODEC_ID_LDAC = 0x00aa012dff,
   A2DP_CODEC_ID_OPUS = 0x000100e0ff,
 };

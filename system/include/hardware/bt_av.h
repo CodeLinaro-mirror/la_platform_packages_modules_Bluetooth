@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #ifndef ANDROID_INCLUDE_BT_AV_H
@@ -81,6 +81,7 @@ typedef enum {
   BTAV_A2DP_CODEC_INDEX_SINK_LDAC,
   BTAV_A2DP_CODEC_INDEX_SINK_APTX,
   BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD,
+  BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE,
   BTAV_A2DP_CODEC_INDEX_SINK_OPUS,
 
   BTAV_A2DP_CODEC_INDEX_SINK_MAX,
@@ -199,6 +200,8 @@ struct btav_a2dp_codec_config_t {
         return "APTX (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
         return "APTX HD (Sink)";
+      case BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE:
+        return "APTX ADAPTIVE (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SINK_LDAC:
         return "LDAC (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SOURCE_LC3:
