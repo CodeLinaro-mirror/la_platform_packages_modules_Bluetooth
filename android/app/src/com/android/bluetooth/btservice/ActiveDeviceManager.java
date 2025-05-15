@@ -496,7 +496,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 // New connected device: select it as active
                 boolean leAudioMadeActive = setLeAudioActiveDevice(device);
                 if (leAudioMadeActive && !Utils.isDualModeAudioEnabled()) {
-                    setA2dpActiveDevice(null, true);
                     setHfpActiveDevice(null);
                 }
             } else if (mPendingLeHearingAidActiveDevice.contains(device)) {
@@ -1184,12 +1183,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 return false;
             }
 
-            if (Flags.leaudioActiveDeviceManagerGroupHandlingFix()) {
-                mLeAudioActiveDevice = leAudioService.getLeadDevice(device);
-            } else {
-                mLeAudioActiveDevice = device;
-            }
-
             if (device == null) {
                 mLeHearingAidActiveDevice = null;
                 mPendingLeHearingAidActiveDevice.remove(device);
@@ -1258,16 +1251,19 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
         BluetoothDevice a2dpFallbackDevice = null;
         if (a2dpService != null) {
             a2dpFallbackDevice = a2dpService.getFallbackDevice();
+            Log.d(TAG, "a2dpFallbackDevice: " + a2dpFallbackDevice);
         }
 
         HeadsetService headsetService = mFactory.getHeadsetService();
         BluetoothDevice headsetFallbackDevice = null;
         if (headsetService != null) {
             headsetFallbackDevice = headsetService.getFallbackDevice();
+            Log.d(TAG, "headsetFallbackDevice: " + headsetFallbackDevice);
         }
 
         List<BluetoothDevice> connectedDevices = new ArrayList<>();
         connectedDevices.addAll(mLeAudioConnectedDevices);
+        Log.d(TAG, "Audio mode: " + mAudioManager.getMode());
         switch (mAudioManager.getMode()) {
             case AudioManager.MODE_NORMAL:
                 if (a2dpFallbackDevice != null) {
@@ -1285,6 +1281,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
         }
         BluetoothDevice device = mDbManager.getMostRecentlyConnectedDevicesInList(connectedDevices);
+        Log.d(TAG, "Most recently connected device: " + device);
         if (device != null) {
             if (mAudioManager.getMode() == AudioManager.MODE_NORMAL) {
                 if (Objects.equals(a2dpFallbackDevice, device)) {
