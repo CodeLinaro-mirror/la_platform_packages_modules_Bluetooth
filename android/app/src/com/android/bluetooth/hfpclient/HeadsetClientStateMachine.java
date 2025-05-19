@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -1932,7 +1932,12 @@ public class HeadsetClientStateMachine extends StateMachine {
 
                     // We need to set the volume after switching into HFP mode as some Audio HALs
                     // reset the volume to a known-default on mode switch.
-                    final int amVol = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                    int amVol;
+                    if (Utils.isAutomotive(mService.getApplicationContext())) {
+                        amVol = mCarAudioManager.getGroupVolume(mService.getVolumeGroupId());
+                    } else {
+                        amVol = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                    }
                     final int hfVol = mService.amToHfVol(amVol);
 
                     debug("hfp_enable=true mAudioSWB is " + mAudioSWB);
