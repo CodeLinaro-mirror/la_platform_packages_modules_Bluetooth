@@ -65,7 +65,6 @@ import android.os.SystemProperties;
 import android.util.Log;
 import android.util.Pair;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
@@ -1386,8 +1385,6 @@ public class HeadsetClientStateMachine extends StateMachine {
                 if (mHeadsetService != null) {
                     mHeadsetService.updateInbandRinging(mCurrentDevice, true);
                 }
-                MetricsLogger.logProfileConnectionEvent(
-                        BluetoothMetricsProto.ProfileId.HEADSET_CLIENT);
             } else if (mPrevState != mAudioOn) {
                 String prevStateName = mPrevState == null ? "null" : mPrevState.getName();
                 error(
@@ -1967,7 +1964,7 @@ public class HeadsetClientStateMachine extends StateMachine {
             debug("Disconnecting: Process message: " + message.what);
 
             switch (message.what) {
-                    // Defering messages as state machine objects are meant to be reused and after
+                    // Deferring messages as state machine objects are meant to be reused and after
                     // disconnect is complete we want honor other message requests
                 case CONNECT:
                 case CONNECT_AUDIO:

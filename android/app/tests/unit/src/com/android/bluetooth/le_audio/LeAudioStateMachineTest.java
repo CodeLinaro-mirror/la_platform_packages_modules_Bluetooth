@@ -58,6 +58,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link LeAudioStateMachine}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class LeAudioStateMachineTest {
@@ -144,7 +145,7 @@ public class LeAudioStateMachineTest {
         connStCh.valueInt1 = LeAudioStackEvent.CONNECTION_STATE_CONNECTING;
         mLeAudioStateMachine.sendMessage(LeAudioStateMachine.STACK_EVENT, connStCh);
 
-        // Verify that one connection state change is notifyed
+        // Verify that one connection state change is notified
         verify(mLeAudioService, timeout(TIMEOUT_MS))
                 .notifyConnectionStateChanged(any(), eq(STATE_CONNECTING), anyInt());
 

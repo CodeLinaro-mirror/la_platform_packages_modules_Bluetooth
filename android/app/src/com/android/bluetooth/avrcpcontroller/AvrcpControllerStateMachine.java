@@ -38,12 +38,10 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 import android.util.SparseArray;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.a2dpsink.A2dpSinkService;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.flags.Flags;
 import com.android.internal.annotations.VisibleForTesting;
@@ -688,7 +686,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                     mAddressedPlayer = mAvailablePlayerList.get(mAddressedPlayerId);
 
                     // Fetch metadata including the now playing list. The specification claims that
-                    // the player feature bit only incidates if the player *natively* supports a now
+                    // the player feature bit only indicates if the player *natively* supports a now
                     // playing list. However, now playing is mandatory if browsing is supported,
                     // even if the player doesn't support it. A list of one item can be returned
                     // instead.
@@ -722,8 +720,8 @@ class AvrcpControllerStateMachine extends StateMachine {
                 case MESSAGE_PROCESS_IMAGE_DOWNLOADED:
                     AvrcpCoverArtManager.DownloadEvent event =
                             (AvrcpCoverArtManager.DownloadEvent) msg.obj;
-                    String uuid = event.getUuid();
-                    Uri uri = event.getUri();
+                    String uuid = event.uuid();
+                    Uri uri = event.uri();
                     debug("Connected: Received image for " + uuid + " at " + uri.toString());
 
                     // Let the addressed player know we got an image so it can see if the current
@@ -815,7 +813,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                     (byte) 1,
                     new byte[] {PlayerApplicationSettings.REPEAT_STATUS},
                     new byte[] {
-                        PlayerApplicationSettings.mapAvrcpPlayerSettingstoBTattribVal(
+                        PlayerApplicationSettings.mapAvrcpPlayerSettingsToBTattribVal(
                                 PlayerApplicationSettings.REPEAT_STATUS, repeatMode)
                     });
         }
@@ -826,7 +824,7 @@ class AvrcpControllerStateMachine extends StateMachine {
                     (byte) 1,
                     new byte[] {PlayerApplicationSettings.SHUFFLE_STATUS},
                     new byte[] {
-                        PlayerApplicationSettings.mapAvrcpPlayerSettingstoBTattribVal(
+                        PlayerApplicationSettings.mapAvrcpPlayerSettingsToBTattribVal(
                                 PlayerApplicationSettings.SHUFFLE_STATUS, shuffleMode)
                     });
         }
@@ -1405,10 +1403,7 @@ class AvrcpControllerStateMachine extends StateMachine {
         if (mMostRecentState == currentState) {
             return;
         }
-        if (currentState == STATE_CONNECTED) {
-            MetricsLogger.logProfileConnectionEvent(
-                    BluetoothMetricsProto.ProfileId.AVRCP_CONTROLLER);
-        }
+
         mAdapterService.updateProfileConnectionAdapterProperties(
                 mDevice, BluetoothProfile.AVRCP_CONTROLLER, currentState, mMostRecentState);
 

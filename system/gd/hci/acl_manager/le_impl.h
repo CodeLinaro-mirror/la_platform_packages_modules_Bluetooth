@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,11 +39,11 @@
 #include "hci/hci_packets.h"
 #include "hci/le_address_manager.h"
 #include "macros.h"
+#include "main/shim/metrics_api.h"
 #include "os/alarm.h"
 #include "os/handler.h"
 #include "os/system_properties.h"
 #include "stack/include/btm_ble_api_types.h"
-#include "stack/include/stack_metrics_logging.h"
 
 namespace bluetooth {
 namespace hci {
@@ -426,7 +426,7 @@ public:
       return;
     }
 
-    log_le_connection_status(address, true /* is_connect */, status);
+    bluetooth::shim::LogMetricLeConnectionStatus(address, true /* is_connect */, status);
 
     const bool in_filter_accept_list = is_device_in_accept_list(remote_address);
 
@@ -586,7 +586,8 @@ public:
       arm_on_resume_ = true;
       add_device_to_accept_list(remote_address);
     }
-    log_le_connection_status(remote_address.GetAddress(), false /* is_connect */, reason);
+    bluetooth::shim::LogMetricLeConnectionStatus(remote_address.GetAddress(),
+                                                 false /* is_connect */, reason);
   }
 
   void on_le_connection_update_complete(LeMetaEventView view) {
@@ -724,7 +725,8 @@ public:
   }
 
   void add_device_to_accept_list(AddressWithType address_with_type) {
-    log_le_device_in_accept_list(address_with_type.GetAddress(), true /* is_add */);
+    bluetooth::shim::LogMetricLeDeviceInAcceptList(address_with_type.GetAddress(),
+                                                   true /* is_add */);
     if (connections.alreadyConnected(address_with_type)) {
       log::info("Device already connected, return");
       return;
@@ -747,7 +749,8 @@ public:
   }
 
   void remove_device_from_accept_list(AddressWithType address_with_type) {
-    log_le_device_in_accept_list(address_with_type.GetAddress(), false /* is_add */);
+    bluetooth::shim::LogMetricLeDeviceInAcceptList(address_with_type.GetAddress(),
+                                                   false /* is_add */);
     if (accept_list.find(address_with_type) == accept_list.end()) {
       log::warn("Device not in acceptlist and cannot be removed: {}", address_with_type);
       return;
@@ -871,16 +874,37 @@ public:
 
     uint16_t conn_interval_min;
     uint16_t conn_interval_max;
+    bool prefer_relaxed_connection_interval = false;
+    if (com::android::bluetooth::flags::channel_sounding_in_stack()) {
+      for (const auto& address_with_type : direct_connections_) {
+        bluetooth::hci::Address address = address_with_type.GetAddress();
+        if (relaxed_connection_interval_devices_set_.count(address) > 0) {
+          log::info(
+                  "Found device {} in direct connection list that prefers using the relaxed "
+                  "connection interval",
+                  address);
+          prefer_relaxed_connection_interval = true;
+          break;
+        }
+      }
+    }
 
     if (com::android::bluetooth::flags::initial_conn_params_p1()) {
-      size_t num_classic_acl_connections = classic_impl_->get_connection_count();
-      size_t num_acl_connections = connections.size();
+      if (prefer_relaxed_connection_interval) {
+        conn_interval_min = LeConnectionParameters::GetMinConnIntervalRelaxed();
+        conn_interval_max = LeConnectionParameters::GetMaxConnIntervalRelaxed();
+        log::debug("conn_interval_min={}, conn_interval_max={}", conn_interval_min,
+                   conn_interval_max);
+      } else {
+        size_t num_classic_acl_connections = classic_impl_->get_connection_count();
+        size_t num_acl_connections = connections.size();
 
-      log::debug("ACL connection count: Classic={}, LE={}", num_classic_acl_connections,
-                 num_acl_connections);
+        log::debug("ACL connection count: Classic={}, LE={}", num_classic_acl_connections,
+                   num_acl_connections);
 
-      choose_connection_mode(num_classic_acl_connections + num_acl_connections, &conn_interval_min,
-                             &conn_interval_max);
+        choose_connection_mode(num_classic_acl_connections + num_acl_connections,
+                               &conn_interval_min, &conn_interval_max);
+      }
     } else {
       conn_interval_min = os::GetSystemPropertyUint32(kPropertyMinConnInterval, kConnIntervalMin);
       conn_interval_max = os::GetSystemPropertyUint32(kPropertyMaxConnInterval, kConnIntervalMax);
@@ -1039,15 +1063,12 @@ public:
         add_device_to_accept_list(address_with_type);
       }
 
-      if (com::android::bluetooth::flags::
-                  improve_create_connection_for_already_connecting_device()) {
-        bool in_accept_list_due_to_direct_connect =
-                direct_connections_.find(address_with_type) != direct_connections_.end();
+      bool in_accept_list_due_to_direct_connect =
+              direct_connections_.find(address_with_type) != direct_connections_.end();
 
-        if (already_in_accept_list && (in_accept_list_due_to_direct_connect || !is_direct)) {
-          log::info("Device {} already in accept list. Stop here.", address_with_type);
-          return;
-        }
+      if (already_in_accept_list && (in_accept_list_due_to_direct_connect || !is_direct)) {
+        log::info("Device {} already in accept list. Stop here.", address_with_type);
+        return;
       }
 
       if (is_direct) {
@@ -1111,8 +1132,9 @@ public:
       remove_device_from_accept_list(address_with_type);
     }
     // Temporary mapping the error code to PAGE_TIMEOUT
-    log_le_connection_completion(address_with_type.GetAddress(), ErrorCode::PAGE_TIMEOUT,
-                                 true /* is locally initiated */);
+    bluetooth::shim::LogMetricLeConnectionCompletion(address_with_type.GetAddress(),
+                                                     ErrorCode::PAGE_TIMEOUT,
+                                                     true /* is locally initiated */);
     le_client_handler_->Post(common::BindOnce(
             &LeConnectionCallbacks::OnLeConnectFail, common::Unretained(le_client_callbacks_),
             address_with_type, ErrorCode::CONNECTION_ACCEPT_TIMEOUT));
@@ -1122,25 +1144,6 @@ public:
     direct_connect_remove(address_with_type);
     // the connection will be canceled by LeAddressManager.OnPause()
     remove_device_from_accept_list(address_with_type);
-  }
-
-  void set_le_suggested_default_data_parameters(uint16_t length, uint16_t time) {
-    auto packet = LeWriteSuggestedDefaultDataLengthBuilder::Create(length, time);
-    le_acl_connection_interface_->EnqueueCommand(
-            std::move(packet), handler_->BindOnce([](CommandCompleteView /* complete */) {}));
-  }
-
-  void LeSetDefaultSubrate(uint16_t subrate_min, uint16_t subrate_max, uint16_t max_latency,
-                           uint16_t cont_num, uint16_t sup_tout) {
-    le_acl_connection_interface_->EnqueueCommand(
-            LeSetDefaultSubrateBuilder::Create(subrate_min, subrate_max, max_latency, cont_num,
-                                               sup_tout),
-            handler_->BindOnce([](CommandCompleteView complete) {
-              auto complete_view = LeSetDefaultSubrateCompleteView::Create(complete);
-              log::assert_that(complete_view.IsValid(), "assert failed: complete_view.IsValid()");
-              ErrorCode status = complete_view.GetStatus();
-              log::assert_that(status == ErrorCode::SUCCESS, "Status = {}", ErrorCodeText(status));
-            }));
   }
 
   void clear_resolving_list() { le_address_manager_->ClearResolvingList(); }
@@ -1228,12 +1231,6 @@ public:
     background_connections_.erase(address_with_type);
   }
 
-  void is_on_background_connection_list(AddressWithType address_with_type,
-                                        std::promise<bool> promise) {
-    promise.set_value(background_connections_.find(address_with_type) !=
-                      background_connections_.end());
-  }
-
   void OnPause() override {  // bluetooth::hci::LeAddressManagerCallback
     if (!address_manager_registered) {
       log::warn("Unregistered!");
@@ -1301,6 +1298,10 @@ public:
 
   void set_system_suspend_state(bool suspended) { system_suspend_ = suspended; }
 
+  void add_device_to_relaxed_connection_interval_list(const Address address) {
+    relaxed_connection_interval_devices_set_.insert(address);
+  }
+
   HciLayer* hci_layer_ = nullptr;
   Controller* controller_ = nullptr;
   os::Handler* handler_ = nullptr;
@@ -1327,6 +1328,8 @@ public:
   bool system_suspend_ = false;
   ConnectabilityState connectability_state_{ConnectabilityState::DISARMED};
   std::map<AddressWithType, os::Alarm> create_connection_timeout_alarms_{};
+  // Set of devices that should use the relaxed connection intervals.
+  std::unordered_set<Address> relaxed_connection_interval_devices_set_;
 };
 
 }  // namespace acl_manager

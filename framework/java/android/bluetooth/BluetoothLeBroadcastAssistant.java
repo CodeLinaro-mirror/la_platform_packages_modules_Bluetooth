@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -495,7 +495,7 @@ public final class BluetoothLeBroadcastAssistant implements BluetoothProfile, Au
     public static final String ACTION_CONNECTION_STATE_CHANGED =
             "android.bluetooth.action.CONNECTION_STATE_CHANGED";
 
-    private CloseGuard mCloseGuard;
+    private final CloseGuard mCloseGuard;
     private final BluetoothAdapter mBluetoothAdapter;
     private final AttributionSource mAttributionSource;
 

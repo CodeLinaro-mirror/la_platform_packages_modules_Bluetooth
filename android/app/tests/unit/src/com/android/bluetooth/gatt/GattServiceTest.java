@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,6 @@ import android.content.res.Resources;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Process;
-import android.platform.test.flag.junit.SetFlagsRule;
 import android.provider.Settings;
 import android.test.mock.MockContentProvider;
 import android.test.mock.MockContentResolver;
@@ -54,7 +53,6 @@ import androidx.test.runner.AndroidJUnit4;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.CompanionManager;
-import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.le_scan.PeriodicScanManager;
 import com.android.bluetooth.le_scan.ScanManager;
 import com.android.bluetooth.le_scan.ScanObjectsFactory;
@@ -79,7 +77,6 @@ import java.util.UUID;
 @RunWith(AndroidJUnit4.class)
 public class GattServiceTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
-    @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Mock private ContextMap<IBluetoothGattCallback> mClientMap;
     @Mock private ScanManager mScanManager;
@@ -131,7 +128,7 @@ public class GattServiceTest {
         doReturn(mNativeInterface).when(mGattObjectsFactory).getNativeInterface();
         doReturn(mDistanceMeasurementManager)
                 .when(mGattObjectsFactory)
-                .createDistanceMeasurementManager(any());
+                .createDistanceMeasurementManager(any(), any());
         doReturn(mScanManager)
                 .when(mScanObjectsFactory)
                 .createScanManager(any(), any(), any(), any());
@@ -443,7 +440,6 @@ public class GattServiceTest {
 
     @Test
     public void registerClient_checkLimitPerApp() {
-        mSetFlagsRule.enableFlags(Flags.FLAG_GATT_CLIENT_DYNAMIC_ALLOCATION);
         doReturn(GattService.GATT_CLIENT_LIMIT_PER_APP).when(mClientMap).countByAppUid(anyInt());
         UUID uuid = UUID.randomUUID();
         IBluetoothGattCallback callback = mock(IBluetoothGattCallback.class);

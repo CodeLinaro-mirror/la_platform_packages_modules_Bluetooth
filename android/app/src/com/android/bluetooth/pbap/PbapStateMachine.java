@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,14 +39,12 @@ import android.os.Message;
 import android.os.UserHandle;
 import android.util.Log;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothObexTransport;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.ObexRejectServer;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.content_profiles.ContentProfileErrorReportUtils;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.annotations.VisibleForTesting.Visibility;
@@ -57,10 +55,17 @@ import com.android.obex.ServerSession;
 
 import java.io.IOException;
 
-/**
- * Bluetooth PBAP StateMachine (New connection socket) WAITING FOR AUTH | | (request permission from
- * Settings UI) | (Accept) / \ (Reject) / \ v v CONNECTED -----> FINISHED (OBEX Server done)
- */
+// Bluetooth PBAP StateMachine
+//              (New connection socket)
+//                 WAITING FOR AUTH
+//                        |
+//                        |    (request permission from Settings UI)
+//                        |
+//           (Accept)    / \   (Reject)
+//                      /   \
+//                     v     v
+//          CONNECTED   ----->  FINISHED
+//                (OBEX Server done)
 // Next tag value for ContentProfileErrorReportUtils.report(): 3
 @VisibleForTesting(visibility = Visibility.PACKAGE)
 public class PbapStateMachine extends StateMachine {
@@ -80,19 +85,19 @@ public class PbapStateMachine extends StateMachine {
     /** Used to limit PBAP OBEX maximum packet size in order to reduce transaction time. */
     private static final int PBAP_OBEX_MAXIMUM_PACKET_SIZE = 8192;
 
-    private BluetoothPbapService mService;
+    private final BluetoothPbapService mService;
 
     private final WaitingForAuth mWaitingForAuth = new WaitingForAuth();
     private final Finished mFinished = new Finished();
     private final Connected mConnected = new Connected();
     private PbapStateBase mPrevState;
-    private BluetoothDevice mRemoteDevice;
-    private Handler mServiceHandler;
+    private final BluetoothDevice mRemoteDevice;
+    private final Handler mServiceHandler;
     private BluetoothSocket mConnSocket;
     private BluetoothPbapObexServer mPbapServer;
     private BluetoothPbapAuthenticator mObexAuth;
     private ServerSession mServerSession;
-    private int mNotificationId;
+    private final int mNotificationId;
 
     private PbapStateMachine(
             @NonNull BluetoothPbapService service,
@@ -348,7 +353,6 @@ public class PbapStateMachine extends StateMachine {
                 Log.e(TAG, "Caught exception starting OBEX server session" + ex.toString());
             }
             broadcastStateTransitions();
-            MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.PBAP);
             mService.setConnectionPolicy(mRemoteDevice, CONNECTION_POLICY_ALLOWED);
         }
 
@@ -382,8 +386,7 @@ public class PbapStateMachine extends StateMachine {
             Log.v(TAG, "Pbap Service startObexServerSession");
 
             // acquire the wakeLock before start Obex transaction thread
-            mServiceHandler.sendMessage(
-                    mServiceHandler.obtainMessage(BluetoothPbapService.MSG_ACQUIRE_WAKE_LOCK));
+            mServiceHandler.sendEmptyMessage(BluetoothPbapService.MSG_ACQUIRE_WAKE_LOCK);
 
             mPbapServer =
                     new BluetoothPbapObexServer(mServiceHandler, mService, PbapStateMachine.this);

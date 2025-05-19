@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,6 +73,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+/** Test cases for {@link DatabaseManager}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public final class DatabaseManagerTest {
@@ -80,11 +81,11 @@ public final class DatabaseManagerTest {
 
     @Mock private AdapterService mAdapterService;
 
-    private BluetoothDevice mDevice = getTestDevice(54);
-    private BluetoothDevice mDevice2 = getTestDevice(55);
-    private BluetoothDevice mDevice3 = getTestDevice(56);
-    private BluetoothDevice mDevice4 = getTestDevice(57);
-    private BluetoothDevice mDevice5 = getTestDevice(58);
+    private final BluetoothDevice mDevice = getTestDevice(54);
+    private final BluetoothDevice mDevice2 = getTestDevice(55);
+    private final BluetoothDevice mDevice3 = getTestDevice(56);
+    private final BluetoothDevice mDevice4 = getTestDevice(57);
+    private final BluetoothDevice mDevice5 = getTestDevice(58);
 
     private MetadataDatabase mDatabase;
     private DatabaseManager mDatabaseManager;

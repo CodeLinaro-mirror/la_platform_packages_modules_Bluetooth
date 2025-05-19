@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,6 +56,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Spy;
 
+/** Test cases for {@link AtPhonebook}. */
 @RunWith(AndroidJUnit4.class)
 public class AtPhonebookTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
@@ -303,7 +304,7 @@ public class AtPhonebookTest {
     }
 
     @Test
-    public void processCpbrCommand_withReceivcedCallsAndCharsetGsm() {
+    public void processCpbrCommand_withReceivedCallsAndCharsetGsm() {
         Cursor mockCursorOne = mock(Cursor.class);
         when(mockCursorOne.getCount()).thenReturn(1);
         when(mockCursorOne.getColumnIndexOrThrow(CallLog.Calls.NUMBER)).thenReturn(1);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** Test cases for {@link BluetoothKeystoreService}. */
 @RunWith(JUnit4.class)
 public final class BluetoothKeystoreServiceTest {
     private static final String TAG = BluetoothKeystoreServiceTest.class.getSimpleName();
@@ -94,7 +95,7 @@ public final class BluetoothKeystoreServiceTest {
 
     private List<String> mConfigData = new ArrayList<>();
 
-    private Map<String, String> mNameDecryptKeyResult = new HashMap<>();
+    private final Map<String, String> mNameDecryptKeyResult = new HashMap<>();
 
     @Before
     public void setUp() {
@@ -242,7 +243,7 @@ public final class BluetoothKeystoreServiceTest {
     @Test
     public void testParserFileAfterDisableCommonCriteriaMode() {
         // preconfiguration.
-        // need to creat encrypted file.
+        // need to create encrypted file.
         testParserFile();
         // created encrypted file
         assertThat(setEncryptKeyOrRemoveKey(CONFIG_FILE_PREFIX, CONFIG_FILE_HASH)).isTrue();

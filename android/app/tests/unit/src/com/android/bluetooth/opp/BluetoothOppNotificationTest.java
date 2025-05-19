@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,8 +48,6 @@ import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.R;
 import com.android.bluetooth.TestUtils;
 
-import com.google.common.base.Ascii;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -58,6 +56,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+import java.util.Locale;
+
+/** Test cases for {@link BluetoothOppNotification}. */
 @RunWith(AndroidJUnit4.class)
 public class BluetoothOppNotificationTest {
     static final int TIMEOUT_MS = 3000;
@@ -432,13 +433,13 @@ public class BluetoothOppNotificationTest {
         UiObject2 buttonOk = device.findObject(By.text(confirmString));
         // In AOSP, all actions' titles are converted into upper case
         if (buttonOk == null) {
-            buttonOk = device.findObject(By.text(Ascii.toUpperCase(confirmString)));
+            buttonOk = device.findObject(By.text(confirmString.toUpperCase(Locale.ROOT)));
         }
 
         UiObject2 buttonDecline = device.findObject(By.text(declineString));
         // In AOSP, all actions' titles are converted into upper case
         if (buttonDecline == null) {
-            buttonDecline = device.findObject(By.text(Ascii.toUpperCase(declineString)));
+            buttonDecline = device.findObject(By.text(declineString.toUpperCase(Locale.ROOT)));
         }
 
         assertThat(title).isNotNull();
@@ -456,8 +457,8 @@ public class BluetoothOppNotificationTest {
 
         assertThat(device.findObject(By.text(titleString))).isNull();
         assertThat(device.findObject(By.text(confirmString))).isNull();
-        assertThat(device.findObject(By.text(Ascii.toUpperCase(confirmString)))).isNull();
+        assertThat(device.findObject(By.text(confirmString.toUpperCase(Locale.ROOT)))).isNull();
         assertThat(device.findObject(By.text(declineString))).isNull();
-        assertThat(device.findObject(By.text(Ascii.toUpperCase(declineString)))).isNull();
+        assertThat(device.findObject(By.text(declineString.toUpperCase(Locale.ROOT)))).isNull();
     }
 }

@@ -48,18 +48,16 @@ import android.os.SystemClock;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothMethodProxy;
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.content_profiles.ContentProfileErrorReportUtils;
 import com.android.internal.annotations.GuardedBy;
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.obex.ClientOperation;
 import com.android.obex.ClientSession;
 import com.android.obex.HeaderSet;
 import com.android.obex.ObexTransport;
 import com.android.obex.ResponseCodes;
-
-import com.google.common.annotations.VisibleForTesting;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -76,8 +74,6 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
 
     private ClientThread mThread;
     private volatile boolean mInterrupted;
-
-    private int mNumFilesAttemptedToSend;
 
     public BluetoothOppObexClientSession(Context context, ObexTransport transport) {
         mContext = requireNonNull(context);
@@ -176,7 +172,6 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
                 connect(mNumShares);
             }
 
-            mNumFilesAttemptedToSend = 0;
             while (!mInterrupted) {
                 if (!mWaitingForShare) {
                     doSend();
@@ -201,10 +196,6 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
                 mWakeLock.release();
             }
 
-            if (mNumFilesAttemptedToSend > 0) {
-                // Log outgoing OPP transfer if more than one file is accepted by remote
-                MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.OPP);
-            }
             Message msg = Message.obtain(mCallbackHandler);
             msg.what = BluetoothOppObexSession.MSG_SESSION_COMPLETE;
             msg.obj = mInfo;
@@ -504,7 +495,6 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
                             updateValues.put(BluetoothShare.CURRENT_BYTES, position);
                             mContext.getContentResolver()
                                     .update(contentUri, updateValues, null, null);
-                            mNumFilesAttemptedToSend++;
                         } else {
                             Log.i(TAG, "Remote reject, Response code is " + responseCode);
                         }
@@ -714,7 +704,7 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
             return;
         }
         if (address.startsWith("00:04:48")) {
-            // Poloroid Pogo
+            // Polaroid Pogo
             // Rejects filenames with more than one '.'. Rename to '_'.
             // for example: 'a.b.jpg' -> 'a_b.jpg'
             //              'abc.jpg' NOT CHANGED
@@ -740,7 +730,7 @@ public class BluetoothOppObexClientSession implements BluetoothOppObexSession {
                                 + filename
                                 + "\" as \""
                                 + newFilename
-                                + "\" to workaround Poloroid filename quirk");
+                                + "\" to workaround Polaroid filename quirk");
             }
         }
     }

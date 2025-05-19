@@ -24,6 +24,8 @@ import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
+import static com.android.bluetooth.Utils.BD_ADDR_LEN;
+
 import android.annotation.NonNull;
 import android.app.BroadcastOptions;
 import android.bluetooth.BluetoothA2dp;
@@ -53,7 +55,6 @@ import androidx.annotation.VisibleForTesting;
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.RemoteDevices.DeviceProperties;
-import com.android.bluetooth.flags.Flags;
 import com.android.modules.utils.build.SdkLevel;
 
 import java.io.FileDescriptor;
@@ -79,7 +80,6 @@ class AdapterProperties {
 
     private static final long DEFAULT_DISCOVERY_TIMEOUT_MS = 12800;
     @VisibleForTesting static final int BLUETOOTH_NAME_MAX_LENGTH_BYTES = 248;
-    private static final int BD_ADDR_LEN = 6; // in bytes
     private static final int SYSTEM_CONNECTION_LATENCY_METRIC = 65536;
 
     private volatile String mName;
@@ -89,7 +89,8 @@ class AdapterProperties {
     private volatile int mDiscoverableTimeout;
     private volatile ParcelUuid[] mUuids;
 
-    private CopyOnWriteArrayList<BluetoothDevice> mBondedDevices = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<BluetoothDevice> mBondedDevices =
+            new CopyOnWriteArrayList<>();
 
     private int mProfilesConnecting, mProfilesConnected, mProfilesDisconnecting;
     private final HashMap<Integer, Pair<Integer, Integer>> mProfileConnectionState =
@@ -529,10 +530,7 @@ class AdapterProperties {
 
     void cleanupPrevBondRecordsFor(BluetoothDevice device) {
         String address = device.getAddress();
-        String identityAddress =
-                Flags.identityAddressNullIfNotKnown()
-                        ? Utils.getBrEdrAddress(device, mService)
-                        : mService.getIdentityAddress(address);
+        String identityAddress = Utils.getBrEdrAddress(device, mService);
         int deviceType = mRemoteDevices.getDeviceProperties(device).getDeviceType();
         debugLog("cleanupPrevBondRecordsFor: " + device + ", device type: " + deviceType);
         if (identityAddress == null) {
@@ -545,10 +543,7 @@ class AdapterProperties {
 
         for (BluetoothDevice existingDevice : mBondedDevices) {
             String existingAddress = existingDevice.getAddress();
-            String existingIdentityAddress =
-                    Flags.identityAddressNullIfNotKnown()
-                            ? Utils.getBrEdrAddress(existingDevice, mService)
-                            : mService.getIdentityAddress(existingAddress);
+            String existingIdentityAddress = Utils.getBrEdrAddress(existingDevice, mService);
             int existingDeviceType =
                     mRemoteDevices.getDeviceProperties(existingDevice).getDeviceType();
 
@@ -689,7 +684,7 @@ class AdapterProperties {
             case STATE_CONNECTING:
                 return BluetoothAdapter.STATE_CONNECTING;
         }
-        Log.e(TAG, "convertToAdapterState, unknow state " + state);
+        Log.e(TAG, "convertToAdapterState, unknown state " + state);
         return -1;
     }
 
@@ -811,15 +806,10 @@ class AdapterProperties {
     }
 
     void adapterPropertyChangedCallback(int[] types, byte[][] values) {
-        if (Flags.adapterPropertiesLooper()) {
-            mHandler.post(() -> adapterPropertyChangedCallbackInternal(types, values));
-        } else {
-            adapterPropertyChangedCallbackInternal(types, values);
-        }
+        mHandler.post(() -> adapterPropertyChangedCallbackInternal(types, values));
     }
 
     private void adapterPropertyChangedCallbackInternal(int[] types, byte[][] values) {
-        Intent intent;
         int type;
         byte[] val;
         for (int i = 0; i < types.length; i++) {
@@ -830,45 +820,21 @@ class AdapterProperties {
                 switch (type) {
                     case AbstractionLayer.BT_PROPERTY_BDNAME:
                         String name = new String(val);
-                        if (Flags.getNameAndAddressAsCallback() && name.equals(mName)) {
+                        if (name.equals(mName)) {
                             debugLog("Name already set: " + mName);
                             break;
                         }
                         mName = name;
-                        if (Flags.getNameAndAddressAsCallback()) {
-                            mService.updateAdapterName(mName);
-                            break;
-                        }
-                        intent = new Intent(BluetoothAdapter.ACTION_LOCAL_NAME_CHANGED);
-                        intent.putExtra(BluetoothAdapter.EXTRA_LOCAL_NAME, mName);
-                        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-                        mService.sendBroadcastAsUser(
-                                intent,
-                                UserHandle.ALL,
-                                BLUETOOTH_CONNECT,
-                                Utils.getTempBroadcastOptions().toBundle());
-                        debugLog("Name is: " + mName);
+                        mService.updateAdapterName(mName);
                         break;
                     case AbstractionLayer.BT_PROPERTY_BDADDR:
-                        if (Flags.getNameAndAddressAsCallback() && Arrays.equals(mAddress, val)) {
+                        if (Arrays.equals(mAddress, val)) {
                             debugLog("Address already set");
                             break;
                         }
                         mAddress = val;
                         String address = Utils.getAddressStringFromByte(mAddress);
-                        if (Flags.getNameAndAddressAsCallback()) {
-                            mService.updateAdapterAddress(address);
-                            // ACTION_BLUETOOTH_ADDRESS_CHANGED is redundant
-                            break;
-                        }
-                        intent = new Intent(BluetoothAdapter.ACTION_BLUETOOTH_ADDRESS_CHANGED);
-                        intent.putExtra(BluetoothAdapter.EXTRA_BLUETOOTH_ADDRESS, address);
-                        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-                        mService.sendBroadcastAsUser(
-                                intent,
-                                UserHandle.ALL,
-                                BLUETOOTH_CONNECT,
-                                Utils.getTempBroadcastOptions().toBundle());
+                        mService.updateAdapterAddress(address);
                         break;
                     case AbstractionLayer.BT_PROPERTY_CLASS_OF_DEVICE:
                         if (val == null || val.length != 3) {
@@ -1127,10 +1093,7 @@ class AdapterProperties {
         StringBuilder sb = new StringBuilder();
         for (BluetoothDevice device : mBondedDevices) {
             String address = device.getAddress();
-            String brEdrAddress =
-                    Flags.identityAddressNullIfNotKnown()
-                            ? Utils.getBrEdrAddress(device)
-                            : mService.getIdentityAddress(address);
+            String brEdrAddress = Utils.getBrEdrAddress(device);
             if (brEdrAddress.equals(address)) {
                 writer.println(
                         "    "

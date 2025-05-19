@@ -39,6 +39,7 @@ import com.android.vcard.VCardUtils;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Locale;
 
 /** VCard composer especially for Call Log used in Bluetooth. */
 // Next tag value for ContentProfileErrorReportUtils.report(): 3
@@ -196,7 +197,7 @@ public class BluetoothPbapCallLogComposer implements AutoCloseable {
 
     /** This static function is to compose vCard for phone own number */
     public static String composeVCardForPhoneOwnNumber(
-            int phonetype, String phoneName, String phoneNumber, boolean vcardVer21) {
+            int phoneType, String phoneName, String phoneNumber, boolean vcardVer21) {
         final int vcardType =
                 (vcardVer21
                                 ? VCardConfig.VCARD_TYPE_V21_GENERIC
@@ -211,8 +212,8 @@ public class BluetoothPbapCallLogComposer implements AutoCloseable {
         builder.appendLine(VCardConstants.PROPERTY_N, phoneName, needCharset, false);
 
         if (!TextUtils.isEmpty(phoneNumber)) {
-            String label = Integer.toString(phonetype);
-            builder.appendTelLine(phonetype, label, phoneNumber, false);
+            String label = Integer.toString(phoneType);
+            builder.appendTelLine(phoneType, label, phoneNumber, false);
         }
 
         return builder.toString();
@@ -223,13 +224,13 @@ public class BluetoothPbapCallLogComposer implements AutoCloseable {
         String rfc2455Format = "yyyyMMdd'T'HHmmss";
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(millSecs);
-        SimpleDateFormat df = new SimpleDateFormat(rfc2455Format);
+        SimpleDateFormat df = new SimpleDateFormat(rfc2455Format, Locale.ROOT);
         return df.format(cal.getTime());
     }
 
     /**
      * Try to append the property line for a call history time stamp field if possible. Do nothing
-     * if the call log type gotton from the database is invalid.
+     * if the call log type gotten from the database is invalid.
      */
     private void tryAppendCallHistoryTimeStampField(final VCardBuilder builder) {
         // Extension for call history as defined in

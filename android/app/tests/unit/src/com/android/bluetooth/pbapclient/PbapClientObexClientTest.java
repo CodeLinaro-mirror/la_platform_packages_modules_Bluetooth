@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,6 +67,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** Test cases for {@link PbapClientObexClient}. */
 @RunWith(AndroidJUnit4.class)
 public class PbapClientObexClientTest {
     private static final int TEST_L2CAP_PSM = 4098;
@@ -223,8 +224,8 @@ public class PbapClientObexClientTest {
                 .onGetPhonebookMetadataComplete(
                         eq(160), eq(PbapPhonebook.LOCAL_PHONEBOOK_PATH), mMetadataCaptor.capture());
         PbapPhonebookMetadata metadata = mMetadataCaptor.getValue();
-        assertThat(metadata.getPhonebook()).isEqualTo(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
-        assertThat(metadata.getSize()).isEqualTo(2);
+        assertThat(metadata.phonebook()).isEqualTo(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
+        assertThat(metadata.size()).isEqualTo(2);
     }
 
     // *********************************************************************************************

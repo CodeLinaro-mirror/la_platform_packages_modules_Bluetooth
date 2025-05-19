@@ -65,7 +65,6 @@ import android.telecom.PhoneAccount;
 import android.telephony.SmsManager;
 import android.util.Log;
 
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.MetricsLogger;
@@ -200,7 +199,7 @@ class MceStateMachine extends StateMachine {
         private final String mHandle;
         private final Long mTimestamp;
         private boolean mRead;
-        private boolean mSeen;
+        private final boolean mSeen;
 
         MessageMetadata(String handle, Long timestamp, boolean read, boolean seen) {
             mHandle = handle;
@@ -310,9 +309,6 @@ class MceStateMachine extends StateMachine {
                         + prevState
                         + ", new="
                         + state);
-        if (prevState != state && state == STATE_CONNECTED) {
-            MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.MAP_CLIENT);
-        }
         setState(state);
 
         mAdapterService.updateProfileConnectionAdapterProperties(

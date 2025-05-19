@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include "hal/hci_hal.h"
 #include "hal/link_clocker.h"
 #include "hal/snoop_logger.h"
+#include "main/shim/entry.h"
 
 namespace bluetooth::hal {
 
@@ -167,10 +168,7 @@ public:
   }
 
 protected:
-  void ListDependencies(ModuleList* list) const override {
-    list->add<LinkClocker>();
-    list->add<SnoopLogger>();
-  }
+  void ListDependencies(ModuleList* list) const override { list->add<LinkClocker>(); }
 
   void Start() override {
     common::StopWatch stop_watch(__func__);
@@ -178,7 +176,7 @@ protected:
                      "Start can't be called more than once before Stop is called.");
 
     link_clocker_ = GetDependency<LinkClocker>();
-    btsnoop_logger_ = GetDependency<SnoopLogger>();
+    btsnoop_logger_ = shim::GetSnoopLogger();
 
     backend_ = HciBackend::CreateAidl();
     if (!backend_) {

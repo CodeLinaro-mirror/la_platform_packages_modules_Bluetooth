@@ -135,10 +135,14 @@ void LogMetricSdpAttribute(const RawAddress& raw_address, uint16_t protocol_uuid
 void LogMetricSocketConnectionState(const RawAddress& raw_address, int port, int type,
                                     android::bluetooth::SocketConnectionstateEnum connection_state,
                                     int64_t tx_bytes, int64_t rx_bytes, int uid, int server_port,
-                                    android::bluetooth::SocketRoleEnum socket_role) {
+                                    android::bluetooth::SocketRoleEnum socket_role,
+                                    uint64_t connection_duration_ms,
+                                    android::bluetooth::SocketErrorEnum error_code,
+                                    bool is_hardware_offload) {
   Address address = bluetooth::ToGdAddress(raw_address);
-  bluetooth::os::LogMetricSocketConnectionState(address, port, type, connection_state, tx_bytes,
-                                                rx_bytes, uid, server_port, socket_role);
+  bluetooth::os::LogMetricSocketConnectionState(
+          address, port, type, connection_state, tx_bytes, rx_bytes, uid, server_port, socket_role,
+          connection_duration_ms, error_code, is_hardware_offload);
 }
 
 void LogMetricManufacturerInfo(const RawAddress& raw_address,
@@ -245,6 +249,19 @@ void LogMetricHfpRfcommAgOpenFail(hci::Address address) {
 void LogMetricHfpSlcFail(hci::Address address) {
   bluetooth::os::LogMetricBluetoothEvent(address, EventType::HFP_SESSION,
                                          State::HFP_SLC_FAIL_CONNECTION);
+}
+
+void LogMetricScoLinkCreated(hci::Address address) {
+  bluetooth::os::LogMetricBluetoothEvent(address, EventType::SCO_SESSION, State::SCO_LINK_CREATED);
+}
+
+void LogMetricScoLinkRemoved(hci::Address address) {
+  bluetooth::os::LogMetricBluetoothEvent(address, EventType::SCO_SESSION, State::SCO_LINK_REMOVED);
+}
+
+void LogMetricScoCodec(hci::Address address, uint16_t codec) {
+  bluetooth::os::LogMetricBluetoothEvent(address, EventType::SCO_CODEC,
+                                         bluetooth::metrics::MapScoCodecToState(codec));
 }
 
 }  // namespace shim

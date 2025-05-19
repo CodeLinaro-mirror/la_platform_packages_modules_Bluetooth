@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -260,21 +260,6 @@ void AclManager::CreateLeConnection(AddressWithType address_with_type, bool is_d
   CallOn(pimpl_->le_impl_, &le_impl::create_le_connection, address_with_type, true, is_direct);
 }
 
-void AclManager::IsOnBackgroundList(AddressWithType address_with_type, std::promise<bool> promise) {
-  CallOn(pimpl_->le_impl_, &le_impl::is_on_background_connection_list, address_with_type,
-         std::move(promise));
-}
-
-void AclManager::SetLeSuggestedDefaultDataParameters(uint16_t octets, uint16_t time) {
-  CallOn(pimpl_->le_impl_, &le_impl::set_le_suggested_default_data_parameters, octets, time);
-}
-
-void AclManager::LeSetDefaultSubrate(uint16_t subrate_min, uint16_t subrate_max,
-                                     uint16_t max_latency, uint16_t cont_num, uint16_t sup_tout) {
-  CallOn(pimpl_->le_impl_, &le_impl::LeSetDefaultSubrate, subrate_min, subrate_max, max_latency,
-         cont_num, sup_tout);
-}
-
 void AclManager::SetPrivacyPolicyForInitiatorAddress(
         LeAddressManager::AddressPolicy address_policy, AddressWithType fixed_address,
         std::chrono::milliseconds minimum_rotation_time,
@@ -371,6 +356,10 @@ void AclManager::OnLeSuspendInitiatedDisconnect(uint16_t handle, ErrorCode reaso
 
 void AclManager::SetSystemSuspendState(bool suspended) {
   CallOn(pimpl_->le_impl_, &le_impl::set_system_suspend_state, suspended);
+}
+
+void AclManager::AddDeviceToRelaxedConnectionIntervalList(const Address address) {
+  CallOn(pimpl_->le_impl_, &le_impl::add_device_to_relaxed_connection_interval_list, address);
 }
 
 LeAddressManager* AclManager::GetLeAddressManager() {

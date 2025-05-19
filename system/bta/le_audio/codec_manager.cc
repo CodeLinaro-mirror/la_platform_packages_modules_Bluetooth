@@ -733,11 +733,11 @@ public:
 
   bool AppendStreamMapExtension(const std::vector<struct types::cis>& cises,
                                 const stream_parameters& stream_params, uint8_t direction) {
-    // In the legacy mode we are already done
-    if (!IsUsingCodecExtensibility()) {
-      log::verbose("Codec Extensibility is disabled");
-      return true;
-    }
+    /* Without the codec extensibility enabled, we still need the BT stack structure to
+     * have the valid extended codec configuration entries, as these are used for codec type
+     * matching. The extended data fields of the AIDL API data structures are filed
+     * right before the AIDL call, only if the codec extensibility is enabled
+     */
 
     const std::string tag =
             types::BidirectionalPair<std::string>({.sink = "Sink", .source = "Source"})
@@ -787,11 +787,8 @@ public:
 
   bool UpdateCisMonoConfiguration(const std::vector<struct types::cis>& cises,
                                   const stream_parameters& stream_params, uint8_t direction) {
-    if (!LeAudioHalVerifier::SupportsStreamActiveApi() ||
-        !com::android::bluetooth::flags::leaudio_mono_location_errata()) {
-      log::error(
-              "SupportsStreamActiveApi() not supported or leaudio_mono_location_errata flag is not "
-              "enabled. Mono stream cannot be enabled");
+    if (!LeAudioHalVerifier::SupportsStreamActiveApi()) {
+      log::error("SupportsStreamActiveApi() not supported. Mono stream cannot be enabled");
       return false;
     }
 
