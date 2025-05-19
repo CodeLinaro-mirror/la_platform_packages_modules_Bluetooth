@@ -15,8 +15,8 @@
  *
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /**
@@ -976,11 +976,12 @@ public class HeadsetClientStateMachine extends StateMachine {
         }
         debug("hfp_enable=" + enable);
         if (enable && !sAudioIsRouted) {
+            sAudioIsRouted = true;
             mAudioManager.setHfpEnabled(true);
         } else if (!enable) {
+            sAudioIsRouted = false;
             mAudioManager.setHfpEnabled(false);
         }
-        sAudioIsRouted = enable;
     }
 
     private AudioFocusRequest requestAudioFocus() {
