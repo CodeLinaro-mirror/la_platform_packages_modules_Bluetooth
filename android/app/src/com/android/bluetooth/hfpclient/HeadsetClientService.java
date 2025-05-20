@@ -67,7 +67,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -92,22 +91,21 @@ public class HeadsetClientService extends ProfileService {
             new HashMap<>();
 
     private static HeadsetClientService sHeadsetClientService;
-    private NativeInterface mNativeInterface = null;
-    private HandlerThread mSmThread = null;
-    private HeadsetClientStateMachineFactory mSmFactory = null;
+
+    private final HandlerThread mSmThread;
     private final AdapterService mAdapterService;
     private final DatabaseManager mDatabaseManager;
     private final AudioManager mAudioManager;
     private Car mCar = null;
     private CarAudioManager mCarAudioManager;
     private static int mVolumeGroupId;
-    private BatteryManager mBatteryManager = null;
-    private int mLastBatteryLevel = -1;
-
+    private final NativeInterface mNativeInterface;
+    private final BatteryManager mBatteryManager;
+    private final HeadsetClientStateMachineFactory mSmFactory;
     private int mMaxAmVcVol;
     private int mMinAmVcVol;
 
-    private final Object mStartStopLock = new Object();
+    private int mLastBatteryLevel = -1;
 
     public static final String HFP_CLIENT_STOP_TAG = "hfp_client_stop_tag";
 
@@ -118,6 +116,38 @@ public class HeadsetClientService extends ProfileService {
         mAudioManager = requireNonNull(getSystemService(AudioManager.class));
         mMaxAmVcVol = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
         mMinAmVcVol = mAudioManager.getStreamMinVolume(AudioManager.STREAM_VOICE_CALL);
+
+        // Setup the JNI service
+        mNativeInterface = NativeInterface.getInstance();
+        mNativeInterface.initialize();
+
+        mBatteryManager = getSystemService(BatteryManager.class);
+
+        // start AudioManager in a known state
+        mAudioManager.setHfpEnabled(false);
+
+        mSmFactory = new HeadsetClientStateMachineFactory();
+        synchronized (mStateMachineMap) {
+            mStateMachineMap.clear();
+        }
+
+        IntentFilter filter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+        filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
+        filter.addAction(Intent.ACTION_BATTERY_CHANGED);
+        registerReceiver(mBroadcastReceiver, filter);
+
+        // Start the HfpClientConnectionService to create connection with telecom when HFP
+        // connection is available on non-wearable device.
+        if (getPackageManager() != null && !getPackageManager().hasSystemFeature(FEATURE_WATCH)) {
+            Intent startIntent = new Intent(this, HfpClientConnectionService.class);
+            startService(startIntent);
+        }
+
+        // Create the thread on which all State Machines will run
+        mSmThread = new HandlerThread("HeadsetClient.SM");
+        mSmThread.start();
+
+        setHeadsetClientService(this);
 
         if (Utils.isAutomotive(getApplicationContext())) {
             mCar = Car.createCar(this, mConnection);
@@ -135,101 +165,50 @@ public class HeadsetClientService extends ProfileService {
     }
 
     @Override
-    public void start() {
-        synchronized (mStartStopLock) {
-            Log.d(TAG, "start()");
-            if (getHeadsetClientService() != null) {
-                throw new IllegalStateException("start() called twice");
+    public void stop() {
+        synchronized (HeadsetClientService.class) {
+            if (sHeadsetClientService == null) {
+                Log.w(TAG, "stop() called without start()");
+                return;
             }
 
-            // Setup the JNI service
-            mNativeInterface = NativeInterface.getInstance();
-            mNativeInterface.initialize();
-
-            mBatteryManager = getSystemService(BatteryManager.class);
-
-            // start AudioManager in a known state
-            mAudioManager.setHfpEnabled(false);
-
-            mSmFactory = new HeadsetClientStateMachineFactory();
-            synchronized (mStateMachineMap) {
-                mStateMachineMap.clear();
-            }
-
-            IntentFilter filter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
-            filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
-            filter.addAction(Intent.ACTION_BATTERY_CHANGED);
-            registerReceiver(mBroadcastReceiver, filter);
-
-            // Start the HfpClientConnectionService to create connection with telecom when HFP
-            // connection is available on non-wearable device.
+            // Stop the HfpClientConnectionService for non-wearables devices.
             if (getPackageManager() != null
                     && !getPackageManager().hasSystemFeature(FEATURE_WATCH)) {
-                Intent startIntent = new Intent(this, HfpClientConnectionService.class);
-                startService(startIntent);
+                Intent stopIntent = new Intent(this, HfpClientConnectionService.class);
+                sHeadsetClientService.stopService(stopIntent);
             }
-
-            // Create the thread on which all State Machines will run
-            mSmThread = new HandlerThread("HeadsetClient.SM");
-            mSmThread.start();
-
-            setHeadsetClientService(this);
         }
-    }
 
-    @Override
-    public void stop() {
-        synchronized (mStartStopLock) {
-            synchronized (HeadsetClientService.class) {
-                if (sHeadsetClientService == null) {
-                    Log.w(TAG, "stop() called without start()");
-                    return;
-                }
+        setHeadsetClientService(null);
 
-                // Stop the HfpClientConnectionService for non-wearables devices.
-                if (getPackageManager() != null
-                        && !getPackageManager().hasSystemFeature(FEATURE_WATCH)) {
-                    Intent stopIntent = new Intent(this, HfpClientConnectionService.class);
-                    sHeadsetClientService.stopService(stopIntent);
-                }
+        unregisterReceiver(mBroadcastReceiver);
+
+        if (Utils.isAutomotive(getApplicationContext())) {
+            try {
+                mCarAudioManager.unregisterCarVolumeCallback(mVolumeChangeCallback);
+            } catch (CarNotConnectedException e) {
+                Log.e(TAG, "Car is not connected", e);
+            } catch (NullPointerException e) {
+                Log.e(TAG, "mCarAudioManager is NULL!", e);
             }
-
-            setHeadsetClientService(null);
-
-            unregisterReceiver(mBroadcastReceiver);
-
-            if (Utils.isAutomotive(getApplicationContext())) {
-                try {
-                    mCarAudioManager.unregisterCarVolumeCallback(mVolumeChangeCallback);
-                } catch (CarNotConnectedException e) {
-                    Log.e(TAG, "Car is not connected", e);
-                } catch (NullPointerException e) {
-                    Log.e(TAG, "mCarAudioManager is NULL!", e);
-                }
-                if (mCar != null && mCar.isConnected()) {
-                    mCar.disconnect();
-                    mCar = null;
-                }
+            if (mCar != null && mCar.isConnected()) {
+                mCar.disconnect();
+                mCar = null;
             }
-
-            synchronized (mStateMachineMap) {
-                for (Iterator<Map.Entry<BluetoothDevice, HeadsetClientStateMachine>> it =
-                                mStateMachineMap.entrySet().iterator();
-                        it.hasNext(); ) {
-                    HeadsetClientStateMachine sm =
-                            mStateMachineMap.get((BluetoothDevice) it.next().getKey());
-                    sm.doQuit();
-                    it.remove();
-                }
-            }
-
-            // Stop the handler thread
-            mSmThread.quit();
-            mSmThread = null;
-
-            mNativeInterface.cleanup();
-            mNativeInterface = null;
         }
+
+        synchronized (mStateMachineMap) {
+            for (HeadsetClientStateMachine sm : mStateMachineMap.values()) {
+                sm.doQuit();
+            }
+            mStateMachineMap.clear();
+        }
+
+        // Stop the handler thread
+        mSmThread.quit();
+
+        mNativeInterface.cleanup();
     }
 
     int hfToAmVol(int hfVol) {
@@ -251,7 +230,6 @@ public class HeadsetClientService extends ProfileService {
         return amVol;
     }
 
-    @VisibleForTesting
     int amToHfVol(int amVol) {
         int amRange = (mMaxAmVcVol > mMinAmVcVol) ? (mMaxAmVcVol - mMinAmVcVol) : 1;
         int hfRange = MAX_HFP_SCO_VOICE_CALL_VOLUME - MIN_HFP_SCO_VOICE_CALL_VOLUME;
@@ -1458,10 +1436,6 @@ public class HeadsetClientService extends ProfileService {
         synchronized (mStateMachineMap) {
             return mStateMachineMap;
         }
-    }
-
-    protected void setSMFactory(HeadsetClientStateMachineFactory factory) {
-        mSmFactory = factory;
     }
 
     protected AudioManager getAudioManager() {

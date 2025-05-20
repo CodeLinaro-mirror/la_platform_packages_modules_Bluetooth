@@ -21,9 +21,11 @@
 
 package com.android.bluetooth.btservice;
 
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.OobData;
 import android.os.ParcelUuid;
 
+import com.android.bluetooth.Utils;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
@@ -69,17 +71,13 @@ public class AdapterNativeInterface {
             boolean startRestricted,
             boolean isCommonCriteriaMode,
             int configCompareResult,
-            String[] initFlags,
-            boolean isAtvDevice,
-            String userDataDirectory) {
+            boolean isAtvDevice) {
         mJniCallbacks = new JniCallbacks(service, adapterProperties);
         return initNative(
                 startRestricted,
                 isCommonCriteriaMode,
                 configCompareResult,
-                initFlags,
-                isAtvDevice,
-                userDataDirectory);
+                isAtvDevice);
     }
 
     void cleanup() {
@@ -207,13 +205,56 @@ public class AdapterNativeInterface {
         return getMetricIdNative(address);
     }
 
-    int connectSocket(byte[] address, int type, byte[] uuid, int port, int flag, int callingUid) {
-        return connectSocketNative(address, type, uuid, port, flag, callingUid);
+    int connectSocket(
+            byte[] address,
+            int type,
+            byte[] uuid,
+            int port,
+            int flag,
+            int callingUid,
+            int dataPath,
+            String socketName,
+            long hubId,
+            long endpointId,
+            int maximumPacketSize) {
+        return connectSocketNative(
+                address,
+                type,
+                uuid,
+                port,
+                flag,
+                callingUid,
+                dataPath,
+                socketName,
+                hubId,
+                endpointId,
+                maximumPacketSize);
     }
 
     int createSocketChannel(
-            int type, String serviceName, byte[] uuid, int port, int flag, int callingUid) {
-        return createSocketChannelNative(type, serviceName, uuid, port, flag, callingUid);
+            int type,
+            String serviceName,
+            byte[] uuid,
+            int port,
+            int flag,
+            int callingUid,
+            int dataPath,
+            String socketName,
+            long hubId,
+            long endpointId,
+            int maximumPacketSize) {
+        return createSocketChannelNative(
+                type,
+                serviceName,
+                uuid,
+                port,
+                flag,
+                callingUid,
+                dataPath,
+                socketName,
+                hubId,
+                endpointId,
+                maximumPacketSize);
     }
 
     void requestMaximumTxDataLength(byte[] address) {
@@ -224,8 +265,8 @@ public class AdapterNativeInterface {
         return allowLowLatencyAudioNative(allowed, address);
     }
 
-    void metadataChanged(byte[] address, int key, byte[] value) {
-        metadataChangedNative(address, key, value);
+    void metadataChanged(BluetoothDevice device, int key, byte[] value) {
+        metadataChangedNative(Utils.getBytesFromAddress(device.getAddress()), key, value);
     }
 
     boolean interopMatchAddr(String featureName, String address) {
@@ -273,6 +314,30 @@ public class AdapterNativeInterface {
         getLinkKeyNative(address);
    }
 
+    boolean setDefaultEventMaskExcept(long mask, long leMask) {
+        return setDefaultEventMaskExceptNative(mask, leMask);
+    }
+
+    boolean clearEventFilter() {
+        return clearEventFilterNative();
+    }
+
+    boolean clearFilterAcceptList() {
+        return clearFilterAcceptListNative();
+    }
+
+    boolean disconnectAllAcls() {
+        return disconnectAllAclsNative();
+    }
+
+    boolean allowWakeByHid() {
+        return allowWakeByHidNative();
+    }
+
+    boolean restoreFilterAcceptList() {
+        return restoreFilterAcceptListNative();
+    }
+
     /**********************************************************************************************/
     /*********************************** callbacks from native ************************************/
     /**********************************************************************************************/
@@ -287,9 +352,7 @@ public class AdapterNativeInterface {
             boolean startRestricted,
             boolean isCommonCriteriaMode,
             int configCompareResult,
-            String[] initFlags,
-            boolean isAtvDevice,
-            String userDataDirectory);
+            boolean isAtvDevice);
 
     private native void cleanupNative();
 
@@ -356,10 +419,30 @@ public class AdapterNativeInterface {
     private native int getMetricIdNative(byte[] address);
 
     private native int connectSocketNative(
-            byte[] address, int type, byte[] uuid, int port, int flag, int callingUid);
+            byte[] address,
+            int type,
+            byte[] uuid,
+            int port,
+            int flag,
+            int callingUid,
+            int dataPath,
+            String socketName,
+            long hubId,
+            long endpointId,
+            int maximumPacketSize);
 
     private native int createSocketChannelNative(
-            int type, String serviceName, byte[] uuid, int port, int flag, int callingUid);
+            int type,
+            String serviceName,
+            byte[] uuid,
+            int port,
+            int flag,
+            int callingUid,
+            int dataPath,
+            String socketName,
+            long hubId,
+            long endpointId,
+            int maximumPacketSize);
 
     private native void requestMaximumTxDataLengthNative(byte[] address);
 
@@ -390,4 +473,16 @@ public class AdapterNativeInterface {
             long connectionUuidLsb, long connectionUuidMsb);
 
     private native void getLinkKeyNative(byte[] address);
+
+    private native boolean setDefaultEventMaskExceptNative(long mask, long leMask);
+
+    private native boolean clearEventFilterNative();
+
+    private native boolean clearFilterAcceptListNative();
+
+    private native boolean disconnectAllAclsNative();
+
+    private native boolean allowWakeByHidNative();
+
+    private native boolean restoreFilterAcceptListNative();
 }
