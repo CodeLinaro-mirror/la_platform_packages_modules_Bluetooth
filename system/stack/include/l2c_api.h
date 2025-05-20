@@ -821,9 +821,8 @@ typedef struct {
  *
  *  Parameters:     Fixed CID
  *                  BD Address of remote
- *                  Idle timeout to use (or 0xFFFF if don't care)
  *
- *  Return value:   true if channel removed
+ *  Return value:   true if channel removed or marked for removal
  *
  ******************************************************************************/
 [[nodiscard]] bool L2CA_RemoveFixedChnl(uint16_t fixed_cid,
