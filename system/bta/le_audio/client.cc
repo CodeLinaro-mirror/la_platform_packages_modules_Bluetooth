@@ -13,6 +13,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  */
 
 #include <android_bluetooth_sysprop.h>
@@ -2184,6 +2190,10 @@ public:
       }
     }
 
+    //For BT reboot cases, remotes need PACS discover.
+    leAudioDevice->known_service_handles_ = false;
+    btif_storage_leaudio_clear_service_data(address);
+
     leAudioDevice->autoconnect_flag_ = autoconnect;
     /* When adding from storage, make sure that autoconnect is used
      * by all the devices in the group.
@@ -3127,6 +3137,7 @@ public:
 
   void OnGattDisconnected(tCONN_ID conn_id, tGATT_IF /*client_if*/, RawAddress address,
                           tGATT_DISCONN_REASON reason) {
+    log::info("OnGattDisconnected");
     LeAudioDevice* leAudioDevice = leAudioDevices_.FindByConnId(conn_id);
 
     if (!leAudioDevice) {
@@ -3146,6 +3157,10 @@ public:
     leAudioDevice->closing_stream_for_disconnection_ = false;
     leAudioDevice->encrypted_ = false;
     leAudioDevice->acl_phy_update_done_ = false;
+
+    log::info("Remove service data, addr: {}", address);
+    leAudioDevice->known_service_handles_ = false;
+    btif_storage_leaudio_clear_service_data(address);
 
     auto connection_state = leAudioDevice->GetConnectionState();
 
@@ -7102,7 +7117,9 @@ void le_audio_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
       break;
 
     case BTA_GATTC_SRVC_DISC_DONE_EVT:
-      instance->OnGattServiceDiscoveryDone(p_data->service_discovery_done.remote_bda);
+      /*PACS read would be done when encryption complete*/
+      log::warn("Needn't do PACS when BTA_GATTC_SRVC_DISC_DONE_EVT.");
+      //instance->OnGattServiceDiscoveryDone(p_data->service_discovery_done.remote_bda);
       break;
 
     case BTA_GATTC_SRVC_CHG_EVT:
