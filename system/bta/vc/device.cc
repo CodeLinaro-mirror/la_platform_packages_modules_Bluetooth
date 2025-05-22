@@ -454,7 +454,7 @@ void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
   log::debug("{}, number of variable-size attribute handles={}", address,
              handles_to_read_variable_length.size());
 
-  if (com::android::bluetooth::flags::le_ase_read_multiple_variable() && is_eatt_supported) {
+  if (is_eatt_supported) {
     const size_t payload_limit = this->mtu_ - 1;
 
     auto pair_it = handles_to_read.begin();
