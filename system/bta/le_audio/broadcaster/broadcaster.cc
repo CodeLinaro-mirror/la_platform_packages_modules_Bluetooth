@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <base/functional/bind.h>
@@ -745,40 +750,40 @@ public:
     if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
       /* Enable possibility for AF to drive stream */
       audio_state_ = AudioState::SUSPENDED;
-    } else {
-      if (queued_start_broadcast_request_) {
-        log::error("Not processed yet start broadcast request");
-        return;
-      }
+    }
 
-      if (is_iso_running_) {
-        queued_start_broadcast_request_ = broadcast_id;
-        return;
-      }
+    if (queued_start_broadcast_request_) {
+      log::error("Not processed yet start broadcast request");
+      return;
+    }
 
-      if (IsAnyoneStreaming()) {
-        log::error("Stop the other broadcast first!");
-        return;
-      }
+    if (is_iso_running_) {
+      queued_start_broadcast_request_ = broadcast_id;
+      return;
+    }
 
-      if (broadcasts_.count(broadcast_id) != 0) {
+    if (IsAnyoneStreaming()) {
+      log::error("Stop the other broadcast first!");
+      return;
+    }
+
+    if (broadcasts_.count(broadcast_id) != 0) {
+      if (!le_audio_source_hal_client_) {
+        le_audio_source_hal_client_ = LeAudioSourceAudioHalClient::AcquireBroadcast();
         if (!le_audio_source_hal_client_) {
-          le_audio_source_hal_client_ = LeAudioSourceAudioHalClient::AcquireBroadcast();
-          if (!le_audio_source_hal_client_) {
-            log::error("Could not acquire le audio");
-            return;
-          }
-
-          auto result = CodecManager::GetInstance()->UpdateActiveBroadcastAudioHalClient(
-                  le_audio_source_hal_client_.get(), true);
-          log::assert_that(result, "Could not update session in codec manager");
+          log::error("Could not acquire le audio");
+          return;
         }
 
-        broadcasts_[broadcast_id]->ProcessMessage(BroadcastStateMachine::Message::START, nullptr);
-        bluetooth::le_audio::MetricsCollector::Get()->OnBroadcastStateChanged(true);
-      } else {
-        log::error("No such broadcast_id={}", broadcast_id);
+        auto result = CodecManager::GetInstance()->UpdateActiveBroadcastAudioHalClient(
+                le_audio_source_hal_client_.get(), true);
+        log::assert_that(result, "Could not update session in codec manager");
       }
+
+      broadcasts_[broadcast_id]->ProcessMessage(BroadcastStateMachine::Message::START, nullptr);
+      bluetooth::le_audio::MetricsCollector::Get()->OnBroadcastStateChanged(true);
+    } else {
+      log::error("No such broadcast_id={}", broadcast_id);
     }
   }
 
