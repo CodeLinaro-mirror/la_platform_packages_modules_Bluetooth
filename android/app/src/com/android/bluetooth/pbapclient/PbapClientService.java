@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.pbapclient;
@@ -361,6 +365,13 @@ public class PbapClientService extends ProfileService {
             // HFP client stores entries in calllog.db by BD_ADDR and component name
             // Using the current Service as the context.
             removeHfpCallLog(device.getAddress(), this);
+        } else if (newState == BluetoothProfile.STATE_CONNECTED) {
+            Log.d(TAG, "Received intent to connect HFP with " + device);
+            int state = getConnectionState(device);
+            if (state != BluetoothProfile.STATE_CONNECTED
+                    && state != BluetoothProfile.STATE_CONNECTING ) {
+                connect(device);
+            }
         }
     }
 
