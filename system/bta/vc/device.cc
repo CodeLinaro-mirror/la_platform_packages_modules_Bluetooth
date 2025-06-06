@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <bluetooth/log.h>
@@ -420,7 +425,7 @@ bool VolumeControlDevice::EnqueueInitialRequests(tGATT_IF gatt_if, GATT_READ_OP_
  */
 void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
                                                    GATT_READ_OP_CB chrc_read_cb,
-                                                   GATT_READ_MULTI_OP_CB chrc_multi_read_cb,
+                                                   [[maybe_unused]] GATT_READ_MULTI_OP_CB chrc_multi_read_cb,
                                                    GATT_WRITE_OP_CB /*cccd_write_cb*/) {
   const auto is_eatt_supported = gatt_profile_get_eatt_support_by_conn_id(connection_id);
 
@@ -454,6 +459,7 @@ void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
   log::debug("{}, number of variable-size attribute handles={}", address,
              handles_to_read_variable_length.size());
 
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
   if (is_eatt_supported) {
     const size_t payload_limit = this->mtu_ - 1;
 
@@ -480,7 +486,11 @@ void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
       BtaGattQueue::ReadCharacteristic(connection_id, handle, chrc_read_cb, nullptr);
     }
   }
-
+#else
+  for (auto const& [handle, _] : handles_to_read) {
+    BtaGattQueue::ReadCharacteristic(connection_id, handle, chrc_read_cb, nullptr);
+  }
+#endif
   for (auto const& handle : handles_to_read_variable_length) {
     BtaGattQueue::ReadCharacteristic(connection_id, handle, chrc_read_cb, nullptr);
   }
