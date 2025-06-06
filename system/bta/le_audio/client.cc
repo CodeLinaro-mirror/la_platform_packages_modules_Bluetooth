@@ -664,6 +664,7 @@ public:
         notify_flag_ptr = INT_TO_PTR(leAudioDevice->notify_connected_after_read_);
       }
 
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
       if (!is_eatt_supported) {
         BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                          leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
@@ -685,6 +686,13 @@ public:
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, notify_flag_ptr);
     }
+#else
+      BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
+                                     leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
+                                     notify_flag_ptr);
+      continue;
+    }
+#endif
   }
 
   void OnGroupAddedCb(const RawAddress& address, const bluetooth::Uuid& uuid, int group_id) {
@@ -2688,6 +2696,7 @@ public:
      *    it can change very often which, as we observed, might lead to not being sent by
      *    remote devices
      */
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
     if (!is_eatt_supported) {
       BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                        leAudioDevice->audio_avail_hdls_.val_hdl,
@@ -2702,6 +2711,13 @@ public:
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, NULL);
     }
+#else
+    BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
+                                     leAudioDevice->audio_avail_hdls_.val_hdl,
+                                     OnGattReadRspStatic, NULL);
+    BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_, leAudioDevice->ctp_hdls_.ccc_hdl,
+                                     OnGattReadRspStatic, NULL);
+#endif
   }
 
   void OnEncryptionComplete(const RawAddress& address, tBTM_STATUS status) {
