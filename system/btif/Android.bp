@@ -91,6 +91,9 @@ genrule {
 cc_library_static {
     name: "libbtif",
     defaults: ["fluoride_defaults"],
+    cflags: [
+        "-DDUAL_BT",
+    ],
     include_dirs: btifCommonIncludes,
     srcs: [
         // AVRCP Target Service

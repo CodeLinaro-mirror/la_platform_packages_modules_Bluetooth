@@ -92,6 +92,9 @@ cc_fuzz {
     defaults: [
         "btcore_fuzz_defaults",
     ],
+    cflags: [
+        "-DDUAL_BT",
+    ],
     srcs: [
         "btcore_module_fuzzer.cpp",
     ],
