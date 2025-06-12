@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -25,6 +30,8 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
+
+import com.android.bluetooth.btservice.AdapterService;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -148,7 +155,7 @@ public class AvrcpCoverArtProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
+        mAdapter = AdapterService.getAdapter();
         return true;
     }
 

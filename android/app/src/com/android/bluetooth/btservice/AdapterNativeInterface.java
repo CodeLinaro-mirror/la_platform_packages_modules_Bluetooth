@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
@@ -63,6 +63,10 @@ public class AdapterNativeInterface {
 
     JniCallbacks getCallbacks() {
         return mJniCallbacks;
+    }
+
+    void setAdapterIndex(int adapterIndex) {
+        setAdapterIndexNative(adapterIndex);
     }
 
     boolean init(
@@ -347,6 +351,7 @@ public class AdapterNativeInterface {
     /**********************************************************************************************/
     /******************************************* native *******************************************/
     /**********************************************************************************************/
+    private native void setAdapterIndexNative(int adapterIndex);
 
     private native boolean initNative(
             boolean startRestricted,

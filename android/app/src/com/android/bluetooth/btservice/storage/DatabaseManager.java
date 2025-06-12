@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice.storage;
@@ -67,6 +72,7 @@ public class DatabaseManager {
     private static final String TAG = "BluetoothDatabase";
 
     private final AdapterService mAdapterService;
+    private BluetoothAdapter mAdapter = null;
     private HandlerThread mHandlerThread = null;
     private Handler mHandler = null;
     private final Object mDatabaseLock = new Object();
@@ -107,6 +113,7 @@ public class DatabaseManager {
     /** Constructor of the DatabaseManager */
     public DatabaseManager(AdapterService service) {
         mAdapterService = Objects.requireNonNull(service, "Adapter service cannot be null");
+        mAdapter = mAdapterService.getAdapter();
         mMetadataChangedLog = EvictingQueue.create(METADATA_CHANGED_LOG_MAX_SIZE);
     }
 
@@ -754,9 +761,7 @@ public class DatabaseManager {
             sortedMetadata.sort((o1, o2) -> Long.compare(o2.last_active_time, o1.last_active_time));
             for (Metadata metadata : sortedMetadata) {
                 try {
-                    mostRecentlyConnectedDevices.add(
-                            BluetoothAdapter.getDefaultAdapter()
-                                    .getRemoteDevice(metadata.getAddress()));
+                    mostRecentlyConnectedDevices.add(mAdapter.getRemoteDevice(metadata.getAddress()));
                 } catch (IllegalArgumentException ex) {
                     Log.d(
                             TAG,
@@ -809,8 +814,7 @@ public class DatabaseManager {
                 Metadata metadata = entry.getValue();
                 if (metadata.is_active_a2dp_device) {
                     try {
-                        return BluetoothAdapter.getDefaultAdapter()
-                                .getRemoteDevice(metadata.getAddress());
+                        return mAdapter.getRemoteDevice(metadata.getAddress());
                     } catch (IllegalArgumentException ex) {
                         Log.d(
                                 TAG,
@@ -839,8 +843,7 @@ public class DatabaseManager {
         }
         if (entry != null) {
             try {
-                return BluetoothAdapter.getDefaultAdapter()
-                        .getRemoteDevice(entry.getValue().getAddress());
+                return mAdapter.getRemoteDevice(entry.getValue().getAddress());
             } catch (IllegalArgumentException ex) {
                 Log.d(
                         TAG,
@@ -856,11 +859,10 @@ public class DatabaseManager {
      * @return the list of device registered as HFP active
      */
     public List<BluetoothDevice> getMostRecentlyActiveHfpDevices() {
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         synchronized (mMetadataCache) {
             return mMetadataCache.entrySet().stream()
                     .filter(x -> x.getValue().isActiveHfpDevice)
-                    .map(x -> adapter.getRemoteDevice(x.getValue().getAddress()))
+                    .map(x -> mAdapter.getRemoteDevice(x.getValue().getAddress()))
                     .collect(Collectors.toList());
         }
     }
