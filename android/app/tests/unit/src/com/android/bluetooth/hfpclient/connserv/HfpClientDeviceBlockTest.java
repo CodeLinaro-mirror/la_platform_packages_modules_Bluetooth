@@ -35,13 +35,13 @@ import androidx.test.filters.MediumTest;
 import androidx.test.runner.AndroidJUnit4;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 
+/** Test cases for {@link HfpClientDeviceBlock}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class HfpClientDeviceBlockTest {
@@ -125,7 +125,6 @@ public class HfpClientDeviceBlockTest {
     }
 
     @Test
-    @Ignore("b/191783947")
     public void testHandleMultiPartyCall_scoStateIsSetOnConference() {
         HfpClientCall call =
                 new HfpClientCall(
@@ -143,7 +142,6 @@ public class HfpClientDeviceBlockTest {
 
         ArgumentCaptor<HfpClientConference> conferenceCaptor =
                 ArgumentCaptor.forClass(HfpClientConference.class);
-        // TODO(b/191783947): addConference is final and cannot be mocked
         verify(mConnServ).addConference(conferenceCaptor.capture());
 
         HfpClientConference conference = conferenceCaptor.getValue();

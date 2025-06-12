@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,15 @@
 
 package com.android.bluetooth.avrcp;
 
+import static android.Manifest.permission.MEDIA_CONTENT_CONTROL;
+
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.mockGetSystemService;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyObject;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
@@ -57,6 +59,7 @@ import org.mockito.Mock;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Test cases for {@link AvrcpTargetService}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class AvrcpTargetServiceTest {
@@ -82,6 +85,9 @@ public class AvrcpTargetServiceTest {
 
     @Before
     public void setUp() throws Exception {
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .adoptShellPermissionIdentity(MEDIA_CONTENT_CONTROL);
         mLooper = new TestLooper();
         mLooper.startAutoDispatch();
 
@@ -109,6 +115,9 @@ public class AvrcpTargetServiceTest {
     @After
     public void tearDown() throws Exception {
         mLooper.stopAutoDispatchAndIgnoreExceptions();
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .dropShellPermissionIdentity();
     }
 
     @Test
@@ -143,7 +152,7 @@ public class AvrcpTargetServiceTest {
         assertThat(AvrcpTargetService.isQueueUpdated(firstQueue, secondQueue)).isTrue();
     }
 
-    private Metadata createEmptyMetadata() {
+    private static Metadata createEmptyMetadata() {
         Metadata.Builder builder = new Metadata.Builder();
         return builder.useDefaults().build();
     }
@@ -162,7 +171,7 @@ public class AvrcpTargetServiceTest {
                         mLooper.getLooper());
 
         verify(mMockAudioManager)
-                .registerAudioDeviceCallback(mAudioDeviceCb.capture(), anyObject());
+                .registerAudioDeviceCallback(mAudioDeviceCb.capture(), any());
 
         service.cleanup();
         assertThat(mAudioDeviceCb.getValue()).isNotNull();

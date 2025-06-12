@@ -19,6 +19,8 @@ package android.bluetooth.pairing;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothAdapter.OobDataCallback;
 import android.bluetooth.BluetoothDevice;
@@ -275,7 +277,7 @@ public class OobPairingTest {
      * </ol>
      */
     @Test
-    public void createBondByRemoteDevicWithLocalOob() throws Exception {
+    public void createBondByRemoteDeviceWithLocalOob() throws Exception {
         IntentReceiver intentReceiver =
                 new IntentReceiver.Builder(mContext, BluetoothDevice.ACTION_BOND_STATE_CHANGED)
                         .setIntentListener(intentListener)
@@ -340,11 +342,14 @@ public class OobPairingTest {
         while (true) {
             if (scanningResponseIterator.hasNext()) {
                 ScanningResponse scanningResponse = scanningResponseIterator.next();
-                // select first available device
+                // select first available device with Random address type
                 deviceAddr = scanningResponse.getRandom();
-                break;
+                if (deviceAddr != null) {
+                    break;
+                }
             }
         }
+        assertThat(deviceAddr).isNotNull();
 
         ConnectLEResponse leConn =
                 mBumble.hostBlocking()

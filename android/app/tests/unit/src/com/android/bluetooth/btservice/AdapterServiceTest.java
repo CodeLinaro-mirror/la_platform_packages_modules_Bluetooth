@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,10 @@ import static android.bluetooth.BluetoothAdapter.STATE_OFF;
 import static android.bluetooth.BluetoothAdapter.STATE_ON;
 import static android.bluetooth.BluetoothAdapter.STATE_TURNING_OFF;
 import static android.bluetooth.BluetoothAdapter.STATE_TURNING_ON;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -66,7 +70,6 @@ import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.FlagsParameterization;
 import android.platform.test.flag.junit.SetFlagsRule;
 import android.provider.Settings;
-import android.sysprop.BluetoothProperties;
 import android.test.mock.MockContentProvider;
 import android.test.mock.MockContentResolver;
 import android.util.Log;
@@ -102,9 +105,6 @@ import platform.test.runner.parameterized.Parameters;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
@@ -113,6 +113,7 @@ import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+/** Test cases for {@link AdapterService}. */
 @MediumTest
 @RunWith(ParameterizedAndroidJunit4.class)
 public class AdapterServiceTest {
@@ -225,9 +226,7 @@ public class AdapterServiceTest {
 
         doReturn(true).when(mMockLeAudioService).isAvailable();
         LeAudioService.setLeAudioService(mMockLeAudioService);
-        doReturn(BluetoothProfile.CONNECTION_POLICY_ALLOWED)
-                .when(mMockLeAudioService)
-                .getConnectionPolicy(any());
+        doReturn(CONNECTION_POLICY_ALLOWED).when(mMockLeAudioService).getConnectionPolicy(any());
 
         AdapterNativeInterface.setInstance(mNativeInterface);
         BluetoothKeystoreNativeInterface.setInstance(mKeystoreNativeInterface);
@@ -289,12 +288,7 @@ public class AdapterServiceTest {
         doReturn(false).when(dpm).isCommonCriteriaModeEnabled(any());
         mockGetSystemService(Context.USER_SERVICE, UserManager.class);
 
-        // BatteryStatsManager is final and cannot be mocked with regular mockito, so just return
-        // real implementation
-        mockGetSystemService(
-                Context.BATTERY_STATS_SERVICE,
-                BatteryStatsManager.class,
-                targetContext.getSystemService(BatteryStatsManager.class));
+        mockGetSystemService(Context.BATTERY_STATS_SERVICE, BatteryStatsManager.class);
         mockGetSystemService(Context.BLUETOOTH_SERVICE, BluetoothManager.class, mBluetoothManager);
         mockGetSystemService(
                 Context.COMPANION_DEVICE_SERVICE,
@@ -402,7 +396,7 @@ public class AdapterServiceTest {
     }
 
     private List<ProfileService> listOfMockServices() {
-        return Flags.scanManagerRefactor()
+        return Flags.onlyStartScanDuringBleOn()
                 ? List.of(mMockGattService, mMockService, mMockService2)
                 : List.of(mMockService, mMockService2);
     }
@@ -419,7 +413,7 @@ public class AdapterServiceTest {
         TestUtils.syncHandler(looper, AdapterState.BLE_TURN_ON);
         verifyStateChange(callback, STATE_OFF, STATE_BLE_TURNING_ON);
 
-        if (!Flags.scanManagerRefactor()) {
+        if (!Flags.onlyStartScanDuringBleOn()) {
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_REGISTERED);
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
         }
@@ -443,7 +437,7 @@ public class AdapterServiceTest {
         verifyStateChange(callback, STATE_ON, STATE_TURNING_OFF);
 
         if (!onlyGatt) {
-            // Stop (if Flags.scanManagerRefactor GATT), PBAP, and PAN services
+            // Stop (if Flags.onlyStartScanDuringBleOn GATT), PBAP, and PAN services
             assertThat(adapter.mSetProfileServiceStateCounter).isEqualTo(services.size() * 2);
 
             for (ProfileService service : services) {
@@ -494,7 +488,7 @@ public class AdapterServiceTest {
         verifyStateChange(callback, STATE_BLE_ON, STATE_TURNING_ON);
 
         if (!onlyGatt) {
-            // Start Mock (if Flags.scanManagerRefactor GATT), PBAP, and PAN services
+            // Start Mock (if Flags.onlyStartScanDuringBleOn GATT), PBAP, and PAN services
             assertThat(adapter.mSetProfileServiceStateCounter).isEqualTo(services.size());
 
             for (ProfileService service : services) {
@@ -547,7 +541,7 @@ public class AdapterServiceTest {
         TestUtils.syncHandler(looper, AdapterState.BLE_TURN_OFF);
         verifyStateChange(callback, STATE_BLE_ON, STATE_BLE_TURNING_OFF);
 
-        if (!Flags.scanManagerRefactor()) {
+        if (!Flags.onlyStartScanDuringBleOn()) {
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
             TestUtils.syncHandler(looper, MESSAGE_PROFILE_SERVICE_UNREGISTERED);
         }
@@ -599,7 +593,7 @@ public class AdapterServiceTest {
      * started and stopped.
      */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testEnableDisableOnlyGatt() {
         Context mockContext = mock(Context.class);
         Resources mockResources = mock(Resources.class);
@@ -622,7 +616,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't start GATT Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testGattStartTimeout() {
         assertThat(mAdapterService.getState()).isEqualTo(STATE_OFF);
 
@@ -654,7 +648,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't stop GATT Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testGattStopTimeout() {
         doEnable(false);
 
@@ -687,8 +681,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBleOnly_whenScanManagerRefactorFlagIsOff_onlyStartGattProfile() {
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBleOnly_whenOnlyStartScanDuringBleOnFlagIsOff_onlyStartGattProfile() {
         mAdapterService.bringUpBle();
 
         assertThat(mAdapterService.getBluetoothGatt()).isNotNull();
@@ -699,8 +693,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBleOnly_whenScanManagerRefactorFlagIsOn_onlyStartScanController() {
+    @EnableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBleOnly_whenOnlyStartScanDuringBleOnFlagIsOn_onlyStartScanController() {
         mAdapterService.bringUpBle();
 
         assertThat(mAdapterService.getBluetoothGatt()).isNull();
@@ -709,8 +703,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBleOnly_whenScanManagerRefactorFlagIsOn_startAndStopScanController() {
+    @EnableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBleOnly_whenOnlyStartScanDuringBleOnFlagIsOn_startAndStopScanController() {
         assertThat(mAdapterService.getBluetoothScan()).isNull();
         assertThat(mAdapterService.getBluetoothGatt()).isNull();
 
@@ -751,8 +745,8 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
-    public void startBrDr_whenScanManagerRefactorFlagIsOn_startAndStopScanController() {
+    @EnableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
+    public void startBrDr_whenOnlyStartScanDuringBleOnFlagIsOn_startAndStopScanController() {
         assertThat(mAdapterService.getBluetoothScan()).isNull();
         assertThat(mAdapterService.getBluetoothGatt()).isNull();
 
@@ -820,7 +814,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't start a classic profile Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testProfileStartTimeout() {
         assertThat(mAdapterService.getState()).isEqualTo(STATE_OFF);
 
@@ -864,7 +858,7 @@ public class AdapterServiceTest {
 
     /** Test: Don't stop a classic profile Check whether the AdapterService quits gracefully */
     @Test
-    @DisableFlags(Flags.FLAG_SCAN_MANAGER_REFACTOR)
+    @DisableFlags(Flags.FLAG_ONLY_START_SCAN_DURING_BLE_ON)
     public void testProfileStopTimeout() {
         doEnable(false);
 
@@ -897,55 +891,6 @@ public class AdapterServiceTest {
         assertThat(mLooper.nextMessage()).isNull();
     }
 
-    /** Test: Toggle snoop logging setting Check whether the AdapterService restarts fully */
-    @Test
-    public void testSnoopLoggingChange() {
-        BluetoothProperties.snoop_log_mode_values snoopSetting =
-                BluetoothProperties.snoop_log_mode()
-                        .orElse(BluetoothProperties.snoop_log_mode_values.EMPTY);
-        BluetoothProperties.snoop_log_mode(BluetoothProperties.snoop_log_mode_values.DISABLED);
-        doEnable(false);
-
-        assertThat(
-                        BluetoothProperties.snoop_log_mode()
-                                .orElse(BluetoothProperties.snoop_log_mode_values.EMPTY))
-                .isNotEqualTo(BluetoothProperties.snoop_log_mode_values.FULL);
-
-        BluetoothProperties.snoop_log_mode(BluetoothProperties.snoop_log_mode_values.FULL);
-
-        onToBleOn(
-                mLooper,
-                mAdapterService,
-                mMockContext,
-                mIBluetoothCallback,
-                false,
-                listOfMockServices());
-
-        // Do not call bleOnToOff().  The Adapter should turn itself off.
-        syncHandler(AdapterState.BLE_TURN_OFF);
-        verifyStateChange(STATE_BLE_ON, STATE_BLE_TURNING_OFF, CONTEXT_SWITCH_MS);
-
-        if (!Flags.scanManagerRefactor()) {
-            syncHandler(MESSAGE_PROFILE_SERVICE_STATE_CHANGED); // stop GATT
-            syncHandler(MESSAGE_PROFILE_SERVICE_UNREGISTERED);
-        }
-
-        verify(mNativeInterface).disable();
-
-        mAdapterService.stateChangeCallback(AbstractionLayer.BT_STATE_OFF);
-        syncHandler(AdapterState.BLE_STOPPED);
-        // When reaching the OFF state, the cleanup is called that will destroy the state machine of
-        // the adapterService. Destroying state machine send a -1 event on the handler
-        syncHandler(-1);
-
-        verifyStateChange(STATE_BLE_TURNING_OFF, STATE_OFF);
-        assertThat(mAdapterService.getState()).isEqualTo(STATE_OFF);
-
-        // Restore earlier setting
-        BluetoothProperties.snoop_log_mode(snoopSetting);
-        assertThat(mLooper.nextMessage()).isNull();
-    }
-
     /**
      * Test: Obfuscate a null Bluetooth Check if returned value from {@link
      * AdapterService#obfuscateAddress(BluetoothDevice)} is an empty array when device address is
@@ -962,10 +907,6 @@ public class AdapterServiceTest {
         // Create device properties
         RemoteDevices remoteDevices = mAdapterService.getRemoteDevices();
         remoteDevices.addDeviceProperties(Utils.getBytesFromAddress((TEST_BT_ADDR_1)));
-        String identityAddress = mAdapterService.getIdentityAddress(TEST_BT_ADDR_1);
-        if (!Flags.identityAddressNullIfNotKnown()) {
-            assertThat(identityAddress).isEqualTo(TEST_BT_ADDR_1);
-        }
 
         // Trigger address consolidate callback
         remoteDevices.addressConsolidateCallback(
@@ -973,7 +914,7 @@ public class AdapterServiceTest {
                 Utils.getBytesFromAddress(TEST_BT_ADDR_2));
 
         // Verify we can get correct identity address
-        identityAddress = mAdapterService.getIdentityAddress(TEST_BT_ADDR_1);
+        String identityAddress = mAdapterService.getIdentityAddress(TEST_BT_ADDR_1);
         assertThat(identityAddress).isEqualTo(TEST_BT_ADDR_2);
         assertThat(mLooper.nextMessage()).isNull();
     }
@@ -1010,7 +951,6 @@ public class AdapterServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_IDENTITY_ADDRESS_NULL_IF_NOT_KNOWN)
     public void testIdentityAddressNullIfUnknown() {
         BluetoothDevice device = getTestDevice(0);
 
@@ -1076,47 +1016,7 @@ public class AdapterServiceTest {
 
         mAdapterService.dump(fd, writer, new String[] {});
         mAdapterService.dump(fd, writer, new String[] {"set-test-mode", "enabled"});
-        doReturn(new byte[0]).when(mNativeInterface).dumpMetrics();
-        mAdapterService.dump(fd, writer, new String[] {"--proto-bin"});
         mAdapterService.dump(fd, writer, new String[] {"random", "arguments"});
-        assertThat(mLooper.nextMessage()).isNull();
-    }
-
-    @Test
-    @EnableFlags(Flags.FLAG_GATT_CLEAR_CACHE_ON_FACTORY_RESET)
-    public void testClearStorage() throws Exception {
-        // clearStorage should remove all files under /data/misc/bluetooth/ && /data/misc/bluedroid/
-        final Path testCachePath = Paths.get("/data/misc/bluetooth/gatt_cache_a475b9a23d72");
-        final Path testHashPath =
-                Paths.get("/data/misc/bluetooth/gatt_hash_400D017CB2563A6FB62A2DC4C2AEFD6F");
-        final Path randomFileUnderBluedroidPath =
-                Paths.get("/data/misc/bluedroid/random_test_file.txt");
-        final Path randomFileUnderBluetoothPath =
-                Paths.get("/data/misc/bluetooth/random_test_file.txt");
-
-        try {
-            Files.createFile(testCachePath);
-            Files.createFile(testHashPath);
-            Files.createFile(randomFileUnderBluedroidPath);
-            Files.createFile(randomFileUnderBluetoothPath);
-
-            assertThat(Files.exists(testCachePath)).isTrue();
-            assertThat(Files.exists(testHashPath)).isTrue();
-            assertThat(Files.exists(randomFileUnderBluedroidPath)).isTrue();
-            assertThat(Files.exists(randomFileUnderBluetoothPath)).isTrue();
-
-            mAdapterService.clearStorage();
-
-            assertThat(Files.exists(testCachePath)).isFalse();
-            assertThat(Files.exists(testHashPath)).isFalse();
-            assertThat(Files.exists(randomFileUnderBluedroidPath)).isFalse();
-            assertThat(Files.exists(randomFileUnderBluetoothPath)).isFalse();
-        } finally {
-            Files.deleteIfExists(testCachePath);
-            Files.deleteIfExists(testHashPath);
-            Files.deleteIfExists(randomFileUnderBluedroidPath);
-            Files.deleteIfExists(randomFileUnderBluetoothPath);
-        }
         assertThat(mLooper.nextMessage()).isNull();
     }
 
@@ -1149,7 +1049,7 @@ public class AdapterServiceTest {
     @EnableFlags(Flags.FLAG_ALLOW_GATT_CONNECT_FROM_THE_APPS_WITHOUT_MAKING_LEAUDIO_DEVICE_ACTIVE)
     public void testGattConnectionToLeAudioDevice_whenDeviceIsNotConnected_success() {
         int groupId = 1;
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1171,7 +1071,7 @@ public class AdapterServiceTest {
     @EnableFlags(Flags.FLAG_ALLOW_GATT_CONNECT_FROM_THE_APPS_WITHOUT_MAKING_LEAUDIO_DEVICE_ACTIVE)
     public void testGattConnectionToLeAudioDevice_whenDeviceIsConnected_ignore() {
         int groupId = 1;
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1193,7 +1093,7 @@ public class AdapterServiceTest {
     @EnableFlags(Flags.FLAG_ALLOW_GATT_CONNECT_FROM_THE_APPS_WITHOUT_MAKING_LEAUDIO_DEVICE_ACTIVE)
     public void testGattConnectionToLeAudioDevice_whenLeAudioIsNotAllowed_ignore() {
         int groupId = 1;
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_DISCONNECTED;
+        int getConnectionState_LeAudioService = STATE_DISCONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1205,9 +1105,7 @@ public class AdapterServiceTest {
                         getConnectionState_LeAudioService,
                         getConnectionState_AdapterService);
 
-        doReturn(BluetoothProfile.CONNECTION_POLICY_FORBIDDEN)
-                .when(mMockLeAudioService)
-                .getConnectionPolicy(any());
+        doReturn(CONNECTION_POLICY_FORBIDDEN).when(mMockLeAudioService).getConnectionPolicy(any());
         mAdapterService.notifyDirectLeGattClientConnect(1, mDevice);
 
         order.verify(mMockLeAudioService, never()).setAutoActiveModeState(groupId, false);
@@ -1220,7 +1118,7 @@ public class AdapterServiceTest {
         int groupId = 1;
         int clientIf = 1;
 
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1248,7 +1146,7 @@ public class AdapterServiceTest {
         int groupId = 1;
         int clientIf = 1;
 
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_DISCONNECTED;
+        int getConnectionState_LeAudioService = STATE_DISCONNECTED;
         int getConnectionState_AdapterService = BluetoothDevice.CONNECTION_STATE_DISCONNECTED;
         InOrder order =
                 prepareLeAudioWithConnectedDevices(
@@ -1275,7 +1173,7 @@ public class AdapterServiceTest {
     public void testGattConnectionToLeAudioDevice_triggerDisconnecting() {
         int groupId = 1;
         int clientIf = 1;
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1307,7 +1205,7 @@ public class AdapterServiceTest {
         int clientIf = 1;
         int clientIfTwo = 2;
 
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1355,7 +1253,7 @@ public class AdapterServiceTest {
         int clientIf = 1;
         int clientIfTwo = 2;
 
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;
@@ -1404,7 +1302,7 @@ public class AdapterServiceTest {
         int clientIf = 1;
         int clientIfTwo = 2;
 
-        int getConnectionState_LeAudioService = BluetoothProfile.STATE_CONNECTED;
+        int getConnectionState_LeAudioService = STATE_CONNECTED;
         int getConnectionState_AdapterService =
                 BluetoothDevice.CONNECTION_STATE_ENCRYPTED_LE
                         | BluetoothDevice.CONNECTION_STATE_CONNECTED;

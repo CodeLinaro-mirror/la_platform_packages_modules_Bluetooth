@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ public class ScanObjectsFactory {
                 adapterService, scanController, bluetoothAdapterProxy, looper, getSystemClock());
     }
 
-    public PeriodicScanManager createPeriodicScanManager(AdapterService adapterService) {
-        return new PeriodicScanManager(adapterService);
+    public PeriodicScanManager createPeriodicScanManager() {
+        return new PeriodicScanManager();
     }
 }

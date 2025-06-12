@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
+/** Test cases for {@link PbapPhonebook}. */
 @RunWith(AndroidJUnit4.class)
 public class PbapPhonebookTest {
 
@@ -42,7 +43,7 @@ public class PbapPhonebookTest {
     // *********************************************************************************************
 
     @Test
-    public void testCreatePhonebook_forFavorites_emptyFavoritesPhonebookeCreated()
+    public void testCreatePhonebook_forFavorites_emptyFavoritesPhonebookCreated()
             throws IOException {
         PbapPhonebook phonebook = new PbapPhonebook(PbapPhonebook.FAVORITES_PATH);
         assertThat(phonebook.getPhonebook()).isEqualTo(PbapPhonebook.FAVORITES_PATH);
@@ -52,7 +53,7 @@ public class PbapPhonebookTest {
     }
 
     @Test
-    public void testCreatePhonebook_forLocalPhonebook_emptyLocalPhonebookeCreated()
+    public void testCreatePhonebook_forLocalPhonebook_emptyLocalPhonebookCreated()
             throws IOException {
         PbapPhonebook phonebook = new PbapPhonebook(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
         assertThat(phonebook.getPhonebook()).isEqualTo(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
@@ -112,7 +113,7 @@ public class PbapPhonebookTest {
     }
 
     @Test
-    public void testCreatePhonebook_forSimMissedCallHistory_emptyMiSimssedCallHistoryCreated()
+    public void testCreatePhonebook_forSimMissedCallHistory_emptySimMissedCallHistoryCreated()
             throws IOException {
         PbapPhonebook phonebook = new PbapPhonebook(PbapPhonebook.SIM_MCH_PATH);
         assertThat(phonebook.getPhonebook()).isEqualTo(PbapPhonebook.SIM_MCH_PATH);
@@ -548,7 +549,7 @@ public class PbapPhonebookTest {
     // * Utilities
     // *********************************************************************************************
 
-    private InputStream toUtf8Stream(String s) {
+    private static InputStream toUtf8Stream(String s) {
         return new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8));
     }
 }

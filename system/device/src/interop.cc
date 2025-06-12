@@ -47,9 +47,6 @@
 #include "osi/include/osi.h"
 #include "types/raw_address.h"
 
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
-
 using namespace bluetooth;
 
 #ifdef __ANDROID__
@@ -395,6 +392,7 @@ static const char* interop_feature_string_(const interop_feature_t feature) {
     CASE_RETURN_STR(INTEROP_HOGP_LONG_REPORT);
     CASE_RETURN_STR(INTEROP_HOGP_FORCE_MTU_EXCHANGE);
     CASE_RETURN_STR(INTEROP_DISABLE_HF_PROFILE);
+    CASE_RETURN_STR(INTEROP_DISABLE_READ_LE_APPEARANCE);
   }
   return UNKNOWN_INTEROP_FEATURE;
 }
@@ -792,7 +790,7 @@ static char* trim(char* str) {
   return str;
 }
 
-bool token_to_ul(char* token, uint16_t* ul) {
+static bool token_to_ul(char* token, uint16_t* ul) {
   char* e;
   bool ret_value = false;
 

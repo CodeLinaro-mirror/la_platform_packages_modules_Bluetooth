@@ -29,11 +29,9 @@
 #include "le_audio/gmap_server.h"
 #include "le_audio/le_audio_types.h"
 #include "le_audio_set_configuration_provider.h"
+#include "osi/include/properties.h"
 #include "test/mock/mock_legacy_hci_interface.h"
 #include "test/mock/mock_main_shim_entry.h"
-
-// TODO(b/369381361) Enfore -Wmissing-prototypes
-#pragma GCC diagnostic ignored "-Wmissing-prototypes"
 
 using ::testing::_;
 using ::testing::Mock;
@@ -49,27 +47,25 @@ using bluetooth::le_audio::types::CodecLocation;
 using bluetooth::le_audio::types::kLeAudioDirectionSink;
 using bluetooth::le_audio::types::kLeAudioDirectionSource;
 
-void osi_property_set_bool(const char* key, bool value);
-
 static const std::vector<AudioSetConfiguration> offload_capabilities_none(0);
 
 const std::vector<AudioSetConfiguration>* offload_capabilities = &offload_capabilities_none;
 
 const std::string kSmpOptions("mock smp options");
-bool get_pts_avrcp_test(void) { return false; }
-bool get_pts_secure_only_mode(void) { return false; }
-bool get_pts_conn_updates_disabled(void) { return false; }
-bool get_pts_crosskey_sdp_disable(void) { return false; }
-const std::string* get_pts_smp_options(void) { return &kSmpOptions; }
-int get_pts_smp_failure_case(void) { return 123; }
-bool get_pts_force_eatt_for_notifications(void) { return false; }
-bool get_pts_connect_eatt_unconditionally(void) { return false; }
-bool get_pts_connect_eatt_before_encryption(void) { return false; }
-bool get_pts_unencrypt_broadcast(void) { return false; }
-bool get_pts_eatt_peripheral_collision_support(void) { return false; }
-bool get_pts_force_le_audio_multiple_contexts_metadata(void) { return false; }
-bool get_pts_le_audio_disable_ases_before_stopping(void) { return false; }
-config_t* get_all(void) { return nullptr; }
+static bool get_pts_avrcp_test(void) { return false; }
+static bool get_pts_secure_only_mode(void) { return false; }
+static bool get_pts_conn_updates_disabled(void) { return false; }
+static bool get_pts_crosskey_sdp_disable(void) { return false; }
+static const std::string* get_pts_smp_options(void) { return &kSmpOptions; }
+static int get_pts_smp_failure_case(void) { return 123; }
+static bool get_pts_force_eatt_for_notifications(void) { return false; }
+static bool get_pts_connect_eatt_unconditionally(void) { return false; }
+static bool get_pts_connect_eatt_before_encryption(void) { return false; }
+static bool get_pts_unencrypt_broadcast(void) { return false; }
+static bool get_pts_eatt_peripheral_collision_support(void) { return false; }
+static bool get_pts_force_le_audio_multiple_contexts_metadata(void) { return false; }
+static bool get_pts_le_audio_disable_ases_before_stopping(void) { return false; }
+static config_t* get_all(void) { return nullptr; }
 
 stack_config_t mock_stack_config{
         .get_pts_avrcp_test = get_pts_avrcp_test,
@@ -278,7 +274,7 @@ static const types::CodecConfigSetting vendor_code_48_2 = {
         .channel_count_per_iso_stream = 1,
 };
 
-void set_mock_offload_capabilities(const std::vector<AudioSetConfiguration>& caps) {
+static void set_mock_offload_capabilities(const std::vector<AudioSetConfiguration>& caps) {
   offload_capabilities = &caps;
 }
 
@@ -289,7 +285,7 @@ static constexpr char kPropLeAudioOffloadDisabled[] = "persist.bluetooth.leaudio
 static constexpr char kPropLeAudioBidirSwbSupported[] =
         "bluetooth.leaudio.dual_bidirection_swb.supported";
 
-RawAddress GetTestAddress(uint8_t index) {
+static RawAddress GetTestAddress(uint8_t index) {
   EXPECT_LT(index, UINT8_MAX);
   RawAddress result = {{0xC0, 0xDE, 0xC0, 0xDE, 0x00, index}};
   return result;
@@ -304,10 +300,12 @@ public:
 
     bluetooth::legacy::hci::testing::SetMock(legacy_hci_mock_);
 
-    ON_CALL(controller_interface, SupportsBleIsochronousBroadcaster).WillByDefault(Return(true));
-    ON_CALL(controller_interface, IsSupported(OpCode::CONFIGURE_DATA_PATH))
+    bluetooth::hci::testing::mock_controller_ =
+            std::make_unique<NiceMock<bluetooth::hci::testing::MockControllerInterface>>();
+    ON_CALL(*bluetooth::hci::testing::mock_controller_, SupportsBleIsochronousBroadcaster)
             .WillByDefault(Return(true));
-    bluetooth::hci::testing::mock_controller_ = &controller_interface;
+    ON_CALL(*bluetooth::hci::testing::mock_controller_, IsSupported(OpCode::CONFIGURE_DATA_PATH))
+            .WillByDefault(Return(true));
 
     codec_manager = CodecManager::GetInstance();
 
@@ -315,9 +313,11 @@ public:
     RegisterSinkHalClientMock();
   }
 
-  virtual void TearDown() override { codec_manager->Stop(); }
+  virtual void TearDown() override {
+    codec_manager->Stop();
+    bluetooth::hci::testing::mock_controller_.release();
+  }
 
-  NiceMock<bluetooth::hci::testing::MockControllerInterface> controller_interface;
   CodecManager* codec_manager;
   bluetooth::legacy::hci::testing::MockInterface legacy_hci_mock_;
 
@@ -368,8 +368,6 @@ public:
 
     // Disable codec extensibility by default
     osi_property_set_bool(kPropLeAudioCodecExtensibility, false);
-
-    com::android::bluetooth::flags::provider_->leaudio_mono_location_errata(false);
 
     CodecManagerTestBase::SetUp();
   }
@@ -542,7 +540,6 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationAdspDownMix) {
 }
 
 TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
-  com::android::bluetooth::flags::provider_->leaudio_mono_location_errata(true);
   const std::vector<bluetooth::le_audio::btle_audio_codec_config_t> offloading_preference(0);
   codec_manager->Start(offloading_preference);
 
@@ -563,15 +560,16 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
   };
 
   // Stream parameters
+  auto stream_map_entry_mono_bidir =
+          stream_map_info(97, codec_spec_conf::kLeAudioLocationMonoAudio, true);
+  stream_map_entry_mono_bidir.codec_config.id = kLeAudioCodecIdLc3;
   types::BidirectionalPair<stream_parameters> stream_params{
           .sink =
                   {
                           .audio_channel_allocation = codec_spec_conf::kLeAudioLocationMonoAudio,
                           .stream_config =
                                   {
-                                          .stream_map = {stream_map_info(
-                                                  97, codec_spec_conf::kLeAudioLocationMonoAudio,
-                                                  true)},
+                                          .stream_map = {stream_map_entry_mono_bidir},
                                           .bits_per_sample = 16,
                                           .sampling_frequency_hz = 16000,
                                           .frame_duration_us = 10000,
@@ -587,9 +585,7 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
                           .audio_channel_allocation = codec_spec_conf::kLeAudioLocationMonoAudio,
                           .stream_config =
                                   {
-                                          .stream_map = {stream_map_info(
-                                                  97, codec_spec_conf::kLeAudioLocationMonoAudio,
-                                                  true)},
+                                          .stream_map = {stream_map_entry_mono_bidir},
                                           .bits_per_sample = 16,
                                           .sampling_frequency_hz = 16000,
                                           .frame_duration_us = 10000,
@@ -632,6 +628,7 @@ TEST_F(CodecManagerTestAdsp, testStreamConfigurationMono) {
         ASSERT_EQ(codec_spec_conf::kLeAudioLocationMonoAudio, info.audio_channel_allocation);
         // The connected should be active
         ASSERT_TRUE(info.is_stream_active);
+        ASSERT_EQ(info.codec_config.id.coding_format, kLeAudioCodecIdLc3.coding_format);
 
       } else {
         ASSERT_EQ(97, info.stream_handle);
@@ -728,6 +725,17 @@ TEST_F(CodecManagerTestAdsp, test_capabilities) {
     const std::vector<bluetooth::le_audio::btle_audio_codec_config_t> offloading_preference = {
             {.codec_type = bluetooth::le_audio::LE_AUDIO_CODEC_INDEX_SOURCE_LC3}};
     codec_manager->Start(offloading_preference);
+
+    auto output_capabilities = codec_manager->GetLocalAudioOutputCodecCapa();
+    bool is_multiplex_supported = false;
+    for (auto& capa : output_capabilities) {
+      if (capa.channel_count > bluetooth::le_audio::LE_AUDIO_CHANNEL_COUNT_INDEX_1) {
+        is_multiplex_supported = true;
+        break;
+      }
+    }
+
+    ASSERT_TRUE(is_multiplex_supported);
 
     size_t available_configs_size = 0;
     auto match_first_config =
@@ -1332,7 +1340,6 @@ TEST_F(CodecManagerTestHost, test_dont_call_hal_for_config) {
 }
 
 TEST_F(CodecManagerTestAdsp, testStreamConfigurationVendor) {
-  com::android::bluetooth::flags::provider_->leaudio_mono_location_errata(true);
   osi_property_set_bool(kPropLeAudioCodecExtensibility, true);
 
   const std::vector<bluetooth::le_audio::btle_audio_codec_config_t> offloading_preference(0);

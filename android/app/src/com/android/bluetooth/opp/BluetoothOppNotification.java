@@ -52,8 +52,7 @@ import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.flags.Flags;
-
-import com.google.common.annotations.VisibleForTesting;
+import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.HashMap;
 
@@ -134,11 +133,10 @@ class BluetoothOppNotification {
 
     public NotificationManager mNotificationMgr;
 
-    private NotificationChannel mNotificationChannel;
+    private final NotificationChannel mNotificationChannel;
     private static final String OPP_NOTIFICATION_CHANNEL = "opp_notification_channel";
 
-    private Context mContext;
-
+    private final Context mContext;
     private final HashMap<String, NotificationItem> mNotifications = new HashMap<>();
 
     @VisibleForTesting NotificationUpdateThread mUpdateNotificationThread;
@@ -226,7 +224,7 @@ class BluetoothOppNotification {
     // 3. Handler sends a delayed message to self
     // 4. Handler checks if there are any more updates after 1 second.
     // 5. If there is an update, update it else stop.
-    private Handler mHandler =
+    private final Handler mHandler =
             new Handler() {
                 @Override
                 public void handleMessage(Message msg) {
@@ -362,7 +360,7 @@ class BluetoothOppNotification {
                                 + item.id
                                 + "; batchID="
                                 + batchID
-                                + "; totoalCurrent"
+                                + "; totalCurrent"
                                 + item.totalCurrent
                                 + "; totalTotal="
                                 + item.totalTotal);
@@ -615,7 +613,8 @@ class BluetoothOppNotification {
             }
         }
 
-        if (inboundNum > 0 && outboundNum > 0) {
+        // When removing flag oppRemoveEmptyGroupNotification, remove the summary ID too.
+        if (!Flags.oppRemoveEmptyGroupNotification() && inboundNum > 0 && outboundNum > 0) {
             Notification.Builder b =
                     new Notification.Builder(mContext, OPP_NOTIFICATION_CHANNEL)
                             .setGroup(NOTIFICATION_GROUP_KEY_TRANSFER_COMPLETE)
@@ -631,11 +630,6 @@ class BluetoothOppNotification {
                             .setLocalOnly(true);
 
             mNotificationMgr.notify(NOTIFICATION_ID_COMPLETE_SUMMARY, b.build());
-        } else if (Flags.oppRemoveEmptyGroupNotification() && inboundNum == 0 && outboundNum == 0) {
-            if (mNotificationMgr != null) {
-                mNotificationMgr.cancel(NOTIFICATION_ID_COMPLETE_SUMMARY);
-                Log.v(TAG, "empty group summary notification was removed.");
-            }
         }
     }
 

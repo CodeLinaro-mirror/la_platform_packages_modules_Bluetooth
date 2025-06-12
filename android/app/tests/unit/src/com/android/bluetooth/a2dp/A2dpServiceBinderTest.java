@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package com.android.bluetooth.a2dp;
 
 import static android.bluetooth.BluetoothCodecConfig.SOURCE_CODEC_TYPE_INVALID;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -29,21 +31,25 @@ import static org.mockito.Mockito.verify;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothCodecConfig;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 import android.content.AttributionSource;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.platform.test.flag.junit.SetFlagsRule;
 
+import androidx.test.filters.SmallTest;
+import androidx.test.runner.AndroidJUnit4;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 
+/** Test cases for {@link A2dpServiceBinder}. */
+@SmallTest
+@RunWith(AndroidJUnit4.class)
 public class A2dpServiceBinderTest {
-    private static final AttributionSource sSource = new AttributionSource.Builder(0).build();
-    private static final BluetoothDevice sDevice = getTestDevice(0);
 
     @Rule public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
@@ -52,7 +58,10 @@ public class A2dpServiceBinderTest {
     @Mock private A2dpService mA2dpService;
     @Mock private PackageManager mPackageManager;
 
-    private A2dpService.BluetoothA2dpBinder mBinder;
+    private final AttributionSource sSource = new AttributionSource.Builder(0).build();
+    private final BluetoothDevice sDevice = getTestDevice(0);
+
+    private A2dpServiceBinder mBinder;
 
     @Before
     public void setUp() throws Exception {
@@ -61,7 +70,7 @@ public class A2dpServiceBinderTest {
         appInfo.targetSdkVersion = android.os.Build.VERSION_CODES.CUR_DEVELOPMENT;
         doReturn(appInfo).when(mPackageManager).getApplicationInfo(any(), anyInt());
 
-        mBinder = new A2dpService.BluetoothA2dpBinder(mA2dpService);
+        mBinder = new A2dpServiceBinder(mA2dpService);
     }
 
     @After
@@ -89,7 +98,7 @@ public class A2dpServiceBinderTest {
 
     @Test
     public void getDevicesMatchingConnectionStates() {
-        int[] states = new int[] {BluetoothProfile.STATE_CONNECTED};
+        int[] states = new int[] {STATE_CONNECTED};
 
         mBinder.getDevicesMatchingConnectionStates(states, sSource);
         verify(mA2dpService).getDevicesMatchingConnectionStates(states);
@@ -121,7 +130,7 @@ public class A2dpServiceBinderTest {
 
     @Test
     public void setConnectionPolicy() {
-        int connectionPolicy = BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+        int connectionPolicy = CONNECTION_POLICY_ALLOWED;
 
         mBinder.setConnectionPolicy(sDevice, connectionPolicy, sSource);
         verify(mA2dpService).setConnectionPolicy(sDevice, connectionPolicy);

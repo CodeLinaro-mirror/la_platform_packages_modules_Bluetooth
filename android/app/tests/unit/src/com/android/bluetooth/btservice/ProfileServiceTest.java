@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 
 package com.android.bluetooth.btservice;
+
+import static android.Manifest.permission.MEDIA_CONTENT_CONTROL;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 
@@ -45,6 +47,7 @@ import com.android.bluetooth.hfp.HeadsetNativeInterface;
 import com.android.bluetooth.hfpclient.NativeInterface;
 import com.android.bluetooth.hid.HidHostNativeInterface;
 import com.android.bluetooth.le_audio.LeAudioNativeInterface;
+import com.android.bluetooth.sdp.SdpManagerNativeInterface;
 
 import org.junit.After;
 import org.junit.Before;
@@ -62,6 +65,7 @@ import java.util.Map;
 import java.util.concurrent.FutureTask;
 import java.util.stream.Collectors;
 
+/** Test cases for {@link ProfileService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class ProfileServiceTest {
@@ -84,6 +88,7 @@ public class ProfileServiceTest {
     @Mock private HeadsetNativeInterface mHeadsetNativeInterface;
     @Mock private NativeInterface mHeadsetClientNativeInterface;
     @Mock private HearingAidNativeInterface mHearingAidNativeInterface;
+    @Mock private SdpManagerNativeInterface mSdpManagerNativeInterface;
     @Mock private HidHostNativeInterface mHidHostNativeInterface;
     @Mock private LeAudioNativeInterface mLeAudioInterface;
 
@@ -122,6 +127,9 @@ public class ProfileServiceTest {
     @Before
     public void setUp()
             throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .adoptShellPermissionIdentity(MEDIA_CONTENT_CONTROL);
         if (Looper.myLooper() == null) {
             Looper.prepare();
         }
@@ -162,6 +170,7 @@ public class ProfileServiceTest {
         HeadsetNativeInterface.setInstance(mHeadsetNativeInterface);
         /* HeadsetClient */ NativeInterface.setInstance(mHeadsetClientNativeInterface);
         HearingAidNativeInterface.setInstance(mHearingAidNativeInterface);
+        SdpManagerNativeInterface.setInstance(mSdpManagerNativeInterface);
         HidHostNativeInterface.setInstance(mHidHostNativeInterface);
         LeAudioNativeInterface.setInstance(mLeAudioInterface);
     }
@@ -178,8 +187,12 @@ public class ProfileServiceTest {
         HeadsetNativeInterface.setInstance(null);
         /* HeadsetClient */ NativeInterface.setInstance(null);
         HearingAidNativeInterface.setInstance(null);
+        SdpManagerNativeInterface.setInstance(null);
         HidHostNativeInterface.setInstance(null);
         LeAudioNativeInterface.setInstance(null);
+        InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation()
+                .dropShellPermissionIdentity();
     }
 
     /**

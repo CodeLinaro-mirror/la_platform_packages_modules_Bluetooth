@@ -375,14 +375,6 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     public static final String EXTRA_NAME = "android.bluetooth.device.extra.NAME";
 
     /**
-     * Used as a Parcelable {@link BluetoothQualityReport} extra field in {@link
-     * #ACTION_REMOTE_ISSUE_OCCURRED} intent. It contains the {@link BluetoothQualityReport}.
-     *
-     * @hide
-     */
-    public static final String EXTRA_BQR = "android.bluetooth.qti.extra.EXTRA_BQR";
-
-    /**
      * Used as an optional short extra field in {@link #ACTION_FOUND} intents. Contains the RSSI
      * value of the remote device as reported by the Bluetooth hardware.
      */
@@ -896,8 +888,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
      *
      * @hide
      */
-    @SystemApi
-    public static final int METADATA_EXCLUSIVE_MANAGER = 29;
+    @SystemApi public static final int METADATA_EXCLUSIVE_MANAGER = 29;
 
     private static final int METADATA_MAX_KEY = METADATA_EXCLUSIVE_MANAGER;
 
@@ -1727,8 +1718,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
 
     /**
      * Returns the identity address and identity address type of this BluetoothDevice. An identity
-     * address is a public or static random Bluetooth LE device address that serves as a
-     * unique identifier.
+     * address is a public or static random Bluetooth LE device address that serves as a unique
+     * identifier.
      *
      * @return a {@link BluetoothAddress} containing identity address and identity address type. If
      *     Bluetooth is not enabled or identity address type is not available, it will return a
@@ -1959,7 +1950,21 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     @RequiresBluetoothConnectPermission
     @RequiresPermission(BLUETOOTH_CONNECT)
     public boolean createBond(int transport) {
-        return createBondInternal(transport, null, null);
+        if (DBG) log("createBond()");
+        final IBluetooth service = getService();
+        if (service == null || !isBluetoothEnabled()) {
+            Log.w(TAG, "BT not enabled, createBond failed");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (NULL_MAC_ADDRESS.equals(mAddress)) {
+            Log.e(TAG, "Unable to create bond, invalid address " + mAddress);
+        } else {
+            try {
+                return service.createBond(this, transport, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return false;
     }
 
     /**
@@ -1983,30 +1988,25 @@ public final class BluetoothDevice implements Parcelable, Attributable {
      * @hide
      */
     @SystemApi
-    @RequiresPermission(BLUETOOTH_CONNECT)
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public boolean createBondOutOfBand(
             int transport, @Nullable OobData remoteP192Data, @Nullable OobData remoteP256Data) {
+        if (DBG) log("createBondOutOfBand()");
+        final IBluetooth service = getService();
+
         if (remoteP192Data == null && remoteP256Data == null) {
             throw new IllegalArgumentException(
                     "One or both arguments for the OOB data types are required to not be null. "
                         + " Please use createBond() instead if you do not have OOB data to pass.");
         }
-        return createBondInternal(transport, remoteP192Data, remoteP256Data);
-    }
-
-    @RequiresPermission(BLUETOOTH_CONNECT)
-    private boolean createBondInternal(
-            int transport, @Nullable OobData remoteP192Data, @Nullable OobData remoteP256Data) {
-        if (DBG) log("createBondInternal()");
-        final IBluetooth service = getService();
         if (service == null || !isBluetoothEnabled()) {
-            Log.w(TAG, "BT not enabled, createBondInternal failed");
+            Log.w(TAG, "BT not enabled, createBondOutOfBand failed");
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (NULL_MAC_ADDRESS.equals(mAddress)) {
-            Log.e(TAG, "Unable to create bond, invalid address " + mAddress);
+            Log.e(TAG, "Unable to create bond Out of Band, invalid address " + mAddress);
         } else {
             try {
-                return service.createBond(
+                return service.createBondOutOfBand(
                         this, transport, remoteP192Data, remoteP256Data, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
@@ -3360,7 +3360,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         int psm = settings.getL2capPsm();
         if (settings.getSocketType() == BluetoothSocket.TYPE_RFCOMM) {
             if (settings.getRfcommUuid() == null) {
-                throw new IllegalArgumentException("null uuid: " + settings.getRfcommUuid());
+                throw new IllegalArgumentException("null uuid");
             }
             uuid = new ParcelUuid(settings.getRfcommUuid());
         } else if (settings.getSocketType() == BluetoothSocket.TYPE_LE) {
@@ -3789,6 +3789,31 @@ public final class BluetoothDevice implements Parcelable, Attributable {
             }
         }
         return true;
+    }
+
+    /**
+     * Get the number of times {@link ACTION_KEY_MISSING} intent is thrown for this device since
+     * last successful encrypted connection
+     *
+     * @return number of times {@link ACTION_KEY_MISSING} intent is thrown for this device since
+     *     last successful encrypted connection
+     *
+     * @hide
+     */
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public int getKeyMissingCount() {
+        final IBluetooth service = getService();
+        if (service == null || !isBluetoothEnabled()) {
+            Log.e(TAG, "Bluetooth is not enabled. Cannot get key missing counter.");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else {
+            try {
+                return service.getKeyMissingCount(this, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return -1;
     }
 
     private static void log(String msg) {

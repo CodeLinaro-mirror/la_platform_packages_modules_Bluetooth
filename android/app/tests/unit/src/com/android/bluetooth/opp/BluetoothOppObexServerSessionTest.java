@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -61,6 +62,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/** Test cases for {@link BluetoothOppObexServerSession}. */
 @RunWith(AndroidJUnit4.class)
 public class BluetoothOppObexServerSessionTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
@@ -68,7 +70,6 @@ public class BluetoothOppObexServerSessionTest {
     @Mock BluetoothMethodProxy mMethodProxy;
     @Mock BluetoothObexTransport mTransport;
     @Mock BluetoothOppService mBluetoothOppService;
-    @Mock NotificationManager mNotificationManager;
     @Mock Operation mOperation;
     @Mock Context mContext;
 
@@ -295,6 +296,7 @@ public class BluetoothOppObexServerSessionTest {
         mServerSession.unblock();
         mServerSession.mAccepted = BluetoothShare.USER_CONFIRMATION_CONFIRMED;
         Handler handler = mock(Handler.class);
+        doCallRealMethod().when(handler).obtainMessage(anyInt());
         doAnswer(
                         arg -> {
                             mServerSession.unblock();
@@ -303,7 +305,7 @@ public class BluetoothOppObexServerSessionTest {
                             return true;
                         })
                 .when(handler)
-                .sendMessageAtTime(
+                .sendMessageDelayed(
                         argThat(arg -> arg.what == BluetoothOppObexSession.MSG_CONNECT_TIMEOUT),
                         anyLong());
         mServerSession.start(handler, 0);
@@ -336,7 +338,7 @@ public class BluetoothOppObexServerSessionTest {
         request.setHeader(HeaderSet.TARGET, null);
         BluetoothOppManager bluetoothOppManager = mock(BluetoothOppManager.class);
         BluetoothOppManager.setInstance(bluetoothOppManager);
-        doReturn(true).when(bluetoothOppManager).isAcceptlisted(any());
+        doReturn(true).when(bluetoothOppManager).isAcceptListed(any());
 
         assertThat(mServerSession.onConnect(request, reply)).isEqualTo(ResponseCodes.OBEX_HTTP_OK);
         BluetoothOppManager.setInstance(null);

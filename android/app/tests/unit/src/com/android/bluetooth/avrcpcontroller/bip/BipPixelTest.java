@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ import androidx.test.runner.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/** A test suite for the BipPixel class */
+/** Test cases for {@link BipPixel}. */
 @RunWith(AndroidJUnit4.class)
 public class BipPixelTest {
 
-    private void testParse(
+    private static void testParse(
             String input,
             int pixelType,
             int minWidth,
@@ -44,7 +44,7 @@ public class BipPixelTest {
         assertThat(pixel.toString()).isEqualTo(pixelStr);
     }
 
-    private void testFixed(int width, int height, String pixelStr) {
+    private static void testFixed(int width, int height, String pixelStr) {
         BipPixel pixel = BipPixel.createFixed(width, height);
         assertThat(pixel.getType()).isEqualTo(BipPixel.TYPE_FIXED);
         assertThat(pixel.getMinWidth()).isEqualTo(width);
@@ -54,7 +54,7 @@ public class BipPixelTest {
         assertThat(pixel.toString()).isEqualTo(pixelStr);
     }
 
-    private void testResizableModified(
+    private static void testResizableModified(
             int minWidth, int minHeight, int maxWidth, int maxHeight, String pixelStr) {
         BipPixel pixel = BipPixel.createResizableModified(minWidth, minHeight, maxWidth, maxHeight);
         assertThat(pixel.getType()).isEqualTo(BipPixel.TYPE_RESIZE_MODIFIED_ASPECT_RATIO);
@@ -65,7 +65,8 @@ public class BipPixelTest {
         assertThat(pixel.toString()).isEqualTo(pixelStr);
     }
 
-    private void testResizableFixed(int minWidth, int maxWidth, int maxHeight, String pixelStr) {
+    private static void testResizableFixed(
+            int minWidth, int maxWidth, int maxHeight, String pixelStr) {
         int minHeight = (minWidth * maxHeight) / maxWidth; // spec defined
         BipPixel pixel = BipPixel.createResizableFixed(minWidth, maxWidth, maxHeight);
         assertThat(pixel.getType()).isEqualTo(BipPixel.TYPE_RESIZE_FIXED_ASPECT_RATIO);

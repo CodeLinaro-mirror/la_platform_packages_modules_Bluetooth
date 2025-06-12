@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,7 @@ import org.mockito.Mock;
 
 import java.io.InputStream;
 
+/** Test cases for {@link Metadata}. */
 @RunWith(AndroidJUnit4.class)
 public class MetadataTest {
     private Context mTargetContext;
@@ -130,7 +131,7 @@ public class MetadataTest {
         return BitmapFactory.decodeStream(imageInputStream);
     }
 
-    private MediaMetadata getMediaMetadata() {
+    private static MediaMetadata getMediaMetadata() {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID)
@@ -149,7 +150,7 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private MediaMetadata getMediaMetadataWithBitmap(String field, Bitmap image) {
+    private static MediaMetadata getMediaMetadataWithBitmap(String field, Bitmap image) {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID)
@@ -168,7 +169,7 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private MediaMetadata getMediaMetadataWithUri(String field, Uri uri) {
+    private static MediaMetadata getMediaMetadataWithUri(String field, Uri uri) {
         MediaMetadata.Builder builder =
                 new MediaMetadata.Builder()
                         .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID)
@@ -187,7 +188,7 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private MediaDescription getMediaDescription(Bitmap bitmap, Uri uri, Bundle extras) {
+    private static MediaDescription getMediaDescription(Bitmap bitmap, Uri uri, Bundle extras) {
         MediaDescription.Builder builder =
                 new MediaDescription.Builder()
                         .setMediaId(SONG_MEDIA_ID)
@@ -206,15 +207,15 @@ public class MetadataTest {
         return builder.build();
     }
 
-    private MediaItem getMediaItem(MediaDescription description) {
+    private static MediaItem getMediaItem(MediaDescription description) {
         return new MediaItem(description, 0 /* not browsable/playable */);
     }
 
-    private QueueItem getQueueItem(MediaDescription description) {
+    private static QueueItem getQueueItem(MediaDescription description) {
         return new QueueItem(description, 1 /* queue ID */);
     }
 
-    private Bundle getBundle() {
+    private static Bundle getBundle() {
         Bundle bundle = new Bundle();
         bundle.putString(MediaMetadata.METADATA_KEY_MEDIA_ID, SONG_MEDIA_ID);
         bundle.putString(MediaMetadata.METADATA_KEY_TITLE, SONG_TITLE);
@@ -227,19 +228,19 @@ public class MetadataTest {
         return bundle;
     }
 
-    private Bundle getBundleWithBitmap(String field, Bitmap image) {
+    private static Bundle getBundleWithBitmap(String field, Bitmap image) {
         Bundle bundle = getBundle();
         bundle.putParcelable(field, image);
         return bundle;
     }
 
-    private Bundle getBundleWithUri(String field, Uri uri) {
+    private static Bundle getBundleWithUri(String field, Uri uri) {
         Bundle bundle = getBundle();
         bundle.putString(field, uri.toString());
         return bundle;
     }
 
-    private void assertMetadata(
+    private static void assertMetadata(
             String mediaId,
             String title,
             String artist,
@@ -532,7 +533,7 @@ public class MetadataTest {
     }
 
     /**
-     * Make sure you can create a Metadata object from a MediaDesciption with a bundle of extras
+     * Make sure you can create a Metadata object from a MediaDescription with a bundle of extras
      * that provide more detailed information about the item.
      */
     @Test
@@ -977,7 +978,7 @@ public class MetadataTest {
      * cover art.
      */
     @Test
-    public void testBuildMetadataFromQueueItemWithIconUriandUrisDisabled() {
+    public void testBuildMetadataFromQueueItemWithIconUriAndUrisDisabled() {
         Util.sUriImagesSupport = false;
         MediaDescription description = getMediaDescription(null, IMAGE_URI_1, null);
         QueueItem queueItem = getQueueItem(description);

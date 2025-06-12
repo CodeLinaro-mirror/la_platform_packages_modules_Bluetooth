@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,14 @@ package com.android.bluetooth.avrcpcontroller;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.annotation.SuppressLint;
-
 import androidx.test.runner.AndroidJUnit4;
+
+import com.google.common.testing.EqualsTester;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/** A test suite for the BipImageFormat class */
+/** Test cases for {@link BipImageFormat}. */
 @RunWith(AndroidJUnit4.class)
 public class BipImageFormatTest {
     @Test
@@ -308,37 +308,18 @@ public class BipImageFormatTest {
     }
 
     @Test
-    public void testEquals_withSameInstance() {
-        BipImageFormat format =
-                BipImageFormat.createNative(
-                        new BipEncoding(BipEncoding.JPEG, null),
-                        BipPixel.createFixed(1280, 1024),
-                        -1);
-
-        assertThat(format).isEqualTo(format);
-    }
-
-    @Test
-    @SuppressLint("TruthIncompatibleType") // That the point of this test
-    public void testEquals_withDifferentClass() {
-        BipImageFormat format =
-                BipImageFormat.createNative(
-                        new BipEncoding(BipEncoding.JPEG, null),
-                        BipPixel.createFixed(1280, 1024),
-                        -1);
-        String notFormat = "notFormat";
-
-        assertThat(format).isNotEqualTo(notFormat);
-    }
-
-    @Test
-    public void testEquals_withSameInfo() {
+    public void testEquals() {
         BipEncoding encoding = new BipEncoding(BipEncoding.JPEG, null);
         BipPixel pixel = BipPixel.createFixed(1280, 1024);
 
         BipImageFormat format = BipImageFormat.createNative(encoding, pixel, -1);
         BipImageFormat formatEqual = BipImageFormat.createNative(encoding, pixel, -1);
 
-        assertThat(format).isEqualTo(formatEqual);
+        String notFormat = "notFormat";
+
+        new EqualsTester()
+                .addEqualityGroup(format, format, formatEqual)
+                .addEqualityGroup(notFormat)
+                .testEquals();
     }
 }

@@ -19,6 +19,9 @@ package android.bluetooth;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static android.bluetooth.BluetoothUtils.executeFromBinder;
 
 import static java.util.Objects.requireNonNull;
@@ -64,7 +67,7 @@ public final class BluetoothCsipSetCoordinator implements BluetoothProfile, Auto
     private static final boolean DBG = false;
     private static final boolean VDBG = false;
 
-    private CloseGuard mCloseGuard;
+    private final CloseGuard mCloseGuard;
 
     /** @hide */
     @SystemApi
@@ -83,7 +86,7 @@ public final class BluetoothCsipSetCoordinator implements BluetoothProfile, Auto
         @interface Status {}
 
         /**
-         * Callback is invoked as a result on {@link #groupLock()}.
+         * Callback is invoked as a result on {@link BluetoothCsipSetCoordinator#lockGroup()}.
          *
          * @param groupId group identifier
          * @param opStatus status of lock operation
@@ -112,7 +115,6 @@ public final class BluetoothCsipSetCoordinator implements BluetoothProfile, Auto
                     mExecutor, () -> mCallback.onGroupLockSet(groupId, opStatus, isLocked));
         }
     }
-    ;
 
     /**
      * Intent used to broadcast the change in connection state of the CSIS Client.
@@ -444,7 +446,7 @@ public final class BluetoothCsipSetCoordinator implements BluetoothProfile, Auto
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return BluetoothProfile.STATE_DISCONNECTED;
+        return STATE_DISCONNECTED;
     }
 
     /**
@@ -471,8 +473,8 @@ public final class BluetoothCsipSetCoordinator implements BluetoothProfile, Auto
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (isEnabled()
                 && isValidDevice(device)
-                && (connectionPolicy == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN
-                        || connectionPolicy == BluetoothProfile.CONNECTION_POLICY_ALLOWED)) {
+                && (connectionPolicy == CONNECTION_POLICY_FORBIDDEN
+                        || connectionPolicy == CONNECTION_POLICY_ALLOWED)) {
             try {
                 return service.setConnectionPolicy(device, connectionPolicy, mAttributionSource);
             } catch (RemoteException e) {
@@ -508,7 +510,7 @@ public final class BluetoothCsipSetCoordinator implements BluetoothProfile, Auto
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
-        return BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
+        return CONNECTION_POLICY_FORBIDDEN;
     }
 
     private boolean isEnabled() {

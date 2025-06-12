@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mock;
 
+/** Test cases for {@link AvrcpPlayer}. */
 public class AvrcpPlayerTest {
     @Rule public final MockitoRule mMockitoRule = new MockitoRule();
 
@@ -178,7 +179,7 @@ public class AvrcpPlayerTest {
         assertThat(avrcpPlayer.notifyImageDownload(uuid, uri)).isTrue();
     }
 
-    private void setSupportedFeature(byte[] supportedFeatures, int feature) {
+    private static void setSupportedFeature(byte[] supportedFeatures, int feature) {
         int byteNumber = feature / 8;
         byte bitMask = (byte) (1 << (feature % 8));
         supportedFeatures[byteNumber] = (byte) (supportedFeatures[byteNumber] | bitMask);

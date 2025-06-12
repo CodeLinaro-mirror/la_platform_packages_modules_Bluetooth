@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ import org.mockito.Mock;
 
 import java.util.Arrays;
 
+/** Test cases for {@link A2dpCodecConfig}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class A2dpCodecConfigTest {
@@ -767,7 +768,8 @@ public class A2dpCodecConfigTest {
         }
     }
 
-    private BluetoothCodecConfig getDefaultCodecConfigByType(int codecType, int codecPriority) {
+    private static BluetoothCodecConfig getDefaultCodecConfigByType(
+            int codecType, int codecPriority) {
         for (BluetoothCodecConfig codecConfig : sDefaultCodecConfigs) {
             if (codecConfig.getCodecType() != codecType) {
                 continue;
@@ -794,7 +796,7 @@ public class A2dpCodecConfigTest {
         return null;
     }
 
-    private BluetoothCodecConfig getCodecCapabilitiesByType(int codecType) {
+    private static BluetoothCodecConfig getCodecCapabilitiesByType(int codecType) {
         for (BluetoothCodecConfig codecCapabilities : sCodecCapabilities) {
             if (codecCapabilities.getCodecType() != codecType) {
                 continue;

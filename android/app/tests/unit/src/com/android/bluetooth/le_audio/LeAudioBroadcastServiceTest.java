@@ -113,6 +113,7 @@ import org.mockito.hamcrest.MockitoHamcrest;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Test cases for {@link LeAudioBroadcastService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class LeAudioBroadcastServiceTest {
@@ -642,7 +643,7 @@ public class LeAudioBroadcastServiceTest {
         verify(mCallbacks).onBroadcastUpdateFailed(anyInt(), anyInt());
     }
 
-    private BluetoothLeBroadcastSubgroup createBroadcastSubgroup() {
+    private static BluetoothLeBroadcastSubgroup createBroadcastSubgroup() {
         BluetoothLeAudioCodecConfigMetadata codecMetadata =
                 new BluetoothLeAudioCodecConfigMetadata.Builder()
                         .setAudioLocation(TEST_AUDIO_LOCATION_FRONT_LEFT)
@@ -1037,8 +1038,6 @@ public class LeAudioBroadcastServiceTest {
         create_event.valueInt1 = broadcastId;
         create_event.valueInt2 = LeAudioStackEvent.BROADCAST_STATE_STREAMING;
         mService.messageFromNative(create_event);
-
-        verify(mTbsService, never()).clearInbandRingtoneSupport(eq(mDevice));
     }
 
     @Test
@@ -1048,6 +1047,11 @@ public class LeAudioBroadcastServiceTest {
         byte[] code = {0x00, 0x01, 0x00, 0x02};
 
         prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
+
+        /* Expect clear of Inband Ringtone Support when device is changing to inactive and there is
+         * no unicast to broadcast fallback device set
+         */
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
 
         /* Imitate setting device in call */
         mService.handleAudioModeChange(AudioManager.MODE_IN_CALL);
@@ -1139,6 +1143,11 @@ public class LeAudioBroadcastServiceTest {
 
         prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
 
+        /* Expect clear of Inband Ringtone Support when device is changing to inactive and there is
+         * no unicast to broadcast fallback device set
+         */
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
+
         verify(mLeAudioBroadcasterNativeInterface).startBroadcast(eq(broadcastId));
 
         /* Imitate group change request by Bluetooth Sink HAL resume request */
@@ -1228,6 +1237,11 @@ public class LeAudioBroadcastServiceTest {
 
         prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
 
+        /* Expect clear of Inband Ringtone Support when device is changing to inactive and there is
+         * no unicast to broadcast fallback device set
+         */
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
+
         /* Internal broadcast paused due to onAudioSuspend */
         LeAudioStackEvent state_event =
                 new LeAudioStackEvent(LeAudioStackEvent.EVENT_TYPE_BROADCAST_STATE);
@@ -1315,6 +1329,11 @@ public class LeAudioBroadcastServiceTest {
 
         prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
 
+        /* Expect clear of Inband Ringtone Support when device is changing to inactive and there is
+         * no unicast to broadcast fallback device set
+         */
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
+
         /* Internal broadcast paused due to onAudioSuspend */
         LeAudioStackEvent state_event =
                 new LeAudioStackEvent(LeAudioStackEvent.EVENT_TYPE_BROADCAST_STATE);
@@ -1390,13 +1409,18 @@ public class LeAudioBroadcastServiceTest {
     }
 
     @Test
-    public void testCacheAndResmueSuspendingSources() {
+    public void testCacheAndResumeSuspendingSources() {
         mSetFlagsRule.enableFlags(Flags.FLAG_LEAUDIO_BIG_DEPENDS_ON_AUDIO_STATE);
         int groupId = 1;
         int broadcastId = 243;
         byte[] code = {0x00, 0x01, 0x00, 0x02};
 
         prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
+
+        /* Expect clear of Inband Ringtone Support when device is changing to inactive and there is
+         * no unicast to broadcast fallback device set
+         */
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
 
         /* Internal broadcast paused due to onAudioSuspend */
         LeAudioStackEvent state_event =
@@ -1405,11 +1429,7 @@ public class LeAudioBroadcastServiceTest {
         state_event.valueInt2 = LeAudioStackEvent.BROADCAST_STATE_PAUSED;
         mService.messageFromNative(state_event);
 
-        if (!Flags.leaudioBroadcastAssistantPeripheralEntrustment()) {
-            verify(mBassClientService).suspendReceiversSourceSynchronization(eq(broadcastId));
-        } else {
-            verify(mBassClientService).cacheSuspendingSources(eq(broadcastId));
-        }
+        verify(mBassClientService).cacheSuspendingSources(eq(broadcastId));
 
         /* Internal broadcast resumed due to onAudioResumed */
         state_event.valueInt2 = LeAudioStackEvent.BROADCAST_STATE_STREAMING;
@@ -1419,7 +1439,11 @@ public class LeAudioBroadcastServiceTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_LEAUDIO_BROADCAST_PRIMARY_GROUP_SELECTION)
+    @DisableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_PRIMARY_GROUP_SELECTION,
+        Flags.FLAG_LEAUDIO_BROADCAST_API_MANAGE_PRIMARY_GROUP,
+        Flags.FLAG_LEAUDIO_USE_AUDIO_RECORDING_LISTENER
+    })
     public void testUpdateFallbackInputDevice() {
         int groupId = 1;
         int groupId2 = 2;
@@ -1429,6 +1453,12 @@ public class LeAudioBroadcastServiceTest {
         initializeNative();
         prepareConnectedUnicastDevice(groupId2, mDevice2);
         prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
+
+        /* group 1 is deactivated due to broadcast and group 2 is set by default as broadcast to
+         * unicast fallback group (first add device)
+         */
+        verify(mTbsService, never()).clearInbandRingtoneSupport(eq(mDevice2));
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
 
         assertThat(mService.mUnicastGroupIdDeactivatedForBroadcastTransition).isEqualTo(groupId);
 
@@ -1476,6 +1506,12 @@ public class LeAudioBroadcastServiceTest {
         prepareConnectedUnicastDevice(groupId2, mDevice2);
         devices.add(mDevice);
         prepareHandoverStreamingBroadcast(groupId1, broadcastId, code);
+
+        /* group 1 is deactivated due to broadcast and group 2 is set by default as broadcast to
+         * unicast fallback group (first add device)
+         */
+        verify(mTbsService, never()).clearInbandRingtoneSupport(eq(mDevice2));
+        verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
 
         TestUtils.waitForLooperToFinishScheduledTask(Looper.getMainLooper());
         assertThat(mService.mUnicastGroupIdDeactivatedForBroadcastTransition).isEqualTo(groupId2);
@@ -1532,11 +1568,18 @@ public class LeAudioBroadcastServiceTest {
         devices.add(mDevice2);
         prepareConnectedUnicastDevice(groupId2, mDevice2);
 
+        InOrder tbsOrder = inOrder(mTbsService);
+        tbsOrder.verify(mTbsService, never()).clearInbandRingtoneSupport(eq(mDevice2));
+        tbsOrder.verify(mTbsService, never()).clearInbandRingtoneSupport(eq(mDevice));
+
         assertThat(mService.mUnicastGroupIdDeactivatedForBroadcastTransition).isEqualTo(groupId);
+        tbsOrder.verify(mTbsService, times(1)).setInbandRingtoneSupport(eq(mDevice));
 
         reset(mAudioManager);
 
         mService.setBroadcastToUnicastFallbackGroup(groupId2);
+        tbsOrder.verify(mTbsService, times(1)).clearInbandRingtoneSupport(eq(mDevice));
+        tbsOrder.verify(mTbsService, times(1)).setInbandRingtoneSupport(eq(mDevice2));
 
         /* Update fallback active device (only input is active) */
         ArgumentCaptor<BluetoothProfileConnectionInfo> connectionInfoArgumentCaptor =
@@ -1625,51 +1668,6 @@ public class LeAudioBroadcastServiceTest {
     }
 
     @Test
-    @EnableFlags({
-        Flags.FLAG_LEAUDIO_BROADCAST_API_MANAGE_PRIMARY_GROUP,
-        Flags.FLAG_LEAUDIO_BROADCAST_PRIMARY_GROUP_SELECTION
-    })
-    public void testUpdateFallbackDeviceWhileSettingActiveDevice() throws RemoteException {
-        int groupId = 1;
-        int groupId2 = 2;
-        int broadcastId = 243;
-        byte[] code = {0x00, 0x01, 0x00, 0x02};
-        List<BluetoothDevice> devices = new ArrayList<>();
-
-        when(mDatabaseManager.getMostRecentlyConnectedDevices()).thenReturn(devices);
-
-        synchronized (mService.mLeAudioCallbacks) {
-            mService.mLeAudioCallbacks.register(mLeAudioCallbacks);
-        }
-
-        initializeNative();
-        devices.add(mDevice2);
-        prepareConnectedUnicastDevice(groupId2, mDevice2);
-        devices.add(mDevice);
-        prepareHandoverStreamingBroadcast(groupId, broadcastId, code);
-
-        /* Earliest connected group (2) become fallback device */
-        assertThat(mService.mUnicastGroupIdDeactivatedForBroadcastTransition).isEqualTo(groupId2);
-            verify(mLeAudioCallbacks).onBroadcastToUnicastFallbackGroupChanged(groupId2);
-
-        Mockito.clearInvocations(mLeAudioCallbacks);
-        reset(mAudioManager);
-
-        /* Change active device while broadcasting - result in replacing fallback group 2->1 */
-        assertThat(mService.setActiveDevice(mDevice)).isTrue();
-        TestUtils.waitForLooperToFinishScheduledTask(Looper.getMainLooper());
-        assertThat(mService.mUnicastGroupIdDeactivatedForBroadcastTransition).isEqualTo(groupId);
-            verify(mLeAudioCallbacks).onBroadcastToUnicastFallbackGroupChanged(groupId);
-
-        /* Verify that fallback device is not changed when there is no running broadcast */
-        Mockito.clearInvocations(mLeAudioCallbacks);
-        verifyBroadcastStopped(broadcastId);
-        assertThat(mService.setActiveDevice(mDevice2)).isTrue();
-        TestUtils.waitForLooperToFinishScheduledTask(Looper.getMainLooper());
-        verify(mLeAudioCallbacks, never()).onBroadcastToUnicastFallbackGroupChanged(anyInt());
-    }
-
-    @Test
     public void registerUnregisterLeBroadcastCallback() {
         IBluetoothLeBroadcastCallback callback = Mockito.mock(IBluetoothLeBroadcastCallback.class);
         Binder binder = Mockito.mock(Binder.class);
@@ -1689,7 +1687,7 @@ public class LeAudioBroadcastServiceTest {
         }
     }
 
-    private BluetoothLeBroadcastSettings buildBroadcastSettingsFromMetadata(
+    private static BluetoothLeBroadcastSettings buildBroadcastSettingsFromMetadata(
             BluetoothLeAudioContentMetadata contentMetadata,
             @Nullable byte[] broadcastCode,
             int numOfGroups) {

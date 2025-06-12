@@ -65,7 +65,8 @@ protected:
   void SetUp() override {
     reset_mock_function_count_map();
     fake_osi_ = std::make_unique<test::fake::FakeOsi>();
-    bluetooth::hci::testing::mock_controller_ = &controller_;
+    bluetooth::hci::testing::mock_controller_ =
+            std::make_unique<bluetooth::hci::testing::MockControllerInterface>();
 
     main_thread_start_up();
     post_on_bt_main([]() { log::info("Main thread started up"); });
@@ -74,18 +75,18 @@ protected:
 
     bta_ag_cb.p_cback = [](tBTA_AG_EVT /*event*/, tBTA_AG* /*p_data*/) {};
     RawAddress::FromString("00:11:22:33:44:55", addr);
-    test::mock::device_esco_parameters::esco_parameters_for_codec.body =
-            [this](esco_codec_t codec) {
-              this->codec = codec;
-              return enh_esco_params_t{};
-            };
+    test::mock::device_esco_parameters::esco_parameters_for_codec.body = [this](esco_codec_t codec,
+                                                                                bool /*offload*/) {
+      this->codec = codec;
+      return enh_esco_params_t{};
+    };
   }
   void TearDown() override {
     test::mock::device_esco_parameters::esco_parameters_for_codec = {};
     bta_sys_deregister(BTA_ID_AG);
     post_on_bt_main([]() { log::info("Main thread shutting down"); });
     main_thread_shut_down();
-    bluetooth::hci::testing::mock_controller_ = nullptr;
+    bluetooth::hci::testing::mock_controller_.reset();
   }
 
   std::unique_ptr<test::fake::FakeOsi> fake_osi_;
@@ -93,7 +94,6 @@ protected:
   uint32_t tmp_num = 0xFFFF;
   RawAddress addr;
   esco_codec_t codec;
-  bluetooth::hci::testing::MockControllerInterface controller_;
 };
 
 class BtaAgSwbTest : public BtaAgTest {

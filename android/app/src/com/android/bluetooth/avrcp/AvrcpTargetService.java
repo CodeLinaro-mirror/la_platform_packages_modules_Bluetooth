@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 
 package com.android.bluetooth.avrcp;
 
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
+
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.NonNull;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUtils;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -35,7 +36,6 @@ import android.util.Log;
 import android.view.KeyEvent;
 
 import com.android.bluetooth.BluetoothEventLogger;
-import com.android.bluetooth.BluetoothMetricsProto;
 import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.audio_util.ListItem;
 import com.android.bluetooth.audio_util.MediaData;
@@ -46,7 +46,6 @@ import com.android.bluetooth.audio_util.PlayStatus;
 import com.android.bluetooth.audio_util.PlayerInfo;
 import com.android.bluetooth.audio_util.PlayerSettingsManager;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.btservice.ServiceFactory;
 import com.android.bluetooth.flags.Flags;
@@ -144,7 +143,7 @@ public class AvrcpTargetService extends ProfileService {
             mMediaPlayerList.init(new ListCallback());
         }
 
-        if (!mAvrcpVersion.isAtleastVersion(AvrcpVersion.AVRCP_VERSION_1_6)) {
+        if (!mAvrcpVersion.isAtLeastVersion(AvrcpVersion.AVRCP_VERSION_1_6)) {
             Log.e(TAG, "Please use AVRCP version 1.6 to enable cover art");
             mAvrcpCoverArtService = null;
         } else {
@@ -294,7 +293,7 @@ public class AvrcpTargetService extends ProfileService {
      * <p>This will be called by the native stack when a play event is received from a remote
      * device. See packages/modules/Bluetooth/system/profile/avrcp/device.cc.
      */
-    private void setA2dpActiveDevice(@NonNull BluetoothDevice device) {
+    private static void setA2dpActiveDevice(@NonNull BluetoothDevice device) {
         A2dpService service = A2dpService.getA2dpService();
         if (service == null) {
             Log.d(TAG, "setA2dpActiveDevice: A2dp service not found");
@@ -307,7 +306,6 @@ public class AvrcpTargetService extends ProfileService {
     void deviceConnected(BluetoothDevice device, boolean absoluteVolume) {
         Log.i(TAG, "deviceConnected: device=" + device + " absoluteVolume=" + absoluteVolume);
         mVolumeManager.deviceConnected(device, absoluteVolume);
-        MetricsLogger.logProfileConnectionEvent(BluetoothMetricsProto.ProfileId.AVRCP);
     }
 
     /** Informs {@link AvrcpVolumeManager} that a device is disconnected */
@@ -341,7 +339,7 @@ public class AvrcpTargetService extends ProfileService {
      */
     public void handleA2dpConnectionStateChanged(BluetoothDevice device, int newState) {
         if (device == null) return;
-        if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+        if (newState == STATE_DISCONNECTED) {
             // If there is no connection, disconnectDevice() will do nothing
             if (mNativeInterface.disconnectDevice(device)) {
                 Log.d(TAG, "request to disconnect device " + device);

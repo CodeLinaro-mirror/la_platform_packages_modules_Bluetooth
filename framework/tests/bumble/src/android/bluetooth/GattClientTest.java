@@ -18,6 +18,7 @@ package android.bluetooth;
 
 import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -225,7 +226,7 @@ public class GattClientTest {
 
         gatt.disconnect();
         inOrder.verify(gattCallback, timeout(1000))
-                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
 
         gatt.connect();
         inOrder.verify(gattCallback, timeout(1000))
@@ -235,7 +236,7 @@ public class GattClientTest {
         //  be necessary.
         gatt.disconnect();
         inOrder.verify(gattCallback, timeout(1000))
-                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+                .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
         gatt.close();
     }
 
@@ -362,9 +363,7 @@ public class GattClientTest {
 
         verify(gattCallback, timeout(35000))
                 .onConnectionStateChange(
-                        any(),
-                        eq(BluetoothGatt.GATT_CONNECTION_TIMEOUT),
-                        eq(BluetoothProfile.STATE_DISCONNECTED));
+                        any(), eq(BluetoothGatt.GATT_CONNECTION_TIMEOUT), eq(STATE_DISCONNECTED));
     }
 
     @Test
@@ -423,7 +422,6 @@ public class GattClientTest {
     }
 
     @Test
-    @RequiresFlagsEnabled(Flags.FLAG_GATT_FIX_MULTIPLE_DIRECT_CONNECT)
     public void connectMultiple_closeOne_shouldSuccess() {
         BluetoothGattCallback gattCallback = mock(BluetoothGattCallback.class);
         BluetoothGattCallback gattCallback2 = mock(BluetoothGattCallback.class);
@@ -436,11 +434,11 @@ public class GattClientTest {
         BluetoothGatt gatt2 = device.connectGatt(mContext, false, gattCallback2);
 
         try {
-            gatt.disconnect();
-            gatt.close();
-
             verify(gattCallback2, timeout(1000))
                     .onConnectionStateChange(eq(gatt2), eq(GATT_SUCCESS), eq(STATE_CONNECTED));
+
+            gatt.disconnect();
+            gatt.close();
         } finally {
             gatt2.disconnect();
             gatt2.close();
@@ -511,6 +509,51 @@ public class GattClientTest {
         assertThat(resp.getStatus()).isEqualTo(AttStatusCode.SUCCESS);
     }
 
+    @Test
+    public void multipleGattClientsSeparateInteractions() throws Exception {
+        advertiseWithBumble();
+
+        BluetoothDevice device =
+                mAdapter.getRemoteLeDevice(
+                        Utils.BUMBLE_RANDOM_ADDRESS, BluetoothDevice.ADDRESS_TYPE_RANDOM);
+
+        BluetoothGattCallback gattCallbackA = mock(BluetoothGattCallback.class);
+        BluetoothGattCallback gattCallbackB = mock(BluetoothGattCallback.class);
+        InOrder inOrder = inOrder(gattCallbackA, gattCallbackB);
+
+        BluetoothGatt gattA = device.connectGatt(mContext, false, gattCallbackA);
+        inOrder.verify(gattCallbackA, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_CONNECTED));
+
+        BluetoothGatt gattB = device.connectGatt(mContext, false, gattCallbackB);
+        inOrder.verify(gattCallbackB, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_CONNECTED));
+
+        gattA.disconnect();
+        inOrder.verify(gattCallbackA, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+
+        gattA.connect();
+        inOrder.verify(gattCallbackA, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_CONNECTED));
+
+        gattB.disconnect();
+        inOrder.verify(gattCallbackB, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+
+        gattB.close();
+
+        gattA.disconnect();
+        inOrder.verify(gattCallbackA, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+
+        gattA.connect();
+        inOrder.verify(gattCallbackA, timeout(1000))
+                .onConnectionStateChange(any(), anyInt(), eq(BluetoothProfile.STATE_CONNECTED));
+
+        gattA.close();
+    }
+
     private void advertiseWithBumble() {
         AdvertiseRequest request =
                 AdvertiseRequest.newBuilder()
@@ -562,7 +605,7 @@ public class GattClientTest {
 
     private void disconnectAndWaitDisconnection(
             BluetoothGatt gatt, BluetoothGattCallback callback) {
-        final int state = BluetoothProfile.STATE_DISCONNECTED;
+        final int state = STATE_DISCONNECTED;
         gatt.disconnect();
         verify(callback, timeout(1000)).onConnectionStateChange(eq(gatt), anyInt(), eq(state));
 
@@ -652,7 +695,6 @@ public class GattClientTest {
 
     // Check if we can have 100 simultaneous clients
     @Test
-    @RequiresFlagsEnabled(Flags.FLAG_GATT_CLIENT_DYNAMIC_ALLOCATION)
     public void connectGatt_multipleClients() {
         registerGattService();
 
@@ -741,8 +783,7 @@ public class GattClientTest {
 
                 gatt.disconnect();
                 inOrder.verify(gattCallback, timeout(1000))
-                        .onConnectionStateChange(
-                                any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+                        .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
 
                 gatt.connect();
                 inOrder.verify(gattCallback, timeout(1000))
@@ -750,8 +791,7 @@ public class GattClientTest {
 
                 gatt.disconnect();
                 inOrder.verify(gattCallback, timeout(1000))
-                        .onConnectionStateChange(
-                                any(), anyInt(), eq(BluetoothProfile.STATE_DISCONNECTED));
+                        .onConnectionStateChange(any(), anyInt(), eq(STATE_DISCONNECTED));
             }
         } finally {
             for (BluetoothGatt gatt : gatts) {

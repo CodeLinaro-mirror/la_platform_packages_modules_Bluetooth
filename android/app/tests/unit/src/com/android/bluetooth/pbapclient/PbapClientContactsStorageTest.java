@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,6 +67,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/** Test cases for {@link PbapClientContactsStorage}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class PbapClientContactsStorageTest {
@@ -86,7 +87,7 @@ public class PbapClientContactsStorageTest {
             ArgumentCaptor.forClass(ArrayList.class);
     @Mock private File mMockDirectory;
     @Mock private PbapClientAccountManager mMockAccountManager;
-    private List<Account> mMockedAccounts = new ArrayList<>();
+    private final List<Account> mMockedAccounts = new ArrayList<>();
     @Mock private PbapClientContactsStorage.Callback mMockStorageCallback;
     private PbapClientContactsStorage.PbapClientAccountManagerCallback mAccountManagerCallback;
 
@@ -552,11 +553,11 @@ public class PbapClientContactsStorageTest {
         assertThat(mStorage.isStorageReady()).isTrue();
     }
 
-    private Account getAccountForDevice(BluetoothDevice device) {
+    private static Account getAccountForDevice(BluetoothDevice device) {
         return new Account(device.getAddress(), ACCOUNT_TYPE);
     }
 
-    private List<VCardEntry> getMockContacts(int numContacts) {
+    private static List<VCardEntry> getMockContacts(int numContacts) {
         List<VCardEntry> contacts = new ArrayList<VCardEntry>();
         for (int i = 0; i < numContacts; i++) {
             VCardEntry card = new VCardEntry(VCardConfig.VCARD_TYPE_V21_GENERIC);
@@ -570,7 +571,7 @@ public class PbapClientContactsStorageTest {
         return contacts;
     }
 
-    private List<VCardEntry> getMockCallHistory(int type, int numEntries) {
+    private static List<VCardEntry> getMockCallHistory(int type, int numEntries) {
         String typeIndicator = "";
         if (type == CallLog.Calls.INCOMING_TYPE) {
             typeIndicator = "RECEIVED";

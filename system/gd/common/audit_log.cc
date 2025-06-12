@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 
 #include "common/audit_log.h"
+
+#include <format>
 
 #ifdef __ANDROID__
 #include <log/log_event_list.h>
@@ -43,8 +45,8 @@ void LogConnectionAdminAuditEvent([[maybe_unused]] const char* action,
 
   android_log_event_list(SEC_TAG_BLUETOOTH_CONNECTION)
           << address.ToRedactedStringForLogging()
-          << /* success */ int32_t(status == hci::ErrorCode::SUCCESS) << action << ": "
-          << ErrorCodeText(status) << LOG_ID_SECURITY;
+          << /* success */ int32_t(status == hci::ErrorCode::SUCCESS)
+          << std::format("{}: {}", action, ErrorCodeText(status)) << LOG_ID_SECURITY;
 
 #endif /* defined(__ANDROID__) && !defined (FUZZ_TARGET) */
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 package com.android.bluetooth.avrcpcontroller;
+
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
 import static com.android.bluetooth.TestUtils.MockitoRule;
 import static com.android.bluetooth.TestUtils.getTestDevice;
@@ -31,7 +34,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
@@ -60,6 +62,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/** Test cases for {@link AvrcpControllerService}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class AvrcpControllerServiceTest {
@@ -121,14 +124,14 @@ public class AvrcpControllerServiceTest {
 
     @Test
     public void disconnect_whenDisconnected_returnsFalse() {
-        when(mStateMachine.getState()).thenReturn(BluetoothProfile.STATE_DISCONNECTED);
+        when(mStateMachine.getState()).thenReturn(STATE_DISCONNECTED);
 
         assertThat(mService.disconnect(mDevice)).isFalse();
     }
 
     @Test
     public void disconnect_whenDisconnected_returnsTrue() {
-        when(mStateMachine.getState()).thenReturn(BluetoothProfile.STATE_CONNECTED);
+        when(mStateMachine.getState()).thenReturn(STATE_CONNECTED);
 
         assertThat(mService.disconnect(mDevice)).isTrue();
         verify(mStateMachine).disconnect();
@@ -146,7 +149,7 @@ public class AvrcpControllerServiceTest {
     @Test
     public void getConnectedDevices() {
         when(mAdapterService.getBondedDevices()).thenReturn(new BluetoothDevice[] {mDevice});
-        when(mStateMachine.getState()).thenReturn(BluetoothProfile.STATE_CONNECTED);
+        when(mStateMachine.getState()).thenReturn(STATE_CONNECTED);
 
         assertThat(mService.getConnectedDevices()).contains(mDevice);
     }
@@ -207,7 +210,7 @@ public class AvrcpControllerServiceTest {
         when(mStateMachine.findNode(parentMediaId)).thenReturn(null);
         BrowseResult result = mService.getContents(parentMediaId);
 
-        assertThat(result.getStatus()).isEqualTo(BrowseResult.ERROR_MEDIA_ID_INVALID);
+        assertThat(result.status()).isEqualTo(BrowseResult.ERROR_MEDIA_ID_INVALID);
     }
 
     /**
@@ -220,7 +223,7 @@ public class AvrcpControllerServiceTest {
         String parentMediaId = BrowseTree.ROOT;
         BrowseResult result = mService.getContents(parentMediaId);
 
-        assertThat(result.getStatus()).isEqualTo(BrowseResult.NO_DEVICE_CONNECTED);
+        assertThat(result.status()).isEqualTo(BrowseResult.NO_DEVICE_CONNECTED);
     }
 
     /**
@@ -233,7 +236,7 @@ public class AvrcpControllerServiceTest {
         mService.getBrowseTree().onConnected(mDevice);
         BrowseResult result = mService.getContents(parentMediaId);
 
-        assertThat(result.getStatus()).isEqualTo(BrowseResult.SUCCESS);
+        assertThat(result.status()).isEqualTo(BrowseResult.SUCCESS);
     }
 
     /**
@@ -256,7 +259,7 @@ public class AvrcpControllerServiceTest {
         BrowseResult result = mService.getContents(parentMediaId);
 
         verify(mStateMachine).requestContents(eq(node));
-        assertThat(result.getStatus()).isEqualTo(BrowseResult.DOWNLOAD_PENDING);
+        assertThat(result.status()).isEqualTo(BrowseResult.DOWNLOAD_PENDING);
     }
 
     /**
@@ -273,7 +276,7 @@ public class AvrcpControllerServiceTest {
 
         BrowseResult result = mService.getContents(parentMediaId);
 
-        assertThat(result.getStatus()).isEqualTo(BrowseResult.SUCCESS);
+        assertThat(result.status()).isEqualTo(BrowseResult.SUCCESS);
     }
 
     @Test

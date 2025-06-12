@@ -191,13 +191,19 @@ public:
 
   void UpdateActiveAudioConfig(
           const types::BidirectionalPair<stream_parameters>& stream_params,
-          std::function<void(const stream_config& config, uint8_t direction)> update_receiver) {
+          std::function<void(const stream_config& config, uint8_t direction)> update_receiver,
+          uint8_t remote_directions_to_update) {
     if (GetCodecLocation() != bluetooth::le_audio::types::CodecLocation::ADSP) {
       return;
     }
 
     for (auto direction : {bluetooth::le_audio::types::kLeAudioDirectionSink,
                            bluetooth::le_audio::types::kLeAudioDirectionSource}) {
+      /* Update only the requested directions */
+      if ((remote_directions_to_update & direction) != direction) {
+        continue;
+      }
+
       auto& stream_map = offloader_stream_maps.get(direction);
       if (!stream_map.has_changed && !stream_map.is_initial) {
         log::warn("unexpected call for direction {}, stream_map.has_changed {}", direction,
@@ -727,11 +733,11 @@ public:
 
   bool AppendStreamMapExtension(const std::vector<struct types::cis>& cises,
                                 const stream_parameters& stream_params, uint8_t direction) {
-    // In the legacy mode we are already done
-    if (!IsUsingCodecExtensibility()) {
-      log::verbose("Codec Extensibility is disabled");
-      return true;
-    }
+    /* Without the codec extensibility enabled, we still need the BT stack structure to
+     * have the valid extended codec configuration entries, as these are used for codec type
+     * matching. The extended data fields of the AIDL API data structures are filed
+     * right before the AIDL call, only if the codec extensibility is enabled
+     */
 
     const std::string tag =
             types::BidirectionalPair<std::string>({.sink = "Sink", .source = "Source"})
@@ -781,11 +787,8 @@ public:
 
   bool UpdateCisMonoConfiguration(const std::vector<struct types::cis>& cises,
                                   const stream_parameters& stream_params, uint8_t direction) {
-    if (!LeAudioHalVerifier::SupportsStreamActiveApi() ||
-        !com::android::bluetooth::flags::leaudio_mono_location_errata()) {
-      log::error(
-              "SupportsStreamActiveApi() not supported or leaudio_mono_location_errata flag is not "
-              "enabled. Mono stream cannot be enabled");
+    if (!LeAudioHalVerifier::SupportsStreamActiveApi()) {
+      log::error("SupportsStreamActiveApi() not supported. Mono stream cannot be enabled");
       return false;
     }
 
@@ -1053,7 +1056,7 @@ private:
   }
 
   void storeLocalCapa(
-          std::vector<::bluetooth::le_audio::types::AudioSetConfiguration>& adsp_capabilities,
+          const std::vector<::bluetooth::le_audio::types::AudioSetConfiguration>& adsp_capabilities,
           const std::vector<btle_audio_codec_config_t>& offload_preference_set) {
     log::debug("Print adsp_capabilities:");
 
@@ -1082,6 +1085,7 @@ private:
                           conf.codec.GetChannelCountPerIsoStream()),
                   .frame_duration = utils::translateToBtLeAudioCodecConfigFrameDuration(
                           conf.codec.GetDataIntervalUs()),
+                  .codec_frame_blocks_per_sdu = conf.codec.GetCodecFrameBlocksPerSdu(),
           };
 
           auto& capa_container = (direction == types::kLeAudioDirectionSink) ? codec_output_capa
@@ -1306,7 +1310,7 @@ CodecManager::GetLocalAudioOutputCodecCapa() {
 std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
 CodecManager::GetLocalAudioInputCodecCapa() {
   if (pimpl_->IsRunning()) {
-    return pimpl_->codec_manager_impl_->GetLocalAudioOutputCodecCapa();
+    return pimpl_->codec_manager_impl_->GetLocalAudioInputCodecCapa();
   }
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t> empty{};
   return empty;
@@ -1314,9 +1318,11 @@ CodecManager::GetLocalAudioInputCodecCapa() {
 
 void CodecManager::UpdateActiveAudioConfig(
         const types::BidirectionalPair<stream_parameters>& stream_params,
-        std::function<void(const stream_config& config, uint8_t direction)> update_receiver) {
+        std::function<void(const stream_config& config, uint8_t direction)> update_receiver,
+        uint8_t remote_directions_to_update) {
   if (pimpl_->IsRunning()) {
-    pimpl_->codec_manager_impl_->UpdateActiveAudioConfig(stream_params, update_receiver);
+    pimpl_->codec_manager_impl_->UpdateActiveAudioConfig(stream_params, update_receiver,
+                                                         remote_directions_to_update);
   }
 }
 

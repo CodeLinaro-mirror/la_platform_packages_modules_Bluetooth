@@ -29,8 +29,8 @@
 #include "types/raw_address.h"
 
 namespace bluetooth {
-
 namespace os {
+
 /**
  * Unknown connection handle for metrics purpose
  */
@@ -260,11 +260,17 @@ void LogMetricSdpAttribute(const hci::Address& address, uint16_t protocol_uuid,
  *        by |server_port|
  * @param socket_role role of this socket, server or connection
  * @param uid socket owner's uid
+ * @param connection_duration_ms duration of socket connection in milliseconds
+ * @param error_code error code of socket failures
+ * @param is_hardware_offload whether this is a offload socket
  */
 void LogMetricSocketConnectionState(const hci::Address& address, int port, int type,
                                     android::bluetooth::SocketConnectionstateEnum connection_state,
                                     int64_t tx_bytes, int64_t rx_bytes, int uid, int server_port,
-                                    android::bluetooth::SocketRoleEnum socket_role);
+                                    android::bluetooth::SocketRoleEnum socket_role,
+                                    uint64_t connection_duration_ms,
+                                    android::bluetooth::SocketErrorEnum error_code,
+                                    bool is_hardware_offload);
 
 /**
  * Logs when a Bluetooth device's manufacturer information is learnt
@@ -373,6 +379,19 @@ void LogMetricRfcommConnectionAtClose(const hci::Address& address,
                                       android::bluetooth::BtaStatus sdp_status, bool is_server,
                                       bool sdp_initiated, int32_t sdp_duration_ms);
 
+void LogMetricLeAudioConnectionSessionReported(
+        int32_t group_size, int32_t group_metric_id, int64_t connection_duration_nanos,
+        const std::vector<int64_t>& device_connecting_offset_nanos,
+        const std::vector<int64_t>& device_connected_offset_nanos,
+        const std::vector<int64_t>& device_connection_duration_nanos,
+        const std::vector<int32_t>& device_connection_status,
+        const std::vector<int32_t>& device_disconnection_status,
+        const std::vector<RawAddress>& device_address,
+        const std::vector<int64_t>& streaming_offset_nanos,
+        const std::vector<int64_t>& streaming_duration_nanos,
+        const std::vector<int32_t>& streaming_context_type);
+
+void LogMetricLeAudioBroadcastSessionReported(int64_t duration_nanos);
+
 }  // namespace os
-   //
 }  // namespace bluetooth

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Test cases for {@link BrowserPlayerWrapper}. */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
 public class BrowserPlayerWrapperTest {
@@ -143,7 +144,7 @@ public class BrowserPlayerWrapperTest {
         return BitmapFactory.decodeStream(imageInputStream);
     }
 
-    private MediaDescription getMediaDescription(
+    private static MediaDescription getMediaDescription(
             String id,
             String title,
             String artist,
@@ -169,7 +170,7 @@ public class BrowserPlayerWrapperTest {
         return builder.build();
     }
 
-    private MediaItem getMediaItem(MediaDescription description, int flags) {
+    private static MediaItem getMediaItem(MediaDescription description, int flags) {
         return new MediaItem(description, flags);
     }
 

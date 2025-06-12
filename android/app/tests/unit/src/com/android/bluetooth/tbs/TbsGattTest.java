@@ -56,6 +56,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 
+/** Test cases for {@link TbsGatt}. */
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class TbsGattTest {
@@ -645,7 +646,7 @@ public class TbsGattTest {
                 mFirstDevice,
                 true);
 
-        // Clear freindly name (should not send any notification)
+        // Clear friendly name (should not send any notification)
         verifySetValue(characteristic, null, false, mFirstDevice, true);
 
         // Check with notifications disabled
@@ -780,7 +781,7 @@ public class TbsGattTest {
     }
 
     @Test
-    public void testSilentModeAndInbandringtonFlagsChanges() {
+    public void testSilentModeAndInbandRingtoneFlagsChanges() {
         prepareDefaultService();
         BluetoothGattCharacteristic characteristic = getCharacteristic(TbsGatt.UUID_STATUS_FLAGS);
         configureNotifications(mFirstDevice, characteristic, true);
@@ -848,7 +849,7 @@ public class TbsGattTest {
     public void testCharacteristic_longReadAuthorized() {
         prepareDefaultService();
 
-        /* Twenty three octects long friendly name */
+        /* Twenty three octets long friendly name */
         String title = "01234567890123456789012";
         BluetoothGattCharacteristic characteristic =
                 getCharacteristic(TbsGatt.UUID_CALL_FRIENDLY_NAME);
@@ -888,7 +889,7 @@ public class TbsGattTest {
     public void testCharacteristic_longReadOutsideLenAuthorized() {
         prepareDefaultService();
 
-        /* Twenty three octects long friendly name */
+        /* Twenty three octets long friendly name */
         String title = "01234567890123456789012";
         BluetoothGattCharacteristic characteristic =
                 getCharacteristic(TbsGatt.UUID_CALL_FRIENDLY_NAME);

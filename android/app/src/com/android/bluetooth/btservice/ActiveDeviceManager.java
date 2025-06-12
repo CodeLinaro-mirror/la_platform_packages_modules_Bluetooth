@@ -16,6 +16,9 @@
 
 package com.android.bluetooth.btservice;
 
+import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.bluetooth.BluetoothAdapter;
@@ -139,7 +142,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
     private final List<BluetoothDevice> mLeHearingAidConnectedDevices = new ArrayList<>();
 
     @GuardedBy("mLock")
-    private List<BluetoothDevice> mPendingLeHearingAidActiveDevice = new ArrayList<>();
+    private final List<BluetoothDevice> mPendingLeHearingAidActiveDevice = new ArrayList<>();
 
     @GuardedBy("mLock")
     private BluetoothDevice mA2dpActiveDevice = null;
@@ -180,7 +183,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
      */
     public void profileConnectionStateChanged(
             int profile, BluetoothDevice device, int fromState, int toState) {
-        if (toState == BluetoothProfile.STATE_CONNECTED) {
+        if (toState == STATE_CONNECTED) {
             switch (profile) {
                 case BluetoothProfile.A2DP:
                     mHandler.post(() -> handleA2dpConnected(device));
@@ -198,7 +201,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     mHandler.post(() -> handleHapConnected(device));
                     break;
             }
-        } else if (fromState == BluetoothProfile.STATE_CONNECTED) {
+        } else if (fromState == STATE_CONNECTED) {
             switch (profile) {
                 case BluetoothProfile.A2DP:
                     mHandler.post(() -> handleA2dpDisconnected(device));
@@ -291,7 +294,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
                 // Activate A2DP if audio mode is normal or HFP is not supported or enabled.
                 if (mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.HEADSET)
-                                != BluetoothProfile.CONNECTION_POLICY_ALLOWED
+                                != CONNECTION_POLICY_ALLOWED
                         || mAudioManager.getMode() == AudioManager.MODE_NORMAL) {
                     boolean a2dpMadeActive = setA2dpActiveDevice(device);
                     if (a2dpMadeActive && !Utils.isDualModeAudioEnabled()) {
@@ -361,7 +364,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
                 // Activate HFP if audio mode is not normal or A2DP is not supported or enabled.
                 if (mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.A2DP)
-                                != BluetoothProfile.CONNECTION_POLICY_ALLOWED
+                                != CONNECTION_POLICY_ALLOWED
                         || mAudioManager.getMode() != AudioManager.MODE_NORMAL) {
                     if (Utils.isWatch(mAdapterService, device)) {
                         Log.i(TAG, "Do not set hfp active for watch device " + device);
@@ -414,7 +417,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 final LeAudioService leAudioService = mFactory.getLeAudioService();
                 setA2dpActiveDevice(null, true);
                 setHfpActiveDevice(null);
-                if (Flags.admVerifyActiveFallbackDevice() && leAudioService != null) {
+                if (leAudioService != null) {
                     setLeAudioActiveDevice(
                             null, !leAudioService.getActiveDevices().contains(device));
                 } else {
@@ -572,9 +575,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
             boolean hasFallbackDevice = false;
             if (Objects.equals(mLeAudioActiveDevice, device)) {
                 hasFallbackDevice = setFallbackDeviceActiveLocked(device);
-                if (!hasFallbackDevice && !Flags.admFixDisconnectOfSetMember()) {
-                    leAudioService.removeActiveDevice(false);
-                }
             }
             leAudioService.deviceDisconnected(device, hasFallbackDevice);
         }
@@ -682,7 +682,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 if (!Objects.equals(mHfpActiveDevice, device)
                         && mHfpConnectedDevices.contains(device)
                         && mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.HEADSET)
-                                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+                                == CONNECTION_POLICY_ALLOWED) {
                     mClassicDeviceToBeActivated = device;
                     setHfpActiveDevice(device);
                     mHandler.postDelayed(
@@ -753,7 +753,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 if (!Objects.equals(mA2dpActiveDevice, device)
                         && mA2dpConnectedDevices.contains(device)
                         && mDbManager.getProfileConnectionPolicy(device, BluetoothProfile.A2DP)
-                                == BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+                                == CONNECTION_POLICY_ALLOWED) {
                     mClassicDeviceToBeActivated = device;
                     setA2dpActiveDevice(device);
                     mHandler.postDelayed(
@@ -1099,12 +1099,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
 
     @GuardedBy("mLock")
     private boolean areSameGroupMembers(BluetoothDevice firstDevice, BluetoothDevice secondDevice) {
-
-        if (!Flags.admFixDisconnectOfSetMember()) {
-            /* This function shall return false without the fix flag. */
-            return false;
-        }
-
         if (firstDevice == null || secondDevice == null) {
             return false;
         }
@@ -1159,13 +1153,11 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                  * recently removed device, it means it just switched profile it is using and is
                  * not new one.
                  */
-                boolean hasFallbackDevice = true;
-                if (Flags.admVerifyActiveFallbackDevice()) {
-                    hasFallbackDevice =
-                            !(recentlyRemovedDevice != null
-                                    && device.equals(recentlyRemovedDevice)
-                                    && connectedHearingAidDevices.size() == 1);
-                }
+                boolean hasFallbackDevice =
+                        !(recentlyRemovedDevice != null
+                                && device.equals(recentlyRemovedDevice)
+                                && connectedHearingAidDevices.size() == 1);
+
                 if (mHearingAidConnectedDevices.contains(device)) {
                     Log.d(TAG, "Found a hearing aid fallback device: " + device);
                     setHearingAidActiveDevice(device);
@@ -1365,7 +1357,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
             return false;
         }
 
-        if (leAudioService.getAllBroadcastMetadata().isEmpty()) {
+        if (!leAudioService.isBroadcastStarted()) {
             Log.d(TAG, "isBroadcastingAudio: false - getAllBroadcastMetadata is empty");
             return false;
         }
