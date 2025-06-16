@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.telephony;
@@ -54,6 +59,7 @@ import android.util.Log;
 
 import androidx.annotation.VisibleForTesting;
 
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hfp.BluetoothHeadsetProxy;
@@ -117,6 +123,7 @@ public class BluetoothInCallService extends InCallService {
     private BluetoothCall mOldHeldCall = null;
     private boolean mHeadsetUpdatedRecently = false;
     private boolean mIsDisconnectedTonePlaying = false;
+    private AdapterService mAdapterService;
 
     @VisibleForTesting boolean mIsTerminatedByClient = false;
 
@@ -369,6 +376,8 @@ public class BluetoothInCallService extends InCallService {
         mCallInfo = Objects.requireNonNullElseGet(callInfo, () -> new CallInfo());
         sInstance = this;
         mExecutor = Executors.newSingleThreadExecutor();
+        mAdapterService = Objects.requireNonNull(AdapterService.getAdapterService(),
+                "AdapterService cannot be null when BluetoothInCallService init");
     }
 
     public BluetoothInCallService() {
@@ -776,7 +785,7 @@ public class BluetoothInCallService extends InCallService {
     public void onCreate() {
         Log.d(TAG, "onCreate");
         super.onCreate();
-        mAdapter = requireNonNull(getSystemService(BluetoothManager.class)).getAdapter();
+        mAdapter = mAdapterService.getAdapter();
         mTelephonyManager = requireNonNull(getSystemService(TelephonyManager.class));
         mTelecomManager = requireNonNull(getSystemService(TelecomManager.class));
         mAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.HEADSET);

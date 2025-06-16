@@ -39,6 +39,9 @@ rust_library_host_rlib {
 
 cc_library_static {
     name: "libbt_topshim_cxx",
+    cflags: [
+        "-DDUAL_BT",
+    ],
     srcs: [
         "btav/btav_shim.cc",
         "btav_sink/btav_sink_shim.cc",

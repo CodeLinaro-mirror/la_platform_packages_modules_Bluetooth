@@ -37,6 +37,9 @@ cc_defaults {
 cc_library_static {
     name: "libbthalutils",
     defaults: ["fluoride_defaults"],
+    cflags: [
+        "-DDUAL_BT",
+    ],
     srcs: [
         "src/hal_util.cc",
     ],
