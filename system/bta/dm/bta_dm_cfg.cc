@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  ******************************************************************************/
 
 /******************************************************************************
@@ -122,6 +126,9 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_CFG bta_dm_pm_cfg[BTA_DM_NUM_PM_ENTRY + 1] 
 tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
   static uint16_t hs_sniff_delay =
           uint16_t(osi_property_get_int32("bluetooth.bta_hs_sniff_delay_ms.config", 7000));
+  static uint16_t hs_sniff_sco_open_delay =
+          uint16_t(osi_property_get_int32("bluetooth.bta_hs_sniff_sco_open_delay_ms.config", 7000));
+
   static uint16_t fts_ops_idle_to_sniff_delay_ms =
           uint16_t(osi_property_get_int32("bluetooth.bta_fts_ops_idle_to_sniff_delay_ms.config",
                                           BTA_FTS_OPS_IDLE_TO_SNIFF_DELAY_MS));
@@ -336,7 +343,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* app open */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* app close */
-                   {{BTA_DM_PM_SNIFF3, 7000}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco open, active */
+                   {{BTA_DM_PM_SNIFF3, hs_sniff_sco_open_delay}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco open, active */
                    {{BTA_DM_PM_SNIFF, 7000}, {BTA_DM_PM_NO_ACTION, 0}},  /* sco close sniff  */
                    {{BTA_DM_PM_SNIFF, hs_sniff_delay}, {BTA_DM_PM_NO_ACTION, 0}}, /* idle */
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},             /* busy */

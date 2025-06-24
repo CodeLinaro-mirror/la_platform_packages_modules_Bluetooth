@@ -92,6 +92,7 @@
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 #include "stack/btm/btm_sec.h"
+#include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_status.h"
@@ -623,6 +624,8 @@ public:
 
   void AseInitialStateReadRequest(LeAudioDevice* leAudioDevice) {
     int ases_num = leAudioDevice->ases_.size();
+    bool is_eatt_supported = gatt_profile_get_eatt_support_by_conn_id(leAudioDevice->conn_id_);
+
     void* notify_flag_ptr = NULL;
 
     tBTA_GATTC_MULTI multi_read{};
@@ -636,7 +639,8 @@ public:
         notify_flag_ptr = INT_TO_PTR(leAudioDevice->notify_connected_after_read_);
       }
 
-      if (!com::android::bluetooth::flags::le_ase_read_multiple_variable()) {
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
+      if (!is_eatt_supported) {
         BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                          leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
                                          notify_flag_ptr);
@@ -652,12 +656,18 @@ public:
       multi_read.handles[i % GATT_MAX_READ_MULTI_HANDLES] = leAudioDevice->ases_[i].hdls.val_hdl;
     }
 
-    if (com::android::bluetooth::flags::le_ase_read_multiple_variable() &&
-        (ases_num % GATT_MAX_READ_MULTI_HANDLES != 0)) {
+    if (is_eatt_supported && (ases_num % GATT_MAX_READ_MULTI_HANDLES != 0)) {
       multi_read.num_attr = ases_num % GATT_MAX_READ_MULTI_HANDLES;
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, notify_flag_ptr);
     }
+#else
+      BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
+                                     leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
+                                     notify_flag_ptr);
+      continue;
+    }
+#endif
   }
 
   void OnGroupAddedCb(const RawAddress& address, const bluetooth::Uuid& uuid, int group_id) {
@@ -2564,7 +2574,9 @@ public:
   }
 
   void ReadMustHaveAttributesOnReconnect(LeAudioDevice* leAudioDevice) {
-    log::verbose("{}", leAudioDevice->address_);
+    bool is_eatt_supported = gatt_profile_get_eatt_support_by_conn_id(leAudioDevice->conn_id_);
+
+    log::verbose("{}, eatt supported {}", leAudioDevice->address_, is_eatt_supported);
     /* Here we read
      * 1) ASCS Control Point CCC descriptor in order to validate proper
      *    behavior of remote device which should store CCC values for bonded device.
@@ -2573,7 +2585,8 @@ public:
      *    it can change very often which, as we observed, might lead to not being sent by
      *    remote devices
      */
-    if (!com::android::bluetooth::flags::le_ase_read_multiple_variable()) {
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
+    if (!is_eatt_supported) {
       BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                        leAudioDevice->audio_avail_hdls_.val_hdl,
                                        OnGattReadRspStatic, NULL);
@@ -2587,6 +2600,13 @@ public:
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, NULL);
     }
+#else
+    BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
+                                     leAudioDevice->audio_avail_hdls_.val_hdl,
+                                     OnGattReadRspStatic, NULL);
+    BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_, leAudioDevice->ctp_hdls_.ccc_hdl,
+                                     OnGattReadRspStatic, NULL);
+#endif
   }
 
   void OnEncryptionComplete(const RawAddress& address, tBTM_STATUS status) {

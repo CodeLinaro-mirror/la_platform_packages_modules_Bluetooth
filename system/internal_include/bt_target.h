@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #pragma once
@@ -371,6 +376,11 @@
 /* Used only for GATT Multiple Variable Length Notifications PTS tests */
 #ifndef GATT_UPPER_TESTER_MULT_VARIABLE_LENGTH_NOTIF
 #define GATT_UPPER_TESTER_MULT_VARIABLE_LENGTH_NOTIF FALSE
+#endif
+
+/* Used for GATT Read Multiple Variable Length */
+#ifndef GATT_READ_MULT_VARIABLE_LENGTH
+#define GATT_READ_MULT_VARIABLE_LENGTH FALSE
 #endif
 
 /* Used only for GATT Multiple Variable Length READ PTS tests */
