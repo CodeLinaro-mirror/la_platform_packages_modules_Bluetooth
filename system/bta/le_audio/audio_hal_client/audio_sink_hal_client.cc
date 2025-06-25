@@ -53,6 +53,7 @@ class SinkImpl : public LeAudioSinkAudioHalClient {
       const ::bluetooth::le_audio::offload_config& config) override;
   void SuspendedForReconfiguration() override;
   void ReconfigurationComplete() override;
+  void UpdateMetadataComplete() override;
 
   // Internal functionality
   SinkImpl() = default;
@@ -69,6 +70,11 @@ class SinkImpl : public LeAudioSinkAudioHalClient {
   bluetooth::audio::le_audio::LeAudioClientInterface::Source*
       halSourceInterface_ = nullptr;
   LeAudioSinkAudioHalClient::Callbacks* audioSinkCallbacks_ = nullptr;
+
+  std::mutex sink_metadata_wait_mutex_;
+  std::condition_variable sink_metadata_wait_cv;
+  bool sink_metadata_wait_complete;
+  static constexpr uint64_t kSinkMetadataWaitMs = 1500;
 };
 
 bool SinkImpl::Acquire() {
@@ -171,6 +177,9 @@ bool SinkImpl::OnMetadataUpdateReq(const sink_metadata_v7_t& sink_metadata) {
   std::vector<struct record_track_metadata_v7> metadata(
       sink_metadata.tracks, sink_metadata.tracks + sink_metadata.track_count);
 
+  std::unique_lock<std::mutex> guard_metadata(sink_metadata_wait_mutex_);
+  sink_metadata_wait_complete = false;
+
   bt_status_t status = do_in_main_thread(
       FROM_HERE,
       base::BindOnce(
@@ -178,9 +187,12 @@ bool SinkImpl::OnMetadataUpdateReq(const sink_metadata_v7_t& sink_metadata) {
           audioSinkCallbacks_->weak_factory_.GetWeakPtr(),
           std::move(metadata)));
   if (status == BT_STATUS_SUCCESS) {
+    sink_metadata_wait_cv.wait_for(guard_metadata, std::chrono::milliseconds(kSinkMetadataWaitMs),
+                            [this]{return sink_metadata_wait_complete;});
     return true;
   }
 
+  sink_metadata_wait_complete = true;
   log::error("do_in_main_thread err={}", status);
   return false;
 }
@@ -342,6 +354,18 @@ void SinkImpl::UpdateAudioConfigToHal(
 
   log::info("");
   halSourceInterface_->UpdateAudioConfigToHal(config);
+}
+
+void SinkImpl::UpdateMetadataComplete() {
+  log::info("");
+  std::unique_lock<std::mutex> guard(sink_metadata_wait_mutex_);
+  if(!sink_metadata_wait_complete) {
+    sink_metadata_wait_complete = true;
+    log::info("Signalling");
+    sink_metadata_wait_cv.notify_all();
+  } else {
+    log::info("Already signalled");
+  }
 }
 }  // namespace
 
