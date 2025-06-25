@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "bt_bta_dm"
@@ -27,6 +32,7 @@
 #include "bta/dm/bta_dm_disc.h"
 #include "bta/dm/bta_dm_disc_int.h"
 #include "bta/include/bta_sdp_api.h"
+#include "btif/include/btif_common.h"
 #include "btif/include/btif_config.h"
 #include "com_android_bluetooth_flags.h"
 #include "common/strings.h"
@@ -354,8 +360,12 @@ void bta_dm_sdp_find_services(tBTA_DM_SDP_STATE* sdp_state) {
 
   if (uuid == Uuid::From16Bit(UUID_PROTOCOL_L2CAP)) {
     if (!is_sdp_pbap_pce_disabled(sdp_state->bd_addr)) {
-      log::debug("SDP search for PBAP Client");
-      BTA_SdpSearch(sdp_state->bd_addr, Uuid::From16Bit(UUID_SERVCLASS_PBAP_PCE));
+      tBTA_SERVICE_MASK service_mask = btif_get_enabled_services_mask();
+      if(service_mask & (tBTA_SERVICE_MASK)(1 << BTA_PBAP_SERVICE_ID)) {
+        log::debug("SDP search for PBAP Client");
+        BTA_SdpSearch(sdp_state->bd_addr,
+                      Uuid::From16Bit(UUID_SERVCLASS_PBAP_PCE));
+      }
     }
   }
   sdp_state->service_index++;
