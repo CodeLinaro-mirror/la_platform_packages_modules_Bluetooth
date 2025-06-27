@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #ifndef BTM_API_TYPES_H
@@ -92,6 +97,8 @@ typedef uint8_t tBTM_SCO_TYPE;
 #define BTA_AG_SCO_APTX_SWB_SETTINGS_Q1_MASK 0x0016
 #define BTA_AG_SCO_APTX_SWB_SETTINGS_Q2_MASK 0x0032
 #define BTA_AG_SCO_APTX_SWB_SETTINGS_Q3_MASK 0x0064
+
+#define BTM_INVALID_EIR_TX_POWER_LEVEL 0x7f
 
 /**
  * enum value is defined based on HFP spec, Codec ID section

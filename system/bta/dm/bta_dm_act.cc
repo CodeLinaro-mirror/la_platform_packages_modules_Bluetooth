@@ -14,9 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- *  Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *  SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ******************************************************************************/
@@ -128,6 +128,9 @@ static const char kPropertySniffOffloadEnabled[] = "persist.bluetooth.sniff_offl
 
 namespace {
 
+/* Inquiry Tx Power Level occupies 3 bytes in EIR */
+#define INQ_TX_POWER_IN_EIR_SIZE 3
+
 struct WaitForAllAclConnectionsToDrain {
   uint64_t time_to_wait_in_ms;
   uint64_t TimeToWaitInMs() const { return time_to_wait_in_ms; }
@@ -187,6 +190,7 @@ static void bta_dm_init_cb(void) {
       bta_dm_cb.pm_timer[i].timer[j] = alarm_new("bta_dm.pm_timer");
     }
   }
+  bta_dm_cb.inq_tx_power = BTM_INVALID_EIR_TX_POWER_LEVEL;
 }
 
 /*******************************************************************************
@@ -1426,12 +1430,21 @@ static void bta_dm_set_eir(char* local_name) {
     p_length = NULL;
   }
 
-  /* if Inquiry Tx Resp Power compiled */
-  if ((p_bta_dm_eir_cfg->bta_dm_eir_inq_tx_power) && (free_eir_length >= 3)) {
-    UINT8_TO_STREAM(p, 2); /* Length field */
-    UINT8_TO_STREAM(p, HCI_EIR_TX_POWER_LEVEL_TYPE);
-    UINT8_TO_STREAM(p, *(p_bta_dm_eir_cfg->bta_dm_eir_inq_tx_power));
-    free_eir_length -= 3;
+  if (free_eir_length >= INQ_TX_POWER_IN_EIR_SIZE) {
+    if (bta_dm_cb.inq_tx_power != BTM_INVALID_EIR_TX_POWER_LEVEL) {
+      /* if Inquiry Tx Resp Power has been fetched from controller */
+      log::debug("inq_tx_power {}", bta_dm_cb.inq_tx_power);
+      UINT8_TO_STREAM(p, 2); /* Length field */
+      UINT8_TO_STREAM(p, HCI_EIR_TX_POWER_LEVEL_TYPE);
+      UINT8_TO_STREAM(p, bta_dm_cb.inq_tx_power);
+      free_eir_length -= INQ_TX_POWER_IN_EIR_SIZE;
+    } else if (p_bta_dm_eir_cfg->bta_dm_eir_inq_tx_power) {
+      /* if Inquiry Tx Resp Power compiled */
+      UINT8_TO_STREAM(p, 2); /* Length field */
+      UINT8_TO_STREAM(p, HCI_EIR_TX_POWER_LEVEL_TYPE);
+      UINT8_TO_STREAM(p, *(p_bta_dm_eir_cfg->bta_dm_eir_inq_tx_power));
+      free_eir_length -= INQ_TX_POWER_IN_EIR_SIZE;
+    }
   }
 
   if (free_eir_length) {
@@ -1441,6 +1454,23 @@ static void bta_dm_set_eir(char* local_name) {
   if (get_btm_client_interface().eir.BTM_WriteEIR(p_buf) != tBTM_STATUS::BTM_SUCCESS) {
     log::warn("Unable to write EIR data");
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_read_inq_tx_power_complete
+ *
+ * Description      This function is called when read tx power level is
+ *                  completed by the LM
+ *
+ * Parameters       power - Inquiry tx power level
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void bta_read_inq_tx_power_complete(int8_t power) {
+  log::debug("bta_read_inq_tx_power_complete: power {}", power);
+  bta_dm_cb.inq_tx_power = power;
 }
 
 /*******************************************************************************
@@ -1529,6 +1559,11 @@ void bta_dm_eir_update_cust_uuid(const tBTA_CUSTOM_UUID& curr, bool adding) {
  *
  ******************************************************************************/
 void bta_dm_eir_update_uuid(uint16_t uuid16, bool adding) {
+  if (bta_dm_cb.inq_tx_power == BTM_INVALID_EIR_TX_POWER_LEVEL) {
+    log::info("Read inquiry tx power level");
+    // Read inquiry power and set the value to EIR
+    btsnd_hcic_read_inq_tx_power();
+  }
   /* if this UUID is not advertised in EIR */
   if (!BTM_HasEirService(p_bta_dm_eir_cfg->uuid_mask, uuid16)) {
     return;

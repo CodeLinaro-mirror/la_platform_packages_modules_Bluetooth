@@ -14,10 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ****************************************************************************************/
 
@@ -232,6 +232,8 @@ void btsnd_hcic_enhanced_set_up_synchronous_connection(uint16_t conn_handle,
 /* Enhanced accept SCO connection request (CSA2) */
 void btsnd_hcic_enhanced_accept_synchronous_connection(const RawAddress& bd_addr,
                                                        enh_esco_params_t* p_parms);
+/* Read Tx Power Level */
+extern void btsnd_hcic_read_inq_tx_power(void);
 
 #define HCI_DATA_HANDLE_MASK 0x0FFF
 #define HCI_DATA_PKT_STATUS_MASK 0x3000
