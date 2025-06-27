@@ -213,6 +213,11 @@ public class AdapterService extends Service {
     private static final int MIN_OFFLOADED_FILTERS = 10;
     private static final int MIN_OFFLOADED_SCAN_STORAGE_BYTES = 1024;
 
+    private static final int ENABLE = 0;
+    private static final int DISABLE = 1;
+    private static final int START_DISCOVERY = 2;
+    private static final int CANCEL_DISCOVERY = 3;
+
     private static final Duration PENDING_SOCKET_HANDOFF_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration GENERATE_LOCAL_OOB_DATA_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration PREFERRED_AUDIO_PROFILE_CHANGE_TIMEOUT = Duration.ofSeconds(10);
@@ -2371,7 +2376,7 @@ public class AdapterService extends Service {
         }
 
         @Override
-        @RequiresPermission(BLUETOOTH_CONNECT)
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
         public void offToBleOn(boolean quietMode, AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2381,13 +2386,13 @@ public class AdapterService extends Service {
 
             service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-            service.handleDualAdapterMode(true);
+            service.handleDualAdapterMode(ENABLE);
 
             service.offToBleOn(quietMode);
         }
 
         @Override
-        @RequiresPermission(BLUETOOTH_CONNECT)
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
         public void onToBleOn(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2397,7 +2402,7 @@ public class AdapterService extends Service {
 
             service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-            service.handleDualAdapterMode(false);
+            service.handleDualAdapterMode(DISABLE);
 
             service.onToBleOn();
         }
@@ -2555,6 +2560,7 @@ public class AdapterService extends Service {
         }
 
         @Override
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
         public boolean startDiscovery(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2566,11 +2572,14 @@ public class AdapterService extends Service {
                 return false;
             }
 
+            service.handleDualAdapterMode(START_DISCOVERY);
+
             Log.i(TAG, "startDiscovery: from " + Utils.getUidPidString());
             return service.startDiscovery(source);
         }
 
         @Override
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
         public boolean cancelDiscovery(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2579,6 +2588,8 @@ public class AdapterService extends Service {
                             service, source, "AdapterService cancelDiscovery")) {
                 return false;
             }
+
+            service.handleDualAdapterMode(CANCEL_DISCOVERY);
 
             Log.i(TAG, "cancelDiscovery: from " + Utils.getUidPidString());
             return service.mNativeInterface.cancelDiscovery();
@@ -4773,6 +4784,15 @@ public class AdapterService extends Service {
         UserHandle callingUser = Binder.getCallingUserHandle();
         Log.d(TAG, "startDiscovery");
         String callingPackage = source.getPackageName();
+        // Internal discovery triggered by the system Bluetooth package,
+        // which itself lacks the required permissions.
+        // Since results are not broadcast externally, permission checks can be safely skipped.
+        String bluetoothPackage = "com.android.bluetooth";
+        if (bluetoothPackage.equals(callingPackage) &&
+            (!AdapterUtil.isAdapterDefault())) {
+            Log.d(TAG, "Internal discovery initiated, skipping permission checks");
+            return mNativeInterface.startDiscovery();
+        }
         mAppOps.checkPackage(Binder.getCallingUid(), callingPackage);
         boolean isQApp = Utils.checkCallerTargetSdk(this, callingPackage, Build.VERSION_CODES.Q);
         boolean hasDisavowedLocation =
@@ -7008,16 +7028,34 @@ public class AdapterService extends Service {
         return AdapterUtil.isAdapter1();
     }
 
-    @RequiresPermission(BLUETOOTH_CONNECT)
-    private void handleDualAdapterMode(boolean enable) {
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    private void handleDualAdapterMode(int option) {
         if (AdapterUtil.isDualAdapterMode()) {
             if (AdapterUtil.isAdapterDefault()) {
-                // In dual adapter mode, default adapter enable/disable
+                // In dual adapter mode, default adapter
+                // enable/disable/discovery/canceldiscovery
                 // new adapter concurrently.
-                if (enable) {
-                    mEnableNewAdapter = AdapterExt.enable();
-                } else {
-                    mDisableNewAdapter = AdapterExt.disable();
+                switch(option) {
+                    case ENABLE:
+                        mDisableNewAdapter = AdapterExt.enable();
+                        break;
+                    case DISABLE:
+                        mEnableNewAdapter = AdapterExt.disable();
+                        break;
+                    case START_DISCOVERY:
+                        // HOGP is deployed on the new adapter in dual BT mode.
+                        // Pairing requires device info from the Bluetooth core stack,
+                        // so discovery must be triggered on the new adapter.
+                        AdapterExt.startDiscovery();
+                        break;
+                    case CANCEL_DISCOVERY:
+                        // Cancel discovery on the new adapter as well,
+                        // to keep adapter states consistent in dual adapter mode
+                        AdapterExt.cancelDiscovery();
+                        break;
+                    default:
+                        Log.w(TAG, "Invalid option:" + option);
+                        break;
                 }
             }
         }

@@ -69,7 +69,8 @@ public final class BluetoothAdapterUtil {
                 BluetoothProfile.A2DP,
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,
-                BluetoothProfile.GATT_SERVER)));
+                BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.HID_HOST)));
     }
 
     // Fully-static utility classes must not have constructor
@@ -193,11 +194,12 @@ public final class BluetoothAdapterUtil {
     @RequiresPermission(BLUETOOTH_CONNECT)
     private static int getAdapterIndexMatched(BluetoothDevice device) {
         BluetoothClass btClass = device.getBluetoothClass();
-        if (btClass == null)
+        if (btClass == null || !isDualBluetoothSupported())
             return ADAPTER_DEFAULT;
 
         return btClass.doesClassMatch(BluetoothClass.PROFILE_HEADSET) ||
-               btClass.doesClassMatch(BluetoothClass.PROFILE_A2DP) ?
+               btClass.doesClassMatch(BluetoothClass.PROFILE_A2DP) ||
+               btClass.doesClassMatch(BluetoothClass.PROFILE_HID) ?
                ADAPTER_1 :
                ADAPTER_DEFAULT;
     }

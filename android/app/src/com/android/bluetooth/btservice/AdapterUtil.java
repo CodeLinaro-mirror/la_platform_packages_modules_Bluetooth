@@ -94,7 +94,8 @@ public final class AdapterUtil {
                 BluetoothProfile.A2DP,
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,
-                BluetoothProfile.GATT_SERVER)));
+                BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.HID_HOST)));
     }
 
     private static boolean getFilterDeviceConfig() {
