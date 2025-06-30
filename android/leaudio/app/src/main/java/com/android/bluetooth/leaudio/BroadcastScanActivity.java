@@ -47,6 +47,7 @@ public class BroadcastScanActivity extends AppCompatActivity {
     private BluetoothDevice device;
     private BroadcastScanViewModel mViewModel;
     private BroadcastItemsAdapter adapter;
+    private static final String TAG = "BroadcastScanActivity";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,11 +77,12 @@ public class BroadcastScanActivity extends AppCompatActivity {
             }
 
             // Set broadcast source on peer only if scan delegator device context is available
-            if (device != null) {
+            if (true) {
                 // Start Dialog with the broadcast input details
                 AlertDialog.Builder alert = new AlertDialog.Builder(this);
                 LayoutInflater inflater = getLayoutInflater();
-                alert.setTitle("Add the Broadcast:");
+
+                alert.setTitle("Add/remove the Broadcast:");
 
                 View alertView =
                         inflater.inflate(R.layout.broadcast_scan_add_encrypted_source_dialog,
@@ -115,9 +117,19 @@ public class BroadcastScanActivity extends AppCompatActivity {
                 BluetoothLeBroadcastMetadata.Builder builder = new
                         BluetoothLeBroadcastMetadata.Builder(broadcast);
 
-                alert.setView(alertView).setNegativeButton("Cancel", (dialog, which) -> {
-                    // Do nothing
-                }).setPositiveButton("Add", (dialog, which) -> {
+                alert.setView(alertView).setNegativeButton("Remove", (dialog, which) -> {
+                    Toast.makeText(recyclerView.getContext(), "Removing broadcast source",
+                                     Toast.LENGTH_SHORT).show();
+                    mViewModel.removeBroadcastSource(device, 0);
+
+                    Intent intent = new Intent(this, MainActivity.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    startActivity(intent);
+                    finish();
+                });
+
+               alert.setView(alertView).setPositiveButton("Add", (dialog, which) -> {
+
                     BluetoothLeBroadcastMetadata metadata;
                     if (code_input_text.getText() == null) {
                         Toast.makeText(recyclerView.getContext(), "Invalid broadcast code",
@@ -183,7 +195,7 @@ public class BroadcastScanActivity extends AppCompatActivity {
         });
 
         Intent intent = getIntent();
-        device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+        device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice("FA:CE:FA:CE:FA:CE");
     }
 
     @Override

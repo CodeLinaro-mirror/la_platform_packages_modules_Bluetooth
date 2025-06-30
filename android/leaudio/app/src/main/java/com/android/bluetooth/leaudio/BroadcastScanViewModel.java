@@ -152,6 +152,10 @@ public class BroadcastScanViewModel extends AndroidViewModel {
         mBluetooth.addBroadcastSource(sink, sourceMetadata);
     }
 
+    public void removeBroadcastSource(BluetoothDevice sink, int sourceId ) {
+        mBluetooth.removeBroadcastSource(sink, sourceId);
+    }
+
     public void refreshBroadcasts() {
         // Concatenate local broadcasts to the scanned broadcast list
         List<BluetoothLeBroadcastMetadata> localSessionBroadcasts =
