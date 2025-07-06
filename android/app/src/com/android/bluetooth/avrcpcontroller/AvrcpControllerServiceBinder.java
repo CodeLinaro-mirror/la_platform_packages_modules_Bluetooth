@@ -100,4 +100,14 @@ class AvrcpControllerServiceBinder extends IBluetoothAvrcpController.Stub
         }
         return service.getSupportedFeatures(device);
     }
+
+    @Override
+    public void startFetchingAlbumArt(BluetoothDevice device, String type, String scheme,
+            String mimeType, int height, int width, int maxSize, AttributionSource source) {
+        AvrcpControllerService service = getService(source);
+        if (service != null) {
+            service.startFetchingAlbumArt(device, type, scheme, mimeType,
+                    height, width, maxSize);
+        }
+    }
 }

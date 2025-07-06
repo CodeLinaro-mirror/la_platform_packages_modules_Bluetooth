@@ -28,6 +28,7 @@ import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 
+import android.annotation.SuppressLint;
 import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothAvrcpController;
@@ -40,6 +41,8 @@ import android.content.AttributionSource;
 import android.media.AudioManager;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.sysprop.BluetoothProperties;
+import android.os.Message;
+import android.os.SystemProperties;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothPrefs;
@@ -59,6 +62,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Provides Bluetooth AVRCP Controller profile, as a service in the Bluetooth application. */
+@SuppressLint("all")
 public class AvrcpControllerService extends ConnectableProfile {
     private static final String TAG = AvrcpControllerService.class.getSimpleName();
 
@@ -821,6 +825,17 @@ public class AvrcpControllerService extends ConnectableProfile {
             return stateMachine.getRemoteFeatures();
         }
         return BluetoothAvrcpController.BTRC_FEAT_NONE;
+    }
+
+    public synchronized void startFetchingAlbumArt(BluetoothDevice device, String type,
+            String scheme, String mimeType, int height, int width, int maxSize) {
+        Log.d(TAG,"startFetchingAlbumArt mimeType " + mimeType + " pixel " + height + " * "
+              + width + " maxSize: " + maxSize);
+        AvrcpControllerStateMachine stateMachine = mDeviceStateMap.get(device);
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                    AvrcpControllerStateMachine.MSG_AVRCP_FETCH_COVER_ART);
+        }
     }
 
     @Override

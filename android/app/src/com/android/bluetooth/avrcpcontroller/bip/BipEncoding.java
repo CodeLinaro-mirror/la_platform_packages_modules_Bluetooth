@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -160,7 +165,30 @@ public class BipEncoding {
                 || mType == BipEncoding.GIF;
     }
 
-    /** Determine the encoding type based on an input string */
+    /**
+     * Returns the encoding type with given type name
+     *
+     * @return Integer type ID of the encoding
+     */
+    public static int getEncodingTypeFromString(String StringType) {
+        if (StringType == null) {
+            return -1;
+        }
+
+        return switch (StringType.toUpperCase(Locale.US)) {
+            case "JPEG"      -> JPEG;
+            case "PNG"       -> PNG;
+            case "BMP"       -> BMP;
+            case "GIF"       -> GIF;
+            case "JPEG2000"  -> JPEG2000;
+            case "WBMP"      -> WBMP;
+            default          -> UNKNOWN;
+        };
+    }
+
+    /**
+     * Determine the encoding type based on an input string
+     */
     private static int determineEncoding(String encoding) {
         Integer type = (Integer) sEncodingNamesToIds.get(encoding);
         if (type != null) return type.intValue();

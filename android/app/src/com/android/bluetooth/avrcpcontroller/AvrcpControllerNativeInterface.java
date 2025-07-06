@@ -135,6 +135,10 @@ public class AvrcpControllerNativeInterface {
         setAddressedPlayerNative(address, playerId);
     }
 
+    void getElementAttributes(byte[] address, byte numAttributes, int[] attribIds) {
+        getElementAttributesNative(address, numAttributes, attribIds);
+    }
+
     /**********************************************************************************************/
     /*********************************** callbacks from native ************************************/
     /**********************************************************************************************/
@@ -603,5 +607,14 @@ public class AvrcpControllerNativeInterface {
      * @param pduId  ID of PDU data packet
      */
     public native static void abortContinuingResponseNative(byte[] address, byte pduId);
+
+    /**
+     * Get element attributes
+     *
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getElementAttributesNative(byte[] address, byte numAttributes,
+                                                         int[] attribIds);
 
 }

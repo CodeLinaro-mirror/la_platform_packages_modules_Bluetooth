@@ -41,4 +41,7 @@ interface IBluetoothAvrcpController {
     int getConnectionState(in BluetoothDevice device, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)")
     int getSupportedFeatures(in BluetoothDevice device, in AttributionSource attributionSource);
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)")
+    void startFetchingAlbumArt(in BluetoothDevice device, String type, String scheme, String mimeType, int height,
+        int width, int maxSize, in AttributionSource attributionSource);
 }

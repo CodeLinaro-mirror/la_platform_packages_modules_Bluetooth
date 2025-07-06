@@ -29,6 +29,7 @@ import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTING;
 
 import static java.util.Objects.requireNonNull;
 
+import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAvrcpController;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -63,6 +64,7 @@ import java.util.Set;
  * Provides Bluetooth AVRCP Controller State Machine responsible for all remote control connections
  * and interactions with a remote controllable device.
  */
+@SuppressLint("all")
 class AvrcpControllerStateMachine extends StateMachine {
     private static final String TAG = AvrcpControllerStateMachine.class.getSimpleName();
 
@@ -119,7 +121,11 @@ class AvrcpControllerStateMachine extends StateMachine {
     static final int MSG_AVRCP_ABORT_CONTINUING_RESPONSE = 312;
 
     // 400->499 Events for Cover Artwork
+    //Internal
     static final int MESSAGE_PROCESS_IMAGE_DOWNLOADED = 400;
+
+    //External
+    static final int MSG_AVRCP_FETCH_COVER_ART = 450;
 
     // Base value for absolute volume from JNI
     private static final int ABS_VOL_BASE = 127;
@@ -983,6 +989,13 @@ class AvrcpControllerStateMachine extends StateMachine {
                         removeUnusedArtworkFromBrowseTree();
                     }
                 }
+                case MSG_AVRCP_FETCH_COVER_ART -> {
+                    // New scheme is retrieved through property
+                    // AvrcpCoverArtManager.AVRCP_CONTROLLER_COVER_ART_SCHEME
+                    mCoverArtManager.updateImageProperties();
+                    AvrcpItem track = mAddressedPlayer.getCurrentTrack();
+                    downloadImageIfNeeded(track, true);
+                }
                 case DISCONNECT -> transitionTo(mDisconnecting);
                 default -> {
                     return super.processMessage(msg);
@@ -1214,7 +1227,11 @@ class AvrcpControllerStateMachine extends StateMachine {
                     // Only do this if the feature is enabled.
                     for (AvrcpItem track : folderList) {
                         if (shouldDownloadBrowsedImages()) {
-                            downloadImageIfNeeded(track);
+                            if (Utils.isPtsTestMode()) {
+                              downloadImageIfNeeded(track, true);
+                            } else {
+                              downloadImageIfNeeded(track);
+                            }
                         } else {
                             track.setCoverArtUuid(null);
                         }
@@ -1808,15 +1825,27 @@ class AvrcpControllerStateMachine extends StateMachine {
     }
 
     private void downloadImageIfNeeded(AvrcpItem track) {
+        downloadImageIfNeeded(track, false);
+    }
+
+    private void downloadImageIfNeeded(AvrcpItem track, boolean forced) {
         if (mCoverArtManager == null) return;
         String uuid = track.getCoverArtUuid();
         Uri imageUri = null;
         if (uuid != null) {
-            imageUri = mCoverArtManager.getImageUri(mDevice, uuid);
-            if (imageUri != null) {
-                track.setCoverArtLocation(imageUri);
+            if (forced) {
+                if (mCoverArtManager.getHandleForUuid(mDevice, uuid) != null) {
+                    mCoverArtManager.downloadImage(mDevice, uuid, forced);
+                } else {
+                    mNativeInterface.getElementAttributesNative(mDeviceAddress, (byte)0, null);
+                }
             } else {
-                mCoverArtManager.downloadImage(mDevice, uuid);
+                imageUri = mCoverArtManager.getImageUri(mDevice, uuid);
+                if (imageUri != null) {
+                    track.setCoverArtLocation(imageUri);
+                } else {
+                    mCoverArtManager.downloadImage(mDevice, uuid);
+                }
             }
         }
     }
