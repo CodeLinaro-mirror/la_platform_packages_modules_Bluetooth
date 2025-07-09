@@ -598,7 +598,9 @@ static void process_service_search_attr_rsp(tCONN_CB* p_ccb, uint8_t* p_reply,
 
     /* If we don't have a valid discovery database, we can't do anything. */
     if (p_ccb->p_db == NULL) {
-      LOG_WARN("Attempted continuation or first time request with invalid discovery database");
+      SDP_TRACE_WARNING(
+          "Attempted continuation or first time request with invalid discovery "
+          "database");
       sdp_disconnect(p_ccb, tSDP_STATUS::SDP_INVALID_CONT_STATE);
       return;
     }

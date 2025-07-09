@@ -327,7 +327,9 @@ void bta_hf_client_do_disc(tBTA_HF_CLIENT_CB* client_cb) {
    * into a race condition leading to UAF once this connection is closed.
    * This should only happen with malicious modifications to a client. */
   if (client_cb->p_disc_db != NULL) {
-    APPL_TRACE_ERROR("%s: Tried to set up a HF client with a preexisting discovery database", __func__);
+    APPL_TRACE_ERROR(
+        "Tried to set up a HF client with a preexisting discovery database.");
+    client_cb->p_disc_db = NULL;
     // We manually set the state here because it's possible to call this from an
     // OPEN state, in which case the discovery fail event will be ignored.
     client_cb->state = 0;  // BTA_HF_CLIENT_INIT_ST
