@@ -2527,6 +2527,7 @@ public:
             log::debug("group_id {} needs to stop streaming before {} disconnection",
                        group->group_id_, leAudioDevice->address_);
             leAudioDevice->closing_stream_for_disconnection_ = true;
+            audio_sender_state_ = AudioState::READY_TO_RELEASE;
             groupStateMachine_->StopStream(group);
             return;
           }
@@ -5440,6 +5441,13 @@ public:
         CancelLocalAudioSinkStreamingRequest();
         return;
       }
+    } else {
+      if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+          LeAudioBroadcaster::Get()->IsLeAudioBroadcastStreaming()) {
+        log::info("Broadcast is streaming, cancel local sink stream request");
+        CancelLocalAudioSinkStreamingRequest();
+        return;
+      }
     }
 
     /* Note: This callback is from audio hal driver.
@@ -6108,6 +6116,12 @@ public:
                 "supported");
         remote_metadata.source.clear();
         remote_metadata.source.set_all(ctxs);
+
+        log::debug("Align local metadata contexts also to game when vbc starts");
+        local_metadata_context_types_.sink.clear();
+        local_metadata_context_types_.source.clear();
+        local_metadata_context_types_.sink.set(LeAudioContextType::GAME);
+        local_metadata_context_types_.source.set(LeAudioContextType::GAME);
       }
     }
 
@@ -6158,6 +6172,10 @@ public:
     bool take_unresumed_local_source_metadata_for_mic_only_devices =
             (group->audio_locations_.sink == std::nullopt) &&
             (local_other_direction == bluetooth::le_audio::types::kLeAudioDirectionSource);
+
+    log::debug("take_unresumed_local_source_metadata_for_mic_only_devices= {}.",
+                                 take_unresumed_local_source_metadata_for_mic_only_devices);
+
     if (is_other_direction_bidir) {
       if (!(is_streaming_other_direction || is_releasing_for_reconfiguration_other_direction) &&
           !take_unresumed_local_source_metadata_for_mic_only_devices) {

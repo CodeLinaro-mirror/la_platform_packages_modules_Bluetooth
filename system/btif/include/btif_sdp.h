@@ -27,6 +27,7 @@
 #pragma once
 
 #include <hardware/bt_sdp.h>
+#define PBAP_DYN_VER_UPGD_ENB FALSE
 
 const btsdp_interface_t* btif_sdp_get_interface();
 bt_status_t btif_sdp_execute_service(bool b_enable);
@@ -42,3 +43,4 @@ bt_status_t remove_sdp_record(int record_handle);
 
 void on_create_record_event(int handle);
 void on_remove_record_event(int handle);
+bool is_pse_version_upgrade_enabled();

@@ -65,6 +65,14 @@ bool CodecManager::IsEnhancedLeGamingSupported(void) const {
   return pimpl_->IsEnhancedLeGamingSupported();
 }
 
+bool CodecManager::IsQhsEnabled(void) const {
+  if (!pimpl_) {
+    return false;
+  }
+
+  return pimpl_->IsQhsEnabled();
+}
+
 bool CodecManager::IsAptxAdaptiveLeSupported(void) const {
   if (!pimpl_) {
     return false;

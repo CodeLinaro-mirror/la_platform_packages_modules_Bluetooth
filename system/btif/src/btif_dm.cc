@@ -105,6 +105,8 @@
 #include "types/raw_address.h"
 #include "stack/include/btm_api_types.h"
 #include "bta/dm/bta_dm_int.h"
+#include "stack/sdp/sdpint.h"
+#include "btif_profile_storage.h"
 
 #ifdef __ANDROID__
 #include <android/sysprop/BluetoothProperties.sysprop.h>
@@ -640,6 +642,11 @@ static void bond_state_changed(bt_status_t status, const RawAddress& bd_addr,
   if (state == BT_BOND_STATE_NONE) {
     bluetooth::shim::ForgetDeviceFromMetricIdAllocator(bd_addr);
     btif_config_remove_device(bd_addr.ToString());
+    if (is_pse_version_upgrade_enabled()) {
+      if (btif_storage_is_pce_version_102(bd_addr)) {
+        update_pce_entry_to_interop_database(bd_addr);
+      }
+    }
   } else if (state == BT_BOND_STATE_BONDED) {
     bluetooth::shim::AllocateIdFromMetricIdAllocator(bd_addr);
     if (!bluetooth::shim::SaveDeviceOnMetricIdAllocator(bd_addr)) {

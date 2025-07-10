@@ -720,9 +720,12 @@ final class A2dpStateMachine extends StateMachine {
                     && (prevCodecConfig.getCodecSpecific1()
                             != newCodecConfig.getCodecSpecific1())) {
                 update = true;
+            } else if (mA2dpService.fetchSetCodecConfig()) {
+                update = true;
             }
             if (update) {
                 mA2dpService.codecConfigUpdated(mDevice, mCodecStatus, false);
+                mA2dpService.enableSetCodecConfig(false);
             }
             return;
         }

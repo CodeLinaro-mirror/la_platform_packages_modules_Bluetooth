@@ -1223,11 +1223,16 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type, cha
 
       }
 
-      if (interop_match_addr_or_name(INTEROP_DISABLE_CODEC_NEGOTIATION, &p_scb->peer_addr,
-                                     &btif_storage_get_remote_device_property)) {
-        log::verbose("disable codec negotiation, remote for blacklisted device");
-        p_scb->masked_features = p_scb->masked_features & ~(BTA_AG_FEAT_CODEC);
-        p_scb->peer_features = p_scb->peer_features & ~(BTA_AG_PEER_FEAT_CODEC);
+      if(interop_match_addr_or_name(INTEROP_INBAND_RINGTONE_SET_TO_FALSE,
+          &p_scb->peer_addr, &btif_storage_get_remote_device_property)) {
+           log::verbose("do not send inband ringtone supported for blacklisted device");
+          p_scb->masked_features = p_scb->masked_features & ~(BTA_AG_FEAT_INBAND);
+      }
+      if(interop_match_addr_or_name(INTEROP_DISABLE_CODEC_NEGOTIATION,
+          &p_scb->peer_addr, &btif_storage_get_remote_device_property)) {
+          log::verbose("disable codec negotiation, remote for blacklisted device");
+          p_scb->masked_features = p_scb->masked_features & ~(BTA_AG_FEAT_CODEC);
+          p_scb->peer_features = p_scb->peer_features & ~(BTA_AG_PEER_FEAT_CODEC);
       }
 
       LogMetricHfpAgVersion(ToGdAddress(p_scb->peer_addr), p_scb->peer_version);
@@ -1839,7 +1844,12 @@ static void bta_ag_hfp_result(tBTA_AG_SCB* p_scb, const tBTA_AG_API_RESULT& resu
       break;
 
     case BTA_AG_INBAND_RING_RES:
-      p_scb->inband_enabled = result.data.state;
+      if(interop_match_addr_or_name(INTEROP_INBAND_RINGTONE_SET_TO_FALSE,
+          &p_scb->peer_addr, &btif_storage_get_remote_device_property)) {
+        p_scb->inband_enabled = false;
+      } else {
+        p_scb->inband_enabled = result.data.state;
+      }
       log::verbose("inband_enabled set to {}", p_scb->inband_enabled);
       bta_ag_send_result(p_scb, result.result, nullptr, result.data.state);
       break;

@@ -49,6 +49,7 @@
 #include "stack/l2cap/l2c_int.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
+#include "stack/gatt/gatt_int.h"
 
 using namespace bluetooth;
 
@@ -478,6 +479,11 @@ void l2c_link_timeout(tL2C_LCB* p_lcb) {
       if (start_timeout) {
         alarm_set_on_mloop(p_lcb->l2c_lcb_timer, timeout_ms, l2c_lcb_timer_timeout, p_lcb);
       }
+    } else if ((p_lcb->transport == BT_TRANSPORT_LE) &&
+        !gatt_num_app_hold_links(p_lcb->remote_bd_addr, BT_TRANSPORT_LE)) {
+      log::warn(" btm_sec_disconnect for LE Link eventually deletes EATT channels also");
+      rc = btm_sec_disconnect(p_lcb->Handle(), HCI_ERR_PEER_USER,
+                              "stack::l2cap::l2c_link::l2c_link_timeout All channels closed");
     } else {
       /* Check in case we were flow controlled */
       l2c_link_check_send_pkts(p_lcb, 0, NULL);

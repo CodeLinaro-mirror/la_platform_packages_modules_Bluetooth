@@ -44,6 +44,23 @@ protected:
         volume_(volume) {}
 };
 
+class SetAbsoluteVolumeResponseBuilder : public VendorPacketBuilder {
+public:
+  virtual ~SetAbsoluteVolumeResponseBuilder() = default;
+
+  static std::unique_ptr<SetAbsoluteVolumeResponseBuilder> MakeBuilder(uint8_t volume);
+
+  virtual size_t size() const override;
+  virtual bool Serialize(const std::shared_ptr<::bluetooth::Packet>& pkt) override;
+
+protected:
+  uint8_t volume_;
+
+  SetAbsoluteVolumeResponseBuilder(uint8_t volume)
+      : VendorPacketBuilder(CType::ACCEPTED, CommandPdu::SET_ABSOLUTE_VOLUME, PacketType::SINGLE),
+        volume_(volume) {}
+};
+
 class SetAbsoluteVolumeResponse : public VendorPacket {
 public:
   virtual ~SetAbsoluteVolumeResponse() = default;

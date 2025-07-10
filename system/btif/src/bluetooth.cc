@@ -941,8 +941,8 @@ static int get_remote_pbap_pce_version(const RawAddress* bd_addr) {
 }
 
 static bool pbap_pse_dynamic_version_upgrade_is_enabled() {
-  log::info("PBAP PSE dynamic version upgrade is not enabled");
-  return false;
+
+  return is_pse_version_upgrade_enabled();
 }
 
 static const void* get_profile_interface(const char* profile_id) {

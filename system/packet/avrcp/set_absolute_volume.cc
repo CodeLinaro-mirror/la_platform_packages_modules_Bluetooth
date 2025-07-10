@@ -43,6 +43,28 @@ bool SetAbsoluteVolumeRequestBuilder::Serialize(const std::shared_ptr<::bluetoot
   return true;
 }
 
+std::unique_ptr<SetAbsoluteVolumeResponseBuilder> SetAbsoluteVolumeResponseBuilder::MakeBuilder(
+        uint8_t volume) {
+  std::unique_ptr<SetAbsoluteVolumeResponseBuilder> builder(
+          new SetAbsoluteVolumeResponseBuilder(volume & 0x7F));
+
+  return builder;
+}
+
+size_t SetAbsoluteVolumeResponseBuilder::size() const { return VendorPacket::kMinSize() + 1; }
+
+bool SetAbsoluteVolumeResponseBuilder::Serialize(const std::shared_ptr<::bluetooth::Packet>& pkt) {
+  ReserveSpace(pkt, size());
+
+  PacketBuilder::PushHeader(pkt);
+
+  VendorPacketBuilder::PushHeader(pkt, size() - VendorPacket::kMinSize());
+
+  AddPayloadOctets1(pkt, volume_);
+
+  return true;
+}
+
 uint8_t SetAbsoluteVolumeResponse::GetVolume() const {
   auto it = begin() + VendorPacket::kMinSize();
   return *it;

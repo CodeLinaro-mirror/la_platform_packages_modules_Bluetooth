@@ -13,7 +13,7 @@
         <SubModeType>255</SubModeType>
         <MainModeMinSteps>2</MainModeMinSteps>
         <MainModeMaxSteps>6</MainModeMaxSteps>
-        <MainModeRepetition>2</MainModeRepetition>
+        <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
         <RTTTypes>0</RTTTypes>
@@ -31,7 +31,7 @@
         <SubModeType>1</SubModeType>
         <MainModeMinSteps>2</MainModeMinSteps>
         <MainModeMaxSteps>3</MainModeMaxSteps>
-        <MainModeRepetition>2</MainModeRepetition>
+        <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
         <RTTTypes>0</RTTTypes>
@@ -49,7 +49,7 @@
         <SubModeType>1</SubModeType>
         <MainModeMinSteps>2</MainModeMinSteps>
         <MainModeMaxSteps>3</MainModeMaxSteps>
-        <MainModeRepetition>2</MainModeRepetition>
+        <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
         <RTTTypes>2</RTTTypes>
@@ -67,7 +67,7 @@
         <SubModeType>255</SubModeType>
         <MainModeMinSteps>2</MainModeMinSteps>
         <MainModeMaxSteps>6</MainModeMaxSteps>
-        <MainModeRepetition>2</MainModeRepetition>
+        <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
         <RTTTypes>4</RTTTypes>

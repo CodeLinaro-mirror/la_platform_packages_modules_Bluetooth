@@ -1975,7 +1975,7 @@ public class HeadsetService extends ProfileService {
                             .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__SCO_TELECOM_INITIATED_START,
                     Binder.getCallingUid());
             // Suspend A2DP when call about is about to become active
-            if (mActiveDevice != null && callState != HeadsetHalConstants.CALL_STATE_DISCONNECTED
+            if (callState != HeadsetHalConstants.CALL_STATE_DISCONNECTED
                 && !mSystemInterface.isCallIdle() && isCallIdleBefore
                 && !Utils.isScoManagedByAudioEnabled()) {
                 Log.i(TAG, "Before A2dp suspension");

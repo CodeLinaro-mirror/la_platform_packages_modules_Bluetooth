@@ -1184,10 +1184,22 @@ static void indication_sent_cb(int conn_id, int status) {
   printf("%s:: status=%d, conn_id =%d\n", __FUNCTION__, status, conn_id);
 }
 
+void service_added_cb(int status, int server_if,
+                                        const btgatt_db_element_t* service,
+                                        size_t service_count) {
+  printf("%s: status:%d server_if:%d count:%zu svc_handle:%d", __FUNCTION__,
+              status, server_if, service_count, service[0].attribute_handle);
+  for (size_t i = 1; i < service_count; i++) {
+    const btgatt_db_element_t& sr = service[i];
+    printf("Type: %d, Hndl: %d, UUID: %s, prprty: %d\n ",
+                       sr.type, sr.attribute_handle, sr.uuid, sr.properties);
+  }
+}
+
 static btgatt_server_callbacks_t sGattServer_cb = {
     register_server_cb,
     server_connection_cb,  // connection_callback             connection_cb;
-    NULL,                  // service_added_callback          service_added_cb;
+    service_added_cb,      // service_added_callback          service_added_cb;
     NULL,  // included_service_added_callback included_service_added_cb;
     NULL,  // characteristic_added_callback   characteristic_added_cb;
     request_read_cb,   // request_read_callback request_read_characteristic_cb
@@ -1933,7 +1945,9 @@ static void adapter_state_changed(bt_state_t state) {
 
   if (state == BT_STATE_ON) {
     bt_enabled = 1;
-    status = sBtInterface->set_adapter_property(&property1);
+    sBtInterface->set_scan_mode(BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE);
+    printf("GATT_TOOL: %s setting: BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE", __FUNCTION__);
+    //status = sBtInterface->set_adapter_property(&property1);
     status = sBtInterface->set_adapter_property(&property);
     status = sBtInterface->set_adapter_property(&property2);
   } else {

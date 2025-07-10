@@ -772,6 +772,17 @@ public:
     return isActive;
   }
 
+  bool IsLeAudioBroadcastStreaming() {
+    auto const& iter = std::find_if(
+            broadcasts_.cbegin(), broadcasts_.cend(), [](auto const& sm) {
+              return sm.second->GetState() == BroadcastStateMachine::State::STREAMING;
+            });
+
+    bool isStreaming = (iter != broadcasts_.cend()) ? true : false;
+    log::info("IsBroadcastStreaming: {}", isStreaming);
+    return isStreaming;
+  }
+
   void StartAudioBroadcast(uint32_t broadcast_id) override {
     log::info("Starting broadcast_id={}", broadcast_id);
 

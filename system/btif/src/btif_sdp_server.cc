@@ -46,6 +46,7 @@
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/sdp_api.h"
+#include "stack/sdp/sdpint.h"
 #include "types/bluetooth/uuid.h"
 #include "utl.h"
 
@@ -89,6 +90,19 @@ static int add_opps_sdp(const bluetooth_sdp_ops_record* rec);
 static int add_saps_sdp(const bluetooth_sdp_sap_record* rec);
 static int add_mps_sdp(const bluetooth_sdp_mps_record* rec);
 static int free_sdp_slot(int id);
+
+/*************************************************************************************
+**
+** Function        is_pse_version_upgrade_enabled
+**
+** Description     Checks if dynamic version upgrade is enabled for PBAP PSE.
+**
+** Returns         BOOLEAN
+**
+***************************************************************************************/
+bool is_pse_version_upgrade_enabled() {
+  return PBAP_DYN_VER_UPGD_ENB;
+}
 
 /******************************************************************************
  * WARNING: Functions below are not called in BTU context.
@@ -660,27 +674,55 @@ static int add_pbaps_sdp(const bluetooth_sdp_pse_record* rec) {
 
   /* Add a name entry */
   status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
-          sdp_handle, (uint16_t)ATTR_ID_SERVICE_NAME, (uint8_t)TEXT_STR_DESC_TYPE,
-          (uint32_t)(rec->hdr.service_name_length + 1), (uint8_t*)rec->hdr.service_name);
-  /* Add in the Bluetooth Profile Descriptor List */
-  status &= get_legacy_stack_sdp_api()->handle.SDP_AddProfileDescriptorList(
-          sdp_handle, UUID_SERVCLASS_PHONE_ACCESS, rec->hdr.profile_version);
+      sdp_handle, (uint16_t)ATTR_ID_SERVICE_NAME, (uint8_t)TEXT_STR_DESC_TYPE,
+      (uint32_t)(rec->hdr.service_name_length + 1),
+      (uint8_t*)rec->hdr.service_name);
+  if (is_pse_version_upgrade_enabled()) {
+    /*
+    PBAP 1.1.1  repositories bits
+    Bit 0 = Local Phonebook
+    Bit 1 = SIM card
+    Bit 2~7 reserved for future use */
+    uint8_t supported_repositories_1_1_mask = 0x03;
+    uint8_t supported_repositories_1_1 =
+        ((uint8_t)rec->supported_repositories) &
+        supported_repositories_1_1_mask;
+    status &= get_legacy_stack_sdp_api()->handle.SDP_AddProfileDescriptorList(
+        sdp_handle, UUID_SERVCLASS_PHONE_ACCESS, 0x0101);
 
-  /* Add supported repositories 1 byte */
-  status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
-          sdp_handle, ATTR_ID_SUPPORTED_REPOSITORIES, UINT_DESC_TYPE, (uint32_t)1,
-          (uint8_t*)&rec->supported_repositories);
-  /* Add supported feature 4 bytes*/
-  UINT32_TO_BE_STREAM(p_temp, rec->supported_features);
-  status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
-          sdp_handle, ATTR_ID_PBAP_SUPPORTED_FEATURES, UINT_DESC_TYPE, (uint32_t)4, temp);
-
-  /* Add the L2CAP PSM if present */
-  if (rec->hdr.l2cap_psm != -1) {
-    p_temp = temp;  // The macro modifies p_temp, hence rewind.
-    UINT16_TO_BE_STREAM(p_temp, rec->hdr.l2cap_psm);
+    /* Add supported repositories 1 byte */
     status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
-            sdp_handle, ATTR_ID_GOEP_L2CAP_PSM, UINT_DESC_TYPE, (uint32_t)2, temp);
+        sdp_handle, ATTR_ID_SUPPORTED_REPOSITORIES, UINT_DESC_TYPE, (uint32_t)1,
+        (uint8_t*)&supported_repositories_1_1);
+    log::verbose("supported_repositories_1_1: 0x{:x}",
+                 supported_repositories_1_1);
+    sdp_save_local_pse_record_attributes(
+        rec->hdr.rfcomm_channel_number, rec->hdr.l2cap_psm,
+        rec->hdr.profile_version, rec->supported_features,
+        rec->supported_repositories);
+  } else {
+    /* Add in the Bluetooth Profile Descriptor List */
+    status &= get_legacy_stack_sdp_api()->handle.SDP_AddProfileDescriptorList(
+        sdp_handle, UUID_SERVCLASS_PHONE_ACCESS, rec->hdr.profile_version);
+
+    /* Add supported repositories 1 byte */
+    status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
+        sdp_handle, ATTR_ID_SUPPORTED_REPOSITORIES, UINT_DESC_TYPE, (uint32_t)1,
+        (uint8_t*)&rec->supported_repositories);
+    /* Add supported feature 4 bytes*/
+    UINT32_TO_BE_STREAM(p_temp, rec->supported_features);
+    status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
+        sdp_handle, ATTR_ID_PBAP_SUPPORTED_FEATURES, UINT_DESC_TYPE,
+        (uint32_t)4, temp);
+
+    /* Add the L2CAP PSM if present */
+    if (rec->hdr.l2cap_psm != -1) {
+      p_temp = temp;  // The macro modifies p_temp, hence rewind.
+      UINT16_TO_BE_STREAM(p_temp, rec->hdr.l2cap_psm);
+      status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
+          sdp_handle, ATTR_ID_GOEP_L2CAP_PSM, UINT_DESC_TYPE, (uint32_t)2,
+          temp);
+    }
 #if 0
   status &= get_legacy_stack_sdp_api()->handle.SDP_AddAttribute(
       sdp_handle, (uint16_t)ATTR_ID_SERVICE_NAME, (uint8_t)TEXT_STR_DESC_TYPE,

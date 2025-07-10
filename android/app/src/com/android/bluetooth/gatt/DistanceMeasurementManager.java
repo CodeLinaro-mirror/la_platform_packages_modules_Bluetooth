@@ -177,12 +177,6 @@ public class DistanceMeasurementManager {
                 "startDistanceMeasurement:"
                         + (" device=" + params.getDevice())
                         + (" method=" + params.getMethodId()));
-        if (!mAdapterService.isConnected(params.getDevice())) {
-            Log.e(TAG, "Device " + params.getDevice() + " is not connected");
-            invokeStartFail(
-                    callback, params.getDevice(), BluetoothStatusCodes.ERROR_NO_LE_CONNECTION);
-            return;
-        }
         String address = mAdapterService.getIdentityAddress(params.getDevice().getAddress());
         if (address == null) {
             address = params.getDevice().getAddress();
@@ -211,14 +205,6 @@ public class DistanceMeasurementManager {
             case DISTANCE_MEASUREMENT_METHOD_CHANNEL_SOUNDING:
                 if (!mAdapterService.isLeChannelSoundingSupported()) {
                     Log.e(TAG, "Channel Sounding is not supported.");
-                    invokeStartFail(
-                            callback,
-                            params.getDevice(),
-                            BluetoothStatusCodes.FEATURE_NOT_SUPPORTED);
-                    return;
-                }
-                if (!mAdapterService.isConnected(params.getDevice())) {
-                    Log.e(TAG, "Device " + params.getDevice() + " is not connected");
                     invokeStartFail(
                             callback,
                             params.getDevice(),

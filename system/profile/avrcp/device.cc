@@ -276,6 +276,7 @@ void Device::VendorPacketHandler(uint8_t label, std::shared_ptr<VendorPacket> pk
     return;
   }
 
+  bool running_pts = osi_property_get_bool("persist.vendor.bt.a2dp.pts_enable", false);
   switch (pkt->GetCommandPdu()) {
     case CommandPdu::GET_CAPABILITIES: {
       HandleGetCapabilities(label, Packet::Specialize<GetCapabilitiesRequest>(pkt));
@@ -467,6 +468,28 @@ void Device::VendorPacketHandler(uint8_t label, std::shared_ptr<VendorPacket> pk
               attributes, values,
               base::Bind(&Device::SetPlayerApplicationSettingValueResponse,
                          weak_ptr_factory_.GetWeakPtr(), label, pkt->GetCommandPdu()));
+    } break;
+
+    case CommandPdu::SET_ABSOLUTE_VOLUME: {
+      // PTS - AVCTP/TG/NFR/BV-02-C
+      if(running_pts) {
+        auto set_absolute_volume =
+            Packet::Specialize<SetAbsoluteVolumeResponse>(pkt);
+        active_labels_.erase(label);
+        volume_label_ = MAX_TRANSACTION_LABEL;
+        volume_ = set_absolute_volume->GetVolume();
+        volume_ &= ~0x80;
+        log::verbose("{}: CType is CONTROL, current volume={}, last request volume={}",
+                       address_, (int)volume_, (int)last_request_volume_);
+        auto request = SetAbsoluteVolumeResponseBuilder::MakeBuilder(last_request_volume_);
+        send_message_cb_.Run(label, false, std::move(request));
+      } else {
+        log::error("{}: Unhandled Vendor Packet: {}", address_, pkt->ToString());
+        auto response =
+                RejectBuilder::MakeBuilder((CommandPdu)pkt->GetCommandPdu(), Status::INVALID_COMMAND);
+        send_message(label, false, std::move(response));
+      }
+
     } break;
 
     default: {
