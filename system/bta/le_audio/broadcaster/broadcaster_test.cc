@@ -262,6 +262,7 @@ class MockAudioHalClientEndpoint : public LeAudioSourceAudioHalClient {
               (override));
   MOCK_METHOD((void), SuspendedForReconfiguration, (), (override));
   MOCK_METHOD((void), ReconfigurationComplete, (), (override));
+  MOCK_METHOD((void), UpdateMetadataComplete, (), (override));
 
   MOCK_METHOD((void), OnDestroyed, ());
   virtual ~MockAudioHalClientEndpoint() { OnDestroyed(); }

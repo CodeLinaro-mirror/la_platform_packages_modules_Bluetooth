@@ -484,6 +484,8 @@ bt_soc_type_t convertSocNameToBTSocType(const char* soc_name) {
     soc_type = BT_SOC_TYPE_ORNE;
   } else if (!strncasecmp(soc_name, "evros", sizeof("evros"))) {
     soc_type = BT_SOC_TYPE_EVROS;
+  } else if (!strncasecmp(soc_name, "cologne", sizeof("cologne"))) {
+    soc_type = BT_SOC_TYPE_COLOGNE;
   } else if (!strncasecmp(soc_name, "pronto", sizeof("pronto"))) {
     soc_type = BT_SOC_TYPE_DEFAULT;
   } else {
