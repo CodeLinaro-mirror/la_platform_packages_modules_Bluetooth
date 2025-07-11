@@ -26,6 +26,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.Trace;
 import android.provider.CallLog;
 import android.provider.CallLog.Calls;
 import android.util.Log;
@@ -376,6 +377,7 @@ class PbapClientConnectionHandler extends Handler {
     @VisibleForTesting
     void downloadContacts(String path) {
         try {
+            Trace.beginSection("downloadContacts [" + mDevice + "]");
             PhonebookPullRequest processor =
                     new PhonebookPullRequest(mPbapClientStateMachine.getContext());
 
@@ -429,12 +431,15 @@ class PbapClientConnectionHandler extends Handler {
             Log.e(TAG, "Download contacts failure", e);
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Download contacts failure: " + e.getMessage(), e);
+        } finally {
+            Trace.endSection();
         }
     }
 
     @VisibleForTesting
     void downloadCallLog(String path, Map<String, Integer> callCounter) {
         try {
+            Trace.beginSection("downloadCallLog [" + mDevice + "]");
             BluetoothPbapRequestPullPhoneBook request =
                     new BluetoothPbapRequestPullPhoneBook(path, mAccount, 0, VCARD_TYPE_30, 0, 0);
             request.execute(mObexSession);
@@ -447,6 +452,8 @@ class PbapClientConnectionHandler extends Handler {
             Log.e(TAG, "Download call log failure", e);
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Download call log failure: " + e.getMessage(), e);
+        } finally {
+            Trace.endSection();
         }
     }
 
