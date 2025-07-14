@@ -208,6 +208,7 @@ public class LeAudioService extends ProfileService {
     Optional<Boolean> mQueuedInCallValue = Optional.empty();
     Optional<Integer> mBroadcastIdPendingStart = Optional.empty();
     Optional<Integer> mBroadcastIdPendingStop = Optional.empty();
+    Optional<Integer> mUnicastSourceStreamStatus = Optional.empty();
     BluetoothDevice mAudioManagerAddedOutDevice = null;
     boolean mInCall = false;
     boolean mTmapStarted = false;
@@ -510,8 +511,9 @@ public class LeAudioService extends ProfileService {
         }
         mNativeInterface.init(mLeAudioCodecConfig.getCodecConfigOffloading());
 
+        Log.d(TAG, "leaudioUseAudioModeListener is : " + leaudioUseAudioModeListener());
         if (leaudioUseAudioModeListener() && mAudioModeChangeListener != null) {
-          Log.i(TAG, "leaudioUseAudioModeListener is true, calling addOnModeChangedListener");
+          Log.i(TAG, "leaudioUseAudioModeListener is true, calling addOnModeChangedListener from start");
           mAudioManager.addOnModeChangedListener(getMainExecutor(), mAudioModeChangeListener);
         }
     }
@@ -529,8 +531,9 @@ public class LeAudioService extends ProfileService {
 
         mNativeInterface.init(mLeAudioCodecConfig.getCodecConfigOffloading());
 
+        Log.d(TAG, "leaudioUseAudioModeListener is : " + leaudioUseAudioModeListener());
         if (leaudioUseAudioModeListener() && mAudioModeChangeListener != null) {
-          Log.i(TAG, "leaudioUseAudioModeListener is true, calling addOnModeChangedListener");
+          Log.i(TAG, "leaudioUseAudioModeListener is true, calling addOnModeChangedListener from init");
           mAudioManager.addOnModeChangedListener(getMainExecutor(), mAudioModeChangeListener);
         }
     }
@@ -637,6 +640,7 @@ public class LeAudioService extends ProfileService {
         mBroadcastIdPendingStart = Optional.empty();
         mBroadcastIdPendingStop = Optional.empty();
         mAudioManagerAddedOutDevice = null;
+        mUnicastSourceStreamStatus = Optional.empty();
 
         // Set the service and BLE devices as inactive
         setLeAudioService(null);
@@ -1489,6 +1493,7 @@ public class LeAudioService extends ProfileService {
         } else {
             if (mIsSourceStreamMonitorModeEnabled) {
                 mNativeInterface.setUnicastMonitorMode(LeAudioStackEvent.DIRECTION_SOURCE, false);
+                mUnicastSourceStreamStatus = Optional.empty();
             }
 
             mIsSourceStreamMonitorModeEnabled = false;
@@ -2001,6 +2006,20 @@ public class LeAudioService extends ProfileService {
                         + (", isSink: " + isSink)
                         + (" isSource: " + isSource));
 
+        /* Don't expose already exposed active device */
+        if (device.equals(mExposedActiveDevice)) {
+            Log.d(TAG, " onAudioDevicesAdded: " + device + " is already exposed");
+            Log.d(TAG, " handleAudioDeviceAdded(): mCachedOpcode: " + mCachedOpcode);
+            TbsService tbsService = getTbsService();
+            if (tbsService != null && isSource && mCachedOpcode != -1) {
+                TbsGeneric tbsGeneric = tbsService.getTbsGeneric();
+                if (tbsGeneric != null) {
+                    tbsGeneric.processCallControlOp(device, mCachedOpcode, mCachedArgs);
+                }
+            }
+            return true;
+        }
+
         if ((isSink && !device.equals(mActiveAudioOutDevice))
                 || (isSource && !device.equals(mActiveAudioInDevice))) {
             Log.e(
@@ -2016,20 +2035,6 @@ public class LeAudioService extends ProfileService {
         }
 
         notifyActiveDeviceChanged(device);
-
-        /* Don't expose already exposed active device */
-        if (device.equals(mExposedActiveDevice)) {
-            Log.d(TAG, " onAudioDevicesAdded: " + device + " is already exposed");
-            Log.d(TAG, " handleAudioDeviceAdded(): mCachedOpcode: " + mCachedOpcode);
-            TbsService tbsService = getTbsService();
-            if (tbsService != null && isSource && mCachedOpcode != -1) {
-                TbsGeneric tbsGeneric = tbsService.getTbsGeneric();
-                if (tbsGeneric != null) {
-                    tbsGeneric.processCallControlOp(device, mCachedOpcode, mCachedArgs);
-                }
-            }
-            return true;
-        }
         mAudioManager.setA2dpSuspended(false);
         return true;
     }
@@ -2114,10 +2119,8 @@ public class LeAudioService extends ProfileService {
                 if (deviceInfo.isSink()) {
                     mAudioManagerAddedOutDevice = device;
                 }
-                if (handleAudioDeviceAdded(
-                        device, deviceInfo.getType(), deviceInfo.isSink(), deviceInfo.isSource())) {
-                    return;
-                }
+                handleAudioDeviceAdded(device, deviceInfo.getType(),
+                                            deviceInfo.isSink(), deviceInfo.isSource());
             }
         }
 
@@ -2930,6 +2933,12 @@ public class LeAudioService extends ProfileService {
             mNativeInterface.setUnicastMonitorMode(LeAudioStackEvent.DIRECTION_SOURCE, false);
         }
 
+        mUnicastSourceStreamStatus = Optional.of(status);
+        if (status == LeAudioStackEvent.STATUS_LOCAL_STREAM_SUSPENDED
+                && !isBroadcastAllowedToBeActivateInCurrentAudioMode()) {
+            Log.w(TAG, "handleSourceStreamStatusChange: broadcast not allowed in current mode");
+            return;
+        }
         bassClientService.handleUnicastSourceStreamStatusChange(status);
     }
 
@@ -3189,7 +3198,9 @@ public class LeAudioService extends ProfileService {
                 }
             }
             try {
-                mAudioServersScanner.startScan(filterList, settings, mScanCallback);
+                if (mScanCallback != null){
+                    mAudioServersScanner.startScan(filterList, settings, mScanCallback);
+                }
             } catch (IllegalStateException e) {
                 Log.e(TAG, "Fail to start scanner, consider it stopped", e);
                 mScanCallback = null;
@@ -3327,6 +3338,7 @@ public class LeAudioService extends ProfileService {
                         case LeAudioStackEvent.CONNECTION_STATE_DISCONNECTING:
                         case LeAudioStackEvent.CONNECTION_STATE_DISCONNECTED:
                             deviceDescriptor.mAclConnected = false;
+                            setDisconnected(true);
                             synchronized(mScanCallbackLock) {
                                 Log.d(TAG, " try to start background scan");
                                 startAudioServersBackgroundScan(/* retry= */ false);
@@ -4439,7 +4451,7 @@ public class LeAudioService extends ProfileService {
         }
     }
 
-    public void setInactiveForBroadcast() {
+    public void setInactiveForBroadcast(boolean blocking) {
         Log.d(TAG, "setInactiveForBroadcast");
         if (!isBroadcastActive()) {
             Log.d(TAG, "setInactiveForBroadcast: broadcast is inactive");
@@ -4451,6 +4463,11 @@ public class LeAudioService extends ProfileService {
             Log.d(TAG, "setInactiveForBroadcast: stop broadcast now");
             updateFallbackUnicastGroupIdForBroadcast(LE_AUDIO_GROUP_ID_INVALID);
             stopBroadcast(broadcastId.get());
+            if (!blocking) {
+                updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
+                Log.d(TAG, "No need Waiting for broadcast to stop");
+                return;
+            }
             suspendLeAudioStream();
             Log.d(TAG, "Wait for broadcast to stop");
             int waitCount = SystemProperties.getInt(
@@ -4878,6 +4895,12 @@ public class LeAudioService extends ProfileService {
                     handleUnicastStreamStatusChange(
                             LeAudioStackEvent.DIRECTION_SINK,
                             LeAudioStackEvent.STATUS_LOCAL_STREAM_SUSPENDED);
+                }
+
+                if (mUnicastSourceStreamStatus.isPresent()
+                        && (mUnicastSourceStreamStatus.get()
+                        == LeAudioStackEvent.STATUS_LOCAL_STREAM_SUSPENDED)) {
+                    handleSourceStreamStatusChange(mUnicastSourceStreamStatus.get());
                 }
                 break;
             default:

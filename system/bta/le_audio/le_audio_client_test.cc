@@ -336,6 +336,7 @@ class MockLeAudioSinkHalClient : public LeAudioSinkAudioHalClient {
               (const ::bluetooth::le_audio::offload_config&), (override));
   MOCK_METHOD((void), SuspendedForReconfiguration, (), (override));
   MOCK_METHOD((void), ReconfigurationComplete, (), (override));
+  MOCK_METHOD((void), UpdateMetadataComplete, (), (override));
 
   MOCK_METHOD((void), OnDestroyed, ());
   virtual ~MockLeAudioSinkHalClient() override { OnDestroyed(); }
@@ -372,6 +373,7 @@ class MockLeAudioSourceHalClient : public LeAudioSourceAudioHalClient {
               (override));
   MOCK_METHOD((void), SuspendedForReconfiguration, (), (override));
   MOCK_METHOD((void), ReconfigurationComplete, (), (override));
+  MOCK_METHOD((void), UpdateMetadataComplete, (), (override));
 
   MOCK_METHOD((void), OnDestroyed, ());
   virtual ~MockLeAudioSourceHalClient() override { OnDestroyed(); }

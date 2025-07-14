@@ -328,8 +328,8 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
             log::warn("Not enough data for L2CAP_CMD_REJ_INVALID_CID");
             return;
           }
-          STREAM_TO_UINT16(rcid, p);
           STREAM_TO_UINT16(lcid, p);
+          STREAM_TO_UINT16(rcid, p);
 
           log::warn("Rejected due to invalid CID, LCID: 0x{:04x} RCID: 0x{:04x}", lcid, rcid);
 

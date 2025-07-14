@@ -174,6 +174,7 @@ class LeAudioSinkAudioHalClient {
       const ::bluetooth::le_audio::offload_config& config) = 0;
   virtual void SuspendedForReconfiguration() = 0;
   virtual void ReconfigurationComplete() = 0;
+  virtual void UpdateMetadataComplete() = 0;
 
   static std::unique_ptr<LeAudioSinkAudioHalClient> AcquireUnicast();
   static void DebugDump(int fd);
@@ -217,6 +218,7 @@ class LeAudioSourceAudioHalClient : public LeAudioCommonAudioHalClient {
       const ::bluetooth::le_audio::broadcast_offload_config& config) = 0;
   virtual void SuspendedForReconfiguration() = 0;
   virtual void ReconfigurationComplete() = 0;
+  virtual void UpdateMetadataComplete() = 0;
 
   static std::unique_ptr<LeAudioSourceAudioHalClient> AcquireUnicast();
   static std::unique_ptr<LeAudioSourceAudioHalClient> AcquireBroadcast();
