@@ -157,10 +157,13 @@ struct codec_manager_impl {
     is_enhanced_le_gaming_supported_ = BTM_QBCE_QLE_HCI_SUPPORTED(soc_add_on_features->as_array) &&
                                    is_dynamic_ft_change_supported && is_qhs_enabled_locally;
 
+    is_qhs_enabled_ = is_qhs_enabled_locally;
+
     log::debug("FT Changes allowed {}, BN Variation allowed {}, Aptx LE Lossless enabled {}",
         is_dynamic_ft_change_supported, is_dynamic_bn_over_qhs, is_apx_lossless_le_supported);
     log::debug("Aptx LE supported {}, Aptx LEX Supported {}, Enhanced Gaming supported {}",
         is_aptx_adaptive_le_supported_, is_aptx_adaptive_lex_supported_, is_enhanced_le_gaming_supported_);
+    log::debug("QHS Enabled: {}", is_qhs_enabled_);
 
     log::info("LeAudioCodecManagerImpl: configure_data_path for encode");
     GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
@@ -211,6 +214,10 @@ struct codec_manager_impl {
 
   bool IsEnhancedLeGamingSupported(void) const {
     return is_enhanced_le_gaming_supported_;
+  }
+
+  bool IsQhsEnabled(void) const {
+    return is_qhs_enabled_;
   }
 
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
@@ -459,6 +466,16 @@ struct codec_manager_impl {
                                ->CheckEnhancedGamingConfig(*el);
                          }),
           configs.end());
+    }
+
+    if (!IsQhsEnabled()) {
+      configs.erase(
+              std::remove_if(
+                      configs.begin(), configs.end(),
+                      [](auto const& el) {
+                        return AudioSetConfigurationProvider::Get()->CheckQHSConfig(*el);
+                      }),
+              configs.end());
     }
 
     // Note: For the only supported right now legacy software configuration
@@ -1295,6 +1312,7 @@ struct codec_manager_impl {
   bool is_aptx_adaptive_lex_supported_ = true; // TO-DO: Make propery and feature based
   bool is_enhanced_le_gaming_supported_ = false;
   bool dual_bidirection_swb_supported_ = false;
+  bool is_qhs_enabled_ = false;
   types::BidirectionalPair<offloader_stream_maps_t> offloader_stream_maps;
   std::vector<bluetooth::le_audio::broadcast_offload_config>
       supported_broadcast_config;
@@ -1438,6 +1456,14 @@ bool CodecManager::IsEnhancedLeGamingSupported(void) const {
   }
 
   return pimpl_->codec_manager_impl_->IsEnhancedLeGamingSupported();
+}
+
+bool CodecManager::IsQhsEnabled(void) const {
+  if (!pimpl_->IsRunning()) {
+    return false;
+  }
+
+  return pimpl_->codec_manager_impl_->IsQhsEnabled();
 }
 
 bool CodecManager::IsAptxAdaptiveLeSupported(void) const {
