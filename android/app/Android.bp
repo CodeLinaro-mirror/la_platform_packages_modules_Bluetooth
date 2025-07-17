@@ -183,6 +183,7 @@ android_library {
         "framework-wifi.stubs.module_lib",
         "modules-utils-build",
         "android.car-module.stubs.module_lib",
+        "android.car",
     ],
     static_libs: [
         "android.bluetooth.platform.flags-aconfig-java-export",
