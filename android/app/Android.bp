@@ -178,6 +178,7 @@ android_library {
         "framework-wifi.stubs.module_lib",
         "modules-utils-build",
         "android.car-module.stubs.module_lib",
+        "android.car",
     ],
     static_libs: [
         "android.hardware.radio-V1.0-java",

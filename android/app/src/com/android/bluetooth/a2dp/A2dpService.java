@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.a2dp;
@@ -29,6 +34,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 
 import android.annotation.NonNull;
+import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothA2dp.OptionalCodecsPreferenceStatus;
 import android.bluetooth.BluetoothA2dp.OptionalCodecsSupportStatus;
@@ -782,6 +788,111 @@ public class A2dpService extends ConnectableProfile {
             return;
         }
         mDatabaseManager.setA2dpOptionalCodecsEnabled(device, value);
+    }
+
+    /**
+     * Get A2DP media player
+     *
+     * @param device is the remote bluetooth device
+     * @return media player's name
+     */
+    public String getMediaPlayer(BluetoothDevice device) {
+        synchronized (mStateMachines) {
+            A2dpStateMachine sm = mStateMachines.get(device);
+            if (sm == null) {
+                Log.e(TAG, "getMediaPlayer for " + device + " : no state machine");
+                return "";
+            }
+            return sm.getMediaPlayer();
+
+        }
+    }
+
+    /**
+     * Get A2DP audio zone
+     *
+     * @param device is the remote bluetooth device
+     * @return A2DP audio zone index
+     */
+    @SuppressWarnings("MethodCanBeStatic")
+    private int getAudioZoneIndex(BluetoothDevice device) {
+        Log.e(TAG, "device " + device);
+        return -1; // will be replaced
+    }
+
+    /**
+     * Set A2DP media player
+     *
+     * @param device is the remote bluetooth device
+     * @param mediaPlayer mediaPlayer package name
+     * @return true for success, false for failure
+     */
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public boolean setMediaPlayer(BluetoothDevice device, String mediaPlayer) {
+        enforceCallingOrSelfPermission(BLUETOOTH_CONNECT,
+                "Need BLUETOOTH_PRIVILEGED permission");
+        Log.d(TAG, "setMediaPlayer " + device + ", media player: " + mediaPlayer);
+
+        if (mediaPlayer == null) {
+            return false;
+        }
+
+        if (mediaPlayer.isEmpty()) {
+            return clearMediaPlayer(device);
+        }
+
+        if (!A2dpAudioZone.validMediaPlayer(this, mediaPlayer)) {
+            Log.e(TAG, "Ignored setMediaPlayer for " + device + " : media player not found");
+            return false;
+        }
+
+        if (!A2dpAudioZone.isAudioZoneAvailable(this)) {
+            Log.e(TAG, "Ignored setMediaPlayer for " + device + " : none audio zone for A2DP");
+            return false;
+        }
+
+        if (A2dpAudioZone.isMediaPlayerMapped(device, mediaPlayer)) {
+            Log.w(TAG, "Ignored setMediaPlayer for " + device + " : media player already mapped");
+            return true;
+        }
+
+        synchronized (mStateMachines) {
+            A2dpStateMachine sm = mStateMachines.get(device);
+            if (sm == null) {
+                Log.e(TAG, "Ignored setMediaPlayer for " + device + " : no state machine");
+                return false;
+            }
+
+            int audioZoneIndex = getAudioZoneIndex(device);
+            if (!A2dpAudioZone.validZoneIndex(audioZoneIndex)) {
+                Log.e(TAG, "Ignored setMediaPlayer for " + device + " : audio zone not available");
+                return false;
+            }
+
+            sm.setMediaPlayer(mediaPlayer, audioZoneIndex);
+            return true;
+        }
+    }
+
+    /**
+     * Clear A2DP media player
+     *
+     * @param device is the remote bluetooth device
+     * @return true for success, false for failure
+     */
+    public boolean clearMediaPlayer(BluetoothDevice device) {
+        Log.d(TAG, "clearMediaPlayer " + device);
+
+        synchronized (mStateMachines) {
+            A2dpStateMachine sm = mStateMachines.get(device);
+            if (sm == null) {
+                Log.e(TAG, "Ignored clearMediaPlayer for " + device + " : no state machine");
+                return false;
+            }
+
+            sm.clearMediaPlayer();
+            return true;
+        }
     }
 
     /**
