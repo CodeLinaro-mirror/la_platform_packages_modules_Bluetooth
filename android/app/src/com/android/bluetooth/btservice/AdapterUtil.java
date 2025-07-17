@@ -78,15 +78,16 @@ public final class AdapterUtil {
                 BluetoothProfile.GATT_SERVER,
                 BluetoothProfile.HEADSET_CLIENT,
                 BluetoothProfile.PBAP_CLIENT,
-                BluetoothProfile.HID_HOST,
                 BluetoothProfile.PAN,
-                BluetoothProfile.MAP_CLIENT)));
+                BluetoothProfile.MAP_CLIENT,
+                BluetoothProfile.HID_HOST)));
         sProfiles.put(ADAPTER_1, new ArrayList<Integer>(Arrays.asList(
                 BluetoothProfile.HEADSET,
                 BluetoothProfile.A2DP,
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,
-                BluetoothProfile.GATT_SERVER)));
+                BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.HID_HOST)));
     }
 
     private static boolean getFilterDeviceConfig() {
