@@ -200,6 +200,7 @@ android_library {
         "modules-utils-build",
         "modules-utils-expresslog",
         "android.car-module.stubs.module_lib",
+        "android.car",
     ],
     static_libs: [
         "BluetoothApiShims",
