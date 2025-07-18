@@ -34,6 +34,7 @@
 #include "stack/include/avdt_api.h"
 #include "stack/include/bt_types.h"
 #include "types/raw_address.h"
+#include "btif/include/btif_config.h"
 
 using namespace bluetooth;
 
@@ -199,8 +200,15 @@ BtaAvCoSep* BtaAvCoPeerCache::FindPeerSink(BtaAvCoPeer* p_peer, btav_a2dp_codec_
       continue;
     }
     if (codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_AAC) {
+      std::string remote_bdstr = p_peer->addr.ToString();
       log::verbose("Remote AAC VBR cap is {}", p_sink->codec_caps[6]);
       bool remote_vbr = (p_sink->codec_caps[6] >> 7) & 1;
+      if(remote_vbr) {
+          btif_config_set_str(remote_bdstr, BTIF_STORAGE_KEY_FOR_AAC_VBR, "true");
+      }
+      else {
+          btif_config_set_str(remote_bdstr, BTIF_STORAGE_KEY_FOR_AAC_VBR, "false");
+      }
       log::verbose("Checking if peer is in AAC WL");
       bool vbr_bl = false;
       bool vbr_supp =

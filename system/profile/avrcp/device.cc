@@ -24,6 +24,7 @@
 #include "abstract_message_loop.h"
 #include "avrcp_common.h"
 #include "bta/include/bta_le_audio_api.h"
+#include "bta/include/bta_le_audio_broadcaster_api.h"
 #include "btif/include/btif_av.h"
 #include "btif/include/btif_hf.h"
 #include "btif/include/btif_storage.h"
@@ -1191,6 +1192,12 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
               true, pass_through_packet->GetKeyState() == KeyState::PUSHED,
               pass_through_packet->GetOperationId());
       send_message(label, false, std::move(response));
+
+      if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+          LeAudioBroadcaster::Get()->IsLeAudioBroadcastActive()) {
+        log::warn("Ignore passthrough cmds while Broadcast active");
+        return;
+      }
 
       // TODO (apanicke): Use an enum for media key ID's
       if (pass_through_packet->GetOperationId() == uint8_t(OperationID::PLAY) &&

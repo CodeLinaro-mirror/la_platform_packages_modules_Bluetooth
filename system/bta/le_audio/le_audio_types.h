@@ -65,6 +65,13 @@ constexpr uint8_t GAMING_VBC_USE_CASE = 0X02;
 constexpr uint8_t VOICE_USE_CASE = 0X03;
 constexpr uint8_t STEREO_REC_USE_CASE = 0X04;
 
+constexpr uint16_t HCI_VS_QBCE_OCF                = 0xFC51;
+constexpr uint8_t HCI_VS_SET_CIG_METADATA         = 0x3D;
+constexpr uint8_t LTV_TYPE_STREAM_INDICATION      = 0x01;
+constexpr uint8_t LTV_LEN_STREAM_INDICATION       = 0x01;
+constexpr uint8_t LTV_TYPE_BAP_TIMEOUT_INDICATION = 0x02;
+constexpr uint8_t LTV_LEN_BAP_TIMEOUT_INDICATION  = 0x06;
+
 namespace bluetooth::le_audio {
 
 #define UINT8_TO_VEC_UINT8(u8) \
@@ -1526,6 +1533,9 @@ struct stream_configuration {
   /* Currently selected local Sink & Source configuration */
   types::BidirectionalPair<stream_parameters> stream_params;
 };
+
+void send_vs_cmd(const uint8_t metadata_type, const uint8_t stream_ind,
+       const std::vector<uint8_t> bd_addr);
 
 void AppendMetadataLtvEntryForCcidList(std::vector<uint8_t>& metadata,
                                        const std::vector<uint8_t>& ccid_list);

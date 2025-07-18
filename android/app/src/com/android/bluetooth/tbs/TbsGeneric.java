@@ -927,7 +927,7 @@ public class TbsGeneric {
                         }
 
                         if (opcode == TbsGatt.CALL_CONTROL_POINT_OPCODE_ACCEPT) {
-                            if (isDeviceGroupAlreadyActive(device)) {
+                            if (isDeviceGroupAlreadyActive(device) || Utils.isPtsTestMode()) {
                                 Log.d(TAG, "onCallControlPointRequest: Device Already part of "+
                                            "Active group, process answering the call now.");
                                 processCallControlOp(device, opcode, args);

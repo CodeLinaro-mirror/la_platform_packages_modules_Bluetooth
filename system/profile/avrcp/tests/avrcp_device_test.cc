@@ -25,6 +25,7 @@
 #include "avrcp_packet.h"
 #include "avrcp_test_helper.h"
 #include "bta/include/bta_le_audio_api.h"
+#include "bta/include/bta_le_audio_broadcaster_api.h"
 #include "btif/include/btif_av.h"
 #include "btif/include/btif_hf.h"
 #include "device.h"
@@ -40,6 +41,8 @@ void btif_av_stream_start(A2dpType type) { return; }
 bool bluetooth::headset::IsCallIdle(void) { return true; }
 bool LeAudioClient::IsLeAudioClientRunning() { return false; }
 bool LeAudioClient::IsLeAudioClientInIdle(void) { return true; }
+bool LeAudioBroadcaster::IsLeAudioBroadcasterRunning() { return false; }
+LeAudioBroadcaster* LeAudioBroadcaster::Get(void) { return nullptr; }
 size_t btif_config_get_bin_length(const std::string& section,
                                    const std::string& key) { return 0; }
 bool btif_config_get_bin(const std::string& section, const std::string& key,

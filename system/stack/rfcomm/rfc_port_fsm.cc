@@ -312,7 +312,9 @@ void rfc_port_sm_term_wait_sec_check(tPORT* p_port, tRFC_PORT_EVENT event, void*
         log::debug("Security check succeeded state:{} port_handle:{}",
                    rfcomm_port_state_text(static_cast<tRFC_PORT_STATE>(p_port->rfc.sm_cb.state)),
                    p_port->handle);
-        PORT_DlcEstablishInd(p_port->rfc.p_mcb, p_port->dlci, p_port->rfc.p_mcb->peer_l2cap_mtu);
+        if (p_port && p_port->rfc.p_mcb) {
+          PORT_DlcEstablishInd(p_port->rfc.p_mcb, p_port->dlci, p_port->rfc.p_mcb->peer_l2cap_mtu);
+        }
       }
       return;
 
