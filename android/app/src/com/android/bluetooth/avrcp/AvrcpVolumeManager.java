@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcp;
@@ -32,6 +37,7 @@ import com.android.bluetooth.BluetoothEventLogger;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.bluetooth.btservice.AdapterService;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -81,6 +87,7 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
 
     BluetoothDevice mCurrentDevice = null;
     boolean mAbsoluteVolumeSupported = false;
+    private final BluetoothAdapter mAdapter;
 
     /**
      * Converts given {@code avrcpVolume} (0 - 127) to equivalent in system volume (0 - {@code
@@ -180,6 +187,7 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
         mNativeInterface = nativeInterface;
         mDeviceMaxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
         mNewDeviceVolume = mDeviceMaxVolume / 2;
+        mAdapter = AdapterService.getAdapter();
 
         mAudioManager.registerAudioDeviceCallback(this, null);
 
@@ -191,7 +199,7 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
         for (Map.Entry<String, ?> entry : allKeys.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
-            BluetoothDevice d = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(key);
+            BluetoothDevice d = mAdapter.getRemoteDevice(key);
 
             if (value instanceof Integer
                     && mAdapterService.getBondState(d) == BluetoothDevice.BOND_BONDED) {
@@ -441,8 +449,7 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
         Map<String, ?> allKeys = getVolumeMap().getAll();
         for (Map.Entry<String, ?> entry : allKeys.entrySet()) {
             Object value = entry.getValue();
-            BluetoothDevice d =
-                    BluetoothAdapter.getDefaultAdapter().getRemoteDevice(entry.getKey());
+            BluetoothDevice d = mAdapter.getRemoteDevice(entry.getKey());
 
             String deviceName = mAdapterService.getRemoteName(d);
             if (deviceName == null) {

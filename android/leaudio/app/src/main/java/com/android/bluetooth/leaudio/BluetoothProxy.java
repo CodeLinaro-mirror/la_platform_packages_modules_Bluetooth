@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.leaudio;
@@ -35,6 +40,8 @@ import androidx.annotation.Nullable;
 import androidx.core.util.Pair;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+
+import com.android.bluetooth.btservice.AdapterService;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -574,7 +581,7 @@ public class BluetoothProxy {
 
     private BluetoothProxy(Application application) {
         this.application = application;
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        bluetoothAdapter = AdapterService.getAdapter();
 
         enabledBluetoothMutable = new MutableLiveData<>();
         allLeAudioDevicesMutable = new MutableLiveData<>();

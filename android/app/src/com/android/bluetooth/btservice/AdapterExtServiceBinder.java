@@ -18,25 +18,27 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
+
 package com.android.bluetooth.btservice;
 
-import android.app.Application;
-import android.util.Log;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.IBluetooth;
+import android.bluetooth.IBluetoothExt;
 
-import com.android.bluetooth.Utils;
+class AdapterExtServiceBinder extends IBluetoothExt.Stub {
+    private AdapterExtService mService;
 
-public class AdapterApp extends Application {
-    private static final String TAG = Utils.TAG_PREFIX_BLUETOOTH + AdapterApp.class.getSimpleName();
+    AdapterExtServiceBinder(AdapterExtService svc) {
+        mService = svc;
+    }
 
+    public void cleanup() {
+        mService = null;
+    }
+
+    // New API to get Bluetooth interface in new Bluetooth adapter
     @Override
-    public void onCreate() {
-        super.onCreate();
-        Log.d(TAG, "onCreate");
-        try {
-            DataMigration.run(this);
-        } catch (Exception e) {
-            Log.e(TAG, "Migration failure: ", e);
-        }
-        AdapterUtil.init(this);
+    public synchronized IBluetooth getBluetooth() {
+        return mService.getBluetooth();
     }
 }

@@ -11,6 +11,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 package com.android.bluetooth;
 
@@ -21,6 +26,7 @@ import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.util.Log;
 
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.obex.ResponseCodes;
 import com.android.obex.ServerSession;
 
@@ -55,6 +61,7 @@ public class ObexServerSockets {
     /* Handles to the accept threads. Needed for shutdown. */
     private SocketAcceptThread mRfcommThread;
     private SocketAcceptThread mL2capThread;
+    private final BluetoothAdapter mAdapter;
 
     private ObexServerSockets(
             IObexConnectionHandler conHandler,
@@ -63,6 +70,7 @@ public class ObexServerSockets {
         mConHandler = conHandler;
         mRfcommSocket = rfcommSocket;
         mL2capSocket = l2capSocket;
+        mAdapter = AdapterService.getAdapter();
     }
 
     /**
@@ -115,7 +123,7 @@ public class ObexServerSockets {
     private static ObexServerSockets create(
             IObexConnectionHandler validator, int rfcommChannel, int l2capPsm, boolean isSecure) {
         Log.d(TAG, "create(rfcomm = " + rfcommChannel + ", l2capPsm = " + l2capPsm + ")");
-        BluetoothAdapter bt = BluetoothAdapter.getDefaultAdapter();
+        BluetoothAdapter bt = AdapterService.getAdapter();
         if (bt == null) {
             throw new RuntimeException("No bluetooth adapter...");
         }
@@ -229,7 +237,6 @@ public class ObexServerSockets {
     /** Signal to the {@link IObexConnectionHandler} that an error have occurred. */
     private synchronized void onAcceptFailed() {
         shutdown(false);
-        BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
         if ((mAdapter != null) && (mAdapter.getState() == BluetoothAdapter.STATE_ON)) {
             Log.d(TAG, "onAcceptFailed() calling shutdown...");
             mConHandler.onAcceptFailed();
