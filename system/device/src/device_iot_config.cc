@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 #define LOG_TAG "device_iot_config"
 
@@ -395,7 +400,7 @@ bool device_iot_config_clear(void) {
     return false;
   }
 
-  bool ret = config_save(*config, IOT_CONFIG_FILE_PATH);
+  bool ret = config_save(*config, get_iot_config_file_path());
   device_iot_config_source = RESET;
   return ret;
 }

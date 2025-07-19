@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /*****************************************************************************
@@ -30,13 +35,25 @@
 #include <hardware/bt_av.h>
 #include <stdint.h>
 
+extern int GetAdapterIndex();
+
 /*****************************************************************************
  *  Constants & Macros
  *****************************************************************************/
 
 #define HEARING_AID_AUDIO_HARDWARE_INTERFACE "audio.hearing_aid"
 #define HEARING_AID_CTRL_PATH "/data/misc/bluedroid/.hearing_aid_ctrl"
+#define HEARING_AID_NEW_CTRL_PATH "/data/misc/bluedroid/new/.hearing_aid_ctrl"
 #define HEARING_AID_DATA_PATH "/data/misc/bluedroid/.hearing_aid_data"
+#define HEARING_AID_NEW_DATA_PATH "/data/misc/bluedroid/new/.hearing_aid_data"
+
+inline const char* get_hearing_aid_ctrl_path() {
+    return (GetAdapterIndex() == 0) ? HEARING_AID_CTRL_PATH : HEARING_AID_NEW_CTRL_PATH;
+}
+
+inline const char* get_hearing_aid_data_path() {
+    return (GetAdapterIndex() == 0) ? HEARING_AID_DATA_PATH : HEARING_AID_NEW_DATA_PATH;
+}
 
 // AUDIO_STREAM_OUTPUT_BUFFER_SZ controls the size of the audio socket buffer.
 // If one assumes the write buffer is always full during normal BT playback,

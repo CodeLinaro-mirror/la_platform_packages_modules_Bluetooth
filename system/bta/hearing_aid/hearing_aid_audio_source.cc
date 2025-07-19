@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #include <base/files/file_util.h>
@@ -203,7 +208,7 @@ void hearing_aid_recv_ctrl_data() {
         ctrl_ack_status = HEARING_AID_CTRL_ACK_FAILURE;
       } else {
         UIPC_Open(*uipc_hearing_aid, UIPC_CH_ID_AV_AUDIO, hearing_aid_data_cb,
-                  HEARING_AID_DATA_PATH);
+                  get_hearing_aid_data_path());
       }
       hearing_aid_send_ack(ctrl_ack_status);
       break;
@@ -322,7 +327,7 @@ void hearing_aid_ctrl_cb(tUIPC_CH_ID, tUIPC_EVENT event) {
       /* restart ctrl server unless we are shutting down */
       if (HearingAid::IsHearingAidRunning()) {
         UIPC_Open(*uipc_hearing_aid, UIPC_CH_ID_AV_CTRL, hearing_aid_ctrl_cb,
-                  HEARING_AID_CTRL_PATH);
+                  get_hearing_aid_ctrl_path());
       }
       break;
     case UIPC_RX_DATA_READY_EVT:
@@ -409,7 +414,7 @@ void HearingAidAudioSource::Initialize() {
   if (!bluetooth::audio::hearing_aid::init(stream_cb, get_main_thread())) {
     log::warn("Using legacy HAL");
     uipc_hearing_aid = UIPC_Init();
-    UIPC_Open(*uipc_hearing_aid, UIPC_CH_ID_AV_CTRL, hearing_aid_ctrl_cb, HEARING_AID_CTRL_PATH);
+    UIPC_Open(*uipc_hearing_aid, UIPC_CH_ID_AV_CTRL, hearing_aid_ctrl_cb, get_hearing_aid_ctrl_path());
   }
 }
 

@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /* Implements hal for bluedroid ha audio device */
@@ -772,7 +777,7 @@ static void ha_open_ctrl_path(struct ha_stream_common* common) {
   for (i = 0; i < CTRL_CHAN_RETRY_COUNT; i++) {
     /* connect control channel if not already connected */
     if ((common->ctrl_fd =
-                 skt_connect(HEARING_AID_CTRL_PATH, AUDIO_STREAM_CONTROL_OUTPUT_BUFFER_SZ)) >= 0) {
+                 skt_connect(get_hearing_aid_ctrl_path(), AUDIO_STREAM_CONTROL_OUTPUT_BUFFER_SZ)) >= 0) {
       /* success, now check if stack is ready */
       if (check_ha_ready(common) == 0) {
         break;
@@ -832,7 +837,7 @@ static int start_audio_datapath(struct ha_stream_common* common) {
 
   /* connect socket if not yet connected */
   if (common->audio_fd == AUDIO_SKT_DISCONNECTED) {
-    common->audio_fd = skt_connect(HEARING_AID_DATA_PATH, common->buffer_sz);
+    common->audio_fd = skt_connect(get_hearing_aid_data_path(), common->buffer_sz);
     if (common->audio_fd < 0) {
       ERROR("Audiopath start failed - error opening data socket");
       goto error;
