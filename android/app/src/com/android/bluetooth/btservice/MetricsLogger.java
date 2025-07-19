@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 package com.android.bluetooth.btservice;
 
@@ -60,7 +65,9 @@ public class MetricsLogger {
     private static final String TAG = "BluetoothMetricsLogger";
     private static final String BLOOMFILTER_PATH = "/data/misc/bluetooth";
     private static final String BLOOMFILTER_FILE = "/devices_for_metrics_v3";
+    private static final String BLOOMFILTER_NEW_FILE = "/devices_for_metrics_v3_new";
     public static final String BLOOMFILTER_FULL_PATH = BLOOMFILTER_PATH + BLOOMFILTER_FILE;
+    public static final String BLOOMFILTER_NEW_FULL_PATH = BLOOMFILTER_PATH + BLOOMFILTER_NEW_FILE;
 
     // 6 hours timeout for counter metrics
     private static final long BLUETOOTH_COUNTER_METRICS_ACTION_DURATION_MILLIS = 6L * 3600L * 1000L;
@@ -85,6 +92,11 @@ public class MetricsLogger {
                     scheduleDrains();
                 }
             };
+
+    private static String get_bloomfilter_full_path() {
+        return AdapterUtil.isAdapterDefault() ? BLOOMFILTER_FULL_PATH:
+                                                BLOOMFILTER_NEW_FULL_PATH;
+    }
 
     public static MetricsLogger getInstance() {
         if (sInstance == null) {
@@ -158,7 +170,7 @@ public class MetricsLogger {
         mInitialized = true;
         mAdapterService = adapterService;
         scheduleDrains();
-        if (!initBloomFilter(BLOOMFILTER_FULL_PATH)) {
+        if (!initBloomFilter(get_bloomfilter_full_path())) {
             Log.w(TAG, "MetricsLogger can't initialize the bloomfilter");
             // The class is for multiple metrics tasks.
             // We still want to use this class even if the bloomfilter isn't initialized

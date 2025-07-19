@@ -50,8 +50,12 @@
 
 using namespace bluetooth;
 
+extern int GetAdapterIndex();
+
 #ifdef __ANDROID__
 static const char* INTEROP_DYNAMIC_FILE_PATH = "/data/misc/bluedroid/interop_database_dynamic.conf";
+static const char* INTEROP_NEW_DYNAMIC_FILE_PATH = "/data/misc/bluedroid/new/interop_database_dynamic.conf";
+
 static const char* INTEROP_STATIC_FILE_PATH =
         "/apex/com.android.btservices/etc/bluetooth/interop_database.conf";
 #elif TARGET_FLOSS
@@ -78,6 +82,15 @@ static const std::filesystem::path kStaticConfigFileConfigFile =
 
 static const char* INTEROP_STATIC_FILE_PATH = kStaticConfigFileConfigFile.c_str();
 #endif  // __ANDROID__
+
+
+static const char* get_interop_dynamic_file_path() {
+#ifdef __ANDROID__
+    return (GetAdapterIndex() == 0) ? INTEROP_DYNAMIC_FILE_PATH : INTEROP_NEW_DYNAMIC_FILE_PATH;
+#else
+    return INTEROP_DYNAMIC_FILE_PATH;
+#endif
+}
 
 #define CASE_RETURN_STR(const) \
   case const:                  \
@@ -423,9 +436,9 @@ static int interop_config_init(void) {
     goto error;
   }
 
-  if (!stat(INTEROP_DYNAMIC_FILE_PATH, &sts) && sts.st_size) {
-    if (!(config_dynamic = config_new(INTEROP_DYNAMIC_FILE_PATH))) {
-      log::warn("unable to load dynamic config file for : {}", INTEROP_DYNAMIC_FILE_PATH);
+  if (!stat(get_interop_dynamic_file_path(), &sts) && sts.st_size) {
+    if (!(config_dynamic = config_new(get_interop_dynamic_file_path()))) {
+      log::warn("unable to load dynamic config file for : {}", get_interop_dynamic_file_path());
     }
   }
   if (!config_dynamic && !(config_dynamic = config_new_empty())) {
@@ -445,7 +458,7 @@ static void interop_config_flush(void) {
   log::assert_that(config_dynamic.get() != NULL, "assert failed: config_dynamic.get() != NULL");
 
   pthread_mutex_lock(&file_lock);
-  config_save(*config_dynamic, INTEROP_DYNAMIC_FILE_PATH);
+  config_save(*config_dynamic, get_interop_dynamic_file_path());
   pthread_mutex_unlock(&file_lock);
 }
 
