@@ -15,11 +15,18 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #pragma once
 
 #include "osi/include/config.h"
+
+extern int GetAdapterIndex();
 
 #define PROPERTY_ENABLE_LOGGING "persist.bluetooth.device_iot_config.enablelogging"
 #define PROPERTY_FACTORY_RESET "persist.bluetooth.factoryreset"
@@ -49,12 +56,30 @@ static const char* TIME_STRING_FORMAT = "%Y-%m-%d %H:%M:%S";
 
 #ifdef __ANDROID__
 static const char* IOT_CONFIG_FILE_PATH = "/data/misc/bluedroid/bt_remote_dev_info.conf";
+static const char* IOT_CONFIG_FILE_NEW_PATH = "/data/misc/bluedroid/new/bt_remote_dev_info.conf";
 static const char* IOT_CONFIG_BACKUP_PATH = "/data/misc/bluedroid/bt_remote_dev_info.bak";
+static const char* IOT_NEW_CONFIG_NEW_BACKUP_PATH = "/data/misc/bluedroid/new/bt_remote_dev_info.bak";
 #else   // !__ANDROID__
 static const char* IOT_CONFIG_FILE_PATH = "bt_remote_dev_info.conf";
 static const char* IOT_CONFIG_BACKUP_PATH = "bt_remote_dev_info.bak";
 #endif  // __ANDROID__
 static const uint64_t CONFIG_SETTLE_PERIOD_MS = 12000;
+
+inline const char* get_iot_config_file_path() {
+#ifdef __ANDROID__
+    return (GetAdapterIndex() == 0) ? IOT_CONFIG_FILE_PATH : IOT_CONFIG_FILE_NEW_PATH;
+#else
+    return IOT_CONFIG_FILE_PATH;
+#endif
+}
+
+inline const char* get_iot_config_backup_path() {
+#ifdef __ANDROID__
+    return (GetAdapterIndex() == 0) ? IOT_CONFIG_BACKUP_PATH : IOT_NEW_CONFIG_NEW_BACKUP_PATH;
+#else
+    return IOT_CONFIG_BACKUP_PATH;
+#endif
+}
 
 enum ConfigSource { NOT_LOADED, ORIGINAL, BACKUP, NEW_FILE, RESET };
 
