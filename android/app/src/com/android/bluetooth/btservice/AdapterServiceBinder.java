@@ -166,7 +166,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public void offToBleOn(boolean quietMode, AttributionSource source) {
         AdapterService service = getService();
         if (service == null || !callerIsSystemOrActiveOrManagedUser(service, TAG, "offToBleOn")) {
@@ -179,7 +179,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public void onToBleOn(AttributionSource source) {
         AdapterService service = getService();
         if (service == null || !callerIsSystemOrActiveOrManagedUser(service, TAG, "onToBleOn")) {
@@ -363,7 +363,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public boolean startDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -378,7 +378,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public boolean cancelDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
