@@ -2376,7 +2376,7 @@ public class AdapterService extends Service {
         }
 
         @Override
-        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
         public void offToBleOn(boolean quietMode, AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2392,7 +2392,7 @@ public class AdapterService extends Service {
         }
 
         @Override
-        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
         public void onToBleOn(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2560,7 +2560,7 @@ public class AdapterService extends Service {
         }
 
         @Override
-        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
         public boolean startDiscovery(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -2579,7 +2579,7 @@ public class AdapterService extends Service {
         }
 
         @Override
-        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
         public boolean cancelDiscovery(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -7028,7 +7028,7 @@ public class AdapterService extends Service {
         return AdapterUtil.isAdapter1();
     }
 
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     private void handleDualAdapterMode(int option) {
         if (AdapterUtil.isDualAdapterMode()) {
             if (AdapterUtil.isAdapterDefault()) {
