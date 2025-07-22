@@ -50,11 +50,19 @@ public final class BluetoothAdapterUtil {
                 BluetoothProfile.GATT_SERVER,
                 BluetoothProfile.A2DP_SINK,
                 BluetoothProfile.AVRCP_CONTROLLER,
+                BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
+                BluetoothProfile.CSIP_SET_COORDINATOR,
                 BluetoothProfile.HEADSET_CLIENT,
                 BluetoothProfile.HID_HOST,
+                BluetoothProfile.LE_CALL_CONTROL,
                 BluetoothProfile.MAP_CLIENT,
+                BluetoothProfile.MCP_SERVER,
+                BluetoothProfile.OPP,
                 BluetoothProfile.PAN,
-                BluetoothProfile.PBAP_CLIENT)));
+                BluetoothProfile.PBAP_CLIENT,
+                BluetoothProfile.VOLUME_CONTROL,
+                BluetoothProfile.LE_AUDIO,
+                BluetoothProfile.LE_AUDIO_BROADCAST)));
 
         sProfiles.put(ADAPTER_1, new ArrayList<Integer>(Arrays.asList(
                 BluetoothProfile.HEADSET,
