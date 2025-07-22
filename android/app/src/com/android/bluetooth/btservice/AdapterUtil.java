@@ -72,15 +72,15 @@ public final class AdapterUtil {
         // Init profile supported in Bluetooth adapter
         sProfiles = new HashMap<Integer, ArrayList<Integer>>(ADAPTER_NUMBER);
         sProfiles.put(ADAPTER_DEFAULT, new ArrayList<Integer>(Arrays.asList(
-                BluetoothProfile.A2DP_SINK,
-                BluetoothProfile.AVRCP_CONTROLLER,
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.A2DP_SINK,
+                BluetoothProfile.AVRCP_CONTROLLER,
                 BluetoothProfile.HEADSET_CLIENT,
-                BluetoothProfile.PBAP_CLIENT,
                 BluetoothProfile.HID_HOST,
+                BluetoothProfile.MAP_CLIENT,
                 BluetoothProfile.PAN,
-                BluetoothProfile.MAP_CLIENT)));
+                BluetoothProfile.PBAP_CLIENT)));
         sProfiles.put(ADAPTER_1, new ArrayList<Integer>(Arrays.asList(
                 BluetoothProfile.HEADSET,
                 BluetoothProfile.A2DP,
