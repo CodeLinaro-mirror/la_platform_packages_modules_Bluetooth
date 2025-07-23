@@ -1548,6 +1548,14 @@ void avdt_msg_ind(AvdtpCcb* p_ccb, BT_HDR* p_buf) {
         avdt_msg_send_grej(p_ccb, sig, &msg);
       }
     }
+
+    /* validate reject/response against cached sig */
+    if (((msg_type == AVDT_MSG_TYPE_RSP) || (msg_type == AVDT_MSG_TYPE_REJ)) &&
+        (p_ccb->p_curr_cmd == nullptr || p_ccb->p_curr_cmd->event != sig)) {
+        log::warn("Dropping msg with mismatched sig; sig={} event type={}", sig,
+                  p_ccb->p_curr_cmd->event);
+      ok = false;
+    }
   }
 
   log::verbose("msg_type={}, sig={}", msg_type, sig);
