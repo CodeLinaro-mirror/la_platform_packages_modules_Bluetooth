@@ -1344,7 +1344,7 @@ public class BluetoothInCallService extends InCallService {
                 registerReceiver(mVoiceCapabilityChangeReceiver, intentfilter,
                     android.Manifest.permission.MODIFY_PHONE_STATE, null, Context.RECEIVER_EXPORTED);
             }
-            mEnableDsdaMode = SystemProperties.getBoolean(ENABLE_DSDA_SUPPORT, true);
+            mEnableDsdaMode = SystemProperties.getBoolean(ENABLE_DSDA_SUPPORT, false);
             if (mEnableDsdaMode)  {
               Log.d(TAG, "MEnableDsdaMode is: " + mEnableDsdaMode);
               if (mHandler == null) {

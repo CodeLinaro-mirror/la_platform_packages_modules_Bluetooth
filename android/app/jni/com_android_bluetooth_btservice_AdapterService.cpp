@@ -2140,8 +2140,13 @@ static int getRemotePbapPceVersionNative(JNIEnv* env, jobject /* obj */, jstring
   return sBluetoothInterface->get_remote_pbap_pce_version(&bdaddr);
 }
 
-static jboolean pbapPseDynamicVersionUpgradeIsEnabledNative(JNIEnv* /* env */, jobject /* obj */) {
-  return JNI_FALSE;
+static jboolean pbapPseDynamicVersionUpgradeIsEnabledNative(JNIEnv* /* env */,
+                                                            jobject /* obj */) {
+  if (!sBluetoothInterface) return JNI_FALSE;
+
+  return sBluetoothInterface->pbap_pse_dynamic_version_upgrade_is_enabled()
+             ? JNI_TRUE
+             : JNI_FALSE;
 }
 
 static jint getSocketL2capLocalChannelIdNative(JNIEnv* /* env */, jobject /* obj */,

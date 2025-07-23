@@ -90,7 +90,6 @@
 #include "btif_vendor.h"
 #include "osi/include/allocator.h"
 #include "osi/include/osi.h"
-#include "osi/include/properties.h"
 #include "stack/btm/internal/btm_api.h"
 #include "stack/include/btm_client_interface.h"
 #if TEST_APP_INTERFACE == TRUE
@@ -99,7 +98,6 @@
 using namespace bluetooth;
 
 extern bool interface_ready(void);
-#define SOC_NAME_MAX_SIZE 15
 
 extern const btl2cap_interface_t* btif_l2cap_get_interface(void);
 extern const btgatt_test_interface_t* btif_gatt_test_get_interface(void);
@@ -124,14 +122,6 @@ btvendor_callbacks_t* bt_vendor_callbacks = NULL;
 *******************************************************************************/
 static bt_status_t init(btvendor_callbacks_t* callbacks) {
   bt_vendor_callbacks = callbacks;
-  char socName[SOC_NAME_MAX_SIZE];
-  osi_property_get("persist.vendor.qcom.bluetooth.soc", socName, "");
-  if (!strcmp(socName, "cherokee")) {
-    // when socName is Cherokee
-    osi_property_set("persist.bluetooth.asha.enabled", "false");
-  } else {
-    osi_property_set("persist.bluetooth.asha.enabled", "true");
-  }
   log::info("init done");
   return BT_STATUS_SUCCESS;
 }
@@ -166,6 +156,14 @@ void btif_vendor_update_add_on_features_to_jni() {
 }
 void btif_vendor_update_add_on_features() {
   do_in_jni_thread(base::BindOnce(btif_vendor_update_add_on_features_to_jni));
+}
+
+void btif_vendor_update_ssr_event_to_jni() {
+  HAL_CBACK(bt_vendor_callbacks, ssr_vendor_cb);
+}
+
+void btif_vendor_update_ssr_event() {
+  do_in_jni_thread(base::BindOnce(btif_vendor_update_ssr_event_to_jni));
 }
 static void set_wifi_state(bool status) {
   log::info("setWifiState :{}", status);

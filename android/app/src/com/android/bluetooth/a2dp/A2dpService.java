@@ -114,6 +114,7 @@ public class A2dpService extends ProfileService {
     private final boolean mA2dpOffloadEnabled;
     private final boolean mAlsDisabled;
     private final boolean mA2dpCodecExtensiblityEnabled;
+    private boolean mSetCodecConfig;
 
     // Head tracker available
     private static final long HEAD_TRACKER_AVAILABLE_MASK = 0x00300000;
@@ -155,6 +156,7 @@ public class A2dpService extends ProfileService {
                                         ("persist.vendor.service.bt.als_disabled", false);
         mA2dpCodecExtensiblityEnabled = SystemProperties.getBoolean(
              "persist.vendor.qcom.bluetooth.a2dp_offload_codec_extensibility", false);
+        mSetCodecConfig = false;
         mMaxConnectedAudioDevices = mAdapterService.getMaxConnectedAudioDevices();
         Log.i(TAG, "Max connected audio devices set to " + mMaxConnectedAudioDevices);
 
@@ -216,6 +218,8 @@ public class A2dpService extends ProfileService {
         }
 
         mHandler.removeCallbacksAndMessages(null);
+
+        enableSetCodecConfig(false);
     }
 
     CompanionDeviceManager getCompanionDeviceManager() {
@@ -811,6 +815,25 @@ public class A2dpService extends ProfileService {
 
         if (cs4 > 0 && codecConfig.getCodecType() ==
                                 BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE) {
+
+            switch ((int)(cs4 & APTX_MODE_MASK)) {
+                case APTX_HQ:
+                    mIsScanEnabled = false;
+                    break;
+                case APTX_LL:
+                    if ((cs4 & APTX_SCAN_FILTER_MASK) == APTX_SCAN_FILTER_MASK) {
+                        mIsScanEnabled = true;
+                    } else {
+                        mIsScanEnabled = false;
+                    }
+                    break;
+                default:
+                    Log.e(TAG, cs4 + " is not a aptX profile mode feedback");
+            }
+            mAdapterService.getBluetoothGattService()
+                           .getScanController()
+                           .setAptXLowLatencyMode(mIsScanEnabled);
+
             if (mAlsDisabled) {
                 Log.e(TAG, "setCodecConfigPreference: ALS trigger is ignored");
                 return;
@@ -832,26 +855,7 @@ public class A2dpService extends ProfileService {
             }
 
             setStreamMode(isGamingEnabled, isLowLatencyModeEnabled);
-
         }
-
-        switch ((int)(cs4 & APTX_MODE_MASK)) {
-            case APTX_HQ:
-                mIsScanEnabled = false;
-                break;
-            case APTX_LL:
-                if ((cs4 & APTX_SCAN_FILTER_MASK) == APTX_SCAN_FILTER_MASK) {
-                    mIsScanEnabled = true;
-                } else {
-                    mIsScanEnabled = false;
-                }
-                break;
-            default:
-                Log.e(TAG, cs4 + " is not a aptX profile mode feedback");
-        }
-        mAdapterService.getBluetoothGattService()
-                       .getScanController()
-                       .setAptXLowLatencyMode(mIsScanEnabled);
 
         if (codecConfig == null) {
             Log.e(TAG, "setCodecConfigPreference: Codec config can't be null");
@@ -1561,5 +1565,20 @@ public class A2dpService extends ProfileService {
                     BluetoothProfileConnectionInfo.createA2dpInfo(false, -1));
             return 1;
         }
+    }
+
+    public boolean isA2dpExtensibilityEnabled() {
+        Log.e(TAG, "isA2dpExtensibilityEnabled: " + mA2dpCodecExtensiblityEnabled);
+        return mA2dpCodecExtensiblityEnabled;
+    }
+
+    public void enableSetCodecConfig(boolean isSetConfig) {
+        Log.e(TAG, "enableSetCodecConfig: " + isSetConfig);
+        mSetCodecConfig = isSetConfig;
+    }
+
+    public boolean fetchSetCodecConfig() {
+        Log.e(TAG, "fetchSetCodecConfig: " + mSetCodecConfig);
+        return mSetCodecConfig;
     }
 }

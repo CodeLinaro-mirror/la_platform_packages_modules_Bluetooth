@@ -25,6 +25,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
+import com.android.bluetooth.Utils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -476,7 +477,16 @@ class BrowsedPlayerWrapper {
                     return_list.add(new ListItem(data));
                 }
             }
-
+            /*
+                Youtube music is not loading the empty folders as children of any root.
+                To avoid that, add an empty folder for AVRCP/TG/MCN/CB/BI-02-C
+                Also, in IXIT, put this as TSPX_empty_folder - "\Songs"
+            */
+            if(Utils.isPtsTestModeAddEmptyFolder() && return_list.size() == 3) {
+                Folder f = new Folder("dummyID", false, "Songs");
+                return_list.add(new ListItem(f));
+                Log.d(TAG, "onChildrenLoaded: return_list size =" + return_list.size());
+            }
             mCachedFolders.put(parentId, return_list);
             mTimeoutHandler.removeMessages(TimeoutHandler.MSG_TIMEOUT);
 

@@ -66,6 +66,7 @@ EventCallbacks mock_event_callbacks = {
                    int /* negative_acknowledgement_count */) {},
         .invoke_key_missing_cb = [](RawAddress /* bd_addr */) {},
         .invoke_encryption_change_cb = [](bt_encryption_change_evt /* encryption_change */) {},
+        .invoke_ssr_event_cb = []() {},
 };
 
 // This interface lets us query for configuration properties of the stack that

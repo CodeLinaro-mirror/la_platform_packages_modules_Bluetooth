@@ -30,6 +30,8 @@
 #include <cstring>
 #include <set>
 
+#include <unistd.h>
+#include "internal_include/stack_config.h"
 #include "hal/snoop_logger.h"
 #include "main/shim/entry.h"
 #include "osi/include/allocator.h"
@@ -376,6 +378,9 @@ void rfc_port_sm_term_wait_sec_check(tPORT* p_port, tRFC_PORT_EVENT event, void*
                     p_port->rfc.p_mcb->flow == PORT_FC_CREDIT);
           }
         }
+      }
+      if(stack_config_get_interface()->get_pts_rfcomm_rls_check()) {
+        rfc_send_msc(p_port->rfc.p_mcb, p_port->dlci, true, &p_port->local_ctrl);
       }
       return;
     default:

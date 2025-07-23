@@ -83,6 +83,7 @@ typedef struct {
   void (*on_read_transmit_power_level_complete)(uint8_t transmit_power_level);
   void (*on_role_change)(tHCI_STATUS status, const RawAddress& bd_addr, tHCI_ROLE new_role);
   void (*on_role_discovery_complete)(tHCI_ROLE current_role);
+  void (*on_hardware_error)();
 } acl_classic_link_interface_t;
 
 typedef struct {

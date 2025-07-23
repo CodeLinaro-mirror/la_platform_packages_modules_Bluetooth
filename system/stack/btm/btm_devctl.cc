@@ -369,6 +369,38 @@ void BTM_VendorSpecificCommand(uint16_t opcode, uint8_t param_len, uint8_t* p_pa
 }
 
 /*******************************************************************************
+**
+** Function         btm_register_ssr_cback
+**
+** Description      Register callback to process SSR
+**
+** Returns          void
+**
+*******************************************************************************/
+void btm_register_ssr_cback (tBTM_NOTIFY_SSR_CB *p_cb) {
+    btm_cb.devcb.p_ssr_cb = p_cb;
+}
+
+
+/*******************************************************************************
+ *
+ * Function         btm_notify_ssr_trigger
+ *
+ * Description      This function is called when SSR triggered to notify
+ *                  the application to handle SSR
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btm_notify_ssr_trigger(void) {
+  if (btm_cb.devcb.p_ssr_cb) {
+    log::warn("");
+    (*btm_cb.devcb.p_ssr_cb)();
+    return;
+  }
+}
+
+/*******************************************************************************
  *
  * Function         BTM_WritePageTimeout
  *

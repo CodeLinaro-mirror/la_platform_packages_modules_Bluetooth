@@ -47,6 +47,7 @@
 #include "packet/packet_view.h"
 #include "ras/ras_packets.h"
 #include "device/include/csconfig.h"
+#include "osi/include/properties.h"
 
 using namespace bluetooth::ras;
 using bluetooth::hal::ProcedureDataV2;
@@ -84,7 +85,7 @@ static constexpr uint16_t kMaxProcedureCount = 0x01;
 static constexpr uint32_t kMinSubeventLen = 0x0004E2;         // 1250us
 static constexpr uint32_t kMaxSubeventLen = 0x1E8480;         // 2s
 static constexpr uint8_t kTxPwrDelta = 0x00;
-static constexpr uint8_t kProcedureDataBufferSize = 0x10;  // Buffer size of Procedure data
+static uint8_t kProcedureDataBufferSize = 0x10;  // Buffer size of Procedure data
 static constexpr uint16_t kRangingCounterMask = 0x0FFF;
 static constexpr uint8_t kInvalidConfigId = 0xFF;
 static constexpr uint8_t kMinConfigId = 0;
@@ -1031,7 +1032,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
        preferred_peer_antenna.use_third_ordered_antenna_element_ = 1;
      if (procedure_setting.preferred_peer_antenna & 0x08)
        preferred_peer_antenna.use_fourth_ordered_antenna_element_ = 1;
-     
+
       hci_layer_->EnqueueCommand(
             LeCsSetProcedureParametersBuilder::Create(
             connection_handle,
@@ -1308,9 +1309,13 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
                                           req_it->second.remote_num_antennas_supported_);
     }
     auto res_it = cs_responder_trackers_.find(connection_handle);
-    if (res_it != cs_responder_trackers_.end() &&
-        res_it->second.state == CsTrackerState::WAIT_FOR_SECURITY_ENABLED) {
-      res_it->second.state = CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED;
+    if (res_it != cs_responder_trackers_.end()) {
+
+      if (res_it->second.state == CsTrackerState::WAIT_FOR_SECURITY_ENABLED) {
+        res_it->second.state = CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED;
+      } else {
+        res_it->second.state = CsTrackerState::WAIT_FOR_SECURITY_ENABLED;
+      }
     }
   }
 
@@ -1398,7 +1403,11 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       // send the cmd from the BLE central only.
       send_le_cs_security_enable(connection_handle, live_tracker->local_start);
     } else {
-      live_tracker->state = CsTrackerState::WAIT_FOR_SECURITY_ENABLED;
+      if (live_tracker->state == CsTrackerState::WAIT_FOR_SECURITY_ENABLED) {
+        live_tracker->state = CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED;
+      } else {
+        live_tracker->state = CsTrackerState::WAIT_FOR_SECURITY_ENABLED;
+      }
       if (live_tracker->local_start) {
         if (live_tracker->enable_security_timeout_alarm == nullptr) {
           live_tracker->enable_security_timeout_alarm = std::make_unique<os::Alarm>(handler_);
@@ -1714,7 +1723,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       procedure_abort_reason = cs_event_result.GetProcedureAbortReason();
       subevent_abort_reason = cs_event_result.GetSubeventAbortReason();
       result_data_structures = cs_event_result.GetResultDataStructures();
-      
+
       if (live_tracker == nullptr) {
         log::warn("Can't find any tracker for {}", connection_handle);
         return;
@@ -2381,7 +2390,11 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     BitInserter bi(ranging_header_raw);
     data_list.back().ranging_header_.Serialize(bi);
     append_vector(data_list.back().ras_raw_data_, ranging_header_raw);
-
+    char proc_buffer_size[PROPERTY_VALUE_MAX] = {0};
+    osi_property_get("persist.bluetooth.bcs.proc_buffer_size", proc_buffer_size, "");
+    if (strlen(proc_buffer_size) != 0) {
+      kProcedureDataBufferSize = static_cast<uint8_t>(atoi(proc_buffer_size));
+    }
     if (data_list.size() > kProcedureDataBufferSize) {
       log::warn("buffer full, drop procedure data with counter: {}", data_list.front().counter);
       data_list.erase(data_list.begin());
@@ -2452,6 +2465,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       } else {
         // Use algorithm in the HAL
         bluetooth::hal::ChannelSoundingRawData raw_data;
+        raw_data.procedure_counter_ = live_tracker->procedure_counter;
         raw_data.step_mode_ = procedure_data->step_mode;
         raw_data.measured_freq_offset_= procedure_data->measured_freq_offset;
         raw_data.init_packet_rssi_ = procedure_data->rssi_initiator;
@@ -2525,8 +2539,8 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         for (uint32_t i=0;i<num_AntPIs;i++) {
           raw_data.vendor_specific_cs_single_side_data.push_back(procedure_data->antenna_permutation_index_initiator[i]);
         }
-        
-        
+
+
         struct timeval tv;
         gettimeofday(&tv, NULL);
         curr_proc_complete_timestampMs  = tv.tv_sec*1e6*1ll + tv.tv_usec*1ll;

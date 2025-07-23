@@ -77,6 +77,7 @@ const acl_interface_t& GetAclInterface() {
           .link.classic.on_read_transmit_power_level_complete = nullptr,
           .link.classic.on_role_change = btm_acl_role_changed,
           .link.classic.on_role_discovery_complete = nullptr,
+          .link.classic.on_hardware_error = btm_notify_ssr_trigger,
 
           .link.le.on_connection_update = acl_ble_update_event_received,
           .link.le.on_parameter_update_request = acl_ble_update_request_event_received,

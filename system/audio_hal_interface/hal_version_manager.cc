@@ -98,11 +98,13 @@ BluetoothAudioHalVersion GetAidlInterfaceVersion() {
 }
 
 BluetoothAudioHalTransport HalVersionManager::GetHalTransport() {
+  log::error(": HAL Transport {}", toString(instance_ptr->hal_version_.getTransport()));
   return instance_ptr->hal_version_.getTransport();
 }
 
 BluetoothAudioHalVersion HalVersionManager::GetHalVersion() {
   std::lock_guard<std::mutex> guard(instance_ptr->mutex_);
+  log::error(": HAL Version {}", instance_ptr->hal_version_.toString());
   return instance_ptr->hal_version_;
 }
 

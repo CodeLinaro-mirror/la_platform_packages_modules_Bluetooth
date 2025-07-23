@@ -1611,8 +1611,17 @@ void smp_pairing_cmpl(tSMP_CB* p_cb, tSMP_INT_DATA* /* p_data */) {
  *                  callback and remove the connection if needed.
  ******************************************************************************/
 void smp_pair_terminate(tSMP_CB* p_cb, tSMP_INT_DATA* /* p_data */) {
-  log::verbose("addr:{}", p_cb->pairing_bda);
-  p_cb->status = SMP_CONN_TOUT;
+  log::verbose("addr:{}, role={}, local_i_key=0x{:02x}, local_r_key=0x{:02x}",
+               p_cb->pairing_bda, p_cb->role, p_cb->local_i_key, p_cb->local_r_key);
+
+  if (p_cb->role == HCI_ROLE_PERIPHERAL && p_cb->local_i_key != 0) {
+    log::error("Some keys are not sent by initiator addr:{}, local_i_key=0x{:02x}",
+              p_cb->pairing_bda, p_cb->local_i_key);
+    p_cb->status = SMP_PAIR_AUTH_FAIL;
+  } else {
+    p_cb->status = SMP_CONN_TOUT;
+  }
+
   smp_proc_pairing_cmpl(p_cb);
 }
 

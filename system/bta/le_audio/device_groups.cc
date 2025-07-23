@@ -890,9 +890,9 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
           ctx_type == types::LeAudioContextType::GAME) {
         // For GAME and VOICE ASSISTANT, ignore direction if it is not supported only on a single
         // direction.
-        auto group_contexts = GetAvailableContexts(types::kLeAudioDirectionBoth);
+        auto group_contexts = GetSupportedContexts(types::kLeAudioDirectionBoth);
         if (group_contexts.test(ctx_type)) {
-          auto direction_contexs = device->GetAvailableContexts(direction);
+          auto direction_contexs = device->GetSupportedContexts(direction);
           if (!direction_contexs.test(ctx_type)) {
             log::warn("Device {} has no {} context support", device->address_,
                       common::ToString(ctx_type));
@@ -930,17 +930,25 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
                             (uint32_t)locations);
       if (preferred_config_.get(direction) &&
           preferred_config_.get(direction)->codec_priority != -1) {
-        config_req.params.Add(
-                codec_spec_conf::kLeAudioLtvTypeSamplingFreq,
-                UINT8_TO_VEC_UINT8(codec_spec_conf::SingleSamplingFreqCapability2Config(
-                        preferred_config_.get(direction)->sample_rate)));
-        config_req.params.Add(
-                codec_spec_conf::kLeAudioLtvTypeFrameDuration,
-                UINT8_TO_VEC_UINT8(codec_spec_conf::SingleFrameDurationCapability2Config(
-                        preferred_config_.get(direction)->frame_duration)));
-        config_req.params.Add(
-                codec_spec_conf::kLeAudioLtvTypeOctetsPerCodecFrame,
-                UINT16_TO_VEC_UINT8(preferred_config_.get(direction)->octets_per_frame));
+        if (preferred_config_.get(direction)->sample_rate !=
+            LE_AUDIO_SAMPLE_RATE_INDEX_NONE) {
+          config_req.params.Add(
+                  codec_spec_conf::kLeAudioLtvTypeSamplingFreq,
+                  UINT8_TO_VEC_UINT8(codec_spec_conf::SingleSamplingFreqCapability2Config(
+                          preferred_config_.get(direction)->sample_rate)));
+        }
+        if (preferred_config_.get(direction)->frame_duration !=
+            LE_AUDIO_FRAME_DURATION_INDEX_NONE) {
+          config_req.params.Add(
+                  codec_spec_conf::kLeAudioLtvTypeFrameDuration,
+                  UINT8_TO_VEC_UINT8(codec_spec_conf::SingleFrameDurationCapability2Config(
+                          preferred_config_.get(direction)->frame_duration)));
+        }
+        if (preferred_config_.get(direction)->octets_per_frame != 0) {
+          config_req.params.Add(
+                  codec_spec_conf::kLeAudioLtvTypeOctetsPerCodecFrame,
+                  UINT16_TO_VEC_UINT8(preferred_config_.get(direction)->octets_per_frame));
+        }
       }
       config_req.target_latency = utils::GetTargetLatencyForAudioContext(ctx_type);
       log::warn("Device {} pushes requirement, location: {}, direction: {}", device->address_,
@@ -1043,10 +1051,16 @@ bool LeAudioDeviceGroup::SetPreferredAudioSetConfiguration(
   if (input_codec_config.codec_priority == -1 || output_codec_config.codec_priority == -1) {
     log::info("Clear codec config");
     ResetPreferredAudioSetConfiguration();
-    return true;
+    if (CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
+      LeAudioDeviceGroup* non_const_this_ = const_cast<LeAudioDeviceGroup*>(this);
+      non_const_this_->InvalidateCachedConfigurations();
+    } else {
+      return true;
+    }
   }
 
-  if (!lex_codec_disabled.first && IsLeXDevice()) {
+  if (!CodecManager::GetInstance()->IsUsingCodecExtensibility() &&
+      !lex_codec_disabled.first && IsLeXDevice()) {
      log::info("Ignore LE codecs switching for XPAN enabled");
      return false;
   }
@@ -1056,10 +1070,20 @@ bool LeAudioDeviceGroup::SetPreferredAudioSetConfiguration(
 
   bool is_updated = false;
 
-  for (LeAudioContextType ctx_type : types::kLeAudioContextAllTypesArray) {
+  /*for (LeAudioContextType ctx_type : types::kLeAudioContextAllTypesArray) {
     is_updated |= UpdateAudioSetConfigurationCache(ctx_type, true);
+  }*/
+
+  log::debug("configuration_context_type_ = {}",
+                                      common::ToString(configuration_context_type_));
+  is_updated |= UpdateAudioSetConfigurationCache(configuration_context_type_, true);
+
+  if (!IsStreaming() && configuration_context_type_ != LeAudioContextType::MEDIA) {
+    log::info("Update media also when is NOT streaming");
+    is_updated |= UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA, true);
   }
 
+  log::info("is_updated: {}", is_updated);
   return is_updated;
 }
 
@@ -1073,7 +1097,11 @@ bool LeAudioDeviceGroup::IsUsingPreferredAudioSetConfiguration(
 
   if (preferred_config_.sink->codec_priority == -1 ||
       preferred_config_.source->codec_priority == -1) {
-    return false;
+    if (CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
+      log::info("fetching preferred configuration");
+    } else {
+      return false;
+    }
   }
 
   return GetPreferredConfiguration(context_type).get();
@@ -1327,6 +1355,74 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::GetGroupSinkStrategy() c
   return *strategy_;
 }
 
+types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConfig(
+        const types::AudioSetConfiguration* audio_set_conf) const {
+  auto strategy_selector = [&, this](uint8_t direction) {
+    int expected_group_size = Size();
+
+    if (!audio_locations_.get(direction)) {
+      log::error("No audio locations for direction: {} available in the group {}", +direction,
+                 group_id_);
+      return types::LeAudioConfigurationStrategy::RFU;
+    }
+
+    /* Simple strategy picker */
+    log::debug("Group {} size {}", group_id_, expected_group_size);
+    if (expected_group_size > 1) {
+      return types::LeAudioConfigurationStrategy::MONO_ONE_CIS_PER_DEVICE;
+    }
+
+    /* Check supported audio locations */
+    auto const& locations = audio_locations_.get(direction).value();
+
+    log::verbose("audio location 0x{:04x}", locations.to_ulong());
+    if (!(locations.to_ulong() & codec_spec_conf::kLeAudioLocationAnyLeft) ||
+        !(locations.to_ulong() & codec_spec_conf::kLeAudioLocationAnyRight) || locations.none()) {
+      return types::LeAudioConfigurationStrategy::MONO_ONE_CIS_PER_DEVICE;
+    }
+
+    // Get the channel count from the provided configuration
+    auto const& configs = audio_set_conf->confs.get(direction);
+    auto config_element = std::max_element(
+            configs.begin(), configs.end(),
+            [](types::AseConfiguration const& a, types::AseConfiguration const& b) {
+              return a.codec.GetChannelCountPerIsoStream() < b.codec.GetChannelCountPerIsoStream();
+            });
+    auto max_channel_count = (config_element != configs.end())
+                                     ? config_element->codec.GetChannelCountPerIsoStream()
+                                     : 1;
+    if (max_channel_count == 1) {
+      return types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE;
+    }
+
+    return types::LeAudioConfigurationStrategy::STEREO_ONE_CIS_PER_DEVICE;
+  };
+
+  auto strategy = strategy_selector(types::kLeAudioDirectionSink);
+  if (strategy == types::LeAudioConfigurationStrategy::RFU) {
+    log::warn(
+            "Unable to find the proper remote sink strategy for group {}. Trying source direction "
+            "instead",
+            group_id_);
+    strategy = strategy_selector(types::kLeAudioDirectionSource);
+  }
+
+  log::info("Group strategy set to: {}", [](types::LeAudioConfigurationStrategy strategy) {
+    switch (strategy) {
+      case types::LeAudioConfigurationStrategy::MONO_ONE_CIS_PER_DEVICE:
+        return "MONO_ONE_CIS_PER_DEVICE";
+      case types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE:
+        return "STEREO_TWO_CISES_PER_DEVICE";
+      case types::LeAudioConfigurationStrategy::STEREO_ONE_CIS_PER_DEVICE:
+        return "STEREO_ONE_CIS_PER_DEVICE";
+      default:
+        return "RFU";
+    }
+  }(strategy));
+
+  return strategy;
+}
+
 int LeAudioDeviceGroup::GetAseCount(uint8_t direction) const {
   int result = 0;
   for (const auto& device_iter : leAudioDevices_) {
@@ -1358,7 +1454,6 @@ void LeAudioDeviceGroup::CigConfiguration::GetCisCount(LeAudioContextType contex
   auto expected_device_cnt = group_->DesiredSize();
   auto avail_group_ase_snk_cnt = group_->GetAseCount(types::kLeAudioDirectionSink);
   auto avail_group_ase_src_count = group_->GetAseCount(types::kLeAudioDirectionSource);
-  auto strategy = group_->GetGroupSinkStrategy();
 
   bool is_bidirectional = group_->GetAllSupportedBidirectionalContextTypes().test(context_type);
   bool is_source_only = !is_bidirectional && group_->GetAllSupportedSingleDirectionOnlyContextTypes(
@@ -1371,6 +1466,20 @@ void LeAudioDeviceGroup::CigConfiguration::GetCisCount(LeAudioContextType contex
       is_leX_codec = true;
     }
   }
+
+  auto current_config = group_->IsUsingPreferredAudioSetConfiguration(context_type)
+                                ? group_->GetCachedPreferredConfiguration(context_type)
+                                : group_->GetCachedConfiguration(context_type);
+  if (!current_config) {
+    log::warn("No valid group configuration is currently available, looking into PAC records.");
+  }
+
+  // For non-LC3 codecs like Opus, we should base the strategy calcualation based on the config
+  const bool derive_strategy_from_config =
+          current_config && com::android::bluetooth::flags::leaudio_add_opus_hi_res_codec_type();
+  auto strategy = derive_strategy_from_config
+                          ? group_->FindGroupStrategyForConfig(current_config.get())
+                          : group_->GetGroupSinkStrategy();
 
   if ((strategy == types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE) &&
       !(group_contexts.sink.test(context_type) && group_contexts.source.test(context_type))) {

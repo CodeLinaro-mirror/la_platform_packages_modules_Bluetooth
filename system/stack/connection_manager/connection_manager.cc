@@ -426,11 +426,8 @@ void on_app_deregistered(uint8_t app_id) {
   while (it != end) {
     it->second.doing_bg_conn.erase(app_id);
 
-    if (it->second.doing_direct_conn.count(app_id)) {
-     log::debug("app_id={}", static_cast<int>(app_id));
-     on_connection_cancelled(app_id, it->first);
-     it->second.doing_direct_conn.erase(app_id);
-    }
+    it->second.doing_direct_conn.erase(app_id);
+
     if (is_anyone_connecting(it)) {
       it++;
       continue;

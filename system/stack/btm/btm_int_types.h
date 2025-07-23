@@ -100,6 +100,8 @@ typedef struct tBTM_DEVCB {
 
   RawAddress read_tx_pwr_addr; /* read TX power target address     */
 
+  tBTM_NOTIFY_SSR_CB * p_ssr_cb;
+
   void Init() {
     read_rssi_timer = alarm_new("btm.read_rssi_timer");
     read_failed_contact_counter_timer = alarm_new("btm.read_failed_contact_counter_timer");

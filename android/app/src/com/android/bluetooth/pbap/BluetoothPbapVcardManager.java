@@ -180,8 +180,7 @@ public class BluetoothPbapVcardManager {
                 return 0;
             }
             int contactsSize = getDistinctContactIdSize(contactCursor);
-                                                               /* War to pass PSE_PDF_BV-05-I */
-            if (type == BluetoothPbapObexServer.ContentType.PHONEBOOK && !Utils.isPtsTestMode()) {
+            if (type == BluetoothPbapObexServer.ContentType.PHONEBOOK) {
                 contactsSize += 1; // pb has the 0.vcf owner's card
             }
             return contactsSize;

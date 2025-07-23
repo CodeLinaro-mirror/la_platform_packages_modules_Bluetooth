@@ -1403,7 +1403,8 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                         BluetoothStatsLog.BLUETOOTH_CONTENT_PROFILE_ERROR_REPORTED__TYPE__LOG_WARN,
                         26);
                 return ResponseCodes.OBEX_HTTP_NOT_FOUND;
-            } else if ((intIndex == 0) && (appParamValue.needTag == ContentType.PHONEBOOK)) {
+            } else if ((intIndex == 0) && ((appParamValue.needTag == ContentType.PHONEBOOK)
+                    || (appParamValue.needTag == ContentType.FAVORITES))) {
                 // For PB_PATH, 0.vcf is the phone number of this phone.
                 String ownerVcard =
                         mVcardManager.getOwnerPhoneNumberVcard(

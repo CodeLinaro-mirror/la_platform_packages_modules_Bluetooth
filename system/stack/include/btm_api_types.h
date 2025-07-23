@@ -45,6 +45,8 @@ typedef struct {
  */
 typedef void(tBTM_CMPL_CB)(void* p1);
 
+typedef void(tBTM_NOTIFY_SSR_CB)(void);
+
 /* VSC callback function for notifying an application that a synchronous
  * BTM function is complete. The pointer contains the address of any returned
  * data.

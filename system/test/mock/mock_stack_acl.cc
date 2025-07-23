@@ -116,6 +116,7 @@ struct on_acl_br_edr_failed on_acl_br_edr_failed;
 struct BTM_unblock_role_switch_and_sniff_mode_for BTM_unblock_role_switch_and_sniff_mode_for;
 struct btm_flow_spec_complete btm_flow_spec_complete;
 struct BTM_FlowSpec BTM_FlowSpec;
+struct btm_notify_ssr_trigger btm_notify_ssr_trigger;
 
 }  // namespace stack_acl
 }  // namespace mock
@@ -416,6 +417,10 @@ void btm_flow_spec_complete(uint8_t status, uint16_t handle, tBT_FLOW_SPEC* p_fl
 tBTM_STATUS BTM_FlowSpec(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_CMPL_CB* p_cb) {
   inc_func_call_count(__func__);
   return test::mock::stack_acl::BTM_FlowSpec(addr, p_flow, p_cb);
+}
+
+void btm_notify_ssr_trigger() {
+  inc_func_call_count(__func__);
 }
 
 // END mockcify generation

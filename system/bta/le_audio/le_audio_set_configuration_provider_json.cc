@@ -767,6 +767,35 @@ bool AudioSetConfigurationProvider::CheckEnhancedGamingConfig(
   return false;
 }
 
+bool AudioSetConfigurationProvider::CheckQHSConfig(
+        const types::AudioSetConfiguration& set_configuration) const {
+    for (auto direction :
+       {le_audio::types::kLeAudioDirectionSink, le_audio::types::kLeAudioDirectionSource}) {
+    for (const auto& conf : set_configuration.confs.get(direction)) {
+      if (conf.codec.id == bluetooth::le_audio::types::LeAudioCodecIdLc3 &&
+          !conf.vendor_metadata.value().vs_metadata.empty()) {
+        std::vector<uint8_t> vndr_metadata;
+        vndr_metadata.assign(conf.vendor_metadata.value().vs_metadata.begin(),
+                             conf.vendor_metadata.value().vs_metadata.end());
+        uint16_t company_id = conf.vendor_metadata.value().vendor_company_id;
+        uint8_t metadata_type = conf.vendor_metadata.value().vendor_metadata_type;
+        uint8_t encoder_version = vndr_metadata[0];
+        log::debug("company_id: {},  metadata_type: {}, encoder_version: {}", company_id,
+                    metadata_type, encoder_version);
+        if (direction == le_audio::types::kLeAudioDirectionSink &&
+            company_id == types::kLeAudioVendorCompanyIdQualcomm &&
+            ((metadata_type ==
+                    types::qcom_codec_metadata::kLeAudioCodecLC3QSupportedFeaturesMetadataType) ||
+             (metadata_type ==
+                     types::qcom_codec_metadata::kLeAudioCodecAptxLeSupportedFeaturesMetadataType))) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool AudioSetConfigurationProvider::CheckConfigurationIsBiDirSwb(
         const types::AudioSetConfiguration& set_configuration) const {
   uint8_t dir = 0;

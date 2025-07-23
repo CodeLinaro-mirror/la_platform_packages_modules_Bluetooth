@@ -18,6 +18,7 @@ package com.android.bluetooth.a2dp;
 
 import static java.util.Objects.requireNonNull;
 
+import com.android.bluetooth.a2dp.A2dpService;
 import android.bluetooth.BluetoothCodecConfig;
 import android.bluetooth.BluetoothCodecConfig.CodecPriority;
 import android.bluetooth.BluetoothCodecStatus;
@@ -126,6 +127,11 @@ class A2dpCodecConfig {
             // Same codec with same parameters, no need to send this request to native.
             Log.w(TAG, "setCodecConfigPreference: codec not changed.");
             return;
+        }
+
+        A2dpService a2dpService = A2dpService.getA2dpService();
+        if(a2dpService != null && a2dpService.isA2dpExtensibilityEnabled()) {
+            a2dpService.enableSetCodecConfig(true);
         }
 
         BluetoothCodecConfig[] codecConfigArray = new BluetoothCodecConfig[1];

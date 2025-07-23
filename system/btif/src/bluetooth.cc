@@ -79,6 +79,7 @@
 #include "btif/include/btif_sock.h"
 #include "btif/include/btif_sock_logging.h"
 #include "btif/include/btif_storage.h"
+#include "btif/include/btif_vendor.h"
 #include "btif/include/core_callbacks.h"
 #include "btif/include/stack_manager_t.h"
 #include "common/address_obfuscator.h"
@@ -382,6 +383,7 @@ static bluetooth::core::CoreInterface* CreateInterfaceToProfiles() {
           .invoke_link_quality_report_cb = invoke_link_quality_report_cb,
           .invoke_key_missing_cb = invoke_key_missing_cb,
           .invoke_encryption_change_cb = invoke_encryption_change_cb,
+          .invoke_ssr_event_cb = invoke_ssr_event_cb,
   };
   static bluetooth::core::HACK_ProfileInterface profileInterface{
           // HID
@@ -939,8 +941,8 @@ static int get_remote_pbap_pce_version(const RawAddress* bd_addr) {
 }
 
 static bool pbap_pse_dynamic_version_upgrade_is_enabled() {
-  log::info("PBAP PSE dynamic version upgrade is not enabled");
-  return false;
+
+  return is_pse_version_upgrade_enabled();
 }
 
 static const void* get_profile_interface(const char* profile_id) {
@@ -1568,6 +1570,10 @@ void invoke_encryption_change_cb(bt_encryption_change_evt encryption_change) {
             HAL_CBACK(bt_hal_cbacks, encryption_change_cb, encryption_change);
           },
           encryption_change));
+}
+
+void invoke_ssr_event_cb() {
+  btif_vendor_update_ssr_event();
 }
 
 namespace bluetooth::testing {

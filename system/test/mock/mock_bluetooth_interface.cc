@@ -61,6 +61,7 @@ void invoke_link_quality_report_cb(uint64_t /* timestamp */, int /* report_id */
                                    int /* negative_acknowledgement_count */) {}
 void invoke_key_missing_cb(const RawAddress /* bd_addr */) {}
 void invoke_encryption_change_cb(bt_encryption_change_evt /* bd_addr */) {}
+void invoke_ssr_event_cb() {}
 
 static void init_stack(bluetooth::core::CoreInterface* /* interface */) {}
 

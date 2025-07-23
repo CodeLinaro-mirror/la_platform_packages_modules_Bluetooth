@@ -1103,6 +1103,15 @@ BtaAvCo::GetProviderCodecConfiguration(BtaAvCoPeer* p_peer) {
   std::vector<::bluetooth::audio::a2dp::provider::a2dp_remote_capabilities> a2dp_remote_caps;
   for (size_t index = 0; index < p_peer->num_sup_sinks; index++) {
     const BtaAvCoSep* p_sink = &p_peer->sinks[index];
+    tA2DP_CODEC_TYPE a2dp_codec_type = A2DP_GetCodecType(p_sink->codec_caps);
+    log::info("a2dp_codec_type : {}",a2dp_codec_type);
+    if(a2dp_codec_type == A2DP_MEDIA_CT_AAC){
+       bool remote_vbr = (p_sink->codec_caps[6] >> 7) & 1;
+       if(!remote_vbr && !bta_av_co_check_peer_eligible_for_aac_codec(p_peer)){
+          log::info("dont fill remote cap for  this AAC remote");
+          continue;
+       }
+     }
     auto& capabilities = a2dp_remote_caps.emplace_back();
     capabilities.seid = p_sink->seid;
     capabilities.capabilities = p_sink->codec_caps;

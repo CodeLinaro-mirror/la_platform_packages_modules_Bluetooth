@@ -915,7 +915,7 @@ static int Send_Data() {
       sleep(5);
       do_l2cap_DataWrite(tmpBuffer, 100);
     } else
-      do_l2cap_DataWrite(tmpBuffer, 5);
+      do_l2cap_DataWrite(tmpBuffer, g_omtu);
   }
   sleep(50);
   free(tmpBuf);

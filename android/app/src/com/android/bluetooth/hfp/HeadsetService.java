@@ -1394,7 +1394,8 @@ public class HeadsetService extends ProfileService {
                 connDelay = 0;
 
             Log.i(TAG, "connectAudio: connect audio after " + connDelay + " ms");
-            stateMachine.sendMessage(HeadsetStateMachine.CONNECT_AUDIO, device);
+            stateMachine.sendMessageDelayed(HeadsetStateMachine.CONNECT_AUDIO,
+                    device, connDelay);
             logScoSessionMetric(
                     device,
                     BluetoothStatsLog
@@ -1974,7 +1975,7 @@ public class HeadsetService extends ProfileService {
                             .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__SCO_TELECOM_INITIATED_START,
                     Binder.getCallingUid());
             // Suspend A2DP when call about is about to become active
-            if (mActiveDevice != null && callState != HeadsetHalConstants.CALL_STATE_DISCONNECTED
+            if (callState != HeadsetHalConstants.CALL_STATE_DISCONNECTED
                 && !mSystemInterface.isCallIdle() && isCallIdleBefore
                 && !Utils.isScoManagedByAudioEnabled()) {
                 Log.i(TAG, "Before A2dp suspension");
@@ -1995,7 +1996,11 @@ public class HeadsetService extends ProfileService {
                    }
                 } else {
                   if (isAtLeastU()) {
-                      mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                      BluetoothDevice btDevice = mAdapterService.getActiveDeviceManager()
+                                                             .fetchLeAudioActiveDevice();
+                      if (btDevice == null) {
+                         mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                      }
                   }
                 }
                 //Adding the wait mechanism Logic.

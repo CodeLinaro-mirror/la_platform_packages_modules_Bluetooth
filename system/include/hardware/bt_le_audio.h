@@ -130,9 +130,10 @@ enum class UnicastMonitorModeStatus {
 typedef enum {
   LE_AUDIO_CODEC_INDEX_SOURCE_LC3 = 0,
   LE_AUDIO_CODEC_INDEX_SOURCE_OPUS = 1,
-  LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LE = 2,
-  LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LEX = 3,
-  LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT = 4,
+  LE_AUDIO_CODEC_INDEX_SOURCE_OPUS_HI_RES = 2,
+  LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LE = 3,
+  LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LEX = 4,
+  LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT = 5,
   LE_AUDIO_CODEC_INDEX_SOURCE_INVALID = 1000 * 1000,
 } btle_audio_codec_index_t;
 
@@ -221,6 +222,12 @@ typedef struct btle_audio_codec_config {
     switch (codec_type) {
       case LE_AUDIO_CODEC_INDEX_SOURCE_LC3:
         codec_name_str = "LC3";
+        break;
+      case LE_AUDIO_CODEC_INDEX_SOURCE_OPUS:
+        codec_name_str = "Opus";
+        break;
+      case LE_AUDIO_CODEC_INDEX_SOURCE_OPUS_HI_RES:
+        codec_name_str = "Opus Hi-Res";
         break;
       case LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LE:
         codec_name_str = "APTX_LE";

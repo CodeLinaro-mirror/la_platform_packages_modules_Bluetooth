@@ -123,6 +123,17 @@ void BTM_VendorSpecificCommand(uint16_t opcode, uint8_t param_len, uint8_t* p_pa
                                tBTM_VSC_CMPL_CB* p_cb);
 
 /*******************************************************************************
+**
+** Function         btm_register_ssr_cback
+**
+** Description      Register callback to process SSR
+**
+** Returns          void
+**
+*******************************************************************************/
+void btm_register_ssr_cback (tBTM_NOTIFY_SSR_CB *p_cb);
+
+/*******************************************************************************
  *
  * Function         BTM_WritePageTimeout
  *

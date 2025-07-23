@@ -731,6 +731,12 @@ struct BTM_FlowSpec {
 };
 extern struct BTM_FlowSpec BTM_FlowSpec;
 
+struct btm_notify_ssr_trigger {
+  std::function<void()> body{[]() {}};
+  void operator()() {body();}
+};
+extern struct btm_notify_ssr_trigger btm_notify_ssr_trigger;
+
 }  // namespace stack_acl
 }  // namespace mock
 }  // namespace test

@@ -30,6 +30,7 @@
 #include "hci/hci_metrics_logging.h"
 #include "hci/inquiry_interface.h"
 #include "main/shim/entry.h"
+#include "main/shim/acl_interface.h"
 #include "os/alarm.h"
 #include "os/metrics.h"
 #include "os/queue.h"
@@ -591,7 +592,7 @@ struct HciLayer::impl {
     kill(getpid(), SIG_RESET_CTRL);
 #else
     log::warn("Hardware Error Event with code 0x{:02x}", event_view.GetHardwareCode());
-    kill(getpid(), SIGKILL);
+    shim::GetAclInterface().link.classic.on_hardware_error();
 #endif
   }
 

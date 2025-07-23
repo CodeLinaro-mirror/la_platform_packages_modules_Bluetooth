@@ -657,8 +657,10 @@ cc_fuzz {
         ":TestMockMainShimEntry",
         ":TestMockStackAcl",
         ":TestMockStackBtm",
+        ":TestMockStackGatt",
         ":TestMockStackHcic",
         "fuzzers/l2cap_fuzzer.cc",
+        "gatt/gatt_utils.cc",
         "l2cap/*.cc",
     ],
     static_libs: [
@@ -2095,6 +2097,7 @@ cc_test {
         ":TestMockStackHcic",
         ":TestMockStackSdp",
         ":TestMockStackSmp",
+        ":TestMockStackGatt",
         "l2cap/l2c_api.cc",
         "l2cap/l2c_ble.cc",
         "l2cap/l2c_ble_conn_params.cc",

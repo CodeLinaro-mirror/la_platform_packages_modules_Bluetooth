@@ -1425,6 +1425,34 @@ public:
     }
   }
 
+  void UpdateCodecConfigPreferenceToHal(
+          const bluetooth::le_audio::btle_audio_codec_config_t *input_codec_config,
+          const bluetooth::le_audio::btle_audio_codec_config_t *output_codec_config) {
+    if (false/*!com::android::bluetooth::flags::le_audio_update_config_preference_to_hal()*/) {
+      log::warn(
+              "SetCodecPriority skipped due to flag not set: "
+              "le_audio_update_config_preference_to_hal");
+      return;
+    }
+
+    if (le_audio_sink_hal_client_ && input_codec_config) {
+      log::info("input codec type: {}, input codec priority: {}",
+                   input_codec_config->codec_type, input_codec_config->codec_priority);
+      le_audio_sink_hal_client_->SetCodecPriority(
+              bluetooth::le_audio::utils::translateCodecTypeToLeAudioCodecId(
+                      input_codec_config->codec_type),
+              input_codec_config->codec_priority);
+    }
+    if (le_audio_source_hal_client_ && output_codec_config) {
+      log::info("output codec type: {}, output codec priority: {}",
+                   output_codec_config->codec_type, output_codec_config->codec_priority);
+      le_audio_source_hal_client_->SetCodecPriority(
+              bluetooth::le_audio::utils::translateCodecTypeToLeAudioCodecId(
+                      output_codec_config->codec_type),
+              output_codec_config->codec_priority);
+    }
+  }
+
   void SetCodecConfigPreference(
           int group_id, bluetooth::le_audio::btle_audio_codec_config_t input_codec_config,
           bluetooth::le_audio::btle_audio_codec_config_t output_codec_config) override {
@@ -1434,23 +1462,28 @@ public:
       log::error("Unknown group id: %d", group_id);
     }
 
-    if (output_codec_config.codec_type ==
-        bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LEX) {
-      group->DisableLeXCodec(false);
-      log::debug("Enabling LeX Codec");
-      group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
-      group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
-    } else if (output_codec_config.codec_type ==
-        bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT) {
-      group->DisableLeXCodec(true);
-      log::debug("Disabling LeX Codec");
-      group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
-      group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
+    if (!CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
+      if (output_codec_config.codec_type ==
+          bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LEX) {
+        group->DisableLeXCodec(false);
+        log::debug("Enabling LeX Codec");
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
+      } else if (output_codec_config.codec_type ==
+          bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT) {
+        group->DisableLeXCodec(true);
+        log::debug("Disabling LeX Codec");
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
+      }
     }
 
+    log::info("output codec type: {}, input codec type: {}",
+                    output_codec_config.codec_type, input_codec_config.codec_type);
     if (!com::android::bluetooth::flags::leaudio_set_codec_config_preference()) {
       log::debug("leaudio_set_codec_config_preference flag is not enabled");
     } else {
+      UpdateCodecConfigPreferenceToHal(&input_codec_config, &output_codec_config);
       if (group->SetPreferredAudioSetConfiguration(input_codec_config, output_codec_config)) {
         log::info("group id: {}, setting preferred codec is successful.", group_id);
       } else {
@@ -1962,6 +1995,7 @@ public:
 
       if (CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
         group->InvalidateCachedConfigurations();
+        group->ResetPreferredAudioSetConfiguration();
       }
 
       log::info("current state {}", ToString(group->GetState()));
@@ -2010,6 +2044,7 @@ public:
         }
         log::info("current_active_group: {}", current_active_group->group_id_);
         current_active_group->InvalidateCachedConfigurations();
+        current_active_group->ResetPreferredAudioSetConfiguration();
       }
 
       log::info("switching active group to: {}", group_id);
@@ -2132,6 +2167,10 @@ public:
          }
       }
     }
+
+    auto const& group_config_preference = group->GetPreferredAudioSetConfiguration();
+    UpdateCodecConfigPreferenceToHal(group_config_preference.source.get(),
+                                     group_config_preference.sink.get());
 
     log::info("defer_notify_active_until_stop_: {}", defer_notify_active_until_stop_);
 
@@ -2488,6 +2527,7 @@ public:
             log::debug("group_id {} needs to stop streaming before {} disconnection",
                        group->group_id_, leAudioDevice->address_);
             leAudioDevice->closing_stream_for_disconnection_ = true;
+            audio_sender_state_ = AudioState::READY_TO_RELEASE;
             groupStateMachine_->StopStream(group);
             return;
           }
@@ -5153,7 +5193,8 @@ public:
             /* Stream is not started. Try to do it.*/
             if (OnAudioResume(group, bluetooth::le_audio::types::kLeAudioDirectionSource)) {
               audio_sender_state_ = AudioState::READY_TO_START;
-              if (IsReconfigurationTimeoutRunning(active_group_id_)) {
+              if (!com::android::bluetooth::flags::leaudio_fix_stop_reconfiguration_timeout() &&
+                  IsReconfigurationTimeoutRunning(active_group_id_)) {
                 StopReconfigurationTimeout(active_group_id_,
                                            bluetooth::le_audio::types::kLeAudioDirectionSource);
               }
@@ -5239,6 +5280,11 @@ public:
               CancelStreamingRequest();
             }
             break;
+        }
+        if (com::android::bluetooth::flags::leaudio_fix_stop_reconfiguration_timeout() &&
+            IsReconfigurationTimeoutRunning(active_group_id_)) {
+          StopReconfigurationTimeout(active_group_id_,
+                                     bluetooth::le_audio::types::kLeAudioDirectionSource);
         }
         break;
       case AudioState::READY_TO_START:
@@ -5395,6 +5441,13 @@ public:
         CancelLocalAudioSinkStreamingRequest();
         return;
       }
+    } else {
+      if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+          LeAudioBroadcaster::Get()->IsLeAudioBroadcastStreaming()) {
+        log::info("Broadcast is streaming, cancel local sink stream request");
+        CancelLocalAudioSinkStreamingRequest();
+        return;
+      }
     }
 
     /* Note: This callback is from audio hal driver.
@@ -5476,7 +5529,8 @@ public:
           case AudioState::IDLE:
             if (OnAudioResume(group, bluetooth::le_audio::types::kLeAudioDirectionSink)) {
               audio_receiver_state_ = AudioState::READY_TO_START;
-              if (IsReconfigurationTimeoutRunning(active_group_id_)) {
+              if (!com::android::bluetooth::flags::leaudio_fix_stop_reconfiguration_timeout() &&
+                  IsReconfigurationTimeoutRunning(active_group_id_)) {
                 StopReconfigurationTimeout(active_group_id_,
                                            bluetooth::le_audio::types::kLeAudioDirectionSink);
               }
@@ -5563,6 +5617,11 @@ public:
               CancelStreamingRequest();
             }
             break;
+        }
+        if (com::android::bluetooth::flags::leaudio_fix_stop_reconfiguration_timeout() &&
+            IsReconfigurationTimeoutRunning(active_group_id_)) {
+          StopReconfigurationTimeout(active_group_id_,
+                                     bluetooth::le_audio::types::kLeAudioDirectionSink);
         }
         break;
       case AudioState::READY_TO_START:
@@ -5672,7 +5731,6 @@ public:
     }
 
     if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
-      SendAudioGroupCurrentCodecConfigChanged(group);
       log::debug("Group is not streaming");
       return false;
     }
@@ -6058,6 +6116,12 @@ public:
                 "supported");
         remote_metadata.source.clear();
         remote_metadata.source.set_all(ctxs);
+
+        log::debug("Align local metadata contexts also to game when vbc starts");
+        local_metadata_context_types_.sink.clear();
+        local_metadata_context_types_.source.clear();
+        local_metadata_context_types_.sink.set(LeAudioContextType::GAME);
+        local_metadata_context_types_.source.set(LeAudioContextType::GAME);
       }
     }
 
@@ -6108,6 +6172,10 @@ public:
     bool take_unresumed_local_source_metadata_for_mic_only_devices =
             (group->audio_locations_.sink == std::nullopt) &&
             (local_other_direction == bluetooth::le_audio::types::kLeAudioDirectionSource);
+
+    log::debug("take_unresumed_local_source_metadata_for_mic_only_devices= {}.",
+                                 take_unresumed_local_source_metadata_for_mic_only_devices);
+
     if (is_other_direction_bidir) {
       if (!(is_streaming_other_direction || is_releasing_for_reconfiguration_other_direction) &&
           !take_unresumed_local_source_metadata_for_mic_only_devices) {
@@ -7816,9 +7884,10 @@ void LeAudioClient::Initialize(
     return;
   }
 
-  log::assert_that(std::move(hal_2_1_verifier).Run(),
-                   "LE Audio Client requires Bluetooth Audio HAL V2.1 at least. Either "
-                   "disable LE Audio Profile, or update your HAL");
+  if (!std::move(hal_2_1_verifier).Run()) {
+    log::error("LE Audio Client requires Bluetooth Audio HAL V2.1 at least. Either "
+               "disable LE Audio Profile, or update your HAL");
+  }
 
   IsoManager::GetInstance()->Start();
 

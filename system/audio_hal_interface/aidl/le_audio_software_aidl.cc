@@ -503,7 +503,9 @@ void LeAudioSourceTransport::SetStartRequestState(StartRequestState state) {
 
 std::unordered_map<int32_t, uint8_t> sampling_freq_map{
         {8000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq8000Hz},
+        {11025, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq11025Hz},
         {16000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq16000Hz},
+        {22050, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq22050Hz},
         {24000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq24000Hz},
         {32000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq32000Hz},
         {44100, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq44100Hz},
@@ -511,7 +513,9 @@ std::unordered_map<int32_t, uint8_t> sampling_freq_map{
         {88200, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq88200Hz},
         {96000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq96000Hz},
         {176400, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq176400Hz},
-        {192000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq192000Hz}};
+        {192000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq192000Hz},
+        {384000, ::bluetooth::le_audio::codec_spec_conf::kLeAudioSamplingFreq384000Hz},
+};
 
 std::unordered_map<int32_t, uint8_t> frame_duration_map{
         {7500, ::bluetooth::le_audio::codec_spec_conf::kLeAudioCodecFrameDur7500us},

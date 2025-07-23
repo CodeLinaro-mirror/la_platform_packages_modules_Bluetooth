@@ -83,7 +83,7 @@ void dump(int fd);
  * timeout. It must be implemented by users of connection_manager */
 void on_connection_timed_out(uint8_t app_id, const RawAddress& address);
 void on_connection_timed_out_from_shim(const RawAddress& address);
-void on_connection_cancelled(uint8_t app_id, const RawAddress& address);
+
 bool is_background_connection(const RawAddress& address);
 
 }  // namespace connection_manager

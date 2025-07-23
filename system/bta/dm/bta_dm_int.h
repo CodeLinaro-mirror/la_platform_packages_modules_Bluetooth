@@ -361,6 +361,7 @@ tBTM_CONTRL_STATE bta_dm_pm_obtain_controller_state(void);
 void bta_dm_disable_timer_cback(void);
 void bta_dm_bredr_cleanup(void);
 void bta_dm_bredr_startup(void);
+void bta_dm_process_ssr(void);
 
 namespace bluetooth::legacy::testing {
 

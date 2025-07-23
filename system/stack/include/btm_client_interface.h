@@ -166,6 +166,7 @@ struct btm_client_interface_t {
     void (*BTM_SetPowerBackOffState)(bool status);
     void (*BTM_VendorSpecificCommand)(uint16_t opcode, uint8_t param_len, uint8_t* p_param_buf,
                                       tBTM_VSC_CMPL_CB* p_cb);
+    void (*BTM_RegisterSsrCallback)(tBTM_NOTIFY_SSR_CB* p_cb);
   } vendor;
 };
 

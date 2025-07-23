@@ -153,7 +153,7 @@ public final class BluetoothQualityReport implements Parcelable {
     private final int mManufacturerId;
     private final String mName;
     private final BluetoothClass mBluetoothClass;
-    private int mVersionSupported;
+    private final int mVersionSupported;
 
     private final BqrCommon mBqrCommon;
     private BqrVsLsto mBqrVsLsto;
@@ -310,6 +310,7 @@ public final class BluetoothQualityReport implements Parcelable {
             String remoteName,
             BluetoothClass bluetoothClass,
             byte[] rawData) {
+        mVersionSupported = versionSupported;
         mAddr = remoteAddr;
         mLmpVer = lmpVer;
         mLmpSubVer = lmpSubVer;
@@ -830,7 +831,7 @@ public final class BluetoothQualityReport implements Parcelable {
             }
 
             ByteBuffer bqrBuf =
-                    ByteBuffer.wrap(rawData, offset, rawData.length - offset).asReadOnlyBuffer();
+                    ByteBuffer.wrap(rawData, offset, commonLen).asReadOnlyBuffer();
             bqrBuf.order(ByteOrder.LITTLE_ENDIAN);
 
             bqrBuf.get();
@@ -864,17 +865,21 @@ public final class BluetoothQualityReport implements Parcelable {
                             bqrBuf.get(currentOffset + 0));
             bqrBuf.position(currentOffset + 6);
             mCalFailedItemCount = bqrBuf.get() & 0xFF;
-            if (versionSupported >= BQR_VERSION_4_0) {
+            if (bqrBuf.remaining() >= 24) {
                 mTxTotalPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
                 mTxUnackPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
                 mTxFlushPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
                 mTxLastSubeventPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
                 mCrcErrorPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
                 mRxDupPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
+            } else {
+                return;
             }
-            if (versionSupported >= BQR_VERSION_6_0) {
+            if (bqrBuf.remaining() >= 6) {
                 mRxUnRecvPackets = bqrBuf.getInt() & 0xFFFFFFFFL;
                 mCoexInfoMask = bqrBuf.getShort() & 0xFFFF;
+            } else {
+                return;
             }
         }
 

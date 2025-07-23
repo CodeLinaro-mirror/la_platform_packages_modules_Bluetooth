@@ -73,6 +73,7 @@ typedef enum : uint8_t {
   BTA_DM_KEY_MISSING_EVT = 36,
   BTA_DM_ENCRYPTION_CHANGE_EVT = 37,
   BTA_DM_ENC_KEY_MATERIAL = 38, /* Enc Data Key Material value */
+  BTA_DM_SSR_EVT = 39,
 } tBTA_DM_SEC_EVT;
 
 /* Structure associated with BTA_DM_PIN_REQ_EVT */

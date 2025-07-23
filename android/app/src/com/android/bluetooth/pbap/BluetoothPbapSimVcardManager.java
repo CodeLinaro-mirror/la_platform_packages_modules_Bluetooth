@@ -289,9 +289,6 @@ public class BluetoothPbapSimVcardManager implements AutoCloseable {
     }
 
     public final List<String> getSIMPhonebookNameList(final int orderByWhat) {
-        List<String> nameList = new ArrayList<String>();
-        nameList.add(BluetoothPbapService.getLocalPhoneName());
-        // Since owner card should always be 0.vcf, maintain a separate list to avoid sorting
         ArrayList<String> allnames = new ArrayList<String>();
         Cursor contactCursor = null;
         try {
@@ -329,8 +326,7 @@ public class BluetoothPbapSimVcardManager implements AutoCloseable {
                     });
         }
 
-        nameList.addAll(allnames);
-        return nameList;
+        return allnames;
     }
 
     public final List<String> getSIMContactNamesByNumber(final String phoneNumber) {

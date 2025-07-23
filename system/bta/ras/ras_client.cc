@@ -26,6 +26,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "internal_include/stack_config.h"
 #include "bluetooth/log.h"
 #include "bta/include/bta_gatt_api.h"
 #include "bta/include/bta_ras_api.h"
@@ -48,6 +49,7 @@
 #include "types/raw_address.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/security_device_record.h"
+#include "internal_include/stack_config.h"
 
 using namespace bluetooth;
 using namespace ::ras;
@@ -677,10 +679,14 @@ public:
     std::vector<uint8_t> value(2);
     uint8_t* value_ptr = value.data();
     // Register notify is supported
-    if (characteristic->properties & GATT_CHAR_PROP_BIT_NOTIFY) {
-      UINT16_TO_STREAM(value_ptr, GATT_CHAR_CLIENT_CONFIG_NOTIFICATION);
-    } else {
+    if(stack_config_get_interface()->get_enable_ind_ras_real_time()) {
       UINT16_TO_STREAM(value_ptr, GATT_CHAR_CLIENT_CONFIG_INDICTION);
+    } else {
+      if (characteristic->properties & GATT_CHAR_PROP_BIT_NOTIFY) {
+        UINT16_TO_STREAM(value_ptr, GATT_CHAR_CLIENT_CONFIG_NOTIFICATION);
+      }else {
+        UINT16_TO_STREAM(value_ptr, GATT_CHAR_CLIENT_CONFIG_INDICTION);
+      }
     }
     BTA_GATTC_WriteCharDescr(
             tracker->conn_id_, ccc_handle, value, GATT_AUTH_REQ_NONE,
@@ -816,7 +822,8 @@ public:
   }
 
   void AllCharacteristicsReadComplete(std::shared_ptr<RasTracker> tracker) {
-    if (tracker->remote_supported_features_ & feature::kRealTimeRangingData) {
+    if (tracker->remote_supported_features_ & feature::kRealTimeRangingData 
+               & !(stack_config_get_interface()->get_pts_bcs_ranging_select())) {
       log::info("Subscribe Real-time Ranging Data");
       tracker->ranging_type_ = REAL_TIME;
       if (!SubscribeCharacteristic(tracker, kRasRealTimeRangingDataCharacteristic)) {

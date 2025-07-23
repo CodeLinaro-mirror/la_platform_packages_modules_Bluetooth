@@ -64,7 +64,6 @@ namespace connection_manager {
 void on_connection_timed_out(uint8_t app_id, const RawAddress& address) {
   localConnTimeoutMock->OnConnectionTimedOut(app_id, address);
 }
-void on_connection_cancelled(uint8_t /*app_id*/, const RawAddress& /*address*/) {}
 }  // namespace connection_manager
 
 namespace connection_manager {

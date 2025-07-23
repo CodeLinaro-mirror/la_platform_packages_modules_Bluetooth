@@ -195,6 +195,7 @@ static void bta_dm_init_cb(void) {
       bta_dm_cb.pm_timer[i].timer[j] = alarm_new("bta_dm.pm_timer");
     }
   }
+  get_btm_client_interface().vendor.BTM_RegisterSsrCallback(bta_dm_process_ssr);
 }
 
 /*******************************************************************************
@@ -222,6 +223,22 @@ static void bta_dm_deinit_cb(void) {
   }
   bta_dm_cb.pending_removals.clear();
   bta_dm_cb = {};
+}
+
+/*******************************************************************************
+**
+** Function         bta_dm_process_ssr
+**
+** Description      Notifies SSR event to application
+**
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_dm_process_ssr(void) {
+  log::warn("");
+  if( bta_dm_sec_cb.p_sec_cback )
+    bta_dm_sec_cb.p_sec_cback(BTA_DM_SSR_EVT, NULL);
 }
 
 void BTA_dm_on_hw_off() {

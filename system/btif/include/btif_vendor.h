@@ -33,4 +33,15 @@
  ******************************************************************************/
 void btif_vendor_update_add_on_features();
 
+/*******************************************************************************
+ *
+ * Function         btif_vendor_update_ssr_event
+ *
+ * Description      Update SSR event to app layer
+ *
+ * Returns          None
+ *
+ ******************************************************************************/
+void btif_vendor_update_ssr_event();
+
 #endif /* BTIF_VENDOR_H */

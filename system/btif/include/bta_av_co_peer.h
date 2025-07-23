@@ -224,4 +224,7 @@ bool AudioProtectHasScmst(uint8_t num_protect, const uint8_t* p_protect_info);
  * @return true if the peer SEP has content protection enabled,
  * otherwise false
  */
+
 bool AudioSepHasContentProtection(const BtaAvCoSep* p_sep, const uint8_t content_protect_flag);
+
+bool bta_av_co_check_peer_eligible_for_aac_codec(const BtaAvCoPeer* p_peer);

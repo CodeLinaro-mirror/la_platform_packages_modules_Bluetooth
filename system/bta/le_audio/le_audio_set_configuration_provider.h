@@ -38,6 +38,8 @@ public:
           const types::AudioSetConfiguration& set_configuration) const;
   virtual bool CheckConfigurationIsDualBiDirSwb(
           const types::AudioSetConfiguration& set_configuration) const;
+  virtual bool CheckQHSConfig(
+          const types::AudioSetConfiguration& set_configuration) const;
 
 private:
   struct impl;

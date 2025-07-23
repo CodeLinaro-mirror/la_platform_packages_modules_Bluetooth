@@ -1348,9 +1348,42 @@ public class MediaControlGattService implements MediaControlGattServiceInterface
             }
         }
 
+        if (mLeAudioService == null) {
+            mLeAudioService = LeAudioService.getLeAudioService();
+        }
         Request req = new Request(opcode, intVal);
         List<BluetoothDevice> mLeAudioActiveDevices =
             mAdapterService.getActiveDevices(BluetoothProfile.LE_AUDIO);
+
+        if (!isBroadcastActive() && (req.opcode() == Request.Opcodes.PAUSE) &&
+                !mLeAudioActiveDevices.contains(device)) {
+            Log.w(TAG, "handleMediaControlPointRequest: PAUSE command received from inactive device");
+
+            // Prepare result notification
+            ByteBuffer bb = ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN);
+            bb.put((byte) req.opcode());
+            bb.put((byte) Request.Results.SUCCESS.getValue());
+            BluetoothGattCharacteristic characteristic =
+                    mCharacteristics.get(CharId.MEDIA_CONTROL_POINT);
+            characteristic.setValue(bb.array());
+            // Prepare media state notification
+            BluetoothGattCharacteristic stateChar = mCharacteristics.get(CharId.MEDIA_STATE);
+            stateChar.setValue(MediaState.PAUSED.getValue(), BluetoothGattCharacteristic.FORMAT_UINT8, 0);
+
+            // Get all CSIP members (if any) connected to same group
+            List<BluetoothDevice> connectedPeerDevices =
+                mLeAudioService.getConnectedPeerDevices(mLeAudioService.getGroupId(device));
+            for (BluetoothDevice groupMember : connectedPeerDevices){
+                Log.w(TAG, "handleMediaControlPointRequest: notify success to " + groupMember);
+                notifyCharacteristic(groupMember, characteristic);
+            }
+            for (BluetoothDevice groupMember : connectedPeerDevices){
+                Log.w(TAG, "handleMediaControlPointRequest: notify MCP state " + groupMember);
+                notifyCharacteristic(groupMember, stateChar);
+            }
+            return BluetoothGatt.GATT_SUCCESS;
+        }
+
         if (!isBroadcastActive() && (req.opcode() != Request.Opcodes.PLAY) &&
                 !mLeAudioActiveDevices.contains(device)) {
             Log.w(TAG, "handleMediaControlPointRequest: command came from inactive device, ignore mcp passthrough");
@@ -1368,9 +1401,6 @@ public class MediaControlGattService implements MediaControlGattServiceInterface
                         + " request up");
 
         // TODO: Activate/deactivate devices with ActiveDeviceManager
-        if (mLeAudioService == null) {
-            mLeAudioService = LeAudioService.getLeAudioService();
-        }
         if (!isBroadcastActive() && req.opcode() == Request.Opcodes.PLAY) {
             if (mAdapterService.getActiveDevices(BluetoothProfile.A2DP).size() > 0) {
                 A2dpService.getA2dpService().removeActiveDevice(false);

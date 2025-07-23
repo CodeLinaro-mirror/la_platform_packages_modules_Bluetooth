@@ -57,6 +57,7 @@ static acl_interface_t acl_interface_ = {
         .link.classic.on_read_transmit_power_level_complete = nullptr,
         .link.classic.on_role_change = nullptr,
         .link.classic.on_role_discovery_complete = nullptr,
+        .link.classic.on_hardware_error = nullptr,
 
         .link.le.on_connection_update = nullptr,
         .link.le.on_parameter_update_request = nullptr,
