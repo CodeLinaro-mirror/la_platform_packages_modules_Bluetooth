@@ -84,7 +84,3 @@ void avrc_process_timeout(void* /* data */) { inc_func_call_count(__func__); }
 void avrc_send_next_vendor_cmd(uint8_t /* handle */) {
   inc_func_call_count(__func__);
 }
-void avrc_start_cmd_timer(uint8_t /* handle */, uint8_t /* label */,
-                          uint8_t /* msg_mask */) {
-  inc_func_call_count(__func__);
-}

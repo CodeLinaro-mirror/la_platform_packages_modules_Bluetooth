@@ -113,6 +113,7 @@ class CodecManager {
   virtual bool IsAptxAdaptiveLeSupported(void) const;
   virtual bool IsAptxAdaptiveLeXSupported(void) const;
   virtual bool IsEnhancedLeGamingSupported(void) const;
+  virtual bool IsQhsEnabled(void) const;
   virtual void UpdateCisConfiguration(
       const std::vector<struct types::cis>& cises,
       const stream_parameters& stream_params, uint8_t direction);

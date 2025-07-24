@@ -843,7 +843,7 @@ public class LeAudioService extends ProfileService {
             Log.e(TAG, "Ignored disconnect request for " + device + " : no state machine");
             return false;
         }
-        setDisconnected(true);
+
         sm.sendMessage(LeAudioStateMachine.DISCONNECT);
 
         return true;
@@ -3338,7 +3338,14 @@ public class LeAudioService extends ProfileService {
                         case LeAudioStackEvent.CONNECTION_STATE_DISCONNECTING:
                         case LeAudioStackEvent.CONNECTION_STATE_DISCONNECTED:
                             deviceDescriptor.mAclConnected = false;
-                            setDisconnected(true);
+
+                            if (descriptor.isActive()) {
+                                if (getConnectedPeerDevices(groupId).size() > 1) {
+                                    Log.d(TAG, "There are other connected group members.");
+                                } else {
+                                    setDisconnected(true);
+                                }
+                            }
                             synchronized(mScanCallbackLock) {
                                 Log.d(TAG, " try to start background scan");
                                 startAudioServersBackgroundScan(/* retry= */ false);
@@ -4155,6 +4162,8 @@ public class LeAudioService extends ProfileService {
                             false,
                             hasFallbackDevice,
                             false);
+                    Log.d(TAG, "Device updated had been done, reset mHasFallback");
+                    mHasFallback = true;
                     return;
                 }
             }

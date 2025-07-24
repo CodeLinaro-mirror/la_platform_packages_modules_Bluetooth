@@ -92,8 +92,6 @@
  */
 // clang-format on
 
-constexpr uint16_t  HCI_VS_QBCE_OCF                     = 0xFC51;
-
 constexpr uint8_t  LTV_TYPE_VS_METADATA                 = 0xFF;
 constexpr uint8_t  LTV_TYPE_VS_METADATA_FE              = 0xFE;
 

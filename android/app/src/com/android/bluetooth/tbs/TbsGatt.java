@@ -666,11 +666,7 @@ public class TbsGatt {
                 BluetoothDevice device, int requestId, boolean responseNeeded, byte[] value) {
             if (responseNeeded) {
                 mBluetoothGattServer.sendResponse(
-                        device, requestId, BluetoothGatt.GATT_FAILURE, 0, value);
-            } else {
-              Log.d(TAG, "response is not needed");
-              //mBluetoothGattServer.sendResponse(
-              //          device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value);
+                        device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value);
             }
         }
     }

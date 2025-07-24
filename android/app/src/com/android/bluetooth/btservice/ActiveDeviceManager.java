@@ -539,6 +539,28 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
         }
     }
 
+    private boolean isA2dpProfileConnected(BluetoothDevice device) {
+        A2dpService a2dpService = mFactory.getA2dpService();
+        if (a2dpService != null) {
+            int connectionState = a2dpService.getConnectionState(device);
+            if (connectionState == BluetoothProfile.STATE_CONNECTED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isHfpProfileConnected(BluetoothDevice device) {
+        HeadsetService headsetService = mFactory.getHeadsetService();
+        if (headsetService != null) {
+            int connectionState = headsetService.getConnectionState(device);
+            if (connectionState == BluetoothProfile.STATE_CONNECTED) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void handleA2dpDisconnected(BluetoothDevice device) {
         synchronized (mLock) {
             Log.d(
@@ -550,7 +572,9 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
             mA2dpConnectedDevices.remove(device);
             if (Objects.equals(mA2dpActiveDevice, device)) {
                 setA2dpActiveDevice(null, false);
-                setFallbackDeviceActiveLocked();
+                if (!isHfpProfileConnected(device)) {
+                    setFallbackDeviceActiveLocked();
+                }
             }
         }
     }
@@ -565,7 +589,9 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 if (mHfpConnectedDevices.isEmpty()) {
                     setHfpActiveDevice(null);
                 }
-                setFallbackDeviceActiveLocked();
+                if (!isA2dpProfileConnected(device)) {
+                    setFallbackDeviceActiveLocked();
+                }
             }
         }
     }
@@ -1171,6 +1197,15 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     if ((mLeAudioActiveDevice != null)
                             && (Objects.equals(
                                     mLeAudioActiveDevice, leAudioService.getLeadDevice(device)))) {
+                        /* If Lead device disconnects make member device as active device */
+                        int connectionState =
+                                leAudioService.getConnectionState(mLeAudioActiveDevice);
+                        if (connectionState == BluetoothProfile.STATE_DISCONNECTED ||
+                                        connectionState == BluetoothProfile.STATE_DISCONNECTING) {
+                            mLeAudioActiveDevice = device;
+                            Log.d(TAG, "New LeAudioActiveDevice is " + mLeAudioActiveDevice);
+                            return true;
+                        }
                         Log.d(TAG, "New LeAudioDevice is a part of an active group");
                         return true;
                     }
