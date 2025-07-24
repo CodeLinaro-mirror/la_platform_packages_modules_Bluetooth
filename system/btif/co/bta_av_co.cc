@@ -1171,7 +1171,7 @@ void DisableVBRCapability(BtaAvCoPeer* p_peer, uint8_t (&sink_codec_cap)[AVDT_CO
       vbr_bl = true;
     }
   }
-  if (vbr_bl) {
+  if (vbr_bl || !vbr_supp) {
     log::verbose("AAC VBR is disabled, remove VBR from selectable capability");
     sink_codec_cap[6] = 0;
   }

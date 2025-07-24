@@ -14,6 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 
 package com.android.bluetooth.btservice;
 
@@ -144,6 +150,7 @@ import com.android.bluetooth.hid.HidDeviceService;
 import com.android.bluetooth.hid.HidHostService;
 import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.le_scan.ScanController;
+import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.le_scan.ScanManager;
 import com.android.bluetooth.map.BluetoothMapService;
 import com.android.bluetooth.mapclient.MapClientService;
@@ -340,6 +347,7 @@ public class AdapterService extends Service {
     private BluetoothHciVendorSpecificNativeInterface mBluetoothHciVendorSpecificNativeInterface;
     private GattService mGattService;
     private ScanController mScanController;
+    private CallAudio mCallAudio;
 
     private volatile boolean mTestModeEnabled = false;
 
@@ -1044,6 +1052,16 @@ public class AdapterService extends Service {
         } else {
             Log.e(TAG, "Incorrect status " + status + " in stateChangeCallback");
         }
+    }
+
+    void ssrCleanupCallback() {
+        Log.e(TAG, "Disabling the BluetoothInCallService component"+
+                " and kill the process to recover");
+        getApplicationContext().getPackageManager().setComponentEnabledSetting(
+            AdapterState.BLUETOOTH_INCALLSERVICE_COMPONENT,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP);
+        android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     void startProfileServices() {
@@ -1979,6 +1997,7 @@ public class AdapterService extends Service {
         mLeAudioService = LeAudioService.getLeAudioService();
         mBassClientService = BassClientService.getBassClientService();
         mBatteryService = BatteryService.getBatteryService();
+        mCallAudio = CallAudio.get();
     }
 
     @BluetoothAdapter.RfcommListenerResult
@@ -3341,11 +3360,17 @@ public class AdapterService extends Service {
                 if (mHeadsetService == null) {
                     Log.e(TAG, "getActiveDevices: HeadsetService is null");
                 } else {
-                    BluetoothDevice device = mHeadsetService.getActiveDevice();
+                    BluetoothDevice device = null;
+                    if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
+                        device = mCallAudio.getActiveDevice();
+                        Log.i(TAG, "getActiveDevices: CallAudio device: " + device);
+                    } else {
+                        device = mHeadsetService.getActiveDevice();
+                        Log.i(TAG, "getActiveDevices: Headset device: " + device);
+                    }
                     if (device != null) {
                         activeDevices.add(device);
                     }
-                    Log.i(TAG, "getActiveDevices: Headset device: " + device);
                 }
                 break;
             case BluetoothProfile.A2DP:

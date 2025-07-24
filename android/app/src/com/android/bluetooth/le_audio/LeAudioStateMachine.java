@@ -14,6 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 //  Bluetooth LeAudio StateMachine. There is one instance per remote device's ASE.
 //   - "Disconnected" and "Connected" are steady states.
@@ -561,7 +566,11 @@ final class LeAudioStateMachine extends StateMachine {
                         + getConnectionStateName(prevState)
                         + "->"
                         + getConnectionStateName(newState));
-        mService.notifyConnectionStateChanged(mDevice, newState, prevState);
+        CallAudio mCallAudio = CallAudio.get();
+        boolean isVoIPWarEnabled = false;
+        if (mCallAudio != null)
+            isVoIPWarEnabled = mCallAudio.isVoipLeaWarEnabled();
+        mService.notifyConnectionStateChanged(mDevice, newState, prevState, isVoIPWarEnabled);
     }
 
     private static String messageWhatToString(int what) {

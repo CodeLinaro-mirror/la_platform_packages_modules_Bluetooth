@@ -185,7 +185,8 @@ private:
     }
     if (const RemoteNameRequestQueueEntry* peek =
                 std::get_if<RemoteNameRequestQueueEntry>(&pending_outgoing_operations_.front())) {
-      if (incoming_connecting_address_set_.contains(peek->address)) {
+      if (incoming_connecting_address_set_.contains(peek->address) &&
+          !outgoing_entry_.has_value()) {
         log::info("Pending incoming connection and outgoing RNR to same peer:{}", peek->address);
         return true;
       }
@@ -194,6 +195,7 @@ private:
   }
 
   void try_dequeue_next_operation() {
+    log::info("Enter, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
     if (ready_to_send_next_operation()) {
       log::info("Pending connections is not empty; so sending next connection");
       auto entry = std::move(pending_outgoing_operations_.front());
@@ -203,7 +205,8 @@ private:
     } else if (!pending_outgoing_operations_.empty()){
       if (const RemoteNameRequestQueueEntry* peek =
                   std::get_if<RemoteNameRequestQueueEntry>(&pending_outgoing_operations_.front())) {
-        if (incoming_connecting_address_set_.contains(peek->address)) {
+        if (incoming_connecting_address_set_.contains(peek->address) &&
+              !outgoing_entry_.has_value()) {
             log::info("Pending connections is RNR;so sending RNR");
             auto entry = std::move(pending_outgoing_operations_.front());
             pending_outgoing_operations_.pop_front();
@@ -212,6 +215,7 @@ private:
         }
       }
     }
+    log::info("Exit, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
 
   }
 

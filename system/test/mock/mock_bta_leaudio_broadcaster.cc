@@ -32,3 +32,4 @@ LeAudioBroadcaster* LeAudioBroadcaster::Get() {
   inc_func_call_count(__func__);
   return nullptr;
 }
+bool LeAudioBroadcaster::IsLeAudioBroadcasterRunning() { return false; }
