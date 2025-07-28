@@ -4960,6 +4960,10 @@ class LeAudioClientImpl : public LeAudioClient {
     }
   }
 
+  void OnSetSenderStateRelease(void) {
+    audio_sender_state_ = AudioState::READY_TO_RELEASE;
+  }
+
   void OnLocalAudioSinkSuspend() {
     log::info(
         "active group_id: {}, IN: audio_receiver_state_: {}, "
@@ -7248,6 +7252,10 @@ class CallbacksImpl : public LeAudioGroupStateMachine::Callbacks {
 
   void OnUpdatedCisConfiguration(int group_id, uint8_t direction) {
     if (instance) instance->OnUpdatedCisConfiguration(group_id, direction);
+  }
+
+  void OnSetSenderStateRelease() override {
+    if (instance) instance->OnSetSenderStateRelease();
   }
 };
 

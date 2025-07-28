@@ -895,6 +895,7 @@ void BleScannerInterfaceImpl::on_scan_result(
 }
 
 void BleScannerInterfaceImpl::AddressCache::add(const RawAddress& p_bda) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   // Remove the oldest entries
   while (remote_bdaddr_cache_.size() >= remote_bdaddr_cache_max_size_) {
     const RawAddress& raw_address = remote_bdaddr_cache_ordered_.front();
@@ -906,10 +907,12 @@ void BleScannerInterfaceImpl::AddressCache::add(const RawAddress& p_bda) {
 }
 
 bool BleScannerInterfaceImpl::AddressCache::find(const RawAddress& p_bda) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return (remote_bdaddr_cache_.find(p_bda) != remote_bdaddr_cache_.end());
 }
 
 void BleScannerInterfaceImpl::AddressCache::init(void) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   remote_bdaddr_cache_.clear();
   remote_bdaddr_cache_ordered_ = {};
 }
