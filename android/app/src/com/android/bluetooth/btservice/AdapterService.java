@@ -2234,6 +2234,18 @@ public class AdapterService extends Service {
      * @return a Bundle containing the preferred audio profiles for the device
      */
     public Bundle getPreferredAudioProfiles(BluetoothDevice device) {
+        if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
+            if (!isDualModeAudioEnabled()
+                    && mLeAudioService != null
+                    && mLeAudioService.isLeAudioDuplexSupported(device)
+                    && mLeAudioService.getConnectionState(device) == STATE_CONNECTED) {
+                Bundle defaultPreferencesBundle = new Bundle();
+                Log.d(TAG, "getPreferredAudioProfiles: return LE_AUDIO profile while VOIP WAR enabled");
+                defaultPreferencesBundle.putInt(BluetoothAdapter.AUDIO_MODE_DUPLEX, BluetoothProfile.LE_AUDIO);
+                return defaultPreferencesBundle;
+            }
+        }
+
         if (!isDualModeAudioEnabled()
                 || mLeAudioService == null
                 || !isDualModeAudioSinkDevice(device)) {

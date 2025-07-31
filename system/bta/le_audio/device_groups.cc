@@ -1294,6 +1294,8 @@ uint8_t LeAudioDeviceGroup::CigConfiguration::GetFirstFreeCisId(CisType cis_type
 }
 
 types::LeAudioConfigurationStrategy LeAudioDeviceGroup::GetGroupSinkStrategy() const {
+  log::debug(" ");
+
   /* Update the strategy if not set yet or was invalidated */
   if (!strategy_) {
     /* Choose the group configuration strategy based on PAC records */
@@ -1364,6 +1366,7 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::GetGroupSinkStrategy() c
 
 types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConfig(
         const types::AudioSetConfiguration* audio_set_conf) const {
+  log::debug(" ");
   auto strategy_selector = [&, this](uint8_t direction) {
     int expected_group_size = Size();
 
@@ -1398,6 +1401,7 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConf
     auto max_channel_count = (config_element != configs.end())
                                      ? config_element->codec.GetChannelCountPerIsoStream()
                                      : 1;
+    log::debug("max_channel_count {}", max_channel_count);
     if (max_channel_count == 1) {
       return types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE;
     }
@@ -1483,7 +1487,9 @@ void LeAudioDeviceGroup::CigConfiguration::GetCisCount(LeAudioContextType contex
 
   // For non-LC3 codecs like Opus, we should base the strategy calcualation based on the config
   const bool derive_strategy_from_config =
-          current_config && com::android::bluetooth::flags::leaudio_add_opus_hi_res_codec_type();
+          current_config && true/*com::android::bluetooth::flags::leaudio_add_opus_hi_res_codec_type()*/;
+  log::info("derive_strategy_from_config {}", derive_strategy_from_config);
+
   auto strategy = derive_strategy_from_config
                           ? group_->FindGroupStrategyForConfig(current_config.get())
                           : group_->GetGroupSinkStrategy();

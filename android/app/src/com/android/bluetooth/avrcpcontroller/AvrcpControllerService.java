@@ -716,7 +716,9 @@ public class AvrcpControllerService extends ProfileService {
             stateMachine.dump(sb);
         }
         sb.append("\n  BrowseTree:\n");
-        mBrowseTree.dump(sb);
+        if (mBrowseTree != null) {
+            mBrowseTree.dump(sb);
+        }
 
         sb.append("\n  Cover Artwork Enabled: ").append((mCoverArtEnabled ? "True" : "False"));
         if (mCoverArtManager != null) {
