@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * PDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "os/parameter_provider.h"
@@ -21,6 +26,8 @@
 
 #include <mutex>
 #include <string>
+
+extern int GetAdapterIndex();
 
 namespace bluetooth {
 namespace os {
@@ -35,6 +42,11 @@ bool is_common_criteria_mode = false;
 int common_criteria_config_compare_result = 0b11;
 }  // namespace
 
+bool is_default_bluetooth() {
+  int hci_adapter = GetAdapterIndex();
+  return hci_adapter == 0;
+}
+
 // On Android we always write a single default location
 std::string ParameterProvider::ConfigFilePath() {
   {
@@ -43,7 +55,9 @@ std::string ParameterProvider::ConfigFilePath() {
       return config_file_path;
     }
   }
-  return "/data/misc/bluedroid/bt_config.conf";
+  return is_default_bluetooth() ?
+          "/data/misc/bluedroid/bt_config.conf" :
+          "/data/misc/bluedroid/new/bt_config.conf";
 }
 
 void ParameterProvider::OverrideConfigFilePath(const std::string& path) {
@@ -58,7 +72,9 @@ std::string ParameterProvider::SnoopLogFilePath() {
       return snoop_log_file_path;
     }
   }
-  return "/data/misc/bluetooth/logs/btsnoop_hci.log";
+  return is_default_bluetooth() ?
+          "/data/misc/bluetooth/logs/btsnoop_hci.log" :
+          "/data/misc/bluetooth/newlogs/btsnoop_hci.log";
 }
 
 void ParameterProvider::OverrideSnoopLogFilePath(const std::string& path) {
@@ -74,7 +90,9 @@ std::string ParameterProvider::SnoozLogFilePath() {
       return snooz_log_file_path;
     }
   }
-  return "/data/misc/bluetooth/logs/btsnooz_hci.log";
+  return is_default_bluetooth() ?
+          "/data/misc/bluetooth/logs/btsnooz_hci.log" :
+          "/data/misc/bluetooth/newlogs/btsnooz_hci.log";
 }
 
 void ParameterProvider::OverrideSnoozLogFilePath(const std::string& path) {

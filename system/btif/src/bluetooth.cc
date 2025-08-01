@@ -15,10 +15,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- *  Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ******************************************************************************************/
 
@@ -429,7 +429,8 @@ static bool is_profile(const char* p1, const char* p2) {
  *
  ****************************************************************************/
 
-#ifdef TARGET_FLOSS
+
+#if defined(TARGET_FLOSS) || defined(DUAL_BT)
 static int global_hci_adapter = 0;
 
 static void set_adapter_index(int adapter) { global_hci_adapter = adapter; }
@@ -1252,7 +1253,7 @@ static void get_link_key(const RawAddress *bd_addr){
 
 EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         sizeof(bluetoothInterface),
-#ifdef TARGET_FLOSS
+#if defined(TARGET_FLOSS) || defined(DUAL_BT)
         .set_adapter_index = set_adapter_index,
 #endif
         .init = init,
