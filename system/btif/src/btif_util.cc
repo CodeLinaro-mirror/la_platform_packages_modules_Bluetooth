@@ -1,4 +1,4 @@
-/******************************************************************************
+/****************************************************************************************
  *
  *  Copyright (c) 2014 The Android Open Source Project
  *  Copyright 2009-2016 Broadcom Corporation
@@ -15,7 +15,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ ****************************************************************************************/
 
 /*******************************************************************************
  *
@@ -143,6 +148,7 @@ std::string dump_dm_event(uint16_t event) {
     CASE_RETURN_STRING(BTA_DM_BOND_CANCEL_CMPL_EVT);
     CASE_RETURN_STRING(BTA_DM_SP_CFM_REQ_EVT);
     CASE_RETURN_STRING(BTA_DM_SP_KEY_NOTIF_EVT);
+    CASE_RETURN_STRING(BTA_DM_SP_RMT_OOB_EVT);
     CASE_RETURN_STRING(BTA_DM_BLE_KEY_EVT);
     CASE_RETURN_STRING(BTA_DM_BLE_SEC_REQ_EVT);
     CASE_RETURN_STRING(BTA_DM_BLE_PASSKEY_NOTIF_EVT);
