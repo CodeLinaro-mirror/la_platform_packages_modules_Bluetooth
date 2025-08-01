@@ -122,15 +122,9 @@ void StorageModule::SaveImmediately() {
     pimpl_->config_save_alarm_.Cancel();
     pimpl_->has_pending_config_save_ = false;
   }
-#ifndef TARGET_FLOSS
-  log::assert_that(
-          LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_),
-          "assert failed: LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_)");
-#else
   if (!LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_)) {
     log::error("Unable to write config file to disk");
   }
-#endif
   // save checksum if it is running in common criteria mode
   if (bluetooth::os::ParameterProvider::GetBtKeystoreInterface() != nullptr &&
       bluetooth::os::ParameterProvider::IsCommonCriteriaMode()) {
