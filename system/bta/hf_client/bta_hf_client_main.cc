@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #include <bluetooth/log.h>
@@ -124,7 +129,7 @@ const uint8_t bta_hf_client_st_init[][BTA_HF_CLIENT_NUM_COLS] = {
         /* RFC_SRV_CLOSE_EVT */ {BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
         /* RFC_DATA_EVT */ {BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
         /* DISC_ACP_RES_EVT */ {BTA_HF_CLIENT_FREE_DB, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
-        /* DISC_INT_RES_EVT */ {BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
+        /* DISC_INT_RES_EVT */ {BTA_HF_CLIENT_FREE_DB, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
         /* DISC_OK_EVT */ {BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
         /* DISC_FAIL_EVT */ {BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
         /* SCO_OPEN_EVT */ {BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_IGNORE, BTA_HF_CLIENT_INIT_ST},
