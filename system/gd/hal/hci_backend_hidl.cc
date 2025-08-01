@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <android/hardware/bluetooth/1.0/types.h>
@@ -148,6 +153,7 @@ public:
   }
 
   void initialize(std::shared_ptr<HciBackendCallbacks> callbacks) override {
+    hci_->close();
     hci_callbacks_ = new HidlHciCallbacks(callbacks);
     if (hci_1_1_ != nullptr) {
       hci_1_1_->initialize_1_1(hci_callbacks_);
