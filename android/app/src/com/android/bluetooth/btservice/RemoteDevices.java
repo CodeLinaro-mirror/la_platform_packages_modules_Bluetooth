@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -19,6 +24,7 @@ package com.android.bluetooth.btservice;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.Manifest.permission.BLUETOOTH_SCAN;
+import static android.Manifest.permission.LOCAL_MAC_ADDRESS;
 
 import static com.android.modules.utils.build.SdkLevel.isAtLeastV;
 
@@ -26,6 +32,7 @@ import android.annotation.RequiresPermission;
 import android.app.Activity;
 import android.app.admin.SecurityLog;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothAdapterExt;
 import android.bluetooth.BluetoothAssignedNumbers;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
@@ -158,8 +165,8 @@ public class RemoteDevices {
             };
 
     RemoteDevices(AdapterService service, Looper looper) {
-        mAdapter = ((Context) service).getSystemService(BluetoothManager.class).getAdapter();
         mAdapterService = service;
+        mAdapter = mAdapterService.getAdapter();
         mSdpTracker = new ArrayList<>();
         mDevices = new HashMap<>();
         mDualDevicesMap = new HashMap<>();
@@ -413,6 +420,20 @@ public class RemoteDevices {
             synchronized (mObject) {
                 this.mBluetoothClass = bluetoothClass;
             }
+        }
+
+        /**
+         * @param btClass the btClass to set
+         */
+        void setBluetoothClass(BluetoothClass btClass) {
+            if (btClass == null) {
+                warnLog("btClass is null, return!");
+                return;
+            }
+            int classInt = btClass.getClassOfDevice();
+            this.mBluetoothClass = classInt;
+            mAdapterService.getNative().setDeviceProperty(mAddress,
+                    AbstractionLayer.BT_PROPERTY_CLASS_OF_DEVICE, Utils.intToByteArray(classInt));
         }
 
         /**
@@ -1067,6 +1088,7 @@ public class RemoteDevices {
         }
     }
 
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, LOCAL_MAC_ADDRESS})
     void deviceFoundCallback(byte[] address) {
         // The device properties are already registered - we can send the intent
         // now
@@ -1084,6 +1106,12 @@ public class RemoteDevices {
         }
 
         infoLog("deviceFoundCallback: Remote Address is:" + device);
+
+        if (filterDevice(device)) {
+            warnLog("Not broadcast Device: " + device);
+            return;
+        }
+
         Intent intent = new Intent(BluetoothDevice.ACTION_FOUND);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
         intent.putExtra(
@@ -1208,7 +1236,8 @@ public class RemoteDevices {
                 intent.putExtra(BluetoothDevice.EXTRA_TRANSPORT, transportLinkType);
             } else if (state == BluetoothAdapter.STATE_BLE_ON
                     || state == BluetoothAdapter.STATE_BLE_TURNING_ON) {
-                intent = new Intent(BluetoothAdapter.ACTION_BLE_ACL_CONNECTED);
+                intent = AdapterUtil.newIntent(BluetoothAdapter.ACTION_BLE_ACL_CONNECTED,
+                        BluetoothAdapterExt.ACTION_BLE_ACL_CONNECTED);
             }
             BatteryService batteryService = BatteryService.getBatteryService();
             if (batteryService != null && transportLinkType == BluetoothDevice.TRANSPORT_LE) {
@@ -1239,7 +1268,8 @@ public class RemoteDevices {
                 intent.putExtra(BluetoothDevice.EXTRA_TRANSPORT, transportLinkType);
             } else if (state == BluetoothAdapter.STATE_BLE_ON
                     || state == BluetoothAdapter.STATE_BLE_TURNING_OFF) {
-                intent = new Intent(BluetoothAdapter.ACTION_BLE_ACL_DISCONNECTED);
+                intent = AdapterUtil.newIntent(BluetoothAdapter.ACTION_BLE_ACL_DISCONNECTED,
+                        BluetoothAdapterExt.ACTION_BLE_ACL_DISCONNECTED);
             }
             // Reset battery level on complete disconnection
             if (mAdapterService.getConnectionState(device) == 0) {
@@ -1697,6 +1727,11 @@ public class RemoteDevices {
         }
         updateBatteryLevel(
                 device, batteryChargeIndicatorToPercentge(batteryLevel), /* isBas= */ false);
+    }
+
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, LOCAL_MAC_ADDRESS})
+    private boolean filterDevice(BluetoothDevice device) {
+        return AdapterUtil.filterDevice(device);
     }
 
     private static void errorLog(String msg) {

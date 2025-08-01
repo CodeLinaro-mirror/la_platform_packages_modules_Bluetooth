@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.bass_client;
@@ -57,6 +62,7 @@ import android.util.Pair;
 
 import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.BluetoothStatsLog;
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.MetricsLogger;
@@ -79,6 +85,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.stream.IntStream;
@@ -159,6 +166,7 @@ public class BassClientStateMachine extends StateMachine {
     @VisibleForTesting BluetoothLeBroadcastMetadata mPendingMetadata = null;
     private BluetoothLeBroadcastMetadata mSetBroadcastPINMetadata = null;
     @VisibleForTesting boolean mSetBroadcastCodePending = false;
+    private BluetoothAdapter mBluetoothAdapter = null;
     private final Map<Integer, Boolean> mPendingRemove = new HashMap();
     @VisibleForTesting boolean mAutoTriggered = false;
     private boolean mDefNoPAS = false;
@@ -189,6 +197,10 @@ public class BassClientStateMachine extends StateMachine {
         addState(mConnecting);
         addState(mConnectedProcessing);
         setInitialState(mDisconnected);
+        // PSYNC and PAST instances
+        mAdapterService = Objects.requireNonNull(AdapterService.getAdapterService(),
+                "AdapterService cannot be null when BassClientStateMachine init");
+        mBluetoothAdapter = mAdapterService.getAdapter();
         mFirstTimeBisDiscoveryMap = new HashMap<Integer, Boolean>();
         final long token = Binder.clearCallingIdentity();
         try {
@@ -1108,9 +1120,8 @@ public class BassClientStateMachine extends StateMachine {
                     receiverState[BassConstants.BCAST_RCVR_STATE_SRC_ADDR_TYPE_IDX];
             BassUtils.reverse(sourceAddress);
             String address = Utils.getAddressStringFromByte(sourceAddress);
-            BluetoothDevice device =
-                    BluetoothAdapter.getDefaultAdapter()
-                            .getRemoteLeDevice(address, sourceAddressType);
+            BluetoothDevice device = mBluetoothAdapter.getRemoteLeDevice(
+                    address, sourceAddressType);
             byte sourceAdvSid = receiverState[BassConstants.BCAST_RCVR_STATE_SRC_ADV_SID_IDX];
             recvState =
                     new BluetoothLeBroadcastReceiveState(

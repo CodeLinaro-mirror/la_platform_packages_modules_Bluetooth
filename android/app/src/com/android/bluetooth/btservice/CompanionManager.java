@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -88,11 +93,12 @@ public class CompanionManager {
     static final String PROPERTY_SUFFIX_SECONDARY = ".secondary";
 
     private final AdapterService mAdapterService;
-    private final BluetoothAdapter mAdapter = BluetoothAdapter.getDefaultAdapter();
+    private final BluetoothAdapter mAdapter;
     private final Set<BluetoothDevice> mMetadataListeningDevices = new HashSet<>();
 
     public CompanionManager(AdapterService service, ServiceFactory factory) {
         mAdapterService = service;
+        mAdapter = mAdapterService.getAdapter();
 
         mGattConnHighDefault =
                 new int[] {
