@@ -74,6 +74,7 @@ typedef enum {
   BT_SOC_TYPE_GANGES,
   BT_SOC_TYPE_ORNE,
   BT_SOC_TYPE_EVROS,
+  BT_SOC_TYPE_COLOGNE,
   /* Add chipset type here */
   BT_SOC_TYPE_RESERVED
 } bt_soc_type_t;

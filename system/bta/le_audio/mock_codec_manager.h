@@ -41,6 +41,7 @@ class MockCodecManager {
               (const));
   MOCK_METHOD((bool), IsDualBiDirSwbSupported, (), (const));
   MOCK_METHOD((bool), IsEnhancedLeGamingSupported, (), (const));
+  MOCK_METHOD((bool), IsQhsEnabled, (), (const));
   MOCK_METHOD((bool), IsAptxAdaptiveLeSupported, (), (const));
   MOCK_METHOD((bool), IsAptxAdaptiveLeXSupported, (), (const));
 

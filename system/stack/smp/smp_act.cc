@@ -1983,6 +1983,17 @@ void smp_process_secure_connection_oob_data(tSMP_CB* p_cb,
     p_cb->local_random = {0};
   }
 
+  if (p_cb->peer_oob_flag == SMP_OOB_PRESENT &&
+      !p_sc_oob_data->loc_oob_data.present) {
+    log::warn(
+        "local OOB data is not present but peer claims to have received it; dropping "
+        "connection");
+    tSMP_INT_DATA smp_int_data{};
+    smp_int_data.status = SMP_OOB_FAIL;
+    smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, &smp_int_data);
+    return;
+  }
+
   if (!p_sc_oob_data->peer_oob_data.present) {
     log::verbose("peer OOB data is absent");
     p_cb->peer_random = {0};
@@ -2099,9 +2110,16 @@ void smp_link_encrypted(const RawAddress& bda, uint8_t encr_enable) {
   }
 }
 
-void smp_cancel_start_encryption_attempt() {
+void smp_cancel_start_encryption_attempt(const RawAddress& bda) {
   log::error("Encryption request cancelled");
   smp_sm_event(&smp_cb, SMP_DISCARD_SEC_REQ_EVT, NULL);
+
+  log::warn("smp_cb.state: {}   BD Addr: {} vs Pairing Bd address {}",
+            smp_cb.state, bda, smp_cb.pairing_bda);
+  if ((bda != RawAddress::kEmpty) && (smp_cb.pairing_bda == bda) &&
+      (smp_cb.state == SMP_STATE_IDLE)) {
+    smp_cb.pairing_bda = RawAddress::kEmpty;
+  }
 }
 
 /*******************************************************************************
