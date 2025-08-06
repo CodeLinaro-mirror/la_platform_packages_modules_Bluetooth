@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -20,6 +25,7 @@
 
 #include "a2dp_codec_api.h"
 #include "audio_aidl_interfaces.h"
+#include "client_interface_aidl.h"
 
 namespace bluetooth {
 namespace audio {
@@ -29,6 +35,8 @@ namespace codec {
 
 using ::aidl::android::hardware::bluetooth::audio::ChannelMode;
 using ::aidl::android::hardware::bluetooth::audio::CodecConfiguration;
+
+using ::bluetooth::audio::aidl::a2dp::BluetoothAudioClientInterface;
 
 extern const CodecConfiguration kInvalidCodecConfiguration;
 
@@ -43,7 +51,8 @@ bool A2dpLdacToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp
 bool A2dpOpusToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp_config);
 
 bool UpdateOffloadingCapabilities(
-        const std::vector<btav_a2dp_codec_config_t>& framework_preference);
+        const std::vector<btav_a2dp_codec_config_t>& framework_preference,
+        BluetoothAudioClientInterface* offloading_hal_interface);
 
 /***
  * Check whether this codec is supported by the audio HAL and is allowed to use

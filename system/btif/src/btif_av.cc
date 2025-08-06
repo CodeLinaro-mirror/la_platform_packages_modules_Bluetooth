@@ -14,10 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  *****************************************************************************************/
 
@@ -1141,6 +1141,13 @@ void BtifAvSource::Init(btav_source_callbacks_t* callbacks, int max_connected_au
   a2dp_offload_enabled_ = GetInterfaceToProfiles()->config->isA2DPOffloadEnabled();
   log::info("a2dp_offload.enable={}", a2dp_offload_enabled_);
 
+  bta_av_co_init(codec_priorities, supported_codecs);
+
+  if (!btif_a2dp_source_init()) {
+    complete_promise.set_value(BT_STATUS_FAIL);
+    return;
+  }
+
   if (a2dp_offload_enabled_) {
     tBTM_BLE_VSC_CB vsc_cb = {};
     BTM_BleGetVendorCapabilities(&vsc_cb);
@@ -1148,13 +1155,6 @@ void BtifAvSource::Init(btav_source_callbacks_t* callbacks, int max_connected_au
             vsc_cb.version_supported >= 0x0104 && vsc_cb.a2dp_offload_v2_support;
     bluetooth::audio::a2dp::update_codec_offloading_capabilities(offloading_preference,
                                                                  supports_a2dp_hw_offload_v2);
-  }
-
-  bta_av_co_init(codec_priorities, supported_codecs);
-
-  if (!btif_a2dp_source_init()) {
-    complete_promise.set_value(BT_STATUS_FAIL);
-    return;
   }
 
   enabled_ = true;

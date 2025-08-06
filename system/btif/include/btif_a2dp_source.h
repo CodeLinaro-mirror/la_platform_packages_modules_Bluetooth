@@ -15,6 +15,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
  ******************************************************************************/
 
 #ifndef BTIF_A2DP_SOURCE_H
@@ -121,5 +125,7 @@ void btif_a2dp_source_debug_dump(int fd);
 
 // Set the dynamic audio buffer size
 void btif_a2dp_source_set_dynamic_audio_buffer_size(uint8_t dynamic_audio_buffer_size);
+
+uint8_t btif_a2dp_source_get_stream_index(const RawAddress& peer_address = RawAddress::kEmpty);
 
 #endif /* BTIF_A2DP_SOURCE_H */

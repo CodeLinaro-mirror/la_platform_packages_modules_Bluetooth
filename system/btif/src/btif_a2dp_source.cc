@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -72,6 +77,7 @@
 using bluetooth::audio::a2dp::Status;
 using bluetooth::common::RepeatingTimer;
 using namespace bluetooth;
+using namespace bluetooth::audio::a2dp;
 
 /**
  * The typical runlevel of the tx queue size is ~1 buffer
@@ -247,9 +253,11 @@ static bluetooth::common::MessageLoopThread btif_a2dp_source_thread("bt_a2dp_sou
 static BtifA2dpSource btif_a2dp_source_cb;
 static uint8_t btif_a2dp_source_dynamic_audio_buffer_size = MAX_OUTPUT_A2DP_FRAME_QUEUE_SZ;
 
+static A2dpStreamCallbacks* getA2dpStreamCallback(const RawAddress& peer_address = RawAddress::kEmpty);
+
 static void btif_a2dp_source_init_delayed(void);
-static bool btif_a2dp_source_startup(void);
-static void btif_a2dp_source_startup_delayed(void);
+static bool btif_a2dp_source_startup(const RawAddress& peer_address = RawAddress::kEmpty);
+static void btif_a2dp_source_startup_delayed(StreamCallbacks const* stream_callbacks);
 static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_address,
                                                    std::promise<void> start_session_promise);
 static void btif_a2dp_source_audio_tx_start_event(void);
@@ -325,6 +333,101 @@ static void btif_a2dp_source_accumulate_stats(BtifMediaStats* src, BtifMediaStat
   src->Reset();
 }
 
+A2dpStreamCallbacks::A2dpStreamCallbacks() : active_peer_(RawAddress::kEmpty), mIndex(0) {}
+
+A2dpStreamCallbacks::A2dpStreamCallbacks(int index) : active_peer_(RawAddress::kEmpty), mIndex(index) {}
+
+int A2dpStreamCallbacks::GetIndex() const {
+  return mIndex;
+}
+
+void A2dpStreamCallbacks::SetActivePeer(const RawAddress& peer_address) {
+  active_peer_ = peer_address;
+  log::info("active peer address: {}, stream index: {}", peer_address.ToString().c_str(), mIndex);
+}
+
+const RawAddress& A2dpStreamCallbacks::GetActivePeer() const {
+  return active_peer_;
+}
+
+Status A2dpStreamCallbacks::StartStream(bool low_latency) const {
+  if (!bluetooth::headset::IsCallIdle()) {
+    log::error("unable to start stream: call is active");
+    return Status::FAILURE;
+  }
+
+  if (hci::IsoManager::GetInstance()->GetNumberOfActiveIso() > 0) {
+    log::error("unable to start stream: LEA is active");
+    return Status::FAILURE;
+  }
+
+  if (btif_av_stream_started_ready(active_peer_, A2dpType::kSource)) {
+    log::verbose("stream is already started");
+    return Status::SUCCESS;
+  }
+
+  if (!btif_av_stream_ready(active_peer_, A2dpType::kSource)) {
+    log::error("unable to start stream: not ready");
+    return Status::FAILURE;
+  }
+
+  invoke_switch_codec_cb(active_peer_, low_latency);
+  btif_av_stream_start_with_latency(active_peer_, low_latency);
+  return Status::PENDING;
+}
+
+Status A2dpStreamCallbacks::SuspendStream() const {
+  if (!btif_av_stream_started_ready(active_peer_, A2dpType::kSource)) {
+    btif_av_clear_remote_suspend_flag(active_peer_, A2dpType::kSource);
+    log::verbose("stream is already suspended");
+    return Status::SUCCESS;
+  }
+
+  btif_av_stream_suspend(active_peer_);
+  return Status::PENDING;
+}
+
+Status A2dpStreamCallbacks::StopStream() const {
+  if (!btif_av_stream_started_ready(active_peer_, A2dpType::kSource)) {
+    btif_av_clear_remote_suspend_flag(active_peer_, A2dpType::kSource);
+    log::verbose("stream is already stopped");
+    return Status::SUCCESS;
+  }
+
+  btif_av_stream_stop(active_peer_);
+  return Status::PENDING;
+}
+
+Status A2dpStreamCallbacks::SetLatencyMode(bool low_latency) const {
+  btif_av_set_low_latency(active_peer_, low_latency);
+  return Status::SUCCESS;
+}
+
+// TODO: Replace hardcoded initialization with dynamic construction based on MAX_A2DP_CONN
+static A2dpStreamCallbacks a2dp_stream_callbacks[2] = {
+  A2dpStreamCallbacks(0),
+  A2dpStreamCallbacks(1),
+};
+
+static A2dpStreamCallbacks* getA2dpStreamCallback(const RawAddress& peer_address) {
+  for(int i = 0; i < 2; i++) {
+    const RawAddress& active_peer = a2dp_stream_callbacks[i].GetActivePeer();
+
+    // If peer_address is empty, return the first available (unused) callback
+    if (peer_address.IsEmpty() && active_peer.IsEmpty()) {
+      return &(a2dp_stream_callbacks[i]);
+    }
+
+    // If peer_address is not empty, try to find a matching callback
+    if (!peer_address.IsEmpty() && active_peer == peer_address) {
+      return &(a2dp_stream_callbacks[i]);
+    }
+  }
+
+  // No matching or available callback found
+  return nullptr;
+}
+
 bool btif_a2dp_source_init(void) {
   log::info("");
 
@@ -335,88 +438,20 @@ bool btif_a2dp_source_init(void) {
   return true;
 }
 
-class A2dpStreamCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
-  Status StartStream(bool low_latency) const override {
-    // Check if a phone call is currently active.
-    if (!bluetooth::headset::IsCallIdle()) {
-      log::error("unable to start stream: call is active");
-      return Status::FAILURE;
-    }
-
-    // Check if LE Audio is currently active.
-    if (hci::IsoManager::GetInstance()->GetNumberOfActiveIso() > 0) {
-      log::error("unable to start stream: LEA is active");
-      return Status::FAILURE;
-    }
-
-    // Check if the stream has already been started.
-    if (btif_av_stream_started_ready(A2dpType::kSource)) {
-      log::verbose("stream is already started");
-      return Status::SUCCESS;
-    }
-
-    // Check if the stream is ready to start.
-    if (!btif_av_stream_ready(A2dpType::kSource)) {
-      log::error("unable to start stream: not ready");
-      return Status::FAILURE;
-    }
-
-    // Check if codec needs to be switched prior to stream start.
-    invoke_switch_codec_cb(low_latency);
-
-    // Post start event. The start request is pending, completion will be
-    // notified to bluetooth::audio::a2dp::ack_stream_started.
-    btif_av_stream_start_with_latency(low_latency);
-    return Status::PENDING;
-  }
-
-  Status SuspendStream() const override {
-    // Check if the stream is already suspended.
-    if (!btif_av_stream_started_ready(A2dpType::kSource)) {
-      btif_av_clear_remote_suspend_flag(A2dpType::kSource);
-      log::verbose("stream is already suspended");
-      return Status::SUCCESS;
-    }
-
-    // Post suspend event. The suspend request is pending, completion will
-    // be notified to bluetooth::audio::a2dp::ack_stream_suspended.
-    btif_av_stream_suspend();
-    return Status::PENDING;
-  }
-
-  Status StopStream() const override {
-    // Check if the stream is already suspended.
-    if (!btif_av_stream_started_ready(A2dpType::kSource)) {
-      btif_av_clear_remote_suspend_flag(A2dpType::kSource);
-      log::verbose("stream is already stopped");
-      return Status::SUCCESS;
-    }
-
-    // Post stop event. The stop request is pending, but completion is not
-    // notified to the HAL.
-    btif_av_stream_stop(RawAddress::kEmpty);
-    return Status::PENDING;
-  }
-
-  Status SetLatencyMode(bool low_latency) const override {
-    btif_av_set_low_latency(low_latency);
-    return Status::SUCCESS;
-  }
-};
-
-static const A2dpStreamCallbacks a2dp_stream_callbacks;
-
 static void btif_a2dp_source_init_delayed(void) {
   log::info("");
   // When codec extensibility is enabled in the audio HAL interface,
   // the provider needs to be initialized earlier in order to ensure
   // get_a2dp_configuration and parse_a2dp_configuration can be
   // invoked before the stream is started.
-  bluetooth::audio::a2dp::init(get_main_thread(), &a2dp_stream_callbacks,
-                               btif_av_is_a2dp_offload_enabled());
+  if (btif_av_is_a2dp_offload_enabled()) {
+    for (int i = 0; i < bluetooth::audio::a2dp::MAX_A2DP_CONN; i++)
+      bluetooth::audio::a2dp::init(get_main_thread(), &a2dp_stream_callbacks[i],
+                                   true, i);
+  }
 }
 
-static bool btif_a2dp_source_startup(void) {
+static bool btif_a2dp_source_startup(const RawAddress& peer_address) {
   log::info("state={}", btif_a2dp_source_cb.StateStr());
 
   if (btif_a2dp_source_cb.State() != BtifA2dpSource::kStateOff) {
@@ -428,20 +463,27 @@ static bool btif_a2dp_source_startup(void) {
   btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateStartingUp);
   btif_a2dp_source_cb.tx_audio_queue = fixed_queue_new(SIZE_MAX);
 
+  A2dpStreamCallbacks *a2dp_stream_callback = getA2dpStreamCallback(RawAddress::kEmpty);
+  if (a2dp_stream_callback == nullptr) {
+    log::error("No available source for new active A2DP streaming!");
+    return false;
+  }
+  a2dp_stream_callback->SetActivePeer(peer_address);
+
   // Schedule the rest of the operations
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_startup_delayed));
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_startup_delayed, a2dp_stream_callback));
 
   return true;
 }
 
-static void btif_a2dp_source_startup_delayed() {
+static void btif_a2dp_source_startup_delayed(StreamCallbacks const* stream_callbacks) {
   log::info("state={}", btif_a2dp_source_cb.StateStr());
   if (!btif_a2dp_source_thread.EnableRealTimeScheduling()) {
 #if defined(__ANDROID__)
     log::fatal("unable to enable real time scheduling");
 #endif
   }
-  if (!bluetooth::audio::a2dp::init(get_main_thread(), &a2dp_stream_callbacks,
+  if (!bluetooth::audio::a2dp::init(get_main_thread(), stream_callbacks,
                                     btif_av_is_a2dp_offload_enabled())) {
     log::warn("Failed to setup the bluetooth audio HAL");
   }
@@ -1287,6 +1329,16 @@ static void btif_a2dp_source_update_metrics(void) {
 
 void btif_a2dp_source_set_dynamic_audio_buffer_size(uint8_t dynamic_audio_buffer_size) {
   btif_a2dp_source_dynamic_audio_buffer_size = dynamic_audio_buffer_size;
+}
+
+uint8_t btif_a2dp_source_get_stream_index(const RawAddress& peer_address) {
+    A2dpStreamCallbacks* stream_callbacks = getA2dpStreamCallback(peer_address);
+    if (stream_callbacks == nullptr) {
+      log::error("unable to find streamCallbacks for peer address {}", peer_address.ToString().c_str());
+      return INVALID_A2DP_INDEX;
+    }
+
+    return stream_callbacks->GetIndex();
 }
 
 static void btm_read_rssi_cb(void* data) {
