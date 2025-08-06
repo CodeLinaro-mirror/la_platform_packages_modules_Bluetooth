@@ -15,6 +15,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
  ******************************************************************************/
 
 #ifndef BTIF_A2DP_SOURCE_H
@@ -33,7 +37,10 @@
 // Initialize the A2DP Source module.
 // This function should be called by the BTIF state machine prior to using the
 // module.
-bool btif_a2dp_source_init(void);
+// |max_connected_audio_devices| is the number of audio devices the framework
+// allows to be connected at once; it bounds how many of the compile-time
+// MAX_A2DP_CONN stream slots may actually be handed out.
+bool btif_a2dp_source_init(int max_connected_audio_devices);
 
 // Start the A2DP Source session.
 // This function should be called by the BTIF state machine after
@@ -122,5 +129,7 @@ void btif_a2dp_source_debug_dump(int fd);
 
 // Set the dynamic audio buffer size
 void btif_a2dp_source_set_dynamic_audio_buffer_size(uint8_t dynamic_audio_buffer_size);
+
+uint8_t btif_a2dp_source_get_stream_index(const RawAddress& peer_address = RawAddress::kEmpty);
 
 #endif /* BTIF_A2DP_SOURCE_H */
