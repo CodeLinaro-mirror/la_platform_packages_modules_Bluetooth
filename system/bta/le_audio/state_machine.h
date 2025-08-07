@@ -41,6 +41,7 @@ class LeAudioGroupStateMachine {
     virtual void OnUpdatedCisConfiguration(int group_id, uint8_t direction) = 0;
     virtual void OnDeviceAutonomousStateTransitionTimeout(
         LeAudioDevice* leAudioDevice) = 0;
+    virtual void OnSetSenderStateRelease(void) = 0;
   };
 
   virtual ~LeAudioGroupStateMachine() = default;

@@ -2354,7 +2354,11 @@ public class HeadsetService extends ProfileService {
                    }
                 } else {
                   if (isAtLeastU()) {
-                      mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                      BluetoothDevice btDevice = mAdapterService.getActiveDeviceManager()
+                                                             .fetchLeAudioActiveDevice();
+                      if (btDevice == null) {
+                         mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                      }
                   }
                 }
                 //Adding the wait mechanism Logic.

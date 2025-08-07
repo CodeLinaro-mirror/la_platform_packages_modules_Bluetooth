@@ -71,7 +71,6 @@ class TimestampedStringCircularBuffer
 /* Define the Device Management control structure
  */
 typedef struct tBTM_DEVCB {
-  alarm_t* read_local_name_timer; /* Read local name timer */
   tBTM_CMPL_CB* p_rln_cmpl_cb;    /* Callback function to be called when  */
                                   /* read local name function complete    */
 
@@ -107,7 +106,6 @@ typedef struct tBTM_DEVCB {
   RawAddress read_tx_pwr_addr; /* read TX power target address     */
 
   void Init() {
-    read_local_name_timer = alarm_new("btm.read_local_name_timer");
     read_rssi_timer = alarm_new("btm.read_rssi_timer");
     read_failed_contact_counter_timer =
         alarm_new("btm.read_failed_contact_counter_timer");
@@ -118,7 +116,6 @@ typedef struct tBTM_DEVCB {
   }
 
   void Free() {
-    alarm_free(read_local_name_timer);
     alarm_free(read_rssi_timer);
     alarm_free(read_failed_contact_counter_timer);
     alarm_free(read_automatic_flush_timeout_timer);
