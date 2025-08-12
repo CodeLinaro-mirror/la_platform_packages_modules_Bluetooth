@@ -144,7 +144,7 @@ class A2dpServiceBinder extends IBluetoothA2dp.Stub implements IProfileServiceBi
         }
 
         if (device == null) {
-            return service.removeActiveDevice(false);
+            return service.removeActiveDevice(device, false);
         } else {
             return service.setActiveDevice(device);
         }

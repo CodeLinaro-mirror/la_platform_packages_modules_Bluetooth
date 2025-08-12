@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /******************************************************************************
@@ -41,6 +46,7 @@
 #include "a2dp_api.h"
 #include "a2dp_codec_api.h"
 #include "a2dp_constants.h"
+#include "btif_a2dp_source.h"
 #include "avdt_api.h"
 #include "hardware/bt_av.h"
 #include "internal_include/bt_trace.h"
@@ -123,6 +129,7 @@ static const tA2DP_AAC_CIE a2dp_aac_default_config = {
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16    // bits_per_sample
 };
 
+/*
 static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aac = {
         a2dp_aac_encoder_init,
         a2dp_aac_encoder_cleanup,
@@ -133,6 +140,7 @@ static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aac = {
         a2dp_aac_send_frames,
         nullptr  // set_transmit_queue_length
 };
+*/
 
 static const tA2DP_DECODER_INTERFACE a2dp_decoder_interface_aac = {
         a2dp_aac_decoder_init,
@@ -646,12 +654,24 @@ std::string A2DP_CodecInfoStringAac(const uint8_t* p_codec_info) {
   return res.str();
 }
 
+/*
 const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterfaceAac(const uint8_t* p_codec_info) {
   if (!A2DP_IsCodecValidAac(p_codec_info)) {
     return NULL;
   }
+   return &a2dp_encoder_interface_aac;
+}*/
 
-  return &a2dp_encoder_interface_aac;
+A2dpEncoderInterface* A2DP_GetEncoderInterfaceAac(
+    const RawAddress& peer_address,
+    const uint8_t* /*p_codec_info*/) {
+  log::debug("peer_address:{}",
+            peer_address.ToString().c_str());
+
+  A2dpEncoderInterface* encoder =
+     (A2dpEncoderInterface*)new A2dpAacEncoder(peer_address);
+  setA2dpSourceEncoders(peer_address, encoder);
+  return encoder;
 }
 
 const tA2DP_DECODER_INTERFACE* A2DP_GetDecoderInterfaceAac(const uint8_t* p_codec_info) {

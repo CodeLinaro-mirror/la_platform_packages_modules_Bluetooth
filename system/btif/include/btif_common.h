@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #ifndef BTIF_COMMON_H
@@ -161,7 +166,7 @@ void invoke_link_quality_report_cb(uint64_t timestamp, int report_id, int rssi, 
                                    int negative_acknowledgement_count);
 
 void invoke_switch_buffer_size_cb(bool is_low_latency_buffer_size);
-void invoke_switch_codec_cb(bool is_low_latency_buffer_size);
+void invoke_switch_codec_cb(RawAddress bd_addr, bool is_low_latency_buffer_size);
 void invoke_key_missing_cb(RawAddress bd_addr);
 void invoke_encryption_change_cb(bt_encryption_change_evt encryption_change);
 #endif /* BTIF_COMMON_H */

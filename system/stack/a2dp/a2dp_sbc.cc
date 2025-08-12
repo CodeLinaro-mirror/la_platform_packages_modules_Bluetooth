@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -42,6 +47,7 @@
 #include "a2dp_sbc_decoder.h"
 #include "a2dp_sbc_encoder.h"
 #include "avdt_api.h"
+#include "btif_a2dp_source.h"
 #include "embdrv/sbc/encoder/include/sbc_encoder.h"
 #include "hardware/bt_av.h"
 #include "internal_include/bt_trace.h"
@@ -109,7 +115,7 @@ const tA2DP_SBC_CIE a2dp_sbc_default_config = {
         A2DP_SBC_MAX_BITPOOL,              /* max_bitpool */
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16 /* bits_per_sample */
 };
-
+/*
 static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_sbc = {
         a2dp_sbc_encoder_init,
         a2dp_sbc_encoder_cleanup,
@@ -119,7 +125,7 @@ static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_sbc = {
         a2dp_sbc_get_effective_frame_size,
         a2dp_sbc_send_frames,
         nullptr  // set_transmit_queue_length
-};
+};*/
 
 static const tA2DP_DECODER_INTERFACE a2dp_decoder_interface_sbc = {
         a2dp_sbc_decoder_init,
@@ -186,6 +192,8 @@ static tA2DP_STATUS A2DP_ParseInfoSbc(tA2DP_SBC_CIE* p_ie, const uint8_t* p_code
   // Check the codec capability length
   losc = *p_codec_info++;
   if (losc != A2DP_SBC_INFO_LEN) {
+    log::error("losc is {}, not equal {}",
+              losc, A2DP_SBC_INFO_LEN);
     return AVDTP_UNSUPPORTED_CONFIGURATION;
   }
 
@@ -193,6 +201,9 @@ static tA2DP_STATUS A2DP_ParseInfoSbc(tA2DP_SBC_CIE* p_ie, const uint8_t* p_code
   codec_type = static_cast<tA2DP_CODEC_TYPE>(*p_codec_info++);
   /* Check the Media Type and Media Codec Type */
   if (media_type != AVDT_MEDIA_TYPE_AUDIO || codec_type != A2DP_MEDIA_CT_SBC) {
+    log::error("media_type is {}, expect {}, codec_type is {} expect {}",
+              media_type, AVDT_MEDIA_TYPE_AUDIO, codec_type,
+              A2DP_MEDIA_CT_SBC);
     return AVDTP_UNSUPPORTED_CONFIGURATION;
   }
 
@@ -626,7 +637,16 @@ int A2DP_GetMaxBitpoolSbc(const uint8_t* p_codec_info) {
   return sbc_cie.max_bitpool;
 }
 
-uint32_t A2DP_GetBitrateSbc() { return a2dp_sbc_get_bitrate(); }
+uint32_t A2DP_GetBitrateSbc(const RawAddress& peer_address) {
+  A2dpSbcEncoder* encoder = (A2dpSbcEncoder*)findA2dpSourceEncoder(peer_address);
+  if (encoder == nullptr) {
+    log::error("failed to find encoder for peer_address:{}",
+              peer_address.ToString().c_str());
+    return 0;
+  }
+  return encoder->get_bitrate();
+}
+
 int A2DP_GetSinkTrackChannelTypeSbc(const uint8_t* p_codec_info) {
   tA2DP_SBC_CIE sbc_cie;
 
@@ -738,13 +758,19 @@ std::string A2DP_CodecInfoStringSbc(const uint8_t* p_codec_info) {
   return res.str();
 }
 
-const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterfaceSbc(
+A2dpEncoderInterface* A2DP_GetEncoderInterfaceSbc(
+    const RawAddress& peer_address,
     const uint8_t* p_codec_info) {
   if (!A2DP_IsCodecValidSbc(p_codec_info)) {
     return NULL;
   }
 
-  return &a2dp_encoder_interface_sbc;
+  log::debug("peer_address:{}", peer_address.ToString().c_str());
+
+  A2dpEncoderInterface* encoder =
+     (A2dpEncoderInterface*)new A2dpSbcEncoder(peer_address);
+  setA2dpSourceEncoders(peer_address, encoder);
+  return encoder;
 }
 
 const tA2DP_DECODER_INTERFACE* A2DP_GetDecoderInterfaceSbc(

@@ -195,6 +195,9 @@ final class A2dpStateMachine extends StateMachine {
             }
 
             logFailureIfNeeded();
+            if (mA2dpAudioZone != null) {
+                mA2dpAudioZone.clearMediaPlayer();
+            }
         }
 
         @Override
@@ -547,8 +550,7 @@ final class A2dpStateMachine extends StateMachine {
             // Upon connected, the audio starts out as stopped
             broadcastAudioState(BluetoothA2dp.STATE_NOT_PLAYING, BluetoothA2dp.STATE_PLAYING);
             if (mA2dpAudioZone != null) {
-                setMediaPlayer();
-                mA2dpAudioZone.notifyA2dpStatus(true);
+                mA2dpService.setMediaPlayer(mDevice, mA2dpService.getMediaPlayer(mDevice));
                 // Always notify app to set media player if needed
                 broadcastSetMediaPlayerRequest();
             }
@@ -857,7 +859,7 @@ final class A2dpStateMachine extends StateMachine {
     public void clearMediaPlayer() {
         sendMessage(CLEAR_MEDIA_PLAYER);
     }
-
+/*
     private void setMediaPlayer() {
         String mediaPlayer = mA2dpService.getMediaPlayer(mDevice);
         int audioZoneIndex = mA2dpService.getAudioZoneIndex(mDevice);
@@ -867,7 +869,7 @@ final class A2dpStateMachine extends StateMachine {
             setMediaPlayer(mediaPlayer, audioZoneIndex);
         }
     }
-
+*/
     private void processClearMediaPlayer() {
         if (mA2dpAudioZone != null) {
             Log.i(TAG, "clear media player");

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /******************************************************************************
@@ -79,7 +84,7 @@ static const tA2DP_APTX_CIE a2dp_aptx_default_config = {
         A2DP_APTX_FUTURE_2,                /* future2 */
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16 /* bits_per_sample */
 };
-
+/*
 static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aptx = {
         a2dp_vendor_aptx_encoder_init,
         a2dp_vendor_aptx_encoder_cleanup,
@@ -89,7 +94,7 @@ static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aptx = {
         a2dp_vendor_aptx_get_effective_frame_size,
         a2dp_vendor_aptx_send_frames,
         nullptr  // set_transmit_queue_length
-};
+};*/
 
 // Builds the aptX Media Codec Capabilities byte sequence beginning from the
 // LOSC octet. |media_type| is the media type |AVDT_MEDIA_TYPE_*|.
@@ -237,8 +242,9 @@ bool A2DP_VendorCodecEqualsAptx(const uint8_t* p_codec_info_a, const uint8_t* p_
          (aptx_cie_a.channelMode == aptx_cie_b.channelMode);
 }
 
-int A2DP_VendorGetBitRateAptx(const uint8_t* p_codec_info) {
-  A2dpCodecConfig* CodecConfig = bta_av_get_a2dp_current_codec();
+int A2DP_VendorGetBitRateAptx(const RawAddress& peer_address,
+                              const uint8_t* p_codec_info) {
+  A2dpCodecConfig* CodecConfig = bta_av_get_a2dp_peer_current_codec(peer_address);
   tA2DP_BITS_PER_SAMPLE bits_per_sample = CodecConfig->getAudioBitsPerSample();
   uint16_t samplerate = A2DP_GetTrackSampleRate(p_codec_info);
   return (samplerate * bits_per_sample * 2) / 4;
@@ -342,13 +348,18 @@ std::string A2DP_VendorCodecInfoStringAptx(const uint8_t* p_codec_info) {
   return res.str();
 }
 
-const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptx(
+A2dpEncoderInterface* A2DP_VendorGetEncoderInterfaceAptx(
+    const RawAddress& peer_address,
     const uint8_t* p_codec_info) {
   if (!A2DP_IsCodecValidAptx(p_codec_info)) {
-    return NULL;
+     return NULL;
   }
+  log::debug("peer_address:{}", peer_address.ToString().c_str());
 
-  return &a2dp_encoder_interface_aptx;
+  A2dpEncoderInterface* encoder =
+    (A2dpEncoderInterface*)new A2dpAptxEncoder(peer_address);
+  setA2dpSourceEncoders(peer_address, encoder);
+  return encoder;
 }
 
 bool A2DP_VendorAdjustCodecAptx(uint8_t* p_codec_info) {

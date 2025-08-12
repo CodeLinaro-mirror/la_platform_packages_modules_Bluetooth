@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /******************************************************************************
@@ -91,6 +95,7 @@ static const tA2DP_LDAC_CIE a2dp_ldac_default_config = {
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_32  // bits_per_sample
 };
 
+/*
 static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_ldac = {
         a2dp_vendor_ldac_encoder_init,
         a2dp_vendor_ldac_encoder_cleanup,
@@ -100,6 +105,7 @@ static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_ldac = {
         a2dp_vendor_ldac_get_effective_frame_size,
         a2dp_vendor_ldac_send_frames,
         a2dp_vendor_ldac_set_transmit_queue_length};
+*/
 
 // Builds the LDAC Media Codec Capabilities byte sequence beginning from the
 // LOSC octet. |media_type| is the media type |AVDT_MEDIA_TYPE_*|.
@@ -501,7 +507,7 @@ std::string A2DP_VendorCodecInfoStringLdac(const uint8_t* p_codec_info) {
 
   return res.str();
 }
-
+/*
 const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceLdac(
     const uint8_t* p_codec_info) {
   if (!A2DP_IsCodecValidLdac(p_codec_info)) {
@@ -510,6 +516,7 @@ const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceLdac(
 
   return &a2dp_encoder_interface_ldac;
 }
+*/
 
 bool A2DP_VendorAdjustCodecLdac(uint8_t* p_codec_info) {
   tA2DP_LDAC_CIE cfg_cie;

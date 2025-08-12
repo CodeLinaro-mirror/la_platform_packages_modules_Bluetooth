@@ -114,6 +114,8 @@ public final class A2dpAudioZone {
         return mapAudioZone(zoneIndex);
     }
     public static boolean validMediaPlayer(Context context, String mediaPlayer) {
+        if (mediaPlayer.isEmpty())
+            return false;
         return getApplicationInfo(context, mediaPlayer) != null;
     }
     private static ApplicationInfo getApplicationInfo(Context context, String mediaPlayer) {
@@ -293,6 +295,8 @@ public final class A2dpAudioZone {
             if (mMediaPlayerList.containsKey(device)) {
                 MediaPlayerInfo mpInfo = mMediaPlayerList.get(device);
                 mpInfo.setMapped();
+            } else {
+                Log.w(TAG, "No MediaPlayerInfo for " + device);
             }
         }
         boolean isMediaPlayerMapped(BluetoothDevice device, String mediaPlayer) {
