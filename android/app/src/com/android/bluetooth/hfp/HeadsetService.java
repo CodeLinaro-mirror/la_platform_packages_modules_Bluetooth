@@ -2333,7 +2333,7 @@ public class HeadsetService extends ProfileService {
             mSystemInterface.getHeadsetPhoneState().setNumHeldCall(numHeld);
             mSystemInterface.getHeadsetPhoneState().setCallState(callState);
             // Suspend A2DP when call about is about to become active
-            if (mActiveDevice != null && callState != HeadsetHalConstants.CALL_STATE_DISCONNECTED
+            if (callState != HeadsetHalConstants.CALL_STATE_DISCONNECTED
                 && !mSystemInterface.isCallIdle() && isCallIdleBefore
                 && !Utils.isScoManagedByAudioEnabled()) {
                 Log.i(TAG, "Before A2dp suspension");
@@ -2354,7 +2354,11 @@ public class HeadsetService extends ProfileService {
                    }
                 } else {
                   if (isAtLeastU()) {
-                      mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                      BluetoothDevice btDevice = mAdapterService.getActiveDeviceManager()
+                                                             .fetchLeAudioActiveDevice();
+                      if (btDevice == null) {
+                         mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                      }
                   }
                 }
                 //Adding the wait mechanism Logic.

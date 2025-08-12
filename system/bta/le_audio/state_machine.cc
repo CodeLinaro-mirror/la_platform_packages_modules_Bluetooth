@@ -92,8 +92,6 @@
  */
 // clang-format on
 
-constexpr uint16_t  HCI_VS_QBCE_OCF                     = 0xFC51;
-
 constexpr uint8_t  LTV_TYPE_VS_METADATA                 = 0xFF;
 constexpr uint8_t  LTV_TYPE_VS_METADATA_FE              = 0xFE;
 
@@ -1741,7 +1739,7 @@ class LeAudioGroupStateMachineImpl : public LeAudioGroupStateMachine {
       return max_latency_ms ==
              bluetooth::le_audio::types::kMaxTransportLatencyMin;
     }
-    return ((1000 * max_latency_ms) >= sdu_interval_us);
+    return true;//((1000 * max_latency_ms) >= sdu_interval_us);
   }
 
   void ApplyDsaParams(LeAudioDeviceGroup* group,
@@ -3809,6 +3807,7 @@ class LeAudioGroupStateMachineImpl : public LeAudioGroupStateMachine {
       log::error(", invalid state transition, from: {} , to: {}",
                  ToString(group->GetState()),
                  ToString(group->GetTargetState()));
+      state_machine_callbacks_->OnSetSenderStateRelease();
       StopStream(group);
     }
   }

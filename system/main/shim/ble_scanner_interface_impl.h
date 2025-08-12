@@ -23,6 +23,7 @@
  */
 #pragma once
 
+#include <mutex>
 #include <queue>
 #include <set>
 #include <vector>
@@ -185,6 +186,7 @@ class BleScannerInterfaceImpl : public ::BleScannerInterface,
     bool find(const RawAddress& p_bda);
 
    private:
+    mutable std::recursive_mutex mutex_;
     // all access to this variable should be done on the jni thread
     std::set<RawAddress> remote_bdaddr_cache_;
     std::queue<RawAddress> remote_bdaddr_cache_ordered_;

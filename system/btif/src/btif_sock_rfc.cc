@@ -763,8 +763,9 @@ static void jv_dm_cback(tBTA_JV_EVT event, tBTA_JV* p_data, uint32_t id) {
       }
       if (p_data->scn == 0) {
         log::error(
-            "Unable to allocate scn: all resources exhausted. slot found: {}",
-            fmt::ptr(rs));
+            "Unable to allocate scn: all resources exhausted. slot found: {} scn {}",
+            fmt::ptr(rs), rs->scn);
+        rs->scn = 0;
         cleanup_rfc_slot(rs);
         break;
       }
