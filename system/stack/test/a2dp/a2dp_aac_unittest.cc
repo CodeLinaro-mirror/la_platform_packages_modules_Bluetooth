@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "stack/include/a2dp_aac.h"
@@ -65,8 +70,8 @@ class A2dpAacTest : public ::testing::Test {
 protected:
   void SetUp() override {
     SetCodecConfig();
-    encoder_iface_ = const_cast<tA2DP_ENCODER_INTERFACE*>(
-            A2DP_GetEncoderInterfaceAac(kCodecInfoAacCapability));
+    encoder_iface_ = const_cast<A2dpEncoderInterface*>(
+            A2DP_GetEncoderInterfaceAac(RawAddress::kEmpty, kCodecInfoAacCapability));
     ASSERT_NE(encoder_iface_, nullptr);
     decoder_iface_ = const_cast<tA2DP_DECODER_INTERFACE*>(
             A2DP_GetDecoderInterfaceAac(kCodecInfoAacCapability));
@@ -80,7 +85,6 @@ protected:
     if (encoder_iface_ != nullptr) {
       encoder_iface_->encoder_cleanup();
     }
-    A2DP_UnloadEncoderAac();
     if (decoder_iface_ != nullptr) {
       decoder_iface_->decoder_cleanup();
     }
@@ -109,7 +113,7 @@ protected:
       ASSERT_EQ(codec_info_result[i], kCodecInfoAacCapability[i]);
     }
     ASSERT_TRUE(
-            a2dp_codecs_->setCodecConfig(kCodecInfoAacCapability, true, codec_info_result, true));
+            a2dp_codecs_->setCodecConfig(RawAddress::kEmpty, kCodecInfoAacCapability, true, codec_info_result, true));
     source_codec_config_ = a2dp_codecs_->getCurrentCodecConfig();
   }
 
@@ -135,7 +139,7 @@ protected:
   A2dpCodecConfig* sink_codec_config_;
   A2dpCodecConfig* source_codec_config_;
   A2dpCodecs* a2dp_codecs_;
-  tA2DP_ENCODER_INTERFACE* encoder_iface_;
+  A2dpEncoderInterface* encoder_iface_;
   tA2DP_DECODER_INTERFACE* decoder_iface_;
 };
 
@@ -221,7 +225,7 @@ TEST_F(A2dpAacTest, decoded_data_cb_invoked) {
 
 TEST_F(A2dpAacTest, set_source_codec_config_works) {
   uint8_t codec_info_result[AVDT_CODEC_SIZE];
-  ASSERT_TRUE(a2dp_codecs_->setCodecConfig(kCodecInfoAacCapability, true, codec_info_result, true));
+  ASSERT_TRUE(a2dp_codecs_->setCodecConfig(RawAddress::kEmpty, kCodecInfoAacCapability, true, codec_info_result, true));
   ASSERT_TRUE(A2DP_CodecTypeEqualsAac(codec_info_result, kCodecInfoAacCapability));
   ASSERT_TRUE(A2DP_CodecEqualsAac(codec_info_result, kCodecInfoAacCapability));
   auto* codec_config = a2dp_codecs_->findSourceCodecConfig(kCodecInfoAacCapability);
@@ -243,7 +247,7 @@ TEST_F(A2dpAacTest, effective_mtu_when_peer_supports_3mbps) {
     return false;
   };
   InitializeEncoder(true, read_cb, enqueue_cb);
-  ASSERT_EQ(a2dp_aac_get_effective_frame_size(), kPeerMtu);
+  ASSERT_EQ(encoder_iface_->get_effective_frame_size(), kPeerMtu);
 }
 
 TEST_F(A2dpAacTest, effective_mtu_when_peer_does_not_support_3mbps) {
@@ -256,7 +260,7 @@ TEST_F(A2dpAacTest, effective_mtu_when_peer_does_not_support_3mbps) {
     return false;
   };
   InitializeEncoder(false, read_cb, enqueue_cb);
-  ASSERT_EQ(a2dp_aac_get_effective_frame_size(), 663 /* MAX_2MBPS_AVDTP_MTU */);
+  ASSERT_EQ(encoder_iface_->get_effective_frame_size(), 663 /* MAX_2MBPS_AVDTP_MTU */);
 }
 
 TEST_F(A2dpAacTest, codec_info_string) {

@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <cstring>
 #include <future>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -203,7 +204,7 @@ public:
     fixed_queue_free(tx_audio_queue, nullptr);
     tx_audio_queue = nullptr;
     tx_flush = false;
-    if (btif_a2dp_source_is_streaming()) {
+    if (media_alarm.IsScheduled()) {
       media_alarm.CancelAndWait();
       wakelock_release();
     }
@@ -233,8 +234,11 @@ public:
   fixed_queue_t* tx_audio_queue;
   bool tx_flush; /* Discards any outgoing data when true */
   bool sw_audio_is_encoding;
+  // Fires on the shared btif_a2dp_source_thread, not on a per-peer thread. See
+  // the note on btif_a2dp_source_thread: with two peers streaming, both encode
+  // ticks are serialized on that one thread.
   RepeatingTimer media_alarm;
-  const tA2DP_ENCODER_INTERFACE* encoder_interface;
+  A2dpEncoderInterface* encoder_interface;
   uint64_t encoder_interval_ms; /* Local copy of the encoder interval */
   BtifMediaStats stats;
   BtifMediaStats accumulated_stats;
@@ -259,8 +263,29 @@ private:
 /// SchedulingStats and reported by btif_a2dp_source_debug_dump().
 static bluetooth::common::MessageLoopThread btif_a2dp_source_thread(
         "bt_a2dp_source_worker_thread", bluetooth::os::Thread::Priority::REAL_TIME);
+static std::map<RawAddress, BtifA2dpSource*> a2dp_source_cb;
+static std::map<RawAddress, A2dpEncoderInterface*> btif_a2dp_source_encoders;
 
-static BtifA2dpSource btif_a2dp_source_cb;
+/// Guards the per-peer containers above and the stream slot array.
+///
+/// With more than one A2DP source peer these are mutated from several threads:
+/// the BTIF/main thread creates and destroys the control blocks on
+/// startup/shutdown, the A2DP source worker thread walks them on every encode
+/// tick, and the audio HAL binder threads reach them through
+/// btif_a2dp_source_get_stream_index(). Without this lock a startup for one
+/// peer can rehash the map while the worker thread is iterating it for the
+/// other peer.
+///
+/// The lock protects container structure only; the BtifA2dpSource pointers it
+/// hands out are used after the lock is dropped, exactly as BtifAvSource does
+/// with BtifAvPeer. That is safe against map mutation, not against a peer being
+/// torn down concurrently -- the latter is prevented by the state machine
+/// serializing startup/shutdown for a given peer on the main thread.
+///
+/// Recursive because findAndCreateA2dpSourceCb() and clearA2dpSourceCb() call
+/// findA2dpSourceCb() while already holding it.
+static std::recursive_mutex a2dp_source_peers_lock_;
+
 static uint8_t btif_a2dp_source_dynamic_audio_buffer_size = MAX_OUTPUT_A2DP_FRAME_QUEUE_SZ;
 
 /// Number of A2DP source stream slots that may actually be handed out. Set from
@@ -278,28 +303,69 @@ static A2dpStreamCallbacks* reserveA2dpStreamCallback(const RawAddress& peer_add
 
 static void btif_a2dp_source_init_delayed(void);
 static bool btif_a2dp_source_startup(const RawAddress& peer_address = RawAddress::kEmpty);
-static void btif_a2dp_source_startup_delayed(StreamCallbacks const* stream_callbacks);
+static void btif_a2dp_source_startup_delayed(const RawAddress& peer_address = RawAddress::kEmpty);
 static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_address,
                                                    std::promise<void> start_session_promise);
-static void btif_a2dp_source_audio_tx_start_event(void);
-static void btif_a2dp_source_audio_tx_stop_event(void);
-static void btif_a2dp_source_audio_tx_flush_event(void);
-static void btif_a2dp_source_cleanup_codec_delayed();
+static void btif_a2dp_source_audio_tx_start_event(const RawAddress& peer_address);
+static void btif_a2dp_source_audio_tx_stop_event(const RawAddress& peer_address);
+static void btif_a2dp_source_audio_tx_flush_event(const RawAddress& peer_address);
+static void btif_a2dp_source_cleanup_codec_delayed(const RawAddress& peer_addr);
+
+
 static void btif_a2dp_source_encoder_user_config_update_event(
         const RawAddress& peer_address,
         const std::vector<btav_a2dp_codec_config_t>& codec_user_preferences,
         std::promise<void> peer_ready_promise);
 static void btif_a2dp_source_audio_feeding_update_event(
+        const RawAddress& peer_addr,
         const btav_a2dp_codec_config_t& codec_audio_config);
-static bool btif_a2dp_source_audio_tx_flush_req(void);
-static void btif_a2dp_source_audio_handle_timer(void);
-static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len);
-static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n, uint32_t bytes_read);
+static bool btif_a2dp_source_audio_tx_flush_req(const RawAddress& peer_addr);
+static void btif_a2dp_source_audio_handle_timer(const RawAddress& peer_addr);
 static void update_scheduling_stats(SchedulingStats* stats, uint64_t now_us,
                                     uint64_t expected_delta);
 // Update the A2DP Source related metrics.
 // This function should be called before collecting the metrics.
-static void btif_a2dp_source_update_metrics(void);
+static void btif_a2dp_source_update_metrics(const RawAddress& peer_address);
+static BtifA2dpSource* findA2dpSourceCb(const RawAddress& address);
+static BtifA2dpSource* findAndCreateA2dpSourceCb(const RawAddress& address);
+
+A2dpEncoderInterface* findA2dpSourceEncoder(const RawAddress& peer_address) {
+  log::debug("peer_address:{}", peer_address);
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
+  auto it = btif_a2dp_source_encoders.find(peer_address);
+  if (it != btif_a2dp_source_encoders.end()) {
+    return it->second;
+  } else {
+    log::error("failed to find encoder for peer_address:{}", peer_address);
+    return nullptr;
+  }
+}
+
+void setA2dpSourceEncoders(const RawAddress& peer_address, A2dpEncoderInterface* encoder) {
+  log::debug("peer_address:{}", peer_address);
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
+  auto it = btif_a2dp_source_encoders.find(peer_address);
+  if (it != btif_a2dp_source_encoders.end()) {
+    log::debug("Clear older encoder");
+    // The map owns the encoder, so release it before dropping the entry,
+    // otherwise every codec reconfiguration leaks one encoder object.
+    delete it->second;
+    btif_a2dp_source_encoders.erase(it);
+  }
+  log::debug("Save new encoder");
+  btif_a2dp_source_encoders.emplace(peer_address, encoder);
+}
+
+static void clearA2dpSourceEncoder(const RawAddress& peer_address) {
+  log::debug("peer_address:{}", peer_address);
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
+  auto it = btif_a2dp_source_encoders.find(peer_address);
+  if (it == btif_a2dp_source_encoders.end()) {
+    return;
+  }
+  delete it->second;
+  btif_a2dp_source_encoders.erase(it);
+}
 
 static void btif_a2dp_source_accumulate_scheduling_stats(SchedulingStats* src,
                                                          SchedulingStats* dst) {
@@ -391,13 +457,13 @@ Status A2dpStreamCallbacks::StartStream(bool low_latency) const {
   }
 
   // Check if the stream has already been started.
-  if (btif_av_stream_started_ready(A2dpType::kSource)) {
+  if (btif_av_stream_started_ready(active_peer_, A2dpType::kSource)) {
     log::debug("stream is already started");
     return Status::SUCCESS;
   }
 
   // Check if the stream is ready to start.
-  if (!btif_av_stream_ready(A2dpType::kSource)) {
+  if (!btif_av_stream_ready(active_peer_, A2dpType::kSource)) {
     log::error("unable to start stream: not ready");
     return Status::FAILURE;
   }
@@ -405,7 +471,7 @@ Status A2dpStreamCallbacks::StartStream(bool low_latency) const {
   // TODO: Remove the entire invoke_switch_codec_cb code path (Native -> JNI -> Java)
   //  when removing the flag a2dp_handle_sa_reconfig_in_native
   if (com_android_bluetooth_flags_a2dp_handle_sa_reconfig_in_native()) {
-    btif_av_source_set_low_latency_codec(low_latency);
+    btif_av_source_set_low_latency_codec(active_peer_, low_latency);
   } else {
     // Check if codec needs to be switched prior to stream start.
     invoke_switch_codec_cb(low_latency);
@@ -413,28 +479,28 @@ Status A2dpStreamCallbacks::StartStream(bool low_latency) const {
 
   // Post start event. The start request is pending, completion will be
   // notified to bluetooth::audio::a2dp::ack_stream_started.
-  btif_av_stream_start_with_latency(low_latency);
+  btif_av_stream_start_with_latency(active_peer_, low_latency);
   return Status::PENDING;
 }
 
 Status A2dpStreamCallbacks::SuspendStream() const {
   // Check if the stream is already suspended.
-  if (!btif_av_stream_started_ready(A2dpType::kSource)) {
-    btif_av_clear_remote_suspend_flag(A2dpType::kSource);
+  if (!btif_av_stream_started_ready(active_peer_, A2dpType::kSource)) {
+    btif_av_clear_remote_suspend_flag(active_peer_, A2dpType::kSource);
     log::debug("stream is already suspended");
     return Status::SUCCESS;
   }
 
   // Post suspend event. The suspend request is pending, completion will
   // be notified to bluetooth::audio::a2dp::ack_stream_suspended.
-  btif_av_stream_suspend();
+  btif_av_stream_suspend(active_peer_);
   return Status::PENDING;
 }
 
 Status A2dpStreamCallbacks::StopStream() const {
   // Check if the stream is already suspended.
-  if (!btif_av_stream_started_ready(A2dpType::kSource)) {
-    btif_av_clear_remote_suspend_flag(A2dpType::kSource);
+  if (!btif_av_stream_started_ready(active_peer_, A2dpType::kSource)) {
+    btif_av_clear_remote_suspend_flag(active_peer_, A2dpType::kSource);
     log::debug("stream is already stopped");
     return Status::SUCCESS;
   }
@@ -447,13 +513,13 @@ Status A2dpStreamCallbacks::StopStream() const {
 
 Status A2dpStreamCallbacks::SetLatencyMode(bool low_latency) const {
   invoke_switch_buffer_size_cb(low_latency);
-  btif_av_set_low_latency(low_latency);
+  btif_av_set_low_latency(active_peer_, low_latency);
   return Status::SUCCESS;
 }
 
 Status A2dpStreamCallbacks::SourceMetadataChanged(
         btav_a2dp_codec_audio_context_t audio_context) const {
-  btif_av_source_metadata_changed(audio_context);
+  btif_av_source_metadata_changed(active_peer_, audio_context);
   return Status::SUCCESS;
 }
 
@@ -471,6 +537,7 @@ static A2dpStreamCallbacks* getA2dpStreamCallback(const RawAddress& peer_address
     return nullptr;
   }
 
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
   for (int i = 0; i < bluetooth::audio::a2dp::MAX_A2DP_CONN; i++) {
     if (a2dp_stream_callbacks[i].IsInUse() &&
         a2dp_stream_callbacks[i].GetActivePeer() == peer_address) {
@@ -486,6 +553,8 @@ static A2dpStreamCallbacks* reserveA2dpStreamCallback(const RawAddress& peer_add
     log::error("refusing to reserve a stream slot for an empty peer address");
     return nullptr;
   }
+
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
 
   // Reserving twice for the same peer would burn the second slot and leak it,
   // so hand back the slot the peer already holds.
@@ -556,16 +625,23 @@ static void btif_a2dp_source_init_delayed(void) {
 }
 
 static bool btif_a2dp_source_startup(const RawAddress& peer_address) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findAndCreateA2dpSourceCb(peer_address);
 
-  if (btif_a2dp_source_cb.State() != BtifA2dpSource::kStateOff) {
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return false;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  if (a2dp_source_cb->State() != BtifA2dpSource::kStateOff) {
     log::error("A2DP Source media task already running");
     return false;
   }
 
-  btif_a2dp_source_cb.Reset();
-  btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateStartingUp);
-  btif_a2dp_source_cb.tx_audio_queue = fixed_queue_new(SIZE_MAX);
+  a2dp_source_cb->Reset();
+  a2dp_source_cb->SetState(BtifA2dpSource::kStateStartingUp);
+  a2dp_source_cb->tx_audio_queue = fixed_queue_new(SIZE_MAX);
 
   A2dpStreamCallbacks* a2dp_stream_callback = reserveA2dpStreamCallback(peer_address);
   if (a2dp_stream_callback == nullptr) {
@@ -575,46 +651,57 @@ static bool btif_a2dp_source_startup(const RawAddress& peer_address) {
   log::info("peer {} assigned stream index {}", peer_address, a2dp_stream_callback->GetIndex());
 
   // Schedule the rest of the operations
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_startup_delayed, a2dp_stream_callback));
-
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_startup_delayed, peer_address));
   return true;
 }
 
-static void btif_a2dp_source_startup_delayed(StreamCallbacks const* stream_callbacks) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+static void btif_a2dp_source_startup_delayed(const RawAddress& peer_address) {
+  log::info("peer_address={}", peer_address);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  auto* a2dp_stream_callback = static_cast<A2dpStreamCallbacks const*>(stream_callbacks);
-  if (!bluetooth::audio::a2dp::init(get_main_thread(), stream_callbacks,
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  if (!bluetooth::audio::a2dp::init(get_main_thread(), getA2dpStreamCallback(peer_address),
                                     btif_av_is_a2dp_offload_enabled(),
-                                    a2dp_stream_callback->GetIndex())) {
+                                    btif_a2dp_source_get_stream_index(peer_address))) {
     log::warn("Failed to setup the bluetooth audio HAL");
   }
 
-  btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateRunning);
+  a2dp_source_cb->SetState(BtifA2dpSource::kStateRunning);
 }
 
 bool btif_a2dp_source_start_session(const RawAddress& peer_address,
                                     std::promise<void> peer_ready_promise) {
-  log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  btif_a2dp_source_audio_tx_flush_req();
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return false;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  btif_a2dp_source_audio_tx_flush_req(peer_address);
 
   if (!do_in_main_thread(base::BindOnce(&btif_a2dp_source_start_session_delayed, peer_address,
                                         std::move(peer_ready_promise)))) {
     log::fatal("peer_address={} state={} fails to context switch", peer_address,
-               btif_a2dp_source_cb.StateStr());
+               a2dp_source_cb->StateStr());
     return false;
   }
 
   return true;
 }
 
-/// Return the MTU for the active peer audio connection.
-static uint16_t btif_a2dp_get_peer_mtu(A2dpCodecConfig* a2dp_config) {
+/// Return the MTU for the peer audio connection.
+static uint16_t btif_a2dp_get_peer_mtu(const RawAddress& peer_addr, A2dpCodecConfig* a2dp_config) {
   uint8_t codec_info[AVDT_CODEC_SIZE];
   a2dp_config->copyOutOtaCodecConfig(codec_info);
 
-  RawAddress peer_addr = btif_av_source_active_peer();
   tA2DP_ENCODER_INIT_PEER_PARAMS peer_params;
   bta_av_co_get_peer_params(peer_addr, &peer_params);
   uint16_t peer_mtu = peer_params.peer_mtu;
@@ -655,29 +742,35 @@ static bool get_rate_control_enabled(A2dpCodecConfig* a2dp_codec_config) {
 
 static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_address,
                                                    std::promise<void> peer_ready_promise) {
-  log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
 
   tA2DP_ENCODER_INIT_PEER_PARAMS peer_params;
   bta_av_co_get_peer_params(peer_address, &peer_params);
-  if (!bta_av_co_set_active_source_peer(peer_address)) {
+  if (!bta_av_co_set_active_source_peer(peer_address, true)) {
     log::error("Cannot stream audio: cannot set active peer to {}", peer_address);
     return;
   }
 
-  const tA2DP_ENCODER_INTERFACE* encoder_interface = bta_av_co_get_encoder_interface(peer_address);
+  A2dpEncoderInterface* encoder_interface = bta_av_co_get_encoder_interface(peer_address);
   if (encoder_interface == nullptr) {
     log::error("Cannot stream audio: no source encoder interface");
     return;
   }
 
-  A2dpCodecConfig* a2dp_codec_config = bta_av_get_a2dp_current_codec();
+  A2dpCodecConfig* a2dp_codec_config = bta_av_get_a2dp_peer_current_codec(peer_address);
   if (a2dp_codec_config == nullptr) {
     log::error("Cannot stream audio: current codec is not set");
     return;
   }
 
-  encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
-                                  btif_a2dp_source_enqueue_callback);
+  encoder_interface->encoder_init(&peer_params, a2dp_codec_config, nullptr, nullptr);
 
   if (com_android_bluetooth_flags_ldac_rate_control()) {
     stack::l2cap::get_interface().L2CA_SetRateControlEnabled(
@@ -685,14 +778,16 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
   }
 
   // Save a local copy of the encoder_interval_ms
-  btif_a2dp_source_cb.encoder_interface = encoder_interface;
-  btif_a2dp_source_cb.encoder_interval_ms =
-          btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms();
+  a2dp_source_cb->encoder_interface = encoder_interface;
+  a2dp_source_cb->encoder_interval_ms =
+          a2dp_source_cb->encoder_interface->get_encoder_interval_ms();
 
-  if (bluetooth::audio::a2dp::is_hal_enabled()) {
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
+  if (bluetooth::audio::a2dp::is_hal_enabled(index)) {
     bluetooth::audio::a2dp::ahal_codec_configuration config = {
-            .peer_mtu = btif_a2dp_get_peer_mtu(a2dp_codec_config),
-            .preferred_encoding_interval_us = bta_av_co_get_encoder_preferred_interval_us(),
+            .peer_mtu = btif_a2dp_get_peer_mtu(peer_address, a2dp_codec_config),
+            .preferred_encoding_interval_us =
+                    bta_av_co_get_encoder_preferred_interval_us(peer_address),
             .codec_bitrate = a2dp_codec_config->getTrackBitRate(),
             .codec_config = a2dp_codec_config->getCodecConfig(),
     };
@@ -700,41 +795,88 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
 
     log::debug("{}", config.ToString());
 
-    bluetooth::audio::a2dp::setup_codec(config);
+    bluetooth::audio::a2dp::setup_codec(config, index);
   }
 
-  if (btif_a2dp_source_cb.State() != BtifA2dpSource::kStateRunning) {
+  if (a2dp_source_cb->State() != BtifA2dpSource::kStateRunning) {
     log::error("A2DP Source media task is not running");
     peer_ready_promise.set_value();
     return;
   }
 
-  if (bluetooth::audio::a2dp::is_hal_enabled()) {
-    bluetooth::audio::a2dp::start_session();
-    bluetooth::audio::a2dp::set_remote_delay(btif_av_get_audio_delay(A2dpType::kSource));
+  if (bluetooth::audio::a2dp::is_hal_enabled(index)) {
+    bluetooth::audio::a2dp::start_session(index);
+    bluetooth::audio::a2dp::set_remote_delay(
+            btif_av_get_audio_delay(peer_address, A2dpType::kSource), index);
   }
 
   bta_av_co_report_codec_config_changed(peer_address);
   peer_ready_promise.set_value();
 }
 
+static BtifA2dpSource* findA2dpSourceCb(const RawAddress& address)
+{
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
+  auto it = a2dp_source_cb.find(address);
+  if (it != a2dp_source_cb.end()) {
+    return it->second;
+  } else {
+    return nullptr;
+  }
+}
+
+static BtifA2dpSource* findAndCreateA2dpSourceCb(const RawAddress& address)
+{
+  log::debug("peer_address={}",address);
+
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
+  BtifA2dpSource* src = findA2dpSourceCb(address);
+  if (src != nullptr) {
+    return src;
+  } else {
+    log::debug("new BtifA2dpSource for {}",address);
+    BtifA2dpSource* src = new BtifA2dpSource();
+    a2dp_source_cb.emplace(address, src);
+    return src;
+  }
+}
+
+static void clearA2dpSourceCb(const RawAddress& address)
+{
+  log::debug("peer_address={}",address);
+
+  std::lock_guard<std::recursive_mutex> lock(a2dp_source_peers_lock_);
+  BtifA2dpSource* src = findA2dpSourceCb(address);
+  if (src != nullptr) {
+    delete(src);
+  }
+  a2dp_source_cb.erase(address);
+  // The peer is gone, so release the encoder it owned as well.
+  clearA2dpSourceEncoder(address);
+}
+
 bool btif_a2dp_source_restart_session(const RawAddress& old_peer_address,
                                       const RawAddress& new_peer_address,
                                       std::promise<void> peer_ready_promise) {
-  log::info("old_peer_address={} new_peer_address={} state={}", old_peer_address, new_peer_address,
-            btif_a2dp_source_cb.StateStr());
+  BtifA2dpSource* a2dp_source_cb = findAndCreateA2dpSourceCb(new_peer_address);
 
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", new_peer_address.ToString().c_str());
+    return false;
+  }
+  log::info("old_peer_address={} new_peer_address={} state={}", old_peer_address, new_peer_address,
+            a2dp_source_cb->StateStr());
   log::assert_that(!new_peer_address.IsEmpty(), "assert failed: !new_peer_address.IsEmpty()");
 
   // Must stop first the audio streaming.
-  btif_a2dp_source_stop_audio_req();
+  btif_a2dp_source_stop_audio_req(new_peer_address);
 
   // If the old active peer was valid, end the old session.
   // Otherwise, time to startup the A2DP Source processing.
   if (!old_peer_address.IsEmpty()) {
     btif_a2dp_source_end_session(old_peer_address);
   } else {
-    btif_a2dp_source_startup();
+    btif_a2dp_source_startup(new_peer_address);
   }
 
   // Start the session.
@@ -745,66 +887,92 @@ bool btif_a2dp_source_restart_session(const RawAddress& old_peer_address,
 }
 
 bool btif_a2dp_source_end_session(const RawAddress& peer_address) {
-  log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return false;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
 
   // Must stop first the audio streaming.
-  btif_a2dp_source_stop_audio_req();
+  btif_a2dp_source_stop_audio_req(peer_address);
 
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_cleanup_codec_delayed));
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_cleanup_codec_delayed, peer_address));
 
-  if ((btif_a2dp_source_cb.State() == BtifA2dpSource::kStateRunning) ||
-      (btif_a2dp_source_cb.State() == BtifA2dpSource::kStateShuttingDown)) {
+  if ((a2dp_source_cb->State() == BtifA2dpSource::kStateRunning) ||
+      (a2dp_source_cb->State() == BtifA2dpSource::kStateShuttingDown)) {
     btif_av_stream_stop(peer_address);
   } else {
     log::error("A2DP Source media task is not running");
   }
 
-  if (bluetooth::audio::a2dp::is_hal_enabled()) {
-    bluetooth::audio::a2dp::end_session();
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
+  if (bluetooth::audio::a2dp::is_hal_enabled(index)) {
+    bluetooth::audio::a2dp::end_session(index);
   }
 
   return true;
 }
 
-void btif_a2dp_source_allow_low_latency_audio(bool allowed) {
+void btif_a2dp_source_allow_low_latency_audio(const RawAddress& peer_address, bool allowed) {
   log::info("allowed={}", allowed);
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
 
-  // BindOnce cannot pick up the index default argument, so bind it explicitly.
-  do_in_main_thread(base::BindOnce(bluetooth::audio::a2dp::set_audio_low_latency_mode_allowed,
-                                  allowed, static_cast<uint8_t>(0)));
+  do_in_main_thread(
+          base::BindOnce(bluetooth::audio::a2dp::set_audio_low_latency_mode_allowed, allowed, index));
 }
 
-void btif_a2dp_source_shutdown(std::promise<void> shutdown_complete_promise) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+void btif_a2dp_source_shutdown(const RawAddress& peer_address, std::promise<void> shutdown_complete_promise) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  if ((btif_a2dp_source_cb.State() == BtifA2dpSource::kStateOff) ||
-      (btif_a2dp_source_cb.State() == BtifA2dpSource::kStateShuttingDown)) {
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  if ((a2dp_source_cb->State() == BtifA2dpSource::kStateOff) ||
+      (a2dp_source_cb->State() == BtifA2dpSource::kStateShuttingDown)) {
     return;
   }
 
   // Make sure no channels are restarted while shutting down.
-  btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateShuttingDown);
+  a2dp_source_cb->SetState(BtifA2dpSource::kStateShuttingDown);
 
   // Stop the timer.
-  if (btif_a2dp_source_is_streaming()) {
-    btif_a2dp_source_cb.media_alarm.CancelAndWait();
+  if (a2dp_source_cb->media_alarm.IsScheduled()) {
+    a2dp_source_cb->media_alarm.CancelAndWait();
     wakelock_release();
   }
 
-  fixed_queue_free(btif_a2dp_source_cb.tx_audio_queue, nullptr);
-  btif_a2dp_source_cb.tx_audio_queue = nullptr;
+  A2dpStreamCallbacks* a2dp_stream_callback = getA2dpStreamCallback(peer_address);
+  if (a2dp_stream_callback == nullptr) {
+    log::error("No available source for peer {}", peer_address.ToString().c_str());
+  } else {
+    bluetooth::audio::a2dp::cleanup(a2dp_stream_callback->GetIndex());
+    // Release only after cleanup(): the slot must stay reserved for the whole
+    // teardown so it cannot be handed to another peer mid-cleanup.
+    a2dp_stream_callback->Release();
+  }
 
-  btif_a2dp_source_cb.SetState(BtifA2dpSource::kStateOff);
+  fixed_queue_free(a2dp_source_cb->tx_audio_queue, nullptr);
+  a2dp_source_cb->tx_audio_queue = nullptr;
+
+  a2dp_source_cb->SetState(BtifA2dpSource::kStateOff);
 
   shutdown_complete_promise.set_value();
+  clearA2dpSourceCb(peer_address);
 }
 
-void btif_a2dp_source_cleanup(void) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
-
-  // Make sure the source is shutdown
-  std::promise<void> shutdown_complete_promise;
-  btif_a2dp_source_shutdown(std::move(shutdown_complete_promise));
+void btif_a2dp_source_cleanup() {
+  for (auto active_peer : btif_av_source_active_peers()) {
+    // Make sure the source is shutdown
+    std::promise<void> shutdown_complete_promise;
+    btif_a2dp_source_shutdown(active_peer, std::move(shutdown_complete_promise));
+  }
 
   bluetooth::audio::a2dp::cleanup();
 
@@ -813,41 +981,80 @@ void btif_a2dp_source_cleanup(void) {
 }
 
 // This runs on worker thread
-bool btif_a2dp_source_is_streaming(void) { return btif_a2dp_source_cb.media_alarm.IsScheduled(); }
+bool btif_a2dp_source_is_streaming(const RawAddress& peer_address) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-static void btif_a2dp_source_cleanup_codec_delayed() {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
-  if (btif_a2dp_source_cb.encoder_interface != nullptr) {
-    btif_a2dp_source_cb.encoder_interface->encoder_cleanup();
-    btif_a2dp_source_cb.encoder_interface = nullptr;
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return false;
+  }
+  return a2dp_source_cb->media_alarm.IsScheduled();
+}
+
+static void btif_a2dp_source_cleanup_codec_delayed(const RawAddress& peer_address) {
+  log::info("peer_address={}", peer_address);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+  if (a2dp_source_cb->encoder_interface != nullptr) {
+    a2dp_source_cb->encoder_interface->encoder_cleanup();
+    a2dp_source_cb->encoder_interface = nullptr;
   }
 }
 
-void btif_a2dp_source_start_audio_req(void) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+void btif_a2dp_source_start_audio_req(const RawAddress& peer_address) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_audio_tx_start_event));
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_audio_tx_start_event, peer_address));
 }
 
-void btif_a2dp_source_stop_audio_req(void) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+void btif_a2dp_source_stop_audio_req(const RawAddress& peer_address) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_audio_tx_stop_event));
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_audio_tx_stop_event, peer_address));
 }
 
 void btif_a2dp_source_encoder_user_config_update_req(
         const RawAddress& peer_address,
         const std::vector<btav_a2dp_codec_config_t>& codec_user_preferences,
         std::promise<void> peer_ready_promise) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
   log::info("peer_address={} state={} {} codec_preference(s)", peer_address,
-            btif_a2dp_source_cb.StateStr(), codec_user_preferences.size());
+            a2dp_source_cb->StateStr(), codec_user_preferences.size());
 
   if (!do_in_main_thread(base::BindOnce(&btif_a2dp_source_encoder_user_config_update_event,
                                         peer_address, codec_user_preferences,
                                         std::move(peer_ready_promise)))) {
     // cannot set promise but triggers crash
     log::fatal("peer_address={} state={} fails to context switch", peer_address,
-               btif_a2dp_source_cb.StateStr());
+               a2dp_source_cb->StateStr());
   }
 }
 
@@ -857,11 +1064,22 @@ static void btif_a2dp_source_encoder_user_config_update_event(
         std::promise<void> peer_ready_promise) {
   bool restart_output = false;
   bool success = false;
+
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+
   for (auto codec_user_config : codec_user_preferences) {
     success = bta_av_co_set_codec_user_config(peer_address, codec_user_config, &restart_output);
     if (success) {
       log::info("peer_address={} state={} codec_preference=[{}] restart_output={}", peer_address,
-                btif_a2dp_source_cb.StateStr(), codec_user_config.ToString(), restart_output);
+                a2dp_source_cb->StateStr(), codec_user_config.ToString(), restart_output);
       break;
     }
   }
@@ -875,7 +1093,8 @@ static void btif_a2dp_source_encoder_user_config_update_event(
   if (!success) {
     log::error("cannot update codec user configuration(s)");
   }
-  if (!peer_address.IsEmpty() && peer_address == btif_av_source_active_peer()) {
+  if (!peer_address.IsEmpty() && btif_av_source_active_peers().find(peer_address)
+          != btif_av_source_active_peers().end()) {
     // No more actions needed with remote, and if succeed, user had changed the
     // config like the bits per sample only. Let's resume the session now.
     btif_a2dp_source_start_session(peer_address, std::move(peer_ready_promise));
@@ -885,165 +1104,229 @@ static void btif_a2dp_source_encoder_user_config_update_event(
   }
 }
 
-void btif_a2dp_source_feeding_update_req(const btav_a2dp_codec_config_t& codec_audio_config) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+void btif_a2dp_source_feeding_update_req(const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_audio_config) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
   do_in_main_thread(
-          base::BindOnce(&btif_a2dp_source_audio_feeding_update_event, codec_audio_config));
+          base::BindOnce(&btif_a2dp_source_audio_feeding_update_event, peer_address, codec_audio_config));
 }
 
 static void btif_a2dp_source_audio_feeding_update_event(
+        const RawAddress& peer_address,
         const btav_a2dp_codec_config_t& codec_audio_config) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
-  if (!bta_av_co_set_codec_audio_config(codec_audio_config)) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+  if (!bta_av_co_set_codec_audio_config(peer_address, codec_audio_config)) {
     log::error("cannot update codec audio feeding parameters");
   }
 }
 
-void btif_a2dp_source_on_idle(void) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
-  if (btif_a2dp_source_cb.State() == BtifA2dpSource::kStateOff) {
+void btif_a2dp_source_on_idle(const RawAddress& peer_address) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  if (a2dp_source_cb->State() == BtifA2dpSource::kStateOff) {
     return;
   }
 
   /* Make sure media task is stopped */
-  btif_a2dp_source_stop_audio_req();
+  btif_a2dp_source_stop_audio_req(peer_address);
 }
 
-void btif_a2dp_source_on_stopped(tBTA_AV_SUSPEND* p_av_suspend) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+void btif_a2dp_source_on_stopped(const RawAddress& peer_address, tBTA_AV_SUSPEND* p_av_suspend) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  btif_a2dp_source_cb.sw_audio_is_encoding = false;
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
 
+  a2dp_source_cb->sw_audio_is_encoding = false;
+
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
   // allow using this API for other (acknowledgement and stopping media task)
   // than suspend
   if (p_av_suspend != nullptr && p_av_suspend->status != BTA_AV_SUCCESS) {
     log::error("A2DP stop failed: status={}, initiator={}", p_av_suspend->status,
                p_av_suspend->initiator);
     if (p_av_suspend->initiator) {
-      bluetooth::audio::a2dp::ack_stream_suspended(Status::FAILURE);
+      bluetooth::audio::a2dp::ack_stream_suspended(Status::FAILURE, index);
     }
   } else {
-    bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS);
+    bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS, index);
   }
 
-  if (btif_a2dp_source_cb.State() == BtifA2dpSource::kStateOff) {
+  if (a2dp_source_cb->State() == BtifA2dpSource::kStateOff) {
     return;
   }
 
   // ensure tx frames are immediately suspended
-  btif_a2dp_source_cb.tx_flush = true;
+  a2dp_source_cb->tx_flush = true;
   // ensure tx frames are immediately flushed
-  btif_a2dp_source_audio_tx_flush_req();
+  btif_a2dp_source_audio_tx_flush_req(peer_address);
 
   // request to stop media task
-  btif_a2dp_source_stop_audio_req();
+  btif_a2dp_source_stop_audio_req(peer_address);
 
   // once software stream is fully stopped we will ack back
 }
 
-void btif_a2dp_source_on_suspended(tBTA_AV_SUSPEND* p_av_suspend) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+void btif_a2dp_source_on_suspended(const RawAddress& peer_address, tBTA_AV_SUSPEND* p_av_suspend) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  if (btif_a2dp_source_cb.State() == BtifA2dpSource::kStateOff) {
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  if (a2dp_source_cb->State() == BtifA2dpSource::kStateOff) {
     return;
   }
 
   log::assert_that(p_av_suspend != nullptr, "Suspend result could not be nullptr");
 
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
   // check for status failures
   if (p_av_suspend->status != BTA_AV_SUCCESS) {
     log::warn("A2DP suspend failed: status={}, initiator={}", p_av_suspend->status,
               p_av_suspend->initiator);
     if (p_av_suspend->initiator) {
-      bluetooth::audio::a2dp::ack_stream_suspended(Status::FAILURE);
+      bluetooth::audio::a2dp::ack_stream_suspended(Status::FAILURE, index);
     }
   } else if (btif_av_is_a2dp_offload_running()) {
-    bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS);
+    bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS, index);
   }
 
   // ensure tx frames are immediately suspended
-  btif_a2dp_source_cb.tx_flush = true;
+  a2dp_source_cb->tx_flush = true;
 
   // stop timer tick
-  btif_a2dp_source_stop_audio_req();
+  btif_a2dp_source_stop_audio_req(peer_address);
 
   // once software stream is fully stopped we will ack back
 }
 
 /* when true media task discards any tx frames */
-void btif_a2dp_source_set_tx_flush(bool enable) {
-  log::info("enable={} state={}", enable, btif_a2dp_source_cb.StateStr());
-  btif_a2dp_source_cb.tx_flush = enable;
+void btif_a2dp_source_set_tx_flush(const RawAddress& peer_address, bool enable) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
+  a2dp_source_cb->tx_flush = enable;
 }
 
-static void btif_a2dp_source_audio_tx_start_event(void) {
-  log::info("is_streaming={} state={}", btif_a2dp_source_is_streaming(),
-            btif_a2dp_source_cb.StateStr());
+static void btif_a2dp_source_audio_tx_start_event(const RawAddress& peer_address) {
+  log::info("peer_address={}", peer_address);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  btif_a2dp_source_cb.stats.Reset();
-  btif_a2dp_source_cb.stats.session_start_us = bluetooth::common::time_get_os_boottime_us();
-  btif_a2dp_source_cb.stats.session_end_us = 0;
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return;
+  }
+  log::info("is_streaming={} state={}", btif_a2dp_source_is_streaming(peer_address),
+            a2dp_source_cb->StateStr());
 
-  A2dpCodecConfig* codec_config = bta_av_get_a2dp_current_codec();
+  a2dp_source_cb->stats.Reset();
+  a2dp_source_cb->stats.session_start_us = bluetooth::common::time_get_os_boottime_us();
+  a2dp_source_cb->stats.session_end_us = 0;
+
+  A2dpCodecConfig* codec_config = bta_av_get_a2dp_peer_current_codec(peer_address);
+
   if (codec_config != nullptr) {
-    btif_a2dp_source_cb.stats.codec_index = codec_config->codecIndex();
+    a2dp_source_cb->stats.codec_index = codec_config->codecIndex();
   }
 
   if (btif_av_is_a2dp_offload_running()) {
     return;
   }
 
-  log::assert_that(btif_a2dp_source_cb.encoder_interface != nullptr,
-                   "assert failed: btif_a2dp_source_cb.encoder_interface != nullptr");
+  log::assert_that(a2dp_source_cb->encoder_interface != nullptr,
+                   "assert failed: a2dp_source_cb->encoder_interface != nullptr");
 
   log::info("starting media encoder timer with interval {}ms",
-            btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms());
+            a2dp_source_cb->encoder_interface->get_encoder_interval_ms());
 
   wakelock_acquire();
-  btif_a2dp_source_cb.encoder_interface->feeding_reset();
-  btif_a2dp_source_cb.tx_flush = false;
-  btif_a2dp_source_cb.sw_audio_is_encoding = true;
-  btif_a2dp_source_cb.media_alarm.SchedulePeriodic(
-          &btif_a2dp_source_thread, base::BindRepeating(&btif_a2dp_source_audio_handle_timer),
+  a2dp_source_cb->encoder_interface->feeding_reset();
+  a2dp_source_cb->tx_flush = false;
+  a2dp_source_cb->sw_audio_is_encoding = true;
+  a2dp_source_cb->media_alarm.SchedulePeriodic(
+          &btif_a2dp_source_thread,
+          base::BindRepeating(&btif_a2dp_source_audio_handle_timer, peer_address),
           std::chrono::milliseconds(
-                  btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms()));
+                  a2dp_source_cb->encoder_interface->get_encoder_interval_ms()));
 }
 
-static void btif_a2dp_source_audio_tx_stop_event(void) {
-  log::info("is_streaming={} state={}", btif_a2dp_source_is_streaming(),
-            btif_a2dp_source_cb.StateStr());
+static void btif_a2dp_source_audio_tx_stop_event(const RawAddress& peer_address) {
+  log::info("peer_address={}", peer_address);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  btif_a2dp_source_cb.stats.session_end_us = bluetooth::common::time_get_os_boottime_us();
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
 
-  btif_a2dp_source_update_metrics();
-  btif_a2dp_source_accumulate_stats(&btif_a2dp_source_cb.stats,
-                                    &btif_a2dp_source_cb.accumulated_stats);
+  log::info("streaming {} state={}", btif_a2dp_source_is_streaming(peer_address),
+            a2dp_source_cb->StateStr());
 
+  a2dp_source_cb->stats.session_end_us = bluetooth::common::time_get_os_boottime_us();
+
+  btif_a2dp_source_update_metrics(peer_address);
+  btif_a2dp_source_accumulate_stats(&a2dp_source_cb->stats,
+                                    &a2dp_source_cb->accumulated_stats);
   if (btif_av_is_a2dp_offload_running()) {
     return;
   }
 
-  if (!btif_a2dp_source_is_streaming()) {
+  if (!btif_a2dp_source_is_streaming(peer_address)) {
     return;
   }
 
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
   if (com_android_bluetooth_flags_flush_a2dp_fmq_on_stop()) {
     // Flush the audio data left in the FMQ.
-    bluetooth::audio::a2dp::flush_source();
+    bluetooth::audio::a2dp::flush_source(index);
   }
 
   // Stop the timer first.
-  btif_a2dp_source_cb.media_alarm.CancelAndWait();
+  a2dp_source_cb->media_alarm.CancelAndWait();
   wakelock_release();
 
-  bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS);
+  bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS, index);
 
   // audio engine stopped, reset tx suspended flag.
-  btif_a2dp_source_cb.tx_flush = false;
+  a2dp_source_cb->tx_flush = false;
 
   // Reset the media feeding state.
-  if (btif_a2dp_source_cb.encoder_interface != nullptr) {
-    btif_a2dp_source_cb.encoder_interface->feeding_reset();
+  if (a2dp_source_cb->encoder_interface != nullptr) {
+    a2dp_source_cb->encoder_interface->feeding_reset();
   }
 }
 
@@ -1053,10 +1336,21 @@ static void btif_a2dp_source_audio_tx_stop_event(void) {
 ///
 /// The timer driving the periodic task is cancelled before any state cleanup
 /// when the stream is ended.
-static void btif_a2dp_source_audio_handle_timer(void) {
+static void btif_a2dp_source_audio_handle_timer(const RawAddress& peer_address) {
   uint64_t timestamp_us = bluetooth::common::time_get_audio_server_tick_us();
   uint64_t stats_timestamp_us = bluetooth::common::time_get_os_boottime_us();
-  size_t tx_queue_len = fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue);
+
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return;
+  }
+
+  log::assert_that(a2dp_source_cb->encoder_interface != nullptr,
+                   "assert failed: a2dp_source_cb->encoder_interface != nullptr");
+
+  size_t tx_queue_len = fixed_queue_length(a2dp_source_cb->tx_audio_queue);
 
   {
     static uint64_t previous_timestamp_us = 0;
@@ -1065,39 +1359,44 @@ static void btif_a2dp_source_audio_handle_timer(void) {
     previous_timestamp_us = timestamp_us;
   }
 
-  log::assert_that(btif_a2dp_source_cb.encoder_interface != nullptr,
-                   "assert failed: btif_a2dp_source_cb.encoder_interface != nullptr");
-
 #ifdef __ANDROID__
   ATRACE_INT("btif TX queue", tx_queue_len);
 #endif
 
-  if (btif_a2dp_source_cb.encoder_interface->set_transmit_queue_length != nullptr) {
-    btif_a2dp_source_cb.encoder_interface->set_transmit_queue_length(tx_queue_len);
-  }
+  a2dp_source_cb->encoder_interface->set_transmit_queue_length(tx_queue_len);
+  a2dp_source_cb->encoder_interface->send_frames(timestamp_us);
 
-  btif_a2dp_source_cb.encoder_interface->send_frames(timestamp_us);
-
-  bta_av_ci_src_data_ready(BTA_AV_CHNL_AUDIO);
-  update_scheduling_stats(&btif_a2dp_source_cb.stats.tx_queue_enqueue_stats, stats_timestamp_us,
-                          btif_a2dp_source_cb.encoder_interval_ms * 1000);
+  bta_av_ci_src_data_ready(peer_address, BTA_AV_CHNL_AUDIO);
+  update_scheduling_stats(&a2dp_source_cb->stats.tx_queue_enqueue_stats, stats_timestamp_us,
+                          a2dp_source_cb->encoder_interval_ms * 1000);
 }
 
 /// Callback invoked by the encoder for reading PCM audio data from the
 /// Bluetooth Audio HAL. Runs on the source worker thread.
-static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len) {
-  if (!btif_a2dp_source_cb.sw_audio_is_encoding) {
+uint32_t btif_a2dp_source_read_callback(const RawAddress& peer_address, uint8_t* p_buf,
+                                        uint32_t len) {
+  log::verbose("peer_address {}, len {}", peer_address.ToString().c_str(), len);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
     return 0;
   }
 
-  uint32_t bytes_read = bluetooth::audio::a2dp::read(p_buf, len);
+  if (!a2dp_source_cb->sw_audio_is_encoding) {
+    log::error("sw_audio_is_encoding is false");
+    return 0;
+  }
+
+  uint8_t index = btif_a2dp_source_get_stream_index(peer_address);
+  uint32_t bytes_read = bluetooth::audio::a2dp::read(p_buf, len, index);
   log::verbose("wanted={} read={}", len, bytes_read);
 
   if (bytes_read < len) {
     log::warn("UNDERFLOW: ONLY READ {} BYTES OUT OF {}", bytes_read, len);
-    btif_a2dp_source_cb.stats.media_read_total_underflow_bytes += (len - bytes_read);
-    btif_a2dp_source_cb.stats.media_read_total_underflow_count++;
-    btif_a2dp_source_cb.stats.media_read_last_underflow_us =
+    a2dp_source_cb->stats.media_read_total_underflow_bytes += (len - bytes_read);
+    a2dp_source_cb->stats.media_read_total_underflow_count++;
+    a2dp_source_cb->stats.media_read_last_underflow_us =
             bluetooth::common::time_get_os_boottime_us();
   }
 
@@ -1106,18 +1405,25 @@ static uint32_t btif_a2dp_source_read_callback(uint8_t* p_buf, uint32_t len) {
 
 /// Callback invoked by the encoder for sending encoded audio frames to the
 /// remote Bluetooth device. Runs on the source worker thread.
-static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
+bool btif_a2dp_source_enqueue_callback(const RawAddress& peer_address, BT_HDR* p_buf, size_t frames_n,
                                               uint32_t /*bytes_read*/) {
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return false;
+  }
+
   uint64_t now_us = bluetooth::common::time_get_os_boottime_us();
 
   // Check if the transmission queue has been flushed.
-  if (btif_a2dp_source_cb.tx_flush) {
+  if (a2dp_source_cb->tx_flush) {
     log::debug("tx suspended, discarded frame");
 
-    btif_a2dp_source_cb.stats.tx_queue_total_flushed_messages +=
-            fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue);
-    btif_a2dp_source_cb.stats.tx_queue_last_flushed_us = now_us;
-    fixed_queue_flush(btif_a2dp_source_cb.tx_audio_queue, osi_free);
+    a2dp_source_cb->stats.tx_queue_total_flushed_messages +=
+            fixed_queue_length(a2dp_source_cb->tx_audio_queue);
+    a2dp_source_cb->stats.tx_queue_last_flushed_us = now_us;
+    fixed_queue_flush(a2dp_source_cb->tx_audio_queue, osi_free);
 
     osi_free(p_buf);
     return false;
@@ -1125,24 +1431,24 @@ static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
 
   // Check for TX queue overflow
   // TODO: Using frames_n here is probably wrong: should be "+ 1" instead.
-  if (fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue) + frames_n >
+  if (fixed_queue_length(a2dp_source_cb->tx_audio_queue) + frames_n >
       btif_a2dp_source_dynamic_audio_buffer_size) {
     log::warn("TX queue buffer size now={} adding={} max={}",
-              (uint32_t)fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue), (uint32_t)frames_n,
+              (uint32_t)fixed_queue_length(a2dp_source_cb->tx_audio_queue), (uint32_t)frames_n,
               btif_a2dp_source_dynamic_audio_buffer_size);
     // Keep track of drop-outs
-    btif_a2dp_source_cb.stats.tx_queue_dropouts++;
-    btif_a2dp_source_cb.stats.tx_queue_last_dropouts_us = now_us;
+    a2dp_source_cb->stats.tx_queue_dropouts++;
+    a2dp_source_cb->stats.tx_queue_last_dropouts_us = now_us;
 
     // Flush all queued buffers
-    size_t drop_n = fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue);
-    btif_a2dp_source_cb.stats.tx_queue_max_dropped_messages =
-            std::max(drop_n, btif_a2dp_source_cb.stats.tx_queue_max_dropped_messages);
+    size_t drop_n = fixed_queue_length(a2dp_source_cb->tx_audio_queue);
+    a2dp_source_cb->stats.tx_queue_max_dropped_messages =
+            std::max(drop_n, a2dp_source_cb->stats.tx_queue_max_dropped_messages);
     int num_dropped_encoded_bytes = 0;
     int num_dropped_encoded_frames = 0;
-    while (fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue)) {
-      btif_a2dp_source_cb.stats.tx_queue_total_dropped_messages++;
-      void* p_data = fixed_queue_try_dequeue(btif_a2dp_source_cb.tx_audio_queue);
+    while (fixed_queue_length(a2dp_source_cb->tx_audio_queue)) {
+      a2dp_source_cb->stats.tx_queue_total_dropped_messages++;
+      void* p_data = fixed_queue_try_dequeue(a2dp_source_cb->tx_audio_queue);
       if (p_data != nullptr) {
         auto p_dropped_buf = static_cast<BT_HDR*>(p_data);
         num_dropped_encoded_bytes += p_dropped_buf->len;
@@ -1151,55 +1457,77 @@ static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
       }
     }
     bluetooth::metrics::LogMetricA2dpAudioOverrunEvent(
-            btif_av_source_active_peer(), btif_a2dp_source_cb.encoder_interval_ms, drop_n,
+            peer_address, a2dp_source_cb->encoder_interval_ms, drop_n,
             num_dropped_encoded_frames, num_dropped_encoded_bytes);
   }
 
   // Update the statistics.
-  btif_a2dp_source_cb.stats.tx_queue_total_frames += frames_n;
-  btif_a2dp_source_cb.stats.tx_queue_max_frames_per_packet =
-          std::max(frames_n, btif_a2dp_source_cb.stats.tx_queue_max_frames_per_packet);
+  a2dp_source_cb->stats.tx_queue_total_frames += frames_n;
+  a2dp_source_cb->stats.tx_queue_max_frames_per_packet =
+          std::max(frames_n, a2dp_source_cb->stats.tx_queue_max_frames_per_packet);
 
-  fixed_queue_enqueue(btif_a2dp_source_cb.tx_audio_queue, p_buf);
+  fixed_queue_enqueue(a2dp_source_cb->tx_audio_queue, p_buf);
 
   return true;
 }
 
-static void btif_a2dp_source_audio_tx_flush_event(void) {
+static void btif_a2dp_source_audio_tx_flush_event(const RawAddress& peer_address) {
   /* Flush all enqueued audio buffers (encoded) */
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+  log::info("peer_address={}", peer_address);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return;
+  }
+  log::info("state={}", a2dp_source_cb->StateStr());
   if (btif_av_is_a2dp_offload_running()) {
     return;
   }
 
-  if (btif_a2dp_source_cb.encoder_interface != nullptr) {
-    btif_a2dp_source_cb.encoder_interface->feeding_flush();
+  if (a2dp_source_cb->encoder_interface != nullptr) {
+    a2dp_source_cb->encoder_interface->feeding_flush();
   }
 
-  btif_a2dp_source_cb.stats.tx_queue_total_flushed_messages +=
-          fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue);
-  btif_a2dp_source_cb.stats.tx_queue_last_flushed_us = bluetooth::common::time_get_os_boottime_us();
-  fixed_queue_flush(btif_a2dp_source_cb.tx_audio_queue, osi_free);
+  a2dp_source_cb->stats.tx_queue_total_flushed_messages +=
+          fixed_queue_length(a2dp_source_cb->tx_audio_queue);
+  a2dp_source_cb->stats.tx_queue_last_flushed_us = bluetooth::common::time_get_os_boottime_us();
+  fixed_queue_flush(a2dp_source_cb->tx_audio_queue, osi_free);
 }
 
-static bool btif_a2dp_source_audio_tx_flush_req(void) {
-  log::info("state={}", btif_a2dp_source_cb.StateStr());
+static bool btif_a2dp_source_audio_tx_flush_req(const RawAddress& peer_address) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  do_in_main_thread(base::BindOnce(&btif_a2dp_source_audio_tx_flush_event));
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return false;
+  }
+
+  log::info("state={}", a2dp_source_cb->StateStr());
+
+  do_in_main_thread(base::BindOnce(&btif_a2dp_source_audio_tx_flush_event, peer_address));
   return true;
 }
 
-BT_HDR* btif_a2dp_source_audio_readbuf(void) {
-  uint64_t now_us = bluetooth::common::time_get_os_boottime_us();
-  BT_HDR* p_buf = (BT_HDR*)fixed_queue_try_dequeue(btif_a2dp_source_cb.tx_audio_queue);
+BT_HDR* btif_a2dp_source_audio_readbuf(const RawAddress& peer_address) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
-  btif_a2dp_source_cb.stats.tx_queue_total_readbuf_calls++;
-  btif_a2dp_source_cb.stats.tx_queue_last_readbuf_us = now_us;
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return nullptr;
+  }
+
+  uint64_t now_us = bluetooth::common::time_get_os_boottime_us();
+  BT_HDR* p_buf = (BT_HDR*)fixed_queue_try_dequeue(a2dp_source_cb->tx_audio_queue);
+
+  a2dp_source_cb->stats.tx_queue_total_readbuf_calls++;
+  a2dp_source_cb->stats.tx_queue_last_readbuf_us = now_us;
   if (p_buf != nullptr) {
     // Update the statistics
-    update_scheduling_stats(&btif_a2dp_source_cb.stats.tx_queue_dequeue_stats, now_us,
-                            btif_a2dp_source_cb.encoder_interval_ms * 1000);
+    update_scheduling_stats(&a2dp_source_cb->stats.tx_queue_dequeue_stats, now_us,
+                            a2dp_source_cb->encoder_interval_ms * 1000);
   }
 
   return p_buf;
@@ -1246,11 +1574,19 @@ static void update_scheduling_stats(SchedulingStats* stats, uint64_t now_us,
   }
 }
 
-void btif_a2dp_source_debug_dump(int fd) {
-  btif_a2dp_source_accumulate_stats(&btif_a2dp_source_cb.stats,
-                                    &btif_a2dp_source_cb.accumulated_stats);
+static void btif_a2dp_source_debug_dump_ext(const RawAddress& peer_address, int fd) {
+  log::info("peer_address {}", peer_address.ToString().c_str());
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address.ToString().c_str());
+    return;
+  }
+
+  btif_a2dp_source_accumulate_stats(&a2dp_source_cb->stats,
+                                    &a2dp_source_cb->accumulated_stats);
   uint64_t now_us = bluetooth::common::time_get_os_boottime_us();
-  BtifMediaStats* accumulated_stats = &btif_a2dp_source_cb.accumulated_stats;
+  BtifMediaStats* accumulated_stats = &a2dp_source_cb->accumulated_stats;
   SchedulingStats* enqueue_stats = &accumulated_stats->tx_queue_enqueue_stats;
   SchedulingStats* dequeue_stats = &accumulated_stats->tx_queue_dequeue_stats;
   size_t ave_size;
@@ -1365,8 +1701,24 @@ void btif_a2dp_source_debug_dump(int fd) {
           (unsigned long long)ave_time_us / 1000);
 }
 
-static void btif_a2dp_source_update_metrics(void) {
-  BtifMediaStats stats = btif_a2dp_source_cb.stats;
+// dump is called from application, so dump all active devices
+void btif_a2dp_source_debug_dump(int fd) {
+  std::set<RawAddress> active_devices = btif_av_source_active_peers();
+  for (auto it = active_devices.begin(); it != active_devices.end(); it++) {
+    btif_a2dp_source_debug_dump_ext(*it, fd);
+  }
+}
+
+static void btif_a2dp_source_update_metrics(const RawAddress& peer_address) {
+  log::info("peer_address={}", peer_address);
+  BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
+
+  if (a2dp_source_cb == nullptr) {
+    log::error("Failed to find CB for address {}", peer_address);
+    return;
+  }
+
+  BtifMediaStats stats = a2dp_source_cb->stats;
   SchedulingStats enqueue_stats = stats.tx_queue_enqueue_stats;
 
   bluetooth::metrics::A2dpSession metrics;
@@ -1380,9 +1732,9 @@ static void btif_a2dp_source_update_metrics(void) {
   }
 
   if (enqueue_stats.total_updates > 1) {
-    metrics.media_timer_min_ms = btif_a2dp_source_cb.encoder_interval_ms -
+    metrics.media_timer_min_ms = a2dp_source_cb->encoder_interval_ms -
                                  (enqueue_stats.max_premature_scheduling_delta_us / 1000);
-    metrics.media_timer_max_ms = btif_a2dp_source_cb.encoder_interval_ms +
+    metrics.media_timer_max_ms = a2dp_source_cb->encoder_interval_ms +
                                  (enqueue_stats.max_overdue_scheduling_delta_us / 1000);
 
     metrics.total_scheduling_count = enqueue_stats.overdue_scheduling_count +
@@ -1404,7 +1756,7 @@ static void btif_a2dp_source_update_metrics(void) {
   }
 
   if (metrics.audio_duration_ms != -1) {
-    bluetooth::metrics::LogA2dpSessionReported(btif_av_source_active_peer(), metrics);
+    bluetooth::metrics::LogA2dpSessionReported(peer_address, metrics);
   }
 }
 

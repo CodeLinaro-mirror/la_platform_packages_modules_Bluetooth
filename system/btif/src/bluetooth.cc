@@ -1142,8 +1142,8 @@ static int set_dynamic_audio_buffer_size(int codec, int size) {
   return btif_set_dynamic_audio_buffer_size(codec, size);
 }
 
-static bool allow_low_latency_audio(bool allowed, RawAddress /* address */) {
-  btif_a2dp_source_allow_low_latency_audio(allowed);
+static bool allow_low_latency_audio(bool allowed, RawAddress address) {
+  btif_a2dp_source_allow_low_latency_audio(address, allowed);
   return true;
 }
 

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "avrcp_service.h"
@@ -68,7 +73,7 @@ AvrcpService* AvrcpService::instance_ = nullptr;
 AvrcpService::ServiceInterfaceImpl* AvrcpService::service_interface_ = nullptr;
 
 static class A2dpInterfaceImpl : public A2dpInterface {
-  RawAddress active_peer() override { return btif_av_source_active_peer(); }
+  std::set<RawAddress> active_peers() override { return btif_av_source_active_peers(); }
 
   bool is_peer_in_silence_mode(const RawAddress& peer_address) override {
     return btif_av_is_peer_silenced(peer_address);
@@ -175,6 +180,11 @@ public:
                                     bdaddr, key, state));
   }
 
+  void SendKeyEventExt(const RawAddress& address, uint8_t key, KeyState state) override {
+    do_in_jni_thread(base::BindOnce(&MediaInterface::SendKeyEventExt, base::Unretained(wrapped_),
+                                    address, key, state));
+  }
+
   void GetSongInfo(std::string media_id, SongInfoCallback info_cb) override {
     auto cb_lambda = [](SongInfoCallback cb, SongInfo data) {
       do_in_main_thread(base::BindOnce(std::move(cb), data));
@@ -184,6 +194,17 @@ public:
 
     do_in_jni_thread(base::BindOnce(&MediaInterface::GetSongInfo, base::Unretained(wrapped_),
                                     media_id, std::move(bound_cb)));
+  }
+
+  void GetSongInfoExt(const RawAddress& address, SongInfoCallback info_cb) override {
+    auto cb_lambda = [](SongInfoCallback cb, SongInfo data) {
+      do_in_main_thread(base::BindOnce(std::move(cb), data));
+    };
+
+    auto bound_cb = base::BindOnce(cb_lambda, std::move(info_cb));
+
+    do_in_jni_thread(base::BindOnce(&MediaInterface::GetSongInfoExt, base::Unretained(wrapped_),
+                                    address, std::move(bound_cb)));
   }
 
   void GetPlayStatus(PlayStatusCallback status_cb) override {
@@ -197,6 +218,17 @@ public:
                                     std::move(bound_cb)));
   }
 
+  void GetPlayStatusExt(const RawAddress& address, PlayStatusCallback status_cb) override {
+    auto cb_lambda = [](PlayStatusCallback cb, PlayStatus status) {
+      do_in_main_thread(base::BindOnce(std::move(cb), status));
+    };
+
+    auto bound_cb = base::BindOnce(cb_lambda, std::move(status_cb));
+
+    do_in_jni_thread(base::BindOnce(&MediaInterface::GetPlayStatusExt, base::Unretained(wrapped_),
+                                    address, std::move(bound_cb)));
+  }
+
   void GetNowPlayingList(NowPlayingCallback now_playing_cb) override {
     auto cb_lambda = [](NowPlayingCallback cb, std::string curr_media_id,
                         std::vector<SongInfo> song_list) {
@@ -208,6 +240,19 @@ public:
 
     do_in_jni_thread(base::BindOnce(&MediaInterface::GetNowPlayingList, base::Unretained(wrapped_),
                                     std::move(bound_cb)));
+  }
+
+  void GetNowPlayingListExt(const RawAddress& address, NowPlayingCallback now_playing_cb) override {
+    auto cb_lambda = [](NowPlayingCallback cb, std::string curr_media_id,
+                        std::vector<SongInfo> song_list) {
+      do_in_main_thread(
+              base::BindOnce(std::move(cb), std::move(curr_media_id), std::move(song_list)));
+    };
+
+    auto bound_cb = base::BindOnce(cb_lambda, std::move(now_playing_cb));
+
+    do_in_jni_thread(base::BindOnce(&MediaInterface::GetNowPlayingListExt,
+                                    base::Unretained(wrapped_), address, std::move(bound_cb)));
   }
 
   void GetMediaPlayerList(MediaListCallback list_cb) override {
@@ -324,6 +369,11 @@ public:
   void SetVolume(int8_t volume) override {
     do_in_jni_thread(
             base::BindOnce(&VolumeInterface::SetVolume, base::Unretained(wrapped_), volume));
+  }
+
+  void SetVolumeExt(const RawAddress& bdaddr, int8_t volume) override {
+    do_in_jni_thread(base::BindOnce(&VolumeInterface::SetVolumeExt, base::Unretained(wrapped_),
+                                    bdaddr, volume));
   }
 
 private:
@@ -538,7 +588,24 @@ void AvrcpService::SendMediaUpdate(bool track_changed, bool play_state, bool que
   // This function may be called on any thread, we need to make sure that the
   // device update happens on the main thread.
   for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
-    do_in_main_thread(base::BindOnce(&Device::SendMediaUpdate, device.get()->Get(), track_changed,
+    do_in_main_thread(base::BindOnce(&Device::SendMediaUpdateExt, device.get()->Get(), track_changed,
+                                     play_state, queue));
+  }
+}
+
+void AvrcpService::SendMediaUpdateExt(const RawAddress& bdaddr, bool track_changed, bool play_state,
+                                      bool queue) {
+  log::info("bdaddr={} : track_changed={} :  play_state={} :  queue={}", bdaddr, track_changed,
+            play_state, queue);
+
+  if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
+    return;
+  }
+  // This function may be called on any thread, we need to make sure that the
+  // device update happens on the main thread.
+  std::shared_ptr<Device> device = instance_->connection_handler_->GetDevice(bdaddr);
+  if (device != nullptr) {
+    do_in_main_thread(base::BindOnce(&Device::SendMediaUpdateExt, device.get()->Get(), track_changed,
                                      play_state, queue));
   }
 }

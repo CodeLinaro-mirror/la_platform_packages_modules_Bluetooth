@@ -71,13 +71,37 @@ BluetoothAudioClientInterface* active_hal_interface[MAX_A2DP_CONN] = {};
 // ProviderInfo for A2DP hardware offload encoding and decoding data paths,
 // if supported by the HAL and enabled. nullptr if not supported
 // or disabled.
-std::array<std::unique_ptr<::bluetooth::audio::aidl::a2dp::ProviderInfo>, MAX_A2DP_CONN> provider_info;
+std::array<std::unique_ptr<ProviderInfo>, MAX_A2DP_CONN> provider_info;
 
 // Save the value if the remote reports its delay before this interface is
 // initialized
 uint16_t remote_delay[MAX_A2DP_CONN] = {0};
 
 bool is_low_latency_mode_allowed = false;
+
+ProviderInfo* provider_info_for(uint8_t index) {
+  if (is_index_valid(index) && provider_info[index] != nullptr) {
+    return provider_info[index].get();
+  }
+  for (auto& info : provider_info) {
+    if (info != nullptr) {
+      return info.get();
+    }
+  }
+  return nullptr;
+}
+
+BluetoothAudioClientInterface* offload_hal_for(uint8_t index) {
+  if (is_index_valid(index) && offloading_hal_interface[index] != nullptr) {
+    return offloading_hal_interface[index];
+  }
+  for (auto* hal_interface : offloading_hal_interface) {
+    if (hal_interface != nullptr) {
+      return hal_interface;
+    }
+  }
+  return nullptr;
+}
 
 }  // namespace
 
@@ -224,24 +248,7 @@ bool init_decoder(StreamCallbacks const* stream_callbacks, bool offload_enabled)
 // Clean up BluetoothAudio HAL
 void cleanup() {
   for (int i = 0; i < MAX_A2DP_CONN; i++) {
-    if (!is_hal_enabled(i)) {
-      continue;
-    }
-    end_session(i);
-
-    auto transport = active_hal_interface[i]->GetTransportInstance();
-    transport->ResetPendingCmd();
-    transport->ResetPresentationPosition();
-    active_hal_interface[i] = nullptr;
-
-    delete_hal_interface(software_hal_interface[i]);
-    software_hal_interface[i] = nullptr;
-    if (offloading_hal_interface[i] != nullptr) {
-      delete_hal_interface(offloading_hal_interface[i]);
-      offloading_hal_interface[i] = nullptr;
-    }
-
-    remote_delay[i] = 0;
+    cleanup(i);
   }
 
   if (com_android_bluetooth_flags_a2dp_sink_offload() &&
@@ -249,6 +256,28 @@ void cleanup() {
     delete_hal_interface(decoder_offloading_hal_interface);
     decoder_offloading_hal_interface = nullptr;
   }
+}
+
+// Clean up BluetoothAudio HAL for the given A2DP source index
+void cleanup(uint8_t index) {
+  if (!is_hal_enabled(index)) {
+    return;
+  }
+  end_session(index);
+
+  auto transport = active_hal_interface[index]->GetTransportInstance();
+  transport->ResetPendingCmd();
+  transport->ResetPresentationPosition();
+  active_hal_interface[index] = nullptr;
+
+  delete_hal_interface(software_hal_interface[index]);
+  software_hal_interface[index] = nullptr;
+  if (offloading_hal_interface[index] != nullptr) {
+    delete_hal_interface(offloading_hal_interface[index]);
+    offloading_hal_interface[index] = nullptr;
+  }
+
+  remote_delay[index] = 0;
 }
 
 // Set up the codec into BluetoothAudio HAL
@@ -262,7 +291,8 @@ bool setup_codec(const ahal_codec_configuration& config, uint8_t index) {
     return false;
   }
 
-  if (provider::supports_codec(config.codec_config.codec_type)) {
+  auto* info = provider_info_for(index);
+  if (info != nullptr && info->SupportsCodec(config.codec_config.codec_type)) {
     // The codec is supported in the provider info (AIDL v4).
     // In this case, the codec is offloaded, and the configuration passed
     // as A2dpStreamConfiguration to the UpdateAudioConfig() interface
@@ -271,7 +301,7 @@ bool setup_codec(const ahal_codec_configuration& config, uint8_t index) {
 
     a2dp_stream_configuration.peerMtu = config.peer_mtu;
     a2dp_stream_configuration.codecId =
-            provider_info[index]->GetCodec(config.codec_config.codec_type).value()->id;
+            info->GetCodec(config.codec_config.codec_type).value()->id;
 
     size_t parameters_start = 0;
     size_t parameters_end = 0;
@@ -386,7 +416,7 @@ void ack_stream_started(Status ack, uint8_t index) {
       return;
     }
 
-    log::info("result={}", ack);
+    log::info("result={}, index {}", ack, index);
 
     auto transport = active_hal_interface[index]->GetTransportInstance();
     auto pending_cmd = transport->GetPendingCmd();
@@ -401,7 +431,7 @@ void ack_stream_started(Status ack, uint8_t index) {
     }
 
   } else {
-    log::info("result={}", ack);
+    log::info("result={}, index {}", ack, index);
     auto transport = active_hal_interface[index]->GetTransportInstance();
     auto pending_cmd = transport->GetPendingCmd();
     if (pending_cmd == A2DP_CTRL_CMD_START) {
@@ -542,17 +572,16 @@ void set_low_latency_mode_allowed(bool allowed, uint8_t index) {
  * Lookup the codec info in the list of supported offloaded sink codecs.
  ***/
 std::optional<btav_a2dp_codec_index_t> provider::sink_codec_index(const uint8_t* p_codec_info) {
-  // Temporarily hardcoded to index 0 as offload is not used yet.
-  // Remove hardcoding when dual A2DP offload is supported.
-  // Same rationale applies to other hardcoded indices.
-  return provider_info[0] ? provider_info[0]->SinkCodecIndex(p_codec_info) : std::nullopt;
+  auto* info = provider_info_for(0);
+  return info != nullptr ? info->SinkCodecIndex(p_codec_info) : std::nullopt;
 }
 
 /***
  * Lookup the codec info in the list of supported offloaded source codecs.
  ***/
 std::optional<btav_a2dp_codec_index_t> provider::source_codec_index(const uint8_t* p_codec_info) {
-  return provider_info[0] ? provider_info[0]->SourceCodecIndex(p_codec_info) : std::nullopt;
+  auto* info = provider_info_for(0);
+  return info != nullptr ? info->SourceCodecIndex(p_codec_info) : std::nullopt;
 }
 
 /***
@@ -564,7 +593,8 @@ std::optional<btav_a2dp_codec_index_t> provider::source_codec_index(const uint8_
  * is not supported or enabled.
  ***/
 std::optional<const char*> provider::codec_index_str(btav_a2dp_codec_index_t codec_index) {
-  return provider_info[0] ? provider_info[0]->CodecIndexStr(codec_index) : std::nullopt;
+  auto* info = provider_info_for(0);
+  return info != nullptr ? info->CodecIndexStr(codec_index) : std::nullopt;
 }
 
 /***
@@ -572,7 +602,8 @@ std::optional<const char*> provider::codec_index_str(btav_a2dp_codec_index_t cod
  * A2DP_HARDWARE_ENCODING_DATAPATH or A2DP_HARDWARE_DECODING_DATAPATH.
  ***/
 bool provider::supports_codec(btav_a2dp_codec_index_t codec_index) {
-  return provider_info[0] ? provider_info[0]->SupportsCodec(codec_index) : false;
+  auto* info = provider_info_for(0);
+  return info != nullptr ? info->SupportsCodec(codec_index) : false;
 }
 
 /***
@@ -580,8 +611,9 @@ bool provider::supports_codec(btav_a2dp_codec_index_t codec_index) {
  ***/
 bool provider::codec_info(btav_a2dp_codec_index_t codec_index, bluetooth::a2dp::CodecId* codec_id,
                           uint8_t* codec_info, btav_a2dp_codec_config_t* codec_config) {
-  return provider_info[0]
-                 ? provider_info[0]->CodecCapabilities(codec_index, codec_id, codec_info, codec_config)
+  auto* info = provider_info_for(0);
+  return info != nullptr
+                 ? info->CodecCapabilities(codec_index, codec_id, codec_info, codec_config)
                  : false;
 }
 
@@ -602,7 +634,8 @@ provider::get_a2dp_configuration(
     log::error("A2dp source index {} is invalid", index);
     return std::nullopt;
   }
-  if (provider_info[index] == nullptr) {
+  auto* info = provider_info_for(index);
+  if (info == nullptr) {
     return std::nullopt;
   }
 
@@ -763,8 +796,8 @@ provider::get_a2dp_configuration(
   log::info("provider selected {}", result->toString());
   auto a2dp_configuration = convertA2dpConfiguration(result.value());
   a2dp_configuration.codec_parameters.codec_type =
-          is_source ? provider_info[index]->SourceCodecIndex(result->id).value()
-                    : provider_info[index]->SinkCodecIndex(result->id).value();
+          is_source ? info->SourceCodecIndex(result->id).value()
+                    : info->SinkCodecIndex(result->id).value();
   return std::make_optional(a2dp_configuration);
 }
 
@@ -786,14 +819,13 @@ tA2DP_STATUS provider::parse_a2dp_configuration(::bluetooth::a2dp::CodecId codec
 
   std::copy(codec_info, codec_info + AVDT_CODEC_SIZE, std::back_inserter(configuration));
 
-  // Temporarily hardcoded to index 0 as offload is not used yet.
-  // Remove hardcoding when dual A2DP offload is supported.
-  if (offloading_hal_interface[0] == nullptr) {
+  BluetoothAudioClientInterface* hal_interface = offload_hal_for(0);
+  if (hal_interface == nullptr) {
     log::error("the offloading HAL interface is not opened");
     return A2DP_FAIL;
   }
 
-  auto a2dp_status = offloading_hal_interface[0]->ParseA2dpConfiguration(
+  auto a2dp_status = hal_interface->ParseA2dpConfiguration(
           aidl_codec_id.value(), configuration, &codec_parameters_aidl);
 
   if (!a2dp_status.has_value()) {
@@ -818,8 +850,8 @@ tA2DP_STATUS provider::parse_a2dp_configuration(::bluetooth::a2dp::CodecId codec
  ***/
 std::optional<btav_a2dp_hal_provider_info_t> get_provider_info() {
   // The provider info is a global property of the audio HAL and is not
-  // peer specific: query it through the default adapter's interface.
-  BluetoothAudioClientInterface* hal_interface = offloading_hal_interface[0];
+  // peer specific: query it through any opened offload interface.
+  BluetoothAudioClientInterface* hal_interface = offload_hal_for(0);
   if (hal_interface == nullptr) {
     log::warn("a2dp hw offload interface is not available");
     return std::nullopt;

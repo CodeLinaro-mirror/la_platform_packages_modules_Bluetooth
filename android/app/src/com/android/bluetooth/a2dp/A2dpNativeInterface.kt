@@ -93,7 +93,18 @@ class A2dpNativeInterface(
      * @return true on success, otherwise false.
      */
     fun setActiveDevice(device: BluetoothDevice?): Boolean {
-        return setActiveDeviceNative(getByteAddress(device))
+        return setActiveDeviceNative(getByteAddress(device), true)
+    }
+
+    /**
+     * Sets a connected A2DP remote device as active.
+     *
+     * @param device the remote device
+     * @param active set the active peer when true; Deactivate the peer when false
+     * @return true on success, otherwise false.
+     */
+    fun setActiveDevice(device: BluetoothDevice?, active: Boolean): Boolean {
+        return setActiveDeviceNative(getByteAddress(device), active)
     }
 
     /**
@@ -108,6 +119,16 @@ class A2dpNativeInterface(
         codecConfigArray: Array<BluetoothCodecConfig>,
     ): Boolean {
         return setCodecConfigPreferenceNative(getByteAddress(device), codecConfigArray)
+    }
+
+    /**
+     * Gets the A2DP stream index of a remote device.
+     *
+     * @param device the remote device
+     * @return the stream index of the device.
+     */
+    fun getStreamIndex(device: BluetoothDevice?): Int {
+        return getStreamIndexNative(getByteAddress(device))
     }
 
     private fun getByteAddress(device: BluetoothDevice?): ByteArray {
@@ -133,10 +154,12 @@ class A2dpNativeInterface(
 
     private external fun setSilenceDeviceNative(address: ByteArray, silence: Boolean): Boolean
 
-    private external fun setActiveDeviceNative(address: ByteArray): Boolean
+    private external fun setActiveDeviceNative(address: ByteArray, active: Boolean): Boolean
 
     private external fun setCodecConfigPreferenceNative(
         address: ByteArray,
         codecConfigArray: Array<BluetoothCodecConfig>,
     ): Boolean
+
+    private external fun getStreamIndexNative(address: ByteArray): Int
 }

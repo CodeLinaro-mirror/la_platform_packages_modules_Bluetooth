@@ -111,10 +111,7 @@ final class A2dpStateMachine extends StateMachine {
     private int mConnectionState = STATE_DISCONNECTED;
     private int mLastConnectionState = -1;
     private BluetoothCodecStatus mCodecStatus;
-    private final A2dpAudioZone mA2dpAudioZone;
-    private boolean mBroadcastSetMediaPlayer = false;
-
-    private static final String CAR_SETTINGS_PACKAGE_NAME = "com.android.car.settings";
+    private A2dpAudioZone mA2dpAudioZone;
 
     // Disconnection reason from BluetoothStatusCodes.
     private int mReason = 0;
@@ -134,10 +131,8 @@ final class A2dpStateMachine extends StateMachine {
         mDevice = device;
         mA2dpService = a2dpService;
         mA2dpNativeInterface = a2dpNativeInterface;
-        mA2dpAudioZone = A2dpAudioZone.isAudioZoneAvailable(a2dpService) ?
-                new A2dpAudioZone(mA2dpService, device) : null;
-        mBroadcastSetMediaPlayer = mA2dpService.getResources()
-                .getBoolean(R.bool.a2dp_source_broadcast_set_media_player);
+        mA2dpAudioZone = A2dpAudioZone.isAudioZoneAvailable(a2dpService)
+                ? new A2dpAudioZone(mA2dpService, device) : null;
 
         mDisconnected = new Disconnected();
         mConnecting = new Connecting();
@@ -203,6 +198,10 @@ final class A2dpStateMachine extends StateMachine {
             }
 
             logFailureIfNeeded();
+            mA2dpService.clearStoredMediaPlayer(mDevice);
+            if (mA2dpAudioZone != null) {
+                mA2dpAudioZone.clearMediaPlayer();
+            }
         }
 
         @Override
@@ -276,7 +275,6 @@ final class A2dpStateMachine extends StateMachine {
             }
             if (mA2dpAudioZone != null) {
                 mA2dpAudioZone.clearMediaPlayer();
-                mA2dpAudioZone.notifyA2dpStatus(false);
             }
         }
 
@@ -510,12 +508,6 @@ final class A2dpStateMachine extends StateMachine {
             broadcastConnectionState(mConnectionState, mLastConnectionState);
             // Upon connected, the audio starts out as stopped
             broadcastAudioState(BluetoothA2dp.STATE_NOT_PLAYING, BluetoothA2dp.STATE_PLAYING);
-            if (mA2dpAudioZone != null) {
-                setMediaPlayer();
-                mA2dpAudioZone.notifyA2dpStatus(true);
-                // Always notify app to set media player if needed
-                broadcastSetMediaPlayerRequest();
-            }
             logSuccessIfNeeded();
         }
 
@@ -556,7 +548,9 @@ final class A2dpStateMachine extends StateMachine {
                 case SET_MEDIA_PLAYER -> {
                     MediaPlayerInfo mediaPlayerInfo = (MediaPlayerInfo) message.obj;
                     processSetMediaPlayer(
-                            mediaPlayerInfo.getMediaPlayer(), mediaPlayerInfo.getAudioZoneIndex());
+                            mediaPlayerInfo.getMediaPlayer(),
+                            mediaPlayerInfo.getAudioZoneIndex(),
+                            mediaPlayerInfo.getZoneChanged());
                 }
                 case CLEAR_MEDIA_PLAYER -> processClearMediaPlayer();
                 default -> {
@@ -626,11 +620,29 @@ final class A2dpStateMachine extends StateMachine {
         }
 
         // in Connected state
-        private void processSetMediaPlayer(String mediaPlayer, int audioZoneIndex) {
+        private void processSetMediaPlayer(
+                String mediaPlayer, int audioZoneIndex, boolean zoneChanged) {
             Log.i(TAG, "processSetMediaPlayer: media player " + mediaPlayer +
                     ", audio zone index " + audioZoneIndex);
-            if (mA2dpAudioZone != null) {
-                mA2dpAudioZone.setMediaPlayer(mediaPlayer, audioZoneIndex);
+            A2dpAudioZone audioZone = getA2dpAudioZone();
+            if (audioZone == null) {
+                Log.e(TAG, "processSetMediaPlayer: no audio zone available");
+                return;
+            }
+            if (!audioZone.setMediaPlayer(mediaPlayer, audioZoneIndex)) {
+                Log.e(TAG, "processSetMediaPlayer: failed to bind media player " + mediaPlayer
+                        + " to audio zone index " + audioZoneIndex);
+                // A2dpService committed the binding to storage before handing it over. Drop it so
+                // the unchanged-value early return in setA2dpMediaPlayer() cannot block a retry of
+                // a bind that never actually took effect.
+                mA2dpService.clearStoredMediaPlayer(mDevice);
+                return;
+            }
+            // Everything below observes the completed bind, so it must not run before
+            // A2dpAudioZone.setMediaPlayer() has actually swapped the Car audio affinity.
+            mA2dpService.setActivePlayerExt(mDevice, mediaPlayer);
+            if (zoneChanged) {
+                mA2dpService.restartPlaybackForRoutingChange(mDevice);
             }
         }
     }
@@ -638,16 +650,21 @@ final class A2dpStateMachine extends StateMachine {
     private static class MediaPlayerInfo {
         private final String mMediaPlayer;
         private final int mAudioZoneIndex;
+        private final boolean mZoneChanged;
 
-        MediaPlayerInfo(String mediaPlayer, int audioZoneIndex) {
+        MediaPlayerInfo(String mediaPlayer, int audioZoneIndex, boolean zoneChanged) {
             mMediaPlayer = mediaPlayer;
             mAudioZoneIndex = audioZoneIndex;
+            mZoneChanged = zoneChanged;
         }
         String getMediaPlayer() {
             return mMediaPlayer;
         }
         int getAudioZoneIndex() {
             return mAudioZoneIndex;
+        }
+        boolean getZoneChanged() {
+            return mZoneChanged;
         }
     }
 
@@ -792,21 +809,9 @@ final class A2dpStateMachine extends StateMachine {
         mA2dpService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
     }
 
-    private void broadcastSetMediaPlayerRequest() {
-        if (!mBroadcastSetMediaPlayer) {
-            return;
-        }
-        log("broadcastSetMediaPlayerRequest");
-        Intent intent = new Intent(BluetoothA2dp.ACTION_SET_MEDIA_PLAYER);
-        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, mDevice);
-        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-        intent.setPackage(CAR_SETTINGS_PACKAGE_NAME);
-        mA2dpService.sendBroadcast(intent, BLUETOOTH_CONNECT,
-                Util.getTempBroadcastOptions().toBundle());
-    }
-
-    public void setMediaPlayer(String mediaPlayer, int audioZoneIndex) {
-        MediaPlayerInfo mediaPlayerInfo = new MediaPlayerInfo(mediaPlayer, audioZoneIndex);
+    public void setMediaPlayer(String mediaPlayer, int audioZoneIndex, boolean zoneChanged) {
+        MediaPlayerInfo mediaPlayerInfo =
+                new MediaPlayerInfo(mediaPlayer, audioZoneIndex, zoneChanged);
         sendMessage(SET_MEDIA_PLAYER, mediaPlayerInfo);
     }
 
@@ -814,20 +819,18 @@ final class A2dpStateMachine extends StateMachine {
         sendMessage(CLEAR_MEDIA_PLAYER);
     }
 
-    private void setMediaPlayer() {
-        String mediaPlayer = mA2dpService.getMediaPlayer(mDevice);
-        int audioZoneIndex = mA2dpService.getAudioZoneIndex(mDevice);
-        if (A2dpAudioZone.validMediaPlayer(mA2dpService, mediaPlayer) &&
-            A2dpAudioZone.validZoneIndex(audioZoneIndex)) {
-            // Set media player ever stored in DB
-            setMediaPlayer(mediaPlayer, audioZoneIndex);
+    private A2dpAudioZone getA2dpAudioZone() {
+        if (mA2dpAudioZone == null && A2dpAudioZone.isAudioZoneAvailable(mA2dpService)) {
+            mA2dpAudioZone = new A2dpAudioZone(mA2dpService, mDevice);
         }
+        return mA2dpAudioZone;
     }
 
     private void processClearMediaPlayer() {
-        if (mA2dpAudioZone != null) {
+        A2dpAudioZone audioZone = getA2dpAudioZone();
+        if (audioZone != null) {
             Log.i(TAG, "clear media player");
-            mA2dpAudioZone.clearMediaPlayer();
+            audioZone.clearMediaPlayer();
         }
     }
 

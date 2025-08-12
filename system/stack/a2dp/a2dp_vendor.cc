@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /**
@@ -26,9 +31,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 
+#include "btif/include/btif_a2dp_source.h"
 #include "hardware/bt_av.h"
+#include "osi/include/allocator.h"
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_constants.h"
 #include "stack/include/a2dp_vendor_aptx_adaptive.h"
@@ -47,6 +55,125 @@
 #include "stack/include/bt_hdr.h"
 
 using namespace bluetooth;
+
+namespace {
+
+std::mutex single_a2dp_source_encoder_mutex;
+RawAddress single_a2dp_source_encoder_peer;
+
+uint32_t single_a2dp_source_encoder_read_callback(uint8_t* p_buf, uint32_t len) {
+  RawAddress peer_address;
+  {
+    std::lock_guard<std::mutex> lock(single_a2dp_source_encoder_mutex);
+    peer_address = single_a2dp_source_encoder_peer;
+  }
+  if (peer_address.IsEmpty()) {
+    log::error("single A2DP source encoder adapter has no active peer");
+    return 0;
+  }
+  return btif_a2dp_source_read_callback(peer_address, p_buf, len);
+}
+
+bool single_a2dp_source_encoder_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
+                                                 uint32_t bytes_read) {
+  RawAddress peer_address;
+  {
+    std::lock_guard<std::mutex> lock(single_a2dp_source_encoder_mutex);
+    peer_address = single_a2dp_source_encoder_peer;
+  }
+  if (peer_address.IsEmpty()) {
+    log::error("single A2DP source encoder adapter has no active peer");
+    osi_free(p_buf);
+    return false;
+  }
+  return btif_a2dp_source_enqueue_callback(peer_address, p_buf, frames_n, bytes_read);
+}
+
+class SingleA2dpSourceEncoderAdapter : public A2dpEncoderInterface {
+ public:
+  SingleA2dpSourceEncoderAdapter(const RawAddress& peer_address,
+                                 const tA2DP_ENCODER_INTERFACE* interface)
+      : interface_(*interface) {
+    peer_address_ = peer_address;
+  }
+
+  ~SingleA2dpSourceEncoderAdapter() override { encoder_cleanup(); }
+
+  void encoder_init(tA2DP_ENCODER_INIT_PEER_PARAMS* p_peer_params,
+                    A2dpCodecConfig* a2dp_codec_config,
+                    a2dp_source_read_callback_t /* read_callback */,
+                    a2dp_source_enqueue_callback_t /* enqueue_callback */) override {
+    {
+      std::lock_guard<std::mutex> lock(single_a2dp_source_encoder_mutex);
+      single_a2dp_source_encoder_peer = peer_address_;
+    }
+    interface_.encoder_init(p_peer_params, a2dp_codec_config,
+                            single_a2dp_source_encoder_read_callback,
+                            single_a2dp_source_encoder_enqueue_callback);
+    cleaned_up_ = false;
+  }
+
+  void encoder_cleanup() override {
+    if (cleaned_up_) {
+      return;
+    }
+    interface_.encoder_cleanup();
+    cleaned_up_ = true;
+    std::lock_guard<std::mutex> lock(single_a2dp_source_encoder_mutex);
+    if (single_a2dp_source_encoder_peer == peer_address_) {
+      single_a2dp_source_encoder_peer = RawAddress::kEmpty;
+    }
+  }
+
+  void feeding_reset() override {
+    interface_.feeding_reset();
+  }
+
+  void feeding_flush() override {
+    interface_.feeding_flush();
+  }
+
+  uint64_t get_encoder_interval_ms() override {
+    return interface_.get_encoder_interval_ms();
+  }
+
+  int get_effective_frame_size() override {
+    return interface_.get_effective_frame_size();
+  }
+
+  void send_frames(uint64_t timestamp_us) override {
+    interface_.send_frames(timestamp_us);
+  }
+
+  void set_transmit_queue_length(size_t transmit_queue_length) override {
+    if (interface_.set_transmit_queue_length != nullptr) {
+      interface_.set_transmit_queue_length(transmit_queue_length);
+    }
+  }
+
+ private:
+  const tA2DP_ENCODER_INTERFACE& interface_;
+  bool cleaned_up_ = true;
+};
+
+A2dpEncoderInterface* get_single_a2dp_source_encoder_adapter(
+    const RawAddress& peer_address,
+    const tA2DP_ENCODER_INTERFACE* interface) {
+  if (interface == nullptr) {
+    return nullptr;
+  }
+
+  A2dpEncoderInterface* encoder = findA2dpSourceEncoder(peer_address);
+  if (encoder != nullptr) {
+    return encoder;
+  }
+
+  encoder = new SingleA2dpSourceEncoderAdapter(peer_address, interface);
+  setA2dpSourceEncoders(peer_address, encoder);
+  return encoder;
+}
+
+}  // namespace
 
 inline bool A2DP_IsAptxCodec(uint32_t vendor_id, uint16_t codec_id) {
     return vendor_id == A2DP_APTX_VENDOR_ID && codec_id == A2DP_APTX_CODEC_ID_BLUETOOTH;
@@ -316,6 +443,23 @@ bool A2DP_VendorCodecTypeEquals(const uint8_t* p_codec_info_a, const uint8_t* p_
   return true;
 }
 
+int A2DP_VendorGetBitRate(const RawAddress& peer_address, const uint8_t* p_codec_info) {
+  uint32_t vendor_id = A2DP_VendorCodecGetVendorId(p_codec_info);
+  uint16_t codec_id = A2DP_VendorCodecGetCodecId(p_codec_info);
+
+  // Check for aptX
+  if (A2DP_IsAptxCodec(vendor_id, codec_id)) {
+    return A2DP_VendorGetBitRateAptx(peer_address, p_codec_info);
+  }
+  // Check for Opus
+  if (vendor_id == A2DP_OPUS_VENDOR_ID && codec_id == A2DP_OPUS_CODEC_ID) {
+    return A2DP_VendorGetBitRateOpus(p_codec_info);
+  }
+  // Add checks based on <vendor_id, codec_id>
+
+  return -1;
+}
+
 int A2DP_VendorGetSinkTrackChannelType(const uint8_t* p_codec_info) {
   uint32_t vendor_id = A2DP_VendorCodecGetVendorId(p_codec_info);
   uint16_t codec_id = A2DP_VendorCodecGetCodecId(p_codec_info);
@@ -385,33 +529,33 @@ bool A2DP_VendorBuildCodecHeader(const uint8_t* p_codec_info, BT_HDR* p_buf,
   return false;
 }
 
-const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterface(const uint8_t* p_codec_info) {
+A2dpEncoderInterface* A2DP_VendorGetEncoderInterface(
+    const RawAddress& peer_address,
+    const uint8_t* p_codec_info) {
   uint32_t vendor_id = A2DP_VendorCodecGetVendorId(p_codec_info);
   uint16_t codec_id = A2DP_VendorCodecGetCodecId(p_codec_info);
 
   // Check for aptX
   if (A2DP_IsAptxCodec(vendor_id, codec_id)) {
-    return A2DP_VendorGetEncoderInterfaceAptx(p_codec_info);
+    return A2DP_VendorGetEncoderInterfaceAptx(peer_address, p_codec_info);
   }
 
   // Check for aptX-HD
   if (A2DP_IsAptxHdCodec(vendor_id, codec_id)) {
-    return A2DP_VendorGetEncoderInterfaceAptxHd(p_codec_info);
+    return get_single_a2dp_source_encoder_adapter(
+        peer_address, A2DP_VendorGetEncoderInterfaceAptxHd(p_codec_info));
   }
 
   // Check for LDAC
   if (vendor_id == A2DP_LDAC_VENDOR_ID && codec_id == A2DP_LDAC_CODEC_ID) {
-    return A2DP_VendorGetEncoderInterfaceLdac(p_codec_info);
+    return get_single_a2dp_source_encoder_adapter(
+        peer_address, A2DP_VendorGetEncoderInterfaceLdac(p_codec_info));
   }
 
   // Check for Opus
   if (vendor_id == A2DP_OPUS_VENDOR_ID && codec_id == A2DP_OPUS_CODEC_ID) {
-    return A2DP_VendorGetEncoderInterfaceOpus(p_codec_info);
-  }
-
-  // Check for LHDCv5
-  if (vendor_id == A2DP_LHDC_VENDOR_ID && codec_id == A2DP_LHDCV5_CODEC_ID) {
-    return A2DP_VendorGetEncoderInterfaceLhdcV5(p_codec_info);
+    return get_single_a2dp_source_encoder_adapter(
+        peer_address, A2DP_VendorGetEncoderInterfaceOpus(p_codec_info));
   }
 
   // Add checks based on <vendor_id, codec_id>

@@ -37,6 +37,11 @@ apex {
             jni_libs: [
                 "libbluetooth_jni",
             ],
+            // Second SBC encoder copy, dlopen()ed by the stack so that each of
+            // the two concurrent A2DP source streams gets its own encoder state.
+            native_shared_libs: [
+                "libbt-sbc-encoder2",
+            ],
         },
     },
 
