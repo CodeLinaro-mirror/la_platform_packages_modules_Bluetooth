@@ -3882,6 +3882,32 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         return -1;
     }
 
+    /**
+     * Gets link key with specific link type of this {@link BluetoothDevice} that is stored
+     * in configure file, the input parameter could be one of "LinkKey", "LE_KEY_PENC",
+     * "LE_KEY_PID", "LE_KEY_LID", "LE_KEY_PCSRK", "LE_KEY_LENC" and "LE_KEY_LCSRK".
+     *
+     * @return the link key with specific link type of this {@link BluetoothDevice}.
+     *
+     * @hide
+     */
+    @Nullable
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public String getLinkKey(@NonNull String keyType) {
+        final IBluetooth service = getBluetooth();
+        if (service == null || !isBluetoothEnabled()) {
+            Log.e(TAG, "Bluetooth is not enabled. Cannot get link key.");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else {
+            try {
+                return service.getLinkKey(this, keyType, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return null;
+    }
+
     @RequiresBluetoothConnectPermission
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     private @ConnectionReturnValues int disconnectAllEnabledProfiles(IBluetooth service) {
