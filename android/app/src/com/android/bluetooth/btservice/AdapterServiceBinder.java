@@ -1299,6 +1299,18 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    public String getLinkKey(BluetoothDevice device, String keyType, AttributionSource source) {
+        AdapterService service = getService();
+        if (service == null
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getLinkKey")) {
+            Log.w(TAG, "getLinkKey() - Not allowed for non-active user");
+            return null;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        return service.getLinkKey(device, keyType);
+    }
+
+    @Override
     public boolean factoryReset(AttributionSource source) {
         AdapterService service = getService();
         if (service == null

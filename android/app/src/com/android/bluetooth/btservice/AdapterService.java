@@ -3969,6 +3969,19 @@ public class AdapterService extends Service {
         mLocalCallbacks.remove(callback);
     }
 
+    public String getLinkKey(BluetoothDevice device, String keyType) {
+        String key = null;
+        String address = device.getAddress().toLowerCase(Locale.ENGLISH);
+        if (mBluetoothKeystoreService != null) {
+            try {
+                key = mBluetoothKeystoreService.getKey(address, keyType);
+            } catch (IOException | InterruptedException e) {
+                Log.e(TAG, "Failed to parse config file", e);
+            }
+        }
+        return key;
+    }
+
     void registerRemoteCallback(IBluetoothCallback callback) {
         mSystemServerCallbacks.register(callback);
     }
