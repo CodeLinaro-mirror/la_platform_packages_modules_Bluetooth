@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice.storage;
@@ -79,6 +84,10 @@ public class Metadata {
     /** This is used to indicate the number of times the bond has been lost */
     public int key_missing_count;
 
+    /** For dual A2dp Source */
+    public String a2dpMediaPlayer;
+    public int a2dpAudioZone;
+
     Metadata(String address) {
         this(address, false, false);
     }
@@ -99,6 +108,8 @@ public class Metadata {
         active_audio_device_policy = BluetoothDevice.ACTIVE_AUDIO_DEVICE_POLICY_DEFAULT;
         is_preferred_microphone_for_calls = true;
         key_missing_count = 0;
+        a2dpMediaPlayer = "";
+        a2dpAudioZone = 0;
     }
 
     static final class Builder {
@@ -477,6 +488,10 @@ public class Metadata {
                 .append(audioPolicyMetadata)
                 .append("), is_preferred_microphone_for_calls(")
                 .append(is_preferred_microphone_for_calls)
+                .append("), media player(")
+                .append(a2dpMediaPlayer)
+                .append("), audio zone(")
+                .append(a2dpAudioZone)
                 .append(")}");
 
         return builder.toString();

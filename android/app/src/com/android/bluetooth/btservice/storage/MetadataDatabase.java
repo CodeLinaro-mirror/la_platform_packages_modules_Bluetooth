@@ -39,7 +39,7 @@ import java.util.List;
 /** MetadataDatabase is a Room database stores Bluetooth persistence data */
 @Database(
         entities = {Metadata.class},
-        version = 122)
+        version = 123, exportSchema = true)
 public abstract class MetadataDatabase extends RoomDatabase {
     /** The metadata database file name */
     public static final String DATABASE_NAME = AdapterUtil.isAdapter1() ? "bluetooth_db1" : "bluetooth_db";
@@ -717,6 +717,25 @@ public abstract class MetadataDatabase extends RoomDatabase {
                         Cursor cursor = database.query("SELECT * FROM metadata");
                         if (cursor == null
                                 || cursor.getColumnIndex("key_missing_count") == -1) {
+                            throw ex;
+                        }
+                    }
+                }
+            };
+
+    @VisibleForTesting
+    static final Migration MIGRATION_122_123 =
+            new Migration(122, 123) {
+                @Override
+                public void migrate(SupportSQLiteDatabase database) {
+                    try {
+                        database.execSQL("ALTER TABLE metadata ADD COLUMN `a2dpMediaPlayer` "
+                                + "TEXT NOT NULL");
+                        database.execSQL("ALTER TABLE metadata ADD COLUMN `a2dpAudioZone` INTEGER");
+                    } catch (SQLException ex) {
+                        // Check if user has new schema, but is just missing the version update
+                        Cursor cursor = database.query("SELECT * FROM metadata");
+                        if (cursor == null || cursor.getColumnIndex("a2dpMediaPlayer") == -1) {
                             throw ex;
                         }
                     }

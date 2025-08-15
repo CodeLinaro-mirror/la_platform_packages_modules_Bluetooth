@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "avrcp"
@@ -93,7 +98,10 @@ static void filter_cover_art(SongInfo& s) {
   }
 }
 
-bool Device::IsActive() const { return address_ == a2dp_interface_->active_peer(); }
+bool Device::IsActive() const {
+  return a2dp_interface_->active_peers().find(address_) !=
+          a2dp_interface_->active_peers().end();
+}
 
 bool Device::IsInSilenceMode() const { return a2dp_interface_->is_peer_in_silence_mode(address_); }
 
@@ -176,14 +184,13 @@ void Device::VendorPacketHandler(uint8_t label, std::shared_ptr<VendorPacket> pk
         send_message(label, false, std::move(response));
         return;
       }
-      media_interface_->GetSongInfo(base::Bind(&Device::GetElementAttributesResponse,
+      media_interface_->GetSongInfoExt(GetAddress(), base::Bind(&Device::GetElementAttributesResponse,
                                                weak_ptr_factory_.GetWeakPtr(), label,
                                                get_element_attributes_request_pkt));
     } break;
 
     case CommandPdu::GET_PLAY_STATUS: {
-      media_interface_->GetPlayStatus(
-              base::Bind(&Device::GetPlayStatusResponse, weak_ptr_factory_.GetWeakPtr(), label));
+      media_interface_->GetPlayStatusExt(GetAddress(), base::Bind(&Device::GetPlayStatusResponse, weak_ptr_factory_.GetWeakPtr(), label));
     } break;
 
     case CommandPdu::PLAY_ITEM: {
@@ -377,6 +384,7 @@ void Device::HandleGetCapabilities(uint8_t label,
         response->AddEvent(Event::PLAYER_APPLICATION_SETTING_CHANGED);
       }
 
+      log::debug(": avrcp13_compatibility_={}", avrcp13_compatibility_);
       if (!avrcp13_compatibility_) {
         response->AddEvent(Event::AVAILABLE_PLAYERS_CHANGED);
         response->AddEvent(Event::ADDRESSED_PLAYER_CHANGED);
@@ -409,18 +417,18 @@ void Device::HandleNotification(uint8_t label,
 
   switch (pkt->GetEventRegistered()) {
     case Event::TRACK_CHANGED: {
-      media_interface_->GetNowPlayingList(base::Bind(&Device::TrackChangedNotificationResponse,
+      media_interface_->GetNowPlayingListExt(GetAddress(), base::Bind(&Device::TrackChangedNotificationResponse,
                                                      weak_ptr_factory_.GetWeakPtr(), label, true));
     } break;
 
     case Event::PLAYBACK_STATUS_CHANGED: {
-      media_interface_->GetPlayStatus(base::Bind(&Device::PlaybackStatusNotificationResponse,
+      media_interface_->GetPlayStatusExt(GetAddress(), base::Bind(&Device::PlaybackStatusNotificationResponse,
                                                  weak_ptr_factory_.GetWeakPtr(), label, true));
     } break;
 
     case Event::PLAYBACK_POS_CHANGED: {
       play_pos_interval_ = pkt->GetInterval();
-      media_interface_->GetPlayStatus(base::Bind(&Device::PlaybackPosNotificationResponse,
+      media_interface_->GetPlayStatusExt(GetAddress(), base::Bind(&Device::PlaybackPosNotificationResponse,
                                                  weak_ptr_factory_.GetWeakPtr(), label, true));
     } break;
 
@@ -440,7 +448,7 @@ void Device::HandleNotification(uint8_t label,
     } break;
 
     case Event::NOW_PLAYING_CONTENT_CHANGED: {
-      media_interface_->GetNowPlayingList(base::Bind(&Device::HandleNowPlayingNotificationResponse,
+      media_interface_->GetNowPlayingListExt(GetAddress(), base::Bind(&Device::HandleNowPlayingNotificationResponse,
                                                      weak_ptr_factory_.GetWeakPtr(), label, true));
     } break;
 
@@ -548,7 +556,7 @@ void Device::HandleVolumeChanged(uint8_t label,
   volume_ = pkt->GetVolume();
   volume_ &= ~0x80;  // remove RFA bit
   log::verbose("Volume has changed to {}", (uint32_t)volume_);
-  volume_interface_->SetVolume(volume_);
+  volume_interface_->SetVolumeExt(GetAddress(), volume_);
 }
 
 void Device::SetVolume(int8_t volume) {
@@ -652,6 +660,8 @@ void Device::PlaybackStatusNotificationResponse(uint8_t label, bool interim, Pla
 
   auto response = RegisterNotificationResponseBuilder::MakePlaybackStatusBuilder(
           interim, IsActive() ? status.state : PlayState::PAUSED);
+
+  log::verbose("send NotificationResponse with state {}", state_to_send);
   send_message_cb_.Run(label, false, std::move(response));
 
   if (!interim) {
@@ -847,13 +857,16 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
               pass_through_packet->GetOperationId());
       send_message(label, false, std::move(response));
 
+      log::verbose("OperationId={} KeyState = {}", pass_through_packet->GetOperationId(),
+                     pass_through_packet->GetKeyState());
+
       // TODO (apanicke): Use an enum for media key ID's
       if (pass_through_packet->GetOperationId() == 0x44 &&
           pass_through_packet->GetKeyState() == KeyState::PUSHED) {
         // We need to get the play status since we need to know
         // what the actual playstate is without being modified
         // by whether the device is active.
-        media_interface_->GetPlayStatus(base::Bind(
+        media_interface_->GetPlayStatusExt(GetAddress(), base::Bind(
                 [](base::WeakPtr<Device> d, PlayStatus s) {
                   if (!d) {
                     return;
@@ -868,15 +881,16 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                       return;
                     }
                   }
-
-                  d->media_interface_->SendKeyEvent(0x44, KeyState::PUSHED);
+                  // 0x44 is OperationId play
+                  d->media_interface_->SendKeyEventExt(d->GetAddress(), 0x44, KeyState::PUSHED);
                 },
                 weak_ptr_factory_.GetWeakPtr()));
         return;
       }
 
       if (IsActive()) {
-        media_interface_->SendKeyEvent(pass_through_packet->GetOperationId(),
+        media_interface_->SendKeyEventExt(GetAddress(),
+                                       pass_through_packet->GetOperationId(),
                                        pass_through_packet->GetKeyState());
       }
     } break;
@@ -1573,6 +1587,27 @@ void Device::SendMediaUpdate(bool metadata, bool play_status, bool queue) {
   }
 }
 
+void Device::SendMediaUpdateExt(bool metadata, bool play_status, bool queue) {
+  bool is_silence = IsInSilenceMode();
+
+  CHECK(media_interface_);
+  log::verbose("address ={} : Metadata={} : play_status= {} : queue={} : is_silence={}", GetAddress().ToString(), metadata, play_status,
+               queue, is_silence);
+
+  if (queue) {
+    HandleNowPlayingUpdateExt();
+  }
+
+  if (play_status) {
+    HandlePlayStatusUpdateExt();
+    if (!is_silence) {
+      HandlePlayPosUpdateExt();
+    }
+  }
+
+  if (metadata) HandleTrackUpdateExt();
+}
+
 void Device::SendFolderUpdate(bool available_players, bool addressed_player, bool /*uids*/) {
   log::assert_that(media_interface_ != nullptr, "assert failed: media_interface_ != nullptr");
   log::verbose("");
@@ -1598,6 +1633,17 @@ void Device::HandleTrackUpdate() {
                                                  track_changed_.second, false));
 }
 
+void Device::HandleTrackUpdateExt() {
+  log::verbose("");
+  if (!track_changed_.first) {
+    LOG(WARNING) << "Device is not registered for track changed updates";
+    return;
+  }
+  media_interface_->GetNowPlayingListExt(GetAddress(),
+      base::Bind(&Device::TrackChangedNotificationResponse,
+                 weak_ptr_factory_.GetWeakPtr(), track_changed_.second, false));
+}
+
 void Device::HandlePlayStatusUpdate() {
   log::verbose("");
   if (!play_status_changed_.first) {
@@ -1608,6 +1654,19 @@ void Device::HandlePlayStatusUpdate() {
   media_interface_->GetPlayStatus(base::Bind(&Device::PlaybackStatusNotificationResponse,
                                              weak_ptr_factory_.GetWeakPtr(),
                                              play_status_changed_.second, false));
+}
+
+void Device::HandlePlayStatusUpdateExt() {
+  log::verbose("");
+  if (!play_status_changed_.first) {
+    LOG(WARNING) << "Device is not registered for play status updates";
+    return;
+
+  }
+
+  media_interface_->GetPlayStatusExt(GetAddress(), base::Bind(
+      &Device::PlaybackStatusNotificationResponse,
+      weak_ptr_factory_.GetWeakPtr(), play_status_changed_.second, false));
 }
 
 void Device::HandleNowPlayingUpdate() {
@@ -1679,6 +1738,19 @@ void Device::PlayerSettingChangedNotificationResponse(uint8_t label, bool interi
   }
 }
 
+void Device::HandleNowPlayingUpdateExt() {
+  log::verbose("");
+
+  if (!now_playing_changed_.first) {
+    log::warn("Device is not registered for now playing updates");
+    return;
+  }
+
+  media_interface_->GetNowPlayingListExt(GetAddress(), base::Bind(
+      &Device::HandleNowPlayingNotificationResponse,
+      weak_ptr_factory_.GetWeakPtr(), now_playing_changed_.second, false));
+}
+
 void Device::HandleNowPlayingNotificationResponse(uint8_t label, bool interim,
                                                   std::string /*curr_song_id*/,
                                                   std::vector<SongInfo> song_list) {
@@ -1713,6 +1785,19 @@ void Device::HandlePlayPosUpdate() {
   media_interface_->GetPlayStatus(base::Bind(&Device::PlaybackPosNotificationResponse,
                                              weak_ptr_factory_.GetWeakPtr(),
                                              play_pos_changed_.second, false));
+}
+
+void Device::HandlePlayPosUpdateExt() {
+  log::verbose("");
+  if (!play_pos_changed_.first) {
+    log::warn("Device is not registered for play position updates");
+    return;
+  }
+
+  log::verbose("address = {}", GetAddress().ToString());
+  media_interface_->GetPlayStatusExt(GetAddress(), base::Bind(
+      &Device::PlaybackPosNotificationResponse, weak_ptr_factory_.GetWeakPtr(),
+      play_pos_changed_.second, false));
 }
 
 void Device::HandleAvailablePlayerUpdate() {

@@ -96,7 +96,6 @@ cc_binary {
         "libbt-hci",
         "libbt-jni-thread",
         "libbt-sbc-decoder",
-        "libbt-sbc-encoder",
         "libbt-stack",
         "libbtcore",
         "libbtdevice",
@@ -125,6 +124,7 @@ cc_binary {
         "libPlatformProperties",
         "libaconfig_storage_read_api_cc",
         "libbinder",
+        "libbt-sbc-encoder",
         "libcrypto",
         "libcutils", // property_get_bool
         "libhidlbase",

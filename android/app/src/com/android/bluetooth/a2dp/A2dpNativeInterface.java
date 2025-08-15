@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /*
@@ -112,7 +117,18 @@ public class A2dpNativeInterface {
      * @return true on success, otherwise false.
      */
     public boolean setActiveDevice(BluetoothDevice device) {
-        return setActiveDeviceNative(getByteAddress(device));
+        return setActiveDeviceNative(getByteAddress(device), true);
+    }
+
+    /**
+     * Sets a connected A2DP remote device as active.
+     *
+     * @param device the remote device
+     * @param active set the active peer when true; Deactivate the peer when false
+     * @return true on success, otherwise false.
+     */
+    public boolean setActiveDevice(BluetoothDevice device, boolean active) {
+        return setActiveDeviceNative(getByteAddress(device), active);
     }
 
     /**
@@ -149,7 +165,7 @@ public class A2dpNativeInterface {
 
     private native boolean setSilenceDeviceNative(byte[] address, boolean silence);
 
-    private native boolean setActiveDeviceNative(byte[] address);
+    private native boolean setActiveDeviceNative(byte[] address, boolean active);
 
     private native boolean setCodecConfigPreferenceNative(
             byte[] address, BluetoothCodecConfig[] codecConfigArray);

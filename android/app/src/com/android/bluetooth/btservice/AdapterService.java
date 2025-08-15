@@ -3270,7 +3270,7 @@ public class AdapterService extends Service {
             } else {
                 if (mA2dpService != null && mA2dpService.getActiveDevice() != null) {
                     // TODO:  b/312396770
-                    mA2dpService.removeActiveDevice(false);
+                    mA2dpService.removeActiveDevice(device, false);
                 }
                 mLeAudioService.setActiveDevice(device);
             }
@@ -3285,7 +3285,7 @@ public class AdapterService extends Service {
         if (setA2dp && a2dpSupported) {
             Log.i(TAG, "setActiveDevice: Setting active A2dp device " + device);
             if (device == null) {
-                mA2dpService.removeActiveDevice(false);
+                mA2dpService.removeActiveDevice(device, false);
             } else {
                 /* Workaround for the controller issue which is not able to handle correctly
                  * A2DP offloader vendor specific command while ISO Data path is set.
