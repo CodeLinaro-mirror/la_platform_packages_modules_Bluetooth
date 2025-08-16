@@ -32,11 +32,6 @@ A2dpEncoderInterface* findA2dpSourceEncoder(const RawAddress& peer_address) {
   return nullptr;
 }
 
-bool btif_a2dp_source_enqueue_callback(const RawAddress& peer_address, BT_HDR* p_buf,
-                                                  size_t frames_n, uint32_t bytes_read) {
-  return true;
-}
-
 uint32_t btif_a2dp_source_read_callback(const RawAddress& peer_address,
                                                   uint8_t* p_buf, uint32_t len) {
   return 0;

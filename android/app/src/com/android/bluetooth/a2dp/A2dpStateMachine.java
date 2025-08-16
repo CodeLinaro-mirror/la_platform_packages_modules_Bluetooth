@@ -107,9 +107,6 @@ final class A2dpStateMachine extends StateMachine {
     private int mLastConnectionState = -1;
     private BluetoothCodecStatus mCodecStatus;
     private final A2dpAudioZone mA2dpAudioZone;
-    private boolean mBroadcastSetMediaPlayer = false;
-
-    private static final String CAR_SETTINGS_PACKAGE_NAME = "com.android.car.settings";
 
     A2dpStateMachine(
             A2dpService a2dpService,
@@ -128,8 +125,6 @@ final class A2dpStateMachine extends StateMachine {
         mA2dpNativeInterface = a2dpNativeInterface;
         mA2dpAudioZone = A2dpAudioZone.isAudioZoneAvailable(a2dpService) ?
                 new A2dpAudioZone(mA2dpService, device) : null;
-        mBroadcastSetMediaPlayer = mA2dpService.getResources()
-                .getBoolean(R.bool.a2dp_source_broadcast_set_media_player);
 
         mDisconnected = new Disconnected();
         mConnecting = new Connecting();
@@ -289,7 +284,6 @@ final class A2dpStateMachine extends StateMachine {
             }
             if (mA2dpAudioZone != null) {
                 mA2dpAudioZone.clearMediaPlayer();
-                mA2dpAudioZone.notifyA2dpStatus(false);
             }
         }
 
@@ -549,11 +543,6 @@ final class A2dpStateMachine extends StateMachine {
             broadcastConnectionState(mConnectionState, mLastConnectionState);
             // Upon connected, the audio starts out as stopped
             broadcastAudioState(BluetoothA2dp.STATE_NOT_PLAYING, BluetoothA2dp.STATE_PLAYING);
-            if (mA2dpAudioZone != null) {
-                mA2dpService.setMediaPlayer(mDevice, mA2dpService.getMediaPlayer(mDevice));
-                // Always notify app to set media player if needed
-                broadcastSetMediaPlayerRequest();
-            }
             logSuccessIfNeeded();
         }
 
@@ -836,19 +825,6 @@ final class A2dpStateMachine extends StateMachine {
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
         mA2dpService.sendBroadcast(
                 intent, BLUETOOTH_CONNECT, Utils.getTempBroadcastOptions().toBundle());
-    }
-
-    private void broadcastSetMediaPlayerRequest() {
-        if (!mBroadcastSetMediaPlayer) {
-            return;
-        }
-        log("broadcastSetMediaPlayerRequest");
-        Intent intent = new Intent(BluetoothA2dp.ACTION_SET_MEDIA_PLAYER);
-        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, mDevice);
-        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-        intent.setPackage(CAR_SETTINGS_PACKAGE_NAME);
-        mA2dpService.sendBroadcast(intent, BLUETOOTH_CONNECT,
-                Utils.getTempBroadcastOptions().toBundle());
     }
 
     public void setMediaPlayer(String mediaPlayer, int audioZoneIndex) {

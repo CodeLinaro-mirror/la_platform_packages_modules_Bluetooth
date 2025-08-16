@@ -470,6 +470,24 @@ static jboolean setCodecConfigPreferenceNative(JNIEnv* env, jobject object, jbyt
   return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
+
+static jint getStreamIndexNative(JNIEnv* env, jobject /* object */, jbyteArray address) {
+  std::shared_lock<std::shared_timed_mutex> lock(interface_mutex);
+  jbyte* addr = env->GetByteArrayElements(address, nullptr);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+
+  RawAddress bd_addr;
+  bd_addr.FromOctets(reinterpret_cast<const uint8_t*>(addr));
+
+  log::info("{}", bd_addr);
+  uint8_t index = btif_av_source_stream_index(bd_addr);
+  env->ReleaseByteArrayElements(address, addr, 0);
+  return (jint)index;
+}
+
 int register_com_android_bluetooth_a2dp(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative",
@@ -485,6 +503,7 @@ int register_com_android_bluetooth_a2dp(JNIEnv* env) {
           {"setActiveDeviceNative", "([BZ)Z", (void*)setActiveDeviceNative},
           {"setCodecConfigPreferenceNative", "([B[Landroid/bluetooth/BluetoothCodecConfig;)Z",
            (void*)setCodecConfigPreferenceNative},
+          {"getStreamIndexNative", "([B)I", (void*)getStreamIndexNative},
   };
   const int result =
           REGISTER_NATIVE_METHODS(env, "com/android/bluetooth/a2dp/A2dpNativeInterface", methods);

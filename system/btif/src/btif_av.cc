@@ -570,7 +570,7 @@ public:
                          const std::vector<btav_a2dp_codec_config_t>& codec_preferences,
                          std::promise<void> peer_ready_promise) {
     // Restart the session if the codec for the active peer is updated
-    if (active_peers_.find(peer_address) != active_peers_.end()) {
+    if (!IsSupportDualA2dpSource() && active_peers_.find(peer_address) != active_peers_.end()) {
       btif_a2dp_source_end_session(peer_address);
     }
 
@@ -1315,12 +1315,10 @@ void BtifAvSource::DispatchSuspendStreamEvent(const RawAddress& peer_address, bt
     return;
   }
   bool av_stream_idle = true;
-  for (auto it : peers_) {
-    const BtifAvPeer* peer = it.second;
-    if (peer->StateMachine().StateId() == BtifAvStateMachine::kStateStarted) {
-      btif_av_source_dispatch_sm_event(peer->PeerAddress(), event);
-      av_stream_idle = false;
-    }
+  BtifAvPeer* peer = btif_av_source_find_peer(peer_address);
+  if (peer->StateMachine().StateId() == BtifAvStateMachine::kStateStarted) {
+    btif_av_source_dispatch_sm_event(peer_address, event);
+    av_stream_idle = false;
   }
 
   if (av_stream_idle) {
@@ -2343,7 +2341,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
         btif_av_source_dispatch_sm_event(peer_.PeerAddress(), BTIF_AV_SUSPEND_STREAM_REQ_EVT);
       }
 
-      if (com::android::bluetooth::flags::av_stream_reconfigure_fix() &&
+      if (!IsSupportDualA2dpSource() && com::android::bluetooth::flags::av_stream_reconfigure_fix() &&
           peer_.CheckFlags(BtifAvPeer::kFlagPendingReconfigure)) {
         log::info(
                 "Peer {} : Stream started but reconfiguration pending. "
@@ -3665,7 +3663,7 @@ bt_status_t btif_av_source_set_codec_config_preference(
   std::future<void> peer_ready_future = peer_ready_promise.get_future();
   bt_status_t status = BT_STATUS_FAIL;
 
-  if (com::android::bluetooth::flags::av_stream_reconfigure_fix()) {
+  if (!IsSupportDualA2dpSource() && com::android::bluetooth::flags::av_stream_reconfigure_fix()) {
     status = btif_av_source.SetPeerReconfigureStreamData(peer_address, codec_preferences,
                                                          std::move(peer_ready_promise));
     if (status != BT_STATUS_SUCCESS) {
@@ -4197,6 +4195,19 @@ bool btif_av_source_is_active_peer(const RawAddress& peer_address) {
 
 bool IsSupportDualA2dpSource() {
   char support[PROPERTY_VALUE_MAX] = {0};
-  osi_property_get("persist.bluetooth.duala2dp", support, "true");
+  osi_property_get("persist.bluetooth.duala2dp", support, "false");
   return strncmp(support, "true", 4) == 0;
+}
+
+/* Return stream index in 1 or 2
+ * Return -1 on failure
+ */
+uint8_t btif_av_source_stream_index(const RawAddress& peer_address) {
+  log::info("peer={}", peer_address);
+
+  if (!btif_av_source.Enabled()) {
+    log::error("BTIF AV Source is not enabled");
+    return -1;
+  }
+  return btif_a2dp_source_get_stream_index(peer_address);
 }
