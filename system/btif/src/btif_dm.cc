@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -3257,8 +3262,9 @@ bool btif_dm_get_smp_config(tBTE_APPL_CFG* p_cfg) {
 }
 
 bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c, Octet16* p_r) {
-  const char* path_a = "/data/misc/bluedroid/LOCAL/a.key";
-  const char* path_b = "/data/misc/bluedroid/LOCAL/b.key";
+  int adapter_index = GetAdapterIndex();
+  const char* path_a = adapter_index == 0 ? "/data/misc/bluedroid/LOCAL/a.key" : "/data/misc/bluedroid/new/LOCAL/a.key";
+  const char* path_b = adapter_index == 0 ? "/data/misc/bluedroid/LOCAL/b.key" : "/data/misc/bluedroid/new/LOCAL/b.key";
   const char* path = NULL;
   char prop_oob[PROPERTY_VALUE_MAX];
   osi_property_get("service.brcm.bt.oob", prop_oob, "3");

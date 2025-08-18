@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "device_iot_config"
@@ -69,11 +74,11 @@ future_t* device_iot_config_module_init(void) {
     device_iot_config_delete_files();
   }
 
-  config = config_new(IOT_CONFIG_FILE_PATH);
+  config = config_new(get_iot_config_file_path());
   device_iot_config_source = ORIGINAL;
   if (!config) {
-    log::warn("Unable to load config file: {}; using backup.", IOT_CONFIG_FILE_PATH);
-    config = config_new(IOT_CONFIG_BACKUP_PATH);
+    log::warn("Unable to load config file: {}; using backup.", get_iot_config_file_path());
+    config = config_new(get_iot_config_backup_path());
     device_iot_config_source = BACKUP;
   }
 
@@ -104,8 +109,8 @@ future_t* device_iot_config_module_init(void) {
   if (version != DEVICE_IOT_INFO_CURRENT_VERSION) {
     log::info("Version in file is {}, CURRENT_VERSION is {}", version,
               DEVICE_IOT_INFO_CURRENT_VERSION);
-    remove(IOT_CONFIG_FILE_PATH);
-    remove(IOT_CONFIG_BACKUP_PATH);
+    remove(get_iot_config_file_path());
+    remove(get_iot_config_backup_path());
     config.reset();
     config = config_new_empty();
     if (!config) {
@@ -192,10 +197,10 @@ void device_iot_config_write(uint16_t event, UNUSED_ATTR char* p_param) {
     device_iot_config_set_modified_time();
   }
 
-  rename(IOT_CONFIG_FILE_PATH, IOT_CONFIG_BACKUP_PATH);
+  rename(get_iot_config_file_path(), get_iot_config_backup_path());
   device_iot_config_restrict_device_num(*config);
   device_iot_config_sections_sort_by_entry_key(*config, device_iot_config_compare_key);
-  config_save(*config, IOT_CONFIG_FILE_PATH);
+  config_save(*config, get_iot_config_file_path());
 }
 
 void device_iot_config_sections_sort_by_entry_key(config_t& config, compare_func comp) {
@@ -299,6 +304,6 @@ bool device_iot_config_is_factory_reset(void) {
 }
 
 void device_iot_config_delete_files(void) {
-  remove(IOT_CONFIG_FILE_PATH);
-  remove(IOT_CONFIG_BACKUP_PATH);
+  remove(get_iot_config_file_path());
+  remove(get_iot_config_backup_path());
 }
