@@ -38,6 +38,8 @@ class AudioSetConfigurationProvider {
       const set_configurations::AudioSetConfiguration& set_configuration) const;
   virtual bool CheckConfigurationIsDualBiDirSwb(
       const set_configurations::AudioSetConfiguration& set_configuration) const;
+  virtual bool CheckQHSConfig(
+      const set_configurations::AudioSetConfiguration& set_configuration) const;
 
  private:
   struct impl;

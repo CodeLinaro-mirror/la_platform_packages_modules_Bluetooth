@@ -365,6 +365,8 @@ class LeAudioClientImpl : public LeAudioClient {
         is_local_sink_metadata_available_(false),
         track_in_call_update_(0),
         defer_reconfig_complete_update_(false),
+        src_metadata_update_pending_(false),
+        sink_metadata_update_pending_(false),
         le_audio_source_hal_client_(nullptr),
         le_audio_sink_hal_client_(nullptr),
         close_vbc_timeout_(alarm_new("LeAudioCloseVbcTimeout")),
@@ -530,6 +532,7 @@ class LeAudioClientImpl : public LeAudioClient {
     log::info("device {}", leAudioDevice->address_);
     leAudioDevice->SetConnectionState(DeviceConnectState::REMOVING);
     leAudioDevice->closing_stream_for_disconnection_ = true;
+    audio_sender_state_ = AudioState::READY_TO_RELEASE;
     GroupStop(leAudioDevice->group_id_);
   }
 
@@ -583,7 +586,7 @@ class LeAudioClientImpl : public LeAudioClient {
       SetDeviceAsRemovePendingAndStopGroup(leAudioDevice);
       return;
     }
-    if (leAudioDevice->group_id_ == active_group_id_) {
+    if (leAudioDevice->group_id_ == active_group_id_ && (group->Size() == 1)) {
       log::warn("Set device inactive before removing.");
       groupSetAndNotifyInactive();
     }
@@ -632,6 +635,10 @@ class LeAudioClientImpl : public LeAudioClient {
         return;
       }
     }
+
+    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_BAP_TIMEOUT_INDICATION, 0,
+                     std::vector<uint8_t>(leAudioDevice->address_.address,
+                     leAudioDevice->address_.address+6));
 
     /* If Timeout happens on stream close and stream is closing just for the
      * purpose of device disconnection, do not bother with recovery mode
@@ -731,6 +738,18 @@ class LeAudioClientImpl : public LeAudioClient {
       if(le_audio_sink_hal_client_) {
         le_audio_sink_hal_client_->ReconfigurationComplete();
       }
+    }
+  }
+
+  void updateMetadataCompleteIfNeeded() {
+    log::info("updateMetadataCompleteIfNeeded");
+    if (src_metadata_update_pending_) {
+      le_audio_source_hal_client_->UpdateMetadataComplete();
+      src_metadata_update_pending_ = false;
+    }
+    if (sink_metadata_update_pending_) {
+      le_audio_sink_hal_client_->UpdateMetadataComplete();
+      sink_metadata_update_pending_ = false;
     }
   }
 
@@ -1127,6 +1146,12 @@ class LeAudioClientImpl : public LeAudioClient {
         StopAudio();
         ClientAudioInterfaceRelease();
       }
+      //Check below when device switch happens during call and enhance if required.
+      if (IsInCall()) {
+        log::debug("Clear cached call updates during group In-Active");
+        track_in_call_update_ = 0;
+        defer_reconfig_complete_update_ = false;
+      }
       callbacks_->OnGroupStatus(group_id, GroupStatus::INACTIVE);
     }
   }
@@ -1250,7 +1275,11 @@ class LeAudioClientImpl : public LeAudioClient {
 
   void SetInCall(bool in_call) override {
     log::debug("in_call: {}", in_call);
-    log::debug("in_call: {}", in_call);
+    if (!in_call) {
+      track_in_call_update_ = 0;
+      defer_reconfig_complete_update_ = false;
+    }
+
     if (in_call == in_call_) {
       log::verbose("no state change {}", in_call);
       return;
@@ -1294,7 +1323,15 @@ class LeAudioClientImpl : public LeAudioClient {
     } else {
       if (configuration_context_type_ == LeAudioContextType::CONVERSATIONAL) {
         log::info("Call is ended, speed up reconfiguration for media");
-        local_metadata_context_types_ = in_call_metadata_context_types_;
+        log::debug("in_call_metadata_context_types_ sink: {}  source: {}",
+                   in_call_metadata_context_types_.sink.to_string(),
+                   in_call_metadata_context_types_.source.to_string());
+
+        if (in_call_metadata_context_types_.source.any() ||
+            in_call_metadata_context_types_.sink.any()) {
+          log::info("Restore only when in_call_metadata_context_types_ exist.");
+          local_metadata_context_types_ = in_call_metadata_context_types_;
+        }
         log::debug("restored local_metadata_context_types_ sink: {}  source: {}",
                    local_metadata_context_types_.sink.to_string(),
                    local_metadata_context_types_.source.to_string());
@@ -1317,8 +1354,6 @@ class LeAudioClientImpl : public LeAudioClient {
           ReconfigureOrUpdateRemote(group, bluetooth::le_audio::types::kLeAudioDirectionSource);
         }
       } else {
-        track_in_call_update_ = 0;
-        defer_reconfig_complete_update_ = false;
         ReconfigureOrUpdateRemote(group, bluetooth::le_audio::types::kLeAudioDirectionSink);
       }
     }
@@ -1605,6 +1640,12 @@ class LeAudioClientImpl : public LeAudioClient {
     log::info("defer_notify_inactive_until_stop_: {}", defer_notify_inactive_until_stop_);
 
     if (!defer_notify_inactive_until_stop_) {
+      //Check below when device switch happens during call and enhance if required.
+      if (IsInCall()) {
+        log::debug("Clear cached call updates during group In-Active");
+        track_in_call_update_ = 0;
+        defer_reconfig_complete_update_ = false;
+      }
       StopAudio();
       ClientAudioInterfaceRelease();
       callbacks_->OnGroupStatus(group_id_to_close, GroupStatus::INACTIVE);
@@ -1650,6 +1691,7 @@ class LeAudioClientImpl : public LeAudioClient {
         group->ClearPendingConfiguration();
       }
 
+      updateMetadataCompleteIfNeeded();
       groupSetAndNotifyInactive();
       GroupStop(group_id_to_close);
 
@@ -1774,6 +1816,7 @@ class LeAudioClientImpl : public LeAudioClient {
       }
     }
 
+    updateMetadataCompleteIfNeeded();
     log::info("defer_notify_active_until_stop_: {}", defer_notify_active_until_stop_);
 
     if (!defer_notify_active_until_stop_) {
@@ -2110,6 +2153,7 @@ class LeAudioClientImpl : public LeAudioClient {
           }
           if (group->IsStreaming() || !group->IsReleasingOrIdle()) {
             leAudioDevice->closing_stream_for_disconnection_ = true;
+            audio_sender_state_ = AudioState::READY_TO_RELEASE;
             groupStateMachine_->StopStream(group);
             return;
           }
@@ -4437,6 +4481,7 @@ class LeAudioClientImpl : public LeAudioClient {
   void Cleanup() {
     if (alarm_is_scheduled(suspend_timeout_)) alarm_cancel(suspend_timeout_);
 
+    updateMetadataCompleteIfNeeded();
     if (active_group_id_ != bluetooth::groups::kGroupUnknown) {
       /* Bluetooth turned off while streaming */
       StopAudio();
@@ -4618,6 +4663,8 @@ class LeAudioClientImpl : public LeAudioClient {
       timeoutMs += kAudioDisableTimeoutMs;
     }
 
+    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_STREAM_INDICATION,
+        0x04, std::vector<uint8_t>());
     log::debug("Stream suspend_timeout_ started: {} ms",
                static_cast<int>(timeoutMs));
     if (alarm_is_scheduled(suspend_timeout_)) alarm_cancel(suspend_timeout_);
@@ -5348,16 +5395,19 @@ class LeAudioClientImpl : public LeAudioClient {
         ChooseMetadataContextType(local_metadata_context_types_.source);
 
     if (active_group_id_ == bluetooth::groups::kGroupUnknown) {
-      log::warn(", cannot start streaming if no active group set");
+      log::warn("cannot start streaming if no active group set");
+      le_audio_source_hal_client_->UpdateMetadataComplete();
       return;
     } else if (defer_notify_inactive_until_stop_) {
-      log::warn(", cannot start streaming as active group is de-activating");
+      log::warn("cannot start streaming as active group is de-activating");
+      le_audio_source_hal_client_->UpdateMetadataComplete();
       return;
     }
 
     auto group = aseGroups_.FindById(active_group_id_);
     if (!group) {
       log::error("Invalid group: {}", static_cast<int>(active_group_id_));
+      le_audio_source_hal_client_->UpdateMetadataComplete();
       return;
     }
 
@@ -5368,7 +5418,10 @@ class LeAudioClientImpl : public LeAudioClient {
             ToString(audio_receiver_state_), ToString(audio_sender_state_),
             static_cast<int>(dsa_mode));
 
-    if (IsInCall()) {
+    log::debug("check track_in_call_update_= {}", track_in_call_update_);
+    //Assuming BT-App updates to BT-Stack before UpdateMetadata from BT-HAL
+    //during use-case switch to Call.
+    if (IsInCall() && track_in_call_update_ != 0) {
       if (local_metadata_context_types_.source.test(LeAudioContextType::CONVERSATIONAL) ||
           local_metadata_context_types_.source.test(LeAudioContextType::RINGTONE)) {
         track_in_call_update_ |= IN_CALL_UPDATE_METADATA_FROM_BT_HAL;
@@ -5383,8 +5436,6 @@ class LeAudioClientImpl : public LeAudioClient {
         log::warn("Both BT App and UpdateMetadata received for call,"
                   " send reconfigurationComplete to BT HAL");
         reconfigurationComplete();
-        track_in_call_update_ = 0;
-        defer_reconfig_complete_update_ = false;
       } else {
         log::warn("Both BT App and UpdateMetadata received for call b2b,"
                   " Don't send reconfigurationComplete to BT HAL now");
@@ -5411,6 +5462,12 @@ class LeAudioClientImpl : public LeAudioClient {
     } else {
       ReconfigureOrUpdateRemote(
            group, bluetooth::le_audio::types::kLeAudioDirectionSink);
+    }
+    if (!group->IsSuspendedForReconfiguration()) {
+      le_audio_source_hal_client_->UpdateMetadataComplete();
+      src_metadata_update_pending_ = false;
+    } else {
+      src_metadata_update_pending_ = true;
     }
   }
 
@@ -5548,15 +5605,18 @@ class LeAudioClientImpl : public LeAudioClient {
 
     if (active_group_id_ == bluetooth::groups::kGroupUnknown) {
       log::warn(", cannot start streaming if no active group set");
+      le_audio_sink_hal_client_->UpdateMetadataComplete();
       return;
     } else if (defer_notify_inactive_until_stop_) {
       log::warn(", cannot start streaming as active group is de-activating");
+      le_audio_sink_hal_client_->UpdateMetadataComplete();
       return;
     }
 
     auto group = aseGroups_.FindById(active_group_id_);
     if (!group) {
       log::error("Invalid group: {}", static_cast<int>(active_group_id_));
+      le_audio_sink_hal_client_->UpdateMetadataComplete();
       return;
     }
 
@@ -5575,6 +5635,13 @@ class LeAudioClientImpl : public LeAudioClient {
     if (audio_receiver_state_ == AudioState::STARTED) {
       ReconfigureOrUpdateRemote(
           group, bluetooth::le_audio::types::kLeAudioDirectionSource);
+    }
+
+    if (!group->IsSuspendedForReconfiguration()) {
+      le_audio_sink_hal_client_->UpdateMetadataComplete();
+      sink_metadata_update_pending_ = false;
+    } else {
+      sink_metadata_update_pending_ = true;
     }
   }
 
@@ -6448,6 +6515,11 @@ class LeAudioClientImpl : public LeAudioClient {
           bluetooth::le_audio::types::kLeAudioDirectionSource;
     }
 
+    //make sure during reconfig completion clear the below flags,
+    //which were set during some other use-case to Call.
+    track_in_call_update_ = 0;
+    defer_reconfig_complete_update_ = false;
+
     /* We are done with reconfiguration.
      * Clean state and if Audio HAL is waiting, cancel the request
      * so Audio HAL can Resume again.
@@ -6563,20 +6635,24 @@ class LeAudioClientImpl : public LeAudioClient {
         log::warn("track_in_call_update_: {}, defer_reconfig_complete_update_:{}",
                   track_in_call_update_, defer_reconfig_complete_update_);
         if (IsInCall()) {
-          if (track_in_call_update_ == IN_CALL_UPDATE_FROM_BT_APP_AND_BT_HAL) {
-            log::warn("Both BT App and UpdateMetadata received for call,"
-                      " send reconfigurationComplete to BT HAL");
-            reconfigurationComplete();
-            track_in_call_update_ = 0;
-            defer_reconfig_complete_update_ = false;
+          if(track_in_call_update_ != 0) {
+            if (track_in_call_update_ == IN_CALL_UPDATE_FROM_BT_APP_AND_BT_HAL) {
+              log::warn("Both BT App and UpdateMetadata received for call,"
+                        " send reconfigurationComplete to BT HAL");
+              reconfigurationComplete();
+            } else {
+              defer_reconfig_complete_update_ = true;
+              log::warn("Both BT App and UpdateMetadata not received for call,"
+                        " Don't send reconfigurationComplete to BT HAL now");
+            }
           } else {
-            defer_reconfig_complete_update_ = true;
-            log::warn("Both BT App and UpdateMetadata not received for call,"
-                      " Don't send reconfigurationComplete to BT HAL now");
+            log::warn("Wait for ases streaming notification from remote,"
+                      " as it is stand-alone call usecase");
           }
         } else {
           reconfigurationComplete();
         }
+        updateMetadataCompleteIfNeeded();
       } break;
       case GroupStreamStatus::CONFIGURED_AUTONOMOUS:
         /* This state is notified only when
@@ -6692,6 +6768,7 @@ class LeAudioClientImpl : public LeAudioClient {
             stream_setup_start_timestamp_ = 0;
             if (group->IsSuspendedForReconfiguration()) {
               reconfigurationComplete();
+              updateMetadataCompleteIfNeeded();
             } else {
               if (!((status == GroupStreamStatus::IDLE) &&
                     (active_group_id_ != group->group_id_) &&
@@ -6708,27 +6785,44 @@ class LeAudioClientImpl : public LeAudioClient {
         }
         break;
       }
+      case GroupStreamStatus::RELEASING_AUTONOMOUS:
+        /* Remote device releases all the ASEs autonomusly. This should not happen and not sure what
+         * is the remote device intention. If remote wants stop the stream then MCS shall be used to
+         * stop the stream in a proper way. For a phone call, GTBS shall be used. For now we assume
+         * this device has does not want to be used for streaming and mark it as Inactive.
+         */
+        log::warn("Group {} is doing autonomous release, make it inactive", group_id);
+        if (group) {
+          group->PrintDebugState();
+          groupSetAndNotifyInactive();
+        }
+        audio_sender_state_ = AudioState::IDLE;
+        audio_receiver_state_ = AudioState::IDLE;
+        break;
       case GroupStreamStatus::RELEASING:
       case GroupStreamStatus::SUSPENDING:
         log::debug(" defer_notify_inactive_until_stop_: {}",
                                    defer_notify_inactive_until_stop_);
         if (!defer_notify_inactive_until_stop_ &&
             active_group_id_ != bluetooth::groups::kGroupUnknown &&
-            (active_group_id_ == group->group_id_) &&
-            !group->IsPendingConfiguration() &&
+            (active_group_id_ == group->group_id_) && !group->IsPendingConfiguration() &&
             (audio_sender_state_ == AudioState::STARTED ||
-             audio_receiver_state_ == AudioState::STARTED)) {
+             audio_receiver_state_ == AudioState::STARTED) &&
+            group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_IDLE) {
           /* If releasing state is happening but it was not initiated either by
            * reconfiguration or Audio Framework actions either by the Active group change,
            * it means that it is some internal state machine error. This is very unlikely and
            * for now just Inactivate the group.
            */
-          log::error("Internal state machine error");
+          log::error("Internal state machine error for group {}", group_id);
           group->PrintDebugState();
           if (!group->IsReleasingOrIdle()) {
             defer_notify_inactive_until_stop_ = true;
           }
           groupSetAndNotifyInactive();
+          audio_sender_state_ = AudioState::IDLE;
+          audio_receiver_state_ = AudioState::IDLE;
+          return;
         }
 
         if (audio_sender_state_ != AudioState::IDLE)
@@ -6800,6 +6894,10 @@ class LeAudioClientImpl : public LeAudioClient {
   uint8_t track_in_call_update_;
   /*To track reconfig competle update sent to BT HAL*/
   bool defer_reconfig_complete_update_;
+  /* Pending for src metadata update */
+  bool src_metadata_update_pending_;
+  /* Pending for sink metadata update */
+  bool sink_metadata_update_pending_;
 
   /* Reconnection mode */
   tBTM_BLE_CONN_TYPE reconnection_mode_;
@@ -7319,10 +7417,10 @@ void LeAudioClient::Initialize(
     return;
   }
 
-  log::assert_that(
-      std::move(hal_2_1_verifier).Run(),
-      "LE Audio Client requires Bluetooth Audio HAL V2.1 at least. Either "
-      "disable LE Audio Profile, or update your HAL");
+  if (!std::move(hal_2_1_verifier).Run()) {
+    log::error("LE Audio Client requires Bluetooth Audio HAL V2.1 at least. Either "
+               "disable LE Audio Profile, or update your HAL");
+  }
 
   IsoManager::GetInstance()->Start();
 

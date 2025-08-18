@@ -19,6 +19,7 @@
 
 #include <unordered_map>
 
+#include "internal_include/stack_config.h"
 #include "bta/include/bta_gatt_api.h"
 #include "bta/include/bta_ras_api.h"
 #include "bta/ras/ras_types.h"
@@ -311,7 +312,7 @@ public:
     btgatt_db_element_t ras_control_point;
     ras_control_point.uuid = kRasControlPointCharacteristic;
     ras_control_point.type = BTGATT_DB_CHARACTERISTIC;
-    ras_control_point.properties = GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_INDICATE;
+    ras_control_point.properties = GATT_CHAR_PROP_BIT_WRITE_NR | GATT_CHAR_PROP_BIT_INDICATE;
     ras_control_point.permissions = GATT_PERM_WRITE_ENCRYPTED | key_mask;
     service.push_back(ras_control_point);
     service.push_back(ccc_descriptor);
@@ -331,7 +332,7 @@ public:
     ranging_data_overwritten_characteristic.uuid = kRasRangingDataOverWrittenCharacteristic;
     ranging_data_overwritten_characteristic.type = BTGATT_DB_CHARACTERISTIC;
     ranging_data_overwritten_characteristic.properties =
-            GATT_CHAR_PROP_BIT_INDICATE;
+            GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE;
     ranging_data_overwritten_characteristic.permissions = GATT_PERM_READ_ENCRYPTED | key_mask;
     service.push_back(ranging_data_overwritten_characteristic);
     service.push_back(ccc_descriptor);
@@ -568,6 +569,10 @@ public:
       return;
     }
 
+    if(stack_config_get_interface()->get_pts_bcs_rej_write_req() && ccc_value == 0x0001) {
+      BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, WRITE_REJECTED, &p_msg);
+      return;
+    }
     trackers_[remote_bda].ccc_values_[characteristic->uuid_] = ccc_value;
     log::info("Write CCC for {}, conn_id:{}, value:0x{:04x}", getUuidName(characteristic->uuid_),
               conn_id, ccc_value);

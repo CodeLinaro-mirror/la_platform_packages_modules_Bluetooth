@@ -83,6 +83,7 @@ class SourceImpl : public LeAudioSourceAudioHalClient {
       const ::bluetooth::le_audio::broadcast_offload_config& config) override;
   void SuspendedForReconfiguration() override;
   void ReconfigurationComplete() override;
+  void UpdateMetadataComplete() override;
 
   // Internal functionality
   SourceImpl(bool is_broadcaster)
@@ -117,6 +118,11 @@ class SourceImpl : public LeAudioSourceAudioHalClient {
   LeAudioSourceAudioHalClient::Callbacks* audioSourceCallbacks_ = nullptr;
   std::mutex audioSourceCallbacksMutex_;
   std::unique_ptr<bluetooth::audio::asrc::SourceAudioHalAsrc> asrc_;
+
+  std::mutex src_metadata_wait_mutex_;
+  std::condition_variable src_metadata_wait_cv;
+  bool src_metadata_wait_complete;
+  static constexpr uint64_t kSrcMetadataWaitMs = 1500;
 };
 
 bool SourceImpl::Acquire() {
@@ -327,6 +333,8 @@ bool SourceImpl::OnMetadataUpdateReq(
       source_metadata.tracks,
       source_metadata.tracks + source_metadata.track_count);
 
+  std::unique_lock<std::mutex> guard_metadata(src_metadata_wait_mutex_);
+  src_metadata_wait_complete = false;
   bt_status_t status = do_in_main_thread(
       FROM_HERE,
       base::BindOnce(
@@ -334,9 +342,12 @@ bool SourceImpl::OnMetadataUpdateReq(
           audioSourceCallbacks_->weak_factory_.GetWeakPtr(),
           std::move(metadata), dsa_mode));
   if (status == BT_STATUS_SUCCESS) {
+    src_metadata_wait_cv.wait_for(guard_metadata, std::chrono::milliseconds(kSrcMetadataWaitMs),
+                        [this]{return src_metadata_wait_complete;});
     return true;
   }
 
+  src_metadata_wait_complete = true;
   log::error("do_in_main_thread err={}", status);
   return false;
 }
@@ -543,6 +554,18 @@ void SourceImpl::UpdateBroadcastAudioConfigToHal(
 
   log::info("");
   halSinkInterface_->UpdateBroadcastAudioConfigToHal(config);
+}
+
+void SourceImpl::UpdateMetadataComplete() {
+  log::info("");
+  std::unique_lock<std::mutex> guard(src_metadata_wait_mutex_);
+  if(!src_metadata_wait_complete) {
+    src_metadata_wait_complete = true;
+    log::info("Signalling");
+    src_metadata_wait_cv.notify_all();
+  } else {
+    log::info("Already signalled");
+  }
 }
 }  // namespace
 

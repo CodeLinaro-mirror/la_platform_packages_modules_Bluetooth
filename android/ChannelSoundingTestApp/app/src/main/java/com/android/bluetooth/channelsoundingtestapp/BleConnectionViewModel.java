@@ -149,12 +149,16 @@ public class BleConnectionViewModel extends AndroidViewModel {
             return;
         }
         BluetoothLeAdvertiser advertiser = mBluetoothAdapter.getBluetoothLeAdvertiser();
+        if(advertiser == null) {
+           printLog("Please turn on Bluetooth to use this App");
+           return;
+        }
         AdvertisingSetParameters parameters =
                 new AdvertisingSetParameters.Builder()
                         .setLegacyMode(false) // True by default, but set here as a reminder.
                         .setConnectable(true)
                         .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
-                        .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+                        .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MAX)
                         .build();
 
         BluetoothGattServerCallback gattServerCallback =

@@ -304,6 +304,11 @@ static uint8_t* add_attr(uint8_t* p, uint8_t* p_end, tSDP_DISCOVERY_DB* p_db,
 
   nest_level &= ~(SDP_ADDITIONAL_LIST_MASK);
 
+  if (p + sizeof(uint8_t) > p_end) {
+    log::warn("bad arguments to add_addr");
+    return NULL;
+  }
+
   type = *p++;
   p = sdpu_get_len_from_type(p, p_end, type, &attr_len);
   if (p == NULL || (p + attr_len) > p_end) {
@@ -636,6 +641,7 @@ static void process_service_search_attr_rsp(tCONN_CB* p_ccb, uint8_t* p_reply,
           "Attempted continuation or first time request with invalid discovery "
           "database");
       sdp_disconnect(p_ccb, tSDP_STATUS::SDP_INVALID_CONT_STATE);
+      osi_free(p_msg);
       return;
     }
 
@@ -661,6 +667,7 @@ static void process_service_search_attr_rsp(tCONN_CB* p_ccb, uint8_t* p_reply,
 
     if (base_bytes > bytes_left) {
       sdp_disconnect(p_ccb, SDP_INVALID_CONT_STATE);
+      osi_free(p_msg);
       return;
     }
 

@@ -293,6 +293,7 @@ void Device::VendorPacketHandler(uint8_t label,
     return;
   }
 
+  bool running_pts = osi_property_get_bool("persist.vendor.bt.a2dp.pts_enable", false);
   switch (pkt->GetCommandPdu()) {
     case CommandPdu::GET_CAPABILITIES: {
       HandleGetCapabilities(label,
@@ -512,6 +513,28 @@ void Device::VendorPacketHandler(uint8_t label,
           base::Bind(&Device::SetPlayerApplicationSettingValueResponse,
                      weak_ptr_factory_.GetWeakPtr(), label,
                      pkt->GetCommandPdu()));
+    } break;
+
+    case CommandPdu::SET_ABSOLUTE_VOLUME: {
+      // PTS - AVCTP/TG/NFR/BV-02-C
+      if(running_pts) {
+        auto set_absolute_volume =
+            Packet::Specialize<SetAbsoluteVolumeResponse>(pkt);
+        active_labels_.erase(label);
+        volume_label_ = MAX_TRANSACTION_LABEL;
+        volume_ = set_absolute_volume->GetVolume();
+        volume_ &= ~0x80;
+        log::verbose("{}: CType is CONTROL, current volume={}, last request volume={}",
+                       address_, (int)volume_, (int)last_request_volume_);
+        auto request = SetAbsoluteVolumeResponseBuilder::MakeBuilder(last_request_volume_);
+        send_message_cb_.Run(label, false, std::move(request));
+      } else {
+        log::error("{}: Unhandled Vendor Packet: {}", address_, pkt->ToString());
+        auto response =
+                RejectBuilder::MakeBuilder((CommandPdu)pkt->GetCommandPdu(), Status::INVALID_COMMAND);
+        send_message(label, false, std::move(response));
+      }
+
     } break;
 
     default: {
@@ -934,7 +957,7 @@ void Device::PlaybackStatusNotificationResponse(uint8_t label, bool interim,
     log::verbose("Send new playback Status CHANGED");
     auto newresponse =
         RegisterNotificationResponseBuilder::MakePlaybackStatusBuilder(
-            false, IsActive() ? status.state : PlayState::PAUSED);
+            false, IsActive() ? state_to_send : PlayState::PAUSED);
     send_message_cb_.Run(label, false, std::move(newresponse));
 
     active_labels_.erase(label);
@@ -946,7 +969,7 @@ void Device::PlaybackStatusNotificationResponse(uint8_t label, bool interim,
 
   auto response =
       RegisterNotificationResponseBuilder::MakePlaybackStatusBuilder(
-          interim, IsActive() ? status.state : PlayState::PAUSED);
+          interim, IsActive() ? state_to_send : PlayState::PAUSED);
   send_message_cb_.Run(label, false, std::move(response));
 
   if (!interim) {
@@ -1028,7 +1051,13 @@ void Device::AddressedPlayerNotificationResponse(
   if (!interim) {
     active_labels_.erase(label);
     addr_player_changed_ = Notification(false, 0);
-    RejectNotification();
+    bool is_pts_enable = osi_property_get_bool("persist.vendor.bt.a2dp.pts_enable",
+                                             false);
+    log::info("is_pts_enable: {}", is_pts_enable);
+    if (is_pts_enable) {
+      log::info("Reject pending Notifications");
+      RejectNotification();
+    }
   }
 }
 
@@ -1069,6 +1098,9 @@ void Device::GetElementAttributesResponse(
   auto get_element_attributes_pkt = pkt;
   auto attributes_requested =
       get_element_attributes_pkt->GetAttributesRequested();
+  bool all_attributes_flag =
+      osi_property_get_bool("persist.vendor.bt.a2dp.all_attributes_flag", false);
+  log::info(" all_attributes_flag: {}", all_attributes_flag);
 
   //To Pass PTS TC AVCTP/TG/FRA/BV-02-C
   /* After AVCTP connection is established with remote,
@@ -1103,41 +1135,50 @@ void Device::GetElementAttributesResponse(
     for (const auto& attribute : attributes_requested) {
       log::verbose("requested attribute: {}", AttributeText(attribute));
       if (info.attributes.find(attribute) != info.attributes.end()) {
-        if (info.attributes.find(attribute)->value().empty()) {
-          log::verbose("empty attribute found");
-          response->AddAttributeEntry(attribute, std::string());
+        if (info.attributes.find(attribute)->value().empty() && all_attributes_flag) {
+          log::verbose("Empty attribute found, add string Unavailable");
+          response->AddAttributeEntry(attribute, "Unavailable");
         } else {
+          log::verbose("Add attribute value");
           response->AddAttributeEntry(*info.attributes.find(attribute));
         }
-      } else {
+      } else if (all_attributes_flag) {
         //we send a response even for attributes that we don't have a value for.
-        log::verbose("attribute not found");
-        response->AddAttributeEntry(attribute, std::string());
+        log::info(" Attribute not found, add string Unavailable");
+        response->AddAttributeEntry(attribute, "Unavailable");
       }
     }
   } else {  // zero attributes requested which means all attributes requested
-    std::vector<Attribute> all_attributes = {Attribute::TITLE,
-                                             Attribute::ARTIST_NAME,
-                                             Attribute::ALBUM_NAME,
-                                             Attribute::TRACK_NUMBER,
-                                             Attribute::TOTAL_NUMBER_OF_TRACKS,
-                                             Attribute::GENRE,
-                                             Attribute::PLAYING_TIME,
-                                             Attribute::DEFAULT_COVER_ART};
-    for (const auto& attribute : all_attributes) {
-      if (info.attributes.find(attribute) != info.attributes.end()) {
-        log::verbose("requested attribute: {}", AttributeText(attribute));
-        if (info.attributes.find(attribute)->value().empty()) {
-          log::verbose("empty attribute found");
-          response->AddAttributeEntry(attribute, std::string());
+    if (!all_attributes_flag) {
+      for (const auto& attribute : info.attributes) {
+        log::info(" Add attribute value");
+        response->AddAttributeEntry(attribute);
+      }
+    } else {
+      std::vector<Attribute> all_attributes = {Attribute::TITLE,
+                                               Attribute::ARTIST_NAME,
+                                               Attribute::ALBUM_NAME,
+                                               Attribute::TRACK_NUMBER,
+                                               Attribute::TOTAL_NUMBER_OF_TRACKS,
+                                               Attribute::GENRE,
+                                               Attribute::PLAYING_TIME,
+                                               Attribute::DEFAULT_COVER_ART};
+      for (const auto& attribute : all_attributes) {
+        if (info.attributes.find(attribute) != info.attributes.end()) {
+          log::verbose("requested attribute: {}", AttributeText(attribute));
+          if (info.attributes.find(attribute)->value().empty() && all_attributes_flag) {
+            log::verbose("Empty attribute found, add string Unavailable");
+            response->AddAttributeEntry(attribute, "Unavailable");
+          } else {
+            log::info(" Add attribute value");
+            response->AddAttributeEntry(*info.attributes.find(attribute));
+          }
         } else {
-          response->AddAttributeEntry(*info.attributes.find(attribute));
+          // If all attributes were requested, we send a response even for attributes that we don't
+          // have a value for.
+          log::info(" Attribute not found, add string Unavailable");
+          response->AddAttributeEntry(attribute, "Unavailable");
         }
-      } else {
-        // If all attributes were requested, we send a response even for attributes that we don't
-        // have a value for.
-        log::verbose("attribute not found");
-        response->AddAttributeEntry(attribute, std::string());
       }
     }
   }
@@ -1240,6 +1281,14 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
         fast_rewinding_ = false;
       }
       log::verbose("fast_forwarding_: {}, fast_rewinding_: {}", fast_forwarding_, fast_rewinding_);
+
+      if(pass_through_packet->GetOperationId() == uint8_t(OperationID::STOP)) {
+        if (!bluetooth::headset::IsCallIdle()) {
+          log::warn("Ignore passthrough stop during active call");
+          return;
+        }
+      }
+
       media_interface_->GetPlayStatus(base::Bind(
           [](base::WeakPtr<Device> d, std::shared_ptr<PassThroughPacket> packet, PlayStatus s) {
             if (!d) return;

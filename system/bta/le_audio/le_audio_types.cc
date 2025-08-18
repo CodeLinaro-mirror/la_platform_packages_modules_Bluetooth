@@ -740,6 +740,25 @@ LeAudioLtvMap LeAudioLtvMap::GetIntersection(const LeAudioLtvMap& other) const {
 
 }  // namespace types
 
+void send_vs_cmd(const uint8_t metadata_type, const uint8_t stream_ind,
+       const std::vector<uint8_t> bd_addr) {
+   if (osi_property_get_bool("persist.vendor.service.bt.adv_transport", false)) {
+     std::vector<uint8_t> param;
+     param.push_back(HCI_VS_SET_CIG_METADATA);
+     if (metadata_type == LTV_TYPE_STREAM_INDICATION) {
+       param.push_back(LTV_TYPE_STREAM_INDICATION);
+       param.push_back(LTV_LEN_STREAM_INDICATION);
+       param.push_back(stream_ind);
+     } else if (metadata_type == LTV_TYPE_BAP_TIMEOUT_INDICATION) {
+       param.push_back(LTV_TYPE_BAP_TIMEOUT_INDICATION);
+       param.push_back(LTV_LEN_BAP_TIMEOUT_INDICATION);
+       param.insert(param.end(), bd_addr.begin(), bd_addr.end());
+     }
+     bluetooth::legacy::hci::GetInterface().SendVendorSpecificCmd(HCI_VS_QBCE_OCF,
+         param.size(), param.data(), NULL);
+   }
+}
+
 void AppendMetadataLtvEntryForCcidList(std::vector<uint8_t>& metadata,
                                        const std::vector<uint8_t>& ccid_list) {
   if (ccid_list.size() == 0) {
