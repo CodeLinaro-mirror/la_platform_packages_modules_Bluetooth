@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -202,6 +207,11 @@ public class AdapterService extends Service {
 
     private static final int CONTROLLER_ENERGY_UPDATE_TIMEOUT_MILLIS = 100;
 
+    public static final int ENABLE = 0;
+    public static final int DISABLE = 1;
+    public static final int START_DISCOVERY = 2;
+    public static final int CANCEL_DISCOVERY = 3;
+
     private static final Duration PENDING_SOCKET_HANDOFF_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration GENERATE_LOCAL_OOB_DATA_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration PREFERRED_AUDIO_PROFILE_CHANGE_TIMEOUT = Duration.ofSeconds(10);
@@ -340,8 +350,21 @@ public class AdapterService extends Service {
 
     private volatile boolean mTestModeEnabled = false;
 
+    private int mAdapterIndex = 0;
+    private boolean mEnableNewAdapter = false;
+    private boolean mDisableNewAdapter = false;
+
+    private void initAdapter() {
+        mAdapterIndex = AdapterUtil.getAdapterIndex();
+        mAdapter = AdapterUtil.getAdapter();
+    }
+
+    public static BluetoothAdapter getAdapter() {
+        return AdapterUtil.getAdapter();
+    }
+
     /** Handlers for incoming service calls */
-    private AdapterServiceBinder mBinder;
+    protected AdapterServiceBinder mBinder;
 
     private volatile int mScanMode;
 
@@ -531,8 +554,7 @@ public class AdapterService extends Service {
                     mRunningProfiles.add(profile);
                     // TODO(b/228875190): GATT is assumed supported. GATT starting triggers hardware
                     // initialization. Configuring a device without GATT causes start up failures.
-                    if (GattService.class.getSimpleName().equals(profile.getName())
-                            && !Flags.onlyStartScanDuringBleOn()) {
+                    if (isGattService(profile.getName()) && !Flags.onlyStartScanDuringBleOn()) {
                         mNativeInterface.enable();
                     } else if (mRegisteredProfiles.size() == Config.getSupportedProfiles().length
                             && mRegisteredProfiles.size() == mRunningProfiles.size()) {
@@ -565,10 +587,8 @@ public class AdapterService extends Service {
                         // TODO(b/228875190): GATT is assumed supported. GATT is expected to be the
                         // only profile available in the "BLE ON" state. If only GATT is left, send
                         // BREDR_STOPPED. If GATT is stopped, deinitialize the hardware.
-                        if ((mRunningProfiles.size() == 1
-                                && (GattService.class
-                                        .getSimpleName()
-                                        .equals(mRunningProfiles.get(0).getName())))) {
+                        if ((mRunningProfiles.size() == 1)
+                                && isGattService(mRunningProfiles.get(0).getName())) {
                             mAdapterStateMachine.sendMessage(AdapterState.BREDR_STOPPED);
                         } else if (mRunningProfiles.size() == 0) {
                             mNativeInterface.disable();
@@ -618,12 +638,12 @@ public class AdapterService extends Service {
     private void init() {
         Log.d(TAG, "init()");
         Config.init(this);
+        initAdapter();
         mDeviceConfigListener.start();
 
         MetricsLogger.getInstance().init(this, mRemoteDevices);
 
         clearDiscoveringPackages();
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
         boolean isCommonCriteriaMode =
                 getNonNullSystemService(DevicePolicyManager.class)
                         .isCommonCriteriaModeEnabled(null);
@@ -647,6 +667,9 @@ public class AdapterService extends Service {
             Log.d(TAG, "Loading JNI Library");
             System.loadLibrary("bluetooth_jni");
         }
+
+        mNativeInterface.setAdapterIndex(mAdapterIndex);
+
         mNativeInterface.init(
                 this,
                 mAdapterProperties,
@@ -687,7 +710,8 @@ public class AdapterService extends Service {
          * Android Automotive OS builds, in favor of a policy currently located in
          * CarBluetoothService.
          */
-        if (!isAutomotiveDevice && getResources().getBoolean(R.bool.enable_phone_policy)) {
+        if ((!isAutomotiveDevice || AdapterUtil.isDualBluetoothEnabled())
+            && getResources().getBoolean(R.bool.enable_phone_policy)) {
             Log.i(TAG, "Phone policy enabled");
             mPhonePolicy = Optional.of(new PhonePolicy(this, mLooper, new ServiceFactory()));
         } else {
@@ -2635,6 +2659,15 @@ public class AdapterService extends Service {
         UserHandle callingUser = Binder.getCallingUserHandle();
         Log.d(TAG, "startDiscovery");
         String callingPackage = source.getPackageName();
+        // Internal discovery triggered by the system Bluetooth package,
+        // which itself lacks the required permissions.
+        // Since results are not broadcast externally, permission checks can be safely skipped.
+        String bluetoothPackage = "com.android.bluetooth";
+        if (bluetoothPackage.equals(callingPackage) &&
+            (!AdapterUtil.isAdapterDefault())) {
+            Log.d(TAG, "Internal discovery initiated, skipping permission checks");
+            return mNativeInterface.startDiscovery();
+        }
         mAppOps.checkPackage(Binder.getCallingUid(), callingPackage);
         boolean isQApp = Utils.checkCallerTargetSdk(this, callingPackage, Build.VERSION_CODES.Q);
         boolean hasDisavowedLocation =
@@ -2696,15 +2729,14 @@ public class AdapterService extends Service {
     public BluetoothDevice getDeviceFromByte(byte[] address) {
         BluetoothDevice device = mRemoteDevices.getDevice(address);
         if (device == null) {
-            device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+            device = mAdapter.getRemoteDevice(address);
         }
         return device;
     }
 
     public String getIdentityAddress(String address) {
         BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter()
-                        .getRemoteDevice(address.toUpperCase(Locale.ROOT));
+                mAdapter.getRemoteDevice(address.toUpperCase(Locale.ROOT));
         DeviceProperties deviceProp = mRemoteDevices.getDeviceProperties(device);
         if (deviceProp != null && deviceProp.getIdentityAddress() != null) {
             return deviceProp.getIdentityAddress();
@@ -2723,8 +2755,7 @@ public class AdapterService extends Service {
     @NonNull
     public BluetoothAddress getIdentityAddressWithType(@NonNull String address) {
         BluetoothDevice device =
-                BluetoothAdapter.getDefaultAdapter()
-                        .getRemoteDevice(address.toUpperCase(Locale.ROOT));
+                mAdapter.getRemoteDevice(address.toUpperCase(Locale.ROOT));
         DeviceProperties deviceProp = mRemoteDevices.getDeviceProperties(device);
 
         String identityAddress = null;
@@ -3910,6 +3941,16 @@ public class AdapterService extends Service {
     }
 
     /**
+     * Get the maximum number of connected audio devices.
+     *
+     * @return the maximum number of connected audio devices
+     */
+    public int getMaxConnectedAudioDevices(int profile) {
+        return mAdapterProperties.getMaxConnectedAudioDevices(
+                getSupportedProfilesBitMask(), profile);
+    }
+
+    /**
      * Check whether A2DP offload is enabled.
      *
      * @return true if A2DP offload is enabled
@@ -4941,6 +4982,60 @@ public class AdapterService extends Service {
      */
     public boolean pbapPseDynamicVersionUpgradeIsEnabled() {
         return mNativeInterface.pbapPseDynamicVersionUpgradeIsEnabled();
+    }
+
+    private static boolean isGattService(String name) {
+        return GattService.class.getSimpleName().equals(name);
+    }
+
+    public boolean isNewAdapter() {
+        return AdapterUtil.isAdapter1();
+    }
+
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    public void handleDualAdapterMode(int option) {
+        if (AdapterUtil.isDualAdapterMode()) {
+            if (AdapterUtil.isAdapterDefault()) {
+                // In dual adapter mode, default adapter enable/disable
+                // enable/disable/discovery/canceldiscovery
+                // new adapter concurrently.
+                switch(option) {
+                    case ENABLE:
+                        mDisableNewAdapter = AdapterExt.enable();
+                        break;
+                    case DISABLE:
+                        mEnableNewAdapter = AdapterExt.disable();
+                        break;
+                    case START_DISCOVERY:
+                        // HOGP is deployed on the new adapter in dual BT mode.
+                        // Pairing requires device info from the Bluetooth core stack,
+                        // so discovery must be triggered on the new adapter.
+                        AdapterExt.startDiscovery();
+                        break;
+                    case CANCEL_DISCOVERY:
+                        // Cancel discovery on the new adapter as well,
+                        // to keep adapter states consistent in dual adapter mode.
+                        AdapterExt.cancelDiscovery();
+                        break;
+                    default:
+                        Log.w(TAG, "Invalid option:" + option);
+                        break;
+                }
+            }
+        }
+    }
+
+    public boolean canEnableNewAdapter() {
+        return mEnableNewAdapter;
+    }
+
+    public boolean canDisableNewAdapter() {
+        return mDisableNewAdapter;
+    }
+
+    public void notifyNewAdapterState(boolean isOn) {
+        mAdapterStateMachine.sendMessage(AdapterState.NEW_ADAPTER_STATE_CHANGED,
+                isOn ? 1 : 0);
     }
 
     /** Sets the battery level of the remote device */

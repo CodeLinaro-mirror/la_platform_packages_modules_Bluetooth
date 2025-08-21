@@ -52,6 +52,7 @@ import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.hfp.BluetoothHfpProtoEnums;
+import android.car.media.CarAudioManager;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
@@ -201,6 +202,7 @@ public class HeadsetClientStateMachine extends StateMachine {
     private AudioFocusRequest mAudioFocusRequest;
 
     private final AudioManager mAudioManager;
+    private final CarAudioManager mCarAudioManager;
     private final NativeInterface mNativeInterface;
     private final VendorCommandResponseProcessor mVendorProcessor;
 
@@ -901,6 +903,7 @@ public class HeadsetClientStateMachine extends StateMachine {
         mService = requireNonNull(context);
         mNativeInterface = nativeInterface;
         mAudioManager = mService.getAudioManager();
+        mCarAudioManager = mService.getCarAudioManager();
         mHeadsetService = headsetService;
 
         mVendorProcessor = new VendorCommandResponseProcessor(mService, mNativeInterface);
@@ -1321,7 +1324,12 @@ public class HeadsetClientStateMachine extends StateMachine {
                         }
                     }
 
-                    int amVol = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                    int amVol = 0;
+                    if (Utils.isAutomotive(mService.getApplicationContext())) {
+                        amVol = mCarAudioManager.getGroupVolume(mService.getVolumeGroupId());
+                    } else {
+                        amVol = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                    }
                     deferMessage(
                             obtainMessage(HeadsetClientStateMachine.SET_SPEAKER_VOLUME, amVol, 0));
                     // Mic is either in ON state (full volume) or OFF state. There is no way in
@@ -1704,13 +1712,19 @@ public class HeadsetClientStateMachine extends StateMachine {
                             if (event.valueInt == HeadsetClientHalConstants.VOLUME_TYPE_SPK) {
                                 mCommandedSpeakerVolume = mService.hfToAmVol(event.valueInt2);
                                 debug("AM volume set to " + mCommandedSpeakerVolume);
-                                boolean show_volume =
-                                        SystemProperties.getBoolean(
-                                                "bluetooth.hfp_volume_control.enabled", true);
-                                mAudioManager.setStreamVolume(
-                                        AudioManager.STREAM_VOICE_CALL,
-                                        +mCommandedSpeakerVolume,
-                                        show_volume ? AudioManager.FLAG_SHOW_UI : 0);
+                                boolean show_volume = SystemProperties.getBoolean(
+                                        "bluetooth.hfp_volume_control.enabled", true);
+                                if (Utils.isAutomotive(mService.getApplicationContext())) {
+                                    mCarAudioManager.setGroupVolume(
+                                            mService.getVolumeGroupId(),
+                                            +mCommandedSpeakerVolume,
+                                            show_volume ? AudioManager.FLAG_SHOW_UI : 0);
+                                } else {
+                                    mAudioManager.setStreamVolume(
+                                            AudioManager.STREAM_VOICE_CALL,
+                                            +mCommandedSpeakerVolume,
+                                            show_volume ? AudioManager.FLAG_SHOW_UI : 0);
+                                }
                             } else if (event.valueInt
                                     == HeadsetClientHalConstants.VOLUME_TYPE_MIC) {
                                 mAudioManager.setMicrophoneMute(event.valueInt2 == 0);
@@ -1889,7 +1903,12 @@ public class HeadsetClientStateMachine extends StateMachine {
 
                     // We need to set the volume after switching into HFP mode as some Audio HALs
                     // reset the volume to a known-default on mode switch.
-                    final int amVol = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                    int amVol;
+                    if (Utils.isAutomotive(mService.getApplicationContext())) {
+                        amVol = mCarAudioManager.getGroupVolume(mService.getVolumeGroupId());
+                    } else {
+                        amVol = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                    }
                     final int hfVol = mService.amToHfVol(amVol);
 
                     debug("hfp_enable=true mAudioSWB is " + mAudioSWB);

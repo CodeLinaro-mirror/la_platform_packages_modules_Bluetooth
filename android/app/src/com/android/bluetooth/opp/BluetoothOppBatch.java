@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -38,6 +43,7 @@ import android.content.Context;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothMethodProxy;
+import com.android.bluetooth.btservice.AdapterService;
 
 import java.util.ArrayList;
 
@@ -104,7 +110,7 @@ public class BluetoothOppBatch {
         mShares = new ArrayList();
         mTimestamp = info.mTimestamp;
         mDirection = info.mDirection;
-        mDestination = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(info.mDestination);
+        mDestination = AdapterService.getAdapter().getRemoteDevice(info.mDestination);
         mStatus = Constants.BATCH_STATUS_PENDING;
         mShares.add(info);
 

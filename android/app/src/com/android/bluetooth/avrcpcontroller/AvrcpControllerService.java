@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -211,7 +216,7 @@ public class AvrcpControllerService extends ProfileService {
     /** Set the current active device, notify devices of activity status */
     @VisibleForTesting
     boolean setActiveDevice(BluetoothDevice device) {
-        Log.d(TAG, "setActiveDevice(device=" + device + ")");
+        Log.d(TAG, "setActiveDevice(device = " + device + ")");
         A2dpSinkService a2dpSinkService = A2dpSinkService.getA2dpSinkService();
         if (a2dpSinkService == null) {
             Log.w(TAG, "setActiveDevice(device=" + device + "): A2DP Sink not available");
@@ -366,6 +371,9 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void onConnectionStateChanged(
             boolean remoteControlConnected, boolean browsingConnected, BluetoothDevice device) {
+        Log.d(TAG, "onConnectionStateChanged(device = " + device
+                + ", remoteControlConnected = " + remoteControlConnected
+                + ", browsingConnected = " + browsingConnected + ")");
         StackEvent event =
                 StackEvent.connectionStateChanged(remoteControlConnected, browsingConnected);
         AvrcpControllerStateMachine stateMachine = getOrCreateStateMachine(device);
@@ -386,6 +394,7 @@ public class AvrcpControllerService extends ProfileService {
     // Called by JNI to notify Avrcp of a remote device's Cover Art PSM
     @VisibleForTesting
     void getRcPsm(BluetoothDevice device, int psm) {
+        Log.d(TAG, "getRcPsm(device = " + device + ", psm = " + psm + ")");
         AvrcpControllerStateMachine stateMachine = getOrCreateStateMachine(device);
         stateMachine.sendMessage(
                 AvrcpControllerStateMachine.MESSAGE_PROCESS_RECEIVED_COVER_ART_PSM, psm);
@@ -394,6 +403,8 @@ public class AvrcpControllerService extends ProfileService {
     // Called by JNI when remote wants to receive absolute volume notifications.
     @VisibleForTesting
     synchronized void handleRegisterNotificationAbsVol(BluetoothDevice device, byte label) {
+        Log.d(TAG, "handleRegisterNotificationAbsVol(device = " + device + ", label = "
+                + label + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -405,6 +416,9 @@ public class AvrcpControllerService extends ProfileService {
     // Called by JNI when remote wants to set absolute volume.
     @VisibleForTesting
     synchronized void handleSetAbsVolume(BluetoothDevice device, byte absVol, byte label) {
+        Log.d(TAG, "handleSetAbsVolume(device = " + device
+                + ", absVol = " + absVol
+                + ", label = " + label + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -417,8 +431,7 @@ public class AvrcpControllerService extends ProfileService {
      * player to stop and start playing.
      */
     public void onAudioFocusStateChanged(int state) {
-        Log.d(TAG, "onAudioFocusStateChanged(state=" + state + ")");
-
+        Log.d(TAG, "onAudioFocusStateChanged(state = " + state + ")");
         // Make sure the active device isn't changed while we're processing the event so play/pause
         // commands get routed to the correct device
         synchronized (mActiveDeviceLock) {
@@ -449,6 +462,10 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void onTrackChanged(
             BluetoothDevice device, byte numAttributes, int[] attributes, String[] attribVals) {
+        Log.d(TAG, "onTrackChanged(device = " + device
+                + ", numAttributes = " + numAttributes
+                + ", attributes = " + Arrays.toString(attributes)
+                + ", attribVals = " + Arrays.toString(attribVals) + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             AvrcpItem.Builder aib = new AvrcpItem.Builder();
@@ -472,6 +489,9 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void onPlayPositionChanged(
             BluetoothDevice device, int songLen, int currSongPosition) {
+        Log.d(TAG, "onPlayPositionChanged(device = " + device
+                + ", songLen = " + songLen
+                + ", currSongPosition = " + currSongPosition + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -484,6 +504,8 @@ public class AvrcpControllerService extends ProfileService {
     // Called by JNI on changes of play status
     @VisibleForTesting
     synchronized void onPlayStatusChanged(BluetoothDevice device, int playbackState) {
+        Log.d(TAG, "onPlayStatusChanged(device = " + device
+                + ", playbackState = " + playbackState + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -495,6 +517,9 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void handlePlayerAppSetting(
             BluetoothDevice device, byte[] playerAttribRsp, int rspLen) {
+        Log.d(TAG, "handlePlayerAppSetting(device = " + device
+                + ", playerAttribRsp = " + Arrays.toString(playerAttribRsp)
+                + ", rspLen = " + rspLen + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             PlayerApplicationSettings supportedSettings =
@@ -508,6 +533,9 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void onPlayerAppSettingChanged(
             BluetoothDevice device, byte[] playerAttribRsp, int rspLen) {
+        Log.d(TAG, "onPlayerAppSettingChanged(device = " + device
+                + ", playerAttribRsp = " + Arrays.toString(playerAttribRsp)
+                + ", rspLen = " + rspLen + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
 
@@ -521,6 +549,7 @@ public class AvrcpControllerService extends ProfileService {
 
     @VisibleForTesting
     void onAvailablePlayerChanged(BluetoothDevice device) {
+        Log.d(TAG, "onAvailablePlayerChanged(device = " + device + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -530,7 +559,9 @@ public class AvrcpControllerService extends ProfileService {
 
     // Browsing related JNI callbacks.
     void handleGetFolderItemsRsp(BluetoothDevice device, int status, AvrcpItem[] items) {
-        Log.d(TAG, "handleGetFolderItemsRsp(device=" + device + ", status=" + status);
+        Log.d(TAG, "handleGetFolderItemsRsp(device = " + device
+                + ", status = " + status
+                + ", items = " + Arrays.toString(items) + ")");
         List<AvrcpItem> itemsList = new ArrayList<>();
         for (AvrcpItem item : items) {
             Log.v(TAG, "handleGetFolderItemsRsp(device=" + device + "): item=" + item.toString());
@@ -551,6 +582,8 @@ public class AvrcpControllerService extends ProfileService {
     }
 
     void handleGetPlayerItemsRsp(BluetoothDevice device, List<AvrcpPlayer> itemsList) {
+        Log.d(TAG, "handleGetPlayerItemsRsp(device = " + device
+                + ", itemsList = " + itemsList + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -560,6 +593,8 @@ public class AvrcpControllerService extends ProfileService {
 
     @VisibleForTesting
     void handleChangeFolderRsp(BluetoothDevice device, int count) {
+        Log.d(TAG, "handleChangeFolderRsp(device = " + device
+                + ", count = " + count + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -569,6 +604,9 @@ public class AvrcpControllerService extends ProfileService {
 
     @VisibleForTesting
     void handleSetBrowsedPlayerRsp(BluetoothDevice device, int items, int depth) {
+        Log.d(TAG, "handleSetBrowsedPlayerRsp(device = " + device
+                + ", items = " + items
+                + ", depth = " + depth + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -578,6 +616,8 @@ public class AvrcpControllerService extends ProfileService {
 
     @VisibleForTesting
     void handleSetAddressedPlayerRsp(BluetoothDevice device, int status) {
+        Log.d(TAG, "handleAddressedPlayerChanged(device = " + device
+                + ", status = " + status + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -587,6 +627,8 @@ public class AvrcpControllerService extends ProfileService {
 
     @VisibleForTesting
     void handleAddressedPlayerChanged(BluetoothDevice device, int id) {
+        Log.d(TAG, "handleAddressedPlayerChanged(device = " + device
+                + ", id = " + id + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.sendMessage(
@@ -596,6 +638,7 @@ public class AvrcpControllerService extends ProfileService {
 
     @VisibleForTesting
     void handleNowPlayingContentChanged(BluetoothDevice device) {
+        Log.d(TAG," handleNowPlayingContentChanged(device = " + device + ")");
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.nowPlayingContentChanged();
@@ -610,7 +653,7 @@ public class AvrcpControllerService extends ProfileService {
      * @return true if disconnect is successful, false otherwise.
      */
     public synchronized boolean disconnect(BluetoothDevice device) {
-        Log.d(TAG, "disconnect(device=" + device + ")");
+        Log.d(TAG, "disconnect(device = " + device + ")");
         AvrcpControllerStateMachine stateMachine = mDeviceStateMap.get(device);
         // a map state machine instance doesn't exist. maybe it is already gone?
         if (stateMachine == null) {

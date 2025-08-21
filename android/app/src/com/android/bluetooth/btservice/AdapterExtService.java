@@ -18,25 +18,48 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
+
 package com.android.bluetooth.btservice;
 
-import android.app.Application;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.IBluetooth;
+import android.content.Intent;
 import android.util.Log;
+import android.os.IBinder;
 
-import com.android.bluetooth.Utils;
-
-public class AdapterApp extends Application {
-    private static final String TAG = Utils.TAG_PREFIX_BLUETOOTH + AdapterApp.class.getSimpleName();
+public class AdapterExtService extends AdapterService {
+    private static final String TAG = "BluetoothAdapterExtService";
 
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d(TAG, "onCreate");
-        try {
-            DataMigration.run(this);
-        } catch (Exception e) {
-            Log.e(TAG, "Migration failure: ", e);
+        debugLog("onCreate()");
+        mExtBinder = new AdapterExtServiceBinder(this);
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        debugLog("onBind()");
+        return mExtBinder;
+    }
+
+    @Override
+    void cleanup() {
+        super.cleanup();
+        debugLog("cleanup()");
+        if (mExtBinder != null) {
+            mExtBinder.cleanup();
+            mExtBinder = null;
         }
-        AdapterUtil.init(this);
+    }
+
+    public IBluetooth getBluetooth() {
+        return IBluetooth.Stub.asInterface(mBinder);
+    }
+
+    private AdapterExtServiceBinder mExtBinder;
+
+    private static void debugLog(String msg) {
+        Log.d(TAG, msg);
     }
 }

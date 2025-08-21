@@ -13,6 +13,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  */
 
 #include <base/functional/bind.h>
@@ -658,7 +664,8 @@ public:
         notify_flag_ptr = INT_TO_PTR(leAudioDevice->notify_connected_after_read_);
       }
 
-      if (!com::android::bluetooth::flags::le_ase_read_multiple_variable() || !is_eatt_supported) {
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
+      if (!is_eatt_supported) {
         BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                          leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
                                          notify_flag_ptr);
@@ -674,12 +681,18 @@ public:
       multi_read.handles[i % GATT_MAX_READ_MULTI_HANDLES] = leAudioDevice->ases_[i].hdls.val_hdl;
     }
 
-    if (com::android::bluetooth::flags::le_ase_read_multiple_variable() &&
-        (ases_num % GATT_MAX_READ_MULTI_HANDLES != 0)) {
+    if (is_eatt_supported && (ases_num % GATT_MAX_READ_MULTI_HANDLES != 0)) {
       multi_read.num_attr = ases_num % GATT_MAX_READ_MULTI_HANDLES;
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, notify_flag_ptr);
     }
+#else
+      BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
+                                     leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
+                                     notify_flag_ptr);
+      continue;
+    }
+#endif
   }
 
   void OnGroupAddedCb(const RawAddress& address, const bluetooth::Uuid& uuid, int group_id) {
@@ -2013,6 +2026,10 @@ public:
       }
     }
 
+    //For BT reboot cases, remotes need PACS discover.
+    leAudioDevice->known_service_handles_ = false;
+    btif_storage_leaudio_clear_service_data(address);
+
     leAudioDevice->autoconnect_flag_ = autoconnect;
     /* When adding from storage, make sure that autoconnect is used
      * by all the devices in the group.
@@ -2679,7 +2696,8 @@ public:
      *    it can change very often which, as we observed, might lead to not being sent by
      *    remote devices
      */
-    if (!com::android::bluetooth::flags::le_ase_read_multiple_variable() || !is_eatt_supported) {
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
+    if (!is_eatt_supported) {
       BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                        leAudioDevice->audio_avail_hdls_.val_hdl,
                                        OnGattReadRspStatic, NULL);
@@ -2693,6 +2711,13 @@ public:
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, NULL);
     }
+#else
+    BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
+                                     leAudioDevice->audio_avail_hdls_.val_hdl,
+                                     OnGattReadRspStatic, NULL);
+    BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_, leAudioDevice->ctp_hdls_.ccc_hdl,
+                                     OnGattReadRspStatic, NULL);
+#endif
   }
 
   void OnEncryptionComplete(const RawAddress& address, tBTM_STATUS status) {
@@ -2874,6 +2899,7 @@ public:
 
   void OnGattDisconnected(tCONN_ID conn_id, tGATT_IF /*client_if*/, RawAddress address,
                           tGATT_DISCONN_REASON reason) {
+    log::info("OnGattDisconnected");
     LeAudioDevice* leAudioDevice = leAudioDevices_.FindByConnId(conn_id);
 
     if (!leAudioDevice) {
@@ -2893,6 +2919,10 @@ public:
     leAudioDevice->closing_stream_for_disconnection_ = false;
     leAudioDevice->encrypted_ = false;
     leAudioDevice->acl_phy_update_done_ = false;
+
+    log::info("Remove service data, addr: {}", address);
+    leAudioDevice->known_service_handles_ = false;
+    btif_storage_leaudio_clear_service_data(address);
 
     auto connection_state = leAudioDevice->GetConnectionState();
 
@@ -6668,7 +6698,9 @@ void le_audio_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
       break;
 
     case BTA_GATTC_SRVC_DISC_DONE_EVT:
-      instance->OnGattServiceDiscoveryDone(p_data->service_discovery_done.remote_bda);
+      /*PACS read would be done when encryption complete*/
+      log::warn("Needn't do PACS when BTA_GATTC_SRVC_DISC_DONE_EVT.");
+      //instance->OnGattServiceDiscoveryDone(p_data->service_discovery_done.remote_bda);
       break;
 
     case BTA_GATTC_SRVC_CHG_EVT:

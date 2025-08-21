@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <aidl/android/hardware/bluetooth/BnBluetoothHci.h>
@@ -23,7 +28,24 @@
 #include "common/stop_watch.h"
 #include "hal/hci_backend.h"
 
+extern int GetAdapterIndex();
+
 namespace bluetooth::hal {
+
+static std::string GetHciAIDLInstance() {
+  char buf[64];
+  memset(buf, 0, sizeof(buf));
+  int hci_adapter = GetAdapterIndex();
+  // 0 -> "default" (default bluetooth adapter)
+  // 1 -> "hci1" (new bluetooth adapter)
+  if (hci_adapter > 0) {
+    snprintf(buf, sizeof(buf), "android.hardware.bluetooth.IBluetoothHci/hci%d", hci_adapter);
+  } else {
+    snprintf(buf, sizeof(buf), "android.hardware.bluetooth.IBluetoothHci/default");
+  }
+  log::info("GetHciInstance: {} instance name", buf);
+  return std::string(buf);
+}
 
 class AidlHciCallbacks : public ::aidl::android::hardware::bluetooth::BnBluetoothHciCallbacks {
 public:
@@ -115,11 +137,11 @@ private:
 };
 
 std::shared_ptr<HciBackend> HciBackend::CreateAidl() {
-  static constexpr char kBluetoothAidlHalServiceName[] =
-          "android.hardware.bluetooth.IBluetoothHci/default";
+  static const std::string kBluetoothAidlHalServiceName = GetHciAIDLInstance();
+  static const char* kBluetoothAidlHalServiceNameCstr = kBluetoothAidlHalServiceName.c_str();
 
-  if (AServiceManager_isDeclared(kBluetoothAidlHalServiceName)) {
-    return std::make_shared<AidlHci>(kBluetoothAidlHalServiceName);
+  if (AServiceManager_isDeclared(kBluetoothAidlHalServiceNameCstr)) {
+    return std::make_shared<AidlHci>(kBluetoothAidlHalServiceNameCstr);
   }
 
   return std::shared_ptr<HciBackend>();

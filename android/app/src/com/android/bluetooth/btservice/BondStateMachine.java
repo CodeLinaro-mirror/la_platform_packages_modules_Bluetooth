@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -25,6 +30,7 @@ import static com.android.bluetooth.BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVEN
 import static java.util.Objects.requireNonNull;
 
 import android.app.Activity;
+import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
@@ -107,7 +113,7 @@ final class BondStateMachine extends StateMachine {
         mRemoteDevices = remoteDevices;
         mAdapterService = service;
         mAdapterProperties = prop;
-        mAdapter = BluetoothAdapter.getDefaultAdapter();
+        mAdapter = mAdapterService.getAdapter();
         setInitialState(mStableState);
     }
 
@@ -412,6 +418,7 @@ final class BondStateMachine extends StateMachine {
         return false;
     }
 
+    @RequiresPermission(BLUETOOTH_CONNECT)
     private boolean createBond(
             BluetoothDevice dev,
             int transport,
@@ -512,6 +519,7 @@ final class BondStateMachine extends StateMachine {
     }
 
     @VisibleForTesting
+    @RequiresPermission(BLUETOOTH_CONNECT)
     void sendIntent(
             BluetoothDevice device, int newState, int reason, boolean isTriggerFromDelayMessage) {
         DeviceProperties devProp = mRemoteDevices.getDeviceProperties(device);
