@@ -157,6 +157,7 @@
         "One-TwoChan-SnkAse-Lc3_32_2-One-TwoChan-SrcAse-Lc3_32_2_Low_Latency",
         "One-TwoChan-SnkAse-Lc3_16_2-One-TwoChan-SrcAse-Lc3_16_2_Low_Latency",
         "One-TwoChan-SnkAse-Lc3_16_1-One-TwoChan-SrcAse-Lc3_16_1_Low_Latency",
+        "One-TwoChan-SnkAse-Lc3_48_1-One-OneChan-SrcAse-Lc3_16_1_1",
         "One-TwoChan-SnkAse-Lc3_32_2-One-OneChan-SrcAse-Lc3_32_2_Low_Latency",
         "One-TwoChan-SnkAse-Lc3_16_2-One-OneChan-SrcAse-Lc3_16_2_Low_Latency",
         "One-TwoChan-SnkAse-Lc3_16_1-One-OneChan-SrcAse-Lc3_16_1_Low_Latency",

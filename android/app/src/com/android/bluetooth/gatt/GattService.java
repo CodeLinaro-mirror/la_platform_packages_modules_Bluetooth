@@ -1903,6 +1903,8 @@ public class GattService extends ProfileService {
             mServerMap.addConnection(serverIf, connId, address);
             connectionState = BluetoothProtoEnums.CONNECTION_STATE_CONNECTED;
         } else {
+            Log.d(TAG, " Reset server congestion connId=" + connId);
+            onServerCongestion(connId,false);
             mServerMap.removeConnection(serverIf, connId);
             connectionState = BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTED;
         }

@@ -98,13 +98,13 @@ BluetoothAudioHalVersion GetAidlInterfaceVersion() {
 }
 
 BluetoothAudioHalTransport HalVersionManager::GetHalTransport() {
-  log::error(": HAL Transport {}", toString(instance_ptr->hal_version_.getTransport()));
+  log::error("HAL Transport: {}", toString(instance_ptr->hal_version_.getTransport()));
   return instance_ptr->hal_version_.getTransport();
 }
 
 BluetoothAudioHalVersion HalVersionManager::GetHalVersion() {
   std::lock_guard<std::mutex> guard(instance_ptr->mutex_);
-  log::error(": HAL Version {}", instance_ptr->hal_version_.toString());
+  log::error("HAL Version: {}", instance_ptr->hal_version_.toString());
   return instance_ptr->hal_version_;
 }
 
@@ -145,7 +145,7 @@ android::sp<IBluetoothAudioProvidersFactory_2_0> HalVersionManager::GetProviders
 HalVersionManager::HalVersionManager() {
   hal_transport_ = BluetoothAudioHalTransport::UNKNOWN;
   if (AServiceManager_checkService(kDefaultAudioProviderFactoryInterface.c_str()) != nullptr) {
-    log::info(__func__, ": Going with AIDL: ");
+    log::info("Going with AIDL");
     hal_version_ = GetAidlInterfaceVersion();
     hal_transport_ = BluetoothAudioHalTransport::AIDL;
     return;
@@ -167,7 +167,7 @@ HalVersionManager::HalVersionManager() {
   }
 
   if (instance_count > 0) {
-    log::info(__func__, " QTI HIDL 2.1 version");
+    log::info("QTI HIDL 2.1 version");
     hal_version_ = BluetoothAudioHalVersion::VERSION_QTI_HIDL_2_1;
     hal_transport_ = BluetoothAudioHalTransport::QTI_HIDL;
     return;
@@ -181,7 +181,7 @@ HalVersionManager::HalVersionManager() {
   }
 
   if (instance_count > 0) {
-    log::info(__func__, " QTI HIDL 2.0 version");
+    log::info("QTI HIDL 2.0 version");
     hal_version_ = BluetoothAudioHalVersion::VERSION_QTI_HIDL_2_0;
     hal_transport_ = BluetoothAudioHalTransport::QTI_HIDL;
     return;
@@ -195,7 +195,7 @@ HalVersionManager::HalVersionManager() {
   }
 
   if (instance_count > 0) {
-    log::info(__func__, ": Going with AOSP HIDL 2.1 ");
+    log::info("Going with AOSP HIDL 2.1");
     hal_version_ = BluetoothAudioHalVersion::VERSION_2_1;
     hal_transport_ = BluetoothAudioHalTransport::HIDL;
     return;
@@ -209,7 +209,7 @@ HalVersionManager::HalVersionManager() {
   }
 
   if (instance_count > 0) {
-    log::info(__func__, ": Going with AOSP HIDL 2.0 ");
+    log::info("Going with AOSP HIDL 2.0");
     hal_version_ = BluetoothAudioHalVersion::VERSION_2_0;
     hal_transport_ = BluetoothAudioHalTransport::HIDL;
     return;

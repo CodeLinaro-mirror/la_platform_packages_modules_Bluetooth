@@ -225,6 +225,7 @@ cc_test {
         ":LegacyStackSdp",
         ":OsiCompatSources",
         ":TestCommonMockFunctions",
+        ":TestCommonStackConfig",
         ":TestCommonSyncMainHandler",
         ":TestFakeOsi",
         ":TestMockAudioHalInterface",

@@ -289,6 +289,11 @@ public class CallAudio {
                 mHandler.removeMessages(MESSAGE_VOIP_CALL_STARTED);
             }
 
+            if (mAudioMode == AudioManager.MODE_RINGTONE) {
+                Log.i(TAG, "VOIP call is inturrputed by incoming call.");
+                return false;
+            }
+
             CallDevice mCallDevice = mCallDevicesMap.get(mActiveDevice.getAddress());
             if (mCallDevice != null) {
                 // fake SCO audio disconnected event while stopScoUsingVirtualCall is invoked
