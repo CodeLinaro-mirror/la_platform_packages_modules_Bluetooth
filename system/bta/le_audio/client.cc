@@ -1297,8 +1297,12 @@ class LeAudioClientImpl : public LeAudioClient {
     }
 
     LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-    if (!group || !group->IsStreaming()) {
-      log::debug("{} is not streaming", active_group_id_);
+    //If group is under configuring/streaming to other context, it should do reconfiguration.
+    if (!group || (!group->IsStreaming() &&
+                    group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+                    !(group->IsSuspendedForReconfiguration() &&
+                             configuration_context_type_ != LeAudioContextType::CONVERSATIONAL))) {
+      log::debug("{} is not streaming or not configuring to other contexts", active_group_id_);
       return;
     }
 
