@@ -20,6 +20,11 @@ import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import com.android.bluetooth.avrcp.AvrcpTargetService;
 
@@ -70,7 +75,7 @@ public class PlayerSettingsManager {
     /** Updates the active player controller. */
     private void activePlayerChanged(MediaPlayerWrapper mediaPlayerWrapper) {
         if (mActivePlayerController != null) {
-            unregisterMediaControllerCallback(mActivePlayerController, mControllerCallback);
+            safeUnregisterMediaControllerCallback(mActivePlayerController, mControllerCallback);
         }
         if (mediaPlayerWrapper != null) {
             mActivePlayerController =
@@ -255,6 +260,46 @@ public class PlayerSettingsManager {
             return false;
         }
         return true;
+    }
+
+    /**
+     * The binder of some MediaControllers may fail to unregister the callback due to binder blocked.
+     * The MediaController may hold a lock which will cause Bluetooth ANR.
+     * The old method unregisterMediaControllerCallback() could not catch this situation.
+     * So we add a new method safeUnregisterMediaControllerCallback() to handle this situation.
+     */
+    private static boolean safeUnregisterMediaControllerCallback(
+            MediaControllerCompat controller, MediaControllerCallback callback) {
+        Log.v(TAG, "safeUnregisterMediaControllerCallback: " + callback);
+
+        boolean result = false;
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            //Create a new thread to do operations that may block
+            Future<Boolean> future = executor.submit(() -> {
+                controller.unregisterCallback(callback);
+                return true;
+            });
+
+            /* If the thread has not completed execution for more than 3 seconds,
+             * it will throw an TimeoutException.
+             * Otherwise the result will be true.
+             */
+            result = future.get(3000, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            Log.w(TAG, "safeUnregisterMediaControllerCallback-Unregister timed out after 3000ms.");
+            result = false;
+        } catch (Exception e) {
+            Log.e(TAG, "safeUnregisterMediaControllerCallbackUnregister failed.",e);
+            result = false;
+        } finally {
+            executor.shutdownNow();
+            Log.v(TAG, "safeUnregisterMediaControllerCallbackUnregister-SingleThreadExecutor shutdown success.");
+        }
+
+        Log.v(TAG, "safeUnregisterMediaControllerCallback result: " + result);
+        return result;
     }
 
     // Receives callbacks from the MediaControllerCompat.

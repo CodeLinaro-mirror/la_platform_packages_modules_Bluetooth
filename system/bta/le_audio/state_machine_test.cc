@@ -207,6 +207,7 @@ class MockLeAudioGroupStateMachineCallbacks
               (int group_id, uint8_t direction), (override));
   MOCK_METHOD((void), OnDeviceAutonomousStateTransitionTimeout,
               (LeAudioDevice * leAudioDevice), (override));
+  MOCK_METHOD((void), OnSetSenderStateRelease,(), (override));
 };
 
 class MockAseRemoteStateMachine {
@@ -8071,6 +8072,73 @@ TEST_F(StateMachineTest, testAutonomousDisableTimeout) {
 
   fake_osi_alarm_set_on_mloop_.cb(fake_osi_alarm_set_on_mloop_.data);
   testing::Mock::VerifyAndClearExpectations(mock_iso_manager_);
+}
+
+TEST_F(StateMachineTest, testSenderStateReleaseHandling) {
+  const auto context_type = kContextTypeConversational;
+  const auto leaudio_group_id = 7;
+  const auto num_devices = 2;
+
+  ContentControlIdKeeper::GetInstance()->SetCcid(media_context, media_ccid);
+
+  // Prepare multiple fake connected devices in a group
+  auto* group =
+      PrepareSingleTestDeviceGroup(leaudio_group_id, context_type, num_devices);
+  ASSERT_EQ(group->Size(), num_devices);
+
+  PrepareConfigureCodecHandler(group);
+  PrepareConfigureQosHandler(group);
+  PrepareEnableHandler(group);
+  PrepareDisableHandler(group);
+  PrepareReleaseHandler(group);
+  PrepareReceiverStartReadyHandler(group);
+
+  auto* leAudioDevice = group->GetFirstDevice();
+  LeAudioDevice* lastDevice;
+
+  while (leAudioDevice) {
+    lastDevice = leAudioDevice;
+    EXPECT_CALL(gatt_queue,
+                WriteCharacteristic(leAudioDevice->conn_id_,
+                                    leAudioDevice->ctp_hdls_.val_hdl, _,
+                                    GATT_WRITE_NO_RSP, _, _))
+        .Times(AtLeast(3));
+    leAudioDevice = group->GetNextDevice(leAudioDevice);
+  }
+
+  EXPECT_CALL(*mock_iso_manager_, CreateCig(_, _)).Times(1);
+  EXPECT_CALL(*mock_iso_manager_, EstablishCis(_)).Times(1);
+  EXPECT_CALL(*mock_iso_manager_, SetupIsoDataPath(_, _)).Times(4);
+
+  InjectInitialIdleNotification(group);
+
+  LeAudioGroupStateMachine::Get()->StartStream(
+      group, context_type,
+      {.sink = types::AudioContexts(context_type),
+       .source = types::AudioContexts(context_type)});
+
+  ASSERT_EQ(group->GetState(),
+            types::AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING);
+
+  testing::Mock::VerifyAndClearExpectations(mock_iso_manager_);
+
+  // Simulate sender ASE transitioning to Release
+  auto ase = lastDevice->GetFirstActiveAseByDirection(
+      ::bluetooth::le_audio::types::kLeAudioDirectionSource);
+
+  InjectAseStateNotification(ase, lastDevice, group,
+                             ascs::kAseStateReleasing,
+                             &cached_qos_configuration_map_[ase->id]);
+
+  // Expect the callback to be triggered
+  EXPECT_CALL(mock_callbacks_, OnSetSenderStateRelease()).Times(1);
+
+  // Simulate the release completion
+  InjectAseStateNotification(ase, lastDevice, group,
+                             ascs::kAseStateIdle,
+                             nullptr);
+
+  testing::Mock::VerifyAndClearExpectations(&mock_callbacks_);
 }
 
 TEST_F(StateMachineTest, testAutonomousDisableSuccess) {

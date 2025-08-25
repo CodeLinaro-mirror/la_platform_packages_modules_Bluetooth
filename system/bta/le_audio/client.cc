@@ -532,6 +532,7 @@ class LeAudioClientImpl : public LeAudioClient {
     log::info("device {}", leAudioDevice->address_);
     leAudioDevice->SetConnectionState(DeviceConnectState::REMOVING);
     leAudioDevice->closing_stream_for_disconnection_ = true;
+    audio_sender_state_ = AudioState::READY_TO_RELEASE;
     GroupStop(leAudioDevice->group_id_);
   }
 
@@ -585,7 +586,7 @@ class LeAudioClientImpl : public LeAudioClient {
       SetDeviceAsRemovePendingAndStopGroup(leAudioDevice);
       return;
     }
-    if (leAudioDevice->group_id_ == active_group_id_) {
+    if (leAudioDevice->group_id_ == active_group_id_ && (group->Size() == 1)) {
       log::warn("Set device inactive before removing.");
       groupSetAndNotifyInactive();
     }
@@ -634,6 +635,10 @@ class LeAudioClientImpl : public LeAudioClient {
         return;
       }
     }
+
+    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_BAP_TIMEOUT_INDICATION, 0,
+                     std::vector<uint8_t>(leAudioDevice->address_.address,
+                     leAudioDevice->address_.address+6));
 
     /* If Timeout happens on stream close and stream is closing just for the
      * purpose of device disconnection, do not bother with recovery mode
@@ -1292,8 +1297,12 @@ class LeAudioClientImpl : public LeAudioClient {
     }
 
     LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-    if (!group || !group->IsStreaming()) {
-      log::debug("{} is not streaming", active_group_id_);
+    //If group is under configuring/streaming to other context, it should do reconfiguration.
+    if (!group || (!group->IsStreaming() &&
+                    group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+                    !(group->IsSuspendedForReconfiguration() &&
+                             configuration_context_type_ != LeAudioContextType::CONVERSATIONAL))) {
+      log::debug("{} is not streaming or not configuring to other contexts", active_group_id_);
       return;
     }
 
@@ -2148,6 +2157,7 @@ class LeAudioClientImpl : public LeAudioClient {
           }
           if (group->IsStreaming() || !group->IsReleasingOrIdle()) {
             leAudioDevice->closing_stream_for_disconnection_ = true;
+            audio_sender_state_ = AudioState::READY_TO_RELEASE;
             groupStateMachine_->StopStream(group);
             return;
           }
@@ -4657,6 +4667,8 @@ class LeAudioClientImpl : public LeAudioClient {
       timeoutMs += kAudioDisableTimeoutMs;
     }
 
+    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_STREAM_INDICATION,
+        0x04, std::vector<uint8_t>());
     log::debug("Stream suspend_timeout_ started: {} ms",
                static_cast<int>(timeoutMs));
     if (alarm_is_scheduled(suspend_timeout_)) alarm_cancel(suspend_timeout_);
@@ -4950,6 +4962,10 @@ class LeAudioClientImpl : public LeAudioClient {
         /* Keep wainting. After release is done, Audio Hal will be notified */
         break;
     }
+  }
+
+  void OnSetSenderStateRelease(void) {
+    audio_sender_state_ = AudioState::READY_TO_RELEASE;
   }
 
   void OnLocalAudioSinkSuspend() {
@@ -7240,6 +7256,10 @@ class CallbacksImpl : public LeAudioGroupStateMachine::Callbacks {
 
   void OnUpdatedCisConfiguration(int group_id, uint8_t direction) {
     if (instance) instance->OnUpdatedCisConfiguration(group_id, direction);
+  }
+
+  void OnSetSenderStateRelease() override {
+    if (instance) instance->OnSetSenderStateRelease();
   }
 };
 

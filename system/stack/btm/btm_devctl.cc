@@ -89,7 +89,6 @@ void btm_dev_init() {
   /* Initialize nonzero defaults */
   memset(btm_sec_cb.cfg.bd_name, 0, sizeof(BD_NAME));
 
-  btm_cb.devcb.read_local_name_timer = alarm_new("btm.read_local_name_timer");
   btm_cb.devcb.read_rssi_timer = alarm_new("btm.read_rssi_timer");
   btm_cb.devcb.read_failed_contact_counter_timer =
       alarm_new("btm.read_failed_contact_counter_timer");
@@ -100,7 +99,6 @@ void btm_dev_init() {
 }
 
 void btm_dev_free() {
-  alarm_free(btm_cb.devcb.read_local_name_timer);
   alarm_free(btm_cb.devcb.read_rssi_timer);
   alarm_free(btm_cb.devcb.read_failed_contact_counter_timer);
   alarm_free(btm_cb.devcb.read_automatic_flush_timeout_timer);
@@ -233,21 +231,6 @@ bool BTM_IsDeviceUp(void) {
   return bluetooth::shim::GetController() != nullptr;
 }
 
-/*******************************************************************************
- *
- * Function         btm_read_local_name_timeout
- *
- * Description      Callback when reading the local name times out.
- *
- * Returns          void
- *
- ******************************************************************************/
-static void btm_read_local_name_timeout(void* /* data */) {
-  tBTM_CMPL_CB* p_cb = btm_cb.devcb.p_rln_cmpl_cb;
-  btm_cb.devcb.p_rln_cmpl_cb = NULL;
-  if (p_cb) (*p_cb)((void*)NULL);
-}
-
 static void decode_controller_support() {
   /* Create (e)SCO supported packet types mask */
   btm_cb.btm_sco_pkt_types_supported = 0;
@@ -357,66 +340,6 @@ tBTM_STATUS BTM_SetLocalDeviceName(const char* p_name) {
 tBTM_STATUS BTM_ReadLocalDeviceName(const char** p_name) {
   *p_name = (const char*)btm_sec_cb.cfg.bd_name;
   return (BTM_SUCCESS);
-}
-
-/*******************************************************************************
- *
- * Function         BTM_ReadLocalDeviceNameFromController
- *
- * Description      Get local device name from controller. Do not use cached
- *                  name (used to get chip-id prior to btm reset complete).
- *
- * Returns          BTM_CMD_STARTED if successful, otherwise an error
- *
- ******************************************************************************/
-tBTM_STATUS BTM_ReadLocalDeviceNameFromController(
-    tBTM_CMPL_CB* p_rln_cmpl_cback) {
-  /* Check if rln already in progress */
-  if (btm_cb.devcb.p_rln_cmpl_cb) return (BTM_NO_RESOURCES);
-
-  /* Save callback */
-  btm_cb.devcb.p_rln_cmpl_cb = p_rln_cmpl_cback;
-
-  btsnd_hcic_read_name();
-  alarm_set_on_mloop(btm_cb.devcb.read_local_name_timer,
-                     BTM_DEV_NAME_REPLY_TIMEOUT_MS, btm_read_local_name_timeout,
-                     NULL);
-
-  return BTM_CMD_STARTED;
-}
-
-/*******************************************************************************
- *
- * Function         btm_read_local_name_complete
- *
- * Description      This function is called when local name read complete.
- *                  message is received from the HCI.
- *
- * Returns          void
- *
- ******************************************************************************/
-void btm_read_local_name_complete(uint8_t* p, uint16_t /* evt_len */) {
-  tBTM_CMPL_CB* p_cb = btm_cb.devcb.p_rln_cmpl_cb;
-  uint8_t status;
-
-  if (!stack_manager_get_interface()->get_stack_is_running()) {
-    log::warn("stack is not running");
-    return;
-  }
-
-  alarm_cancel(btm_cb.devcb.read_local_name_timer);
-
-  /* If there was a callback address for read local name, call it */
-  btm_cb.devcb.p_rln_cmpl_cb = NULL;
-
-  if (p_cb) {
-    STREAM_TO_UINT8(status, p);
-
-    if (status == HCI_SUCCESS)
-      (*p_cb)(p);
-    else
-      (*p_cb)(NULL);
-  }
 }
 
 /*******************************************************************************
