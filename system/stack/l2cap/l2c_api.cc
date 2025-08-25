@@ -53,6 +53,7 @@
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_psm_types.h"
+#include "stack/include/btm_ble_addr.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/l2cap_module.h"
 #include "stack/include/main_thread.h"
@@ -524,13 +525,22 @@ uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr, tL2CAP_
   /* First, see if we already have a le link to the remote */
   tL2C_LCB* p_lcb = l2cu_find_lcb_by_bd_addr(p_bd_addr, BT_TRANSPORT_LE);
   if (p_lcb == NULL) {
-    /* No link. Get an LCB and start link establishment */
-    p_lcb = l2cu_allocate_lcb(p_bd_addr, false, BT_TRANSPORT_LE);
-    if ((p_lcb == NULL)
+    // Try "pseudo" address
+    tBLE_ADDR_TYPE le_addr_type = BLE_ADDR_PUBLIC;
+    RawAddress le_addr = p_bd_addr;
+    if (maybe_resolve_address(&le_addr, &le_addr_type)) {
+      log::warn("Check LE random address: {}", le_addr);
+      p_lcb = l2cu_find_lcb_by_bd_addr(le_addr, BT_TRANSPORT_LE);
+    }
+    if (p_lcb == NULL) {
+      /* No link. Get an LCB and start link establishment */
+      p_lcb = l2cu_allocate_lcb(le_addr, false, BT_TRANSPORT_LE);
+      if ((p_lcb == NULL)
         /* currently use BR/EDR for ERTM mode l2cap connection */
         || (!l2cu_create_conn_le(p_lcb))) {
-      log::warn("conn not started for PSM: 0x{:04x}  p_lcb: 0x{}", psm, std::format_ptr(p_lcb));
-      return 0;
+        log::warn("conn not started for PSM: 0x{:04x}  p_lcb: 0x{}", psm, std::format_ptr(p_lcb));
+        return 0;
+      }
     }
   }
 

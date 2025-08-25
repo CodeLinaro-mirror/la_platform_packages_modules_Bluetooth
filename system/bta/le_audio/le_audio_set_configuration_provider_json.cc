@@ -280,6 +280,7 @@ private:
           types::CodecLocation location,
           std::vector<const fbs::le_audio::CodecSpecifcMetadata*>* metadata_cfgs) {
     log::assert_that(flat_cfg != nullptr, "flat_cfg cannot be null");
+    log::debug(": flat_cfg name: {} ", flat_cfg->name()->str());
     std::string codec_config_key = flat_cfg->codec_config_name()->str();
     auto* qos_config_key_array = flat_cfg->qos_config_name();
     auto* metadata_key_array = flat_cfg->codec_metadata_name();
@@ -514,7 +515,7 @@ private:
       return false;
     }
 
-    log::debug(": Updating {} metadata config entries.", flat_codec_configs->size());
+    log::debug(": Updating {} metadata config entries.", flat_metadata_configs->size());
     std::vector<const fbs::le_audio::CodecSpecifcMetadata*> metadata_cfgs;
     for (auto const& flat_metadata_cfg : *flat_metadata_configs) {
       metadata_cfgs.push_back(flat_metadata_cfg);
@@ -522,7 +523,6 @@ private:
 
     log::debug(": Updating {} config entries.", flat_configs->size());
     for (auto const& flat_cfg : *flat_configs) {
-      log::debug(": flat_cfg name: {} ", flat_cfg->name()->str());
       auto configuration = AudioSetConfigurationFromFlat(flat_cfg, &codec_cfgs, &qos_cfgs, location,
                                                          &metadata_cfgs);
       if (!configuration.confs.sink.empty() || !configuration.confs.source.empty()) {

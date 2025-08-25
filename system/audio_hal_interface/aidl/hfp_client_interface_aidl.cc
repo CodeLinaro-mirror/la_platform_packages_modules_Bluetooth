@@ -154,6 +154,8 @@ BluetoothAudioCtrlAck HfpTransport::StartRequest() {
   return BluetoothAudioCtrlAck::PENDING;
 }
 
+void HfpTransport::AudioServerRestart() {}
+
 void HfpTransport::StopRequest() {
   log::info("handling");
 
@@ -277,6 +279,8 @@ void HfpDecodingTransport::ResetPendingCmd() { transport_->ResetPendingCmd(); }
 
 bool HfpDecodingTransport::IsStreamActive() { return transport_->IsStreamActive(); }
 
+void HfpDecodingTransport::AudioServerRestart() { transport_->AudioServerRestart(); }
+
 void HfpDecodingTransport::StopRequest() { transport_->StopRequest(); }
 
 HfpEncodingTransport::HfpEncodingTransport(SessionType session_type)
@@ -302,6 +306,8 @@ BluetoothAudioCtrlAck HfpEncodingTransport::SuspendRequest() {
 }
 
 void HfpEncodingTransport::StopRequest() { transport_->StopRequest(); }
+
+void HfpEncodingTransport::AudioServerRestart() { transport_->AudioServerRestart(); }
 
 void HfpEncodingTransport::SetLatencyMode(LatencyMode latency_mode) {
   transport_->SetLatencyMode(latency_mode);

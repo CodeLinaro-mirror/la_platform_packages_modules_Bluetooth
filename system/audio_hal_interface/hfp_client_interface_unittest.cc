@@ -170,6 +170,7 @@ BluetoothAudioCtrlAck HfpDecodingTransport::SuspendRequest() {
   return BluetoothAudioCtrlAck::SUCCESS_FINISHED;
 }
 void HfpDecodingTransport::SetLatencyMode(LatencyMode /*latency_mode*/) {}
+void HfpDecodingTransport::AudioServerRestart() {}
 bool HfpDecodingTransport::GetPresentationPosition(uint64_t* /*remote_delay_report_ns*/,
                                                    uint64_t* /*total_bytes_written*/,
                                                    timespec* /*data_position*/) {
@@ -194,6 +195,7 @@ BluetoothAudioCtrlAck HfpEncodingTransport::SuspendRequest() {
   return BluetoothAudioCtrlAck::SUCCESS_FINISHED;
 }
 void HfpEncodingTransport::StopRequest() {}
+void HfpEncodingTransport::AudioServerRestart() {}
 void HfpEncodingTransport::SetLatencyMode(LatencyMode /*latency_mode*/) {}
 bool HfpEncodingTransport::GetPresentationPosition(uint64_t* /*remote_delay_report_ns*/,
                                                    uint64_t* /*total_bytes_written*/,

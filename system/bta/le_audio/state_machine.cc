@@ -4010,6 +4010,7 @@ private:
     } else {
       log::error(", invalid state transition, from: {} , to: {}", ToString(group->GetState()),
                  ToString(group->GetTargetState()));
+      state_machine_callbacks_->OnSetSenderStateRelease();
       StopStream(group);
     }
   }

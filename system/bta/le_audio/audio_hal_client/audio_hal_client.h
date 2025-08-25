@@ -191,6 +191,7 @@ public:
     virtual ~Callbacks() = default;
     virtual void OnAudioDataReady(const std::vector<uint8_t>& data) = 0;
     virtual void OnAudioSuspend(void) = 0;
+    virtual void OnAudioServerRestart(void) = 0;
     virtual void OnAudioResume(void) = 0;
     virtual void OnAudioMetadataUpdate(
             const std::vector<struct playback_track_metadata_v7> source_metadata,

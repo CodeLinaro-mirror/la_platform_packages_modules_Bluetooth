@@ -2296,6 +2296,10 @@ void LeAudioDeviceGroup::DisableLeXCodec(bool status) {
   lex_codec_disabled.second = true;
 }
 
+bool LeAudioDeviceGroup::IsLeXCodecEnabled() {
+  return !lex_codec_disabled.first;
+}
+
 bool LeAudioDeviceGroup::IsPreferredConfigAvailbleForContext(LeAudioContextType context_type) const {
   bool is_prefered_config_exist = false;
   auto it = preferred_config_for_context_exist_.find(context_type);

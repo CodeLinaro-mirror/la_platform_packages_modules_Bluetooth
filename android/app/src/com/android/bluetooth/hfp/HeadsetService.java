@@ -2027,11 +2027,10 @@ public class HeadsetService extends ProfileService {
                    }
                 } else {
                   if (isAtLeastU()) {
-                      BluetoothDevice btDevice = mAdapterService.getActiveDeviceManager()
-                                                             .fetchLeAudioActiveDevice();
-                      if (btDevice == null) {
+                     if (mActiveDevice != null) {
+                         Log.i(TAG, "HFP active device is present. Setting LeAudiosuspend params");
                          mSystemInterface.getAudioManager().setLeAudioSuspended(true);
-                      }
+                     }
                   }
                 }
                 //Adding the wait mechanism Logic.
@@ -2431,6 +2430,11 @@ public class HeadsetService extends ProfileService {
                     Log.i(TAG, "Resume A2DP when SCO is gone and call state is idle");
                     mSystemInterface.getAudioManager().setA2dpSuspended(false);
                     if (isAtLeastU()) {
+                        mSystemInterface.getAudioManager().setLeAudioSuspended(false);
+                    }
+                } else if (!Utils.isScoManagedByAudioEnabled() && Utils.isDualModeAudioEnabled()) {
+                   Log.i(TAG, "Resume LE when SCO is disconnected for Dumo");
+                   if (isAtLeastU()) {
                         mSystemInterface.getAudioManager().setLeAudioSuspended(false);
                     }
                 }

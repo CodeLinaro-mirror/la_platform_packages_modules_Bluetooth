@@ -1423,6 +1423,8 @@ private:
       }
     }
 
+    virtual void OnAudioServerRestart(void) override {}
+
     virtual void OnAudioResume(void) override {
       log::info("");
       if (!instance) {
