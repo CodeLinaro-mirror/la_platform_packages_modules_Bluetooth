@@ -134,7 +134,8 @@ public:
         target_state_(types::AseState::BTA_LE_AUDIO_ASE_STATE_IDLE),
         current_state_(types::AseState::BTA_LE_AUDIO_ASE_STATE_IDLE),
         in_transition_(false),
-        suspended_for_reconfig_(false), streaming_pending_target_state_(false) {
+        suspended_for_reconfig_(false), streaming_pending_target_state_(false),
+        preferred_config_for_context_exist_{{types::LeAudioContextType::UNINITIALIZED, false}} {
 #ifdef __ANDROID__
     // 22 maps to BluetoothProfile#LE_AUDIO
     is_output_preference_le_audio =
@@ -275,6 +276,8 @@ public:
   bool IsStreamingPendingTargetState(void) const;
   void SetStreamingPendingTargetState(void);
   void ClearStreamingPendingTargetState(void);
+
+  bool IsPreferredConfigAvailbleForContext(types::LeAudioContextType context_type) const;
 
   inline types::AseState GetState(void) const {
     log::info("current_state_: {}", bluetooth::common::ToString(current_state_));
@@ -539,6 +542,7 @@ private:
   bool suspended_for_reconfig_;
   uint8_t reconfig_start_pending_directions_;
   bool streaming_pending_target_state_;
+  mutable std::map<types::LeAudioContextType, bool>preferred_config_for_context_exist_;
 };
 
 /* LeAudioDeviceGroup class represents a wraper helper over all device groups in

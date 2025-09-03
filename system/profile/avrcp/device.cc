@@ -24,6 +24,7 @@
 #include "abstract_message_loop.h"
 #include "avrcp_common.h"
 #include "bta/include/bta_le_audio_api.h"
+#include "bta/include/bta_le_audio_broadcaster_api.h"
 #include "btif/include/btif_av.h"
 #include "btif/include/btif_hf.h"
 #include "btif/include/btif_storage.h"
@@ -182,6 +183,10 @@ void Device::HandlePendingPlay() {
 
     if (d->IsPendingPlay()) {
       log::info("Send PLAY to {}", d->address_);
+      if(!d->media_interface_){
+        log::info("media_interface_ is NULL, return");
+        return;
+      }
       d->media_interface_->SendKeyEvent(uint8_t(OperationID::PLAY), KeyState::PUSHED);
       d->IsPendingPlay_ = false;
     }
@@ -1192,6 +1197,12 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
               pass_through_packet->GetOperationId());
       send_message(label, false, std::move(response));
 
+      if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+          LeAudioBroadcaster::Get()->IsLeAudioBroadcastActive()) {
+        log::warn("Ignore passthrough cmds while Broadcast active");
+        return;
+      }
+
       // TODO (apanicke): Use an enum for media key ID's
       if (pass_through_packet->GetOperationId() == uint8_t(OperationID::PLAY) &&
           pass_through_packet->GetKeyState() == KeyState::PUSHED) {
@@ -1210,7 +1221,10 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                     log::warn("Ignore passthrough play during active Call");
                     return;
                   }
-
+                  if(!d->media_interface_){
+                    log::info("media_interface_ is NULL, return");
+                    return;
+                  }
                   if (!d->IsActive()) {
                     log::info("Setting {} to be the active device", d->address_);
                     d->media_interface_->SetActiveDevice(d->address_);
@@ -1263,6 +1277,10 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
             if (d->IsActive()) {
               log::verbose("SendKeyEvent: PT:{}, KEYSTATE:{}", packet->GetOperationId(),
                   packet->GetKeyState());
+              if(!d->media_interface_){
+                log::info("media_interface_ is NULL, return");
+                return;
+              }
               d->media_interface_->SendKeyEvent(packet->GetOperationId(),
                   packet->GetKeyState());
             }

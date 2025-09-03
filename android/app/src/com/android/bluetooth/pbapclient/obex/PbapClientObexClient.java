@@ -99,6 +99,7 @@ class PbapClientObexClient {
     private PbapClientSocket mSocket; // Wraps a BluetoothSocket, for testability
     private ClientSession mObexSession;
     private PbapClientObexAuthenticator mAuth = null;
+    private PbapSdpRecord mSdpRecord = null;
 
     /** Callback object used to be notified of when a request has been completed. */
     interface Callback {
@@ -239,6 +240,10 @@ class PbapClientObexClient {
      */
     public boolean isConnected() {
         return getConnectionState() == STATE_CONNECTED;
+    }
+
+    public void setPseRecord(PbapSdpRecord sdpRecord) {
+        mSdpRecord = sdpRecord;
     }
 
     /**
@@ -521,7 +526,9 @@ class PbapClientObexClient {
             HeaderSet headers = new HeaderSet();
             headers.setHeader(HeaderSet.TARGET, BLUETOOTH_UUID_PBAP_CLIENT);
 
-            if (supportedFeatures != PBAP_FEATURES_EXCLUDED) {
+            if (supportedFeatures != PBAP_FEATURES_EXCLUDED &&
+                    mSdpRecord.getSupportedFeatures() > 0
+                    && mSdpRecord.getProfileVersion() >= PbapSdpRecord.VERSION_1_2) {
                 ObexAppParameters oap = new ObexAppParameters();
                 oap.add(PbapApplicationParameters.OAP_PBAP_SUPPORTED_FEATURES, supportedFeatures);
                 oap.addToHeaderSet(headers);

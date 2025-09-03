@@ -165,6 +165,8 @@ public class VolumeControlService extends ProfileService {
                     Executors.newSingleThreadExecutor(), mBluetoothOnModeChangedListener);
         setVolumeControlService(this);
         mNativeInterface.init();
+
+        mAudioMode = mAudioManager.getMode();
     }
 
     public static boolean isEnabled() {

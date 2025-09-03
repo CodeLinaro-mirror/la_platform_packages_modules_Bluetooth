@@ -2207,6 +2207,7 @@ void btif_dm_sec_evt(tBTA_DM_SEC_EVT event, tBTA_DM_SEC* p_data) {
         btm_set_bond_type_dev(pairing_cb.bd_addr, BOND_TYPE_UNKNOWN);
         bond_state_changed((bt_status_t)p_data->bond_cancel_cmpl.result, bd_addr,
                            BT_BOND_STATE_NONE);
+        btif_dm_remove_bond(bd_addr);
       }
       break;
 

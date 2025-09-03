@@ -928,26 +928,29 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
       CodecManager::UnicastConfigurationRequirements::DeviceDirectionRequirements config_req;
       config_req.params.Add(codec_spec_conf::kLeAudioLtvTypeAudioChannelAllocation,
                             (uint32_t)locations);
-      if (preferred_config_.get(direction) &&
-          preferred_config_.get(direction)->codec_priority != -1) {
-        if (preferred_config_.get(direction)->sample_rate !=
-            LE_AUDIO_SAMPLE_RATE_INDEX_NONE) {
-          config_req.params.Add(
-                  codec_spec_conf::kLeAudioLtvTypeSamplingFreq,
-                  UINT8_TO_VEC_UINT8(codec_spec_conf::SingleSamplingFreqCapability2Config(
-                          preferred_config_.get(direction)->sample_rate)));
-        }
-        if (preferred_config_.get(direction)->frame_duration !=
-            LE_AUDIO_FRAME_DURATION_INDEX_NONE) {
-          config_req.params.Add(
-                  codec_spec_conf::kLeAudioLtvTypeFrameDuration,
-                  UINT8_TO_VEC_UINT8(codec_spec_conf::SingleFrameDurationCapability2Config(
-                          preferred_config_.get(direction)->frame_duration)));
-        }
-        if (preferred_config_.get(direction)->octets_per_frame != 0) {
-          config_req.params.Add(
-                  codec_spec_conf::kLeAudioLtvTypeOctetsPerCodecFrame,
-                  UINT16_TO_VEC_UINT8(preferred_config_.get(direction)->octets_per_frame));
+      if (context_to_preferred_configuration_cache_map_.count(ctx_type) != 0) {
+        log::warn("preferred config available for context: {}", common::ToString(ctx_type));
+        if (preferred_config_.get(direction) &&
+            preferred_config_.get(direction)->codec_priority != -1) {
+          if (preferred_config_.get(direction)->sample_rate !=
+              LE_AUDIO_SAMPLE_RATE_INDEX_NONE) {
+            config_req.params.Add(
+                    codec_spec_conf::kLeAudioLtvTypeSamplingFreq,
+                    UINT8_TO_VEC_UINT8(codec_spec_conf::SingleSamplingFreqCapability2Config(
+                            preferred_config_.get(direction)->sample_rate)));
+          }
+          if (preferred_config_.get(direction)->frame_duration !=
+              LE_AUDIO_FRAME_DURATION_INDEX_NONE) {
+            config_req.params.Add(
+                    codec_spec_conf::kLeAudioLtvTypeFrameDuration,
+                    UINT8_TO_VEC_UINT8(codec_spec_conf::SingleFrameDurationCapability2Config(
+                            preferred_config_.get(direction)->frame_duration)));
+          }
+          if (preferred_config_.get(direction)->octets_per_frame != 0) {
+            config_req.params.Add(
+                    codec_spec_conf::kLeAudioLtvTypeOctetsPerCodecFrame,
+                    UINT16_TO_VEC_UINT8(preferred_config_.get(direction)->octets_per_frame));
+          }
         }
       }
       config_req.target_latency = utils::GetTargetLatencyForAudioContext(ctx_type);
@@ -1013,7 +1016,7 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
 
 bool LeAudioDeviceGroup::UpdateAudioSetConfigurationCache(LeAudioContextType ctx_type,
                                                           bool use_preference) const {
-  log::info("ctx_type: {}", ToHexString(ctx_type));
+  log::info("ctx_type: {}", common::ToString(ctx_type));
   auto requirements = GetAudioSetConfigurationRequirements(ctx_type);
   auto new_conf = CodecManager::GetInstance()->GetCodecConfig(
           requirements, std::bind(&LeAudioDeviceGroup::FindFirstSupportedConfiguration, this,
@@ -1084,6 +1087,8 @@ bool LeAudioDeviceGroup::SetPreferredAudioSetConfiguration(
   }
 
   log::info("is_updated: {}", is_updated);
+  preferred_config_for_context_exist_[configuration_context_type_] = is_updated;
+
   return is_updated;
 }
 
@@ -1092,6 +1097,7 @@ bool LeAudioDeviceGroup::IsUsingPreferredAudioSetConfiguration(
   if (!preferred_config_.sink || !preferred_config_.source) {
     log::assert_that(!preferred_config_.sink && !preferred_config_.source,
                      "Preferred config should be null for both direction");
+    log::info("preferred_config_ not exists, return false.");
     return false;
   }
 
@@ -1110,6 +1116,7 @@ bool LeAudioDeviceGroup::IsUsingPreferredAudioSetConfiguration(
 void LeAudioDeviceGroup::ResetPreferredAudioSetConfiguration(void) const {
   log::info("Reset preferred configuration cached for all cotexts.");
   context_to_preferred_configuration_cache_map_.clear();
+  preferred_config_for_context_exist_.clear();
   preferred_config_.sink = nullptr;
   preferred_config_.source = nullptr;
 }
@@ -1287,6 +1294,8 @@ uint8_t LeAudioDeviceGroup::CigConfiguration::GetFirstFreeCisId(CisType cis_type
 }
 
 types::LeAudioConfigurationStrategy LeAudioDeviceGroup::GetGroupSinkStrategy() const {
+  log::debug(" ");
+
   /* Update the strategy if not set yet or was invalidated */
   if (!strategy_) {
     /* Choose the group configuration strategy based on PAC records */
@@ -1357,6 +1366,7 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::GetGroupSinkStrategy() c
 
 types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConfig(
         const types::AudioSetConfiguration* audio_set_conf) const {
+  log::debug(" ");
   auto strategy_selector = [&, this](uint8_t direction) {
     int expected_group_size = Size();
 
@@ -1391,6 +1401,7 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConf
     auto max_channel_count = (config_element != configs.end())
                                      ? config_element->codec.GetChannelCountPerIsoStream()
                                      : 1;
+    log::debug("max_channel_count {}", max_channel_count);
     if (max_channel_count == 1) {
       return types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE;
     }
@@ -1476,7 +1487,9 @@ void LeAudioDeviceGroup::CigConfiguration::GetCisCount(LeAudioContextType contex
 
   // For non-LC3 codecs like Opus, we should base the strategy calcualation based on the config
   const bool derive_strategy_from_config =
-          current_config && com::android::bluetooth::flags::leaudio_add_opus_hi_res_codec_type();
+          current_config && true/*com::android::bluetooth::flags::leaudio_add_opus_hi_res_codec_type()*/;
+  log::info("derive_strategy_from_config {}", derive_strategy_from_config);
+
   auto strategy = derive_strategy_from_config
                           ? group_->FindGroupStrategyForConfig(current_config.get())
                           : group_->GetGroupSinkStrategy();
@@ -1894,7 +1907,11 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
             GetLatestAvailableContexts().source.test(requirements.audio_context_type))) {
         log::error("Remote does not supports context::{} in both direction",
                    bluetooth::common::ToString(requirements.audio_context_type));
-        return false;
+        if (osi_property_get_bool("persist.bluetooth.leaudio.cap.pts", false)) {
+          log::debug("CAP pts execution. need unidirectional LIVE");
+        } else {
+          return false;
+        }
       }
     }
   }
@@ -2175,7 +2192,8 @@ bool LeAudioDeviceGroup::ConfigureAses(
         return false;
       }
 
-      if (!dev->GetAvailableContexts().test(context_type)) {
+      if (!dev->GetAvailableContexts().test(context_type) &&
+          !(osi_property_get_bool("persist.bluetooth.leaudio.cap.pts", false))) {
         log::debug("Device {} not available for context {}", dev->address_,
                    bluetooth::common::ToString(context_type));
         return false;
@@ -2242,18 +2260,25 @@ bool LeAudioDeviceGroup::ConfigureAses(
 
 std::shared_ptr<const types::AudioSetConfiguration>
 LeAudioDeviceGroup::GetCachedConfiguration(LeAudioContextType context_type) const {
-  log::info("context_type: {}", ToHexString(context_type));
   if (context_to_configuration_cache_map_.count(context_type) != 0) {
+    log::info("cached config exist for context_type: {}", common::ToString(context_type));
     return context_to_configuration_cache_map_.at(context_type).second;
   }
+
+  log::info("Don't exist cached config for context_type: {}, return null",
+                                              common::ToString(context_type));
   return nullptr;
 }
 
 std::shared_ptr<const types::AudioSetConfiguration>
 LeAudioDeviceGroup::GetCachedPreferredConfiguration(LeAudioContextType context_type) const {
   if (context_to_preferred_configuration_cache_map_.count(context_type) != 0) {
+    log::debug("cached preferred config exist for context_type = {}", common::ToString(context_type));
     return context_to_preferred_configuration_cache_map_.at(context_type).second;
   }
+
+  log::info("Don't exist cached preferred config for context_type: {}, return null",
+                                                common::ToString(context_type));
   return nullptr;
 }
 
@@ -2271,14 +2296,28 @@ void LeAudioDeviceGroup::DisableLeXCodec(bool status) {
   lex_codec_disabled.second = true;
 }
 
+bool LeAudioDeviceGroup::IsPreferredConfigAvailbleForContext(LeAudioContextType context_type) const {
+  bool is_prefered_config_exist = false;
+  auto it = preferred_config_for_context_exist_.find(context_type);
+  if (it != preferred_config_for_context_exist_.end()) {
+    is_prefered_config_exist = it->second;
+  } else {
+    log::debug("no prefered config exist for context_type: {}", common::ToString(context_type));
+  }
+  log::debug("is_prefered_config_exist: {} for context_type: {}",
+                                    is_prefered_config_exist, common::ToString(context_type));
+  return is_prefered_config_exist;
+}
+
 std::shared_ptr<const types::AudioSetConfiguration>
 LeAudioDeviceGroup::GetConfiguration(LeAudioContextType context_type) const {
-  log::info("context_type: {}", ToHexString(context_type));
+  log::info("context_type: {}", common::ToString(context_type));
   if (context_type == LeAudioContextType::UNINITIALIZED) {
     return nullptr;
   }
 
-  if (IsUsingPreferredAudioSetConfiguration(context_type)) {
+  if (IsPreferredConfigAvailbleForContext(context_type) &&
+      IsUsingPreferredAudioSetConfiguration(context_type)) {
     log::debug("Using preferred codec config: {}", common::ToString(context_type));
     return GetCachedPreferredConfiguration(context_type);
   }
@@ -2288,6 +2327,7 @@ LeAudioDeviceGroup::GetConfiguration(LeAudioContextType context_type) const {
 
   /* Refresh the cache if there is no valid configuration */
   if (context_to_configuration_cache_map_.count(context_type) != 0) {
+    log::debug("config exist for context_type = {}", common::ToString(context_type));
     auto& valid_config_pair = context_to_configuration_cache_map_.at(context_type);
     is_valid = valid_config_pair.first;
     conf = valid_config_pair.second.get();
@@ -2295,6 +2335,7 @@ LeAudioDeviceGroup::GetConfiguration(LeAudioContextType context_type) const {
 
   log::info(" is_valid: {}", is_valid);
   if (!is_valid || (conf == nullptr)) {
+    log::debug("update audio config for context_type = {}", common::ToString(context_type));
     UpdateAudioSetConfigurationCache(context_type);
   }
 
@@ -2304,6 +2345,7 @@ LeAudioDeviceGroup::GetConfiguration(LeAudioContextType context_type) const {
 std::shared_ptr<const types::AudioSetConfiguration> LeAudioDeviceGroup::GetPreferredConfiguration(
         LeAudioContextType context_type) const {
   if (context_type == LeAudioContextType::UNINITIALIZED) {
+    log::debug("context_type = {} is not valid, return", common::ToString(context_type));
     return nullptr;
   }
 
@@ -2311,11 +2353,14 @@ std::shared_ptr<const types::AudioSetConfiguration> LeAudioDeviceGroup::GetPrefe
   bool is_valid = false;
 
   if (context_to_preferred_configuration_cache_map_.count(context_type) != 0) {
+    log::debug("preferred config exist for context_type = {}", common::ToString(context_type));
     auto& valid_config_pair = context_to_preferred_configuration_cache_map_.at(context_type);
     is_valid = valid_config_pair.first;
     conf = valid_config_pair.second.get();
   }
+
   if (!is_valid || conf == nullptr) {
+    log::debug("update audio config for context_type = {}", common::ToString(context_type));
     UpdateAudioSetConfigurationCache(context_type, true);
   }
 

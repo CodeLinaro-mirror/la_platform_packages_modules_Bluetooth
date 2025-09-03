@@ -1860,25 +1860,6 @@ void btm_sec_conn_req(const RawAddress& bda, const DEV_CLASS dc) {
   tBTM_SEC_DEV_REC* p_dev_rec = nullptr;
   tHCI_ROLE role = HCI_ROLE_UNKNOWN;
 
-  if ((btm_sec_cb.pairing_state != BTM_PAIR_STATE_IDLE) &&
-      (btm_sec_cb.pairing_flags & BTM_PAIR_FLAGS_WE_STARTED_DD) &&
-      (btm_sec_cb.pairing_bda == bda)) {
-    log::verbose("Security Manager: reject connect request from bonding device");
-
-    /* incoming connection from bonding device is rejected */
-    btm_sec_cb.pairing_flags |= BTM_PAIR_FLAGS_REJECTED_CONNECT;
-    btsnd_hcic_reject_conn(bda, HCI_ERR_HOST_REJECT_DEVICE);
-    return;
-  }
-
-  /* accept the incoming connection from bonding device */
-  if (interop_match_addr(INTEROP_DISABLE_ROLE_SWITCH, &bda) || (BTM_GetNumBredrAclLinks() < 1)) {
-    role = HCI_ROLE_PERIPHERAL;
-  } else {
-    role = HCI_ROLE_CENTRAL;
-  }
-  btsnd_hcic_accept_conn(bda, role);
-
   /* Host is not interested or approved connection.  Save BDA and DC and */
   /* pass request to L2CAP */
   btm_sec_cb.connecting_bda = bda;
@@ -3584,6 +3565,12 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle, tHCI_STATUS statu
   uint8_t bit_shift = 0;
 
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bda);
+
+  if (status == HCI_ERR_CONNECTION_EXISTS || status == HCI_ERR_CONTROLLER_BUSY) {
+    log::warn("Connection already exists, ignore");
+    return;
+  }
+
   if (p_dev_rec == nullptr) {
     log::debug(
             "Connected to new device state:{} handle:0x{:04x} status:{} "

@@ -101,6 +101,7 @@ static constexpr uint8_t kRasSegmentHeaderSize = 1;
 static constexpr uint16_t kEnableSecurityTimeoutMs = 10000;  // 10s
 long long proc_start_timestampMs;
 long long curr_proc_complete_timestampMs;
+bool is_ras_packets_delayed = false;
 static constexpr uint16_t kProcedureScheduleGuardMs = 1000;  // 1s
 static constexpr double kConnIntervalUnitMs = 1.25;          // 1.25 ms
 
@@ -1622,6 +1623,15 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           log::error("disable - no tracker is available for {}", connection_handle);
           return;
         }
+        if (is_ras_packets_delayed) {
+          is_ras_packets_delayed = false;
+          std::vector<CsProcedureData>& data_list = live_tracker->procedure_data_list;
+          while (!data_list.empty()) {
+            data_list.erase(data_list.begin());
+          }
+          send_le_cs_procedure_enable(connection_handle, Enable::ENABLED);
+          return;
+        }
         reset_tracker_on_stopped(*live_tracker);
       } else {
         // work around, controller may send 'DISABLE' complete with error for 'ENABLE' command
@@ -1912,7 +1922,6 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       tracker.segment_data_.AppendPacketView(
               segment.GetLittleEndianSubview(segmentation_header.size(), segment.size()));
     }
-
     if (segmentation_header.last_segment_) {
       parse_ras_segments(tracker.ranging_header_, tracker.segment_data_, connection_handle);
     }
@@ -1944,6 +1953,12 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       return;
     }
 
+    if (cs_requester_trackers_[connection_handle].procedure_data_list.back().counter - ranging_header.ranging_counter_ >= kProcedureDataBufferSize) {
+      log::warn("Delay in receiving RAS packets, restarting procedures!");
+      is_ras_packets_delayed = true;
+      send_le_cs_procedure_enable(connection_handle, Enable::DISABLED);
+      return;
+    }
     uint8_t num_antenna_paths = 0;
     for (uint8_t i = 0; i < 4; i++) {
       if ((ranging_header.antenna_paths_mask_ & (1 << i)) != 0) {

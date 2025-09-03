@@ -270,6 +270,11 @@ public:
     if (is_classic_link_already_connected(address)) {
       auto reason = RejectConnectionReason::UNACCEPTABLE_BD_ADDR;
       this->reject_connection(RejectConnectionRequestBuilder::Create(address, reason));
+    } else if (should_accept_connection_.Run(address, cod)) {
+      this->accept_connection(address);
+    } else {
+      auto reason = RejectConnectionReason::LIMITED_RESOURCES;  // TODO: determine reason
+      this->reject_connection(RejectConnectionRequestBuilder::Create(address, reason));
     }
   }
 
