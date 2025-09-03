@@ -93,7 +93,7 @@ public class SdpPseRecord implements Parcelable {
 
     @Override
     public String toString() {
-        String ret = "Bluetooth MNS SDP Record:\n";
+        String ret = "Bluetooth PBAP Server SDP Record:\n";
 
         if (mRfcommChannelNumber != -1) {
             ret = ret + "RFCOMM Chan Number: " + mRfcommChannelNumber + "\n";

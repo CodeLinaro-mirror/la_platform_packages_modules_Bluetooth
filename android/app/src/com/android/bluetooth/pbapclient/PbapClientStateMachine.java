@@ -442,6 +442,7 @@ class PbapClientStateMachine extends StateMachine {
                         return HANDLED;
                     }
 
+                    mObexClient.setPseRecord(mSdpRecord);
                     // Use SDP contents to determine whether we connect on L2CAP or RFCOMM
                     if (mSdpRecord.getL2capPsm() != /* L2CAP_INVALID_PSM */ -1) {
                         mObexClient.connectL2cap(mSdpRecord.getL2capPsm());

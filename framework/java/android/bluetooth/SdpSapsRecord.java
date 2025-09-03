@@ -63,7 +63,7 @@ public class SdpSapsRecord implements Parcelable {
 
     @Override
     public String toString() {
-        String ret = "Bluetooth MAS SDP Record:\n";
+        String ret = "Bluetooth SAP Server SDP Record:\n";
 
         if (mRfcommChannelNumber != -1) {
             ret = ret + "RFCOMM Chan Number: " + mRfcommChannelNumber + "\n";

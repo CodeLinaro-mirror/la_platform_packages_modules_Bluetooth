@@ -587,9 +587,13 @@ public:
    */
   void UpdateCodecConfig(const RawAddress& peer_address,
                          const std::vector<btav_a2dp_codec_config_t>& codec_preferences,
-                         std::promise<void> peer_ready_promise) {
+                         std::promise<void> peer_ready_promise, bool is_metadata_update) {
     // Restart the session if the codec for the active peer is updated
     A2dpCodecConfig* current_codec = bta_av_get_a2dp_current_codec();
+    bool is_a2dp_offload_codec_extensibility_enabled_ =
+      osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_offload_codec_extensibility",false);
+    log::info("provider info a2dp offload extensiblity: {}, is_metadata_update: {}",
+               is_a2dp_offload_codec_extensibility_enabled_, is_metadata_update);
     bool aptX_config_change = true;
     uint16_t cs4 = 0;
     for (auto cp : codec_preferences) {
@@ -615,6 +619,17 @@ public:
             (codec_config.bits_per_sample == cp.bits_per_sample)) {
           aptX_config_change = false;
           log::info("Aptx Adaptive core config didn't change");
+          break;
+        }
+        if (is_metadata_update && !is_a2dp_offload_codec_extensibility_enabled_) {
+          aptX_config_change = false;
+          log::info("Metadata update for Aptx Adaptive codec with A2DP Extensiblity disabled");
+          break;
+        }
+      } else {
+        if (is_metadata_update) {
+          aptX_config_change = false;
+          log::info("Metadata update for non Aptx Adaptive codec");
           break;
         }
       }
@@ -2621,7 +2636,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
         const std::vector<btav_a2dp_codec_config_t>& codec_preferences = {codec_config};
         std::promise<void> peer_ready_promise;
         btif_av_source.UpdateCodecConfig(peer_.PeerAddress(), codec_preferences,
-                                         std::move(peer_ready_promise));
+                                         std::move(peer_ready_promise), true);
       }
     } break;
 
@@ -2646,7 +2661,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
           if (req_data) {
             btif_av_source.UpdateCodecConfig(peer_.PeerAddress(),
                                              req_data.value().codec_preferences,
-                                             std::move(req_data.value().reconf_ready_promise));
+                                             std::move(req_data.value().reconf_ready_promise), false);
           }
         }
       }
@@ -2914,7 +2929,7 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
         const std::vector<btav_a2dp_codec_config_t>& codec_preferences = {codec_config};
         std::promise<void> peer_ready_promise;
         btif_av_source.UpdateCodecConfig(peer_.PeerAddress(), codec_preferences,
-                                         std::move(peer_ready_promise));
+                                         std::move(peer_ready_promise), true);
       }
     } break;
 
@@ -2938,7 +2953,7 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
         auto req_data = peer_.GetReconfigureStreamData();
         if (req_data) {
           btif_av_source.UpdateCodecConfig(peer_.PeerAddress(), req_data.value().codec_preferences,
-                                           std::move(req_data.value().reconf_ready_promise));
+                                           std::move(req_data.value().reconf_ready_promise), false);
         }
       }
     } break;
@@ -3900,7 +3915,7 @@ bt_status_t btif_av_source_set_codec_config_preference(
   } else {
     status = do_in_main_thread(base::BindOnce(&BtifAvSource::UpdateCodecConfig,
                                               base::Unretained(&btif_av_source), peer_address,
-                                              codec_preferences, std::move(peer_ready_promise)));
+                                              codec_preferences, std::move(peer_ready_promise), false));
   }
 
   if (status != BT_STATUS_SUCCESS) {

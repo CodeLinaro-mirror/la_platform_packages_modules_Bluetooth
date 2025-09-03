@@ -83,6 +83,8 @@ public:
 
   void StopRequest();
 
+  void AudioServerRestart();
+
   void SetLatencyMode(LatencyMode latency_mode);
 
   bool GetPresentationPosition(uint64_t* remote_delay_report_ns, uint64_t* total_bytes_processed,
@@ -139,6 +141,8 @@ public:
 
   BluetoothAudioCtrlAck SuspendRequest() override;
 
+  void AudioServerRestart() override;
+
   void StopRequest() override;
 
   void SetLatencyMode(LatencyMode latency_mode) override;
@@ -191,6 +195,8 @@ public:
   BluetoothAudioCtrlAck StartRequest(bool is_low_latency);
 
   BluetoothAudioCtrlAck SuspendRequest() override;
+
+  void AudioServerRestart() override;
 
   void StopRequest() override;
 

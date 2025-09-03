@@ -566,6 +566,10 @@ void BluetoothAudioClientInterface::RenewAudioProviderAndSession() {
       bluetooth::audio::aidl::hearing_aid::stop_request();
     }
     StartSession();
+    if (transport_->GetSessionType() == SessionType::LE_AUDIO_HARDWARE_OFFLOAD_ENCODING_DATAPATH) {
+      log::info("Session type: LE_AUDIO_HARDWARE_OFFLOAD_ENCODING_DATAPATH");
+      transport_->AudioServerRestart();
+    }
   }
 }
 

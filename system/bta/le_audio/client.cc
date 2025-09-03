@@ -1467,20 +1467,31 @@ public:
       log::error("Unknown group id: %d", group_id);
     }
 
+    bool lex_enablement_changed = false;
+    bool lex_enabled = group->IsLeXCodecEnabled();
+
     if (!CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
       if (output_codec_config.codec_type ==
           bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_APTX_LEX) {
         group->DisableLeXCodec(false);
-        log::debug("Enabling LeX Codec");
+        lex_enablement_changed = lex_enabled != group->IsLeXCodecEnabled() && group->IsLeXDevice();
+        log::debug("Enabling LeX Codec, enablement_changed={}", lex_enablement_changed);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
       } else if (output_codec_config.codec_type ==
           bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT) {
         group->DisableLeXCodec(true);
-        log::debug("Disabling LeX Codec");
+        lex_enablement_changed = lex_enabled != group->IsLeXCodecEnabled() && group->IsLeXDevice();
+        log::debug("Disabling LeX Codec, enablement_changed={}", lex_enablement_changed);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
       }
+    }
+
+    log::debug("Group id: {} active_group_id_: {}", group_id, active_group_id_);
+    if (group_id != active_group_id_) {
+      log::warn("Selected group is not active.");
+      return;
     }
 
     log::info("output codec type: {}, input codec type: {}",
@@ -1493,13 +1504,9 @@ public:
         log::info("group id: {}, setting preferred codec is successful.", group_id);
       } else {
         log::warn("group id: {}, setting preferred codec is failed.", group_id);
-        return;
+        if (!lex_enablement_changed)
+          return;
       }
-    }
-
-    if (group_id != active_group_id_) {
-      log::warn("Selected group is not active.");
-      return;
     }
 
     if (SetConfigurationAndStopStreamWhenNeeded(group, configuration_context_type_)) {
@@ -1588,8 +1595,12 @@ public:
       group->ClearStreamingPendingTargetState();
     }
 
-    if (!group || !group->IsStreaming()) {
-      log::debug("{} is not streaming", active_group_id_);
+    //If group is under configuring/streaming to other context, it should do reconfiguration.
+    if (!group || (!group->IsStreaming() &&
+                    group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+                    !(group->IsSuspendedForReconfiguration() &&
+                             configuration_context_type_ != LeAudioContextType::CONVERSATIONAL))) {
+      log::debug("{} is not streaming or not configuring to other contexts", active_group_id_);
       return;
     }
 
@@ -5055,6 +5066,27 @@ public:
     StartSuspendTimeout();
   }
 
+  void OnLocalAudioServerRestart() {
+    log::info("");
+    auto group = aseGroups_.FindById(active_group_id_);
+    if (!group) {
+      log::error("Invalid group: {}", static_cast<int>(active_group_id_));
+      return;
+    }
+    group->UpdateAudioSetConfigurationCache(LeAudioContextType::SOUNDEFFECTS);
+    group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+    group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
+    group->UpdateCisConfiguration(bluetooth::le_audio::types::kLeAudioDirectionSink);
+    BidirectionalPair<uint16_t> delays_pair = {
+      .sink = group->stream_conf.stream_params.sink.stream_config.peer_delay_ms,
+      .source = 0};
+    CodecManager::GetInstance()->UpdateActiveAudioConfig(
+      group->stream_conf.stream_params, group->stream_conf.codec_id,
+      std::bind(&LeAudioClientImpl::UpdateAudioConfigToHal,
+              weak_factory_.GetWeakPtr(), std::placeholders::_1,
+              std::placeholders::_2));
+  }
+
   void OnLocalAudioSourceSuspend() {
     log::info("active group_id: {}, IN: audio_receiver_state_: {}, audio_sender_state_: {}",
               active_group_id_, ToString(audio_receiver_state_), ToString(audio_sender_state_));
@@ -5325,6 +5357,10 @@ public:
         /* Keep waiting. After release is done, Audio Hal will be notified */
         break;
     }
+  }
+
+  void OnSetSenderStateRelease(void) {
+    audio_sender_state_ = AudioState::READY_TO_RELEASE;
   }
 
   void OnLocalAudioSinkSuspend() {
@@ -6102,12 +6138,23 @@ public:
       }
     }
 
+    auto all_bidirectional_contexts = group->GetAllSupportedBidirectionalContextTypes();
+    log::debug("all_bidirectional_contexts {}", ToString(all_bidirectional_contexts));
+
+    /* Make sure we have CONVERSATIONAL when in a call and it is not mixed
+     * with any other bidirectional context
+     */
+    if (IsInCall() || IsInVoipCall()) {
+      log::debug("In Call preference used: {}, voip call: {}", IsInCall(), IsInVoipCall());
+      local_metadata_context_types_.sink.unset_all(all_bidirectional_contexts);
+      local_metadata_context_types_.source.unset_all(all_bidirectional_contexts);
+      local_metadata_context_types_.sink.set(LeAudioContextType::CONVERSATIONAL);
+      local_metadata_context_types_.source.set(LeAudioContextType::CONVERSATIONAL);
+    }
+
     BidirectionalPair<AudioContexts> remote_metadata = {
             .sink = local_metadata_context_types_.source,
             .source = local_metadata_context_types_.sink};
-
-    auto all_bidirectional_contexts = group->GetAllSupportedBidirectionalContextTypes();
-    log::debug("all_bidirectional_contexts {}", ToString(all_bidirectional_contexts));
 
     /*
      * Detect the gaming scenario and mirror the context to the other direction.
@@ -6131,17 +6178,6 @@ public:
         local_metadata_context_types_.sink.set(LeAudioContextType::GAME);
         local_metadata_context_types_.source.set(LeAudioContextType::GAME);
       }
-    }
-
-    /* Make sure we have CONVERSATIONAL when in a call and it is not mixed
-     * with any other bidirectional context
-     */
-    if (IsInCall() || IsInVoipCall()) {
-      log::debug("In Call preference used: {}, voip call: {}", IsInCall(), IsInVoipCall());
-      remote_metadata.sink.unset_all(all_bidirectional_contexts);
-      remote_metadata.source.unset_all(all_bidirectional_contexts);
-      remote_metadata.sink.set(LeAudioContextType::CONVERSATIONAL);
-      remote_metadata.source.set(LeAudioContextType::CONVERSATIONAL);
     }
 
     if (IsInVoipCall()) {
@@ -7716,6 +7752,10 @@ public:
       instance->UpdateMetadataCb(state, cig_id, cis_id, data);
     }
   }
+
+  void OnSetSenderStateRelease() override {
+    if (instance) instance->OnSetSenderStateRelease();
+  }
 };
 
 CallbacksImpl stateMachineCallbacksImpl;
@@ -7730,6 +7770,11 @@ public:
   void OnAudioSuspend(void) override {
     if (instance) {
       instance->OnLocalAudioSourceSuspend();
+    }
+  }
+  void OnAudioServerRestart(void) override {
+    if (instance) {
+      instance->OnLocalAudioServerRestart();
     }
   }
 

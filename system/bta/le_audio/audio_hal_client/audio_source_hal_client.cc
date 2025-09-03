@@ -116,6 +116,7 @@ public:
 
   bool OnResumeReq(bool start_media_task);
   bool OnSuspendReq();
+  bool OnAudioServerRestart();
   bool OnMetadataUpdateReq(const source_metadata_v7_t& source_metadata, DsaMode latency_mode);
   bool Acquire();
   void Release();
@@ -142,6 +143,7 @@ bool SourceImpl::Acquire() {
   auto sink_stream_cb = bluetooth::audio::le_audio::StreamCallbacks{
           .on_resume_ = std::bind(&SourceImpl::OnResumeReq, this, std::placeholders::_1),
           .on_suspend_ = std::bind(&SourceImpl::OnSuspendReq, this),
+          .on_audio_server_restart_ = std::bind(&SourceImpl::OnAudioServerRestart, this),
           .on_metadata_update_ = std::bind(&SourceImpl::OnMetadataUpdateReq, this,
                                            std::placeholders::_1, std::placeholders::_2),
           .on_sink_metadata_update_ =
@@ -284,6 +286,25 @@ void SourceImpl::StopAudioTicks() {
   audio_timer_.CancelAndWait();
   asrc_.reset(nullptr);
   wakelock_release();
+}
+
+bool SourceImpl::OnAudioServerRestart() {
+  log::info("");
+  std::lock_guard<std::mutex> guard(audioSourceCallbacksMutex_);
+  if (audioSourceCallbacks_ == nullptr) {
+    log::error("audioSourceCallbacks_ not set");
+    return false;
+  }
+
+  bt_status_t status =
+          do_in_main_thread(base::BindOnce(&LeAudioSourceAudioHalClient::Callbacks::OnAudioServerRestart,
+                                           audioSourceCallbacks_->weak_factory_.GetWeakPtr()));
+  if (status == BT_STATUS_SUCCESS) {
+    return true;
+  }
+
+  log::error("do_in_main_thread err={}", status);
+  return false;
 }
 
 bool SourceImpl::OnSuspendReq() {

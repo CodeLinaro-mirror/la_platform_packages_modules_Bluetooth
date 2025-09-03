@@ -1042,12 +1042,12 @@ bool IsAseConfigMatchedWithPreferredRequirements(
     /* Octets per frame */
     if (!ase_config.octets_per_codec_frame || !req_config.octets_per_codec_frame) {
       log::debug("Missing octets per codec frame");
-      return false;
     }
-    if (ase_config.octets_per_codec_frame.value() != req_config.octets_per_codec_frame.value()) {
+    if (ase_config.octets_per_codec_frame &&
+        req_config.octets_per_codec_frame &&
+        ase_config.octets_per_codec_frame.value() != req_config.octets_per_codec_frame.value()) {
       log::debug("Ase cfg: Octets per frame={}", ase_config.octets_per_codec_frame.value());
       log::debug("Req cfg: Octets per frame={}", req_config.octets_per_codec_frame.value());
-      return false;
     }
   }
 

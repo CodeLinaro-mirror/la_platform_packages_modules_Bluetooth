@@ -698,7 +698,10 @@ struct LeAudioCoreCodecConfig {
   }
 
   /** Channel count per CIS or BIS */
-  uint8_t GetChannelCountPerIsoStream(void) const { return allocated_channel_count; }
+  uint8_t GetChannelCountPerIsoStream(void) const {
+    log::debug("allocated_channel_count: {}", allocated_channel_count);
+    return allocated_channel_count;
+  }
 
   uint16_t CalculateMaxSduSize() const {
     return GetChannelCountPerIsoStream() * octets_per_codec_frame.value_or(0) *

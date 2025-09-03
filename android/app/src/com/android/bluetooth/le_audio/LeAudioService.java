@@ -2416,6 +2416,14 @@ public class LeAudioService extends ProfileService {
 
         notifyActiveDeviceChanged(device);
         mAudioManager.setA2dpSuspended(false);
+        if (Utils.isDualModeAudioEnabled()) {
+            boolean isCsipSupported = Utils.arrayContains(mAdapterService.getRemoteUuids(device),
+                                                       BluetoothUuid.COORDINATED_SET);
+            if (isCsipSupported) {
+                Log.d(TAG, " csip supported device " + device + " became active. so suspend LE Streamstatus");
+                mAudioManager.setLeAudioSuspended(false);
+            }
+        }
         return true;
     }
 
@@ -3223,6 +3231,7 @@ public class LeAudioService extends ProfileService {
         Log.d(TAG, "setDisconnected: " + isDisconnected);
         if(isDisconnected) {
             mHasFallback = false;
+            mUserPreferred = false;
         }
     }
 
@@ -3999,7 +4008,6 @@ public class LeAudioService extends ProfileService {
                               .setBitsPerSample(BluetoothLeAudioCodecConfig.BITS_PER_SAMPLE_16)
                               .setChannelCount(BluetoothLeAudioCodecConfig.CHANNEL_COUNT_1)
                               .setFrameDuration(BluetoothLeAudioCodecConfig.FRAME_DURATION_10000)
-                              .setOctetsPerFrame(155)
                               .build();
                             setCodecConfigPreference(groupId,CodecConfig,CodecConfig);
                             break;
@@ -6053,7 +6061,12 @@ public class LeAudioService extends ProfileService {
             return;
         }
 
-        mUserPreferred = true;
+        if (outputCodecConfig.getCodecPriority() ==
+                                    BluetoothLeAudioCodecConfig.CODEC_PRIORITY_HIGHEST) {
+            mUserPreferred = true;
+        } else {
+            Log.w(TAG, "It doesn't set preferred codec directly, select codec passively");
+        }
         mNativeInterface.setCodecConfigPreference(groupId, inputCodecConfig, outputCodecConfig);
     }
 
