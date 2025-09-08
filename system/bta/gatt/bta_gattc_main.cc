@@ -327,7 +327,25 @@ bool bta_gattc_hdl_event(const BT_HDR_RIGID* p_msg) {
       if (p_clcb != nullptr) {
         rt = bta_gattc_sm_execute(p_clcb, p_msg->event, (const tBTA_GATTC_DATA*)p_msg);
       } else {
-        log::error("Ignore unknown conn ID: {}", p_msg->layer_specific);
+        if ((p_clcb == nullptr) && (p_msg->event == BTA_GATTC_INT_DISCONN_EVT)) {
+          tBTA_GATTC_DATA* p_data = (tBTA_GATTC_DATA*)p_msg;
+          //If BG Connection fails then inform the particular APP
+          if (p_data) {
+            tBTA_GATTC_RCB* p_clreg = bta_gattc_cl_get_regcb(p_data->int_conn.client_if);
+            if (p_clreg != nullptr) {
+              log::info("Sending Conn failed to establish for conn_id: {}",
+                          p_msg->layer_specific);
+              tGATT_STATUS status = (tGATT_STATUS)p_data->int_conn.reason;
+              bta_gattc_send_open_cback(p_clreg, status,
+                              p_data->int_conn.remote_bda, p_msg->layer_specific,
+                              p_data->int_conn.transport, 0);
+            }
+          } else {
+            log::error("Ignore unknown conn ID: {}", p_msg->layer_specific);
+          }
+        } else {
+          log::error("Ignore unknown conn ID: {}", p_msg->layer_specific);
+        }
       }
 
       break;

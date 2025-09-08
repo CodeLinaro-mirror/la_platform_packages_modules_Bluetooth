@@ -40,6 +40,7 @@ public:
     virtual void OnUpdatedCisConfiguration(int group_id, uint8_t direction) = 0;
     virtual void UpdateMetadataCb(types::AseState state, int cig_id, int cis_id,
             const std::vector<uint8_t>& data) = 0;
+    virtual void OnSetSenderStateRelease(void) = 0;
   };
 
   virtual ~LeAudioGroupStateMachine() = default;

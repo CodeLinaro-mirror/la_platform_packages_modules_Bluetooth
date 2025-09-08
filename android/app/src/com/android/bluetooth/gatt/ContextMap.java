@@ -261,9 +261,10 @@ public class ContextMap<C> {
 
     /** Add a new connection for a given application ID. */
     void addConnection(int id, int connId, String address) {
-        synchronized (mConnectionsLock) {
-            App entry = getById(id);
-            if (entry != null) {
+        App entry = getById(id);
+
+        if (entry != null) {
+            synchronized (mConnectionsLock) {
                 mConnections.add(new Connection(connId, address, id));
             }
         }

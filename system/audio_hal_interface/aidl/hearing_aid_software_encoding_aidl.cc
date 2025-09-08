@@ -85,6 +85,8 @@ public:
 
   void SetLatencyMode(LatencyMode /*latency_mode*/) override {}
 
+  void AudioServerRestart() override {}
+
   bool GetPresentationPosition(uint64_t* remote_delay_report_ns, uint64_t* total_bytes_read,
                                timespec* data_position) override {
     log::verbose("data={} byte(s), timestamp={}.{}s, delay report={} msec.", total_bytes_read_,

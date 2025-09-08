@@ -460,6 +460,8 @@ bt_soc_type_t convertSocNameToBTSocType(const char* soc_name) {
     soc_type = BT_SOC_TYPE_COLOGNE;
   } else if (!strncasecmp(soc_name, "pronto", sizeof("pronto"))) {
     soc_type = BT_SOC_TYPE_DEFAULT;
+  } else if (!strncasecmp(soc_name, "themisto", sizeof("themisto"))) {
+    soc_type = BT_SOC_TYPE_EUROPA;
   } else {
     ALOGI("not set, so using pronto");
     soc_type = BT_SOC_TYPE_DEFAULT;

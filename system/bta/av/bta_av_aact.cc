@@ -3400,7 +3400,11 @@ void bta_av_qti_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   /* Check if stream has already been started. */
   /* Support offload if only one audio source stream is open. */
-  if (p_scb->started != true) {
+  if (!p_scb->started) {
+    log::warn("stream not started, start offload failed.");
+    tBTA_AV bta_av_data = {};
+    bta_av_data.status = BTA_AV_FAIL_STREAM;
+    (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
     return;
   }
 

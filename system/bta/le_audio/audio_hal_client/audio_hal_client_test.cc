@@ -249,6 +249,7 @@ public:
   MOCK_METHOD((void), OnAudioDataReady, (const std::vector<uint8_t>& data), (override));
   MOCK_METHOD((void), OnAudioSuspend, (), (override));
   MOCK_METHOD((void), OnAudioResume, (), (override));
+  MOCK_METHOD((void), OnAudioServerRestart, (), (override));
   MOCK_METHOD((void), OnAudioMetadataUpdate,
               (const std::vector<struct playback_track_metadata_v7> source_metadata,
                DsaMode dsa_mode),

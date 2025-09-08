@@ -86,6 +86,8 @@ public:
 
   virtual void StopRequest() = 0;
 
+  virtual void AudioServerRestart() = 0;
+
   virtual void SetLatencyMode(LatencyMode latency_mode) = 0;
 
   virtual bool GetPresentationPosition(uint64_t* remote_delay_report_ns,

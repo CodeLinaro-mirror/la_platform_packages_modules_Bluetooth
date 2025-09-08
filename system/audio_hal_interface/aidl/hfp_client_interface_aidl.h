@@ -54,6 +54,8 @@ public:
 
   void StopRequest();
 
+  void AudioServerRestart();
+
   void SetLatencyMode(LatencyMode latency_mode);
 
   bool GetPresentationPosition(uint64_t* remote_delay_report_ns, uint64_t* total_bytes_read,
@@ -97,6 +99,8 @@ public:
 
   void StopRequest();
 
+  void AudioServerRestart();
+
   void SetLatencyMode(LatencyMode latency_mode);
 
   bool GetPresentationPosition(uint64_t* remote_delay_report_ns, uint64_t* total_bytes_read,
@@ -136,6 +140,8 @@ public:
   BluetoothAudioCtrlAck SuspendRequest();
 
   void StopRequest();
+
+  void AudioServerRestart();
 
   void SetLatencyMode(LatencyMode latency_mode);
 
