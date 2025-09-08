@@ -33,6 +33,8 @@ import android.os.ParcelUuid;
 import android.os.SystemClock;
 import android.util.Log;
 
+import com.android.bluetooth.btservice.ServiceFactory;
+import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.BluetoothEventLogger;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.audio_util.MediaData;
@@ -86,6 +88,8 @@ public class MediaControlProfile implements MediaControlServiceCallbacks {
 
     private MediaPlayerWrapper mLastActivePlayer = null;
 
+    private final ServiceFactory mFactory = new ServiceFactory();
+    private LeAudioService mLeAudioService;
     static MediaPlayerList sMediaPlayerListForTesting = null;
 
     static void setsMediaPlayerListForTesting(MediaPlayerList mediaPlayerList) {
@@ -178,6 +182,13 @@ public class MediaControlProfile implements MediaControlServiceCallbacks {
         if (stateChanged) {
             if (mCurrentData.state != null) {
                 MediaState playback_state = playerState2McsState(mCurrentData.state.getState());
+                if (isLeAudioServiceAvailable()) {
+                  //get incall value here
+                  if (mLeAudioService.getInCall() &&  (playback_state ==  MediaState.PLAYING)){
+                     Log.d(TAG, "A call over LEA is active, but playback state is PLAYING");
+                     playback_state = MediaState.PAUSED;
+                   }
+                }
                 state_map.put(PlayerStateField.PLAYBACK_STATE, playback_state);
 
                 if ((mCurrentData.state.getActions() & BASE_PLAYER_ACTION_SET)
@@ -604,6 +615,17 @@ public class MediaControlProfile implements MediaControlServiceCallbacks {
 
         return opcodesSupported;
     }
+    private boolean isLeAudioServiceAvailable() {
+       if (mLeAudioService != null) {
+             return true;
+       }
+       mLeAudioService = mFactory.getLeAudioService();
+        if (mLeAudioService == null) {
+          Log.e(TAG, "leAudioService not available");
+          return false;
+        }
+       return true;
+   }
 
     private void processPendingPlayerStateRequest() {
         Log.d(TAG, "GMCS processPendingPlayerStateRequest");
