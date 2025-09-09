@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /******************************************************************************
@@ -86,6 +91,7 @@ static const tA2DP_APTX_HD_CIE a2dp_aptx_hd_default_config = {
         BTAV_A2DP_CODEC_BITS_PER_SAMPLE_24 /* bits_per_sample */
 };
 
+#if 0
 static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aptx_hd = {
         a2dp_vendor_aptx_hd_encoder_init,
         a2dp_vendor_aptx_hd_encoder_cleanup,
@@ -96,6 +102,7 @@ static const tA2DP_ENCODER_INTERFACE a2dp_encoder_interface_aptx_hd = {
         a2dp_vendor_aptx_hd_send_frames,
         nullptr  // set_transmit_queue_length
 };
+#endif
 
 // Builds the aptX-HD Media Codec Capabilities byte sequence beginning from the
 // LOSC octet. |media_type| is the media type |AVDT_MEDIA_TYPE_*|.
@@ -359,14 +366,14 @@ std::string A2DP_VendorCodecInfoStringAptxHd(const uint8_t* p_codec_info) {
   return res.str();
 }
 
-const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptxHd(
+/*const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptxHd(
     const uint8_t* p_codec_info) {
   if (!A2DP_IsCodecValidAptxHd(p_codec_info)) {
     return NULL;
   }
 
   return &a2dp_encoder_interface_aptx_hd;
-}
+}*/
 
 bool A2DP_VendorAdjustCodecAptxHd(uint8_t* p_codec_info) {
   tA2DP_APTX_HD_CIE cfg_cie;

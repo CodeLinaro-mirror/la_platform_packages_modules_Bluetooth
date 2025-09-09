@@ -12,12 +12,17 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcp;
 
 import static java.util.Objects.requireNonNull;
-
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.util.Log;
 
@@ -32,6 +37,7 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Native Interface to communicate with the JNI layer. This class should never be passed null data.
@@ -106,6 +112,18 @@ public class AvrcpNativeInterface {
         return mAvrcpService.getCurrentSongInfo();
     }
 
+    Metadata getCurrentSongInfoExt(String bdaddress) {
+        BluetoothDevice device =
+                BluetoothAdapter.getDefaultAdapter().getRemoteDevice(bdaddress.toUpperCase(Locale.ROOT));
+        d("getCurrentSongInfoExt: device=" + device);
+        if (mAvrcpService == null) {
+            Log.w(TAG, "getCurrentSongInfoExt(): AvrcpTargetService is null");
+            return null;
+        }
+
+        return mAvrcpService.getCurrentSongInfoExt(device);
+    }
+
     PlayStatus getPlayStatus() {
         d("getPlayStatus");
         if (mAvrcpService == null) {
@@ -114,6 +132,19 @@ public class AvrcpNativeInterface {
         }
 
         return mAvrcpService.getPlayState();
+    }
+
+    PlayStatus getPlayStatusExt(String bdaddress) {
+        BluetoothDevice device =
+                BluetoothAdapter.getDefaultAdapter().getRemoteDevice(bdaddress.toUpperCase(Locale.ROOT));
+        d("getPlayStatusExt: device=" + device);
+
+        if (mAvrcpService == null) {
+            Log.w(TAG, "getPlayStatusExt(): AvrcpTargetService is null");
+            return null;
+        }
+
+        return mAvrcpService.getPlayStateExt(device);
     }
 
     void sendMediaKeyEvent(int keyEvent, boolean pushed) {
@@ -126,30 +157,68 @@ public class AvrcpNativeInterface {
         mAvrcpService.sendMediaKeyEvent(keyEvent, pushed);
     }
 
+    void sendMediaKeyEventExt(String bdaddress, int keyEvent, boolean pushed) {
+        BluetoothDevice device =
+            BluetoothAdapter.getDefaultAdapter().getRemoteDevice(bdaddress.toUpperCase(Locale.ROOT));
+        d("sendMediaKeyEventExt: device" + device + " keyEvent=" + keyEvent +
+                " pushed=" + pushed);
+        if (mAvrcpService == null) {
+            Log.w(TAG, "sendMediaKeyEventExt(): AvrcpTargetService is null");
+            return;
+        }
+
+        mAvrcpService.sendMediaKeyEventExt(device, keyEvent, pushed);
+    }
+
     String getCurrentMediaId() {
         d("getCurrentMediaId");
         if (mAvrcpService == null) {
-            Log.w(TAG, "getMediaPlayerList(): AvrcpTargetService is null");
+            Log.w(TAG, "getCurrentMediaId(): AvrcpTargetService is null");
             return "";
         }
 
         return mAvrcpService.getCurrentMediaId();
     }
 
+    String getCurrentMediaIdExt(String bdaddress) {
+        BluetoothDevice device =
+                BluetoothAdapter.getDefaultAdapter().getRemoteDevice(bdaddress.toUpperCase(Locale.ROOT));
+        d("getCurrentMediaIdExt: device=" + device);
+
+        if (mAvrcpService == null) {
+            Log.w(TAG, "getCurrentMediaIdExt(): AvrcpTargetService is null");
+            return "";
+        }
+
+        return mAvrcpService.getCurrentMediaIdExt(device);
+    }
+
     List<Metadata> getNowPlayingList() {
         d("getNowPlayingList");
         if (mAvrcpService == null) {
-            Log.w(TAG, "getMediaPlayerList(): AvrcpTargetService is null");
+            Log.w(TAG, "getNowPlayingList(): AvrcpTargetService is null");
             return null;
         }
 
         return mAvrcpService.getNowPlayingList();
     }
 
+    List<Metadata> getNowPlayingListExt(String bdaddress) {
+        BluetoothDevice device =
+                BluetoothAdapter.getDefaultAdapter().getRemoteDevice(bdaddress.toUpperCase(Locale.ROOT));
+        d("getNowPlayingListExt: device=" + device);
+        if (mAvrcpService == null) {
+            Log.w(TAG, "getNowPlayingListExt(): AvrcpTargetService is null");
+            return null;
+        }
+
+        return mAvrcpService.getNowPlayingListExt(device);
+    }
+
     int getCurrentPlayerId() {
         d("getCurrentPlayerId");
         if (mAvrcpService == null) {
-            Log.w(TAG, "getMediaPlayerList(): AvrcpTargetService is null");
+            Log.w(TAG, "getCurrentPlayerId(): AvrcpTargetService is null");
             return -1;
         }
 
@@ -209,6 +278,14 @@ public class AvrcpNativeInterface {
                         + " queue="
                         + queue);
         sendMediaUpdateNative(metadata, playStatus, queue);
+    }
+
+    void sendMediaUpdateExt(String bdaddr, boolean metadata, boolean playStatus, boolean queue) {
+        d("sendMediaUpdateExt: device=" + bdaddr
+                + " metadata=" + metadata
+                + " playStatus=" + playStatus
+                + " queue=" + queue);
+        sendMediaUpdateExtNative(bdaddr, metadata, playStatus, queue);
     }
 
     void sendFolderUpdate(boolean availablePlayers, boolean addressedPlayers, boolean uids) {
@@ -367,6 +444,18 @@ public class AvrcpNativeInterface {
         sendPlayerSettingsNative(settingsArray, valuesArray);
     }
 
+    void setVolumeExt(String bdaddress, int volume) {
+        BluetoothDevice device =
+            BluetoothAdapter.getDefaultAdapter().getRemoteDevice(bdaddress.toUpperCase(Locale.ROOT));
+        d("setVolumeExt: device" + device + " volume=" + volume);
+        if (mAvrcpService == null) {
+            Log.w(TAG, "setVolumeExt(): AvrcpTargetService is null");
+            return;
+        }
+
+        mAvrcpService.setVolumeExt(device, volume);
+    }
+
     private native void initNative();
 
     private native void registerBipServerNative(int l2capPsm);
@@ -375,6 +464,9 @@ public class AvrcpNativeInterface {
 
     private native void sendMediaUpdateNative(
             boolean trackChanged, boolean playState, boolean playPos);
+
+    private native void sendMediaUpdateExtNative(
+            String bdaddr, boolean trackChanged, boolean playState, boolean playPos);
 
     private native void sendFolderUpdateNative(
             boolean availablePlayers, boolean addressedPlayers, boolean uids);

@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.a2dp;
@@ -140,7 +144,7 @@ class A2dpServiceBinder extends IBluetoothA2dp.Stub implements IProfileServiceBi
         }
 
         if (device == null) {
-            return service.removeActiveDevice(false);
+            return service.removeActiveDevice(device, false);
         } else {
             return service.setActiveDevice(device);
         }
@@ -332,5 +336,23 @@ class A2dpServiceBinder extends IBluetoothA2dp.Stub implements IProfileServiceBi
         }
 
         return service.setBufferLengthMillis(codec, value);
+    }
+
+    @Override
+    public String getMediaPlayer(BluetoothDevice device, AttributionSource source) {
+        A2dpService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            return null;
+        }
+        return service.getMediaPlayer(device);
+     }
+
+    @Override
+    public boolean setMediaPlayer(BluetoothDevice device, String mediaPlayer, AttributionSource source) {
+        A2dpService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            return false;
+        }
+        return service.setMediaPlayer(device, mediaPlayer);
     }
 }

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -21,6 +26,8 @@
 
 #include "a2dp_constants.h"
 #include "audio_aidl_interfaces.h"
+#include "client_interface_aidl.h"
+
 #include "include/hardware/bt_av.h"
 
 namespace bluetooth::audio::aidl::a2dp {
@@ -39,7 +46,8 @@ public:
    * getProviderInfo, or if the feature flag for codec
    * extensibility is disabled.
    ***/
-  static std::unique_ptr<ProviderInfo> GetProviderInfo(bool supports_a2dp_hw_offload_v2);
+  static std::unique_ptr<ProviderInfo> GetProviderInfo(bool supports_a2dp_hw_offload_v2,
+                                                       BluetoothAudioClientInterface* offloading_hal_interface);
 
   ProviderInfo(std::vector<CodecInfo> source_codecs, std::vector<CodecInfo> sink_codecs);
   ~ProviderInfo() = default;

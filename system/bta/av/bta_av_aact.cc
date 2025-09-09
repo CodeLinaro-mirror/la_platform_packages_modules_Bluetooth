@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -97,7 +102,7 @@ constexpr char kBtmLogTag[] = "A2DP";
 
 /* the delay time in milliseconds to start service discovery on AVRCP */
 #ifndef BTA_AV_RC_DISC_TIME_VAL
-#define BTA_AV_RC_DISC_TIME_VAL 3500
+#define BTA_AV_RC_DISC_TIME_VAL 2500
 #endif
 
 /* the timer in milliseconds to guard against link busy and AVDT_CloseReq failed
@@ -2106,14 +2111,14 @@ void bta_av_data_path(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* /* p_data */) {
   } else {
     new_buf = true;
     /* A2DP_list empty, call co_data, dup data to other channels */
-    p_buf = p_scb->p_cos->data(p_scb->cfg.codec_info, &timestamp);
+    p_buf = p_scb->p_cos->data(p_scb->PeerAddress(), p_scb->cfg.codec_info, &timestamp);
 
     if (p_buf) {
       /* use the offset area for the time stamp */
       *reinterpret_cast<uint32_t*>(p_buf + 1) = timestamp;
 
       /* dup the data to other channels */
-      bta_av_dup_audio_buf(p_scb, p_buf);
+      //bta_av_dup_audio_buf(p_scb, p_buf);
     }
   }
 

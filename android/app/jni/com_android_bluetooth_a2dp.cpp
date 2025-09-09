@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -425,9 +430,7 @@ static jboolean setSilenceDeviceNative(JNIEnv* env, jobject /* object */, jbyteA
   return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
-static jboolean setActiveDeviceNative(JNIEnv* env, jobject /* object */, jbyteArray address) {
-  std::shared_lock<std::shared_timed_mutex> lock(interface_mutex);
-
+static jboolean setActiveDeviceNative(JNIEnv* env, jobject /* object */, jbyteArray address, jboolean active) {
   jbyte* addr = env->GetByteArrayElements(address, nullptr);
   RawAddress bd_addr = RawAddress::kEmpty;
   if (addr) {
@@ -435,7 +438,8 @@ static jboolean setActiveDeviceNative(JNIEnv* env, jobject /* object */, jbyteAr
   }
 
   log::info("{}", bd_addr);
-  bt_status_t status = btif_av_source_set_active_device(bd_addr);
+  bt_status_t status = btif_av_source_set_active_device(bd_addr, active);
+
   if (status != BT_STATUS_SUCCESS) {
     log::error("Failed A2DP set_active_device, status: {}", bt_status_text(status));
   }
@@ -478,7 +482,7 @@ int register_com_android_bluetooth_a2dp(JNIEnv* env) {
           {"connectA2dpNative", "([B)Z", (void*)connectA2dpNative},
           {"disconnectA2dpNative", "([B)Z", (void*)disconnectA2dpNative},
           {"setSilenceDeviceNative", "([BZ)Z", (void*)setSilenceDeviceNative},
-          {"setActiveDeviceNative", "([B)Z", (void*)setActiveDeviceNative},
+          {"setActiveDeviceNative", "([BZ)Z", (void*)setActiveDeviceNative},
           {"setCodecConfigPreferenceNative", "([B[Landroid/bluetooth/BluetoothCodecConfig;)Z",
            (void*)setCodecConfigPreferenceNative},
   };

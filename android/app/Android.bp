@@ -120,7 +120,6 @@ cc_library_shared {
         "libbt-hci",
         "libbt-jni-thread",
         "libbt-sbc-decoder",
-        "libbt-sbc-encoder",
         "libbt-stack",
         "libbtcore",
         "libbtdevice",
@@ -154,6 +153,7 @@ cc_library_shared {
         "libcrypto",
         "liblog",
         "libnativehelper",
+        "libbt-sbc-encoder",
         "libstatssocket",
         "libvndksupport",
     ],
@@ -200,6 +200,7 @@ android_library {
         "modules-utils-build",
         "modules-utils-expresslog",
         "android.car-module.stubs.module_lib",
+        "android.car",
     ],
     static_libs: [
         "BluetoothApiShims",
