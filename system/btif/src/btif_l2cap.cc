@@ -134,6 +134,9 @@ static bt_status_t L2cap_coc_register(uint16_t psm,
                                       uint16_t secLevel,
                                       tL2CAP_LE_CFG_INFO cfg);
 static BT_HDR* L2cap_ReadData(uint16_t cid);
+static bool L2cap_ReconfigConnectCocReq(const RawAddress& p_bd_addr,
+                                        std::vector<uint16_t>& chnl_id,
+                                                 tL2CAP_LE_CFG_INFO*  p_cfg);
 
 static const btl2cap_interface_t btl2capInterface = {
     sizeof(btl2cap_interface_t),
@@ -179,7 +182,8 @@ static const btl2cap_interface_t btl2capInterface = {
     L2cap_ConnectCocReq,
     L2cap_ConnectCocRsp,
     L2cap_coc_register,
-    L2cap_ReadData};
+    L2cap_ReadData,
+    L2cap_ReconfigConnectCocReq};
 
 const btl2cap_interface_t* btif_l2cap_get_interface(void) {
   log::info("{}", __FUNCTION__);
@@ -307,6 +311,14 @@ static std::vector<uint16_t> L2cap_ConnectCocReq(uint16_t psm,
   log::debug("ECFC-L2CAP: {} ", __FUNCTION__);
 
   return (L2CA_ConnectCreditBasedReq(psm, p_bd_addr, p_cfg));
+}
+
+static bool L2cap_ReconfigConnectCocReq(const RawAddress& p_bd_addr,
+                                        std::vector<uint16_t>& chnl_id,
+                                                 tL2CAP_LE_CFG_INFO* p_cfg) {
+  log::debug("ECFC-L2CAP: {} ", __FUNCTION__);
+
+  return (L2CA_ReconfigCreditBasedConnsReq(p_bd_addr, chnl_id, p_cfg));
 }
 
 static bool L2cap_ConnectCocRsp(const RawAddress& p_bd_addr, uint8_t id,

@@ -341,9 +341,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     log::debug("address {}, resultMeters {}", cs_requester_trackers_[connection_handle].address,
                ranging_result.result_meters_);
     uint64_t elapsedRealtimeNanos = ::android::elapsedRealtimeNano();
-    if (is_hal_v2()) {
-      elapsedRealtimeNanos = ranging_result.elapsed_timestamp_nanos_;
-    }
+    log::warn("elapsedRealtimeNanos: {}, resultMeters: {}", elapsedRealtimeNanos, ranging_result.result_meters_);
     distance_measurement_callbacks_->OnDistanceMeasurementResult(
             cs_requester_trackers_[connection_handle].address, ranging_result.result_meters_ * 100,
             ranging_result.error_meters_ * 100, kInvalidAzimuthAngleDegree,

@@ -2956,7 +2956,7 @@ public class BassClientService extends ProfileService {
 
         // Make sure scan is enabled before PA sync
         if (!isSearchInProgress()) {
-            enableBassScan();
+            mHandler.post(() -> enableBassScan());
         }
 
         // Check if there are resources for sync
@@ -4029,15 +4029,20 @@ public class BassClientService extends ProfileService {
 
         // Continue to check if there is pending source to add due to BASS not ready
         synchronized (mPendingSourcesToAdd) {
+            AddSourceData sourceToAdd = null;
             Iterator<AddSourceData> iterator = mPendingSourcesToAdd.iterator();
             while (iterator.hasNext()) {
                 AddSourceData pendingSourcesToAdd = iterator.next();
                 if (pendingSourcesToAdd.sink.equals(sink)) {
-                    Log.d(TAG, "handleBassStateReady: retry adding source with device, " + sink);
-                    addSource(pendingSourcesToAdd.sink, pendingSourcesToAdd.sourceMetadata, false);
+                    sourceToAdd = pendingSourcesToAdd;
                     iterator.remove();
-                    return;
+                    break;
                 }
+            }
+            if (sourceToAdd != null) {
+                Log.d(TAG, "handleBassStateReady: retry adding source with device, " + sink);
+                addSource(sourceToAdd.sink, sourceToAdd.sourceMetadata, false);
+                return;
             }
         }
     }

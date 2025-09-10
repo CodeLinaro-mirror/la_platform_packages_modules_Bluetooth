@@ -49,6 +49,7 @@ const char* PTS_RFCOMM_SEND_RLS = "PTS_RFCOMM_send_rls";
 const char* PTS_REJ_WRITE_REQ = "PTS_BCS_Rej_Write_req";
 const char* PTS_BCS_RANGING_SELECT = "PTS_BCS_RangingSelect";
 const char* PTS_ENB_IND_RAS = "PTS_BCSenablingind";
+const char* PTS_FOC_DATA_WRITE = "PTS_FOCdatawrite";
 const char* PTS_L2CAP_ECOC_CONNECT_REMAINING = "PTS_L2capEcocConnectRemaining";
 const char* PTS_L2CAP_ECOC_SEND_NUM_OF_SDU = "PTS_L2capEcocSendNumOfSdu";
 const char* PTS_L2CAP_ECOC_RECONFIGURE = "PTS_L2capEcocReconfigure";
@@ -190,6 +191,10 @@ static bool get_pts_bcs_ranging_select(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_BCS_RANGING_SELECT, false);
 }
 
+static bool get_pts_foc_data_write(void) {
+  return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_FOC_DATA_WRITE, false);
+}
+
 static bool get_enable_ind_ras_real_time(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_ENB_IND_RAS, false);
 }
@@ -242,6 +247,7 @@ const stack_config_t interface = {get_pts_avrcp_test,
                                   get_pts_bcs_rej_write_req,
                                   get_pts_bcs_ranging_select,
                                   get_enable_ind_ras_real_time,
+                                  get_pts_foc_data_write,
                                   get_pts_l2cap_ecoc_send_num_of_sdu,
                                   get_pts_l2cap_ecoc_reconfigure,
                                   get_pts_broadcast_audio_config_options,

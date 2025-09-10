@@ -61,12 +61,15 @@
 #include "bt_target.h"
 #include <bt_testapp.h>
 #include "stack/include/l2cdefs.h"
+#include <cutils/properties.h>
+
 
 /************************************************************************************
 **  Constants & Macros
 ************************************************************************************/
 
 #define PID_FILE "/data/.bdt_pid"
+#define L2CAP_PROP_FOC_ENABLED 1
 
 #ifndef MAX
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -89,6 +92,7 @@ static uint16_t g_SecLevel = 0;
 static bool g_SecOnlyMode = FALSE;
 static int g_secvalue = 0;
 static bool g_ConnType = TRUE;  // DUT is initiating connection
+static int g_l2cap_option = 0;
 static bool g_Fcr_Present = FALSE;
 static bool g_Sar_Present = FALSE;
 static bool strict_mode = FALSE;
@@ -723,7 +727,14 @@ void do_l2cap_init(char* p) {
   // use other param if needed
   tl2cap_cfg_info.fcr_present = g_Fcr_Present;
   tl2cap_cfg_info.fcr.mode = g_Fcr_Mode;
-  tl2cap_cfg_info.fcs = 0;
+  char l2c_opt[PROPERTY_VALUE_MAX] = "0";
+  property_get("persist.vendor.qcom.bluetooth.l2c_opt", l2c_opt, "0");
+  g_l2cap_option = atoi(l2c_opt);
+  if(g_l2cap_option == L2CAP_PROP_FOC_ENABLED) {
+    tl2cap_cfg_info.fcs = 1;
+  } else {
+    tl2cap_cfg_info.fcs = 0;
+  }
   tl2cap_cfg_info.fcs_present = 1;
 
   tl2cap_cfg_info.fcr.tx_win_sz = 3;
@@ -853,6 +864,7 @@ static void l2c_listen(int SendData) {
 }
 
 static int Send_Data() {
+if(g_l2cap_option != L2CAP_PROP_FOC_ENABLED) {
   int fd, size;
   char* tmpBuf = NULL;
 
@@ -919,6 +931,37 @@ static int Send_Data() {
   }
   sleep(50);
   free(tmpBuf);
+  } else {
+     //unsigned char tmpBuffer[] = {0x7F,0x7F,0x7F,0x7F,0x7F,0x7F,0x7F};
+        char tmpBuffer[150] = {0x7F};
+        unsigned char Ch;
+        memset(tmpBuffer, 0x77, 150);
+        printf("Count input from user: %d...\n", count);
+        sleep(10);
+        printf("Before first two write: count is %d...\n", count);
+        count--;
+        do_l2cap_DataWrite(tmpBuffer, 10);
+        printf("After first write...%d\n", count);
+        if(count) {
+        count--;
+            do_l2cap_DataWrite(tmpBuffer, 10);
+            printf("After second write...%d\n", count);
+        }
+        if(count) {
+          count--;
+          scanf("%c",&Ch);
+          do_l2cap_DataWrite(tmpBuffer, 5);
+          printf(" After 3ed write count is: %d\n", count);
+        }
+        if(count) {
+        count--;
+        scanf("%c",&Ch);
+        do_l2cap_DataWrite(tmpBuffer, 5);
+        printf("After 4th write count is: %d\n", count);
+        }
+        sleep(50);
+        count =0;
+  }
   return TRUE;
 }
 

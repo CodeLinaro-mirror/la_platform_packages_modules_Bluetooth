@@ -224,17 +224,23 @@ final class BondStateMachine extends StateMachine {
                     }
                     break;
                 case ACL_DISCONNECTED:
-                    if (hasMessages(BONDED_INTENT_DELAY)) {
-                        removeMessages(BONDED_INTENT_DELAY);
-                        mPendingBondedDevices.remove(dev);
-                        DeviceProperties devProp =
-                                mRemoteDevices.getDeviceProperties(dev);
-                        if (devProp != null && devProp.getUuids() == null) {
-                            Log.e(TAG,
-                                    "ACL DISCONNECTED during Bonding: Remove the device "
-                                    + dev);
-                            removeBond(dev, true);
+                    if (dev.isBondingInitiatedLocally()) {
+                        if (hasMessages(BONDED_INTENT_DELAY)) {
+                            removeMessages(BONDED_INTENT_DELAY);
+                            mPendingBondedDevices.remove(dev);
+                            DeviceProperties devProp =
+                                    mRemoteDevices.getDeviceProperties(dev);
+                            if (devProp != null && devProp.getUuids() == null) {
+                                Log.e(TAG,
+                                        "ACL DISCONNECTED during Bonding: Remove the device "
+                                        + dev);
+                                removeBond(dev, true);
+                            }
                         }
+                    } else {
+                        Log.i(TAG,
+                                    "Remote Initiated Bonding. So Skip Removing the bond "
+                                    + dev);
                     }
                     break;
                 case UUID_UPDATE:

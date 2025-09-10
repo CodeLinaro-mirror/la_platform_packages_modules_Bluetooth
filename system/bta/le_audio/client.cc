@@ -898,7 +898,12 @@ public:
     /* There is an issue with a setting up stream or any other operation which
      * are gatt operations. It means peer is not responsible. Lets close ACL
      */
-    CancelStreamingRequest();
+    if (group->IsPendingConfiguration() || group->IsSuspendedForReconfiguration()) {
+      group->ClearPendingConfiguration();
+      reconfigurationComplete();
+    } else {
+      CancelStreamingRequest();
+    }
     LeAudioDevice* leAudioDevice = group->GetFirstActiveDevice();
     if (leAudioDevice == nullptr) {
       log::error("Shouldn't be called without an active device.");
@@ -1027,6 +1032,31 @@ public:
                                             "s_state: " + ToString(audio_receiver_state_));
 
      is_local_sink_metadata_available_ = false;
+    audio_receiver_state_ = AudioState::IDLE;
+  }
+
+  void CancelLocalAudioSourceStreamingRequestWithUnsupported() {
+    if(le_audio_source_hal_client_) {
+      le_audio_source_hal_client_->CancelStreamingRequestWithUnsupported();
+    }
+
+    LeAudioLogHistory::Get()->AddLogHistory(kLogBtCallAf, active_group_id_, RawAddress::kEmpty,
+                                            kLogAfCancel + "LocalSource",
+                                            "s_state: " + ToString(audio_sender_state_));
+
+    audio_sender_state_ = AudioState::IDLE;
+  }
+
+  void CancelLocalAudioSinkStreamingRequestWithUnsupported() {
+    if(le_audio_sink_hal_client_) {
+      le_audio_sink_hal_client_->CancelStreamingRequestWithUnsupported();
+    }
+
+    LeAudioLogHistory::Get()->AddLogHistory(kLogBtCallAf, active_group_id_, RawAddress::kEmpty,
+                                            kLogAfCancel + "LocalSink",
+                                            "s_state: " + ToString(audio_receiver_state_));
+
+    is_local_sink_metadata_available_ = false;
     audio_receiver_state_ = AudioState::IDLE;
   }
 
@@ -1230,6 +1260,11 @@ public:
           log::debug("Converted to single context type: {}", ToString(ct));
           return AudioContexts(ct);
         }
+      }
+    } else {
+      if (source_monitor_mode_) {
+        log::warn("All context type not available in source monitor mode");
+        return metadata_context_type;
       }
     }
 
@@ -1587,6 +1622,11 @@ public:
 
     if (active_group_id_ == bluetooth::groups::kGroupUnknown) {
       log::debug("There is no active group");
+      return;
+    }
+
+    if (defer_notify_inactive_until_stop_) {
+      log::debug("Device is pending for inactive until stop.");
       return;
     }
 
@@ -5192,7 +5232,7 @@ public:
               ToString(group->GetAllowedContextMask(
                       bluetooth::le_audio::types::kLeAudioDirectionSink)),
               ToString(configuration_context_type_));
-      CancelLocalAudioSourceStreamingRequest();
+      CancelLocalAudioSourceStreamingRequestWithUnsupported();
       return;
     }
 
@@ -5551,7 +5591,7 @@ public:
               ToString(group->GetAllowedContextMask(
                       bluetooth::le_audio::types::kLeAudioDirectionSource)),
               ToString(configuration_context_type_));
-      CancelLocalAudioSourceStreamingRequest();
+      CancelLocalAudioSinkStreamingRequestWithUnsupported();
       return;
     }
 
@@ -6014,6 +6054,23 @@ public:
                      dir == bluetooth::le_audio::types::kLeAudioDirectionSink ? " Sink" : " Source",
                      ToString(contexts_pair.get(other_dir)));
           contexts_pair.get(dir).unset(LeAudioContextType::UNSPECIFIED);
+        }
+      }
+    }
+
+    // In source monitor mode, remove UNSPECIFIED for the other direction
+    // if request context not available for remote direction.
+    if (source_monitor_mode_) {
+      if (contexts_pair.get(remote_dir).none()) {
+        auto other_dir = (remote_dir == bluetooth::le_audio::types::kLeAudioDirectionSink
+                                        ? bluetooth::le_audio::types::kLeAudioDirectionSource
+                                        : bluetooth::le_audio::types::kLeAudioDirectionSink);
+        if (contexts_pair.get(other_dir).test(LeAudioContextType::UNSPECIFIED)) {
+          log::debug("Requested context is not available for remote direction {}, "
+                    "removing UNSPECIFIED for the other direction",
+                    remote_dir == bluetooth::le_audio::types::kLeAudioDirectionSink ? " Sink"
+                                                                                    : " Source");
+          contexts_pair.get(other_dir).unset(LeAudioContextType::UNSPECIFIED);
         }
       }
     }

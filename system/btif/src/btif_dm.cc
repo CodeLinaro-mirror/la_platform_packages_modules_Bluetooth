@@ -254,6 +254,8 @@ typedef struct {
 static bluetooth::common::LruCache<RawAddress, std::set<Uuid>> eir_uuids_cache(
         MAX_NUM_DEVICES_IN_EIR_UUID_CACHE);
 
+static std::mutex eir_uuids_cache_lock;
+
 static skip_sdp_entry_t sdp_rejectlist[] = {{76}};  // Apple Mouse and Keyboard
 
 /* This flag will be true if HCI_Inquiry is in progress */
@@ -1567,6 +1569,8 @@ static void btif_dm_search_devices_evt(tBTA_DM_SEARCH_EVT event, tBTA_DM_SEARCH*
         std::vector<uint8_t> property_value;
         /* Cache EIR queried services */
         if (num_uuids > 0) {
+          std::unique_lock<std::mutex> lock(eir_uuids_cache_lock);
+
           uint16_t* p_uuid16 = (uint16_t*)uuid_list;
           auto uuid_iter = eir_uuids_cache.find(bdaddr);
           if (uuid_iter == eir_uuids_cache.end()) {
@@ -1789,6 +1793,8 @@ static void btif_on_service_discovery_results(RawAddress bd_addr,
     // Send UUIDs discovered through EIR to Java to unblock pairing intent
     // when SDP failed
     if (result != BTA_SUCCESS) {
+      std::unique_lock<std::mutex> lock(eir_uuids_cache_lock);
+
       auto uuids_iter = eir_uuids_cache.find(bd_addr);
       if (uuids_iter != eir_uuids_cache.end()) {
         num_eir_uuids = uuids_iter->second.size();
