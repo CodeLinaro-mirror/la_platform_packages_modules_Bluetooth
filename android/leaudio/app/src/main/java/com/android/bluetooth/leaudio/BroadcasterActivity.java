@@ -21,6 +21,7 @@ import android.bluetooth.BluetoothLeAudioContentMetadata;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
 import android.bluetooth.BluetoothLeBroadcastSettings;
 import android.bluetooth.BluetoothLeBroadcastSubgroupSettings;
+import android.bluetooth.BluetoothLeBroadcast;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -31,6 +32,10 @@ import android.widget.EditText;
 import android.widget.NumberPicker;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.util.Log;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -47,6 +52,29 @@ import java.nio.charset.StandardCharsets;
 
 public class BroadcasterActivity extends AppCompatActivity {
     private BroadcasterViewModel mViewModel;
+    private static final String TAG = "BroadcasterActivity"; // <--- ADD OR ENSURE THIS TAG IS DEFINED
+
+    // <--- ADD THIS NEW BROADCASTRECEIVER
+    private BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "Received broadcast action in BroadcasterActivity: " + action);
+            if (action != null && action.equals(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED)) {
+                int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                boolean bit0Set = ((status & 0x0001) != 0);
+                int bis_available_in_dbig = bit0Set ? 1 : 0;
+                boolean bit1Set = ((status & 0x0002) != 0);
+                int local_occupying_bis = bit1Set ? 1 : 0;
+                Toast.makeText(context, "DBIG status changed: " + status, Toast.LENGTH_SHORT).show();
+                if((bis_available_in_dbig == 1 && local_occupying_bis == 0) || local_occupying_bis == 1) {
+                    Toast.makeText(context, "BIS is available, user can speak now", Toast.LENGTH_SHORT).show();
+                } else if (bis_available_in_dbig == 0 && local_occupying_bis == 0) {
+                    Toast.makeText(context, "BIS is not available, please wait until BIS is available", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -335,7 +363,10 @@ public class BroadcasterActivity extends AppCompatActivity {
                             + reasonAndBidPair.second + ", reason: " + reasonAndBidPair.first,
                     Toast.LENGTH_SHORT).show();
         });
-
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED);
+        registerReceiver(mDbigStatusReceiver, filter, Context.RECEIVER_EXPORTED);
+        Log.d(TAG, "Registered mDbigStatusReceiver in BroadcasterActivity");
         // Prevent destruction when loses focus
         this.setFinishOnTouchOutside(false);
     }
@@ -345,5 +376,11 @@ public class BroadcasterActivity extends AppCompatActivity {
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         startActivity(intent);
+    }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // <--- ADD THIS LINE TO UNREGISTER THE RECEIVER
+        unregisterReceiver(mDbigStatusReceiver);
     }
 }

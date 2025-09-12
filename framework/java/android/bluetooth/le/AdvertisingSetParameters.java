@@ -430,7 +430,8 @@ public final class AdvertisingSetParameters implements Parcelable {
          */
         public Builder setPrimaryPhy(int primaryPhy) {
             if (primaryPhy != BluetoothDevice.PHY_LE_1M
-                    && primaryPhy != BluetoothDevice.PHY_LE_CODED) {
+                    && primaryPhy != BluetoothDevice.PHY_LE_CODED
+                    && primaryPhy != BluetoothDevice.PHY_LE_CODED_S2) {
                 throw new IllegalArgumentException("bad primaryPhy " + primaryPhy);
             }
             mPrimaryPhy = primaryPhy;
@@ -454,7 +455,8 @@ public final class AdvertisingSetParameters implements Parcelable {
         public Builder setSecondaryPhy(int secondaryPhy) {
             if (secondaryPhy != BluetoothDevice.PHY_LE_1M
                     && secondaryPhy != BluetoothDevice.PHY_LE_2M
-                    && secondaryPhy != BluetoothDevice.PHY_LE_CODED) {
+                    && secondaryPhy != BluetoothDevice.PHY_LE_CODED
+                    && secondaryPhy != BluetoothDevice.PHY_LE_CODED_S2) {
                 throw new IllegalArgumentException("bad secondaryPhy " + secondaryPhy);
             }
             mSecondaryPhy = secondaryPhy;

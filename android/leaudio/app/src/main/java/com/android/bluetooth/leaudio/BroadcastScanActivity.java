@@ -23,7 +23,12 @@ import android.bluetooth.BluetoothLeAudioContentMetadata;
 import android.bluetooth.BluetoothLeBroadcastChannel;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
 import android.bluetooth.BluetoothLeBroadcastSubgroup;
+import android.bluetooth.BluetoothLeBroadcast;
+import android.bluetooth.BluetoothProfile;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -41,13 +46,47 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.Objects;
 import java.util.List;
+import android.util.Log;
 
 
 public class BroadcastScanActivity extends AppCompatActivity {
     private BluetoothDevice device;
     private BroadcastScanViewModel mViewModel;
     private BroadcastItemsAdapter adapter;
+    private BluetoothLeBroadcast mBluetoothLeBroadcast;
+    private BluetoothAdapter mBluetoothAdapter;
+    private BluetoothProfile.ServiceListener mProfileListener;
     private static final String TAG = "BroadcastScanActivity";
+
+
+    private BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Declare and initialize the action variable
+            String action = intent.getAction();
+            Log.d(TAG, "Received broadcast action: " + action);
+            Log.d(TAG,action);
+            if (action != null && action.equals(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED)) {
+                // Extract the status from the intent
+                int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                boolean bit0Set = ((status & 0x0001) != 0);
+                int bis_available_in_dbig = bit0Set ? 1 : 0;
+                boolean bit1Set = ((status & 0x0002) != 0);
+                int local_occupying_bis = bit1Set ? 1 : 0;
+                boolean bit2set = ((status & 0x0004) != 0);
+                int bis_is_out_of_range = bit2set ? 1 : 0;
+                Toast.makeText(context, "DBIG status changed: " + status, Toast.LENGTH_SHORT).show();
+                if((bis_available_in_dbig == 1 && local_occupying_bis == 0) || local_occupying_bis == 1) {
+                  Toast.makeText(context, "BIS is available, user can speak now", Toast.LENGTH_SHORT).show();
+                } else if (bis_available_in_dbig == 0 && local_occupying_bis == 0) {
+                  Toast.makeText(context, "BIS is not available, please wait until BIS is available", Toast.LENGTH_SHORT).show();
+                }
+                if(bis_is_out_of_range == 1) {
+                    Toast.makeText(context, "DBIG is out of range", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -182,7 +221,36 @@ public class BroadcastScanActivity extends AppCompatActivity {
                                     + " broadcastId=" + broadcastId, Toast.LENGTH_SHORT).show();
                     mViewModel.addBroadcastSource(device, metadata);
                 });
+               mProfileListener = new BluetoothProfile.ServiceListener() {
+                    @Override
+                    public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                        if (profile == BluetoothProfile.LE_AUDIO_BROADCAST) {
+                            mBluetoothLeBroadcast = (BluetoothLeBroadcast) proxy;
+                        }
+                    }
 
+                    @Override
+                    public void onServiceDisconnected(int profile) {
+                        if (profile == BluetoothProfile.LE_AUDIO_BROADCAST) {
+                            mBluetoothLeBroadcast = null;
+                        }
+                    }
+                };
+
+                mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+                if (mBluetoothAdapter == null) {
+                    Toast.makeText(this, "Bluetooth is not available", Toast.LENGTH_LONG).show();
+                    finish();
+                    return;
+                }
+
+                // Correct the method call to getProfileProxy
+                mBluetoothAdapter.getProfileProxy(this, mProfileListener, BluetoothProfile.LE_AUDIO_BROADCAST);
+
+                IntentFilter filter = new IntentFilter();
+                filter.addAction(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED);
+                registerReceiver(mDbigStatusReceiver, filter, Context.RECEIVER_EXPORTED);
+                Log.d(TAG, "venk");
                 alert.show();
             }
         });
@@ -222,5 +290,14 @@ public class BroadcastScanActivity extends AppCompatActivity {
         intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         startActivity(intent);
         finish();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(mDbigStatusReceiver);
+        if (mBluetoothAdapter != null && mProfileListener != null) {
+            mBluetoothAdapter.closeProfileProxy(BluetoothProfile.LE_AUDIO_BROADCAST, mBluetoothLeBroadcast);
+        }
     }
 }
