@@ -1310,6 +1310,13 @@ static void gattServerUnregisterAppNative(JNIEnv* /* env */, jobject /* object *
     return;
   }
   sPrivateGattServerManager->CloseServer(serverIf);
+
+  if (!sGattIf || !(sGattIf->server)) {
+    log::warn("server obj is NULL, ignoring request for serverIf: {}",
+              serverIf);
+    return;
+  }
+
   sGattIf->server->unregister_server(serverIf);
 }
 
