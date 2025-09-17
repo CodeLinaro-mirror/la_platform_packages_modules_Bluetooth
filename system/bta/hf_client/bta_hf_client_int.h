@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #include <cstdint>
@@ -236,8 +241,8 @@ void bta_hf_client_app_callback(uint16_t event, tBTA_HF_CLIENT* data);
 void bta_hf_client_collision_cback(tBTA_SYS_CONN_STATUS status, tBTA_SYS_ID id, uint8_t app_id,
                                    const RawAddress& peer_addr);
 void bta_hf_client_resume_open(tBTA_HF_CLIENT_CB* client_cb);
-tBTA_STATUS bta_hf_client_api_enable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIENT_FEAT features,
-                                     const char* p_service_name);
+void bta_hf_client_api_enable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIENT_FEAT features,
+                              const char* p_service_name);
 
 void bta_hf_client_api_disable(void);
 void bta_hf_client_dump_statistics(int fd);
