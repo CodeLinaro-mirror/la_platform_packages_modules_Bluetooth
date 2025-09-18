@@ -77,6 +77,7 @@
 #include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/main_thread.h"
+#include "stack/include/btm_client_interface.h"
 #include "types/raw_address.h"
 
 #ifdef __ANDROID__
@@ -2404,6 +2405,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
       (p_av->remote_cmd.rc_id == AVRC_ID_PLAY)) {
     log::verbose("Peer {} : Resetting remote suspend flag on RC PLAY", peer_.PeerAddress());
     peer_.ClearFlags(BtifAvPeer::kFlagRemoteSuspend);
+    modify_sniff_policy(true, peer_.PeerAddress());
   }
 
   switch (event) {
@@ -2600,6 +2602,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
       if (peer_.CheckFlags(BtifAvPeer::kFlagRemoteSuspend)) {
         log::verbose("Peer {} : Resetting remote suspend flag on RC PLAY", peer_.PeerAddress());
         peer_.ClearFlags(BtifAvPeer::kFlagRemoteSuspend);
+        modify_sniff_policy(true, peer_.PeerAddress());
       }
       break;
 
@@ -2689,6 +2692,7 @@ void BtifAvStateMachine::StateStarted::OnEnter() {
 
   // We are again in started state, clear any remote suspend flags
   peer_.ClearFlags(BtifAvPeer::kFlagRemoteSuspend);
+  modify_sniff_policy(true, peer_.PeerAddress());
 
   btif_a2dp_sink_set_rx_flush(false);
 
@@ -2740,6 +2744,8 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
       // If we were remotely suspended but suspend locally, local suspend
       // always overrides.
       peer_.ClearFlags(BtifAvPeer::kFlagRemoteSuspend);
+
+      modify_sniff_policy(true, peer_.PeerAddress());
 
       if (peer_.IsSink() &&
           (peer_.IsActivePeer() || !btif_av_stream_started_ready(A2dpType::kSource))) {
@@ -2801,7 +2807,12 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
                                  peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
         }
       } else {
-        log::info("Remote Suspend, ignore calling btif_a2dp_on_suspended");
+        if (peer_.CheckFlags(BtifAvPeer::kFlagLocalSuspendPending)) {
+          log::info("Remote Suspend, but local suspend pending calling btif_a2dp_on_suspended");
+          btif_a2dp_on_suspended(&p_av->suspend,
+                                 peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
+        }
+        log::info("Remote Suspend, no local suspend pending,ignore calling btif_a2dp_on_suspended");
       }
       // If not successful, remain in current state
       if (p_av->suspend.status != BTA_AV_SUCCESS) {
@@ -2823,6 +2834,8 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
         // stream only if we did not already initiate a local suspend.
         if (!peer_.CheckFlags(BtifAvPeer::kFlagLocalSuspendPending)) {
           peer_.SetFlags(BtifAvPeer::kFlagRemoteSuspend);
+          // once remote suspend flag is set , disable the sniff
+          modify_sniff_policy(false, peer_.PeerAddress());
         }
       } else {
         state = BTAV_AUDIO_STATE_STOPPED;

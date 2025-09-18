@@ -767,4 +767,6 @@ void bta_debug_av_dump(int fd);
  */
 void BTA_AvSetPeerSep(const RawAddress& bdaddr, uint8_t sep);
 
+void modify_sniff_policy(bool policy_enable, const RawAddress& peer_addr);
+
 #endif /* BTA_AV_API_H */

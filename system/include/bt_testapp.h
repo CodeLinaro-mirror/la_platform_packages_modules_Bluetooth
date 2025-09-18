@@ -141,6 +141,8 @@ typedef struct {
   bt_status_t (*RegisterCocPsm)(uint16_t psm, const tL2CAP_APPL_INFO& p_cb_info,
                                 uint16_t secLevel, tL2CAP_LE_CFG_INFO cfg);
   BT_HDR* (*ReadData)(uint16_t cid);
+  bool (*ReconfigConnectCocReq)(const RawAddress& p_bd_addr, std::vector<uint16_t>& chnl_id,
+                        tL2CAP_LE_CFG_INFO* p_cfg);
 } btl2cap_interface_t;
 
 typedef struct {

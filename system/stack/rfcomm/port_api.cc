@@ -924,6 +924,10 @@ int PORT_WriteDataCO(uint16_t handle, int* p_len) {
   }
   int available = 0;
   // if(ioctl(fd, FIONREAD, &available) < 0)
+  if (p_port->p_data_co_callback == nullptr) {
+    log::error("p_data_co_callback is null for handle:{}", handle);
+    return (PORT_UNKNOWN_ERROR);
+  }
   if (!p_port->p_data_co_callback(handle, (uint8_t*)&available, sizeof(available),
                                   DATA_CO_CALLBACK_TYPE_OUTGOING_SIZE)) {
     log::error("p_data_co_callback DATA_CO_CALLBACK_TYPE_INCOMING_SIZE failed, available:{}",
