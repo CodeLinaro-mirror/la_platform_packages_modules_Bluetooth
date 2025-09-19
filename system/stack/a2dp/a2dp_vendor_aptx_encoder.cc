@@ -354,7 +354,7 @@ size_t A2dpAptxEncoder::aptx_encode_16bit(tAPTX_FRAMING_PARAMS* framing_params, 
   return pcm_bytes_encoded;
 }
 
-void A2dpCodecConfigAptx::debug_codec_dump(int fd) {
+void A2dpCodecConfigAptxSource::debug_codec_dump(int fd) {
   A2dpAptxEncoder* encoder = (A2dpAptxEncoder*)findA2dpSourceEncoder(getPeerAddress());
   if (encoder == nullptr) {
     log::error("failed to find encoder for peer_address:{}",

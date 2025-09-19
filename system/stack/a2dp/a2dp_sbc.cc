@@ -1435,6 +1435,9 @@ A2dpCodecConfigSbcSink::A2dpCodecConfigSbcSink(btav_a2dp_codec_priority_t codec_
 A2dpCodecConfigSbcSink::~A2dpCodecConfigSbcSink() {}
 
 bool A2dpCodecConfigSbcSink::init() {
+  if (!A2DP_IsCodecSupported(BTAV_A2DP_CODEC_INDEX_SINK_SBC))
+    return false;
+
   return true;
 }
 
