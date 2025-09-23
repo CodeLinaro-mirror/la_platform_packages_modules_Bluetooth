@@ -2504,6 +2504,16 @@ public class HeadsetService extends ProfileService {
                                 com.android.bluetooth.R.bool
                                         .config_bluetooth_hfp_inband_ringing_support);
 
+        boolean isDeviceBlacklisted = false;
+        if (mActiveDevice != null) {
+            synchronized (mStateMachines) {
+                HeadsetStateMachine stateMachine = mStateMachines.get(mActiveDevice);
+                if (stateMachine != null) {
+                    isDeviceBlacklisted = stateMachine.isDeviceBlacklistedForInbandRingtone();
+                }
+            }
+        }
+
         boolean inbandRingtoneAllowedByPolicy = true;
         List<BluetoothDevice> audioConnectableDevices = getConnectedDevices();
         if (audioConnectableDevices.size() == 1) {
@@ -2518,6 +2528,7 @@ public class HeadsetService extends ProfileService {
 
         return isInbandRingingSupported
                 && !SystemProperties.getBoolean(DISABLE_INBAND_RINGING_PROPERTY, false)
+                && !isDeviceBlacklisted
                 && !mInbandRingingRuntimeDisable
                 && inbandRingtoneAllowedByPolicy
                 && !isHeadsetClientConnected();
@@ -2589,6 +2600,12 @@ public class HeadsetService extends ProfileService {
                 mInbandRingingRuntimeDisable = true;
             } else {
                 mInbandRingingRuntimeDisable = false;
+                HeadsetStateMachine stateMachine = mStateMachines.get(mActiveDevice);
+                if (getConnectedDevices().size() == 1 &&
+                    (stateMachine != null && stateMachine.isDeviceBlacklistedForInbandRingtone())) {
+                    Log.d(TAG, "Skip updateInbandRinging since device is in blacklist");
+                    return;
+                }
             }
 
             final boolean updateAll = inbandRingingRuntimeDisable != mInbandRingingRuntimeDisable;
