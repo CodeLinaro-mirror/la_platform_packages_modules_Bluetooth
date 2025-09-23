@@ -68,7 +68,6 @@ public final class BluetoothAdapterUtil {
                 BluetoothProfile.LE_AUDIO,
                 BluetoothProfile.LE_AUDIO_BROADCAST)));
         sProfiles.put(ADAPTER_1, new ArrayList<Integer>(Arrays.asList(
-                BluetoothProfile.HEADSET,
                 BluetoothProfile.A2DP,
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,

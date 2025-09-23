@@ -570,7 +570,7 @@ public:
                          const std::vector<btav_a2dp_codec_config_t>& codec_preferences,
                          std::promise<void> peer_ready_promise) {
     // Restart the session if the codec for the active peer is updated
-    if (active_peers_.find(peer_address) != active_peers_.end()) {
+    if (!IsSupportDualA2dpSource() && active_peers_.find(peer_address) != active_peers_.end()) {
       btif_a2dp_source_end_session(peer_address);
     }
 
@@ -1315,12 +1315,10 @@ void BtifAvSource::DispatchSuspendStreamEvent(const RawAddress& peer_address, bt
     return;
   }
   bool av_stream_idle = true;
-  for (auto it : peers_) {
-    const BtifAvPeer* peer = it.second;
-    if (peer->StateMachine().StateId() == BtifAvStateMachine::kStateStarted) {
-      btif_av_source_dispatch_sm_event(peer->PeerAddress(), event);
-      av_stream_idle = false;
-    }
+  BtifAvPeer* peer = btif_av_source_find_peer(peer_address);
+  if (peer->StateMachine().StateId() == BtifAvStateMachine::kStateStarted) {
+    btif_av_source_dispatch_sm_event(peer_address, event);
+    av_stream_idle = false;
   }
 
   if (av_stream_idle) {
@@ -1672,8 +1670,8 @@ void BtifAvStateMachine::StateIdle::OnEnter() {
   // Stop A2DP if this is the active peer
   if (peer_.IsActivePeer()) {
     btif_a2dp_on_idle(peer_.PeerAddress(), peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
-  } else if((peer_.IsSink() && btif_av_sink.ActivePeer().IsEmpty()) ||
-        (peer_.IsSource() && btif_av_source.ActivePeers().empty())) {
+  } else if((peer_.IsSink() && btif_av_source.ActivePeers().empty()) ||
+        (peer_.IsSource() && btif_av_sink.ActivePeer().IsEmpty())) {
     btif_a2dp_on_idle(peer_.PeerAddress(), peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
   }
 
@@ -1795,11 +1793,8 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
         can_connect = btif_av_sink.AllowedToConnect(peer_.PeerAddress());
         if (!can_connect) {
           log::error("Sink profile doesn't allow connection to peer:{}", peer_.PeerAddress());
-          if (btif_av_src_sink_coexist_enabled()) {
-            BTA_AvCloseRc((reinterpret_cast<tBTA_AV*>(p_data))->rc_open.rc_handle);
-          } else {
-            btif_av_sink_disconnect(peer_.PeerAddress());
-          }
+          BTA_AvCloseRc((reinterpret_cast<tBTA_AV*>(p_data))->rc_open.rc_handle);
+          btif_av_sink_disconnect(peer_.PeerAddress());
         }
       }
       if (!can_connect) {
@@ -2343,7 +2338,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
         btif_av_source_dispatch_sm_event(peer_.PeerAddress(), BTIF_AV_SUSPEND_STREAM_REQ_EVT);
       }
 
-      if (com::android::bluetooth::flags::av_stream_reconfigure_fix() &&
+      if (!IsSupportDualA2dpSource() && com::android::bluetooth::flags::av_stream_reconfigure_fix() &&
           peer_.CheckFlags(BtifAvPeer::kFlagPendingReconfigure)) {
         log::info(
                 "Peer {} : Stream started but reconfiguration pending. "
@@ -3236,10 +3231,10 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
     case BTA_AV_VENDOR_CMD_EVT:
     case BTA_AV_VENDOR_RSP_EVT:
     case BTA_AV_META_MSG_EVT: {
+      const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
+      btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
       if (btif_av_src_sink_coexist_enabled()) {
         if (peer_sep == AVDT_TSEP_INVALID) {
-          const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
-          btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
           if (peer_address == RawAddress::kEmpty) {
             log::error("peer_address is empty");
             //peer_address = btif_av_source.ActivePeer();
@@ -3247,7 +3242,7 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
               peer_address = btif_av_sink.ActivePeer();
             }
           }
-       } else if (peer_sep == AVDT_TSEP_SNK) {        
+       } else if (peer_sep == AVDT_TSEP_SNK) {
           log::error("peer_address is empty");
           //peer_address = btif_av_source.ActivePeer();
         } else if (peer_sep == AVDT_TSEP_SRC) {
@@ -3262,9 +3257,13 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
       // TODO: Might be wrong - this code will be removed once those
       // events are received from the AVRCP module.
       if (peer_sep == AVDT_TSEP_SNK) {
+        if (peer_address == RawAddress::kEmpty)
+          log::error("peer_address is empty");
+          //peer_address = btif_av_source.ActivePeer();
         msg = "Stream sink offloaded";
       } else if (peer_sep == AVDT_TSEP_SRC) {
-        peer_address = btif_av_sink.ActivePeer();
+        if (peer_address == RawAddress::kEmpty)
+          peer_address = btif_av_sink.ActivePeer();
         msg = "Stream source offloaded";
       }
       break;
@@ -3665,7 +3664,7 @@ bt_status_t btif_av_source_set_codec_config_preference(
   std::future<void> peer_ready_future = peer_ready_promise.get_future();
   bt_status_t status = BT_STATUS_FAIL;
 
-  if (com::android::bluetooth::flags::av_stream_reconfigure_fix()) {
+  if (!IsSupportDualA2dpSource() && com::android::bluetooth::flags::av_stream_reconfigure_fix()) {
     status = btif_av_source.SetPeerReconfigureStreamData(peer_address, codec_preferences,
                                                          std::move(peer_ready_promise));
     if (status != BT_STATUS_SUCCESS) {
@@ -4197,6 +4196,19 @@ bool btif_av_source_is_active_peer(const RawAddress& peer_address) {
 
 bool IsSupportDualA2dpSource() {
   char support[PROPERTY_VALUE_MAX] = {0};
-  osi_property_get("persist.bluetooth.duala2dp", support, "true");
+  osi_property_get("persist.bluetooth.duala2dp", support, "false");
   return strncmp(support, "true", 4) == 0;
+}
+
+/* Return stream index in 1 or 2
+ * Return -1 on failure
+ */
+uint8_t btif_av_source_stream_index(const RawAddress& peer_address) {
+  log::info("peer={}", peer_address);
+
+  if (!btif_av_source.Enabled()) {
+    log::error("BTIF AV Source is not enabled");
+    return -1;
+  }
+  return btif_a2dp_source_get_stream_index(peer_address);
 }

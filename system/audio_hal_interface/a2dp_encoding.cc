@@ -77,6 +77,14 @@ void cleanup() {
   aidl::a2dp::cleanup();
 }
 
+// Clean up BluetoothAudio HAL
+void cleanup(uint8_t index) {
+  if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
+    return;
+  }
+  aidl::a2dp::cleanup(index);
+}
+
 // Set up the codec into BluetoothAudio HAL
 bool setup_codec(A2dpCodecConfig* a2dp_config, uint16_t peer_mtu,
                  int preferred_encoding_interval_us, uint8_t index) {

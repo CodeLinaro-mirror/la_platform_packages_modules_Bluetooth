@@ -444,29 +444,33 @@ bool init(bluetooth::common::MessageLoopThread* /*message_loop*/,
 // Clean up BluetoothAudio HAL
 void cleanup() {
   for (int i = 0; i < MAX_A2DP_CONN; i++) {
-    if (!is_hal_enabled(i)) {
-      continue;
-    }
-    end_session(i);
-
-    auto a2dp_sink = active_hal_interface[i]->GetTransportInstance();
-    static_cast<A2dpTransport*>(a2dp_sink)->ResetPendingCmd();
-    static_cast<A2dpTransport*>(a2dp_sink)->ResetPresentationPosition();
-    active_hal_interface[i] = nullptr;
-
-    a2dp_sink = software_hal_interface[i]->GetTransportInstance();
-    delete software_hal_interface[i];
-    software_hal_interface[i] = nullptr;
-    delete a2dp_sink;
-    if (offloading_hal_interface[i] != nullptr) {
-      a2dp_sink = offloading_hal_interface[i]->GetTransportInstance();
-      delete offloading_hal_interface[i];
-      offloading_hal_interface[i] = nullptr;
-      delete a2dp_sink;
-    }
-
-    remote_delay[i] = 0;
+    cleanup(i);
   }
+}
+
+void cleanup(uint8_t index) {
+  if (!is_hal_enabled(index)) {
+    return;
+  }
+  end_session(index);
+
+  auto a2dp_sink = active_hal_interface[index]->GetTransportInstance();
+  static_cast<A2dpTransport*>(a2dp_sink)->ResetPendingCmd();
+  static_cast<A2dpTransport*>(a2dp_sink)->ResetPresentationPosition();
+  active_hal_interface[index] = nullptr;
+
+  a2dp_sink = software_hal_interface[index]->GetTransportInstance();
+  delete software_hal_interface[index];
+  software_hal_interface[index] = nullptr;
+  delete a2dp_sink;
+  if (offloading_hal_interface[index] != nullptr) {
+    a2dp_sink = offloading_hal_interface[index]->GetTransportInstance();
+    delete offloading_hal_interface[index];
+    offloading_hal_interface[index] = nullptr;
+    delete a2dp_sink;
+  }
+
+  remote_delay[index] = 0;
 }
 
 // Set up the codec into BluetoothAudio HAL
@@ -601,7 +605,7 @@ void ack_stream_started(Status ack, uint8_t index) {
     log::error("BluetoothAudio HAL is not enabled");
     return;
   }
-  log::info("result={}", ack);
+  log::info("result={}, index {}", ack, index);
   auto a2dp_sink = static_cast<A2dpTransport*>(active_hal_interface[index]->GetTransportInstance());
   auto pending_cmd = a2dp_sink->GetPendingCmd();
   if (pending_cmd == A2DP_CTRL_CMD_START) {

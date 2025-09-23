@@ -384,4 +384,6 @@ bool btif_av_source_is_active_peer(const RawAddress& peer_address);
 
 bool IsSupportDualA2dpSource();
 
+uint8_t btif_av_source_stream_index(const RawAddress& peer_address);
+
 #endif /* BTIF_AV_H */

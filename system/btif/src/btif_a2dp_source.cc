@@ -708,7 +708,13 @@ void btif_a2dp_source_shutdown(const RawAddress& peer_address, std::promise<void
   a2dp_source_cb->media_alarm.CancelAndWait();
   wakelock_release();
 
-  bluetooth::audio::a2dp::cleanup();
+  A2dpStreamCallbacks *a2dp_stream_callback = getA2dpStreamCallback(peer_address);
+  if (a2dp_stream_callback == nullptr) {
+    log::error("No available source for new active A2DP streaming!");
+    return;
+  }
+  bluetooth::audio::a2dp::cleanup(a2dp_stream_callback->GetIndex());
+  a2dp_stream_callback->SetActivePeer(RawAddress::kEmpty);
 
   fixed_queue_free(a2dp_source_cb->tx_audio_queue, nullptr);
   a2dp_source_cb->tx_audio_queue = nullptr;
@@ -794,7 +800,7 @@ static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
   }
 
   A2dpEncoderInterface*  encoder_interface  = bta_av_co_get_encoder_interface(peer_address);
-  if (a2dp_source_cb->encoder_interface == nullptr) {
+  if (encoder_interface == nullptr) {
     log::error("Cannot stream audio: no source encoder interface");
     return;
   }
@@ -1166,7 +1172,7 @@ static void btif_a2dp_source_audio_handle_timer(const RawAddress& peer_address) 
   uint64_t timestamp_us = bluetooth::common::time_get_audio_server_tick_us();
   uint64_t stats_timestamp_us = bluetooth::common::time_get_os_boottime_us();
 
-  log::info("peer_address {}", peer_address.ToString().c_str());
+  log::verbose("peer_address {}", peer_address.ToString().c_str());
   BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
   if (a2dp_source_cb == nullptr) {
@@ -1198,7 +1204,7 @@ static void btif_a2dp_source_audio_handle_timer(const RawAddress& peer_address) 
 /// Callback invoked by the encoder for reading PCM audio data from the
 /// Bluetooth Audio HAL. Runs on the source worker thread.
 uint32_t btif_a2dp_source_read_callback(const RawAddress& peer_address, uint8_t* p_buf, uint32_t len) {
-  log::info("peer_address {}", peer_address.ToString().c_str());
+  log::verbose("peer_address {}, len {}", peer_address.ToString().c_str(), len);
   BtifA2dpSource* a2dp_source_cb = findA2dpSourceCb(peer_address);
 
   if (a2dp_source_cb == nullptr) {
@@ -1207,6 +1213,7 @@ uint32_t btif_a2dp_source_read_callback(const RawAddress& peer_address, uint8_t*
   }
 
   if (!a2dp_source_cb->sw_audio_is_encoding) {
+    log::error("sw_audio_is_encoding is false");
     return 0;
   }
   int index = btif_a2dp_source_get_stream_index(peer_address);

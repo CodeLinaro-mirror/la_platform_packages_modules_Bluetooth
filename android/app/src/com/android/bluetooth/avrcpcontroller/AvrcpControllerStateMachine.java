@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -44,6 +49,7 @@ import com.android.bluetooth.a2dpsink.A2dpSinkService;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.flags.Flags;
+import com.android.bluetooth.hfpclient.HeadsetClientStateMachine;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
@@ -572,7 +578,9 @@ class AvrcpControllerStateMachine extends StateMachine {
                     return true;
 
                 case MSG_AVRCP_PASSTHRU:
-                    passThru(msg.arg1);
+                    if (isPassThruAllowed(msg.arg1)) {
+                        passThru(msg.arg1);
+                    }
                     return true;
 
                 case MSG_AVRCP_SET_REPEAT:
@@ -604,6 +612,15 @@ class AvrcpControllerStateMachine extends StateMachine {
                             "Connected: Playback status = "
                                     + AvrcpControllerUtils.playbackStateToString(msg.arg1));
                     mAddressedPlayer.setPlayStatus(msg.arg1);
+
+                    // Pause music when SCO is connected
+                    if (msg.arg1 == PlaybackStateCompat.STATE_PLAYING
+                            && HeadsetClientStateMachine.isAudioRouted()) {
+                        sendMessage(MSG_AVRCP_PASSTHRU,
+                                AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
+                        return true;
+                    }
+
                     if (!isActive()) {
                         sendMessage(
                                 MSG_AVRCP_PASSTHRU, AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
@@ -1506,5 +1523,19 @@ class AvrcpControllerStateMachine extends StateMachine {
             default:
                 return "UNKNOWN_EVENT_ID_" + event;
         }
+    }
+
+    private static boolean isPassThruAllowed(int cmd) {
+        if (!(HeadsetClientStateMachine.isAudioRouted())) {
+            return true;
+        } else {
+            // Only pause/stop are allowed when SCO is connected
+            if (cmd == AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE
+                    || cmd == AvrcpControllerService.PASS_THRU_CMD_ID_STOP) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

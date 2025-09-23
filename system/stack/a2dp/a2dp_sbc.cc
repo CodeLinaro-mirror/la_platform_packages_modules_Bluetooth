@@ -71,11 +71,15 @@ typedef struct {
 
 /* SBC Source codec capabilities */
 static const tA2DP_SBC_CIE a2dp_sbc_source_caps = {
+#if 0
 #ifdef TARGET_FLOSS
         (A2DP_SBC_IE_SAMP_FREQ_48 | A2DP_SBC_IE_SAMP_FREQ_44), /* samp_freq */
 #else
         (A2DP_SBC_IE_SAMP_FREQ_44), /* samp_freq */
 #endif
+#endif
+        (A2DP_SBC_IE_SAMP_FREQ_48), /* force 48k samp_freq for dual a2dp*/
+
         (A2DP_SBC_IE_CH_MD_MONO | A2DP_SBC_IE_CH_MD_JOINT), /* ch_mode */
         (A2DP_SBC_IE_BLOCKS_16 | A2DP_SBC_IE_BLOCKS_12 | A2DP_SBC_IE_BLOCKS_8 |
          A2DP_SBC_IE_BLOCKS_4),            /* block_len */
@@ -1103,15 +1107,15 @@ tA2DP_STATUS A2dpCodecConfigSbcBase::setCodecConfig(const uint8_t* p_peer_codec_
       break;
     }
 
-    // No user preference - try the codec audio config
-    if (select_audio_sample_rate(&codec_audio_config_, samp_freq, &result_config_cie,
-                                 &codec_config_)) {
-      break;
-    }
-
     // No user preference - try the default config
     if (select_best_sample_rate(a2dp_sbc_default_config.samp_freq & peer_info_cie.samp_freq,
                                 &result_config_cie, &codec_config_)) {
+      break;
+    }
+
+    // No user preference - try the codec audio config
+    if (select_audio_sample_rate(&codec_audio_config_, samp_freq, &result_config_cie,
+                                 &codec_config_)) {
       break;
     }
 
@@ -1431,6 +1435,9 @@ A2dpCodecConfigSbcSink::A2dpCodecConfigSbcSink(btav_a2dp_codec_priority_t codec_
 A2dpCodecConfigSbcSink::~A2dpCodecConfigSbcSink() {}
 
 bool A2dpCodecConfigSbcSink::init() {
+  if (!A2DP_IsCodecSupported(BTAV_A2DP_CODEC_INDEX_SINK_SBC))
+    return false;
+
   return true;
 }
 

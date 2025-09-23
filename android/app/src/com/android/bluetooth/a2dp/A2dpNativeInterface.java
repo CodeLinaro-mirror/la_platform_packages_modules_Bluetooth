@@ -143,6 +143,10 @@ public class A2dpNativeInterface {
         return setCodecConfigPreferenceNative(getByteAddress(device), codecConfigArray);
     }
 
+    public int getStreamIndex(BluetoothDevice device) {
+        return getStreamIndexNative(getByteAddress(device));
+    }
+
     private static byte[] getByteAddress(BluetoothDevice device) {
         if (device == null) {
             return Utils.getBytesFromAddress("00:00:00:00:00:00");
@@ -169,4 +173,5 @@ public class A2dpNativeInterface {
 
     private native boolean setCodecConfigPreferenceNative(
             byte[] address, BluetoothCodecConfig[] codecConfigArray);
+    private native int getStreamIndexNative(byte[] address);
 }

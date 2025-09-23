@@ -452,10 +452,11 @@ public class MediaPlayerList {
 
     public void sendMediaKeyEventExt(BluetoothDevice device, int key, boolean pushed) {
         d("sendMediaKeyEventExt: device " + device + " key=" + key + " pushed=" + pushed);
-//        int action = pushed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP;
-//        KeyEvent event = new KeyEvent(action, AvrcpPassthrough.toKeyCode(key));
+        int action = pushed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP;
+        KeyEvent event = new KeyEvent(action, AvrcpPassthrough.toKeyCode(key));
         // Send a media key event to a media player
-        //mMediaSessionManager.dispatchMediaKeyEvent(event, getPlayerPackageName(device)); // to be fixed !!!
+        mMediaSessionManager.dispatchMediaKeyEvent(event, false);
+        //mMediaSessionManager.dispatchMediaKeyEvent(event, getPlayerPackageName(device));
     }
 
     /** Sets the {@link #mBrowsingPlayerId} and returns the number of items in current path */

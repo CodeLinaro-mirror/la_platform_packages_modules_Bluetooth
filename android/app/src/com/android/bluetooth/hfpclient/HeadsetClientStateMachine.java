@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 // Bluetooth Headset Client State Machine
@@ -984,11 +989,12 @@ public class HeadsetClientStateMachine extends StateMachine {
     synchronized void routeHfpAudio(boolean enable) {
         debug("hfp_enable=" + enable);
         if (enable && !sAudioIsRouted) {
+            sAudioIsRouted = true;
             mAudioManager.setHfpEnabled(true);
         } else if (!enable) {
+            sAudioIsRouted = false;
             mAudioManager.setHfpEnabled(false);
         }
-        sAudioIsRouted = enable;
     }
 
     private AudioFocusRequest requestAudioFocus() {
@@ -2598,5 +2604,14 @@ public class HeadsetClientStateMachine extends StateMachine {
     @VisibleForTesting
     int getInBandRingtonePolicyProperty() {
         return mInBandRingtonePolicyProperty;
+    }
+
+    /**
+     * gets the SCO state
+     *
+     * @return boolean sAudioIsRouted
+     */
+    public static boolean isAudioRouted() {
+        return sAudioIsRouted;
     }
 }

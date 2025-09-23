@@ -410,8 +410,8 @@ typedef struct {
 
 /* Data type for BTA_AV_CI_SRC_DATA_READY_EVT */
 typedef struct {
+  BT_HDR_RIGID hdr;
   RawAddress peer_address;
-  BT_HDR hdr;
 } tBTA_AV_CI_SRC_DATA;
 
 enum : uint8_t {
