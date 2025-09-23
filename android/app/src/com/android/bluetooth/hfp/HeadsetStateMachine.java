@@ -2918,6 +2918,13 @@ class HeadsetStateMachine extends StateMachine {
                                 "Remove the active device because the active device policy after"
                                         + " connection is not allowed");
                         mHeadsetService.setActiveDevice(null);
+                    } else if (getHfpCallAudioPolicy().getActiveDevicePolicyAfterConnection()
+                                    == BluetoothSinkAudioPolicy.POLICY_ALLOWED
+                            && !mDevice.equals(mHeadsetService.getActiveDevice())) {
+                        Log.d( TAG,
+                            "Set the device as active because the active device policy after"
+                              + " connection is allowed");
+                        mHeadsetService.setActiveDevice(mDevice);
                     }
                 } else {
                     Log.w(TAG, "Invalid SinkAudioPolicy parameters!");
@@ -3303,6 +3310,13 @@ class HeadsetStateMachine extends StateMachine {
     boolean isDeviceBlacklistedForDelayingCLCCRespAfterVOIPCall() {
         boolean matched = InteropUtil.interopMatchAddrOrName(
             InteropUtil.InteropFeature.INTEROP_HFP_SEND_OK_FOR_CLCC_AFTER_VOIP_CALL_END,
+            mDevice.getAddress());
+        return matched;
+    }
+
+    boolean isDeviceBlacklistedForInbandRingtone() {
+        boolean matched = InteropUtil.interopMatchAddrOrName(
+            InteropUtil.InteropFeature.INTEROP_INBAND_RINGTONE_SET_TO_FALSE,
             mDevice.getAddress());
         return matched;
     }

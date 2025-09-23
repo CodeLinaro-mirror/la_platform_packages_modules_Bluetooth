@@ -676,7 +676,11 @@ static void bta_dm_proc_open_evt(tBTA_GATTC_OPEN* p_data) {
   if (p_data->status == GATT_SUCCESS) {
     get_gatt_interface().BTA_GATTC_ServiceSearchRequest(p_data->conn_id, nullptr);
   } else {
-    bta_dm_gatt_disc_complete(GATT_INVALID_CONN_ID, p_data->status);
+    if (bta_dm_discovery_get_state() == BTA_DM_DISCOVER_ACTIVE &&
+        p_data->remote_bda == bta_dm_discovery_cb.peer_bdaddr) {
+      log::warn("{}: invalid status {}", __func__, p_data->status);
+      bta_dm_gatt_disc_complete(GATT_INVALID_CONN_ID, p_data->status);
+    }
   }
 }
 

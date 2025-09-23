@@ -57,7 +57,7 @@ import java.util.Set;
 @SuppressLint("MissingPermission") // permissions are checked upfront
 public class BleConnectionViewModel extends AndroidViewModel {
     private static final int GATT_MTU_SIZE = 512;
-
+    private boolean is_advertising = false;
     private final BluetoothAdapter mBluetoothAdapter;
     private final BluetoothManager mBluetoothManager;
     @Nullable private BluetoothGatt mBluetoothGatt = null;
@@ -133,6 +133,10 @@ public class BleConnectionViewModel extends AndroidViewModel {
       }
     };
     public void updateconnectioninterval(String conn_priority) {
+      if(mBluetoothGatt == null) {
+        printLog("Bluetooth Gatt is null");
+        return;
+      }
       switch (conn_priority) {
         case "Balanced":
           mBluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED);
@@ -148,6 +152,10 @@ public class BleConnectionViewModel extends AndroidViewModel {
 
     private void startConnectableAdvertising() {
         if (mIsAdvertising.getValue()) {
+            return;
+        }
+        if(is_advertising) {
+            printLog("Advertising callback allready registered");
             return;
         }
         BluetoothLeAdvertiser advertiser = mBluetoothAdapter.getBluetoothLeAdvertiser();
@@ -192,12 +200,22 @@ public class BleConnectionViewModel extends AndroidViewModel {
 
         advertiser.startAdvertisingSet(
                 parameters, advertiseData, null, null, null, 0, 0, mAdvertisingSetCallback);
+        is_advertising = true;
     }
 
     private void stopAdvertising() {
         BluetoothLeAdvertiser advertiser = mBluetoothAdapter.getBluetoothLeAdvertiser();
-        advertiser.stopAdvertisingSet(mAdvertisingSetCallback);
-        printLog("stop advertising");
+        if(advertiser != null) {
+            advertiser.stopAdvertisingSet(mAdvertisingSetCallback);
+            printLog("stop advertising");
+        }
+    }
+    
+    void checkstopadvertiser() {
+        if(mIsAdvertising.getValue()) {
+            mIsAdvertising.postValue(false);
+            stopAdvertising();
+        }
     }
 
     void updateBondedDevices() {

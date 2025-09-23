@@ -2335,6 +2335,7 @@ public class BassClientService extends ProfileService {
                 return;
             }
 
+            boolean isSearching = isSearchInProgress();
             synchronized (mSourceSyncRequestsQueue) {
                 // updates syncHandle, advSid
                 // set other fields as invalid or null
@@ -2350,14 +2351,12 @@ public class BassClientService extends ProfileService {
                 addActiveSyncedSource(syncHandle);
 
                 if (!leaudioBroadcastResyncHelper()) {
-                    synchronized (mSearchScanCallbackLock) {
-                        // when searching is stopped then start timer to stop active syncs
-                        if (!isSearchInProgress()) {
-                            mHandler.removeMessages(MESSAGE_SYNC_TIMEOUT);
-                            log("Started MESSAGE_SYNC_TIMEOUT");
-                            mHandler.sendEmptyMessageDelayed(
-                                    MESSAGE_SYNC_TIMEOUT, sSyncActiveTimeout.toMillis());
-                        }
+                    // when searching is stopped then start timer to stop active syncs
+                    if (!isSearching) {
+                        mHandler.removeMessages(MESSAGE_SYNC_TIMEOUT);
+                        log("Started MESSAGE_SYNC_TIMEOUT");
+                        mHandler.sendEmptyMessageDelayed(
+                                MESSAGE_SYNC_TIMEOUT, sSyncActiveTimeout.toMillis());
                     }
                 } else {
                     mTimeoutHandler.stop(broadcastId, MESSAGE_BROADCAST_MONITOR_TIMEOUT);

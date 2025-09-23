@@ -327,8 +327,12 @@ class BassClientStateMachine extends StateMachine {
 
         if (mBluetoothGatt != null) {
             log("disconnect gatt");
-            mBluetoothGatt.disconnect();
-            mBluetoothGatt.close();
+            try {
+                mBluetoothGatt.disconnect();
+                mBluetoothGatt.close();
+            } catch (NullPointerException e) {
+                Log.w(TAG, "mBluetoothGatt is null: " + e);
+            }
             mBluetoothGatt = null;
             mGattCallback = null;
         }
@@ -474,7 +478,11 @@ class BassClientStateMachine extends StateMachine {
     private void resetBluetoothGatt() {
         // cleanup mBluetoothGatt
         if (mBluetoothGatt != null) {
-            mBluetoothGatt.close();
+            try {
+                mBluetoothGatt.close();
+            } catch (NullPointerException e) {
+                Log.w(TAG, "mBluetoothGatt is null: " + e);
+            }
             mBluetoothGatt = null;
         }
     }
