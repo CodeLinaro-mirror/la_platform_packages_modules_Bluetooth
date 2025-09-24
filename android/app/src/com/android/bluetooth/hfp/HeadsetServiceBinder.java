@@ -73,10 +73,9 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
     boolean isAospLeaVoipWarEnabled() {
         boolean ret = false;
         CallAudio mCallAudio = CallAudio.get();
-        if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()
-                && mCallAudio.getActiveProfile()== mCallAudio.LE_AUDIO_VOICE) {
+        if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
             ret = true;
-    }
+        }
         Log.i(TAG, "isAospLeaVoipWarEnabled: " + ret);
         return ret;
     }
@@ -122,7 +121,7 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
     public List<BluetoothDevice> getDevicesMatchingConnectionStates(
             int[] states, AttributionSource source) {
         if (isAospLeaVoipWarEnabled()) {
-            Log.d(TAG, "getConnectedDevicesWithAttribution(): Adv Audio enabled");
+            Log.d(TAG, "getDevicesMatchingConnectionStates(): Adv Audio enabled");
             CallAudio mCallAudio = CallAudio.get();
             if (mCallAudio != null) {
                 return mCallAudio.getDevicesMatchingConnectionStates(states);

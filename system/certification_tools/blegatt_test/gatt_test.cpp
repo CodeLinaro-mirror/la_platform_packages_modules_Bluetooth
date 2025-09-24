@@ -373,8 +373,10 @@ static int Send_Data();
 static int send_file(char* p);
 static void le_l2cap_coc_connect(char* svr);
 static void l2cap_coc_connect(char* svr);
+static void l2cap_coc_reconfigure(char* svr);
 uint16_t do_le_l2cap_coc_connect(char* p);
 uint16_t do_l2cap_coc_connect(char* p);
+uint16_t do_l2cap_coc_reconfigure(char* p);
 static void le_l2cap_coc_flow_ctrl(char* p);
 uint16_t do_le_l2cap_coc_flow_ctrl(char* p);
 static void do_le_coc_disconnect(char* p);
@@ -1802,6 +1804,11 @@ const t_cmd console_cmd_list[] = {
      "\n\t\t\t\tle_mtu [23 to 65535], \n\t\t\t\tle_mps [23 to 65533], "
      "\n\t\t\t\tinit_credits [0 to 65535], \n\t\t\t\tsec_level [0 - None,"
      " 1 - Authentication, 2 - Encryption], \n\t\t\t\tbd_addr [001122334455] ",
+     0},
+
+    {"l2cap_coc_reconfigure", l2cap_coc_reconfigure,
+     "\n\t\t\t\tle_mtu [23 to 65535], \n\t\t\t\tle_mps [23 to 65533], "
+     "\n\t\t\t\tchnl_id[1 to 65535], \n\t\t\t\tbd_addr [001122334455] ",
      0},
 
     {"l2cap_coc_listen", l2cap_coc_listen, "\t::\t psm [39], \n\t::\tresult ",
@@ -3492,9 +3499,34 @@ uint16_t do_l2cap_coc_connect(char* p) {
   return 0;
 }
 
+uint16_t do_l2cap_coc_reconfigure(char* p) {
+  RawAddress bd_addr = {{0}};
+  std::vector<uint16_t> chnl_id;
+  tL2CAP_LE_CFG_INFO p_cfg;
+  p_cfg.mtu = get_int(&p, -1);
+  p_cfg.mps = get_int(&p, -1);
+
+  printf("%s MTU: %u, MPS: %u\n",  __FUNCTION__,p_cfg.mtu, p_cfg.mps);
+
+  uint32_t channel_id = get_int(&p, 0x0001);
+  chnl_id.push_back(static_cast<uint16_t>(channel_id));
+  printf("%s Channel ID: 0x%04X\n",__FUNCTION__ ,channel_id);
+
+  int stat= GetBdAddr(p, &bd_addr);
+  printf("%s GetBdAddr returned: %d\n",__FUNCTION__,stat);
+
+  printf("%s:: remote_bd_addr=%02x:%02x:%02x:%02x:%02x:%02x \n", __FUNCTION__,
+         bd_addr.address[0], bd_addr.address[1], bd_addr.address[2],
+         bd_addr.address[3], bd_addr.address[4], bd_addr.address[5]);
+  sL2capInterface->ReconfigConnectCocReq(bd_addr, chnl_id, &p_cfg);
+  return 0;
+}
+
 static void le_l2cap_coc_connect(char* svr) { do_le_l2cap_coc_connect(svr); }
 
 static void l2cap_coc_connect(char* svr) { do_l2cap_coc_connect(svr); }
+
+static void l2cap_coc_reconfigure(char* svr) { do_l2cap_coc_reconfigure(svr); }
 
 static void le_l2cap_listen(char* p) {
   int le_rspndr_sec_level;

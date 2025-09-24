@@ -79,6 +79,7 @@
 #include "stack/include/btm_log_history.h"
 #include "stack/include/btm_status.h"
 #include "stack/include/l2cap_interface.h"
+#include "stack/acl/acl.h"
 #include "storage/config_keys.h"
 #include "types/bt_transport.h"
 #include "types/hci_role.h"
@@ -1034,6 +1035,8 @@ void bta_av_disconnect_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* /* p_data */) {
   tBTA_AV_RCB* p_rcb;
 
   log::verbose("conn_lcb: 0x{:x} peer_addr: {}", bta_av_cb.conn_lcb, p_scb->PeerAddress());
+  //enable sniff when AV profile got disconnected.
+  get_btm_client_interface().link_policy.BTM_unblock_sniff_mode_for(p_scb->PeerAddress());
 
   alarm_cancel(p_scb->link_signalling_timer);
   alarm_cancel(p_scb->accept_signalling_timer);
@@ -2455,19 +2458,17 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   }
 
   {
-    /* If sink starts stream, disable sniff mode here */
+    /* If sink starts stream, do not disable sniff mode here */
     if (!initiator) {
       /* If source is the central role, disable role switch during streaming.
        * Otherwise allow role switch, if source is peripheral.
        * Because it would not hurt source, if the peer device wants source to be
        * central.
-       * disable sniff mode unconditionally during streaming */
+       * do not disable sniff mode unconditionally during streaming */
       if ((get_btm_client_interface().link_policy.BTM_GetRole(p_scb->PeerAddress(), &cur_role) ==
            tBTM_STATUS::BTM_SUCCESS) &&
           (cur_role == HCI_ROLE_CENTRAL)) {
-        BTM_block_role_switch_and_sniff_mode_for(p_scb->PeerAddress());
-      } else {
-        get_btm_client_interface().link_policy.BTM_block_sniff_mode_for(p_scb->PeerAddress());
+         get_btm_client_interface().link_policy.BTM_block_role_switch_for(p_scb->PeerAddress());
       }
     }
 
@@ -2660,7 +2661,7 @@ void bta_av_suspend_cfm(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   }
 
   bta_sys_idle(BTA_ID_AV, p_scb->hdi, p_scb->PeerAddress());
-  BTM_unblock_role_switch_and_sniff_mode_for(p_scb->PeerAddress());
+  get_btm_client_interface().link_policy.BTM_unblock_role_switch_for(p_scb->PeerAddress());
 
   /* in case that we received suspend_ind, we may need to call co_stop here */
   if (p_scb->co_started) {

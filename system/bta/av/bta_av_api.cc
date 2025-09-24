@@ -45,6 +45,7 @@
 #include "osi/include/compat.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_uuid16.h"
+#include "stack/include/btm_client_interface.h"
 #include "types/raw_address.h"
 
 using namespace bluetooth;
@@ -699,4 +700,13 @@ void BTA_AvUpdateAptxData(uint32_t data) {
     bta_sys_sendmsg(p_buf_ull);
   }
   return;
+}
+
+void modify_sniff_policy(bool policy_enable, const RawAddress& peer_addr){
+  log::info("policy_enable:{}, peer_addr:{}", policy_enable, peer_addr);
+  if (policy_enable){
+    get_btm_client_interface().link_policy.BTM_unblock_sniff_mode_for(peer_addr);
+  } else {
+    get_btm_client_interface().link_policy.BTM_block_sniff_mode_for(peer_addr);
+  }
 }

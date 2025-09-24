@@ -1663,10 +1663,6 @@ static void scan_filter_cfg_cb(uint8_t client_if, uint8_t filt_type, uint8_t avb
 
 static void gattClientScanFilterAddNative(JNIEnv* env, jobject /* object */, jint client_if,
                                           jobjectArray filters, jint filter_index) {
-  if (!sScanner) {
-    return;
-  }
-
   jmethodID uuidGetMsb;
   jmethodID uuidGetLsb;
 
@@ -1680,6 +1676,7 @@ static void gattClientScanFilterAddNative(JNIEnv* env, jobject /* object */, jin
 
   int numFilters = env->GetArrayLength(filters);
   if (numFilters == 0) {
+    if (!sScanner) return;
     sScanner->ScanFilterAdd(filter_index, std::move(native_filters),
                             base::Bind(&scan_filter_cfg_cb, client_if));
     return;
@@ -1809,6 +1806,8 @@ static void gattClientScanFilterAddNative(JNIEnv* env, jobject /* object */, jin
     native_filters.push_back(curr);
   }
 
+  // If sScanner should be Null return if not yet set up.
+  if (!sScanner) return;
   sScanner->ScanFilterAdd(filter_index, std::move(native_filters),
                           base::Bind(&scan_filter_cfg_cb, client_if));
 }

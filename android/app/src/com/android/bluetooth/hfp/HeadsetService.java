@@ -1538,6 +1538,13 @@ public class HeadsetService extends ProfileService {
                 Log.w(TAG, "startScoUsingVirtualVoiceCall: no active device");
                 return false;
             }
+            if (isVoipLeaWarEnabled()) {
+                CallAudio mCallAudio = CallAudio.get();
+                if (mCallAudio != null && mCallAudio.getBroadcastedActiveDevice() == null) {
+                    Log.w(TAG, "startScoUsingVirtualVoiceCall: Broadcasted HFP Active Device is null");
+                    return false;
+                }
+            }
             if (SystemProperties.getBoolean(REJECT_SCO_IF_HFPC_CONNECTED_PROPERTY, false)
                     && isHeadsetClientConnected()) {
                 Log.w(TAG, "startScoUsingVirtualVoiceCall: rejected SCO since HFPC is connected!");
@@ -1658,6 +1665,14 @@ public class HeadsetService extends ProfileService {
                 Log.e(TAG, "dialOutgoingCall failed to set active device to " + fromDevice);
                 return false;
             }
+
+            // The phone state still in idle, cache LE-A active device for fallback SHO.
+            LeAudioService leAudioService = mFactory.getLeAudioService();
+            if (leAudioService != null && !leAudioService.getConnectedDevices().isEmpty()) {
+                Log.i(TAG, "Make sure no le audio device active for HFP dialOutgoingCall.");
+                leAudioService.setInactiveForHfpHandover(mActiveDevice);
+            }
+
             Intent intent =
                     new Intent(
                             Intent.ACTION_CALL_PRIVILEGED,

@@ -336,6 +336,16 @@ struct BTA_AvSetCodecMode {
 };
 extern struct BTA_AvSetCodecMode BTA_AvSetCodecMode;
 
+// Name: modify_sniff_policy
+// Params: bool policy_enable, const RawAddress& peer_addr
+// Return: void
+struct modify_sniff_policy {
+  std::function<void(bool policy_enable, const RawAddress& peer_addr)> body{
+          [](bool /*policy_enable*/, const RawAddress& /*peer_addr*/){}};
+  void operator()(bool policy_enable, const RawAddress& peer_addr) { body(policy_enable, peer_addr); }
+};
+extern struct modify_sniff_policy modify_sniff_policy;
+
 // Name: BTA_AvUpdateAptxData
 // Params: uint32_t data
 // Return: void

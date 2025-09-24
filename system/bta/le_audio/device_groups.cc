@@ -928,7 +928,9 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
       CodecManager::UnicastConfigurationRequirements::DeviceDirectionRequirements config_req;
       config_req.params.Add(codec_spec_conf::kLeAudioLtvTypeAudioChannelAllocation,
                             (uint32_t)locations);
-      if (context_to_preferred_configuration_cache_map_.count(ctx_type) != 0) {
+      if (!CodecManager::GetInstance()->IsUsingCodecExtensibility() ||
+          (CodecManager::GetInstance()->IsUsingCodecExtensibility() &&
+           context_to_preferred_configuration_cache_map_.count(ctx_type) != 0)) {
         log::warn("preferred config available for context: {}", common::ToString(ctx_type));
         if (preferred_config_.get(direction) &&
             preferred_config_.get(direction)->codec_priority != -1) {
@@ -1073,22 +1075,34 @@ bool LeAudioDeviceGroup::SetPreferredAudioSetConfiguration(
 
   bool is_updated = false;
 
-  /*for (LeAudioContextType ctx_type : types::kLeAudioContextAllTypesArray) {
-    is_updated |= UpdateAudioSetConfigurationCache(ctx_type, true);
-  }*/
-
-  log::debug("configuration_context_type_ = {}",
+  if (!CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
+    for (LeAudioContextType ctx_type : types::kLeAudioContextAllTypesArray) {
+      if (UpdateAudioSetConfigurationCache(ctx_type, true)) {
+        preferred_config_for_context_exist_[ctx_type] = true;
+        is_updated = true;
+      }
+    }
+  } else {
+    log::debug("configuration_context_type_ = {}",
                                       common::ToString(configuration_context_type_));
-  is_updated |= UpdateAudioSetConfigurationCache(configuration_context_type_, true);
+    is_updated |= UpdateAudioSetConfigurationCache(configuration_context_type_, true);
 
-  if (!IsStreaming() && configuration_context_type_ != LeAudioContextType::MEDIA) {
-    log::info("Update media also when is NOT streaming");
-    is_updated |= UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA, true);
+    if (configuration_context_type_ != LeAudioContextType::MEDIA) {
+      if (UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA, true)) {
+        log::info("Update media preferred codec also when is NOT streaming");
+        preferred_config_for_context_exist_[LeAudioContextType::MEDIA] = true;
+      }
+    }
+
+    if(configuration_context_type_ != LeAudioContextType::CONVERSATIONAL) {
+      if (UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL, true)) {
+        log::info("Update CONVERSATIONAL preferred codec also when is NOT streaming");
+        preferred_config_for_context_exist_[LeAudioContextType::CONVERSATIONAL] = true;
+      }
+    }
+    preferred_config_for_context_exist_[configuration_context_type_] = is_updated;
   }
-
   log::info("is_updated: {}", is_updated);
-  preferred_config_for_context_exist_[configuration_context_type_] = is_updated;
-
   return is_updated;
 }
 
@@ -1923,7 +1937,6 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
    *    scenarion will be covered.
    * 3) ASEs should be filled according to performance profile.
    */
-  auto required_snk_strategy = GetGroupSinkStrategy();
   bool status = false;
   for (auto direction : {types::kLeAudioDirectionSink, types::kLeAudioDirectionSource}) {
     log::debug("Looking for configuration: {} - {}", audio_set_conf->name,
@@ -1995,6 +2008,7 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
     uint8_t const max_required_ase_per_dev = ase_cnt / device_cnt + (ase_cnt % device_cnt);
 
     // Use strategy for the whole group (not only the connected devices)
+    auto required_snk_strategy = FindGroupStrategyForConfig(audio_set_conf);
     auto const strategy = utils::GetStrategyForAseConfig(ase_confs, device_cnt);
 
     log::debug(

@@ -206,7 +206,13 @@ AudioContexts GetAudioContextsFromSourceMetadata(
     if (isMetadataTagPresent(entry.tags, "VX_AOSP_SAMPLESOUND")) {
       track_contexts.set(LeAudioContextType::SOUNDEFFECTS);
     } else {
-      track_contexts.set(AudioContentToLeAudioContext(track.content_type, track.usage));
+      bool pts_gmap_mxlt = osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap_mxlt", false);
+      if(pts_gmap_mxlt) {
+        log::info(" pts_gmap_mxlt is true, convert MEDIA to GAME context");
+        track_contexts.set(LeAudioContextType::GAME);
+      } else {
+        track_contexts.set(AudioContentToLeAudioContext(track.content_type, track.usage));
+      }
     }
   }
   return track_contexts;

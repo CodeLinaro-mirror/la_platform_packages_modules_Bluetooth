@@ -103,6 +103,7 @@ private:
     virtual void ConfirmSuspendRequest() = 0;
     virtual void ConfirmStreamingRequest(bool force) = 0;
     virtual void CancelStreamingRequest() = 0;
+    virtual void CancelStreamingRequestWithUnsupported() = 0;
     virtual void UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) = 0;
     virtual void SetCodecPriority(const ::bluetooth::le_audio::types::LeAudioCodecId& codecId,
                                   int32_t priority) = 0;
@@ -124,6 +125,7 @@ public:
     void ConfirmSuspendRequest() override;
     void ConfirmStreamingRequest(bool force) override;
     void CancelStreamingRequest() override;
+    void CancelStreamingRequestWithUnsupported() override;
     void UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) override;
     void SetCodecPriority(const ::bluetooth::le_audio::types::LeAudioCodecId& codecId,
                           int32_t priority) override;
@@ -165,6 +167,7 @@ public:
     void ConfirmSuspendRequest() override;
     void ConfirmStreamingRequest(bool force) override;
     void CancelStreamingRequest() override;
+    void CancelStreamingRequestWithUnsupported() override;
     void UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) override;
     void SetCodecPriority(const ::bluetooth::le_audio::types::LeAudioCodecId& codecId,
                           int32_t priority) override;

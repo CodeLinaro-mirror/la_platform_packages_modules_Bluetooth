@@ -163,6 +163,7 @@ public:
   virtual void ConfirmSuspendRequest() = 0;
   virtual void ConfirmStreamingRequest(bool force) = 0;
   virtual void CancelStreamingRequest() = 0;
+  virtual void CancelStreamingRequestWithUnsupported() = 0;
 
   virtual void UpdateRemoteDelay(uint16_t remote_delay_ms) = 0;
   virtual void UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) = 0;
@@ -208,6 +209,7 @@ public:
   virtual void ConfirmSuspendRequest() = 0;
   virtual void ConfirmStreamingRequest(bool force) = 0;
   virtual void CancelStreamingRequest() = 0;
+  virtual void CancelStreamingRequestWithUnsupported() = 0;
   virtual void UpdateRemoteDelay(uint16_t remote_delay_ms) = 0;
   virtual void UpdateAudioConfigToHal(const ::bluetooth::le_audio::stream_config& config) = 0;
   virtual void SetCodecPriority(const ::bluetooth::le_audio::types::LeAudioCodecId& codecId,

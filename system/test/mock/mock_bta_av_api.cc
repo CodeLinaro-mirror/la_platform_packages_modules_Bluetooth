@@ -62,6 +62,7 @@ struct BTA_AvVendorCmd BTA_AvVendorCmd;
 struct BTA_AvVendorRsp BTA_AvVendorRsp;
 struct BTA_AvSetCodecMode BTA_AvSetCodecMode;
 struct BTA_AvUpdateAptxData BTA_AvUpdateAptxData;
+struct modify_sniff_policy modify_sniff_policy;
 
 }  // namespace bta_av_api
 }  // namespace mock
@@ -187,6 +188,11 @@ void BTA_AvSetCodecMode(tBTA_AV_HNDL handle, uint16_t enc_mode) {
 void BTA_AvUpdateAptxData(uint32_t data) {
   inc_func_call_count(__func__);
   test::mock::bta_av_api::BTA_AvUpdateAptxData(data);
+}
+
+void modify_sniff_policy(bool policy_enable, const RawAddress& peer_addr) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::modify_sniff_policy(policy_enable, peer_addr);
 }
 
 // Mocked functions complete
