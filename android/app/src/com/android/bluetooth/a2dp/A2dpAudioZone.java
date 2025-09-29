@@ -138,7 +138,7 @@ public final class A2dpAudioZone {
             if (carAudioManager == null) {
                 return false;
             }
-            return /*carAudioManager.setZoneIdForUid(zone, uid)*/true;
+            return carAudioManager.setZoneIdForUid(zone, uid);
         }
     }
     private boolean mapAudioZone(int zoneIndex) {
@@ -180,7 +180,7 @@ public final class A2dpAudioZone {
                     if (appInfo != null) {
                         CarAudioManager carAudioManager = getCarAudioManager(mContext);
                         if (carAudioManager != null) {
-                            //carAudioManager.clearZoneIdForUid(appInfo.uid);
+                            carAudioManager.clearZoneIdForUid(appInfo.uid);
                         }
                     }
                 }
