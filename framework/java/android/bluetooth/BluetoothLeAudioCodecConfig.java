@@ -20,6 +20,7 @@ import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.os.Parcel;
 import android.os.Parcelable;
 
@@ -44,7 +45,15 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
     /** @hide */
     @IntDef(
             prefix = "SOURCE_CODEC_TYPE_",
-            value = {SOURCE_CODEC_TYPE_LC3, SOURCE_CODEC_TYPE_OPUS, SOURCE_CODEC_TYPE_INVALID})
+            value = {
+                SOURCE_CODEC_TYPE_LC3,
+                SOURCE_CODEC_TYPE_OPUS,
+                SOURCE_CODEC_TYPE_OPUS_HI_RES,
+                SOURCE_CODEC_TYPE_APTX_ADAPTIVE_LE,
+                SOURCE_CODEC_TYPE_INVALID,
+                SOURCE_CODEC_TYPE_APTX_ADAPTIVE_R4,
+                SOURCE_CODEC_TYPE_DEFAULT
+            })
     @Retention(RetentionPolicy.SOURCE)
     public @interface SourceCodecType {};
 
@@ -53,7 +62,23 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
     @FlaggedApi(Flags.FLAG_LEAUDIO_ADD_OPUS_CODEC_TYPE)
     public static final int SOURCE_CODEC_TYPE_OPUS = 1;
 
+    /** @hide */
+    public static final int SOURCE_CODEC_TYPE_OPUS_HI_RES = 2;
+
+    @SuppressLint("UnflaggedApi")
+    public static final int SOURCE_CODEC_TYPE_APTX_ADAPTIVE_LE = 3;
+
     public static final int SOURCE_CODEC_TYPE_INVALID = 1000 * 1000;
+    /**
+     * AptX Adaptive R4 Codec.
+     * @hide
+     */
+    public static final int SOURCE_CODEC_TYPE_APTX_ADAPTIVE_R4 = 4;
+    /**
+     * Default Codec.
+     * @hide
+     */
+    public static final int SOURCE_CODEC_TYPE_DEFAULT = 5;
 
     /** @hide */
     @IntDef(
@@ -395,8 +420,14 @@ public final class BluetoothLeAudioCodecConfig implements Parcelable {
         switch (mCodecType) {
             case SOURCE_CODEC_TYPE_LC3:
                 return "LC3";
+            case SOURCE_CODEC_TYPE_APTX_ADAPTIVE_LE:
+                return "APTX_ADAPTIVE_LEA";
             case SOURCE_CODEC_TYPE_INVALID:
                 return "INVALID CODEC";
+            case SOURCE_CODEC_TYPE_APTX_ADAPTIVE_R4:
+                return "APTX_ADAPTIVE_R4";
+            case SOURCE_CODEC_TYPE_DEFAULT:
+                return "DEFAULT";
             default:
                 if (Flags.leaudioAddOpusCodecType()) {
                     if (mCodecType == SOURCE_CODEC_TYPE_OPUS) {
