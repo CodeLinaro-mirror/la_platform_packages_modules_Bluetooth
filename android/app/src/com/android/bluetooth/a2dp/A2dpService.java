@@ -1504,6 +1504,9 @@ public class A2dpService extends ProfileService {
         // When disconnected, ActiveDeviceManager will call setActiveDevice(null)
         // Check if the device is disconnected - if unbond, remove the state machine
         if (toState == STATE_DISCONNECTED) {
+            if (isDualA2dp()) {
+                setActiveDevice(device, false);
+            }
             if (mAdapterService.getBondState(device) == BluetoothDevice.BOND_NONE) {
                 if (mFactory.getAvrcpTargetService() != null) {
                     mFactory.getAvrcpTargetService().removeStoredVolumeForDevice(device);
