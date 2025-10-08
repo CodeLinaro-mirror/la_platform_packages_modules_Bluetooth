@@ -1461,6 +1461,7 @@ package android.bluetooth.le {
     method public boolean getLegacy();
     method public int getPhy();
     method public long getReportDelayMillis();
+    method @FlaggedApi("com.android.bluetooth.flags.specific_scan_channel") public int getScanChannel();
     method public int getScanMode();
     method public int getScanResultType();
     method public void writeToParcel(android.os.Parcel, int);
@@ -1491,6 +1492,7 @@ package android.bluetooth.le {
     method public android.bluetooth.le.ScanSettings.Builder setNumOfMatches(int);
     method public android.bluetooth.le.ScanSettings.Builder setPhy(int);
     method public android.bluetooth.le.ScanSettings.Builder setReportDelay(long);
+    method @FlaggedApi("com.android.bluetooth.flags.specific_scan_channel") public android.bluetooth.le.ScanSettings.Builder setScanChannel(int);
     method public android.bluetooth.le.ScanSettings.Builder setScanMode(int);
   }
 

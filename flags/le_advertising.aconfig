@@ -7,3 +7,11 @@ flag {
     description: "Use NRPA for non-connectable advertising with public address policy."
     bug: "319511126"
 }
+
+flag {
+    name: "specific_scan_channel"
+    namespace: "bluetooth"
+    is_exported: true
+    description: "Use specific scan channel"
+    bug: "<none>"
+}

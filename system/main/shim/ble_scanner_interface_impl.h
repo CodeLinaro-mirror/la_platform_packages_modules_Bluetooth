@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -83,6 +83,8 @@ class BleScannerInterfaceImpl : public ::BleScannerInterface,
   void MsftAdvMonitorEnable(bool enable,
                             MsftAdvMonitorEnableCallback cb) override;
 #endif
+  void SetScanChannelParameters(int scanner_id, int scan_channel, Callback cb) override;
+
   void SetScanParameters(int scanner_id, uint8_t scan_type, int scan_interval,
                          int scan_window, int scan_phy, Callback cb) override;
   void BatchscanConfigStorage(int client_if, int batch_scan_full_max,
@@ -120,6 +122,8 @@ class BleScannerInterfaceImpl : public ::BleScannerInterface,
                            bluetooth::hci::ScannerId scanner_id,
                            ScanningStatus status) override;
   void OnSetScannerParameterComplete(bluetooth::hci::ScannerId scanner_id,
+                                     ScanningStatus status) override;
+  void OnSetScannerChannelParameterComplete(bluetooth::hci::ScannerId scanner_id,
                                      ScanningStatus status) override;
   void OnScanResult(uint16_t event_type, uint8_t address_type,
                     bluetooth::hci::Address address, uint8_t primary_phy,

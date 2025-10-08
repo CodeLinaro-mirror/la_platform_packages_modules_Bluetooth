@@ -13,40 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following
- * disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- * contributors may be used to endorse or promote products derived
- * from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
- *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "BtGatt.JNI"
@@ -212,6 +181,7 @@ static jmethodID method_onBatchScanThresholdCrossed;
 static jmethodID method_createOnTrackAdvFoundLostObject;
 static jmethodID method_onTrackAdvFoundLost;
 static jmethodID method_onScanParamSetupCompleted;
+static jmethodID method_onScanChannelParamSetupCompleted;
 
 /**
  * Periodic scanner callback methods
@@ -1051,6 +1021,14 @@ class JniScanningCallbacks : ScanningCallbacks {
         mScanCallbacksObj, method_onScanParamSetupCompleted, status, scannerId);
   }
 
+  void OnSetScannerChannelParameterComplete(uint8_t scannerId, uint8_t status) {
+    std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || !mScanCallbacksObj) return;
+    sCallbackEnv->CallVoidMethod(
+        mScanCallbacksObj, method_onScanChannelParamSetupCompleted, status, scannerId);
+  }
+
   void OnScanResult(uint16_t event_type, uint8_t addr_type, RawAddress bda,
                     uint8_t primary_phy, uint8_t secondary_phy,
                     uint8_t advertising_sid, int8_t tx_power, int8_t rssi,
@@ -1577,12 +1555,29 @@ static void gattClientReadRemoteRssiNative(JNIEnv* env, jobject /* object */,
   sGattIf->client->read_remote_rssi(clientif, str2addr(env, address));
 }
 
+
+void set_scan_channel_params_cmpl_cb(int client_if, uint8_t status) {
+  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mScanCallbacksObj) return;
+  sCallbackEnv->CallVoidMethod(
+      mScanCallbacksObj, method_onScanChannelParamSetupCompleted, status, client_if);
+}
+
 void set_scan_params_cmpl_cb(int client_if, uint8_t status) {
   std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
   if (!sCallbackEnv.valid() || !mScanCallbacksObj) return;
   sCallbackEnv->CallVoidMethod(
       mScanCallbacksObj, method_onScanParamSetupCompleted, status, client_if);
+}
+
+static void gattSetScanChannelParametersNative(JNIEnv* /* env */, jobject /* object */,
+                                        jint client_if, jint scan_channel) {
+  if (!sScanner) return;
+  log::info("gattSetScanChannelParametersNative");
+  sScanner->SetScanChannelParameters(client_if, scan_channel,
+                              base::Bind(&set_scan_channel_params_cmpl_cb, client_if));
 }
 
 static void gattSetScanParametersNative(JNIEnv* /* env */, jobject /* object */,
@@ -2703,6 +2698,8 @@ static int register_com_android_bluetooth_gatt_scan(JNIEnv* env) {
        (void*)gattClientScanFilterClearNative},
       {"gattClientScanFilterEnableNative", "(IZ)V",
        (void*)gattClientScanFilterEnableNative},
+      {"gattSetScanChannelParametersNative", "(II)V",
+       (void*)gattSetScanChannelParametersNative},
       {"gattSetScanParametersNative", "(IIII)V",
        (void*)gattSetScanParametersNative},
   };
@@ -2736,6 +2733,7 @@ static int register_com_android_bluetooth_gatt_scan(JNIEnv* env) {
        "(Lcom/android/bluetooth/le_scan/AdvtFilterOnFoundOnLostInfo;)V",
        &method_onTrackAdvFoundLost},
       {"onScanParamSetupCompleted", "(II)V", &method_onScanParamSetupCompleted},
+      {"onScanChannelParamSetupCompleted", "(II)V", &method_onScanChannelParamSetupCompleted},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/le_scan/ScanNativeInterface",
                    javaMethods);

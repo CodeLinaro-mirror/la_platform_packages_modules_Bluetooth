@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BLE_SCANNER_H
@@ -85,6 +89,8 @@ class ScanningCallbacks {
   virtual void OnScannerRegistered(const bluetooth::Uuid app_uuid,
                                    uint8_t scannerId, uint8_t status) = 0;
   virtual void OnSetScannerParameterComplete(uint8_t scannerId,
+                                             uint8_t status) = 0;
+  virtual void OnSetScannerChannelParameterComplete(uint8_t scannerId,
                                              uint8_t status) = 0;
   virtual void OnScanResult(uint16_t event_type, uint8_t addr_type,
                             RawAddress bda, uint8_t primary_phy,
@@ -185,6 +191,9 @@ class BleScannerInterface {
   virtual void MsftAdvMonitorEnable(bool enable,
                                     MsftAdvMonitorEnableCallback cb) = 0;
 #endif
+
+  virtual void SetScanChannelParameters(int scanner_id,
+                                 int scan_channel, Callback cb) = 0;
 
   /** Sets the LE scan interval and window in units of N*0.625 msec */
   virtual void SetScanParameters(int scanner_id, uint8_t scan_type,
