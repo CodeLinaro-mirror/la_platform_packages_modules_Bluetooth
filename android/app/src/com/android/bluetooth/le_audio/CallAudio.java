@@ -597,6 +597,10 @@ public class CallAudio {
         }
 
         int profileIndex = mCallDevice.getProfileIndex(profile);
+        if (mCallDevice.profileConnStatus[profileIndex] == state) {
+            Log.d(TAG, "onConnStateChange: state didn't change, ignore it.");
+            return;
+        }
         prevState = mCallDevice.deviceConnStatus;
         Log.d(TAG, "onConnStateChange: prevState: " + prevState);
         mCallDevice.profileConnStatus[profileIndex] = state;

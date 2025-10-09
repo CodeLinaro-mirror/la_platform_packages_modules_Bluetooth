@@ -2441,7 +2441,7 @@ void btm_sec_rmt_host_support_feat_evt(const RawAddress bd_addr, uint8_t feature
  *
  ******************************************************************************/
 void btm_io_capabilities_req(RawAddress p) {
-  if (btm_sec_is_a_bonded_dev(p)) {
+  if (btm_sec_is_a_bonded_dev_by_transport(p, BT_TRANSPORT_BR_EDR)) {
     auto p_dev_rec = btm_find_dev(p);
     ASSERT(p_dev_rec != NULL);
 
@@ -2645,7 +2645,7 @@ void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data) {
 
   /* If device is bonded, and encrypted it's upgrading security and it's ok.
    * If it's bonded and not encrypted, it's remote missing keys scenario */
-  if (btm_sec_is_a_bonded_dev(evt_data.bd_addr) && !p_dev_rec->sec_rec.is_device_encrypted()) {
+  if (btm_sec_is_a_bonded_dev_by_transport(evt_data.bd_addr, BT_TRANSPORT_BR_EDR) && !p_dev_rec->sec_rec.is_device_encrypted()) {
     log::warn("Incoming bond request, but {} is already bonded (notifying user)", evt_data.bd_addr);
     bta_dm_remote_key_missing(evt_data.bd_addr);
     btm_sec_disconnect(p_dev_rec->hci_handle, HCI_ERR_AUTH_FAILURE,

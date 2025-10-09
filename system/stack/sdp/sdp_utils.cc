@@ -137,6 +137,10 @@ static std::vector<std::pair<uint16_t, uint16_t>> sdpu_find_profile_version(tSDP
  * @return most specific 16-bit service uuid, 0 if not found
  */
 static uint16_t sdpu_find_most_specific_service_uuid(tSDP_DISC_REC* p_rec) {
+  if (p_rec == nullptr) {
+    log::warn("p_rec is null");
+    return 0;
+  }
   for (tSDP_DISC_ATTR* p_attr = p_rec->p_first_attr; p_attr != nullptr;
        p_attr = p_attr->p_next_attr) {
     if (p_attr->attr_id == ATTR_ID_SERVICE_CLASS_ID_LIST &&
@@ -180,6 +184,7 @@ void sdpu_log_attribute_metrics(const RawAddress& bda, tSDP_DISCOVERY_DB* p_db) 
     uint16_t service_uuid = sdpu_find_most_specific_service_uuid(p_rec);
     if (service_uuid == 0) {
       log::info("skipping record without service uuid {}", bda);
+      if (p_rec == nullptr) break;
       continue;
     }
     // Log the existence of a profile role

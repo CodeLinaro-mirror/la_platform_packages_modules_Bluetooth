@@ -684,6 +684,9 @@ public:
       return;
     }
 
+    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_STREAM_INDICATION,
+        0x04, std::vector<uint8_t>());
+
     /* All Ases should aim to achieve target state */
     SetTargetState(group, AseState::BTA_LE_AUDIO_ASE_STATE_IDLE);
 

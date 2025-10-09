@@ -260,7 +260,7 @@ static void btif_a2dp_source_audio_tx_flush_event(void);
 // Set up the A2DP Source codec, and prepare the encoder.
 // The peer address is |peer_addr|.
 // This function should be called prior to starting A2DP streaming.
-static void btif_a2dp_source_setup_codec(const RawAddress& peer_addr);
+static bool btif_a2dp_source_setup_codec(const RawAddress& peer_addr);
 static void btif_a2dp_source_cleanup_codec_delayed();
 static void btif_a2dp_source_encoder_user_config_update_event(
         const RawAddress& peer_address,
@@ -476,7 +476,11 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
                                                    std::promise<void> peer_ready_promise) {
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
 
-  btif_a2dp_source_setup_codec(peer_address);
+  if (!btif_a2dp_source_setup_codec(peer_address)) {
+    log::error("Setup codec error");
+    peer_ready_promise.set_value();
+    return;
+  }
 
   if (btif_a2dp_source_cb.State() != BtifA2dpSource::kStateRunning) {
     log::error("A2DP Source media task is not running");
@@ -621,20 +625,21 @@ static uint16_t btif_a2dp_get_peer_mtu(A2dpCodecConfig* a2dp_config) {
   return peer_mtu;
 }
 
-static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
+static bool btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
+  bool retvalue = false;
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
 
   tA2DP_ENCODER_INIT_PEER_PARAMS peer_params;
   bta_av_co_get_peer_params(peer_address, &peer_params);
   if (!bta_av_co_set_active_source_peer(peer_address)) {
     log::error("Cannot stream audio: cannot set active peer to {}", peer_address);
-    return;
+    return retvalue;
   }
 
   const tA2DP_ENCODER_INTERFACE* encoder_interface = bta_av_co_get_encoder_interface(peer_address);
   if (encoder_interface == nullptr) {
     log::error("Cannot stream audio: no source encoder interface");
-    return;
+    return retvalue;
   }
 
   A2dpCodecConfig* a2dp_codec_config = bta_av_get_a2dp_current_codec();
@@ -644,7 +649,7 @@ static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
     codec_config = a2dp_codec_config->getCodecConfig();
   } else {
     log::error("Cannot stream audio: current codec is not set");
-    return;
+    return retvalue;
   }
 
   encoder_interface->encoder_init(&peer_params, a2dp_codec_config,
@@ -688,11 +693,13 @@ static void btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
     }
   }
 
+  retvalue = true;
   if (bluetooth::audio::a2dp::is_hal_enabled()) {
-    bluetooth::audio::a2dp::setup_codec(a2dp_codec_config,
+    retvalue = bluetooth::audio::a2dp::setup_codec(a2dp_codec_config,
                                         btif_a2dp_get_peer_mtu(a2dp_codec_config),
                                         bta_av_co_get_encoder_preferred_interval_us());
   }
+  return retvalue;
 }
 
 static void btif_a2dp_source_cleanup_codec_delayed() {

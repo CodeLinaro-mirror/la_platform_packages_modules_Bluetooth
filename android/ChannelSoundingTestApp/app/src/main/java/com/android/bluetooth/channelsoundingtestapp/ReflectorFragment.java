@@ -32,7 +32,7 @@ import androidx.lifecycle.ViewModelProvider;
 public class ReflectorFragment extends Fragment {
     private BleConnectionViewModel mBleConnectionViewModel;
     private TextView mLogText;
-
+    BleConnectionViewModel model;
     @Override
     public View onCreateView(
             @NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -61,5 +61,6 @@ public class ReflectorFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        mBleConnectionViewModel.checkstopadvertiser();
     }
 }

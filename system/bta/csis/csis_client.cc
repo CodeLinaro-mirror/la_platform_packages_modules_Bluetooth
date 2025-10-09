@@ -1331,17 +1331,10 @@ private:
 
   void OnActiveScanResult(const tBTA_DM_INQ_RES* result) {
     auto csis_device = FindDeviceByAddress(result->bd_addr);
-    if (csis_device) {
-      log::debug("Drop same device .. {}", result->bd_addr);
-      return;
-    }
-
-    /* Make sure device is not already bonded which could
-     * be a case for dual mode devices where
-     */
-    if (BTM_IsBonded(result->bd_addr, BT_TRANSPORT_LE)) {
-      log::verbose("Device {} already bonded. Identity address: {}", result->bd_addr,
-                   *BTM_BleGetIdentityAddress(result->bd_addr));
+    if (csis_device && BTM_IsBonded(result->bd_addr, BT_TRANSPORT_LE)) {
+      log::debug("Drop known device {} already bonded. Identity address: {}",
+                  result->bd_addr,
+                  *BTM_BleGetIdentityAddress(result->bd_addr));
       return;
     }
 
@@ -1476,15 +1469,6 @@ private:
       log::debug("Drop known device {} already bonded. Identity address: {}",
                   result->bd_addr,
                   *BTM_BleGetIdentityAddress(result->bd_addr));
-      return;
-    }
-
-    /* Make sure device is not already bonded which could
-     * be a case for dual mode devices where
-     */
-    if (BTM_IsBonded(result->bd_addr, BT_TRANSPORT_LE)) {
-      log::verbose("Device {} already bonded. Identity address: {}", result->bd_addr,
-                   *BTM_BleGetIdentityAddress(result->bd_addr));
       return;
     }
 

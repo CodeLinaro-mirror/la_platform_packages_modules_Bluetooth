@@ -690,17 +690,11 @@ class PbapClientStateMachine extends StateMachine {
         private void initializePhonebooksToDownload() {
             mPhonebooksToDownload.clear();
 
-            if (mPhonebooks.containsKey(PbapPhonebook.FAVORITES_PATH)) {
-                mPhonebooksToDownload.add(PbapPhonebook.FAVORITES_PATH);
-            }
             if (mPhonebooks.containsKey(PbapPhonebook.LOCAL_PHONEBOOK_PATH)) {
                 mPhonebooksToDownload.add(PbapPhonebook.LOCAL_PHONEBOOK_PATH);
             }
             if (mPhonebooks.containsKey(PbapPhonebook.SIM_PHONEBOOK_PATH)) {
                 mPhonebooksToDownload.add(PbapPhonebook.SIM_PHONEBOOK_PATH);
-            }
-            if (mPhonebooks.containsKey(PbapPhonebook.MCH_PATH)) {
-                mPhonebooksToDownload.add(PbapPhonebook.MCH_PATH);
             }
             if (mPhonebooks.containsKey(PbapPhonebook.ICH_PATH)) {
                 mPhonebooksToDownload.add(PbapPhonebook.ICH_PATH);
@@ -708,14 +702,20 @@ class PbapClientStateMachine extends StateMachine {
             if (mPhonebooks.containsKey(PbapPhonebook.OCH_PATH)) {
                 mPhonebooksToDownload.add(PbapPhonebook.OCH_PATH);
             }
-            if (mPhonebooks.containsKey(PbapPhonebook.SIM_MCH_PATH)) {
-                mPhonebooksToDownload.add(PbapPhonebook.SIM_MCH_PATH);
+            if (mPhonebooks.containsKey(PbapPhonebook.MCH_PATH)) {
+                mPhonebooksToDownload.add(PbapPhonebook.MCH_PATH);
+            }
+            if (mPhonebooks.containsKey(PbapPhonebook.FAVORITES_PATH)) {
+                mPhonebooksToDownload.add(PbapPhonebook.FAVORITES_PATH);
             }
             if (mPhonebooks.containsKey(PbapPhonebook.SIM_ICH_PATH)) {
                 mPhonebooksToDownload.add(PbapPhonebook.SIM_ICH_PATH);
             }
             if (mPhonebooks.containsKey(PbapPhonebook.SIM_OCH_PATH)) {
                 mPhonebooksToDownload.add(PbapPhonebook.SIM_OCH_PATH);
+            }
+            if (mPhonebooks.containsKey(PbapPhonebook.SIM_MCH_PATH)) {
+                mPhonebooksToDownload.add(PbapPhonebook.SIM_MCH_PATH);
             }
 
             info("Downloading: initialized download process, phonebooks=" + mPhonebooksToDownload);
