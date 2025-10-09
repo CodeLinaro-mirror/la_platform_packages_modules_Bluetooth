@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "acl"
@@ -134,6 +138,14 @@ void acl_ble_connection_fail(const tBLE_BD_ADDR& address_with_type, uint16_t /* 
     btm_cb.ble_ctr_cb.inq_var.adv_mode = BTM_BLE_ADV_DISABLE;
   }
   btm_ble_update_mode_operation(HCI_ROLE_UNKNOWN, &address_with_type.bda, status);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(address_with_type.bda);
+  if (p_dev_rec) {
+      // fix wrong replacing causes crash, clear BTM_SEC_IN_USE in sec_flags for failed
+      log::debug("clear BTM_SEC_IN_USE in sec_flags.");
+      p_dev_rec->sec_rec.sec_flags &= ~(BTM_SEC_IN_USE);
+  }
+#endif
 }
 
 void acl_ble_update_event_received(tHCI_STATUS status, uint16_t handle, uint16_t interval,
