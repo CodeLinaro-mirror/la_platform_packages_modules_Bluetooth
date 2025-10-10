@@ -610,7 +610,7 @@ public class VolumeControlService extends ProfileService {
                             + isMute
                             + ", new volume: "
                             + volume);
-            if (isStreamMute) {
+            if (isStreamMute && (volume == 0)) {
                 Log.i(TAG, "Mute the device " + device);
                 mute(device);
             }

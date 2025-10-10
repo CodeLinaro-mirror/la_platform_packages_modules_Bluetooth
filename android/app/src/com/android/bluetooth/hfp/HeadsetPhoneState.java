@@ -390,86 +390,84 @@ public class HeadsetPhoneState {
             extends OnSubscriptionsChangedListener {
         @Override
         public void onSubscriptionsChanged() {
-            synchronized (mDeviceEventMap) {
-                int simState = mTelephonyManager.getSimState();
-                if (simState != TelephonyManager.SIM_STATE_READY) {
-                    mServiceState = null;
-                    mCindSignal = 0;
-                    mCindService = HeadsetHalConstants.NETWORK_STATE_NOT_AVAILABLE;
-                    sendDeviceStateChanged();
-                }
-                stopListenForPhoneState();
-                startListenForPhoneState();
-                int networkType = mTelephonyManager.getDataNetworkType();
-                int dataNetworkType = BEARER_TECHNOLOGY_GSM;
-                switch (networkType) {
-                   case TelephonyManager.NETWORK_TYPE_UNKNOWN:
-                   case TelephonyManager.NETWORK_TYPE_GSM:
-                       Log.d(TAG, "inside GSM case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_GSM;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_GPRS:
-                       Log.d(TAG, "inside 2G case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_2G;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_EDGE:
-                   case TelephonyManager.NETWORK_TYPE_EVDO_0:
-                   case TelephonyManager.NETWORK_TYPE_EVDO_A:
-                   case TelephonyManager.NETWORK_TYPE_HSDPA:
-                   case TelephonyManager.NETWORK_TYPE_HSUPA:
-                   case TelephonyManager.NETWORK_TYPE_HSPA:
-                   case TelephonyManager.NETWORK_TYPE_IDEN:
-                   case TelephonyManager.NETWORK_TYPE_EVDO_B:
-                       Log.d(TAG, "inside 3G case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_3G;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_UMTS:
-                   case TelephonyManager.NETWORK_TYPE_TD_SCDMA:
-                       Log.d(TAG, "inside WCDMA case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_WCDMA;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_LTE:
-                       Log.d(TAG, "inside LTE case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_LTE;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_EHRPD:
-                   case TelephonyManager.NETWORK_TYPE_CDMA:
-                   case TelephonyManager.NETWORK_TYPE_1xRTT:
-                       Log.d(TAG, "inside CDMA case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_CDMA;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_HSPAP:
-                       Log.d(TAG, "inside 4G case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_4G;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_IWLAN:
-                       Log.d(TAG, "inside WIFI case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_WIFI;
-                   break;
-                   case TelephonyManager.NETWORK_TYPE_NR:
-                       Log.d(TAG, "inside 5G case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_5G;
-                   break;
-                   default:
-                       Log.d(TAG, "inside default case:");
-                       dataNetworkType = BEARER_TECHNOLOGY_GSM;
-                }
-               //int networkType = mTelephonyManager.getNetworkType();
-               Log.d(TAG, "Adv Audio enabled: updateBearerTech:" + dataNetworkType);
-               if (Utils.isTbsPtsTestMode()) {
-                  mHeadsetService.updateBearerTechnology(dataNetworkType);
-                  if (mSubscriptionManager != null) {
-                     List<SubscriptionInfo> subInfos = mSubscriptionManager.getActiveSubscriptionInfoList();
-                     if (subInfos == null || subInfos.isEmpty()) {
-                        Log.d(TAG, "no subs info");
-                        return;
-                     }
-                     SubscriptionInfo mFirstSubInfo = subInfos.get(0);
-                     Log.d(TAG, "updateBearerName " +  mFirstSubInfo.getDisplayName().toString());
-                     mHeadsetService.updateBearerName(mFirstSubInfo.getDisplayName().toString());
-                  }
-               }
+            int simState = mTelephonyManager.getSimState();
+            if (simState != TelephonyManager.SIM_STATE_READY) {
+                mServiceState = null;
+                mCindSignal = 0;
+                mCindService = HeadsetHalConstants.NETWORK_STATE_NOT_AVAILABLE;
+                sendDeviceStateChanged();
             }
+            stopListenForPhoneState();
+            startListenForPhoneState();
+            int networkType = mTelephonyManager.getDataNetworkType();
+            int dataNetworkType = BEARER_TECHNOLOGY_GSM;
+            switch (networkType) {
+               case TelephonyManager.NETWORK_TYPE_UNKNOWN:
+               case TelephonyManager.NETWORK_TYPE_GSM:
+                   Log.d(TAG, "inside GSM case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_GSM;
+               break;
+               case TelephonyManager.NETWORK_TYPE_GPRS:
+                   Log.d(TAG, "inside 2G case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_2G;
+               break;
+               case TelephonyManager.NETWORK_TYPE_EDGE:
+               case TelephonyManager.NETWORK_TYPE_EVDO_0:
+               case TelephonyManager.NETWORK_TYPE_EVDO_A:
+               case TelephonyManager.NETWORK_TYPE_HSDPA:
+               case TelephonyManager.NETWORK_TYPE_HSUPA:
+               case TelephonyManager.NETWORK_TYPE_HSPA:
+               case TelephonyManager.NETWORK_TYPE_IDEN:
+               case TelephonyManager.NETWORK_TYPE_EVDO_B:
+                   Log.d(TAG, "inside 3G case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_3G;
+               break;
+               case TelephonyManager.NETWORK_TYPE_UMTS:
+               case TelephonyManager.NETWORK_TYPE_TD_SCDMA:
+                   Log.d(TAG, "inside WCDMA case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_WCDMA;
+               break;
+               case TelephonyManager.NETWORK_TYPE_LTE:
+                   Log.d(TAG, "inside LTE case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_LTE;
+               break;
+               case TelephonyManager.NETWORK_TYPE_EHRPD:
+               case TelephonyManager.NETWORK_TYPE_CDMA:
+               case TelephonyManager.NETWORK_TYPE_1xRTT:
+                   Log.d(TAG, "inside CDMA case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_CDMA;
+               break;
+               case TelephonyManager.NETWORK_TYPE_HSPAP:
+                   Log.d(TAG, "inside 4G case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_4G;
+               break;
+               case TelephonyManager.NETWORK_TYPE_IWLAN:
+                   Log.d(TAG, "inside WIFI case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_WIFI;
+               break;
+               case TelephonyManager.NETWORK_TYPE_NR:
+                   Log.d(TAG, "inside 5G case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_5G;
+               break;
+               default:
+                   Log.d(TAG, "inside default case:");
+                   dataNetworkType = BEARER_TECHNOLOGY_GSM;
+            }
+           //int networkType = mTelephonyManager.getNetworkType();
+           Log.d(TAG, "Adv Audio enabled: updateBearerTech:" + dataNetworkType);
+           if (Utils.isTbsPtsTestMode()) {
+              mHeadsetService.updateBearerTechnology(dataNetworkType);
+              if (mSubscriptionManager != null) {
+                 List<SubscriptionInfo> subInfos = mSubscriptionManager.getActiveSubscriptionInfoList();
+                 if (subInfos == null || subInfos.isEmpty()) {
+                    Log.d(TAG, "no subs info");
+                    return;
+                 }
+                 SubscriptionInfo mFirstSubInfo = subInfos.get(0);
+                 Log.d(TAG, "updateBearerName " +  mFirstSubInfo.getDisplayName().toString());
+                 mHeadsetService.updateBearerName(mFirstSubInfo.getDisplayName().toString());
+              }
+           }
         }
     }
 

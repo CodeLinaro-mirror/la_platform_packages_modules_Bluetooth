@@ -1124,7 +1124,7 @@ static int config_clear(void) {
     log::error("Failed to clear device iot config");
     ret = BT_STATUS_FAIL;
   }
-
+  interop_database_clear();
   return ret;
 }
 

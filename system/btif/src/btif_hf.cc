@@ -28,6 +28,8 @@
 #define LOG_TAG "bt_btif_hf"
 
 #include "btif/include/btif_hf.h"
+#include <com_android_bluetooth_flags.h>
+#include "osi/include/properties.h"
 
 #include <android_bluetooth_sysprop.h>
 #include <base/functional/bind.h>
@@ -78,6 +80,7 @@
            .c_str())
 
 using namespace bluetooth::shim;
+using namespace bluetooth;
 namespace {
 constexpr char kBtmLogTag[] = "HFP";
 }
@@ -170,6 +173,17 @@ static int btif_hf_idx_by_bdaddr(RawAddress* bd_addr);
 static bool is_active_device(const RawAddress& bd_addr) {
   return !active_bda.IsEmpty() && active_bda == bd_addr;
 }
+
+bool btif_ag_is_sco_managed_by_audio() {
+   bool value = false;
+   if (com::android::bluetooth::flags::is_sco_managed_by_audio()) {
+     value = osi_property_get_bool("bluetooth.sco.managed_by_audio", false);
+     log::verbose("is_sco_managed_by_audio enabled={}", value);
+   }
+   return value;
+}
+
+
 
 static tBTA_SERVICE_MASK get_BTIF_HF_SERVICES() {
   return android::sysprop::bluetooth::Hfp::hf_services().value_or(BTA_HSP_SERVICE_MASK |
@@ -1368,8 +1382,11 @@ bt_status_t HeadsetInterface::PhoneStateChange(int num_active, int num_held,
       (control_block.num_held == 0) && (control_block.call_setup_state == BTHF_CALL_STATE_IDLE)) {
     tBTA_AG_RES_DATA ag_res = {};
     log::verbose("Active/Held call notification received without call setup update");
-
-    ag_res.audio_handle = BTA_AG_HANDLE_SCO_NO_CHANGE;
+    if (!btif_ag_is_sco_managed_by_audio()) {
+      ag_res.audio_handle = btif_hf_cb[idx].handle;
+    } else {
+      ag_res.audio_handle = BTA_AG_HANDLE_SCO_NO_CHANGE;
+    }
     // Addition call setup with the Active call
     // CIND response should have been updated.
     // just open SCO connection.

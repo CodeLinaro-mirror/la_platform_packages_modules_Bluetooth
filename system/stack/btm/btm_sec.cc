@@ -4264,6 +4264,7 @@ static void btm_sec_pairing_timeout(void* /* data */) {
   switch (p_cb->pairing_state) {
     case BTM_PAIR_STATE_WAIT_PIN_REQ:
       btm_sec_bond_cancel_complete();
+      btm_sec_cb.change_pairing_state(BTM_PAIR_STATE_IDLE);
       break;
 
     case BTM_PAIR_STATE_WAIT_LOCAL_PIN:

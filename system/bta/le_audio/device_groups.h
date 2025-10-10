@@ -156,6 +156,7 @@ public:
   void RemoveNode(const std::shared_ptr<LeAudioDevice>& leAudioDevice);
   bool IsEmpty(void) const;
   bool IsAnyDeviceConnected(void) const;
+  bool IsAnyDeviceDisconnecting(void) const;
   int Size(void) const;
   int DesiredSize(void) const;
   int NumOfConnected() const;

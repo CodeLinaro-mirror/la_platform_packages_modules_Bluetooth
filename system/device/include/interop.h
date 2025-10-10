@@ -386,6 +386,9 @@ typedef enum {
 
   INTEROP_INBAND_RINGTONE_SET_TO_FALSE,
 
+  // Some HOGP devices requires notifications to be enabled on reconnection.
+  INTEROP_ENABLE_REMOTE_NOTIFICATIONS,
+
   END_OF_INTEROP_LIST
 } interop_feature_t;
 
