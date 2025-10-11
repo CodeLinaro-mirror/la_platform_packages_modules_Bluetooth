@@ -1778,7 +1778,7 @@ public final class BluetoothAdapter {
     @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     public @NonNull List<ParcelUuid> getUuidsList() {
         List<ParcelUuid> defaultValue = new ArrayList<>();
-        if (getState() != STATE_ON) {
+        if (getState() != STATE_ON && getState() != STATE_TURNING_ON) {
             return defaultValue;
         }
         mServiceLock.readLock().lock();

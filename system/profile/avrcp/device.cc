@@ -195,7 +195,12 @@ void Device::HandlePendingPlay() {
 
     if (d->IsPendingPlay()) {
       log::info("Send PLAY to {}", d->address_);
+      if(!d->media_interface_){
+        log::info("media_interface_ is NULL, return");
+        return;
+      }
       d->media_interface_->SendKeyEvent(uint8_t(OperationID::PLAY), KeyState::PUSHED);
+      d->media_interface_->SendKeyEvent(uint8_t(OperationID::PLAY), KeyState::RELEASED);
       d->IsPendingPlay_ = false;
     }
   },
@@ -1242,7 +1247,10 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                 log::warn("Ignore passthrough play during active Call");
                 return;
               }
-
+              if(!d->media_interface_){
+                log::info("media_interface_ is NULL, return");
+                return;
+              }
               if (!d->IsActive()) {
                 log::info("Setting {} to be the active device", d->address_);
                 d->media_interface_->SetActiveDevice(d->address_);
@@ -1296,6 +1304,10 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
             if (d->IsActive()) {
               log::verbose("SendKeyEvent: PT:{}, KEYSTATE:{}", packet->GetOperationId(),
                   packet->GetKeyState());
+              if(!d->media_interface_){
+                log::info("media_interface_ is NULL, return");
+                return;
+              }
               d->media_interface_->SendKeyEvent(packet->GetOperationId(),
                   packet->GetKeyState());
             }

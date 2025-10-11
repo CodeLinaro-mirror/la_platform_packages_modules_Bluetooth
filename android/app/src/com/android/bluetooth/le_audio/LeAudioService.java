@@ -3346,10 +3346,12 @@ public class LeAudioService extends ProfileService {
                                     setDisconnected(true);
                                 }
                             }
-                            synchronized(mScanCallbackLock) {
-                                Log.d(TAG, " try to start background scan");
-                                startAudioServersBackgroundScan(/* retry= */ false);
-                            }
+                            mHandler.post(() -> {
+                                synchronized(mScanCallbackLock) {
+                                    Log.d(TAG, " try to start background scan");
+                                    startAudioServersBackgroundScan(/* retry= */ false);
+                                }
+                            });
 
                             boolean disconnectDueToUnbond =
                                     (BluetoothDevice.BOND_NONE
@@ -4335,7 +4337,9 @@ public class LeAudioService extends ProfileService {
 
         return descriptor.mInbandRingtoneEnabled;
     }
-
+    public boolean getInCall() {
+       return mInCall;
+    }
     /**
      * Set In Call state
      *
@@ -5777,7 +5781,18 @@ public class LeAudioService extends ProfileService {
             enforceBluetoothPrivilegedPermission(service);
             return service.groupAddNode(groupId, device);
         }
+        @Override
+        public boolean getInCall(AttributionSource source){
+            Objects.requireNonNull(source, "source cannot be null");
 
+            LeAudioService service = getService(source);
+            if (service == null) {
+                return false;
+            }
+
+            enforceBluetoothPrivilegedPermission(service);
+            return service.getInCall();
+        }
         @Override
         public void setInCall(boolean inCall, AttributionSource source) {
             Objects.requireNonNull(source, "source cannot be null");
