@@ -415,7 +415,7 @@ public class MediaPlayerList {
             Log.e(TAG, "Failed to get UID for package: " + getPlayerPackageName(device), e);
         }
 
-        int zoneid = 0;/*mCarAudioManager.getZoneIdForUid(uid);*/ //to be fixed
+        int zoneid = mCarAudioManager.getZoneIdForUid(uid);
         d("getZoneId(" + device + ") " + " uid " + uid + " zoneid " + zoneid);
         return zoneid;
     }
