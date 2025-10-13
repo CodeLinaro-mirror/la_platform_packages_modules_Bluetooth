@@ -370,6 +370,9 @@ typedef enum {
 
   INTEROP_DISABLE_OUTGOING_BR_SMP,
 
+  // Some HOGP devices requires notifications to be enabled on reconnection.
+  INTEROP_ENABLE_REMOTE_NOTIFICATIONS,
+
   END_OF_INTEROP_LIST
 } interop_feature_t;
 
