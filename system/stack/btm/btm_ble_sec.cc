@@ -1521,7 +1521,7 @@ void btm_ble_connected(const RawAddress& bda, uint16_t handle, uint8_t /* enc_mo
   tBTM_SEC_DEV_REC* p_dev_rec = btm_find_or_alloc_dev(bda);
 
   log::info("Update timestamp for ble connection:{}", bda);
-  // TODO() Why is timestamp a counter ?
+  // TODO () Why is timestamp a counter ?
   p_dev_rec->timestamp = btm_sec_cb.dev_rec_count++;
 
   if (is_ble_addr_type_known(addr_type)) {
@@ -1611,8 +1611,36 @@ static void btm_ble_consent_req(const RawAddress& bd_addr, tBTM_LE_EVT_DATA* p_d
   BTM_BLE_SEC_CALLBACK(BTM_LE_CONSENT_REQ_EVT, bd_addr, p_data);
 }
 
+static bool btm_ble_complete_evt_ignore(tBTM_SEC_DEV_REC* p_dev_rec, tBTM_LE_EVT_DATA* p_data) {
+  // Encryption request in peripheral role results in SMP Security request. SMP may generate a
+  // SMP_COMPLT_EVT failure event cases like below:
+  // 1) Some central devices don't handle cross-over between encryption and SMP security request
+  // 2) Link may get disconnected after the SMP security request was sent.
+  if (p_data->complt.reason != SMP_SUCCESS && !p_dev_rec->role_central &&
+      btm_sec_cb.pairing_bda != p_dev_rec->bd_addr &&
+      btm_sec_cb.pairing_bda != p_dev_rec->ble.pseudo_addr &&
+      p_dev_rec->sec_rec.is_le_link_key_known() &&
+      p_dev_rec->sec_rec.ble_keys.key_type != BTM_LE_KEY_NONE) {
+    if (p_dev_rec->sec_rec.is_le_device_encrypted()) {
+      log::warn("Bonded device {} is already encrypted, ignoring SMP failure", p_dev_rec->bd_addr);
+      return true;
+    } else if (p_data->complt.reason == SMP_CONN_TOUT) {
+      log::warn("Bonded device {} disconnected while waiting for encryption, ignoring SMP failure",
+                p_dev_rec->bd_addr);
+      l2cu_start_post_bond_timer(p_dev_rec->ble_hci_handle);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static void btm_ble_complete_evt(const RawAddress& bd_addr, tBTM_SEC_DEV_REC* p_dev_rec,
                                  tBTM_LE_EVT_DATA* p_data) {
+  if (btm_ble_complete_evt_ignore(p_dev_rec, p_data)) {
+    return;
+  }
+
   BTM_BLE_SEC_CALLBACK(BTM_LE_COMPLT_EVT, bd_addr, p_data);
 
   log::verbose("before update sec_level=0x{:x} sec_flags=0x{:x}", p_data->complt.sec_level,
