@@ -40,6 +40,8 @@
 using namespace android;
 using namespace bluetooth;
 
+#define AAUDIO_DEVICE_BUILTIN_SPEAKER 2
+
 typedef struct {
   AAudioStream* stream;
   int bitsPerSample;
@@ -326,12 +328,21 @@ AAudioStream* buildAudioStream(int trackFreq, int bitsPerSample, int channelCoun
   // Set error callback
   AAudioStreamBuilder_setErrorCallback(builder, ErrorCallback, nullptr);
 
+  // Set DeviceId
+  // Assign a prefferred device id to A2DP sink streams to avoid
+  // APM routing during A2DP source device connections.
+  AAudioStreamBuilder_setDeviceId(builder, AAUDIO_DEVICE_BUILTIN_SPEAKER);
+
   // Open stream
   result = AAudioStreamBuilder_openStream(builder, &stream);
   if (result != AAUDIO_OK || stream == nullptr) {
     log::error("Failed to open AAudioStream: {}", result);
     AAudioStreamBuilder_delete(builder);
     return nullptr;
+  }
+
+  if (AAudioStream_getDeviceId(stream) == AAUDIO_DEVICE_BUILTIN_SPEAKER) {
+    log::info("Preferred device - AAUDIO_DEVICE_BUILTIN_SPEAKER");
   }
 
   // Clean up builder
