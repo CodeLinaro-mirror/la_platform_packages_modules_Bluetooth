@@ -2718,6 +2718,10 @@ class HeadsetStateMachine extends StateMachine {
                 mNativeInterface.clccResponse(device, 1, 0, 0, 0, false, phoneNumber, type);
             }
             mNativeInterface.clccResponse(device, 0, 0, 0, 0, false, "", 0);
+        } else if (hasMessages(SEND_CLCC_RESP_AFTER_VOIP_CALL)) {
+            Log.w(TAG, "processAtClcc: send OK response as VOIP call ended just now");
+            mNativeInterface.clccResponse(device, 0, 0, 0, 0, false, "", 0);
+            removeMessages(SEND_CLCC_RESP_AFTER_VOIP_CALL);
         } else {
             // In Telecom call, ask Telecom to send send remote phone number
             if (!mSystemInterface.listCurrentCalls(mHeadsetService)) {

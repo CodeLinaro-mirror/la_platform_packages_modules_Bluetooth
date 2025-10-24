@@ -258,12 +258,12 @@ public class DistanceMeasurementManager {
                         + params.getLocationType()
 			+ "mCsSecurityLevel"
 			+ params.getCsSecurityLevel()
-			+ "mFrequency" + tracker.mFrequency);
+			+ "mFrequency " + tracker.mFrequency + " mInterval: " + tracker.mInterval + " mDuration: " + tracker.mDuration);
 	mDistanceMeasurementNativeInterface.setCsParams(tracker.mIdentityAddress,
 			params.getSightType(),
 			params.getLocationType(),
 			params.getCsSecurityLevel(),
-			tracker.mFrequency,tracker.mInterval);
+			tracker.mFrequency,tracker.mDuration);
         mDistanceMeasurementNativeInterface.startDistanceMeasurement(
                 tracker.mIdentityAddress,
                 tracker.mInterval,

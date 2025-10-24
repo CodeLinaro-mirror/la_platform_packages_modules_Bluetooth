@@ -243,7 +243,7 @@ public class LeAudioService extends ProfileService {
     boolean mLeAudioSuspended = false;
     boolean mIsSinkStreamMonitorModeEnabled = false;
     boolean mIsBroadcastPausedFromOutside = false;
-    boolean mHasFallback = true;
+    boolean mHasFallback = false;
     private byte[] mCachedArgs = null;
     private int mCachedOpcode = -1;
 
@@ -775,7 +775,7 @@ public class LeAudioService extends ProfileService {
 
         clearCreateBroadcastTimeoutCallback();
 
-        setDisconnected(true);
+        mHasFallback = false;
         removeActiveDevice(false);
 
         if (mTmapGattServer == null) {
@@ -2828,6 +2828,11 @@ public class LeAudioService extends ProfileService {
                         + ", isBroadcastPlaying: "
                         + isBroadcastPlaying);
 
+        if (groupId != LE_AUDIO_GROUP_ID_INVALID && groupId != currentlyActiveGroupId) {
+            Log.d(TAG, "Do not stop stream when NULL -> LEA or LEA -> LEA");
+            mHasFallback = true;
+        }
+
         /* Replace fallback unicast and monitoring input device if device is active local
          * broadcaster.
          */
@@ -3189,6 +3194,7 @@ public class LeAudioService extends ProfileService {
             if (updateActiveDevices(
                     groupId, AUDIO_DIRECTION_NONE, descriptor.mDirection, true, false, false)) {
                 descriptor.setActiveState(ACTIVE_STATE_ACTIVE);
+                mHasFallback = false;
             } else {
                 descriptor.setActiveState(ACTIVE_STATE_INACTIVE);
             }
@@ -3225,14 +3231,6 @@ public class LeAudioService extends ProfileService {
                 && (!mCreateBroadcastQueue.isEmpty()
                         || mBroadcastIdDeactivatedForUnicastTransition.isPresent())
                 && isBroadcastAllowedToBeActivateInCurrentAudioMode();
-    }
-
-    private void setDisconnected(boolean isDisconnected) {
-        Log.d(TAG, "setDisconnected: " + isDisconnected);
-        if(isDisconnected) {
-            mHasFallback = false;
-            mUserPreferred = false;
-        }
     }
 
     private void handleGroupTransitToInactive(int groupId) {
@@ -3292,8 +3290,6 @@ public class LeAudioService extends ProfileService {
                     mHasFallback,
                     leaveConnectedInputDevice);
             /* Clear lost devices */
-            Log.d(TAG, "Clear for group: " + groupId);
-            mHasFallback = true;
             clearLostDevicesWhileStreaming(descriptor);
             mHandler.post(
                     () ->
@@ -3852,13 +3848,6 @@ public class LeAudioService extends ProfileService {
                         case LeAudioStackEvent.CONNECTION_STATE_DISCONNECTING:
                         case LeAudioStackEvent.CONNECTION_STATE_DISCONNECTED:
                             deviceDescriptor.mAclConnected = false;
-                            if (descriptor.isActive()) {
-                                if (getConnectedPeerDevices(groupId).size() > 1) {
-                                    Log.d(TAG, "There are other connected group members.");
-                                } else {
-                                    setDisconnected(true);
-                                }
-                            }
 
                             if (isScannerNeeded()) {
                                 mScanCallback.startBackgroundScan();
@@ -4763,7 +4752,6 @@ public class LeAudioService extends ProfileService {
                     }
 
                     /* Notify Native layer */
-                    setDisconnected(true);
                     removeActiveDevice(hasFallbackDevice);
                     descriptor.setActiveState(ACTIVE_STATE_INACTIVE);
                     /* Update audio framework */
@@ -4774,8 +4762,6 @@ public class LeAudioService extends ProfileService {
                             false,
                             hasFallbackDevice,
                             false);
-                    Log.d(TAG, "Device updated had been done, reset mHasFallback");
-                    mHasFallback = true;
                     /* Set by default earliest connected device */
                     if (Flags.leaudioBroadcastPrimaryGroupSelection()
                             && mUnicastGroupIdDeactivatedForBroadcastTransition == groupId) {

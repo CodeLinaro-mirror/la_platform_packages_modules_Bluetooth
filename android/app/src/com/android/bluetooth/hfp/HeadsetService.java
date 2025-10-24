@@ -1927,6 +1927,7 @@ public class HeadsetService extends ProfileService {
         enforceCallingOrSelfPermission(MODIFY_PHONE_STATE, "Need MODIFY_PHONE_STATE permission");
         // DSDA scenario for back to back incoming calls.Queuing until SCO disconenction complete
         HeadsetStateMachine stateMachine = mStateMachines.get(mActiveDevice);
+        int prevCallState = mSystemInterface.getHeadsetPhoneState().getCallState();
         if (stateMachine == null ||
             (mVirtualCallStarted || mVoiceRecognitionStarted)) {
            Log.w(TAG, "HeadsetStateMachine is null or VOIP/VR in progress.");
@@ -1936,7 +1937,8 @@ public class HeadsetService extends ProfileService {
         if ((numActive == 0) && (numHeld == 0) && !mDelayDsDaindicators) {
            if ((stateMachine.getAudioState() == BluetoothHeadset.STATE_AUDIO_CONNECTED) ||
                (stateMachine.getAudioState() == BluetoothHeadset.STATE_AUDIO_CONNECTING)) {
-               if (callState == HeadsetHalConstants.CALL_STATE_INCOMING) {
+               if (callState == HeadsetHalConstants.CALL_STATE_INCOMING &&
+                   prevCallState != callState) {
                   //add the entries to queue
                   mDsDaCallIndicators.mNumActive = numActive;
                   mDsDaCallIndicators.mNumHeld = numHeld;

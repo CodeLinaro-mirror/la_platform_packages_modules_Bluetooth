@@ -375,7 +375,6 @@ bool background_connect_remove(uint8_t app_id, const RawAddress& address) {
   if (removed_from_ta && it->second.doing_targeted_announcements_conn.size() == 0) {
     BTM_LogHistory(kBtmLogTagTA, address, "Ignore connection from");
   }
-
   if (is_anyone_connecting(it)) {
     log::debug("some app is still connecting, app_id={}, address={}", static_cast<int>(app_id),
                address);
@@ -471,11 +470,11 @@ void reset(bool after_reset) {
 
 static void wl_direct_connect_timeout_cb(uint8_t app_id, const RawAddress& address) {
   log::debug("app_id={}, address={}", static_cast<int>(app_id), address);
-  on_connection_timed_out(app_id, address);
-
   // TODO: this would free the timer, from within the timer callback, which is
   // bad.
   direct_connect_remove(app_id, address, true);
+  log::debug("remove direct conn for app_id={}, address={}", static_cast<int>(app_id), address);
+  on_connection_timed_out(app_id, address);
 }
 
 static void find_in_device_record(const RawAddress& bd_addr, tBLE_BD_ADDR* address_with_type) {
@@ -586,8 +585,8 @@ bool direct_connect_remove(uint8_t app_id, const RawAddress& address, bool conne
 
   // this will free the alarm
   it->second.doing_direct_conn.erase(app_it);
-
   if (is_anyone_interested_to_use_accept_list(it)) {
+    log::warn("is_anyone_interested_to_use_accept_list is true");
     if (connection_timeout) {
       /* In such case we need to add device back to allow list because, when connection timeout
        * out, the lower layer removes device from the allow list.
@@ -599,7 +598,7 @@ bool direct_connect_remove(uint8_t app_id, const RawAddress& address, bool conne
 
   // no more apps interested - remove from acceptlist
   ACL_IgnoreLeConnectionFrom(BTM_Sec_GetAddressWithType(address));
-
+  log::debug("is in acceptlist: {}, is_targeted_announcement_enabled {}", it->second.is_in_accept_list, is_targeted_announcement_enabled);
   if (!is_targeted_announcement_enabled) {
     bgconn_dev.erase(it);
   } else {

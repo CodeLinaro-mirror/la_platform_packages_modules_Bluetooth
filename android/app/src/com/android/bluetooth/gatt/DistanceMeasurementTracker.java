@@ -47,7 +47,7 @@ class DistanceMeasurementTracker {
     final IDistanceMeasurementCallback mCallback;
     private final DistanceMeasurementManager mManager;
     private final UUID mUuid;
-    private final int mDuration; // Report duration in s
+    final int mDuration; // Report duration in s
     private final int mMethod;
 
     boolean mStarted = false;

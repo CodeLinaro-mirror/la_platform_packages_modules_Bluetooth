@@ -99,6 +99,21 @@ bool LeAudioDeviceGroup::IsEmpty(void) const { return leAudioDevices_.size() == 
 
 bool LeAudioDeviceGroup::IsAnyDeviceConnected(void) const { return NumOfConnected() != 0; }
 
+bool LeAudioDeviceGroup::IsAnyDeviceDisconnecting(void) const {
+  /* return true if any device is disconnecting or pending*/
+  for (auto const leAudioDevice : leAudioDevices_) {
+    auto dev = leAudioDevice.lock();
+    if (dev && (dev->conn_id_ != GATT_INVALID_CONN_ID)) {
+      auto state = dev->GetConnectionState();
+      if (state == DeviceConnectState::DISCONNECTING ||
+          state == DeviceConnectState::DISCONNECTING_AND_RECOVER) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 int LeAudioDeviceGroup::Size(void) const { return leAudioDevices_.size(); }
 
 int LeAudioDeviceGroup::DesiredSize(void) const {

@@ -288,7 +288,7 @@ struct HciLayer::impl {
               std::move(response_view));
     }
 
-#ifdef TARGET_FLOSS
+
     // Although UNKNOWN_CONNECTION might be a controller issue in some command status, we treat it
     // as a disconnect event to maintain consistent connection state between stack and controller
     // since there might not be further HCI Disconnect Event after this status event.
@@ -304,7 +304,7 @@ struct HciLayer::impl {
         module_.Disconnect(handle, ErrorCode::UNKNOWN_CONNECTION);
       }
     }
-#endif
+
 
     command_queue_.pop_front();
     waiting_command_ = OpCode::NONE;
