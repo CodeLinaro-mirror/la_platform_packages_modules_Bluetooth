@@ -112,7 +112,7 @@ public class DistanceMeasurementNativeInterface {
 
     void onDistanceMeasurementResult(
             String address,
-            int centimeter,
+            double meter,
             int errorCentimeter,
             int azimuthAngle,
             int errorAzimuthAngle,
@@ -128,7 +128,7 @@ public class DistanceMeasurementNativeInterface {
                 () ->
                         mDistanceMeasurementManager.onDistanceMeasurementResult(
                                 address,
-                                centimeter,
+                                meter,
                                 errorCentimeter,
                                 azimuthAngle,
                                 errorAzimuthAngle,

@@ -198,7 +198,7 @@ public class InitiatorFragment extends Fragment {
                 .observe(
                         getActivity(),
                         distanceMeters -> {
-                            mDistanceCanvasView.addNode(distanceMeters, /* abort= */ false);
+                            mDistanceCanvasView.addNode(Math.round(distanceMeters * 100.0) / 100.0, /* abort= */ false);
                             mDistanceText.setText(
                                     DISTANCE_DECIMAL_FMT.format(distanceMeters) + " m");
                             curr_distance = distanceMeters;

@@ -63,7 +63,7 @@ LeAudioContextType AudioContentToLeAudioContext(audio_content_type_t content_typ
       return LeAudioContextType::MEDIA;
     case AUDIO_USAGE_ASSISTANCE_ACCESSIBILITY:
     case AUDIO_USAGE_ASSISTANT:
-      return LeAudioContextType::VOICEASSISTANTS;
+    /*  return LeAudioContextType::VOICEASSISTANTS;*/
     case AUDIO_USAGE_VOICE_COMMUNICATION:
     case AUDIO_USAGE_CALL_ASSISTANT:
       return LeAudioContextType::CONVERSATIONAL;
@@ -251,7 +251,8 @@ AudioContexts GetAudioContextsFromSinkMetadata(
        * This will handle also a case when the device is
        * AUDIO_SOURCE_VOICE_RECOGNITION
        */
-      track_context = LeAudioContextType::VOICEASSISTANTS;
+     /* track_context = LeAudioContextType::VOICEASSISTANTS;*/
+      track_context = LeAudioContextType::CONVERSATIONAL;
       log::warn(
               "Could not match the recording track type to group available "
               "context. Using context {}.",

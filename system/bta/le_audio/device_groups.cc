@@ -1472,16 +1472,6 @@ int LeAudioDeviceGroup::GetAseCount(uint8_t direction) const {
   return result;
 }
 
-//Require this update as remote device during VA acts same as Call.
-void updateVAcontext(types::BidirectionalPair<types::AudioContexts>& group_contexts) {
-  if (group_contexts.sink.test(LeAudioContextType::CONVERSATIONAL) &&
-      group_contexts.source.test(LeAudioContextType::CONVERSATIONAL)) {
-    log::info("update VoiceAssistants as available audio context in both direction");
-    group_contexts.sink.set(LeAudioContextType::VOICEASSISTANTS);
-    group_contexts.source.set(LeAudioContextType::VOICEASSISTANTS);
-  }
-}
-
 /* Calculate the total number of sink, source and bidirectional CISes required by the CIG,
  * for the given configuration audio context.
  */
@@ -1588,8 +1578,7 @@ void LeAudioDeviceGroup::CigConfiguration::GetCisCount(LeAudioContextType contex
                  out_cis_count_unidir_sink = expected_device_cnt;
               }
             }
-          } else if (context_type == LeAudioContextType::LIVE ||
-                     context_type == LeAudioContextType::VOICEASSISTANTS) {
+          } else if (context_type == LeAudioContextType::LIVE) {
             out_cis_count_bidir = 2 * expected_device_cnt;
           } else if (context_type == LeAudioContextType::GAME) {
             out_cis_count_bidir = expected_device_cnt;

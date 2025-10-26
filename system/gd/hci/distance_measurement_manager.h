@@ -67,7 +67,7 @@ public:
   virtual void OnDistanceMeasurementStopped(Address address, DistanceMeasurementErrorCode reason,
                                             DistanceMeasurementMethod method) = 0;
   virtual void OnDistanceMeasurementResult(
-          Address address, uint32_t centimeter, uint32_t error_centimeter, int azimuth_angle,
+          Address address, double meter, uint32_t error_centimeter, int azimuth_angle,
           int error_azimuth_angle, int altitude_angle, int error_altitude_angle,
           uint64_t elapsed_realtime_nanos, int8_t confidence_level, double delayed_spread_meters,
           DistanceMeasurementDetectedAttackLevel detected_attack_level,

@@ -574,6 +574,10 @@ bool hal_ucast_capability_to_stack_format(const UnicastCapability& hal_capabilit
           hal_capability.leAudioCodecCapabilities
                   .get<UnicastCapability::LeAudioCodecCapabilities::lc3Capabilities>();
   auto supported_channel = hal_capability.supportedChannel;
+  if (hal_lc3_capability.pcmBitDepth.empty()) {
+    log::info("pcmBitDepth is empty");
+  }
+
   auto sample_rate_hz = hal_lc3_capability.samplingFrequencyHz[0];
   auto frame_duration_us = hal_lc3_capability.frameDurationUs[0];
   auto octets_per_frame = hal_lc3_capability.octetsPerFrame[0];
@@ -692,17 +696,21 @@ bluetooth::audio::le_audio::OffloadCapabilities get_offload_capabilities() {
 
     if (hal_ucast_capability_to_stack_format(hal_encode_cap, encode_cap)) {
       auto ase_cnt = hal_encode_cap.deviceCount * hal_encode_cap.channelCountPerDevice;
+      log::info("encode ase_cnt: {}", ase_cnt);
       while (ase_cnt--) {
         audio_set_config.confs.sink.push_back(AseConfiguration(encode_cap));
       }
+      log::info("sink caps have been added");
       str_capability_log = " Encode Capability: " + hal_encode_cap.toString();
     }
 
     if (hal_ucast_capability_to_stack_format(hal_decode_cap, decode_cap)) {
       auto ase_cnt = hal_decode_cap.deviceCount * hal_decode_cap.channelCountPerDevice;
+      log::info("decode ase_cnt: {}", ase_cnt);
       while (ase_cnt--) {
         audio_set_config.confs.source.push_back(AseConfiguration(decode_cap));
       }
+      log::info("source caps have been added");
       str_capability_log += " Decode Capability: " + hal_decode_cap.toString();
     }
 

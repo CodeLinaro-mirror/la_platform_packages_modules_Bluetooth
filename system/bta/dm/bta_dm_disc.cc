@@ -168,6 +168,12 @@ void bta_dm_disc_remove_device(const RawAddress& bd_addr) {
     log::info("Device removed while service discovery was pending, conclude the service discovery");
     bta_dm_gatt_disc_complete(GATT_INVALID_CONN_ID, (tGATT_STATUS)GATT_ERROR);
   }
+  if (bta_dm_discovery_cb.pending_close_bda == bd_addr &&
+    bta_dm_discovery_cb.gatt_close_timer != nullptr) {
+    log::info("Cancelling pending GATT close timer for removed device {}", bd_addr);
+    alarm_cancel(bta_dm_discovery_cb.gatt_close_timer);
+    bta_dm_discovery_cb.pending_close_bda = RawAddress::kEmpty;
+  }
 }
 
 static void bta_dm_discovery_set_state(tBTA_DM_SERVICE_DISCOVERY_STATE state) {
