@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -38,9 +43,16 @@
 #include "osi/include/allocator.h"
 #include "osi/include/compat.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/main_thread.h"
 #include "types/raw_address.h"
 
 using namespace bluetooth;
+
+/*****************************************************************************
+ *  Constants
+ ****************************************************************************/
+
+static const tBTA_SYS_REG bta_hf_client_reg = {bta_hf_client_hdl_event, BTA_HfClientDisable};
 
 /*****************************************************************************
  *  External Function Declarations
@@ -63,7 +75,16 @@ using namespace bluetooth;
  ******************************************************************************/
 tBTA_STATUS BTA_HfClientEnable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIENT_FEAT features,
                                const char* p_service_name) {
-  return bta_hf_client_api_enable(p_cback, features, p_service_name);
+  /* If already registered then return error */
+  if (bta_sys_is_register(BTA_ID_HS)) {
+    log::error("BTA HF Client is already enabled, ignoring ...");
+    return BTA_FAILURE;
+  }
+
+  /* register with BTA system manager */
+  bta_sys_register(BTA_ID_HS, &bta_hf_client_reg);
+  do_in_main_thread(base::BindOnce(&bta_hf_client_api_enable, p_cback, features, p_service_name));
+  return BTA_SUCCESS;
 }
 
 /*******************************************************************************
@@ -75,7 +96,16 @@ tBTA_STATUS BTA_HfClientEnable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIENT_FEA
  * Returns          void
  *
  ******************************************************************************/
-void BTA_HfClientDisable(void) { bta_hf_client_api_disable(); }
+void BTA_HfClientDisable(void) {
+  if (!bta_sys_is_register(BTA_ID_HS)) {
+    log::warn("BTA HF Client is already disabled, ignoring ...");
+    return;
+  }
+
+  /* De-register with BTA system manager */
+  bta_sys_deregister(BTA_ID_HS);
+  do_in_main_thread(base::BindOnce(&bta_hf_client_api_disable));
+}
 
 /*******************************************************************************
  *
