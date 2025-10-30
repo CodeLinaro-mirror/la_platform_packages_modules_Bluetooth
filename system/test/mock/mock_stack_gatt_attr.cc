@@ -32,10 +32,6 @@ uint16_t gatt_profile_find_conn_id_by_bd_addr(const RawAddress& /* remote_bda */
   inc_func_call_count(__func__);
   return 0;
 }
-bool gatt_profile_get_eatt_support(const RawAddress& /* remote_bda */) {
-  inc_func_call_count(__func__);
-  return false;
-}
 bool gatt_profile_get_eatt_support_by_conn_id(uint16_t /* conn_id */) {
   inc_func_call_count(__func__);
   return true;
