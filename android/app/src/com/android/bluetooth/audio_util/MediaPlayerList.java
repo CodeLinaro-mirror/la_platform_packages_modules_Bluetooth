@@ -455,8 +455,7 @@ public class MediaPlayerList {
         int action = pushed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP;
         KeyEvent event = new KeyEvent(action, AvrcpPassthrough.toKeyCode(key));
         // Send a media key event to a media player
-        mMediaSessionManager.dispatchMediaKeyEvent(event, false);
-        //mMediaSessionManager.dispatchMediaKeyEvent(event, getPlayerPackageName(device));
+        mMediaSessionManager.dispatchMediaKeyEvent(event, getPlayerPackageName(device));
     }
 
     /** Sets the {@link #mBrowsingPlayerId} and returns the number of items in current path */
