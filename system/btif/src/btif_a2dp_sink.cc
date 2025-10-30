@@ -832,6 +832,17 @@ static void btif_a2dp_sink_on_suspend_event() {
   if ((btif_a2dp_sink_cb.decoder_interface != nullptr) &&
       (btif_a2dp_sink_cb.decoder_interface->decoder_suspend != nullptr)) {
     btif_a2dp_sink_cb.decoder_interface->decoder_suspend();
+  } else if ((btif_a2dp_sink_cb.decoder_interface != nullptr) &&
+             (btif_a2dp_sink_cb.decoder_interface->decoder_init != nullptr)) {
+    // So far, for both SBC and AAC decoder, interface decoder_suspend()
+    // are not implemented. When A2DP streaming is suspended, the undecoded
+    // data remained in decoder internal buffer is not cleaned, especially
+    // for AAC decoder, refer to the API description of aacDecoder_Fill.
+    // Once A2DP streaming resumes, because in most cases, the volume of
+    // resumed A2DP streaming always rises in a crescendo, this makes the
+    // remained data sounded very obtrusive.
+    btif_a2dp_sink_cb.decoder_interface->decoder_init(
+       btif_a2dp_sink_on_decode_complete);
   }
 
   return;
