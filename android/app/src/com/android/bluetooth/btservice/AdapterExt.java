@@ -6,6 +6,8 @@
 package com.android.bluetooth.btservice;
 
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
+import static android.Manifest.permission.BLUETOOTH_SCAN;
+import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 
 import android.annotation.RequiresPermission;
 import android.bluetooth.annotations.RequiresBluetoothConnectPermission;
@@ -100,10 +102,22 @@ public final class AdapterExt {
         return (adapter != null) ? adapter.enable() : false;
     }
 
-    @RequiresPermission(BLUETOOTH_CONNECT)
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public static boolean disable() {
         BluetoothAdapter adapter = getAdapter();
-        return (adapter != null) ? adapter.disable() : false;
+        return (adapter != null) ? adapter.disable(false) : false;
+    }
+
+    @RequiresPermission(BLUETOOTH_SCAN)
+    public static boolean startDiscovery() {
+        BluetoothAdapter adapter = getAdapter();
+        return (adapter != null) ? adapter.startDiscovery() : false;
+    }
+
+    @RequiresPermission(BLUETOOTH_SCAN)
+    public static boolean cancelDiscovery() {
+        BluetoothAdapter adapter = getAdapter();
+        return (adapter != null) ? adapter.cancelDiscovery() : false;
     }
 
     @RequiresPermission(BLUETOOTH_CONNECT)
