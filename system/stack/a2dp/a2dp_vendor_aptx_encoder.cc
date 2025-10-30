@@ -395,7 +395,7 @@ static size_t aptx_encode_16bit(tAPTX_FRAMING_PARAMS* framing_params, size_t* da
   return pcm_bytes_encoded;
 }
 
-void A2dpCodecConfigAptx::debug_codec_dump(int fd) {
+void A2dpCodecConfigAptxSource::debug_codec_dump(int fd) {
   a2dp_aptx_encoder_stats_t* stats = &a2dp_aptx_encoder_cb.stats;
 
   A2dpCodecConfig::debug_codec_dump(fd);

@@ -1209,6 +1209,10 @@ A2dpCodecConfigOpusSink::A2dpCodecConfigOpusSink(btav_a2dp_codec_priority_t code
 A2dpCodecConfigOpusSink::~A2dpCodecConfigOpusSink() {}
 
 bool A2dpCodecConfigOpusSink::init() {
+  if (!A2DP_IsCodecSupported(BTAV_A2DP_CODEC_INDEX_SINK_OPUS)) {
+    return false;
+  }
+
   return true;
 }
 
