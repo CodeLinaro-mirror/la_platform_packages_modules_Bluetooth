@@ -23,9 +23,155 @@ void convertStringToSubEventLen(std::string, uint8_t *);
 void convertStringToPreferredAnt(std::string, uint8_t *);
 void convertStringToChannelMap(std::string, uint8_t *);
 void print_cs_procedure_settings(void);
+bool config_used = false;
+
+
+void print_cs_configs();
+void print_cs_procedure_settings();
+
+typedef struct {
+    uint8_t main_mode_type;
+    uint8_t sub_mode_type;
+    uint8_t main_mode_min_steps;
+    uint8_t main_mode_max_steps;
+    uint8_t main_mode_rep;
+    uint8_t mode_0_steps;
+    uint8_t role;
+    uint8_t rtt_types;
+    uint8_t cs_sync_phy;
+    uint8_t channel_map_rep;
+    uint8_t hop_algo_type;
+    uint8_t user_shape;
+    uint8_t user_channel_jump;
+    uint8_t comp_signal_enable;
+    // Note: config_id and channel_map are EXCLUDED (dynamic)
+} tCS_CONFIG_STATIC;
+
+typedef struct {
+    uint16_t max_proc_duration;
+    uint16_t max_period_between_proc;
+    uint16_t max_proc_count;
+    uint8_t min_subevent_len[3];
+    uint8_t max_subevent_len[3];
+    uint8_t phy;
+    uint8_t tx_pwr_delta;
+    uint8_t snr_control_initiator;
+    uint8_t snr_control_reflector;
+    // Note: enable, config_id, tone_ant_cfg_selection, preferred_peer_antenna, 
+    // min_period_between_proc are EXCLUDED (dynamic)
+} tCS_PROCEDURE_STATIC;
+
+/*
+ * Static CS Config Table
+ * Fields: main_mode_type, sub_mode_type, main_mode_min_steps, main_mode_max_steps,
+ *         main_mode_rep, mode_0_steps, role, rtt_types, cs_sync_phy, channel_map_rep,
+ *         hop_algo_type, user_shape, user_channel_jump, comp_signal_enable
+ */
+static const tCS_CONFIG_STATIC cs_config_static_data[] = {
+    /* Config 0 (Security Level 1): SubMode=255, Steps=2-3, RTT=0 */
+    {2, 255, 2, 3, 1, 2, 0, 0, 1, 1, 0, 0, 2, 0},
+    /* Config 1 (Security Level 2): SubMode=1, Steps=5-6, RTT=0 */
+    {2, 1, 5, 6, 1, 2, 0, 0, 1, 1, 0, 0, 2, 0},
+    /* Config 2 (Security Level 3): SubMode=1, Steps=2-3, RTT=3 */
+    {2, 1, 2, 3, 1, 2, 0, 3, 1, 1, 0, 0, 2, 0},
+    /* Config 3 (Security Level 4): SubMode=1, Steps=2-3, RTT=4 */
+    {2, 1, 2, 3, 1, 2, 0, 4, 1, 1, 0, 0, 2, 0}
+};
+
+/*
+ * Static CS Procedure Table
+ * Fields: max_proc_duration, max_period_between_proc, max_proc_count,
+ *         min_subevent_len[3], max_subevent_len[3], phy, tx_pwr_delta,
+ *         snr_control_initiator, snr_control_reflector
+ */
+static const tCS_PROCEDURE_STATIC cs_procedure_static_data[] = {
+    /* Procedure 0 (Frequency 0): MaxDuration=1600 */
+    {1600, 150, 0, {0x00, 0x50, 0x00}, {0x03, 0x50, 0x00}, 1, 128, 255, 255},
+    /* Procedure 1 (Frequency 1): MaxDuration=800 */
+    {800, 150, 0, {0x00, 0x50, 0x00}, {0x03, 0x50, 0x00}, 1, 128, 255, 255},
+    /* Procedure 2 (Frequency 2): MaxDuration=200 */
+    {200, 150, 0, {0x00, 0x50, 0x00}, {0x03, 0x50, 0x00}, 1, 128, 255, 255}
+};
+
+
+
+
+
 std::vector<tCS_PROCEDURE_PARAM> cs_procedure_settings;
 std::vector<tCS_CONFIG> cs_config_settings;
 unsigned long cs_config_settings_count, cs_procedure_settings_count;
+
+
+void InitializecsConfigSettings(void) {
+    cs_config_settings.clear();
+    for (size_t i = 0; i < sizeof(cs_config_static_data) / sizeof(tCS_CONFIG_STATIC); i++) {
+        tCS_CONFIG config;
+        const tCS_CONFIG_STATIC* static_data = &cs_config_static_data[i];
+
+        config.config_id = i;  // Default, will be computed dynamically
+        config.main_mode_type = static_data->main_mode_type;
+        config.sub_mode_type = static_data->sub_mode_type;
+        config.main_mode_min_steps = static_data->main_mode_min_steps;
+        config.main_mode_max_steps = static_data->main_mode_max_steps;
+        config.main_mode_rep = static_data->main_mode_rep;
+        config.mode_0_steps = static_data->mode_0_steps;
+        config.role = static_data->role;
+        config.rtt_types = static_data->rtt_types;
+        config.cs_sync_phy = static_data->cs_sync_phy;
+        config.channel_map_rep = static_data->channel_map_rep;
+        config.hop_algo_type = static_data->hop_algo_type;
+        config.user_shape = static_data->user_shape;
+        config.user_channel_jump = static_data->user_channel_jump;
+        config.comp_signal_enable = static_data->comp_signal_enable;
+
+        // Set default channel_map (will be overridden dynamically)
+        if (i == 0) {
+            uint8_t default_map[10] = {252, 255, 127, 252, 255, 255, 255, 255, 255, 31};
+            memcpy(config.channel_map, default_map, 10);
+        } else {
+            uint8_t default_map[10] = {84, 85, 85, 84, 85, 85, 85, 85, 85, 21};
+            memcpy(config.channel_map, default_map, 10);
+        }
+
+        cs_config_settings.push_back(config);
+    }
+    log::info("All CS Configs are parsed successfully\n");
+    print_cs_configs();
+}
+
+void InitializecsProcedureSettings(void) {
+    cs_procedure_settings.clear();
+    for (size_t i = 0; i < sizeof(cs_procedure_static_data) / sizeof(tCS_PROCEDURE_STATIC); i++) {
+        tCS_PROCEDURE_PARAM proc;
+        const tCS_PROCEDURE_STATIC* static_data = &cs_procedure_static_data[i];
+
+        proc.enable = 0;  // Default, will be computed dynamically
+        proc.config_id = 0;  // Default, will be computed dynamically
+        proc.max_proc_duration = static_data->max_proc_duration;
+        proc.min_period_between_proc = 0;  // Default, will be computed dynamically
+        proc.max_period_between_proc = static_data->max_period_between_proc;
+        proc.max_proc_count = static_data->max_proc_count;
+        memcpy(proc.min_subevent_len, static_data->min_subevent_len, 3);
+        memcpy(proc.max_subevent_len, static_data->max_subevent_len, 3);
+        proc.tone_ant_cfg_selection = 7;  // Default, will be computed dynamically
+        proc.phy = static_data->phy;
+        proc.tx_pwr_delta = static_data->tx_pwr_delta;
+        proc.preferred_peer_antenna = 0x03;  // Default, will be computed dynamically
+        proc.snr_control_initiator = static_data->snr_control_initiator;
+        proc.snr_control_reflector = static_data->snr_control_reflector;
+
+        cs_procedure_settings.push_back(proc);
+    }
+
+    log::info("All CS Procedure Settings are parsed successfully\n");
+    print_cs_procedure_settings();
+}
+
+void InitializeConfigs(void) {
+    InitializecsConfigSettings();
+    InitializecsProcedureSettings();
+}
+
 bool is_leaf(xmlNode *node) {
   xmlNode *child = node->children;
   while(child)
@@ -306,14 +452,7 @@ void ReadLocalConfigs(void)
 {
   xmlDoc *doc = NULL;
   xmlNode *root_element = NULL;
-  bool local_config = false;
-
-  char value[PROPERTY_VALUE_MAX];
-  if (osi_property_get("persist.vendor.service.bt.config.local", value, "false")) {
-      if (strncmp(value, "true", PROPERTY_VALUE_MAX) == 0)
-       local_config = true;
-  }
-  const char* config_path = local_config ? CS_CONFIG_PATH_LOCAL : CS_CONFIG_PATH;
+  const char* config_path = CS_CONFIG_PATH_LOCAL;
   doc = xmlReadFile(config_path, NULL, 0);
   if (doc == NULL) {
     log::error("Could not parse the CS XML file {}", config_path);
@@ -437,7 +576,7 @@ bool get_cs_procedure_settings(int index,
       log::warn("selected procedure parameters are not available in config");
       return false;
     }
-
+    log::warn("local config used :{}", config_used);
     log::warn("index :{}", index);
     cs_proc_setting->max_proc_duration = cs_procedure_settings[index].max_proc_duration;
     cs_proc_setting->min_period_between_proc = cs_procedure_settings[index].min_period_between_proc;
@@ -458,11 +597,30 @@ bool get_cs_procedure_settings(int index,
     return true;
 }
 
+void readConfigs() {
+  bool local_config = false;
+  char value[PROPERTY_VALUE_MAX];
+  if (osi_property_get("persist.vendor.service.bt.config.local", value, "false")) {
+      if (strncmp(value, "true", PROPERTY_VALUE_MAX) == 0)
+       local_config = true;
+  }
+
+  if (local_config) {
+    log::error("Attempting to load CS config from local XML file.");
+    config_used = true;
+    ReadLocalConfigs();
+  } else {
+    log::error("Loading CS config from static tables.");
+    InitializeConfigs();
+  }
+}
+
+
 future_t* cs_config_module_init(void) {
   log::info("");
   cs_config_settings_count = 0;
   cs_procedure_settings_count = 0;
-  ReadLocalConfigs();
+  readConfigs();
   return future_new_immediate(FUTURE_SUCCESS);
 }
 

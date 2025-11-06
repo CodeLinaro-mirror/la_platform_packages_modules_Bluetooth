@@ -13,18 +13,8 @@
 #define CS_SUBEVENT_LEN_SIZE 3
 #define CS_CHANNEL_MAP_SIZE 10
 
-#ifndef CS_CONFIG_PATH
-#if defined(TARGET_FLOSS)
-#define CS_CONFIG_PATH "/var/lib/bluetooth/cs_configs.xml"
-#elif defined(__ANDROID__)
-#define CS_CONFIG_PATH \
-  "/apex/com.android.btservices/etc/bluetooth/cs_configs.xml"
-#else  // !defined(__ANDROID__)
-#define CS_CONFIG_PATH "cs_configs.xml"
-#endif  // defined(__ANDROID__)
-#endif  // CS_CONFIG_PATH
-
 #define CS_CONFIG_PATH_LOCAL "/data/misc/bluetooth/cs_configs.xml"
+
 static const char CS_CONFIG_MODULE[] = "cs_config_module";
 typedef struct {
   uint8_t enable;
