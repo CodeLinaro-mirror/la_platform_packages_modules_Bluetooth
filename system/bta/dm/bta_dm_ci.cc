@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -51,4 +56,30 @@ void bta_dm_ci_rmt_oob(bool accept, const RawAddress& bd_addr, const Octet16& c,
   msg->r = r;
 
   do_in_main_thread(base::Bind(bta_dm_ci_rmt_oob_act, base::Passed(&msg)));
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_dm_ci_rmt_oob_extended
+ *
+ * Description      This function must be called in response to function
+ *                  btm_rem_oob_req() to provide the OOB data associated
+ *                  with the remote device.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void bta_dm_ci_rmt_oob_extended(bool accept, const RawAddress& bd_addr, const Octet16& c192,
+                                const Octet16& r192, const Octet16& c256, const Octet16& r256) {
+  std::unique_ptr<tBTA_DM_CI_RMT_OOB_EXTENDED> msg =
+      std::make_unique<tBTA_DM_CI_RMT_OOB_EXTENDED>();
+
+  msg->bd_addr = bd_addr;
+  msg->accept = accept;
+  msg->c192 = c192;
+  msg->r192 = r192;
+  msg->c256 = c256;
+  msg->r256 = r256;
+
+  do_in_main_thread(base::Bind(bta_dm_ci_rmt_oob_extended_act, base::Passed(&msg)));
 }

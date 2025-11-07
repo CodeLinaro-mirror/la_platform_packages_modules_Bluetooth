@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #ifndef HCIDEFS_H
@@ -89,6 +94,7 @@
 #define HCI_REM_OOB_DATA_REQ_REPLY (0x0030 | HCI_GRP_LINK_CONTROL_CMDS)
 #define HCI_REM_OOB_DATA_REQ_NEG_REPLY (0x0033 | HCI_GRP_LINK_CONTROL_CMDS)
 #define HCI_IO_CAP_REQ_NEG_REPLY (0x0034 | HCI_GRP_LINK_CONTROL_CMDS)
+#define HCI_REM_OOB_EXTENDED_DATA_REQ_REPLY (0x0045 | HCI_GRP_LINK_CONTROL_CMDS)
 
 /* AMP HCI */
 #define HCI_CREATE_PHYSICAL_LINK (0x0035 | HCI_GRP_LINK_CONTROL_CMDS)
