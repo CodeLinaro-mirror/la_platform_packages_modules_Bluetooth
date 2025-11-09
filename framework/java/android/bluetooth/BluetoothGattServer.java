@@ -927,6 +927,9 @@ public final class BluetoothGattServer implements BluetoothProfile {
         if (device == null) {
             throw new IllegalArgumentException("device must not be null");
         }
+        if (value == null) {
+            throw new IllegalArgumentException("Characteristic value must not be null");
+        }
         if (value.length > GATT_MAX_ATTR_LEN) {
             throw new IllegalArgumentException(
                     "notification should not be longer than max length of an attribute value");
@@ -934,9 +937,6 @@ public final class BluetoothGattServer implements BluetoothProfile {
         BluetoothGattService service = characteristic.getService();
         if (service == null) {
             throw new IllegalArgumentException("Characteristic must have a non-null service");
-        }
-        if (value == null) {
-            throw new IllegalArgumentException("Characteristic value must not be null");
         }
 
         try {
