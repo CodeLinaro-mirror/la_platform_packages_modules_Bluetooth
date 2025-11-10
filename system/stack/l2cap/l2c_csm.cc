@@ -845,10 +845,14 @@ static void l2c_csm_w4_l2cap_connect_rsp(tL2C_CCB* p_ccb, tL2CEVT event, void* p
                 android::bluetooth::CodePathCounterKeyEnum::L2CAP_INFO_NO_COMPATIBLE_CHANNEL_AT_RSP,
                 1);
       } else {
-        /* We have feature info, so now send peer connect request */
-        alarm_set_on_mloop(p_ccb->l2c_ccb_timer, L2CAP_CHNL_CONNECT_TIMEOUT_MS,
-                           l2c_ccb_timer_timeout, p_ccb);
-        l2cu_send_peer_connect_req(p_ccb); /* Start Connection     */
+        /* We have feature info, so now send peer connect request if not already sent */
+        if (p_ccb->local_id == 0) {  // Only if not already pending
+            alarm_set_on_mloop(p_ccb->l2c_ccb_timer, L2CAP_CHNL_CONNECT_TIMEOUT_MS,
+                               l2c_ccb_timer_timeout, p_ccb);
+            l2cu_send_peer_connect_req(p_ccb); /* Start Connection     */
+        } else {
+            log::warn("Skipping duplicate L2CAP connect request for lcid=0x%04x, local_id=%u is active", p_ccb->local_cid, p_ccb->local_id);
+        }
       }
       break;
 

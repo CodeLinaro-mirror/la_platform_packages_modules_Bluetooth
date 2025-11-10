@@ -343,7 +343,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     uint64_t elapsedRealtimeNanos = ::android::elapsedRealtimeNano();
     log::warn("elapsedRealtimeNanos: {}, resultMeters: {}", elapsedRealtimeNanos, ranging_result.result_meters_);
     distance_measurement_callbacks_->OnDistanceMeasurementResult(
-            cs_requester_trackers_[connection_handle].address, ranging_result.result_meters_ * 100,
+            cs_requester_trackers_[connection_handle].address, ranging_result.result_meters_,
             ranging_result.error_meters_ * 100, kInvalidAzimuthAngleDegree,
             kInvalidAzimuthAngleDegree, kInvalidAltitudeAngleDegree, kInvalidAltitudeAngleDegree,
             elapsedRealtimeNanos, ranging_result.confidence_level_,
@@ -3061,7 +3061,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     uint64_t elapsedRealtimeNanos =
             duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count();
     distance_measurement_callbacks_->OnDistanceMeasurementResult(
-            address, distance * 100, distance * 100, kInvalidAzimuthAngleDegree,
+            address, distance, distance * 100, kInvalidAzimuthAngleDegree,
             kInvalidAzimuthAngleDegree, kInvalidAltitudeAngleDegree, kInvalidAltitudeAngleDegree,
             elapsedRealtimeNanos, kInvalidConfidenceLevel, kInvalidDelayedSpreadMeters,
             DistanceMeasurementDetectedAttackLevel::NADM_ATTACK_UNKNOWN,

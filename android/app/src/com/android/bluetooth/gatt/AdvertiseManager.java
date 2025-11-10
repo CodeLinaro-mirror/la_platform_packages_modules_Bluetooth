@@ -92,6 +92,11 @@ public class AdvertiseManager {
         mAdvertiseBinder = new AdvertiseBinder(service, this);
     }
 
+    public void setAvailable(boolean available) {
+        Log.d(TAG, "setAvailable: " + available);
+        mIsAvailable = available;
+    }
+
     void cleanup() {
         Log.d(TAG, "cleanup()");
         mIsAvailable = false;

@@ -546,7 +546,7 @@ public class DistanceMeasurementManager {
 
     void onDistanceMeasurementResult(
             String address,
-            int centimeter,
+            double meter,
             int errorCentimeter,
             int azimuthAngle,
             int errorAzimuthAngle,
@@ -562,12 +562,12 @@ public class DistanceMeasurementManager {
         logd(
                 "onDistanceMeasurementResult "
                         + BluetoothUtils.toAnonymizedAddress(address)
-                        + ", centimeter "
-                        + centimeter
+                        + ", meter "
+                        + meter
                         + ", confidenceLevel "
                         + confidenceLevel);
         DistanceMeasurementResult.Builder builder =
-                new DistanceMeasurementResult.Builder(centimeter / 100.0, errorCentimeter / 100.0)
+                new DistanceMeasurementResult.Builder(meter, errorCentimeter / 100.0)
                         .setMeasurementTimestampNanos(elapsedRealtimeNanos);
 
         switch (method) {
