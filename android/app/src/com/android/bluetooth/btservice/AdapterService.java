@@ -4992,7 +4992,7 @@ public class AdapterService extends Service {
         return AdapterUtil.isAdapter1();
     }
 
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public void handleDualAdapterMode(int option) {
         if (AdapterUtil.isDualAdapterMode()) {
             if (AdapterUtil.isAdapterDefault()) {
