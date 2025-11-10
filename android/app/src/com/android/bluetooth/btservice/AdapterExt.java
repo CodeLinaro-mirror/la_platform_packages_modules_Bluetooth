@@ -152,6 +152,13 @@ public final class AdapterExt {
         return state == BluetoothAdapter.STATE_OFF;
     }
 
+    public static boolean isTurningOn(int state) {
+        return (state == BluetoothAdapter.STATE_ON
+                || state == BluetoothAdapter.STATE_TURNING_ON
+                || state == BluetoothAdapter.STATE_BLE_TURNING_ON
+                || state == BluetoothAdapter.STATE_BLE_ON);
+    }
+
     private static void debugLog(String msg) {
         Log.d(TAG, msg);
     }
