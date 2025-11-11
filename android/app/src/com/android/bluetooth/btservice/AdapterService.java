@@ -2905,6 +2905,14 @@ public class AdapterService extends Service {
         }
     }
 
+    public boolean loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data) {
+        byte[] addr = Utils.getBytesFromAddress(device.getAddress());
+        return mNativeInterface.loadRemoteOobData(
+                addr, transport, remoteP192Data, remoteP256Data);
+    }
+
     public boolean isQuietModeEnabled() {
         Log.d(TAG, "isQuietModeEnabled() - Enabled = " + mQuietmode);
         return mQuietmode;
@@ -3967,6 +3975,19 @@ public class AdapterService extends Service {
     /** Unregister a bluetooth state callback */
     public void unregisterBluetoothStateCallback(BluetoothStateCallback callback) {
         mLocalCallbacks.remove(callback);
+    }
+
+    public String getLinkKey(BluetoothDevice device, String keyType) {
+        String key = null;
+        String address = device.getAddress().toLowerCase(Locale.ENGLISH);
+        if (mBluetoothKeystoreService != null) {
+            try {
+                key = mBluetoothKeystoreService.getKey(address, keyType);
+            } catch (IOException | InterruptedException e) {
+                Log.e(TAG, "Failed to parse config file", e);
+            }
+        }
+        return key;
     }
 
     void registerRemoteCallback(IBluetoothCallback callback) {

@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #ifndef HCIMSGS_H
@@ -153,6 +158,11 @@ void btsnd_hcic_user_passkey_neg_reply(const RawAddress& bd_addr);
 
 /* Remote OOB Data Request Reply */
 void btsnd_hcic_rem_oob_reply(const RawAddress& bd_addr, const Octet16& c, const Octet16& r);
+
+/* Remote OOB extended Data Request Reply */
+extern void btsnd_hcic_rem_oob_ext_reply(const RawAddress& bd_addr, const Octet16& c192,
+                                         const Octet16& r192, const Octet16& c256,
+                                         const Octet16& r256);
 
 /* Remote OOB Data Request Negative Reply */
 void btsnd_hcic_rem_oob_neg_reply(const RawAddress& bd_addr);

@@ -2080,6 +2080,45 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     }
 
     /**
+     * Load remote oob data to BT process
+     *
+     * <p>This is a synchronous call
+     * <p>There are two possible versions of OOB Data.  This data can come in as
+     * P192 or P256.  This is a reference to the cryptography used to generate the key.
+     * The caller may pass one or both.  If both types of data are passed, then the
+     * P256 data will be preferred, and thus used.
+     *
+     * @param transport - Transport to use
+     * @param remoteP192Data - Out Of Band data (P192) or null
+     * @param remoteP256Data - Out Of Band data (P256) or null
+     * @return false on immediate error, true if load success
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    public boolean loadRemoteOobData(int transport, @Nullable OobData remoteP192Data,
+            @Nullable OobData remoteP256Data) {
+        if (DBG) log("loadRemoteOobData()");
+        final IBluetooth service = getBluetooth();
+        if (remoteP192Data == null && remoteP256Data == null) {
+            throw new IllegalArgumentException(
+                "One or both arguments for the OOB data types are required to not be null."
+                + "  using normal in-bind bond.");
+        }
+        if (service == null) {
+            Log.w(TAG, "BT not enabled, loadRemoteOobDataInternal failed");
+            return false;
+        }
+        try {
+            service.loadRemoteOobData(
+                    this, transport, remoteP192Data, remoteP256Data, mAttributionSource);
+            return true;
+        } catch (RemoteException e) {
+            Log.e(TAG, "", e);
+        }
+        return false;
+    }
+
+    /**
      * Gets whether bonding was initiated locally
      *
      * @return true if bonding is initiated locally, false otherwise
@@ -3880,6 +3919,32 @@ public final class BluetoothDevice implements Parcelable, Attributable {
             }
         }
         return -1;
+    }
+
+    /**
+     * Gets link key with specific link type of this {@link BluetoothDevice} that is stored
+     * in configure file, the input parameter could be one of "LinkKey", "LE_KEY_PENC",
+     * "LE_KEY_PID", "LE_KEY_LID", "LE_KEY_PCSRK", "LE_KEY_LENC" and "LE_KEY_LCSRK".
+     *
+     * @return the link key with specific link type of this {@link BluetoothDevice}.
+     *
+     * @hide
+     */
+    @Nullable
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public String getLinkKey(@NonNull String keyType) {
+        final IBluetooth service = getBluetooth();
+        if (service == null || !isBluetoothEnabled()) {
+            Log.e(TAG, "Bluetooth is not enabled. Cannot get link key.");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else {
+            try {
+                return service.getLinkKey(this, keyType, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return null;
     }
 
     @RequiresBluetoothConnectPermission

@@ -401,6 +401,42 @@ public class BluetoothKeystoreService {
         return mNameDecryptKey.get(prefixString);
     }
 
+    /** Get key value from the config file. */
+    public String getKey(String address, String keyType) throws IOException, InterruptedException {
+        infoLog("getKey: address: " + address + ", keyType: " + keyType);
+        String dataString = null;
+        String name = null;
+        String key = null;
+        int index;
+
+        String filePathString = CONFIG_FILE_PATH;
+        if (!Files.exists(Paths.get(filePathString))) {
+            return null;
+        }
+        List<String> allLinesString = Files.readAllLines(Paths.get(filePathString));
+        for (String line : allLinesString) {
+            if (line.startsWith("[")) {
+                name = line.replace("[", "").replace("]", "");
+                continue;
+            }
+
+            if (!name.equals(address))
+                continue;
+
+            index = line.indexOf(" = ");
+            if (index < 0) {
+                continue;
+            }
+
+            key = line.substring(0, index);
+            if (key.equals(keyType)) {
+                dataString = line.substring(index + 3);
+                break;
+            }
+        }
+        return dataString;
+    }
+
     /** Save encryption key into the encryption file. */
     @VisibleForTesting
     public void saveEncryptedKey() {

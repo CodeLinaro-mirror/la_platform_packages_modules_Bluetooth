@@ -626,6 +626,20 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    public void loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data, AttributionSource source) {
+        AdapterService service = getService();
+        if (service == null
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "generateLocalOobData")
+                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+            return;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_CONNECT, null);
+        service.loadRemoteOobData(device, transport, remoteP192Data, remoteP256Data);
+    }
+
+    @Override
     public long getSupportedProfiles(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -1296,6 +1310,18 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         return service.getMaxConnectedAudioDevices();
+    }
+
+    @Override
+    public String getLinkKey(BluetoothDevice device, String keyType, AttributionSource source) {
+        AdapterService service = getService();
+        if (service == null
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "getLinkKey")) {
+            Log.w(TAG, "getLinkKey() - Not allowed for non-active user");
+            return null;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        return service.getLinkKey(device, keyType);
     }
 
     @Override

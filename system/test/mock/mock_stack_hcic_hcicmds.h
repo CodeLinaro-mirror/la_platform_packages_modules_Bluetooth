@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -359,6 +364,22 @@ struct btsnd_hcic_rem_oob_reply {
   }
 };
 extern struct btsnd_hcic_rem_oob_reply btsnd_hcic_rem_oob_reply;
+
+// Name: btsnd_hcic_rem_oob_ext_reply
+// Params: const RawAddress& bd_addr, const Octet16& c192, const Octet16& r192,
+//         const Octet16& c256, const Octet16& r256
+// Return: void
+struct btsnd_hcic_rem_oob_ext_reply {
+  std::function<void(const RawAddress& bd_addr, const Octet16& c192, const Octet16& r192,
+                     const Octet16& c256, const Octet16& r256)> body{
+          [](const RawAddress& bd_addr, const Octet16& c192, const Octet16& r192,
+             const Octet16& c256, const Octet16& r256) {}};
+  void operator()(const RawAddress& bd_addr, const Octet16& c192, const Octet16& r192,
+                  const Octet16& c256, const Octet16& r256) {
+    body(bd_addr, c192, r192, c256, r256);
+  };
+};
+extern struct btsnd_hcic_rem_oob_ext_reply btsnd_hcic_rem_oob_ext_reply;
 
 // Name: btsnd_hcic_rmt_ext_features
 // Params: uint16_t handle, uint8_t page_num
