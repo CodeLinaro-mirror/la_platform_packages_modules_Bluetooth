@@ -1142,6 +1142,8 @@ class BluetoothManagerService {
         Log.d(TAG, "unbindAndFinish(" + mAdapterIndex + "): mAdapter=" + mAdapter + " isBinding=" + isBinding());
 
         mHandler.removeMessages(MESSAGE_BLUETOOTH_STATE_CHANGE);
+        mHandler.removeMessages(MESSAGE_DISABLE);
+        mHandler.removeMessages(MESSAGE_HANDLE_DISABLE_DELAYED);
         if (mAdapter == null) {
             // mAdapter can be null when Bluetooth crashed and sent SERVICE_DISCONNECTED
             return;
