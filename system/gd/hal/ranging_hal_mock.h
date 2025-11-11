@@ -30,7 +30,7 @@ public:
   MOCK_METHOD(RangingHalVersion, GetRangingHalVersion, ());
   MOCK_METHOD(std::vector<VendorSpecificCharacteristic>, GetVendorSpecificCharacteristics, ());
   MOCK_METHOD(void, OpenSession,
-              (uint16_t connection_handle, uint16_t att_handle,
+              (ChannelSoundingParameters channel_sounding_parameters,
                const std::vector<hal::VendorSpecificCharacteristic>& vendor_specific_data));
   MOCK_METHOD(void, HandleVendorSpecificReply,
               (uint16_t connection_handle,

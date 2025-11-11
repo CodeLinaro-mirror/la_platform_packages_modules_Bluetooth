@@ -33,6 +33,8 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /** Child fragment to handle BLE GATT connection. */
 @SuppressWarnings("SetTextI18n")
@@ -159,5 +161,40 @@ public class BleConnectionFragment extends Fragment {
                         mViewModel.toggleAdvertising();
                     }
                 });
+
+        mViewModel
+                .getShowTxPower()
+                .observe(
+                        getActivity(),
+                        showTxPower -> {
+                            View txPowerLayout = view.findViewById(R.id.layout_tx_power);
+                            if (txPowerLayout != null) {
+                                txPowerLayout.setVisibility(showTxPower ? View.VISIBLE : View.GONE);
+                                if (showTxPower) {
+                                    Spinner txPowerSpinner = view.findViewById(R.id.spinner_tx_power);
+                                    if (txPowerSpinner != null) {
+                                        List<String> txPowerLevels = Arrays.asList("Ultra Low", "Low", "Medium", "High");
+                                        ArrayAdapter<String> txPowerAdapter = new ArrayAdapter<>(
+                                            getContext(), 
+                                            android.R.layout.simple_spinner_item, 
+                                            txPowerLevels);
+                                        txPowerAdapter.setDropDownViewResource(
+                                            android.R.layout.simple_spinner_dropdown_item);
+                                        txPowerSpinner.setAdapter(txPowerAdapter);
+                                        txPowerSpinner.setSelection(3);   
+                                        txPowerSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
+                                            @Override
+                                            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                                                mViewModel.setTxPowerLevel(position);
+                                            }
+                                            @Override
+                                            public void onNothingSelected(AdapterView<?> parent) {
+                                            }
+                                        });
+                                        mViewModel.setTxPowerLevel(3);
+                                    }
+                                }
+                            }
+                        });
     }
 }

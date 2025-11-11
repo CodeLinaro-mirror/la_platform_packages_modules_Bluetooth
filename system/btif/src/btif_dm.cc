@@ -1776,7 +1776,9 @@ static void btif_on_service_discovery_results(RawAddress bd_addr,
    * before before passing services to upper layers. */
   if (results_for_bonding_device && a2dp_sink_capable &&
       pairing_cb.gatt_over_le != btif_dm_pairing_cb_t::ServiceDiscoveryState::FINISHED &&
-      is_le_audio_capable_during_service_discovery(bd_addr)) {
+      is_le_audio_capable_during_service_discovery(bd_addr) &&
+      get_btm_client_interface().peer.BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE) &&
+      !interop_match_addr(INTEROP_SKIP_WAIT_FOR_LE_SERVICE_SEARCH, &bd_addr)) {
     skip_reporting_wait_for_le = true;
   }
 

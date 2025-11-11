@@ -68,6 +68,7 @@ __BEGIN_DECLS
 typedef void(tREMOTE_DEVICE_NAME_CB)(void* p1);
 
 enum { SUCCESS, FAIL };
+static bool pts_send_rr_s_frame = false;
 
 typedef enum {
   TEST_APP_L2CAP,

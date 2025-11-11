@@ -17,6 +17,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 /*******************************************************************************
  *
  *  Filename:      btif_hf_client.c
@@ -63,6 +69,7 @@
 #include "stack/btm/btm_sco_hfp_hal.h"
 #include "stack/include/bt_uuid16.h"
 #include "types/raw_address.h"
+#include "btif/include/btif_hf.h"
 
 /*******************************************************************************
  *  Constants & Macros
@@ -91,6 +98,9 @@ typedef struct {
 typedef struct {
   btif_hf_client_cb_t cb[HF_CLIENT_MAX_DEVICES];
 } btif_hf_client_cb_arr_t;
+
+bool mHfpClientDeviceConnected = false;
+
 
 /******************************************************************************
  * Local function declarations
@@ -190,6 +200,19 @@ static bool is_connected(const btif_hf_client_cb_t* cb) {
     return true;
   }
   return false;
+}
+
+
+/*******************************************************************************
+ *  Functions
+ ******************************************************************************/
+bool is_hf_client_device_connected() {
+  log::verbose("hf_client device connection status is", mHfpClientDeviceConnected);
+  return mHfpClientDeviceConnected;
+}
+
+bool getAgConnectionStatus() {
+   return bluetooth::headset::IsAgDeviceConnected();
 }
 
 /*******************************************************************************
@@ -488,9 +511,11 @@ static bt_status_t dial(const RawAddress* bd_addr, const char* number) {
 
   CHECK_BTHF_CLIENT_SLC_CONNECTED(cb);
 
-  if (number) {
+  if (number && (strlen(number) > 0)) {
+    log::verbose("dial event for number. {}", number);
     BTA_HfClientSendAT(cb->handle, BTA_HF_CLIENT_AT_CMD_ATD, 0, 0, number);
   } else {
+    log::verbose("BLDN event");
     BTA_HfClientSendAT(cb->handle, BTA_HF_CLIENT_AT_CMD_BLDN, 0, 0, NULL);
   }
   return BT_STATUS_SUCCESS;
@@ -925,6 +950,7 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
       HAL_CBACK(bt_hf_client_callbacks, connection_state_cb, &cb->peer_bda, cb->state,
                 cb->peer_feat, cb->chld_feat);
 
+      mHfpClientDeviceConnected = true;
       /* Inform the application about in-band ringtone */
       if (cb->peer_feat & BTA_HF_CLIENT_PEER_INBAND) {
         HAL_CBACK(bt_hf_client_callbacks, in_band_ring_tone_cb, &cb->peer_bda,
@@ -941,6 +967,7 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
       cb->peer_feat = 0;
       cb->chld_feat = 0;
       cb->handle = 0;
+      mHfpClientDeviceConnected = false;
 
       /* Clean up any btif_hf_client_cb for the same disconnected bd_addr.
        * when there is an Incoming hf_client connection is in progress and

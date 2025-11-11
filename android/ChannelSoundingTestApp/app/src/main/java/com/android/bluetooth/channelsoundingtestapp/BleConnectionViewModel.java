@@ -69,6 +69,9 @@ public class BleConnectionViewModel extends AndroidViewModel {
     private final MutableLiveData<GattState> mGattState =
             new MutableLiveData<>(GattState.DISCONNECTED);
     private String mTargetBtAddress = "";
+    private int mTxPowerLevel = AdvertisingSetParameters.TX_POWER_HIGH;
+    private int mPendingTxPowerLevel = -1; // -1 means no pending change
+    private MutableLiveData<Boolean> mShowTxPower = new MutableLiveData<>(false);
 
     private GattState mExpectedGattState = GattState.DISCONNECTED;
 
@@ -97,6 +100,14 @@ public class BleConnectionViewModel extends AndroidViewModel {
 
     LiveData<BluetoothDevice> getTargetDevice() {
         return mTargetDevice;
+    }
+
+    LiveData<Boolean> getShowTxPower() {
+        return mShowTxPower;
+    }
+
+    void setShowTxPower(boolean show) {
+        mShowTxPower.setValue(show);
     }
 
     void toggleAdvertising() {
@@ -130,6 +141,7 @@ public class BleConnectionViewModel extends AndroidViewModel {
       public void onAdvertisingSetStopped(AdvertisingSet advertisingSet) {
         printLog("onAdvertisingSetStopped():");
         mIsAdvertising.postValue(false);
+        is_advertising = false;  // Fix: Reset the callback registration flag
       }
     };
     public void updateconnectioninterval(String conn_priority) {
@@ -158,6 +170,13 @@ public class BleConnectionViewModel extends AndroidViewModel {
             printLog("Advertising callback allready registered");
             return;
         }
+
+        if (mPendingTxPowerLevel != -1) {
+            mTxPowerLevel = getTxPowerConstant(mPendingTxPowerLevel);
+            printLog("Applied pending TX Power: " + getTxPowerName(mPendingTxPowerLevel));
+            mPendingTxPowerLevel = -1;
+        }
+
         BluetoothLeAdvertiser advertiser = mBluetoothAdapter.getBluetoothLeAdvertiser();
         if(advertiser == null) {
            printLog("Please turn on Bluetooth to use this App");
@@ -168,7 +187,7 @@ public class BleConnectionViewModel extends AndroidViewModel {
                         .setLegacyMode(false) // True by default, but set here as a reminder.
                         .setConnectable(true)
                         .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
-                        .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MAX)
+                        .setTxPowerLevel(mTxPowerLevel)
                         .build();
 
         BluetoothGattServerCallback gattServerCallback =
@@ -230,6 +249,45 @@ public class BleConnectionViewModel extends AndroidViewModel {
     void setCsTargetAddress(String btAddress) {
         printLog("set target address: " + btAddress);
         mTargetBtAddress = btAddress;
+    }
+
+    void setTxPowerLevel(int levelIndex) {
+        if (mIsAdvertising.getValue()) {
+            mPendingTxPowerLevel = levelIndex;
+            printLog("TX Power will change to " + getTxPowerName(levelIndex) + " when advertising is restarted");
+        } else {
+            mTxPowerLevel = getTxPowerConstant(levelIndex);
+            mPendingTxPowerLevel = -1;
+            printLog("TX Power set to " + getTxPowerName(levelIndex));
+        }
+    }
+
+    private int getTxPowerConstant(int levelIndex) {
+        switch (levelIndex) {
+            case 0:
+                return AdvertisingSetParameters.TX_POWER_ULTRA_LOW;
+            case 1:
+                return AdvertisingSetParameters.TX_POWER_LOW;
+            case 2:
+                return AdvertisingSetParameters.TX_POWER_MEDIUM;
+            case 3:
+            default:
+                return AdvertisingSetParameters.TX_POWER_HIGH;
+        }
+    }
+
+    private String getTxPowerName(int levelIndex) {
+        switch (levelIndex) {
+            case 0:
+                return "Ultra Low (-21 dBm)";
+            case 1:
+                return "Low (-15 dBm)";
+            case 2:
+                return "Medium (-7 dBm)";
+            case 3:
+            default:
+                return "High (1 dBm)";
+        }
     }
 
     void toggleGattConnection() {

@@ -538,6 +538,7 @@ public:
         track_call_start_update_(0),
         track_call_end_update_(0),
         defer_reconfig_complete_update_(false),
+        defer_call_reconfig_(false),
         le_audio_source_hal_client_(nullptr),
         le_audio_sink_hal_client_(nullptr),
         close_vbc_timeout_(alarm_new("LeAudioCloseVbcTimeout")),
@@ -715,6 +716,11 @@ public:
       alarm_cancel(reconfiguration_timeout_);
     }
     reconfiguration_group_ = bluetooth::groups::kGroupUnknown;
+
+    LeAudioDeviceGroup* group = aseGroups_.FindById(group_id);
+    if (group && group->IsSuspendedForReconfiguration()) {
+      reconfigurationComplete();
+    }
   }
 
   void StartSuspendTimeout(void) {
@@ -1454,6 +1460,7 @@ public:
       if (IsInCall()) {
         log::debug("Clear cached call updates during group In-Active");
         track_call_start_update_ = 0;
+        defer_call_reconfig_ = false;
         defer_reconfig_complete_update_ = false;
         auto group = aseGroups_.FindById(group_id);
         if (group) {
@@ -1646,6 +1653,8 @@ public:
     log::debug("in_call: {}", in_call);
     if (!in_call) {
       track_call_start_update_ = 0;
+      defer_call_reconfig_ = false;
+      defer_reconfig_complete_update_ = false;
     }
 
     if (in_call == in_call_) {
@@ -1706,6 +1715,11 @@ public:
 
       auto audio_set_conf = group->GetConfiguration(LeAudioContextType::CONVERSATIONAL);
       if (audio_set_conf && group->IsGroupConfiguredTo(*audio_set_conf)) {
+        if (group->IsPendingConfiguration() &&
+                configuration_context_type_ != LeAudioContextType::CONVERSATIONAL) {
+          log::info("stack is pending configuration, defer call reconfig.");
+          defer_call_reconfig_ = true;
+        }
         log::info("Call is coming, but CIG already set for a call");
         return;
       }
@@ -2013,6 +2027,7 @@ public:
       if (IsInCall()) {
         log::debug("Clear cached call updates during group In-Active");
         track_call_start_update_ = 0;
+        defer_call_reconfig_ = false;
         defer_reconfig_complete_update_ = false;
         auto group = aseGroups_.FindById(active_group_id_);
         if (group) {
@@ -7299,7 +7314,12 @@ public:
 
                 GroupStream(group, configuration_context_type_, remote_contexts);
               }
-
+              if (defer_call_reconfig_) {
+                reconfigurationComplete();
+                in_call_ = false;
+                defer_call_reconfig_ = false;
+                SetInCall(true);
+              }
             }
           } else {
             if(track_call_end_update_ != 0) {
@@ -7584,6 +7604,8 @@ private:
   uint8_t track_call_end_update_;
   /*To track reconfig competle update sent to BT HAL*/
   bool defer_reconfig_complete_update_;
+  /*To track call reconfig when call comes during other reconfiguration*/
+  bool defer_call_reconfig_;
 
   /* Reconnection mode */
   tBTM_BLE_CONN_TYPE reconnection_mode_;

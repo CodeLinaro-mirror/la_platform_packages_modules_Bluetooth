@@ -153,6 +153,14 @@
               <action android:name="android.telecom.InCallService"/>
             </intent-filter>
          </service>
+
+        <service
+            android:name="com.android.bluetooth.agClient.BluetoothAgClientService"
+            android:process="@string/process"
+            android:enabled="true"
+            android:exported="true">
+        </service>
+
         <service android:process="@string/process"
              android:name="com.android.bluetooth.hfpclient.HfpClientConnectionService"
              android:permission="android.permission.BIND_CONNECTION_SERVICE"
@@ -305,6 +313,17 @@
             </intent-filter>
             <meta-data android:name="android.accounts.AccountAuthenticator"
                  android:resource="@xml/authenticator"/>
+        </service>
+
+        <!--  CS Client Profile Service  -->
+        <service
+            android:process="@string/process"
+            android:name = "com.android.bluetooth.csc.CsClientService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.IBluetoothCsClient" />
+            </intent-filter>
         </service>
     </application>
 </manifest>

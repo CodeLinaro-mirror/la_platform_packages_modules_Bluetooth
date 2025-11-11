@@ -330,6 +330,7 @@ typedef struct {
   uint8_t cl_supp_feat;
   /* Server supported features */
   uint8_t sr_supp_feat;
+  uint8_t svc_chg_cccd;
   /* Use for server. if false, should handle database out of sync. */
   bool is_robust_cache_change_aware;
 
@@ -440,6 +441,7 @@ typedef struct {
 
   tGATT_PROFILE_CLCB profile_clcb[GATT_MAX_APPS];
   uint16_t handle_of_h_r; /* Handle of the handles reused characteristic value */
+  uint16_t handle_svc_chg_cccd;
   uint16_t handle_cl_supported_feat;
   uint16_t handle_sr_supported_feat;
   uint8_t gatt_svr_supported_feat_mask; /* Local supported features as a server */

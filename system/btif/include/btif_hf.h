@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #pragma once
 
 #include <hardware/bluetooth.h>
@@ -39,6 +45,7 @@ Interface* GetInterface();
 bool IsCallIdle();
 
 bool IsDuringVoiceRecognition(RawAddress* bd_addr);
+bool IsAgDeviceConnected();
 
 /**
  * Start up or shutdown the service

@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 /*******************************************************************************
  *
  *  Filename:      btif_hf.c
@@ -84,6 +90,7 @@ using namespace bluetooth;
 namespace {
 constexpr char kBtmLogTag[] = "HFP";
 }
+extern bool is_hf_client_device_connected();
 
 namespace bluetooth::headset {
 
@@ -114,6 +121,7 @@ static uint32_t btif_hf_features = get_hf_features();
 /* Max HF clients supported from App */
 static int btif_max_hf_clients = 1;
 static RawAddress active_bda = {};
+bool mAgDeviceConnected = false;
 
 /*******************************************************************************
  *  Static variables
@@ -145,7 +153,6 @@ struct btif_hf_cb_t {
 };
 
 static btif_hf_cb_t btif_hf_cb[BTA_AG_MAX_NUM_CLIENTS];
-
 static const char* dump_hf_call_state(bthf_call_state_t call_state) {
   switch (call_state) {
     CASE_RETURN_STR(BTHF_CALL_STATE_IDLE)
@@ -343,6 +350,19 @@ static bool IsSlcConnected(RawAddress* bd_addr) {
     return false;
   }
   return btif_hf_cb[idx].state == BTHF_CONNECTION_STATE_SLC_CONNECTED;
+}
+
+/**
+ * Check if any of the device has a connection
+ *
+ */
+bool IsAgDeviceConnected() {
+  log::info("AG device connection status is", mAgDeviceConnected);
+  return mAgDeviceConnected;
+}
+
+bool getHfClientConnectionStatus() {
+   return is_hf_client_device_connected();
 }
 
 /*******************************************************************************
@@ -543,6 +563,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
       btif_hf_cb[idx].state = BTHF_CONNECTION_STATE_SLC_CONNECTED;
       bt_hf_callbacks->ConnectionStateCallback(btif_hf_cb[idx].state,
                                                &btif_hf_cb[idx].connected_bda);
+      mAgDeviceConnected = true;
       if (btif_hf_cb[idx].is_initiator) {
         btif_queue_advance_by_uuid(UUID_SERVCLASS_AG_HANDSFREE,
                                    &btif_hf_cb[idx].connected_bda);
@@ -563,6 +584,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
                                          IOT_CONF_KEY_HFP_SCO_CONN_FAIL_COUNT);
 
       btif_hf_cb[idx].audio_state = BTHF_AUDIO_STATE_DISCONNECTED;
+      mAgDeviceConnected = false;
       bt_hf_callbacks->AudioStateCallback(BTHF_AUDIO_STATE_DISCONNECTED,
                                           &btif_hf_cb[idx].connected_bda);
       break;

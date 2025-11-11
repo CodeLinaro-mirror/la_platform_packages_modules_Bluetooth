@@ -360,6 +360,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return false;
         }
 
+	if (isDiscovering(source)) {
+            Log.i(TAG,"discovery already active, ignore startDiscovery");
+            return false;
+        }
+
         Log.i(TAG, "startDiscovery: from " + getUidPidString());
         return service.startDiscovery(source);
     }
@@ -373,6 +378,10 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return false;
         }
 
+	if (!isDiscovering(source)) {
+            Log.i(TAG,"discovery not active, ignore cancelDiscovery");
+            return false;
+        }
         Log.i(TAG, "cancelDiscovery: from " + getUidPidString());
         return service.getNative().cancelDiscovery();
     }

@@ -50,6 +50,11 @@ static const std::string* get_pts_broadcast_audio_config_options(void) {
   return &kBroadcastAudioConfigOptions;
 }
 static bool get_pts_le_audio_disable_ases_before_stopping(void) { return false; }
+static bool get_pts_configure_svc_chg_indication(void) { 
+  // This function determines whether to use the service changed CCCD value
+  // when sending service changed indications. Return false by default for tests.
+  return false; 
+}
 struct config_t;
 static config_t* get_all(void) { return nullptr; }
 struct packet_fragmenter_t;
@@ -79,6 +84,7 @@ stack_config_t mock_stack_config{
         .get_pts_broadcast_audio_config_options = get_pts_broadcast_audio_config_options,
         .get_pts_le_audio_disable_ases_before_stopping =
                 get_pts_le_audio_disable_ases_before_stopping,
+        .get_pts_configure_svc_chg_indication = get_pts_configure_svc_chg_indication,
         .get_all = get_all,
 };
 

@@ -570,8 +570,24 @@ public:
                     "reconfigure.",
                     group->group_id_);
             if (group->Configure(context_type, metadata_context_types, ccid_lists)) {
+              leAudioDevice = group->GetFirstActiveDevice();
               group->SetStreamingPendingTargetState();
-              return PrepareAndSendCodecConfigToTheGroup(group);
+              while (leAudioDevice) {
+                log::info("leAudioDevice addr: {} ", leAudioDevice->address_);
+                if (leAudioDevice->HaveActiveAse() && leAudioDevice->HaveAllActiveAsesSameState(
+                                             AseState::BTA_LE_AUDIO_ASE_STATE_QOS_CONFIGURED)) {
+                  log::info("{} in QoS state, Codec Config is not required",
+                             leAudioDevice->address_);
+                } else {
+                  log::info("Codec Config for dev: {}", leAudioDevice->address_);
+                  PrepareAndSendCodecConfigure(group, leAudioDevice);
+                }
+                leAudioDevice = group->GetNextActiveDevice(leAudioDevice);
+                if (!leAudioDevice) {
+                  log::info("leAudioDevice is null");
+                }
+              }
+              return true;
             }
           }
           log::error("Trying to start stream not configured for the context {} in group_id: {} ",

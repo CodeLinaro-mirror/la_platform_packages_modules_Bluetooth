@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #define LOG_TAG "bta_ag_cmd"
 
 #include <bluetooth/log.h>
@@ -56,9 +62,13 @@
 #include "stack/include/acl_api.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/port_api.h"
+#include "bta/hf_client/bta_hf_client_int.h"
 
 using namespace bluetooth;
 using namespace bluetooth::shim;
+
+uint16_t mBtRemoteSupportedCodecs = 1; //default is cvsd
+void remote_supported_codecs(uint16_t peer_codecs);
 
 /*****************************************************************************
  *  Constants
@@ -1228,7 +1238,13 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type, cha
            log::verbose("do not send inband ringtone supported for blacklisted device");
           p_scb->masked_features = p_scb->masked_features & ~(BTA_AG_FEAT_INBAND);
       }
-      if(interop_match_addr_or_name(INTEROP_DISABLE_CODEC_NEGOTIATION,
+
+     if (osi_property_get_bool("vendor.bt.pts.disable_3way_calling", false)) {
+        log::verbose("disabling 3-way calling");
+        p_scb->masked_features &= ~(BTA_AG_FEAT_3WAY);
+      }
+
+     if (interop_match_addr_or_name(INTEROP_DISABLE_CODEC_NEGOTIATION,
           &p_scb->peer_addr, &btif_storage_get_remote_device_property)) {
           log::verbose("disable codec negotiation, remote for blacklisted device");
           p_scb->masked_features = p_scb->masked_features & ~(BTA_AG_FEAT_CODEC);
@@ -1238,6 +1254,20 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type, cha
       LogMetricHfpAgVersion(ToGdAddress(p_scb->peer_addr), p_scb->peer_version);
       log::verbose("BRSF HF: 0x{:x}, phone: 0x{:x}", p_scb->peer_features, p_scb->masked_features);
 
+      if (bta_is_hf_client_device_connected()) {
+        if (p_scb->peer_features & BTA_AG_PEER_FEAT_CODEC) {
+           log::verbose("codec negotiation is supported. will update AT+BAC during  BAC parsing");
+        } else {
+           log::verbose("codec negotiation is not supported. need to update BAC");
+           p_scb->peer_codecs = BTM_SCO_CODEC_CVSD;
+           update_remote_codecs(p_scb->peer_codecs);
+        }
+      } else {
+        log::verbose("AG is not yet connected and Codec negotiation is not available");
+        if (!(p_scb->peer_features & BTA_AG_PEER_FEAT_CODEC)) {
+           remote_supported_codecs(p_scb->peer_codecs);
+        }
+      }
       /* send BRSF, send OK */
       bta_ag_send_result(p_scb, BTA_AG_LOCAL_RES_BRSF, nullptr, (int16_t)p_scb->masked_features);
       bta_ag_send_ok(p_scb);
@@ -1357,6 +1387,11 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type, cha
       if ((p_scb->peer_features & BTA_AG_PEER_FEAT_CODEC) &&
           (p_scb->features & BTA_AG_FEAT_CODEC)) {
         p_scb->peer_codecs = bta_ag_parse_bac(p_arg, p_end);
+        log::verbose("supported codecs are={}", p_scb->peer_codecs);
+        remote_supported_codecs(p_scb->peer_codecs);
+        if (bta_is_hf_client_device_connected()) {
+           update_remote_codecs(p_scb->peer_codecs);
+        }
         p_scb->codec_updated = true;
 
         bool wbs_supported = hfp_hal_interface::get_wbs_supported();
@@ -1756,7 +1791,10 @@ static void bta_ag_hfp_result(tBTA_AG_SCB* p_scb, const tBTA_AG_API_RESULT& resu
           // let Audio HAL open the SCO
           break;
         }
-        bta_ag_sco_open(p_scb, tBTA_AG_DATA::kEmpty);
+        if (!bta_is_hf_client_device_connected()) {
+           log::verbose("not intitiating sco for remote initiated call");
+           bta_ag_sco_open(p_scb, tBTA_AG_DATA::kEmpty);
+        }
       }
       break;
 
@@ -1772,7 +1810,10 @@ static void bta_ag_hfp_result(tBTA_AG_SCB* p_scb, const tBTA_AG_API_RESULT& resu
           // let Audio HAL open the SCO
           break;
         }
-        bta_ag_sco_open(p_scb, tBTA_AG_DATA::kEmpty);
+        if (!bta_is_hf_client_device_connected()) {
+           log::verbose("Not initiating SCO with Outgoing call");
+           bta_ag_sco_open(p_scb, tBTA_AG_DATA::kEmpty);
+        }
       }
       break;
 
@@ -2217,3 +2258,13 @@ bool bta_ag_is_call_present(const RawAddress* peer_addr) {
   log::verbose("call is not present for peer dev {}", p_scb->peer_addr.ToString().c_str());
   return 0;
 }
+
+void remote_supported_codecs(uint16_t peer_codecs) {
+     log::verbose("remote_supported codecs {}", peer_codecs);
+     mBtRemoteSupportedCodecs = peer_codecs;
+}
+uint16_t fetch_remote_supported_codecs() {
+     log::verbose("fetch remote supported codecs: {}", mBtRemoteSupportedCodecs);
+     return mBtRemoteSupportedCodecs;
+}
+
