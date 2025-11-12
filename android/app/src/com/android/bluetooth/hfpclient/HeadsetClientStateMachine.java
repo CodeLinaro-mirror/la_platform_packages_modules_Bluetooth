@@ -438,6 +438,8 @@ public class HeadsetClientStateMachine extends StateMachine {
         // itself (i.e. removing an element from Set removes it from the Map hence use copy).
         Set<Integer> currCallIdSet = new HashSet<Integer>();
         currCallIdSet.addAll(mCalls.keySet());
+        handleUnassignedOutgoingCall();
+
         // Remove the entry for unassigned call.
         currCallIdSet.remove(HF_ORIGINATED_CALL_ID);
 
@@ -2492,4 +2494,22 @@ public class HeadsetClientStateMachine extends StateMachine {
     public static boolean isAudioRouted() {
         return sAudioIsRouted;
     }
+
+
+    private void handleUnassignedOutgoingCall() {
+        HfpClientCall unassigned = mCalls.get(HF_ORIGINATED_CALL_ID);
+        if (unassigned == null || unassigned.getNumber() == null) return;
+
+        debug("Unassigned call exists, number: " + unassigned.getNumber());
+        boolean needAssociate = mCallsUpdate.values().stream()
+                .anyMatch(c -> c != null && unassigned.getNumber().equals(c.getNumber()));
+
+        if (!needAssociate) {
+            unassigned.setState(HfpClientCall.CALL_STATE_TERMINATED);
+            debug("No matching CLCC call found, terminating outgoing call.");
+            sendCallChangedIntent(unassigned);
+            mCalls.remove(HF_ORIGINATED_CALL_ID);
+        }
+    }
+
 }

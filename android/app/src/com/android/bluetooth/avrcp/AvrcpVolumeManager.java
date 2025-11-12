@@ -306,7 +306,7 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
                 deviceVolume,
                 (deviceVolume != getVolume(device, -1) ? AudioManager.FLAG_SHOW_UI : 0)
                         | AudioManager.FLAG_BLUETOOTH_ABS_VOLUME);
-        storeVolumeForDevice(device);
+        storeVolumeForDevice(device, deviceVolume);
     }
 
     /**
