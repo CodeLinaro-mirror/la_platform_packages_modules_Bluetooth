@@ -478,7 +478,8 @@ public class RemoteDevices {
          */
         int getDeviceType() {
             synchronized (mObject) {
-                return mDeviceType;
+              Log.d(TAG, "getdevicetype" + mDeviceType);
+              return mDeviceType;
             }
         }
 
@@ -489,6 +490,7 @@ public class RemoteDevices {
         void setDeviceType(int deviceType) {
             synchronized (mObject) {
                 this.mDeviceType = deviceType;
+            Log.d(TAG, "setdevicetype" + deviceType);
             }
         }
 
