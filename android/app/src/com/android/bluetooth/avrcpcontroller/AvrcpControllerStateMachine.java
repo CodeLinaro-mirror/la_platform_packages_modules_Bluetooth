@@ -115,6 +115,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     private final GetFolderList mGetFolderList;
     private final boolean mIsVolumeFixed;
     private final SparseArray<AvrcpPlayer> mAvailablePlayerList;
+    private A2dpSinkService mA2dpSinkService;
 
     @VisibleForTesting final BrowseTree mBrowseTree;
 
@@ -284,6 +285,7 @@ class AvrcpControllerStateMachine extends StateMachine {
 
     @VisibleForTesting
     boolean isActive() {
+        debug("isActive :" + mDevice.equals(mService.getActiveDevice())+ "Device : "+mDevice);
         return mDevice.equals(mService.getActiveDevice());
     }
 
@@ -609,12 +611,8 @@ class AvrcpControllerStateMachine extends StateMachine {
                     debug(
                             "Connected: Playback status = "
                                     + AvrcpControllerUtils.playbackStateToString(msg.arg1));
+                    mA2dpSinkService = A2dpSinkService.getA2dpSinkService();
                     mAddressedPlayer.setPlayStatus(msg.arg1);
-                    if (!isActive()) {
-                        sendMessage(
-                                MSG_AVRCP_PASSTHRU, AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
-                        return true;
-                    }
 
                     BluetoothMediaBrowserService.onPlaybackStateChanged(
                             mAddressedPlayer.getPlaybackState());
@@ -631,10 +629,12 @@ class AvrcpControllerStateMachine extends StateMachine {
                             && focusState == AudioManager.AUDIOFOCUS_NONE) {
                         if (shouldRequestFocus()) {
                             mSessionCallbacks.onPrepare();
+                            mA2dpSinkService.informTGStatePlaying(mDevice, true);
                         } else {
                             sendMessage(
                                     MSG_AVRCP_PASSTHRU,
                                     AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
+                            mA2dpSinkService.informTGStatePlaying(mDevice, false);
                         }
                     }
                     return true;
