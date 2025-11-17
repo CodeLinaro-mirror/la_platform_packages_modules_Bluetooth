@@ -26,6 +26,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -217,6 +218,29 @@ public class BroadcasterActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(mDbigStatusReceiver);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        Log.d(TAG, "Configuration changed - orientation: " + newConfig.orientation);
+
+        // Handle orientation-specific changes if needed
+        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            Log.d(TAG, "Switched to landscape mode");
+            // Add landscape-specific logic here if needed
+            // Example: Adjust RecyclerView span count, modify dialog sizes, etc.
+        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            Log.d(TAG, "Switched to portrait mode");
+            // Add portrait-specific logic here if needed
+            // Example: Reset to single column layout, adjust button sizes, etc.
+        }
+
+        // Handle AlertDialog rotation - refresh the dialog if it's currently showing
+        if (mCurrentInfoDialog != null && mCurrentInfoDialog.isShowing()) {
+            Log.d(TAG, "Refreshing dialog due to orientation change");
+            refreshDialogIfVisible();
+        }
     }
 
     /* --------------------------------------------------------------

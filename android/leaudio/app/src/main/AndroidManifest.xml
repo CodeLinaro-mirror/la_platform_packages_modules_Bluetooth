@@ -35,12 +35,14 @@
         <activity
             android:name="com.android.bluetooth.leaudio.BroadcasterActivity"
             android:excludeFromRecents="true"
-            android:theme="@style/AppTheme.NoActionBar">
+            android:theme="@style/AppTheme.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout">
         </activity>
         <activity
             android:name=".BroadcastScanActivity"
             android:excludeFromRecents="true"
-            android:theme="@style/AppTheme.NoActionBar">
+            android:theme="@style/AppTheme.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout">
         </activity>
     </application>
 
