@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -53,13 +58,26 @@ class AvrcpPlayer {
     public static final int FEATURE_BROWSING = 59;
     public static final int FEATURE_NOW_PLAYING = 65;
 
+    // Same to BTRC_FEATURE_BIT_MASK_SIZE in bt_rc.h
+    public static final int FEATURE_BIT_MASK_SIZE = 16;
+
+    // Octect value for Feature Bit Mask
+    public static final int UIDS_UNIQUE_OCTECT_VALUE = 7;
+    // Bit value for Feature Bit Mask
+    public static final int UIDS_UNIQUE_BIT_VALUE = 2 << 6;
+
+    // Octect value for Searching
+    public static final int SEARCHING_OCTECT_VALUE = 7;
+    // Bit value for Searching
+    public static final int SEARCHING_BIT_VALUE = 1 << 4;
+
     private final BluetoothDevice mDevice;
     private int mPlayStatus = PlaybackStateCompat.STATE_NONE;
     private long mPlayTime = PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN;
     private float mPlaySpeed = 1;
-    private final int mId;
+    private int mId;
     private String mName = "";
-    private byte[] mPlayerFeatures = new byte[16];
+    private byte[] mPlayerFeatures = new byte[FEATURE_BIT_MASK_SIZE];
     private long mAvailableActions = PlaybackStateCompat.ACTION_PREPARE;
     private AvrcpItem mCurrentTrack;
     private PlaybackStateCompat mPlaybackStateCompat;
@@ -84,12 +102,41 @@ class AvrcpPlayer {
         return mDevice;
     }
 
+    public void setId(int id) {
+        mId = id;
+    }
+
     public int getId() {
         return mId;
     }
 
+    public void setName(String name) {
+        mName = name;
+    }
+
     public String getName() {
         return mName;
+    }
+
+    public void setPlayerFeatures(byte[] playerFeatures) {
+        System.arraycopy(playerFeatures, 0, mPlayerFeatures, 0, FEATURE_BIT_MASK_SIZE);
+    }
+
+    public byte[] getPlayerFeatures() {
+        return mPlayerFeatures;
+    }
+
+    public boolean isSearchingSupported() {
+        return isFeatureSupported(SEARCHING_OCTECT_VALUE, SEARCHING_BIT_VALUE);
+    }
+
+    private boolean isFeatureSupported(int octVal, int bitVal) {
+        if (octVal < FEATURE_BIT_MASK_SIZE) {
+            byte flag = mPlayerFeatures[octVal];
+            return (flag & bitVal) == bitVal ? true : false;
+        } else {
+            return false;
+        }
     }
 
     public void setPlayTime(int playTime) {

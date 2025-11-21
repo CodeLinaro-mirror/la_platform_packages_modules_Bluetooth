@@ -60,30 +60,30 @@ struct AudioEngine {
 } s_AudioEngine;
 
 static void ErrorCallback(AAudioStream* stream, void* userdata, aaudio_result_t error);
+AAudioStream* buildAudioStream(int trackFreq, int bitsPerSample, int channelCount);
 
 static void BtifAvrcpAudioErrorHandle() {
-  AAudioStreamBuilder* builder;
-  AAudioStream* stream;
-
-  aaudio_result_t result = AAudio_createStreamBuilder(&builder);
-  AAudioStreamBuilder_setSampleRate(builder, s_AudioEngine.trackFreq);
-  AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
-  AAudioStreamBuilder_setChannelCount(builder, s_AudioEngine.channelCount);
-  AAudioStreamBuilder_setSessionId(builder, AAUDIO_SESSION_ID_ALLOCATE);
-  AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
-  AAudioStreamBuilder_setErrorCallback(builder, ErrorCallback, nullptr);
-  result = AAudioStreamBuilder_openStream(builder, &stream);
-  log::assert_that(result == AAUDIO_OK, "assert failed: result == AAUDIO_OK");
-  AAudioStreamBuilder_delete(builder);
-
   BtifAvrcpAudioTrack* trackHolder = static_cast<BtifAvrcpAudioTrack*>(s_AudioEngine.trackHandle);
 
-  trackHolder->stream = stream;
+  if (trackHolder == nullptr) {
+    log::error("trackHolder is null in BtifAvrcpAudioErrorHandle");
+    return;
+  }
 
-  if (trackHolder != nullptr && trackHolder->stream != NULL) {
+  // Rebuild the audio stream
+  trackHolder->stream = buildAudioStream(
+      s_AudioEngine.trackFreq,
+      trackHolder->bitsPerSample,
+      s_AudioEngine.channelCount);
+
+  if (trackHolder->stream != nullptr) {
     log::debug("AAudio Error handle: restart A2dp Sink AudioTrack");
     AAudioStream_requestStart(trackHolder->stream);
+  } else {
+    log::error("Failed to rebuild audio stream in BtifAvrcpAudioErrorHandle");
   }
+
+  // Reset the audio engine thread
   s_AudioEngine.thread = nullptr;
 }
 
@@ -99,33 +99,27 @@ void* BtifAvrcpAudioTrackCreate(int trackFreq, int bitsPerSample, int channelCou
   log::info("Track.cpp: btCreateTrack freq {} bps {} channel {}", trackFreq, bitsPerSample,
             channelCount);
 
-  AAudioStreamBuilder* builder;
-  AAudioStream* stream;
-  aaudio_result_t result = AAudio_createStreamBuilder(&builder);
-  AAudioStreamBuilder_setSampleRate(builder, trackFreq);
-  AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
-  AAudioStreamBuilder_setChannelCount(builder, channelCount);
-  AAudioStreamBuilder_setSessionId(builder, AAUDIO_SESSION_ID_ALLOCATE);
-  aaudio_performance_mode_t mode = (bitsPerSample >= 24) ? AAUDIO_PERFORMANCE_MODE_HD_APTX :
-                                    AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
-  log::debug("mode:{}", mode);
-  AAudioStreamBuilder_setPerformanceMode(builder, mode);
-  AAudioStreamBuilder_setErrorCallback(builder, ErrorCallback, nullptr);
-
-  result = AAudioStreamBuilder_openStream(builder, &stream);
-  log::assert_that(result == AAUDIO_OK, "assert failed: result == AAUDIO_OK");
-  AAudioStreamBuilder_delete(builder);
-
+  // Allocate track holder
   BtifAvrcpAudioTrack* trackHolder = new BtifAvrcpAudioTrack;
   log::assert_that(trackHolder != NULL, "assert failed: trackHolder != NULL");
-  trackHolder->stream = stream;
+
+  // Create audio stream
+  trackHolder->stream = buildAudioStream(trackFreq, bitsPerSample, channelCount);
+  if (trackHolder->stream == nullptr) {
+    log::error("Failed to create audio stream");
+    delete trackHolder;
+    return nullptr;
+  }
+
+  // Set track properties
   trackHolder->bitsPerSample = bitsPerSample;
   trackHolder->channelCount = channelCount;
   trackHolder->bufferLength =
-          trackHolder->channelCount * AAudioStream_getBufferSizeInFrames(stream);
+          trackHolder->channelCount * AAudioStream_getBufferSizeInFrames(trackHolder->stream);
   trackHolder->gain = kMaxTrackGain;
   trackHolder->buffer = new float[trackHolder->bufferLength]();
 
+  // Update global audio engine state
   s_AudioEngine.trackFreq = trackFreq;
   s_AudioEngine.channelCount = channelCount;
   s_AudioEngine.trackHandle = (void*)trackHolder;
@@ -139,10 +133,33 @@ void BtifAvrcpAudioTrackStart(void* handle) {
     return;
   }
   BtifAvrcpAudioTrack* trackHolder = static_cast<BtifAvrcpAudioTrack*>(handle);
-  log::assert_that(trackHolder != NULL, "assert failed: trackHolder != NULL");
-  log::assert_that(trackHolder->stream != NULL, "assert failed: trackHolder->stream != NULL");
+  log::assert_that(trackHolder != nullptr, "assert failed: trackHolder != nullptr");
+  log::assert_that(trackHolder->stream != nullptr, "assert failed: trackHolder->stream != nullptr");
   log::verbose("Track.cpp: btStartTrack");
-  AAudioStream_requestStart(trackHolder->stream);
+
+  aaudio_result_t result = AAudioStream_requestStart(trackHolder->stream);
+
+  if (result != AAUDIO_OK) {
+    log::error("AAudio Error - {} in AAudioStream_requestStart()", result);
+    AAudioStream_close(trackHolder->stream);
+
+    // Restore the AAudio stream when AudioTrack doesn't restore offload/direct tracks
+    log::info("AAudio re-create audio track and re-start");
+    trackHolder->stream = buildAudioStream(
+        s_AudioEngine.trackFreq,
+        trackHolder->bitsPerSample,
+        s_AudioEngine.channelCount);
+
+    log::assert_that(trackHolder->stream != nullptr, "assert failed: trackHolder->stream != nullptr");
+    trackHolder->bufferLength =
+        trackHolder->channelCount * AAudioStream_getBufferSizeInFrames(trackHolder->stream);
+
+    result = AAudioStream_requestStart(trackHolder->stream);
+    if (result != AAUDIO_OK) {
+      log::error("re-start failed, AAudio Error - {} in AAudioStream_requestStart()", result);
+      AAudioStream_close(trackHolder->stream);
+    }
+  }
 }
 
 void BtifAvrcpAudioTrackStop(void* handle) {
@@ -278,4 +295,45 @@ int BtifAvrcpAudioTrackWriteData(void* handle, void* audioBuffer, int bufferLeng
   } while (transcodedCount < bufferLength);
 
   return transcodedCount;
+}
+
+AAudioStream* buildAudioStream(int trackFreq, int bitsPerSample, int channelCount) {
+  AAudioStreamBuilder* builder = nullptr;
+  AAudioStream* stream = nullptr;
+
+  // Create stream builder
+  aaudio_result_t result = AAudio_createStreamBuilder(&builder);
+  if (result != AAUDIO_OK || builder == nullptr) {
+    log::error("Failed to create AAudioStreamBuilder: {}", result);
+    return nullptr;
+  }
+
+  // Set stream parameters
+  AAudioStreamBuilder_setSampleRate(builder, trackFreq);
+  AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_FLOAT);
+  AAudioStreamBuilder_setChannelCount(builder, channelCount);
+  AAudioStreamBuilder_setSessionId(builder, AAUDIO_SESSION_ID_ALLOCATE);
+
+  // Choose performance mode based on bitsPerSample
+  aaudio_performance_mode_t mode = (bitsPerSample >= 24)
+      ? AAUDIO_PERFORMANCE_MODE_HD_APTX
+      : AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
+  log::debug("Selected performance mode: {}", mode);
+  AAudioStreamBuilder_setPerformanceMode(builder, mode);
+
+  // Set error callback
+  AAudioStreamBuilder_setErrorCallback(builder, ErrorCallback, nullptr);
+
+  // Open stream
+  result = AAudioStreamBuilder_openStream(builder, &stream);
+  if (result != AAUDIO_OK || stream == nullptr) {
+    log::error("Failed to open AAudioStream: {}", result);
+    AAudioStreamBuilder_delete(builder);
+    return nullptr;
+  }
+
+  // Clean up builder
+  AAudioStreamBuilder_delete(builder);
+
+  return stream;
 }

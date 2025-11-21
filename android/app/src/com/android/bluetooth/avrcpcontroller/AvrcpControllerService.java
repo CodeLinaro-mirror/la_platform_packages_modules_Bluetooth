@@ -171,8 +171,15 @@ public class AvrcpControllerService extends ProfileService {
         return BluetoothProperties.isProfileAvrcpControllerEnabled().orElse(false);
     }
 
+    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
-    public synchronized void cleanup() {
+    public void cleanup() {
+        Log.d(TAG, "cleanup");
+        mNativeInterface.stop();
+    }
+
+    // Called by JNI thread
+    public synchronized void onStop() {
         Log.i(TAG, "Cleanup AVRCP Controller Service");
 
         setActiveDevice(null);
@@ -642,6 +649,16 @@ public class AvrcpControllerService extends ProfileService {
         AvrcpControllerStateMachine stateMachine = getStateMachine(device);
         if (stateMachine != null) {
             stateMachine.nowPlayingContentChanged();
+        }
+    }
+
+    @VisibleForTesting
+    void handleSearchRsp(BluetoothDevice device, int status, int uid, int items) {
+        Log.d(TAG, "handleSearchRsp status: " + status + ", uid: " + uid + ", items: " + items);
+        AvrcpControllerStateMachine stateMachine = getStateMachine(device);
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                AvrcpControllerStateMachine.MESSAGE_PROCESS_SEARCH_RESP, status, items);
         }
     }
 

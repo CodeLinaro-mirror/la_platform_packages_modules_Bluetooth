@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "BluetoothAvrcpControllerJni"
@@ -26,6 +31,7 @@
 #include <cstring>
 #include <mutex>
 #include <shared_mutex>
+#include <thread>
 
 #include "com_android_bluetooth.h"
 #include "hardware/bluetooth.h"
@@ -52,7 +58,9 @@ static jmethodID method_handleSetAddressedPlayerRsp;
 static jmethodID method_handleAddressedPlayerChanged;
 static jmethodID method_handleNowPlayingContentChanged;
 static jmethodID method_onAvailablePlayerChanged;
+static jmethodID method_onStop;
 static jmethodID method_getRcPsm;
+static jmethodID method_handleSearchRsp;
 
 static jclass class_AvrcpControllerNativeInterface;
 static jclass class_AvrcpItem;
@@ -680,6 +688,25 @@ static void btavrcp_get_rcpsm_callback(const RawAddress& bd_addr, uint16_t psm) 
   sCallbackEnv->CallVoidMethod(sCallbacksObj, method_getRcPsm, addr.get(), (jint)psm);
 }
 
+static void btavrcp_search_response_callback(const RawAddress& bd_addr, uint8_t status,
+                                               uint16_t uid_counter, uint32_t num_items) {
+  log::info("status: {}, uid_counter: {}, num_items: {}", status, uid_counter, num_items);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) return;
+
+  ScopedLocalRef<jbyteArray> addr(sCallbackEnv.get(),
+          sCallbackEnv->NewByteArray(sizeof(RawAddress)));
+  if (!addr.get()) {
+    log::error("Failed to allocate a new byte array");
+    return;
+  }
+
+  sCallbackEnv->SetByteArrayRegion(addr.get(), 0, sizeof(RawAddress), (jbyte*)&bd_addr.address);
+
+  sCallbackEnv->CallVoidMethod(sCallbacksObj, method_handleSearchRsp, addr.get(), (jint)status,
+          (jint)uid_counter, (jint)num_items);
+}
+
 static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
         sizeof(sBluetoothAvrcpCallbacks),
         btavrcp_passthrough_response_callback,
@@ -702,6 +729,7 @@ static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
         btavrcp_now_playing_content_changed_callback,
         btavrcp_available_player_changed_callback,
         btavrcp_get_rcpsm_callback,
+        btavrcp_search_response_callback,
 };
 
 static void initNative(JNIEnv* env, jobject object) {
@@ -751,6 +779,29 @@ static void initNative(JNIEnv* env, jobject object) {
   }
 
   sCallbacksObj = env->NewGlobalRef(object);
+}
+
+static void stopNative([[maybe_unused]]JNIEnv* env, jobject /* object */) {
+  std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex, std::defer_lock);
+  while (true) {
+    if (lock.try_lock()) {
+        break;
+    } else {
+        log::warn( "sCallbacks_mutex has been locked, wait for 3ms");
+        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    }
+  }
+
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) {
+    return;
+  }
+  if (!sCallbacksObj) {
+    log::error("sCallbacksObj is null");
+    return;
+  }
+
+  sCallbackEnv->CallVoidMethod(sCallbacksObj, method_onStop);
 }
 
 static void cleanupNative(JNIEnv* env, jobject /* object */) {
@@ -1123,6 +1174,58 @@ static void playItemNative(JNIEnv* env, jobject /* object */, jbyteArray address
   env->ReleaseByteArrayElements(address, addr, 0);
 }
 
+static void searchNative(JNIEnv *env, jobject /* object */, jbyteArray address, jint charset,
+                           jint strLen, jstring pattern) {
+  bt_status_t status;
+  jbyte *addr;
+  const char* search_pattern = NULL;
+
+  if (!sBluetoothAvrcpInterface) return;
+
+  log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
+
+  addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+
+  search_pattern = env->GetStringUTFChars(pattern, NULL);
+
+  status = sBluetoothAvrcpInterface->search_cmd(rawAddress, (uint16_t)charset, (uint16_t)strLen,
+          (uint8_t*)search_pattern);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending searchNative command, status: {}", status);
+  }
+
+  env->ReleaseByteArrayElements(address, addr, 0);
+  env->ReleaseStringUTFChars(pattern, search_pattern);
+}
+
+static void getSearchListNative(JNIEnv* env, jobject /* object */, jbyteArray address,
+                                jint start, jint items) {
+  if (!sBluetoothAvrcpInterface) return;
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (!addr) {
+    jniThrowIOException(env, EINVAL);
+    return;
+  }
+
+  RawAddress rawAddress;
+  rawAddress.FromOctets((uint8_t*)addr);
+
+  bt_status_t status = sBluetoothAvrcpInterface->get_search_list_cmd(rawAddress, start, items);
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("Failed sending getSearchListNative command, status: {}", status);
+  }
+
+  env->ReleaseByteArrayElements(address, addr, 0);
+}
+
 int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)initNative},
@@ -1142,6 +1245,9 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"playItemNative", "([BBJI)V", (void*)playItemNative},
           {"setBrowsedPlayerNative", "([BI)V", (void*)setBrowsedPlayerNative},
           {"setAddressedPlayerNative", "([BI)V", (void*)setAddressedPlayerNative},
+          {"searchNative", "([BIILjava/lang/String;)V", (void*)searchNative},
+          {"getSearchListNative", "([BII)V", (void*)getSearchListNative},
+          {"stopNative", "()V", (void*)stopNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface", methods);
@@ -1182,6 +1288,8 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
            "([BILjava/lang/String;[BII)"
            "Lcom/android/bluetooth/avrcpcontroller/AvrcpPlayer;",
            &method_createFromNativePlayerItem, true},
+          {"handleSearchRsp", "([BIII)V",&method_handleSearchRsp},
+          {"onStop", "()V", &method_onStop},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface",
                    javaMethods);

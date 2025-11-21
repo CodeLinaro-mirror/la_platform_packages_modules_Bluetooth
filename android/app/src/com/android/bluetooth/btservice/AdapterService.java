@@ -2905,6 +2905,14 @@ public class AdapterService extends Service {
         }
     }
 
+    public boolean loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data) {
+        byte[] addr = Utils.getBytesFromAddress(device.getAddress());
+        return mNativeInterface.loadRemoteOobData(
+                addr, transport, remoteP192Data, remoteP256Data);
+    }
+
     public boolean isQuietModeEnabled() {
         Log.d(TAG, "isQuietModeEnabled() - Enabled = " + mQuietmode);
         return mQuietmode;
@@ -5001,10 +5009,10 @@ public class AdapterService extends Service {
                 // new adapter concurrently.
                 switch(option) {
                     case ENABLE:
-                        mDisableNewAdapter = AdapterExt.enable();
+                        mEnableNewAdapter = AdapterExt.enable();
                         break;
                     case DISABLE:
-                        mEnableNewAdapter = AdapterExt.disable();
+                        mDisableNewAdapter = AdapterExt.disable();
                         break;
                     case START_DISCOVERY:
                         // HOGP is deployed on the new adapter in dual BT mode.
@@ -5026,7 +5034,11 @@ public class AdapterService extends Service {
     }
 
     public boolean canEnableNewAdapter() {
-        return mEnableNewAdapter;
+        int state = AdapterExt.getState();
+        // In system boot phase, user is switching from user 0 to user 10 which causes
+        // AdapterExt.enable() being rejected due to permission issue. Cover this case
+        // by checking the state of the new adapter.
+        return mEnableNewAdapter || AdapterExt.isTurningOn(state);
     }
 
     public boolean canDisableNewAdapter() {

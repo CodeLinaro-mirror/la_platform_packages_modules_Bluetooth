@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 #include <bluetooth/log.h>
 #include <string.h>
@@ -511,6 +515,18 @@ static tAVRC_STS avrc_pars_browse_rsp(tAVRC_MSG_BROWSE* p_msg, tAVRC_RESPONSE* p
         folder_name->p_str = (uint8_t*)osi_calloc((folder_name->str_len + 1) * sizeof(uint8_t));
         BE_STREAM_TO_ARRAY(p, folder_name->p_str, folder_name->str_len);
       }
+      break;
+    }
+
+    case AVRC_PDU_SEARCH: {
+      tAVRC_SEARCH_RSP* search_rsp = &(p_rsp->search);
+      /* Copyback the PDU */
+      search_rsp->pdu = pdu;
+      BE_STREAM_TO_UINT8(search_rsp->status, p);
+      BE_STREAM_TO_UINT16(search_rsp->uid_counter, p);
+      BE_STREAM_TO_UINT32(search_rsp->num_items, p);
+      min_len += 7;
+      if (pkt_len < min_len) goto browse_length_error;
       break;
     }
 

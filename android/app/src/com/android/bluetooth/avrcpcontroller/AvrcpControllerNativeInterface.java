@@ -72,6 +72,10 @@ public class AvrcpControllerNativeInterface {
         cleanupNative();
     }
 
+    void stop() {
+        stopNative();
+    }
+
     boolean sendPassThroughCommand(byte[] address, int keyCode, int keyState) {
         return sendPassThroughCommandNative(address, keyCode, keyState);
     }
@@ -119,6 +123,14 @@ public class AvrcpControllerNativeInterface {
 
     void setBrowsedPlayer(byte[] address, int playerId) {
         setBrowsedPlayerNative(address, playerId);
+    }
+
+    void search(byte[] address, int charset, int strLen, String pattern) {
+        searchNative(address, charset, strLen, pattern);
+    }
+
+    void getSearchList(byte[] address, int start, int end) {
+        getSearchListNative(address, start, end);
     }
 
     /**********************************************************************************************/
@@ -227,6 +239,18 @@ public class AvrcpControllerNativeInterface {
                         + (" NumberOfItems=" + items.length));
 
         mAvrcpController.handleGetPlayerItemsRsp(device, Arrays.asList(items));
+    }
+
+    void handleSearchRsp(byte[] address, int status, int uid, int items) {
+        BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+        Log.d(
+                TAG,
+                "handleSearchRsp:"
+                        + (" device=" + device)
+                        + (" status=" + status)
+                        + (" uid=" + uid)
+                        + (" items=" + items));
+        mAvrcpController.handleSearchRsp(device, status, uid, items);
     }
 
     // JNI Helper functions to convert native objects to java.
@@ -344,6 +368,11 @@ public class AvrcpControllerNativeInterface {
         mAvrcpController.onAvailablePlayerChanged(device);
     }
 
+    void onStop() {
+        Log.d(TAG, "onStop");
+        mAvrcpController.onStop();
+    }
+
     /*
      *  Play State Values from JNI
      */
@@ -377,6 +406,8 @@ public class AvrcpControllerNativeInterface {
     private native void initNative();
 
     private native void cleanupNative();
+
+    private native void stopNative();
 
     /**
      * Send button press commands to addressed device
@@ -491,4 +522,21 @@ public class AvrcpControllerNativeInterface {
      * @param playerId player number
      */
     private native void setAddressedPlayerNative(byte[] address, int playerId);
+    /**
+     * Search
+     *
+     * @param address      address
+     * @param charset      charset
+     * @param strLen       strLen
+     * @param pattern      pattern
+     */
+    public native static void searchNative(byte[] address, int charset, int strLen, String pattern);
+    /**
+     * Get Search List
+     *
+     * @param address      address
+     * @param start        start
+     * @param end          end
+     */
+    public native static void getSearchListNative(byte[] address, int start, int end);
 }
