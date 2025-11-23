@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /**
@@ -36,6 +36,7 @@
 #if !defined(EXCLUDE_NONSTANDARD_CODECS)
 #include "a2dp_vendor_aptx.h"
 #include "a2dp_vendor_aptx_hd.h"
+#include "a2dp_vendor_aptx_adaptive.h"
 #include "a2dp_vendor_ldac.h"
 #include "a2dp_vendor_opus.h"
 #endif
@@ -57,6 +58,7 @@
    (1 << BTAV_A2DP_CODEC_INDEX_SINK_AAC) | \
    (1 << BTAV_A2DP_CODEC_INDEX_SINK_APTX)| \
    (1 << BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD)| \
+   (1 << BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE)| \
    (1 << BTAV_A2DP_CODEC_INDEX_SINK_OPUS))
 
 static bool A2DP_CheckCodecLocation(btav_a2dp_codec_index_t codec_index,
@@ -161,6 +163,9 @@ A2dpCodecConfig* A2dpCodecConfig::createCodec(btav_a2dp_codec_index_t codec_inde
       break;
     case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
       codec_config = new A2dpCodecConfigAptxHdSink(codec_priority);
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SINK_APTX_ADAPTIVE:
+      codec_config = new A2dpCodecConfigAptxAdaptiveSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
       codec_config = new A2dpCodecConfigLdacSource(codec_priority);
