@@ -56,6 +56,7 @@
 
 using base::Closure;
 using bluetooth::csis::CsisClient;
+using bluetooth::groups::DeviceGroups;
 using bluetooth::vc::ConnectionState;
 using bluetooth::vc::VolumeInputStatus;
 using bluetooth::vc::VolumeInputType;
@@ -442,7 +443,7 @@ public:
     }
 
     auto group_id =
-            csis_api->GetGroupId(device->address, bluetooth::le_audio::uuid::kCapServiceUuid);
+            DeviceGroups::Get()->GetGroupId(device->address, bluetooth::le_audio::uuid::kCapServiceUuid);
     if (group_id == bluetooth::groups::kGroupUnknown) {
       bluetooth::log::warn("No group for device {}", device->address);
       callbacks_->OnVolumeStateChanged(device->address, device->volume, device->mute, device->flags,

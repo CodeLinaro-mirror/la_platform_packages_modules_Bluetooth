@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 /******************************************************************************
  *
  *  This is the private interface file for the BTA audio gateway.
@@ -492,6 +498,9 @@ void bta_ag_send_ring(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data);
 void bta_ag_handle_collision(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data);
 size_t bta_ag_sco_write(const uint8_t* p_buf, uint32_t len);
 size_t bta_ag_sco_read(uint8_t* p_buf, uint32_t len);
+bool bta_ag_is_ag_device_connected();
+bool bta_ag_is_ag_device_sco_connected();
+uint16_t fetch_remote_supported_codecs();
 
 /* Internal utility functions */
 void bta_ag_sco_codec_nego(tBTA_AG_SCB* p_scb, bool result);

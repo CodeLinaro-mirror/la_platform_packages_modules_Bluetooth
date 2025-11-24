@@ -1822,6 +1822,30 @@ void bta_hh_gatt_close(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
 
 /*******************************************************************************
  *
+ * Function         bta_hh_gatt_cancel
+ *
+ * Description      Cancel/Close a gatt connection
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void bta_hh_gatt_cancel(tBTA_HH_DEV_CB* p_cb) {
+  if (p_cb->link_spec.transport == BT_TRANSPORT_LE) {
+    log::debug("Cancel GATT connection: gatt_if={}, addr={}, conn_id={}",
+                bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, p_cb->conn_id);
+    if (p_cb->conn_id == GATT_INVALID_CONN_ID) {
+      BTA_GATTC_CancelOpen(bta_hh_cb.gatt_if,
+                       p_cb->link_spec.addrt.bda, true);
+    } else {
+      BtaGattQueue::Clean(p_cb->conn_id);
+      BTA_GATTC_Close(p_cb->conn_id);
+    }
+    bta_hh_le_remove_dev_bg_conn(p_cb);
+  }
+}
+
+/*******************************************************************************
+ *
  * Function         bta_hh_le_api_disc_act
  *
  * Description      initaite a Close API to a remote HID device

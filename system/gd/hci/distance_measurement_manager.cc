@@ -52,6 +52,7 @@
 using namespace bluetooth::ras;
 using bluetooth::hal::ProcedureDataV2;
 using bluetooth::hci::acl_manager::PacketViewForRecombination;
+using bluetooth::hal::ChannelSoundingParameters;
 
 namespace bluetooth {
 namespace hci {
@@ -102,6 +103,7 @@ static constexpr uint16_t kEnableSecurityTimeoutMs = 10000;  // 10s
 long long proc_start_timestampMs;
 long long curr_proc_complete_timestampMs;
 bool is_ras_packets_delayed = false;
+bool procedure_disable_in_progress = false;
 static constexpr uint16_t kProcedureScheduleGuardMs = 1000;  // 1s
 static constexpr double kConnIntervalUnitMs = 1.25;          // 1.25 ms
 
@@ -263,6 +265,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     uint16_t event_interval = 0;
     uint16_t procedure_interval = 0;
     uint16_t max_procedure_len = 0;
+    ChannelSoundingParameters channel_sounding_parameters;
     // RAS data
     RangingHeader ranging_header_;
     PacketViewForRecombination segment_data_;
@@ -408,8 +411,9 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
       return;
     }
 
-    log::info("Address:{}, connection_handle:{}, CsSecurityLevel:{} frequency:{}",
-               cs_remote_address, connection_handle, mCsSecurityLevel, mFrequency);
+    log::info("Address:{}, connection_handle:{}, CsSecurityLevel:{} frequency:{} "
+              "mLocationType:{} mSightType:{}", cs_remote_address, connection_handle,
+              mCsSecurityLevel, mFrequency, mLocationType, mSightType);
 
     if (set_cs_params_.find(connection_handle) != set_cs_params_.end() &&
         set_cs_params_[connection_handle].address != cs_remote_address) {
@@ -428,14 +432,16 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     tCS_CONFIG cs_config_setting;
     mCsSecurityLevel = mCsSecurityLevel-1;
     if ((mCsSecurityLevel >=0  && mCsSecurityLevel <= 4) &&
-	(mFrequency >= 0 && mFrequency <= 2)) {
-       if (get_cs_procedure_settings(mFrequency, &cs_proc_setting) &&
-           get_cs_config_settings(mCsSecurityLevel, &cs_config_setting) &&
-	   (set_cs_params_.find(connection_handle) == set_cs_params_.end())) {
-         set_cs_params_[connection_handle].address = cs_remote_address;
-	 set_cs_params_[connection_handle].cs_conf_settings.push_back(cs_config_setting);
-	 set_cs_params_[connection_handle].cs_proc_settings.push_back(cs_proc_setting);
-       }
+	   (mFrequency >= 0 && mFrequency <= 2)) {
+      if (get_cs_procedure_settings(mFrequency, &cs_proc_setting) &&
+          get_cs_config_settings(mCsSecurityLevel, &cs_config_setting) &&
+	        (set_cs_params_.find(connection_handle) == set_cs_params_.end())) {
+        set_cs_params_[connection_handle].address = cs_remote_address;
+        set_cs_params_[connection_handle].cs_conf_settings.push_back(cs_config_setting);
+        set_cs_params_[connection_handle].cs_proc_settings.push_back(cs_proc_setting);
+        set_cs_params_[connection_handle].location_type = mLocationType;
+        set_cs_params_[connection_handle].sight_type = mSightType;
+      }
     } else {
       log::warn("using default configs");
     }
@@ -488,6 +494,12 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     *has_updated_procedure_params = false;
     auto it = cs_requester_trackers_.find(connection_handle);
     if (it != cs_requester_trackers_.end()) {
+      if(procedure_disable_in_progress) {
+        log::warn("Attempt to start measurement while procedure disable is still pending (state=HOLD)");
+        distance_measurement_callbacks_->OnDistanceMeasurementStopped(
+		      cs_remote_address, REASON_INTERNAL_ERROR, METHOD_CS);
+        return false;
+      }
       if (it->second.address != cs_remote_address) {
         log::debug("replace old tracker as {}", cs_remote_address);
         it->second = CsTracker();
@@ -550,6 +562,11 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     it->second.local_hci_role = local_hci_role;
     it->second.retry_counter_for_create_config = 0;
     it->second.retry_counter_for_cs_enable = 0;
+    it->second.channel_sounding_parameters.location_type_ =
+      set_cs_params_[connection_handle].location_type;
+    it->second.channel_sounding_parameters.sight_type_ =
+      set_cs_params_[connection_handle].sight_type;
+
     return true;
   }
 
@@ -649,9 +666,11 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     it->second.conn_interval_ = conn_interval;
     it->second.ras_connected = true;
     it->second.state = CsTrackerState::RAS_CONNECTED;
+    it->second.channel_sounding_parameters.acl_handle_ = connection_handle;
+    it->second.channel_sounding_parameters.real_time_procedure_data_att_handle_ = att_handle;
 
     if (ranging_hal_->IsBound()) {
-      ranging_hal_->OpenSession(connection_handle, att_handle, vendor_specific_data);
+      ranging_hal_->OpenSession(it->second.channel_sounding_parameters, vendor_specific_data);
       return;
     }
     start_distance_measurement_with_cs(it->second.address, connection_handle, false);
@@ -1135,8 +1154,9 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         log::info("no procedure disable command needed for state {}.", (int)it->second.state);
         return;
       }
+      procedure_disable_in_progress = true;
     }
-
+    
     hci_layer_->EnqueueCommand(
             LeCsProcedureEnableBuilder::Create(connection_handle, it->second.used_config_id,
                                                enable),
@@ -1619,6 +1639,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
                                         valid_responder_states);
         if (live_tracker == nullptr) {
           log::error("disable - no tracker is available for {}", connection_handle);
+          procedure_disable_in_progress = false;
           return;
         }
         if (is_ras_packets_delayed) {
@@ -1630,6 +1651,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           send_le_cs_procedure_enable(connection_handle, Enable::ENABLED);
           return;
         }
+        procedure_disable_in_progress = false;
         reset_tracker_on_stopped(*live_tracker);
       } else {
         // work around, controller may send 'DISABLE' complete with error for 'ENABLE' command
@@ -1945,16 +1967,17 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
   void parse_ras_segments(RangingHeader ranging_header, PacketViewForRecombination& segment_data,
                           uint16_t connection_handle) {
     log::info("Data size {}, Ranging_header {}", segment_data.size(), ranging_header.ToString());
-    auto procedure_data =
-            get_procedure_data_for_ras(connection_handle, ranging_header.ranging_counter_);
-    if (procedure_data == nullptr) {
-      return;
-    }
-
-    if (cs_requester_trackers_[connection_handle].procedure_data_list.back().counter - ranging_header.ranging_counter_ >= kProcedureDataBufferSize) {
+    if ((cs_requester_trackers_[connection_handle]
+            .procedure_data_list.back().counter & kRangingCounterMask)
+        - ranging_header.ranging_counter_ >= kProcedureDataBufferSize) {
       log::warn("Delay in receiving RAS packets, restarting procedures!");
       is_ras_packets_delayed = true;
       send_le_cs_procedure_enable(connection_handle, Enable::DISABLED);
+      return;
+    }
+    auto procedure_data =
+            get_procedure_data_for_ras(connection_handle, ranging_header.ranging_counter_);
+    if (procedure_data == nullptr) {
       return;
     }
     uint8_t num_antenna_paths = 0;
@@ -3084,6 +3107,8 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     Address address;
     std::vector<tCS_PROCEDURE_PARAM> cs_proc_settings;
     std::vector<tCS_CONFIG> cs_conf_settings;
+    int location_type;
+    int sight_type;
   };
 
   os::Handler* handler_ = nullptr;

@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 /******************************************************************************
  *
  *  This file contains functions for managing the SCO connection used in AG.
@@ -59,13 +65,25 @@
 #include "stack/include/btm_status.h"
 #include "stack/include/main_thread.h"
 #include "types/raw_address.h"
+#include "bta/hf_client/bta_hf_client_int.h"
+#include "hcimsgs.h"
+#include "stack/include/hcimsgs.h"
+
 
 extern tBTM_CB btm_cb;
 
 using namespace bluetooth;
 using HfpInterface = bluetooth::audio::hfp::HfpClientInterface;
-using namespace bluetooth;
+using bluetooth::legacy::hci::GetInterface;
 using namespace bluetooth::shim;
+bool mAgDeviceScoConnected = false;
+
+constexpr int mAgScoDataPathId = 0x01;
+constexpr uint8_t LTV_LEN_SCO_DATAPATH       =  0x02;
+constexpr uint8_t LTV_TYPE_SCO_DATA_PATH     =  0x011;
+
+constexpr uint8_t LTV_LEN_SCO_RELAY_MODE     =  0x02;
+constexpr uint8_t LTV_TYPE_SCO_RELAY_MODE    =  0x012;
 
 /* Codec negotiation timeout */
 #ifndef BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS
@@ -159,6 +177,37 @@ bool bta_ag_sco_is_active_device(const RawAddress& bd_addr) {
 
 /*******************************************************************************
  *
+ * function         PrepareVendorConfigScoData
+ *
+ *
+ ******************************************************************************/
+static std::vector<uint8_t> PrepareVendorConfigScoData() {
+    std::vector<uint8_t> vendor_sco_datapath_config;
+    uint8_t len = LTV_LEN_SCO_DATAPATH;
+    uint8_t type = LTV_TYPE_SCO_DATA_PATH;
+    uint8_t sco_path = 0; //transport type is sco
+
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &len, &len + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &type, &type + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &sco_path, &sco_path + 1);
+
+    len =  LTV_LEN_SCO_RELAY_MODE;
+    type = LTV_TYPE_SCO_RELAY_MODE;
+    uint8_t relay_mode = 1; //enable relay mode
+    if (bta_is_hf_client_device_sco_connected()) {
+       relay_mode = 1;
+    } else {
+       relay_mode =0;
+    }
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &len, &len + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &type, &type + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &relay_mode, &relay_mode + 1);
+
+    return vendor_sco_datapath_config;
+}
+
+/*******************************************************************************
+ *
  * Function         bta_ag_sco_conn_cback
  *
  * Description      BTM SCO connection callback.
@@ -209,6 +258,7 @@ static void bta_ag_sco_conn_cback(uint16_t sco_idx) {
  ******************************************************************************/
 static void bta_ag_sco_disc_cback(uint16_t sco_idx) {
   uint16_t handle = 0;
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
 
   log::debug("sco_idx: 0x{:x} sco.state:{}", sco_idx, bta_ag_cb.sco.state);
   log::debug("scb[0] in_use:{} sco_idx: 0x{:x} ag state:{}", bta_ag_cb.scb[0].in_use,
@@ -271,8 +321,9 @@ static void bta_ag_sco_disc_cback(uint16_t sco_idx) {
                    aptx_voice) {
           if (bta_ag_cb.sco.p_curr_scb->codec_msbc_settings == BTA_AG_SCO_MSBC_SETTINGS_T2) {
             log::warn("eSCO/SCO failed to open, falling back to mSBC T1 settings");
-            bta_ag_cb.sco.p_curr_scb->codec_msbc_settings = BTA_AG_SCO_MSBC_SETTINGS_T1;
-
+            if (!is_hf_client_enabled) {
+               bta_ag_cb.sco.p_curr_scb->codec_msbc_settings = BTA_AG_SCO_MSBC_SETTINGS_T1;
+            }
           } else {
             log::warn("eSCO/SCO failed to open, falling back to CVSD");
             bta_ag_cb.sco.p_curr_scb->inuse_codec = tBTA_AG_UUID_CODEC::UUID_CODEC_CVSD;
@@ -283,8 +334,10 @@ static void bta_ag_sco_disc_cback(uint16_t sco_idx) {
           // - |fix_hfp_qual_1_9| is enabled, AND
           // - we just failed CVSD S2+.
           log::warn("eSCO/SCO failed to open, falling back to CVSD S1 settings");
-          bta_ag_cb.sco.p_curr_scb->codec_cvsd_settings = BTA_AG_SCO_CVSD_SETTINGS_S1;
-          bta_ag_cb.sco.p_curr_scb->trying_cvsd_safe_settings = true;
+          if (!is_hf_client_enabled) {
+             bta_ag_cb.sco.p_curr_scb->codec_cvsd_settings = BTA_AG_SCO_CVSD_SETTINGS_S1;
+             bta_ag_cb.sco.p_curr_scb->trying_cvsd_safe_settings = true;
+          }
         }
       }
     } else if (bta_ag_sco_is_opening(bta_ag_cb.sco.p_curr_scb) &&
@@ -444,6 +497,7 @@ static void bta_ag_cback_sco(tBTA_AG_SCB* p_scb, tBTA_AG_EVT event) {
 void bta_ag_create_sco(tBTA_AG_SCB* p_scb, bool is_orig) {
   log::debug("BEFORE {}", p_scb->ToString());
   tBTA_AG_UUID_CODEC esco_codec = tBTA_AG_UUID_CODEC::UUID_CODEC_CVSD;
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
 
   if (!bta_ag_sco_is_active_device(p_scb->peer_addr)) {
     log::warn("device {} is not active, active_device={}", p_scb->peer_addr, active_device_addr);
@@ -520,8 +574,23 @@ void bta_ag_create_sco(tBTA_AG_SCB* p_scb, bool is_orig) {
   } else if (esco_codec == tBTA_AG_UUID_CODEC::UUID_CODEC_MSBC) {
     if (p_scb->codec_msbc_settings == BTA_AG_SCO_MSBC_SETTINGS_T2) {
       params = esco_parameters_for_codec(ESCO_CODEC_MSBC_T2, offload);
+      bool value = false;
+      value = osi_property_get_bool("vendor.bt.pts.certification", false);
+      log::info("PTS certification prop set to %s", value ? "true" : "false");
+
+      if (value == true) {
+        params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+                  ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
+      }
+      if (is_hf_client_enabled) {
+         log::info("hf_client is also enabled. using always t2 settings");
+         params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+                ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
+      }
     } else {
-      params = esco_parameters_for_codec(ESCO_CODEC_MSBC_T1, offload);
+      if(!is_hf_client_enabled) {
+         params = esco_parameters_for_codec(ESCO_CODEC_MSBC_T1, offload);
+      }
     }
   } else {
     if (com::android::bluetooth::flags::fix_hfp_qual_1_9() &&
@@ -535,6 +604,22 @@ void bta_ag_create_sco(tBTA_AG_SCB* p_scb, bool is_orig) {
       } else {
         // HFP <=1.6 eSCO
         params = esco_parameters_for_codec(ESCO_CODEC_CVSD_S3, offload);
+      }
+      if (is_hf_client_enabled) {
+         log::info("hf_client is also enabled. using always 2EV2 packets only");
+         params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+                  ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
+      }
+
+      bool value = false;
+      // Set CVSD S2 parameters
+      value = osi_property_get_bool("vendor.bt.pts.S2_parameter", false);
+      log::info("CVSD S2 parameters property set to %s", value ? "true" : "false");
+      if (value == true && p_scb->codec_cvsd_settings != BTA_AG_SCO_CVSD_SETTINGS_S1) {
+        params.max_latency_ms = 7;
+        params.retransmission_effort = ESCO_RETRANSMISSION_POWER;
+        params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+                  ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
       }
     }
   }
@@ -577,9 +662,17 @@ void bta_ag_create_sco(tBTA_AG_SCB* p_scb, bool is_orig) {
       }
     }
 
+    std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
+    bluetooth::legacy::hci::GetInterface().ConfigureDataPath(
+                                hci_data_direction_t::HOST_TO_CONTROLLER,
+                                mAgScoDataPathId, sco_vendor_config_data);
+    bluetooth::legacy::hci::GetInterface().ConfigureDataPath(
+                                hci_data_direction_t::CONTROLLER_TO_HOST,
+                                mAgScoDataPathId, sco_vendor_config_data);
+
     if (get_btm_client_interface().sco.BTM_CreateSco(
-                &p_scb->peer_addr, true, params.packet_types, &p_scb->sco_idx,
-                bta_ag_sco_conn_cback, bta_ag_sco_disc_cback) == tBTM_STATUS::BTM_CMD_STARTED) {
+                &p_scb->peer_addr, true, params.packet_types,  &p_scb->sco_idx,
+		bta_ag_sco_conn_cback, bta_ag_sco_disc_cback) == tBTM_STATUS::BTM_CMD_STARTED) {
       /* Initiating the connection, set the current sco handle */
       bta_ag_cb.sco.cur_idx = p_scb->sco_idx;
       /* Configure input/output data. */
@@ -735,6 +828,27 @@ void bta_ag_codec_negotiate(tBTA_AG_SCB* p_scb) {
       log::verbose("Sending +BCS, sco_codec={}, is_aptx_swb_codec={}", p_scb->sco_codec,
                    p_scb->is_aptx_swb_codec);
       /* Send +BCS to the peer */
+      if (bta_is_hf_client_device_sco_connected()) {
+         log::warn("client sco is connected, need to send correct negotiation");
+         uint16_t mClientCodec = fetch_client_negotiated_codec();
+         if (mClientCodec == p_scb->sco_codec) {
+            log::warn("going with same codec as client codec: Mclientcodec {} p_scb codec: {}", mClientCodec, p_scb->sco_codec);
+         } else {
+            if (mClientCodec == BTM_SCO_CODEC_MSBC && p_scb->sco_codec == BTM_SCO_CODEC_CVSD) {
+                if (p_scb->peer_codecs & BTM_SCO_CODEC_MSBC) {
+                 log::warn("using the alredy existing msbc codec");
+                 p_scb->sco_codec = BTM_SCO_CODEC_MSBC;
+              } else {
+                 log::warn("not proceeding with sco as remote doesnt support it");
+                 bta_ag_cback_sco(p_scb, BTA_AG_AUDIO_CLOSE_EVT);
+                 return;
+              }
+            } else {
+                p_scb->sco_codec = mClientCodec;
+                log::warn("current sco is with cvsd. BT Headset supports MSBC. So forcing to use CVSD");
+            }
+         }
+      }
       bta_ag_send_bcs(p_scb);
     }
 
@@ -1339,6 +1453,33 @@ void bta_ag_sco_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data) {
     return;
   }
 
+  //If there is already existing sco in HF device, we need to go with same codec with BT remote.
+//if there is a switch of device during ongoing sco, no sco will be created if existing sco 
+//between AG and HF role is with MSBC and new BT headset supports only CVSD. No sco is created
+//in this case with BT headset. 
+//if ongoing SCO is with CVSD and new device supports MSBC, downgrading sco with CVSD
+  if (bta_is_hf_client_device_sco_connected()) {
+       uint16_t mClientCodec = fetch_client_negotiated_codec();
+       if (mClientCodec == p_scb->sco_codec) {
+          log::warn("going with same codec as client codec: Mclientcodec {} p_scb->sco_codec: {}", mClientCodec, p_scb->sco_codec);
+       } else {
+          if (mClientCodec == BTM_SCO_CODEC_MSBC && p_scb->sco_codec == BTM_SCO_CODEC_CVSD) {
+              if (p_scb->peer_codecs & BTM_SCO_CODEC_MSBC) {
+                 log::warn("using the alredy existing msbc codec");
+                 p_scb->sco_codec = BTM_SCO_CODEC_MSBC;
+                 p_scb->codec_updated = true;
+              } else {
+                log::warn("not proceeding with sco as remote doesnt support it");
+                bta_ag_cback_sco(p_scb, BTA_AG_AUDIO_CLOSE_EVT);
+                return;
+              }
+          } else {
+              p_scb->sco_codec = mClientCodec;
+              log::warn("current sco is with cvsd. BT Headset supports MSBC. So forcing to use CVSD");
+          }
+       }
+  }
+
   p_scb->disabled_codecs = data.api_audio_open.disabled_codecs;
   log::info("disabled_codecs = {}, sco_codec = {}", p_scb->disabled_codecs, p_scb->sco_codec);
 
@@ -1426,6 +1567,16 @@ void bta_ag_sco_codec_nego(tBTA_AG_SCB* p_scb, bool result) {
 void bta_ag_sco_shutdown(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
   bta_ag_sco_event(p_scb, BTA_AG_SCO_SHUTDOWN_E);
 }
+
+bool bta_ag_is_ag_device_sco_connected() {
+   log::verbose("hf_client device connection status is", mAgDeviceScoConnected);
+   return mAgDeviceScoConnected;
+}
+
+bool bta_get_hf_client_sco_connection_status() {
+  return bta_is_hf_client_device_sco_connected();
+}
+
 
 /*******************************************************************************
  *
@@ -1575,6 +1726,7 @@ void bta_ag_sco_conn_close(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
       bta_sys_sco_unuse(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
     }
 
+    mAgDeviceScoConnected = false;
     /* call app callback */
     bta_ag_cback_sco(p_scb, BTA_AG_AUDIO_CLOSE_EVT);
     p_scb->codec_cvsd_settings = BTA_AG_SCO_CVSD_SETTINGS_S4;
@@ -1642,6 +1794,15 @@ void bta_ag_sco_conn_rsp(tBTA_AG_SCB* p_scb, tBTM_ESCO_CONN_REQ_EVT_DATA* /*p_da
     params = esco_parameters_for_codec(SCO_CODEC_CVSD_D1, offload);
   }
 
+  //Need to send configure datapath command as a part of 2 sco connections.
+  std::vector<uint8_t> sco_config_data = PrepareVendorConfigScoData();
+  bluetooth::legacy::hci::GetInterface().ConfigureDataPath(
+                                 hci_data_direction_t::HOST_TO_CONTROLLER,
+                                 mAgScoDataPathId, sco_config_data);
+  bluetooth::legacy::hci::GetInterface().ConfigureDataPath(
+                                 hci_data_direction_t::CONTROLLER_TO_HOST,
+                                 mAgScoDataPathId, sco_config_data);
+
   get_btm_client_interface().sco.BTM_EScoConnRsp(p_scb->sco_idx, HCI_SUCCESS, &params);
   log::verbose("listening for SCO connection");
 }
@@ -1696,6 +1857,8 @@ void bta_clear_active_device() {
     }
   }
   active_device_addr = RawAddress::kEmpty;
+  update_remote_codecs(BTM_SCO_CODEC_CVSD | BTM_SCO_CODEC_MSBC |
+                       BTM_SCO_CODEC_LC3);
 }
 
 void bta_ag_api_set_active_device(const RawAddress& new_active_device) {
@@ -1751,6 +1914,11 @@ void bta_ag_api_set_active_device(const RawAddress& new_active_device) {
         }
       }
     }
+  }
+  tBTA_AG_SCB* p_scb = bta_ag_scb_by_idx(bta_ag_idx_by_bdaddr(&new_active_device));
+  if (p_scb) {
+     log::warn("updating remote codecs as per the new active device");
+     update_remote_codecs(p_scb->peer_codecs);
   }
   active_device_addr = new_active_device;
 }

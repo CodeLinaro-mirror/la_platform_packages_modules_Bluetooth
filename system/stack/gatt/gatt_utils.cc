@@ -30,6 +30,7 @@
 
 #include "hardware/bt_gatt_types.h"
 #include "internal_include/bt_target.h"
+#include "internal_include/stack_config.h"
 #include "main/shim/acl_api.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/allocator.h"
@@ -48,6 +49,7 @@
 #include "stack/include/sdp_api.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
+#include "btif/include/btif_storage.h"
 
 using namespace bluetooth::legacy::stack::sdp;
 using namespace bluetooth;
@@ -529,6 +531,9 @@ tGATT_TCB* gatt_allocate_tcb_by_bdaddr(const RawAddress& bda, tBT_TRANSPORT tran
     p_tcb->pending_user_mtu_exchange_value = 0;
     p_tcb->conn_ids_waiting_for_mtu_exchange = std::list<tCONN_ID>();
     p_tcb->max_user_mtu = 0;
+    if (stack_config_get_interface()->get_pts_configure_svc_chg_indication()) {
+      p_tcb->svc_chg_cccd = btif_storage_get_svc_chg_cccd(bda);
+    }
     gatt_sr_init_cl_status(*p_tcb);
     gatt_cl_init_sr_status(*p_tcb);
 

@@ -133,3 +133,4 @@
 #define BTIF_STORAGE_KEY_VERSION "ProductVersion"
 #define BTIF_STORAGE_KEY_ENCR_DATA_CCCD "EncryptedDataKeyCCCD"
 #define BTIF_STORAGE_KEY_ENCR_DATA "EncKeyMaterial"
+#define BTIF_STORAGE_KEY_SVC_CHG_CCCD "ServiceChangedCCCD"

@@ -282,6 +282,15 @@ Octet16 btif_storage_get_gatt_cl_db_hash(const RawAddress& bd_addr);
 /** Remove last server database hash for remote client */
 void btif_storage_remove_gatt_cl_db_hash(const RawAddress& bd_addr);
 
+/** Store service changed CCCD value for remote client */
+void btif_storage_set_svc_chg_cccd(const RawAddress& bd_addr, uint8_t cccd);
+
+/** Get service changed CCCD value for remote client */
+uint8_t btif_storage_get_svc_chg_cccd(const RawAddress& bda);
+
+/** Remove service changed CCCD value for remote client */
+void btif_storage_remove_svc_chg_cccd(const RawAddress& bd_addr);
+
 /** Get the hearing aid device properties. */
 bool btif_storage_get_hearing_aid_prop(const RawAddress& address, uint8_t* capabilities,
                                        uint64_t* hi_sync_id, uint16_t* render_delay,

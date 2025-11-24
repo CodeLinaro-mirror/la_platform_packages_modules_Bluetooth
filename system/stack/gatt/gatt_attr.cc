@@ -42,6 +42,7 @@
 #include "gatt_int.h"
 #include "device/include/interop.h"
 #include "internal_include/bt_target.h"
+#include "internal_include/stack_config.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
@@ -102,6 +103,8 @@ static bool read_sr_sirk_req(const RawAddress&, tCONN_ID conn_id,
 static tGATT_STATUS gatt_sr_read_db_hash(tCONN_ID conn_id, tGATT_VALUE* p_value);
 static tGATT_STATUS gatt_sr_read_cl_supp_feat(tCONN_ID conn_id, tGATT_VALUE* p_value);
 static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, tGATT_WRITE_REQ* p_data);
+static tGATT_STATUS gatt_sr_write_cccd(uint16_t conn_id, tGATT_WRITE_REQ* p_data);
+
 
 static tGATT_CBACK gatt_profile_cback = {
         .p_conn_cb = gatt_connect_cback,
@@ -315,6 +318,13 @@ static tGATT_STATUS proc_write_req(tCONN_ID conn_id, tGATTS_REQ_TYPE, tGATT_WRIT
     return GATT_WRITE_NOT_PERMIT;
   }
 
+  /* GATT_UUID_CHAR_CLIENT_CONFIG */
+  if (stack_config_get_interface()->get_pts_configure_svc_chg_indication()) {
+    if (handle == gatt_cb.handle_svc_chg_cccd) {
+      return gatt_sr_write_cccd(conn_id, p_data);
+    }
+  }
+
   return GATT_NOT_FOUND;
 }
 
@@ -388,6 +398,9 @@ static void gatt_connect_cback(tGATT_IF /* gatt_if */, const RawAddress& bda, tC
     log::info("remove untrusted client status, bda={}", bda);
     btif_storage_remove_gatt_cl_supp_feat(bda);
     btif_storage_remove_gatt_cl_db_hash(bda);
+    if (stack_config_get_interface()->get_pts_configure_svc_chg_indication()) {
+      btif_storage_remove_svc_chg_cccd(bda);
+    }
   }
 
   tGATT_PROFILE_CLCB* p_clcb = gatt_profile_find_clcb_by_bd_addr(bda, transport);
@@ -433,6 +446,7 @@ void gatt_profile_db_init(void) {
   Uuid svr_sup_feat_uuid = Uuid::From16Bit(GATT_UUID_SERVER_SUP_FEAT);
   Uuid cl_sup_feat_uuid = Uuid::From16Bit(GATT_UUID_CLIENT_SUP_FEAT);
   Uuid database_hash_uuid = Uuid::From16Bit(GATT_UUID_DATABASE_HASH);
+  Uuid cccd_uuid = Uuid::From16Bit(GATT_UUID_CHAR_CLIENT_CONFIG);
 
   btgatt_db_element_t service[] = {
           {
@@ -444,6 +458,11 @@ void gatt_profile_db_init(void) {
                   .type = BTGATT_DB_CHARACTERISTIC,
                   .properties = GATT_CHAR_PROP_BIT_INDICATE,
                   .permissions = 0,
+          },
+          {
+                  .type = BTGATT_DB_DESCRIPTOR,
+                  .uuid = cccd_uuid,
+                  .permissions = GATT_PERM_READ | GATT_PERM_WRITE,
           },
           {
                   .uuid = svr_sup_feat_uuid,
@@ -470,9 +489,10 @@ void gatt_profile_db_init(void) {
   }
 
   gatt_cb.handle_of_h_r = service[1].attribute_handle;
-  gatt_cb.handle_sr_supported_feat = service[2].attribute_handle;
-  gatt_cb.handle_cl_supported_feat = service[3].attribute_handle;
-  gatt_cb.handle_of_database_hash = service[4].attribute_handle;
+  gatt_cb.handle_svc_chg_cccd = service[2].attribute_handle;
+  gatt_cb.handle_sr_supported_feat = service[3].attribute_handle;
+  gatt_cb.handle_cl_supported_feat = service[4].attribute_handle;
+  gatt_cb.handle_of_database_hash = service[5].attribute_handle;
 
   gatt_cb.gatt_svr_supported_feat_mask |= BLE_GATT_SVR_SUP_FEAT_EATT_BITMASK;
   gatt_cb.gatt_cl_supported_feat_mask |= BLE_GATT_CL_ANDROID_SUP_FEAT;
@@ -1258,5 +1278,36 @@ static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, tGATT_WRITE_REQ
     log::info("robust caching enabled by client, conn_id=0x{:x}", conn_id);
   }
 
+  return GATT_SUCCESS;
+}
+
+/* handle request for writing CCCD descriptor */
+static tGATT_STATUS gatt_sr_write_cccd(uint16_t conn_id, tGATT_WRITE_REQ* p_data) {
+  if (p_data == NULL) {
+    log::error("Invalid write request data");
+    return GATT_INVALID_PDU;
+  }
+
+  // Validate data length
+  if (p_data->len < 1) {
+    log::error("Invalid CCCD value length: {}", p_data->len);
+    return GATT_INVALID_ATTR_LEN;
+  }
+
+  uint8_t value = 0, *p = p_data->value;
+  // Get tcb info
+  uint8_t tcb_idx = gatt_get_tcb_idx(conn_id);
+  tGATT_TCB& tcb = gatt_cb.tcb[tcb_idx];
+  STREAM_TO_UINT8(value, p);
+
+  // Validate CCCD value (only specific bits are allowed)
+  if (value & ~(GATT_CHAR_CLIENT_CONFIG_NOTIFICATION | GATT_CHAR_CLIENT_CONFIG_INDICTION)) {
+    log::error("Invalid CCCD value: 0x{:x}", value);
+    return GATT_VALUE_NOT_ALLOWED;
+  }
+
+  log::verbose("conn_id: {} value:{}", conn_id, value);
+  tcb.svc_chg_cccd = value;
+  btif_storage_set_svc_chg_cccd(tcb.peer_bda, value);
   return GATT_SUCCESS;
 }

@@ -307,11 +307,11 @@ protected:
 
   void StartMeasurementTillRasConnectedEvent(const StartMeasurementParameters& params) {
     ReceivedReadLocalCapabilitiesComplete();
-    EXPECT_CALL(*mock_ranging_hal_, OpenSession(_, _, _))
-            .WillOnce([this](uint16_t connection_handle, uint16_t /*att_handle*/,
+    EXPECT_CALL(*mock_ranging_hal_, OpenSession(_, _))
+            .WillOnce([this](hal::ChannelSoundingParameters channel_sounding_parameters,
                              const std::vector<hal::VendorSpecificCharacteristic>&
                                      vendor_specific_data) {
-              mock_ranging_hal_->GetRangingHalCallback()->OnOpened(connection_handle,
+              mock_ranging_hal_->GetRangingHalCallback()->OnOpened(channel_sounding_parameters.acl_handle_,
                                                                    vendor_specific_data);
             });
     StartMeasurement(params);

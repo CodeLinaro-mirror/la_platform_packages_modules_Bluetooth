@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 #include "internal_include/bt_target.h"
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
@@ -35,11 +36,12 @@
 #include "stack/include/l2cdefs.h"
 #include "stack/l2cap/internal/l2c_api.h"
 #include "stack/l2cap/l2c_int.h"
+#include <cutils/properties.h>
+#include <bt_testapp.h>
 
 /* Flag passed to retransmit_i_frames() when all packets should be retransmitted
  */
 #define L2C_FCR_RETX_ALL_PKTS 0xFF
-
 using namespace bluetooth;
 
 /* this is the minimal offset required by OBX to process incoming packets */
@@ -525,12 +527,15 @@ void l2c_fcr_proc_pdu(tL2C_CCB* p_ccb, BT_HDR* p_buf) {
   if (fcs_len != 0) {
     /* Verify FCS if using */
     p = ((uint8_t*)(p_buf + 1)) + p_buf->offset + p_buf->len - fcs_len;
-
     /* Extract and drop the FCS from the packet */
     STREAM_TO_UINT16(fcs, p);
     p_buf->len -= fcs_len;
 
     if (l2c_fcr_rx_get_fcs(p_buf) != fcs) {
+	  if(pts_send_rr_s_frame) {
+           p_ccb->fcrb.next_seq_expected = 1;
+           l2c_fcr_send_S_frame(p_ccb, L2CAP_FCR_SUP_RR, L2CAP_FCR_F_BIT);
+       }
       log::warn("Rx L2CAP PDU: CID: 0x{:04x}  BAD FCS", p_ccb->local_cid);
       osi_free(p_buf);
       return;

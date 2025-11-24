@@ -57,6 +57,8 @@ import android.telephony.ServiceState;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.bluetooth.agClient.BluetoothAgClientService;
+
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
@@ -155,6 +157,8 @@ class HeadsetStateMachine extends StateMachine {
     private final HeadsetNativeInterface mNativeInterface;
     private final HeadsetSystemInterface mSystemInterface;
     private final DatabaseManager mDatabaseManager;
+    private final BluetoothAgClientService mBluetoothAgClientService =
+              BluetoothAgClientService.getBluetoothAgClientService();
 
     // Runtime states
     @VisibleForTesting int mSpeakerVolume;
@@ -2244,6 +2248,13 @@ class HeadsetStateMachine extends StateMachine {
                 number = number.substring(0, number.length() - 1);
             }
             dialNumber = Utils.convertPreDial(number);
+        }
+        if (mHeadsetService.getAGClientConnectionStatus()) {
+           //if both AG and client are connected,
+           //need to send the dialing request to client
+           Log.w(TAG, "processDialCall, from Client");
+           mBluetoothAgClientService.dialOutgoingCall(number);
+           return;
         }
         if (!mHeadsetService.dialOutgoingCall(mDevice, dialNumber)) {
             Log.w(TAG, "processDialCall, failed to dial in service");

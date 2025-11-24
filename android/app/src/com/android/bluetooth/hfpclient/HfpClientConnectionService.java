@@ -13,6 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+
 package com.android.bluetooth.hfpclient;
 
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
@@ -35,6 +43,7 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 
 import com.android.bluetooth.btservice.AdapterService;
+import com.android.bluetooth.agClient.BluetoothAgClientService;
 import com.android.bluetooth.pbapclient.PbapClientService;
 
 import java.util.Arrays;
@@ -160,6 +169,12 @@ public class HfpClientConnectionService extends ConnectionService {
             adapterService.updateProfileConnectionAdapterProperties(
                     device, BluetoothProfile.HEADSET_CLIENT, newState, oldState);
         }
+        BluetoothAgClientService bluetoothAgClientService = 
+                                 BluetoothAgClientService.getBluetoothAgClientService();
+        if (bluetoothAgClientService != null) {
+            bluetoothAgClientService.UpdateProfileConnectionStatus(
+                                 device, BluetoothProfile.HEADSET_CLIENT, oldState, newState);
+        }
     }
 
     private void onCallChangedInternal(BluetoothDevice device, HfpClientCall call) {
@@ -181,6 +196,12 @@ public class HfpClientConnectionService extends ConnectionService {
             return;
         }
         block.onAudioStateChange(newState, oldState);
+        BluetoothAgClientService bluetoothAgClientService = 
+                                 BluetoothAgClientService.getBluetoothAgClientService();
+        if (bluetoothAgClientService != null) {
+            bluetoothAgClientService.UpdateProfileAudioConnectionStatus(
+                                 device, BluetoothProfile.HEADSET_CLIENT, oldState, newState);
+        }
     }
 
     // --------------------------------------------------------------------------------------------//

@@ -72,7 +72,13 @@ struct ChannelSoundingRawData {
   int8_t initiator_reference_power_level;
   int8_t reflector_reference_power_level;
   std::vector<uint8_t> vendor_specific_cs_single_side_data;
+};
 
+struct ChannelSoundingParameters {
+  uint16_t acl_handle_;
+  uint16_t real_time_procedure_data_att_handle_;
+  int location_type_;
+  int sight_type_;
 };
 
 // TODO: move to a utility file and add UT.
@@ -331,7 +337,7 @@ public:
   virtual void RegisterCallback(RangingHalCallback* callback) = 0;
   virtual std::vector<VendorSpecificCharacteristic> GetVendorSpecificCharacteristics() = 0;
   virtual void OpenSession(
-          uint16_t connection_handle, uint16_t att_handle,
+          ChannelSoundingParameters channel_sounding_parameters,
           const std::vector<hal::VendorSpecificCharacteristic>& vendor_specific_data) = 0;
   virtual void HandleVendorSpecificReply(
           uint16_t connection_handle,

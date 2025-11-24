@@ -77,6 +77,9 @@ struct btif_storage_set_remote_device_property btif_storage_set_remote_device_pr
 struct btif_storage_get_services btif_storage_get_services;
 struct btif_storage_get_enc_key_material_length btif_storage_get_enc_key_material_length;
 struct btif_storage_get_enc_key_material btif_storage_get_enc_key_material;
+struct btif_storage_get_svc_chg_cccd btif_storage_get_svc_chg_cccd;
+struct btif_storage_set_svc_chg_cccd btif_storage_set_svc_chg_cccd;
+struct btif_storage_remove_svc_chg_cccd btif_storage_remove_svc_chg_cccd;
 
 }  // namespace btif_storage
 }  // namespace mock
@@ -114,6 +117,7 @@ std::vector<bluetooth::Uuid> btif_storage_get_services::return_value =
         std::vector<bluetooth::Uuid>();
 size_t btif_storage_get_enc_key_material_length::return_value = 24;
 bt_status_t btif_storage_get_enc_key_material::return_value = BT_STATUS_SUCCESS;
+uint8_t btif_storage_get_svc_chg_cccd::return_value = 0;
 
 }  // namespace btif_storage
 }  // namespace mock
@@ -276,6 +280,20 @@ bt_status_t btif_storage_get_enc_key_material(const RawAddress* remote_bd_addr, 
   inc_func_call_count(__func__);
   return test::mock::btif_storage::btif_storage_get_enc_key_material(remote_bd_addr, key_value,
                                                                      key_length);
+}
+uint8_t btif_storage_get_svc_chg_cccd(const RawAddress& bda) {
+  inc_func_call_count(__func__);
+  return test::mock::btif_storage::btif_storage_get_svc_chg_cccd(bda);
+}
+
+void btif_storage_set_svc_chg_cccd(const RawAddress& bd_addr, uint8_t cccd) {
+  inc_func_call_count(__func__);
+  test::mock::btif_storage::btif_storage_set_svc_chg_cccd(bd_addr, cccd);
+}
+
+void btif_storage_remove_svc_chg_cccd(const RawAddress& bd_addr) {
+  inc_func_call_count(__func__);
+  test::mock::btif_storage::btif_storage_remove_svc_chg_cccd(bd_addr);
 }
 
 // Mocked functions complete

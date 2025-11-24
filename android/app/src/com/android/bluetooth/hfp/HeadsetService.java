@@ -83,6 +83,8 @@ import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.telephony.BluetoothInCallService;
 import com.android.bluetooth.util.SystemProperties;
+import com.android.bluetooth.agClient.BluetoothAgClientService;
+
 import com.android.internal.annotations.VisibleForTesting;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -162,6 +164,8 @@ public class HeadsetService extends ProfileService {
     private boolean mAudioRouteAllowed = true;
     // Indicates whether SCO audio needs to be forced to open regardless ANY OTHER restrictions
     private boolean mForceScoAudio;
+    private boolean mAgClientConnected = false;
+    private boolean mHfClientScoConnected = false;
     private boolean mInbandRingingRuntimeDisable;
     private boolean mVirtualCallStarted;
     // Non null value indicates a pending dialing out event is going on
@@ -223,6 +227,10 @@ public class HeadsetService extends ProfileService {
             mStateMachinesLooper = mStateMachinesThread.getLooper();
         }
         mStateMachinesThreadHandler = new Handler(mStateMachinesLooper);
+        Log.i(TAG, "starting the AG client service from HS service: ");
+        // Start the Ag client service.
+         Intent startIntent = new Intent(this, BluetoothAgClientService.class);
+         startService(startIntent);
         setComponentAvailable(HFP_AG_IN_CALL_SERVICE, true);
 
         // Step 3: Initialize system interface
@@ -334,6 +342,8 @@ public class HeadsetService extends ProfileService {
 
         // Step 1: Clear
         setComponentAvailable(HFP_AG_IN_CALL_SERVICE, false);
+        Intent stopIntent = new Intent(this, BluetoothAgClientService.class);
+        stopService(stopIntent);
     }
 
     /**
@@ -1346,6 +1356,23 @@ public class HeadsetService extends ProfileService {
         }
     }
 
+    /**
+     * Set HF & AG client connection status.
+     *
+     * Set to true if both AG and Client are connected.
+     */
+
+    public void SetAGClientConnectionStatus(boolean status) {
+         mAgClientConnected = status;
+    }
+
+    public void SetHfClientScoConnectionStatus(boolean status) {
+          mHfClientScoConnected = status;
+    }
+
+    public boolean getAGClientConnectionStatus() {
+        return mAgClientConnected;
+    }
     public int connectAudio() {
         synchronized (mStateMachines) {
             BluetoothDevice device = mActiveDevice;
@@ -1353,7 +1380,14 @@ public class HeadsetService extends ProfileService {
                 Log.w(TAG, "connectAudio: no active device, " + Utils.getUidPidString());
                 return BluetoothStatusCodes.ERROR_NO_ACTIVE_DEVICES;
             }
-            return connectAudio(device);
+            if (mAgClientConnected && !mHfClientScoConnected) {
+              BluetoothAgClientService mBluetoothAgClientService = 
+                                              BluetoothAgClientService.getBluetoothAgClientService();
+              mBluetoothAgClientService.connectAgAudio(device);
+              return BluetoothStatusCodes.SUCCESS;      
+            } else {
+              return connectAudio(device);
+            }
         }
     }
 
@@ -1448,7 +1482,7 @@ public class HeadsetService extends ProfileService {
         return devices;
     }
 
-    int disconnectAudio() {
+    public int disconnectAudio() {
         int disconnectResult = BluetoothStatusCodes.ERROR_NO_ACTIVE_DEVICES;
         synchronized (mStateMachines) {
             for (BluetoothDevice device : getNonIdleAudioDevices()) {
@@ -2227,6 +2261,7 @@ public class HeadsetService extends ProfileService {
     public void onConnectionStateChangedFromStateMachine(
             BluetoothDevice device, int fromState, int toState) {
         if (fromState != STATE_CONNECTED && toState == STATE_CONNECTED) {
+        Log.d(TAG," onConnectionStateChangedFromStateMachine ");
             updateInbandRinging(device, true);
         }
         if (fromState != STATE_DISCONNECTED && toState == STATE_DISCONNECTED) {
@@ -2252,6 +2287,13 @@ public class HeadsetService extends ProfileService {
                 BluetoothProfile.HEADSET, device, fromState, toState);
         mAdapterService.updateProfileConnectionAdapterProperties(
                 device, BluetoothProfile.HEADSET, toState, fromState);
+        BluetoothAgClientService mBluetoothAgClientService = 
+                                              BluetoothAgClientService.getBluetoothAgClientService();
+        if (mBluetoothAgClientService != null) {
+           Log.d(TAG," onConnectionStateChangedFromStateMachine: mBluetoothAgClientService is not null ");
+           mBluetoothAgClientService.UpdateProfileConnectionStatus(
+                      device, BluetoothProfile.HEADSET, fromState, toState);
+        }
     }
 
     /** Called from {@link HeadsetClientStateMachine} to update inband ringing status. */
@@ -2454,6 +2496,13 @@ public class HeadsetService extends ProfileService {
                 wrapper.isCallIdleAndScoNotManagedbyHal =
                        (mSystemInterface.isCallIdle() && !Utils.isScoManagedByAudioEnabled());
             }
+            BluetoothAgClientService mBluetoothAgClientService = 
+                        BluetoothAgClientService.getBluetoothAgClientService();
+            if (mBluetoothAgClientService != null) {
+               Log.d(TAG," onAudioStateChangedFromStateMachine: FromState:" + fromState + "tostate:" + toState);
+               mBluetoothAgClientService.UpdateProfileAudioConnectionStatus(
+                          device, BluetoothProfile.HEADSET, fromState, toState);
+           }
         }
 
         Log.i(TAG, "isCallIdleAndScoNotManagedbyHal: " + wrapper.isCallIdleAndScoNotManagedbyHal);
@@ -2473,8 +2522,18 @@ public class HeadsetService extends ProfileService {
                     }
                 }
             });
+            } else if (toState == BluetoothHeadset.STATE_AUDIO_CONNECTED && 
+                        fromState == BluetoothHeadset.STATE_AUDIO_CONNECTING) {
+                BluetoothAgClientService mBluetoothAgClientService = 
+                                  BluetoothAgClientService.getBluetoothAgClientService();
+                if (mBluetoothAgClientService != null) {
+                   Log.d(TAG," onAudioStateChangedFromStateMachine: FromState:" + fromState + "tostate:" + toState);
+                   mBluetoothAgClientService.UpdateProfileAudioConnectionStatus(
+                               device, BluetoothProfile.HEADSET, fromState, toState);
+                }
+            }
         }
-    }
+
 
     private void broadcastActiveDevice(BluetoothDevice device) {
         logD("broadcastActiveDevice: " + device);
