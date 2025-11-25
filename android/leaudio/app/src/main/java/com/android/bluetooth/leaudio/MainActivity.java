@@ -147,13 +147,19 @@ public class MainActivity extends AppCompatActivity {
                         || !leAudioViewModel.getBluetoothEnabledLive().getValue()) {
                     Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                     startActivityForResult(enableBtIntent, 1);
-                } else if (leAudioViewModel.isLeAudioBroadcastSourceSupported()) {
+                } else if (leAudioViewModel.getBroadcastReady().getValue() != null
+                           && leAudioViewModel.getBroadcastReady().getValue()) {
+                    // Check broadcast readiness, not just support
                     intent = new Intent(MainActivity.this, BroadcasterActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                     startActivityForResult(intent, 0);
-                } else {
+                } else if (!leAudioViewModel.isLeAudioBroadcastSourceSupported()) {
                     Toast.makeText(MainActivity.this, "Broadcast Source is not supported.",
                             Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this,
+                                  "LE Audio Broadcast is initializing, please wait...",
+                                  Toast.LENGTH_SHORT).show();
                 }
                 return true;
             default:
@@ -204,6 +210,14 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(MainActivity.this,
                     "Bluetooth is " + (is_enabled ? "enabled" : "disabled"), Toast.LENGTH_SHORT)
                     .show();
+        });
+
+        // Monitor broadcast readiness
+        leAudioViewModel.getBroadcastReady().observe(this, isReady -> {
+            if (isReady) {
+                Toast.makeText(MainActivity.this,
+                              "LE Audio Broadcast is ready", Toast.LENGTH_SHORT).show();
+            }
         });
     }
 

@@ -286,6 +286,7 @@ public class BluetoothProxy {
     private final MutableLiveData<Integer /* broadcastId */> mBroadcastAddedMutableLive;
     private final MutableLiveData<Pair<Integer /* reason */, Integer /* broadcastId */>> mBroadcastRemovedMutableLive;
     private final MutableLiveData<String> mBroadcastStatusMutableLive;
+    private final MutableLiveData<Boolean> mBroadcastReadyMutable;
     private final BluetoothLeBroadcast.Callback mBroadcasterCallback =
             new BluetoothLeBroadcast.Callback() {
                 @Override
@@ -504,6 +505,7 @@ public class BluetoothProxy {
         mBroadcastPlaybackStoppedMutableLive = new MutableLiveData<>();
         mBroadcastAddedMutableLive = new MutableLiveData();
         mBroadcastRemovedMutableLive = new MutableLiveData<>();
+        mBroadcastReadyMutable = new MutableLiveData<>(false);
 
         MutableLiveData<String> mBroadcastStatusMutableLive;
 
@@ -676,10 +678,21 @@ public class BluetoothProxy {
                         break;
                     case BluetoothProfile.LE_AUDIO_BROADCAST:
                         mBluetoothLeBroadcast = (BluetoothLeBroadcast) bluetoothProfile;
-                        try {
-                            mBluetoothLeBroadcast.registerCallback(mExecutor, mBroadcasterCallback);
-                        } catch (IllegalArgumentException e) {
-                            Log.e("Broadcast", "Application callback already registered.");
+
+                        // Check if broadcast is actually supported after connection
+                        if (isLeAudioBroadcastSourceSupported()) {
+                            try {
+                                mBluetoothLeBroadcast.registerCallback(mExecutor, mBroadcasterCallback);
+                                mBroadcastReadyMutable.postValue(true); // Signal broadcast is ready
+                                Log.d("BluetoothProxy", "LE Audio Broadcast profile ready and supported");
+                            } catch (IllegalArgumentException e) {
+                                Log.e("Broadcast", "Application callback already registered.");
+                            }
+                        } else {
+                            Log.w("BluetoothProxy", "LE Audio Broadcast not supported on this device");
+                            // Optionally close the profile if not supported
+                            bluetoothAdapter.closeProfileProxy(BluetoothProfile.LE_AUDIO_BROADCAST, mBluetoothLeBroadcast);
+                            mBluetoothLeBroadcast = null;
                         }
                         break;
                     case BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT:
@@ -1327,7 +1340,8 @@ public class BluetoothProxy {
     }
 
     private void initLeAudioBroadcastProxy() {
-        if (!isLeAudioBroadcastSourceSupported()) return;
+        // Remove early return check - always try to initialize the profile
+        // The support check will be done after the profile connection is established
         if (mBluetoothLeBroadcast == null) {
             bluetoothAdapter.getProfileProxy(this.application, profileListener,
                     BluetoothProfile.LE_AUDIO_BROADCAST);
@@ -1364,6 +1378,10 @@ public class BluetoothProxy {
 
     public LiveData<String> getBroadcastStatusMutableLive() {
         return mBroadcastStatusMutableLive;
+    }
+
+    public LiveData<Boolean> getBroadcastReady() {
+        return mBroadcastReadyMutable;
     }
 
     public boolean startBroadcast(BluetoothLeBroadcastSettings settings) {

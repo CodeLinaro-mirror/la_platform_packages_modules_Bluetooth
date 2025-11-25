@@ -121,6 +121,10 @@ public class LeAudioViewModel extends AndroidViewModel {
         return bluetoothProxy.isLeAudioBroadcastSourceSupported();
     }
 
+    public LiveData<Boolean> getBroadcastReady() {
+        return bluetoothProxy.getBroadcastReady();
+    }
+
     public void connectBass(BluetoothDevice sink, boolean connect) {
         bluetoothProxy.connectBass(sink, connect);
     }
