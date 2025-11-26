@@ -1055,8 +1055,12 @@ provider::get_a2dp_configuration(
           convert_bitdepth(result->parameters.bitdepth);
   a2dp_configuration.codec_parameters.codec_specific_1 = user_preferences.codec_specific_1;
   if (result->parameters.lossless) {
-    a2dp_configuration.codec_parameters.codec_specific_3 =
-        APTX_ADAPTIVE_R2_2_SUPPORT_AVAILABLE | QHS_SUPPORT_MASK;
+    a2dp_configuration.codec_parameters.codec_specific_3 &=
+          ~((int64_t)QHS_SUPPORT_MASK);
+    a2dp_configuration.codec_parameters.codec_specific_3 |=
+         (int64_t)QHS_SUPPORT_AVAILABLE;
+    a2dp_configuration.codec_parameters.codec_specific_3 |=
+         (int64_t)APTX_ADAPTIVE_R2_2_SUPPORT_AVAILABLE;
   }
   return std::make_optional(a2dp_configuration);
 }

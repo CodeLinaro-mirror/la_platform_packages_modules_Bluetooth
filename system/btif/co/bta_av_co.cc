@@ -1021,16 +1021,18 @@ bool BtaAvCo::ReportSourceCodecState(BtaAvCoPeer* p_peer) {
     return false;
   }
 
-  bool is_qhs_phy_supported = get_btm_client_interface().vendor.BTM_IsQHSPhySupported(
-          p_peer->addr, BT_TRANSPORT_BR_EDR);
+  if (!osi_property_get_bool("persist.vendor.qcom.bluetooth.vsc_enabled", false)) {
+    bool is_qhs_phy_supported = get_btm_client_interface().vendor.BTM_IsQHSPhySupported(
+            p_peer->addr, BT_TRANSPORT_BR_EDR);
 
-  if (codec_config.codec_type == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE) {
-    if (is_qhs_phy_supported) {
-      codec_config.codec_specific_3 &= ~((int64_t)QHS_SUPPORT_MASK);
-      codec_config.codec_specific_3 |= (int64_t)QHS_SUPPORT_AVAILABLE;
-    } else {
-      codec_config.codec_specific_3 &= ~((int64_t)QHS_SUPPORT_MASK);
-      codec_config.codec_specific_3 |= (int64_t)QHS_SUPPORT_NOT_AVAILABLE;
+    if (codec_config.codec_type == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE) {
+      if (is_qhs_phy_supported) {
+        codec_config.codec_specific_3 &= ~((int64_t)QHS_SUPPORT_MASK);
+        codec_config.codec_specific_3 |= (int64_t)QHS_SUPPORT_AVAILABLE;
+      } else {
+        codec_config.codec_specific_3 &= ~((int64_t)QHS_SUPPORT_MASK);
+        codec_config.codec_specific_3 |= (int64_t)QHS_SUPPORT_NOT_AVAILABLE;
+      }
     }
   }
 
