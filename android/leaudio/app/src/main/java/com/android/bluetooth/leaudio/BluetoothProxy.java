@@ -816,7 +816,8 @@ public class BluetoothProxy {
     }
 
     private void initBassProxy() {
-        if (!isLeAudioBroadcastScanAssistanSupported()) return;
+        // Remove early return check - always try to initialize the profile
+        // The support check will be done after the profile connection is established
         bluetoothAdapter.getProfileProxy(this.application, profileListener,
                 BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT);
     }

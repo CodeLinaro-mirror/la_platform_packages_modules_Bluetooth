@@ -124,6 +124,7 @@ public class BroadcastScanActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.broadcast_scan_activity);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         // Register for DBIG status changes
         IntentFilter filter = new IntentFilter(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED);
@@ -334,10 +335,33 @@ public class BroadcastScanActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (mViewModel.getAllBroadcasts().getValue() != null)
-            adapter.setBroadcasts(mViewModel.getAllBroadcasts().getValue());
-        mViewModel.scanForBroadcasts(device, true);
-        mViewModel.refreshBroadcasts();
+
+        // Check if Bluetooth is enabled before attempting to scan
+        if (mBluetoothAdapter != null && mBluetoothAdapter.isEnabled()) {
+            Log.d(TAG, "onResume: Bluetooth is enabled, starting scan");
+            Log.d(TAG, "onResume: Scan delegator device: " + device);
+
+            if (mViewModel.getAllBroadcasts().getValue() != null) {
+                Log.d(TAG, "onResume: Current broadcasts count: " + mViewModel.getAllBroadcasts().getValue().size());
+                adapter.setBroadcasts(mViewModel.getAllBroadcasts().getValue());
+            } else {
+                Log.d(TAG, "onResume: No broadcasts in ViewModel yet");
+            }
+
+            mViewModel.scanForBroadcasts(device, true);
+            mViewModel.refreshBroadcasts();
+
+            Toast.makeText(this, "Scanning for broadcasts... Please wait.", Toast.LENGTH_SHORT).show();
+        } else {
+            Log.w(TAG, "onResume: Bluetooth is not enabled, cannot start scan");
+            Toast.makeText(this, "Bluetooth is not enabled. Please enable Bluetooth to scan for broadcasts.",
+                          Toast.LENGTH_LONG).show();
+            // Return to MainActivity
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            startActivity(intent);
+            finish();
+        }
     }
     @Override
     public void onBackPressed() {
