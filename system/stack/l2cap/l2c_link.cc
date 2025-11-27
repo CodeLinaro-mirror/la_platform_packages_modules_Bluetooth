@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -1314,6 +1317,14 @@ static BT_HDR* l2cu_get_next_buffer_to_send(tL2C_LCB* p_lcb, tL2C_TX_COMPLETE_CB
   if (p_ccb == NULL) {
     return NULL;
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  /* Return if no queue is empty */
+  if (fixed_queue_is_empty(p_ccb->xmit_hold_q)) {
+    log::debug("xmit_hold_q in ccb is empty, lcid=0x{:04x}", p_ccb->local_cid);
+    return NULL;
+  }
+#endif
 
   if (p_ccb->p_lcb->transport == BT_TRANSPORT_LE) {
     /* Check credits */
