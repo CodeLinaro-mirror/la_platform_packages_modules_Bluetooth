@@ -383,7 +383,7 @@ static size_t aptx_hd_encode_24bit(tAPTX_HD_FRAMING_PARAMS* framing_params, size
   return pcm_bytes_encoded;
 }
 
-void A2dpCodecConfigAptxHd::debug_codec_dump(int fd) {
+void A2dpCodecConfigAptxHdSource::debug_codec_dump(int fd) {
   a2dp_aptx_hd_encoder_stats_t* stats = &a2dp_aptx_hd_encoder_cb.stats;
 
   A2dpCodecConfig::debug_codec_dump(fd);
