@@ -100,6 +100,14 @@ public class AvrcpControllerNativeInterface {
         setBrowsedPlayerNative(address, playerId);
     }
 
+    void search(byte[] address, int charset, int strLen, String pattern) {
+        searchNative(address, charset, strLen, pattern);
+    }
+
+    void getSearchList(byte[] address, int start, int end) {
+        getSearchListNative(address, start, end);
+    }
+
     /**********************************************************************************************/
     /*********************************** callbacks from native ************************************/
     /**********************************************************************************************/
@@ -246,6 +254,18 @@ public class AvrcpControllerNativeInterface {
         BluetoothDevice device = mAdapterService.getRemoteDevice(getAddressStringFromByte(address));
         Log.d(TAG, "onAvailablePlayerChanged: device=" + device);
         mAvrcpController.onAvailablePlayerChanged(device);
+    }
+
+    void handleSearchRsp(byte[] address, int status, int uid, int items) {
+        BluetoothDevice device = mAdapterService.getRemoteDevice(getAddressStringFromByte(address));
+        Log.d(
+                TAG,
+                "handleSearchRsp:"
+                        + (" device=" + device)
+                        + (" status=" + status)
+                        + (" uid=" + uid)
+                        + (" items=" + items));
+        mAvrcpController.handleSearchRsp(device, status, uid, items);
     }
 
     // JNI Helper functions to convert native objects to java.
@@ -465,4 +485,21 @@ public class AvrcpControllerNativeInterface {
      * @param playerId player number
      */
     private native void setAddressedPlayerNative(byte[] address, int playerId);
+    /**
+     * Search
+     *
+     * @param address      address
+     * @param charset      charset
+     * @param strLen       strLen
+     * @param pattern      pattern
+     */
+    public native static void searchNative(byte[] address, int charset, int strLen, String pattern);
+    /**
+     * Get Search List
+     *
+     * @param address      address
+     * @param start        start
+     * @param end          end
+     */
+    public native static void getSearchListNative(byte[] address, int start, int end);
 }
