@@ -312,10 +312,9 @@ public class BroadcastScanActivity extends AppCompatActivity {
                 mBroadcastSourceRemoved = false; // Reset remove state
 
                 // Update BIS state after adding broadcast source
-                mLocalOccupyingBis = true;
-                mBisAvailability = BisAvailability.UNAVAILABLE;
-                Log.d(TAG, "Updated BIS state after adding broadcast: available=" + mBisAvailability +
-                      ", localOccupying=" + mLocalOccupyingBis);
+                // mLocalOccupyingBis = true;
+                // mBisAvailability = BisAvailability.UNAVAILABLE;
+                Log.d(TAG, "Broadcast source add requested, waiting for DBIG status update");
             });
         }
 
