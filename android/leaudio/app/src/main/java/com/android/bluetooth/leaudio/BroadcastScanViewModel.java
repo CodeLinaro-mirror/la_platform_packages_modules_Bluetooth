@@ -165,4 +165,22 @@ public class BroadcastScanViewModel extends AndroidViewModel {
         new_arr.addAll(mScanSessionBroadcasts.values());
         mAllBroadcasts.postValue(new_arr);
     }
+
+    public void clearBroadcastList() {
+        mScanSessionBroadcasts = new HashMap<>();
+        ArrayList<BluetoothLeBroadcastMetadata> new_arr = new ArrayList<>();
+        List<BluetoothLeBroadcastMetadata> localSessionBroadcasts = mBluetooth.getAllLocalBroadcasts();
+        if (localSessionBroadcasts != null) {
+            new_arr.addAll(localSessionBroadcasts);
+        }
+        mAllBroadcasts.postValue(new_arr);
+    }
+
+    public void reinitializeAfterBluetoothToggle() {
+        Log.d(TAG, "reinitializeAfterBluetoothToggle: attempting to restore scanning state");
+        if (mIsActivityScanning && mScanDelegatorDevice != null) {
+            Log.d(TAG, "reinitializeAfterBluetoothToggle: restarting scan");
+            mBluetooth.scanForBroadcasts(mScanDelegatorDevice, true);
+        }
+    }
 }

@@ -82,6 +82,36 @@ public class BroadcastScanActivity extends AppCompatActivity {
     /** Track whether broadcast source has been removed */
     private boolean mBroadcastSourceRemoved = false;
 
+    private final BroadcastReceiver mBluetoothStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "Bluetooth state receiver action: " + action);
+            if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
+                final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+                switch (state) {
+                    case BluetoothAdapter.STATE_OFF:
+                        Log.d(TAG, "Bluetooth turned OFF - stopping scan and clearing broadcasts");
+                        if (mViewModel != null) {
+                            mViewModel.scanForBroadcasts(device, false);
+                            mViewModel.clearBroadcastList();
+                        }
+                        break;
+                    case BluetoothAdapter.STATE_ON:
+                        Log.d(TAG, "Bluetooth turned ON - reinitializing");
+                        if (mViewModel != null) {
+                            mViewModel.reinitializeAfterBluetoothToggle();
+                            mViewModel.scanForBroadcasts(device, true);
+                            mViewModel.refreshBroadcasts();
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+    };
+
     private BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -130,6 +160,11 @@ public class BroadcastScanActivity extends AppCompatActivity {
         IntentFilter filter = new IntentFilter(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED);
         registerReceiver(mDbigStatusReceiver, filter, Context.RECEIVER_EXPORTED);
         Log.d(TAG, "Registered mDbigStatusReceiver");
+
+        // Register for Bluetooth adapter state changes
+        IntentFilter btStateFilter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        registerReceiver(mBluetoothStateReceiver, btStateFilter, Context.RECEIVER_EXPORTED);
+        Log.d(TAG, "Registered mBluetoothStateReceiver");
 
         RecyclerView recyclerView = findViewById(R.id.broadcast_recycler_view);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -373,6 +408,7 @@ public class BroadcastScanActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(mDbigStatusReceiver);
+        unregisterReceiver(mBluetoothStateReceiver);
         if (mBluetoothAdapter != null && mProfileListener != null) {
             mBluetoothAdapter.closeProfileProxy(BluetoothProfile.LE_AUDIO_BROADCAST, mBluetoothLeBroadcast);
         }

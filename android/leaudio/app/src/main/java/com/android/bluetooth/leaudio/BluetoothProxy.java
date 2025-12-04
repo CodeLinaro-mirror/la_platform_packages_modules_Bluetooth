@@ -157,8 +157,31 @@ public class BluetoothProxy {
                         intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
                 if (toState == BluetoothAdapter.STATE_ON) {
                     enabledBluetoothMutable.postValue(true);
+                    // Reinitialize profiles and devices after Bluetooth turns ON
+                    initLeAudioBroadcastProxy();
+                    initBassProxy();
+                    queryLeAudioDevices();
+                    // If there were active scan delegators before toggle, restart scanning
+                    if (mBluetoothLeBroadcastAssistant != null && !mBroadcastScanDelegatorDevices.isEmpty()) {
+                        mBluetoothLeBroadcastAssistant.startSearchingForSources(new ArrayList<>());
+                        if (mBassEventListener != null) {
+                            mBassEventListener.onScanningStateChanged(true);
+                        }
+                    }
                 } else if (toState == BluetoothAdapter.STATE_OFF) {
                     enabledBluetoothMutable.postValue(false);
+                    // Stop any ongoing broadcast scans and clear delegators when Bluetooth turns OFF
+                    if (mBluetoothLeBroadcastAssistant != null) {
+                        try {
+                            mBluetoothLeBroadcastAssistant.stopSearchingForSources();
+                        } catch (Exception e) {
+                            Log.w("BluetoothProxy", "Error stopping search after BT OFF", e);
+                        }
+                    }
+                    mBroadcastScanDelegatorDevices.clear();
+                    if (mBassEventListener != null) {
+                        mBassEventListener.onScanningStateChanged(false);
+                    }
                 }
             }
         }
