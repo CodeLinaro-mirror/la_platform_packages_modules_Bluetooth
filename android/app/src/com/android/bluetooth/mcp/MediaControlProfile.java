@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.mcp;
@@ -135,6 +140,17 @@ public class MediaControlProfile implements MediaControlServiceCallbacks {
                             + addressedPlayers
                             + " uids="
                             + uids);
+        }
+
+        @Override
+        public void run(BluetoothDevice device, MediaData data) {
+            // Fix build error. To be fixed
+            Log.w(TAG, "ListCallback run: device= " + device);
+        }
+
+        @Override
+        public void sendVolumeChanged(BluetoothDevice device, int volume, int maxVolume) {
+            Log.w(TAG, "ListCallback sendVolumeChanged: device= " + device);
         }
     }
 

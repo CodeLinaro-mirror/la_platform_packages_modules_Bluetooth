@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -330,7 +335,7 @@ static void a2dp_opus_get_num_frame_iteration(uint8_t* num_of_iterations, uint8_
 static void a2dp_opus_encode_frames(uint8_t nb_frame) {
   tA2DP_OPUS_ENCODER_PARAMS* p_encoder_params = &a2dp_opus_encoder_cb.opus_encoder_params;
   unsigned char* packet;
-  uint8_t remain_nb_frame = nb_frame;
+  //uint8_t remain_nb_frame = nb_frame;
   uint16_t opus_frame_size = p_encoder_params->framesize;
   uint8_t read_buffer[p_encoder_params->framesize * p_encoder_params->pcm_wlength *
                       p_encoder_params->channel_mode];
@@ -338,7 +343,7 @@ static void a2dp_opus_encode_frames(uint8_t nb_frame) {
   int32_t out_frames = 0;
   int32_t written = 0;
 
-  uint32_t bytes_read = 0;
+  // uint32_t bytes_read = 0;
   while (nb_frame) {
     BT_HDR* p_buf = (BT_HDR*)osi_malloc(BT_DEFAULT_BUFFER_SIZE);
     p_buf->offset = A2DP_OPUS_OFFSET;
@@ -352,7 +357,7 @@ static void a2dp_opus_encode_frames(uint8_t nb_frame) {
       //
       uint32_t temp_bytes_read = 0;
       if (a2dp_opus_read_feeding(read_buffer, &temp_bytes_read)) {
-        bytes_read += temp_bytes_read;
+        // bytes_read += temp_bytes_read;
         packet = (unsigned char*)(p_buf + 1) + p_buf->offset + p_buf->len;
 
         if (a2dp_opus_encoder_cb.opus_handle == NULL) {
@@ -393,20 +398,19 @@ static void a2dp_opus_encode_frames(uint8_t nb_frame) {
        * first frame, i.e. the timestamp before including this frame.
        */
       *((uint32_t*)(p_buf + 1)) = a2dp_opus_encoder_cb.timestamp;
-
       // Timestamp will wrap over to 0 if stream continues on long enough
       // (>25H @ 48KHz). The parameters are promoted to 64bit to ensure that
       // no unsigned overflow is triggered as ubsan is always enabled.
       a2dp_opus_encoder_cb.timestamp = ((uint64_t)a2dp_opus_encoder_cb.timestamp +
                                         (p_buf->layer_specific * opus_frame_size)) &
                                        UINT32_MAX;
-
+/*
       uint8_t done_nb_frame = remain_nb_frame - nb_frame;
       remain_nb_frame = nb_frame;
 
       if (!a2dp_opus_encoder_cb.enqueue_callback(p_buf, done_nb_frame, bytes_read)) {
         return;
-      }
+      }*/
     } else {
       a2dp_opus_encoder_cb.stats.media_read_total_dropped_packets++;
       osi_free(p_buf);
@@ -414,14 +418,14 @@ static void a2dp_opus_encode_frames(uint8_t nb_frame) {
   }
 }
 
-static bool a2dp_opus_read_feeding(uint8_t* read_buffer, uint32_t* bytes_read) {
+static bool a2dp_opus_read_feeding(uint8_t* /*read_buffer*/, uint32_t* /*bytes_read*/) {
   uint32_t read_size = a2dp_opus_encoder_cb.opus_encoder_params.framesize *
                        a2dp_opus_encoder_cb.feeding_params.channel_count *
                        a2dp_opus_encoder_cb.feeding_params.bits_per_sample / 8;
 
   a2dp_opus_encoder_cb.stats.media_read_total_expected_reads_count++;
   a2dp_opus_encoder_cb.stats.media_read_total_expected_read_bytes += read_size;
-
+#if 0
   /* Read Data from UIPC channel */
   uint32_t nb_byte_read = a2dp_opus_encoder_cb.read_callback(read_buffer, read_size);
   a2dp_opus_encoder_cb.stats.media_read_total_actual_read_bytes += nb_byte_read;
@@ -439,6 +443,7 @@ static bool a2dp_opus_read_feeding(uint8_t* read_buffer, uint32_t* bytes_read) {
   a2dp_opus_encoder_cb.stats.media_read_total_actual_reads_count++;
 
   *bytes_read = nb_byte_read;
+#endif
   return true;
 }
 

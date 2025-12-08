@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.audio_util;
@@ -65,6 +70,7 @@ public class MediaPlayerWrapper {
         void mediaUpdatedCallback(MediaData data);
 
         void sessionUpdatedCallback(String packageName);
+        void mediaUpdatedCallbackExt(String packagename, MediaData data);
     }
 
     boolean isPlaybackStateReady() {
@@ -307,6 +313,7 @@ public class MediaPlayerWrapper {
      * the same Looper that was passed in to create this object.
      */
     void registerCallback(Callback callback) {
+        d("registerCallback");
         if (callback == null) {
             Log.e(TAG, "Cannot register null callbacks for " + mPackageName);
             return;
@@ -331,6 +338,7 @@ public class MediaPlayerWrapper {
 
     /** Unregisters from updates. Note, this doesn't require the looper to be shut down. */
     void unregisterCallback() {
+        d("unregisterCallback");
         // Prevent a race condition where a callback could be called while shutting down
         synchronized (mCallbackLock) {
             mRegisteredCallback = null;
@@ -341,6 +349,7 @@ public class MediaPlayerWrapper {
     }
 
     void updateMediaController(MediaController newController) {
+        d("updateMediaController to " + newController.getPackageName());
         if (Objects.equals(newController, mMediaController)) return;
 
         mMediaController = newController;
@@ -368,6 +377,7 @@ public class MediaPlayerWrapper {
 
     private void sendMediaUpdate(MediaData newData) {
 
+        d("sendMediaUpdate newData PlaybackState " + newData.state);
         if (newData.equals(mCurrentData)) {
             // This may happen if the controller is fully synced by the time the
             // first update is completed
@@ -382,7 +392,7 @@ public class MediaPlayerWrapper {
             }
 
             Log.v(TAG, "trySendMediaUpdate(): Metadata has been updated for " + mPackageName);
-            mRegisteredCallback.mediaUpdatedCallback(newData);
+            mRegisteredCallback.mediaUpdatedCallbackExt(getPackageName(), newData);
         }
 
         mCurrentData = newData;
@@ -526,6 +536,7 @@ public class MediaPlayerWrapper {
                 Log.e(TAG, "The callback playback state doesn't match the current state");
             }
 
+            Log.v(TAG, "onPlaybackStateChanged(): " + mPackageName);
             if (playstateEquals(state, mCurrentData.state)) {
                 Log.w(
                         TAG,
@@ -582,7 +593,8 @@ public class MediaPlayerWrapper {
         @Override
         public void onSessionDestroyed() {
             Log.w(TAG, "The session was destroyed " + mPackageName);
-            mRegisteredCallback.sessionUpdatedCallback(mPackageName);
+            if (mRegisteredCallback != null)
+                mRegisteredCallback.sessionUpdatedCallback(mPackageName);
         }
 
         @VisibleForTesting

@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -738,7 +743,8 @@ static void bta_av_ci_data(tBTA_AV_DATA* p_data) {
   for (i = 0; i < BTA_AV_NUM_STRS; i++) {
     p_scb = bta_av_cb.p_scb[i];
 
-    if (p_scb && p_scb->chnl == chnl) {
+    if (p_scb && p_scb->chnl == chnl && p_scb->PeerAddress() == p_data->ci_src_data.peer_address) {
+      log::debug("p_scb->PeerAddress: {}", p_scb->PeerAddress().ToString().c_str());
       bta_av_ssm_execute(p_scb, BTA_AV_SRC_DATA_READY_EVT, p_data);
     }
   }

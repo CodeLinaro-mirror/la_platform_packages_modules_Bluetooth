@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.audio_util;
@@ -19,12 +24,18 @@ package com.android.bluetooth.audio_util;
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.NonNull;
+import android.bluetooth.BluetoothDevice;
+import android.car.Car;
+import android.car.CarNotConnectedException;
+import android.car.media.CarAudioManager;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.ServiceConnection;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.AudioPlaybackConfiguration;
@@ -33,6 +44,7 @@ import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemProperties;
 import android.provider.MediaStore;
@@ -41,6 +53,7 @@ import android.util.Log;
 import android.view.KeyEvent;
 
 import com.android.bluetooth.BluetoothEventLogger;
+import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.avrcp.AvrcpPassthrough;
 import com.android.internal.annotations.VisibleForTesting;
@@ -49,8 +62,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -81,6 +96,8 @@ public class MediaPlayerList {
 
     private MediaSessionManager mMediaSessionManager;
     private MediaData mCurrMediaData = null;
+    private Car mCar;
+    private CarAudioManager mCarAudioManager;
 
     private final BluetoothEventLogger mActivePlayerLogger =
             new BluetoothEventLogger(ACTIVE_PLAYER_LOGGER_SIZE, ACTIVE_PLAYER_LOGGER_TITLE);
@@ -97,6 +114,10 @@ public class MediaPlayerList {
     private int mActivePlayerId = NO_ACTIVE_PLAYER;
     private int mBrowsingPlayerId = NO_ACTIVE_PLAYER;
     private int mAddressedPlayerId = NO_ACTIVE_PLAYER;
+    //Package name / BluetoothDevice
+    private final Map<String, BluetoothDevice> mActiveBluetoothDevices =
+        Collections.synchronizedMap(new HashMap<String, BluetoothDevice>());
+    private final List<Integer> mActivePlayerIdExt = new ArrayList<>();
 
     private MediaUpdateCallback mCallback;
 
@@ -108,6 +129,8 @@ public class MediaPlayerList {
         void run(MediaData data);
 
         void run(boolean availablePlayers, boolean addressedPlayers, boolean uids);
+        void run(BluetoothDevice device, MediaData data);
+        void sendVolumeChanged(BluetoothDevice device, int volume, int maxVolume);
     }
 
     public interface SetBrowsedPlayerCallback {
@@ -142,6 +165,15 @@ public class MediaPlayerList {
 
         mAudioManager = mContext.getSystemService(AudioManager.class);
         mAudioManager.registerAudioPlaybackCallback(mAudioPlaybackCallback, new Handler(mLooper));
+
+        if (mCar != null && mCar.isConnected()) {
+            mCar.disconnect();
+            mCar = null;
+        }
+        mCar = Car.createCar(context, mConnection);
+        mCar.connect();
+
+        mCarAudioManager = (CarAudioManager) mCar.getCarManager(Car.AUDIO_SERVICE);
 
         mMediaSessionManager = mContext.getSystemService(MediaSessionManager.class);
         mMediaSessionManager.addOnActiveSessionsChangedListener(
@@ -178,7 +210,7 @@ public class MediaPlayerList {
 
         // If there were any active players and we don't already have one due to the Media
         // Framework Callbacks then set the highest priority one to active
-        if (mActivePlayerId == 0 && mMediaPlayers.size() > 0) {
+        if (!A2dpService.isDualA2dp() && mActivePlayerId == 0 && mMediaPlayers.size() > 0) {
             String packageName =
                     (mMediaSessionManager != null)
                             ? mMediaSessionManager.getMediaKeyEventSessionPackageName()
@@ -191,6 +223,7 @@ public class MediaPlayerList {
                 setActivePlayer(1);
             }
         }
+        // For dual A2dp, active player is set in application instead of here
     }
 
     /** Initiates the media and browsable players list. */
@@ -239,6 +272,11 @@ public class MediaPlayerList {
 
         mAudioManager.unregisterAudioPlaybackCallback(mAudioPlaybackCallback);
 
+        if (mCar != null && mCar.isConnected()) {
+            mCar.disconnect();
+            mCar = null;
+        }
+
         mMediaPlayerIds.clear();
 
         for (MediaPlayerWrapper player : mMediaPlayers.values()) {
@@ -250,6 +288,8 @@ public class MediaPlayerList {
             browser.disconnect();
         }
         mMediaBrowserWrappers.clear();
+        mActiveBluetoothDevices.clear();
+        mActivePlayerIdExt.clear();
     }
 
     /** returns the current player ID. */
@@ -270,6 +310,34 @@ public class MediaPlayerList {
         return id;
     }
 
+    String getPlayerPackageName(BluetoothDevice device) {
+        d("getPlayerPackageName(" + device + ")");
+        for (String packageName : mActiveBluetoothDevices.keySet()) {
+            d("getPlayerPackageName: package " + packageName + " bond with " + mActiveBluetoothDevices.get(packageName));
+            if (Objects.equals(mActiveBluetoothDevices.get(packageName), device)) {
+                d("Found media player " + packageName);
+                return packageName;
+            }
+        }
+        return "";
+    }
+
+    int getZoneId(BluetoothDevice device) {
+        int uid = -1;
+        try {
+            uid = mContext.getApplicationContext()
+                        .getPackageManager()
+                        .getApplicationInfo(getPlayerPackageName(device), 0)
+                        .uid;
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.e(TAG, "Failed to get UID for package: " + getPlayerPackageName(device), e);
+        }
+
+        int zoneid = 0;/*mCarAudioManager.getZoneIdForUid(uid);*/ //to be fixed
+        d("getZoneId(" + device + ") " + " uid " + uid + " zoneid " + zoneid);
+        return zoneid;
+    }
+
     /** Returns the {@link MediaPlayerWrapper} with ID matching {@link #mActivePlayerId}. */
     public MediaPlayerWrapper getActivePlayer() {
         return mMediaPlayers.get(mActivePlayerId);
@@ -286,7 +354,17 @@ public class MediaPlayerList {
         }
     }
 
-    /**
+    public MediaPlayerWrapper getActivePlayerExt(BluetoothDevice device) {
+        d("getActivePlayerExt(" + device + ")");
+        String packageName = getPlayerPackageName(device);
+        if (mMediaPlayerIds.containsKey(packageName)) {
+            return mMediaPlayers.get(mMediaPlayerIds.get(packageName));
+        }
+        d("Failed to find active player");
+        return null;
+    }
+
+     /**
      * This is used to send passthrough command to media session
      *
      * <p>Note: This is used only by MCP, AVRCP uses AvrcpTargetService.
@@ -299,6 +377,15 @@ public class MediaPlayerList {
         int action = pushed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP;
         KeyEvent event = new KeyEvent(action, AvrcpPassthrough.toKeyCode(key));
         mMediaSessionManager.dispatchMediaKeyEvent(event, false);
+    }
+
+    public void sendMediaKeyEventExt(BluetoothDevice device, int key, boolean pushed) {
+        d("sendMediaKeyEventExt: device " + device + " key=" + key + " pushed=" + pushed);
+        int action = pushed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP;
+        KeyEvent event = new KeyEvent(action, AvrcpPassthrough.toKeyCode(key));
+        // Send a media key event to a media player
+        mMediaSessionManager.dispatchMediaKeyEvent(event, false); // to be fixed
+        //mMediaSessionManager.dispatchMediaKeyEvent(event, getPlayerPackageName(device));
     }
 
     /** Sets the {@link #mBrowsingPlayerId} and returns the number of items in current path */
@@ -432,6 +519,35 @@ public class MediaPlayerList {
         return player.getCurrentMetadata();
     }
 
+    @NonNull
+    public Metadata getCurrentSongInfoExt(BluetoothDevice device) {
+        d("getCurrentSongInfoExt " + device);
+        final MediaPlayerWrapper player = getActivePlayerExt(device);
+        if (player == null) return Util.empty_data();
+
+        return player.getCurrentMetadata();
+    }
+
+    public String getCurrentMediaIdExt(BluetoothDevice device) {
+        final MediaPlayerWrapper player = getActivePlayerExt(device);
+        if (player == null) return "";
+
+        final PlaybackState state = player.getPlaybackState();
+        final List<Metadata> queue = player.getCurrentQueue();
+
+        // Disable the now playing list if the player doesn't have a queue or provide an active
+        // queue ID that can be used to determine the active song in the queue.
+        if (state == null
+                || state.getActiveQueueItemId() == MediaSession.QueueItem.UNKNOWN_ID
+                || queue.size() == 0) {
+            d("getCurrentMediaIdExt: No active queue item Id sending empty mediaId: PlaybackState="
+                     + state);
+            return "";
+        }
+
+        return Util.NOW_PLAYING_PREFIX + state.getActiveQueueItemId();
+    }
+
     /**
      * Returns the current playing state of the active player.
      *
@@ -444,6 +560,30 @@ public class MediaPlayerList {
         if (player == null && !mAudioPlaybackIsActive) return null;
 
         PlaybackState state = player == null ? null : player.getPlaybackState();
+        Log.d(TAG, "getCurrentPlayStatus(): mAudioPlaybackIsActive " +
+              mAudioPlaybackIsActive + " state " + state);
+        if (mAudioPlaybackIsActive
+                && (state == null || state.getState() != PlaybackState.STATE_PLAYING)) {
+            return new PlaybackState.Builder()
+                .setState(PlaybackState.STATE_PLAYING,
+                          state == null ? 0 : state.getPosition(),
+                          1.0f)
+                .build();
+        }
+        return state;
+    }
+
+    public PlaybackState getCurrentPlayStatusExt(BluetoothDevice device) {
+        d("getCurrentPlayStatusExt " + device);
+        final MediaPlayerWrapper player = getActivePlayerExt(device);
+        if (player == null){
+            e("getCurrentPlayStatusExt failed to find active player for " + device);
+            return null;
+        }
+
+        PlaybackState state = player == null ? null : player.getPlaybackState();
+        d("getCurrentPlayStatusExt(): mAudioPlaybackIsActive " +
+                mAudioPlaybackIsActive + " state " + state);
         if (mAudioPlaybackIsActive
                 && (state == null || state.getState() != PlaybackState.STATE_PLAYING)) {
             return new PlaybackState.Builder()
@@ -476,6 +616,24 @@ public class MediaPlayerList {
         }
 
         return getActivePlayer().getCurrentQueue();
+    }
+
+    @NonNull
+    public List<Metadata> getNowPlayingListExt(BluetoothDevice device) {
+        d("getNowPlayingListExt " + device);
+        // Only send the current song for the now playing if there is no active song. See
+        // |getCurrentMediaId()| for reasons why there might be no active song.
+        if (getCurrentMediaIdExt(device).equals("")) {
+            List<Metadata> ret = new ArrayList<Metadata>();
+            Metadata data = getCurrentSongInfoExt(device);
+            data.mediaId = "";
+            ret.add(data);
+            return ret;
+        }
+        if (getActivePlayerExt(device) != null) {
+            return getActivePlayerExt(device).getCurrentQueue();
+        }
+        return null;
     }
 
     /**
@@ -675,6 +833,56 @@ public class MediaPlayerList {
         return playerId;
     }
 
+    @VisibleForTesting
+    int addMediaPlayerExt(MediaController controller) {
+        // Each new player has an ID of 1 plus the highest ID. The ID 0 is reserved to signify that
+        // there is no active player. If we already have a browsable player for the package, reuse
+        // that key.
+        String packageName = controller.getPackageName();
+        d("addMediaPlayerExt: " + packageName);
+        if (!mMediaPlayerIds.containsKey(packageName)) {
+            mMediaPlayerIds.put(packageName, getFreeMediaPlayerId());
+        }
+
+        Integer playerId = mMediaPlayerIds.get(packageName);
+
+        // If we already have a controller for the package, then update it with this new controller
+        // as the old controller has probably gone stale.
+        if (mMediaPlayers.containsKey(playerId)) {
+            d("Already have a controller for the player: " + packageName + ", updating instead");
+            MediaPlayerWrapper player = mMediaPlayers.get(playerId);
+            player.updateMediaController(controller);
+
+            // If the media controller we updated was the active player check if the media updated
+            if (mActivePlayerIdExt.contains(playerId)) {
+                if (mActiveBluetoothDevices.containsKey(packageName)) {
+                    sendMediaUpdateExt(mActiveBluetoothDevices.get(packageName), player.getCurrentMediaData());
+                } else {
+                    e("Failed to find " + packageName + " from active Bluetooth devices");
+                }
+            }
+
+        } else {
+            MediaPlayerWrapper newPlayer = MediaPlayerWrapperFactory.wrap(
+                    mContext,
+                    controller,
+                    mLooper);
+
+            Log.i(TAG, "Adding wrapped media player: " + packageName + " at key: "
+                    + mMediaPlayerIds.get(controller.getPackageName()));
+
+            mMediaPlayers.put(playerId, newPlayer);
+            // It happens when app calls bondPlayerWithDevice but the player is not in player yet and
+            // cannot set active player at that time. When the player can be added to media player list
+            // set active player here
+            if (mActiveBluetoothDevices.containsKey(packageName)) {
+                setActivePlayerExt(playerId);
+            }
+        }
+
+        return playerId;
+    }
+
     /**
      * Adds a {@link android.media.session.MediaController} to the {@link #mMediaPlayers} map and
      * returns its ID. If the {@link android.media.session.MediaController} is null, returns -1.
@@ -687,7 +895,7 @@ public class MediaPlayerList {
             return -1;
         }
 
-        return addMediaPlayer(MediaControllerFactory.wrap(controller));
+        return addMediaPlayerExt(MediaControllerFactory.wrap(controller));
     }
 
     /** Retrieves a list of all packages that both are browsable and play audio */
@@ -857,9 +1065,137 @@ public class MediaPlayerList {
         sendMediaUpdate(data);
     }
 
+    public void setActivePlayerExt(String packagename, BluetoothDevice device) {
+        Log.i(TAG, "setActivePlayerExt(" + packagename + "," + device + ")");
+        Integer playerid;
+        String key = getPlayerPackageName(device);
+        Log.i(TAG, "Current package " + key + " for " + device);
+        // If a media player has already bonded with the device
+        if (!key.equals("")) {
+            if (!packagename.equals(key)) {
+                // if a different media player has been bonded with device, remove it
+                // and update to the new one
+                d("Removing media player " + key + " from mActiveBluetoothDevices");
+                mActiveBluetoothDevices.remove(key);
+                playerid = mMediaPlayerIds.get(key);
+                if (mActivePlayerIdExt.contains(playerid)) {
+                    d("Removing media player " + key + " from mActivePlayerIdExt");
+                    mActivePlayerIdExt.remove(playerid);
+                    mMediaPlayers.get(playerid).unregisterCallback();
+                }
+            } else {
+                Log.w(TAG,  packagename + " already has been the active player");
+                return;
+            }
+        }
+        Log.d(TAG, "mActiveBluetoothDevices.put(" + packagename + " , " + device + ")");
+        mActiveBluetoothDevices.put(packagename, device);
+        // if the media player is not added into media player yet, set it as active player
+        // in onAddressedPlayerChanged
+        if (!mMediaPlayerIds.containsKey(packagename)) {
+            Log.d(TAG, "packagename " + packagename + " is not in media player list yet");
+            return;
+        }
+        playerid = mMediaPlayerIds.get(packagename);
+        setActivePlayerExt(playerid);
+    }
+
+    void setActivePlayerExt(int mediaplayerId) {
+        Integer playerId = mediaplayerId;
+        d("setActivePlayerExt(" + playerId + ")");
+        if (!mMediaPlayers.containsKey(playerId)) {
+            e("Player doesn't exist in list(): " + playerId);
+            d("Available player:");
+            for (MediaPlayerWrapper player : mMediaPlayers.values()) {
+                d(player.getPackageName());
+            }
+            return;
+        }
+        String packageName = mMediaPlayers.get(playerId).getPackageName();
+        if (!mActivePlayerIdExt.contains(playerId)) {
+            d("setActivePlayerExt(" + playerId + "): add " + playerId + " to active players");
+            mActivePlayerIdExt.add(playerId);
+            d("registerCallback");
+            mMediaPlayers.get(playerId).registerCallback(mMediaPlayerCallback);
+        }
+        d("setActivePlayerExt(" + playerId + "): setting player to " + packageName);
+
+        // Ensure that metadata is synced on the new player
+        if (!mMediaPlayers.get(playerId).isMetadataSynced()) {
+            d("setActivePlayerExt(): Metadata not synced on new player");
+            return;
+        }
+
+        if (Utils.isPtsTestMode()) {
+            sendFolderUpdate(true, true, false);
+        }
+
+        MediaData data = mMediaPlayers.get(playerId).getCurrentMediaData();
+        if (mAudioPlaybackIsActive) {
+            data.state = mCurrMediaData.state;
+            d("setActivePlayerExt mAudioPlaybackIsActive=true, state=" + data.state);
+        }
+        if (mActiveBluetoothDevices.containsKey(packageName)) {
+            BluetoothDevice device = mActiveBluetoothDevices.get(packageName);
+            d("Find active device " + device);
+            sendMediaUpdateExt(device, data);
+        }
+    }
+
+
+    public int getMaxVolume(BluetoothDevice device) {
+        int volumeGroupId = -1;
+        int volume = -1;
+        // To check a media player has bonded with bt device
+        if (!getPlayerPackageName(device).equals("")) {
+            volumeGroupId = mCarAudioManager.getVolumeGroupIdForUsage(
+                                    getZoneId(device), AudioAttributes.USAGE_MEDIA);
+        } else {
+            d("Bond a media player first");
+        }
+        if (volumeGroupId != -1) {
+             volume = mCarAudioManager.getGroupMaxVolume(volumeGroupId);
+        }
+        d("getMaxVolume(" + device + "): " + volume);
+        return volume;
+    }
+
+    public void setStreamVolume(BluetoothDevice device, int volume) {
+        int zoneId = getZoneId(device);
+        int volumeGroupId = mCarAudioManager.getVolumeGroupIdForUsage(
+                                zoneId, AudioAttributes.USAGE_MEDIA);
+        Log.d(TAG, "zoneId " + zoneId + " volumeGroupId " + volumeGroupId + " volume " + volume);
+
+        try {
+          mCarAudioManager.setGroupVolume(zoneId, volumeGroupId, volume, AudioManager.FLAG_BLUETOOTH_ABS_VOLUME);
+        } catch (CarNotConnectedException e) {
+          Log.e(TAG, "Car is not connected!", e);
+        } catch (NullPointerException e) {
+          Log.e(TAG, "mCarAudioManager is NULL!", e);
+        }
+    }
+
+    public int getStreamVolume(BluetoothDevice device) {
+        int volume = -1;
+        int zoneId = getZoneId(device);
+        int volumeGroupId = mCarAudioManager.getVolumeGroupIdForUsage(
+                                zoneId, AudioAttributes.USAGE_MEDIA);
+
+        try {
+          volume = mCarAudioManager.getGroupVolume(zoneId, volumeGroupId);
+        } catch (CarNotConnectedException e) {
+          Log.e(TAG, "Car is not connected!", e);
+        } catch (NullPointerException e) {
+          Log.e(TAG, "mCarAudioManager is NULL!", e);
+        }
+        Log.d(TAG, "getStreamVolume: volumeGroupId " + volumeGroupId + " volume " + volume);
+        return volume;
+    }
+
     /** Informs AVRCP service that there has been an update in browsable players. */
     private void sendFolderUpdate(
             boolean availablePlayers, boolean addressedPlayers, boolean uids) {
+
         d("sendFolderUpdate");
         if (mCallback == null) {
             return;
@@ -886,22 +1222,38 @@ public class MediaPlayerList {
         mCallback.run(data);
     }
 
+    private void sendMediaUpdateExt(BluetoothDevice device, MediaData data) {
+        d("sendMediaUpdateExt: " + device);
+        if (mCallback == null) {
+            return;
+        }
+
+        // Always have items in the queue
+        if (data.queue.size() == 0) {
+            Log.i(TAG, "sendMediaUpdateExt: Creating a one item queue for a player with no queue");
+            data.queue.add(data.metadata);
+        }
+
+        d("sendMediaUpdateExt state=" + data.state);
+        mCallback.run(device, data);
+    }
+
     /**
-     * Callback from Media Framework to indicate that the active session changed.
-     *
-     * <p>As sessions can have multiple {@link android.media.session.MediaController}, we add all
-     * the new players, keeping only the highest priority {@link
-     * android.media.session.MediaController} per package name (priority is defined by order in the
-     * list).
-     *
-     * <p>Note: This does not set the current active player, only adds the new {@link
-     * MediaController} to the {@link #mMediaPlayerIds} and {@link mMediaPlayers} maps.
-     *
-     * <p>See {@link
-     * MediaSessionManager.OnMediaKeyEventSessionChangedListener#onMediaKeyEventSessionChanged}.
-     */
-    @VisibleForTesting
-    final MediaSessionManager.OnActiveSessionsChangedListener mActiveSessionsChangedListener =
+      * Callback from Media Framework to indicate that the active session changed.
+      *
+      * <p>As sessions can have multiple {@link android.media.session.MediaController}, we add all
+      * the new players, keeping only the highest priority {@link
+      * android.media.session.MediaController} per package name (priority is defined by order in the
+      * list).
+      *
+      * <p>Note: This does not set the current active player, only adds the new {@link
+      * MediaController} to the {@link #mMediaPlayerIds} and {@link mMediaPlayers} maps.
+      *
+      * <p>See {@link
+      * MediaSessionManager.OnMediaKeyEventSessionChangedListener#onMediaKeyEventSessionChanged}.
+      */
+     @VisibleForTesting
+     final MediaSessionManager.OnActiveSessionsChangedListener mActiveSessionsChangedListener =
             new MediaSessionManager.OnActiveSessionsChangedListener() {
                 @Override
                 public void onActiveSessionsChanged(
@@ -1131,34 +1483,60 @@ public class MediaPlayerList {
      */
     private final MediaPlayerWrapper.Callback mMediaPlayerCallback =
             new MediaPlayerWrapper.Callback() {
-                @Override
-                public void mediaUpdatedCallback(MediaData data) {
-                    if (data.metadata == null) {
-                        Log.d(TAG, "mediaUpdatedCallback(): metadata is null");
-                        return;
-                    }
+        @Override
+        public void sessionUpdatedCallback(String packageName) {
+            if (haveMediaPlayer(packageName)) {
+                Log.d(TAG, "sessionUpdatedCallback(): packageName: " + packageName);
+                removeMediaPlayer(mMediaPlayerIds.get(packageName));
+            }
+        }
 
-                    if (data.state == null) {
-                        Log.w(TAG, "mediaUpdatedCallback(): Tried to update with null state");
-                        return;
-                    }
 
-                    if (mAudioPlaybackIsActive
-                            && (data.state.getState() != PlaybackState.STATE_PLAYING)) {
-                        Log.d(TAG, "Some audio playbacks are still active, drop it");
-                        return;
-                    }
-                    sendMediaUpdate(data);
-                }
+        @Override
+        public void mediaUpdatedCallback(MediaData data) {
+            if (data.metadata == null) {
+                Log.d(TAG, "mediaUpdatedCallback(): metadata is null");
+                return;
+            }
 
-                @Override
-                public void sessionUpdatedCallback(String packageName) {
-                    if (haveMediaPlayer(packageName)) {
-                        Log.d(TAG, "sessionUpdatedCallback(): packageName: " + packageName);
-                        removeMediaPlayer(mMediaPlayerIds.get(packageName));
-                    }
-                }
-            };
+            if (data.state == null) {
+                Log.w(TAG, "mediaUpdatedCallback(): Tried to update with null state");
+                return;
+            }
+
+            if (mAudioPlaybackIsActive
+                    && (data.state.getState() != PlaybackState.STATE_PLAYING)) {
+                Log.d(TAG, "Some audio playbacks are still active, drop it");
+                return;
+            }
+            sendMediaUpdate(data);
+        }
+
+        @Override
+        public void mediaUpdatedCallbackExt(String packagename, MediaData data) {
+            if (data.metadata == null) {
+                Log.d(TAG, "mediaUpdatedCallbackExt(): metadata is null");
+                return;
+            }
+
+            if (data.state == null) {
+                Log.w(TAG, "mediaUpdatedCallbackExt(): Tried to update with null state");
+                return;
+            }
+
+            Log.d(TAG, "mediaUpdatedCallbackExt(): mAudioPlaybackIsActive " +
+                    mAudioPlaybackIsActive + " state " + data.state.getState());
+            if (mAudioPlaybackIsActive && (data.state.getState() != PlaybackState.STATE_PLAYING)) {
+                Log.d(TAG, "Some audio playbacks are still active, drop it");
+                return;
+            }
+            if (mActiveBluetoothDevices.containsKey(packagename)) {
+                BluetoothDevice device = mActiveBluetoothDevices.get(packagename);
+                d("mediaUpdatedCallbackExt: Find active device " + device);
+                sendMediaUpdateExt(device, data);
+            }
+        }
+    };
 
     /**
      * Listens for Media key events session changes.
@@ -1240,6 +1618,62 @@ public class MediaPlayerList {
                             }
                         }
                     };
+
+    private final ServiceConnection mConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            try {
+                mCarAudioManager = (CarAudioManager) mCar.getCarManager(Car.AUDIO_SERVICE);
+                mCarAudioManager.registerCarVolumeCallback(mVolumeChangeCallback);
+            } catch (CarNotConnectedException e) {
+                Log.e(TAG, "Car is not connected!", e);
+            } catch (NullPointerException e) {
+                Log.e(TAG, "mCarAudioManager is NULL!", e);
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            Log.e(TAG, "Car service is disconnected");
+        }
+    };
+
+    /*
+     * When volume for the zone bonded with the headset has been changed, notifiy the headset
+     * by Set Absolute Volume command
+     */
+    private final CarAudioManager.CarVolumeCallback mVolumeChangeCallback =
+        new CarAudioManager.CarVolumeCallback() {
+            @Override
+            public void onGroupVolumeChanged(int zoneId, int groupId, int flags) {
+                Log.d(TAG, "onGroupVolumeChanged: zoneId:" + zoneId + ", groupId:" + groupId + ", flags: " + flags);
+
+                for (BluetoothDevice device : mActiveBluetoothDevices.values()) {
+                    if (getZoneId(device) == zoneId) {
+                        int volumeGroupId = mCarAudioManager.getVolumeGroupIdForUsage(
+                                                zoneId, AudioAttributes.USAGE_MEDIA);
+
+                        Log.d(TAG, "onGroupVolumeChanged: volumeGroupId: " + volumeGroupId);
+                        int streamValue = 0;
+                        int maxVolume = 0;
+                        try {
+                            streamValue = mCarAudioManager.getGroupVolume(zoneId, groupId);
+                            maxVolume = mCarAudioManager.getGroupMaxVolume(zoneId, groupId);
+                        } catch (CarNotConnectedException e) {
+                            Log.e(TAG, "Car is not connected", e);
+                        } catch (NullPointerException e) {
+                            Log.e(TAG, "mCarAudioManager is NULL!", e);
+                        }
+                        // When flag has AudioManager.FLAG_BLUETOOTH_ABS_VOLUME the set volume is initiated from
+                        // headset and need not send back volume changed to headset.
+                        if ((flags & AudioManager.FLAG_BLUETOOTH_ABS_VOLUME) == 0) {
+                            Log.d(TAG, "onGroupVolumeChanged: sendVolumeChanged: " + streamValue);
+                            mCallback.sendVolumeChanged(device, streamValue, maxVolume);
+                        }
+                    }
+                }
+            }
+        };
 
     /** Dumps all players and browsable players currently listed in this class. */
     public void dump(StringBuilder sb) {

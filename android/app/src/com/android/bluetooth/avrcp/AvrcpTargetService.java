@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.avrcp;
@@ -23,6 +28,7 @@ import static java.util.Objects.requireNonNullElseGet;
 
 import android.annotation.NonNull;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothAvrcp;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUtils;
@@ -53,9 +59,13 @@ import com.android.bluetooth.audio_util.PlayerSettingsManager;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.flags.Flags;
+//import com.android.bluetooth.btservice.AdapterUtil;
 import com.android.internal.annotations.VisibleForTesting;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** Provides Bluetooth AVRCP Target profile as a service in the Bluetooth application. */
@@ -98,6 +108,8 @@ public class AvrcpTargetService extends ProfileService {
 
     // Only used to see if the metadata has changed from its previous value
     private MediaData mCurrentData;
+    private final Map<BluetoothDevice, MediaData> mCurrMediaDataExt =
+            Collections.synchronizedMap(new HashMap<BluetoothDevice, MediaData>());
 
     public AvrcpTargetService(AdapterService adapterService, UserManager userManager) {
         this(requireNonNull(adapterService), null, null, null, userManager, Looper.myLooper());
@@ -138,6 +150,7 @@ public class AvrcpTargetService extends ProfileService {
                         () ->
                                 new AvrcpVolumeManager(
                                         requireNonNull(adapterService), mNativeInterface));
+        mVolumeManager.init(AvrcpTargetService.this);
 
         if (userManager.isUserUnlocked()) {
             mMediaPlayerList.init(new ListCallback());
@@ -191,10 +204,39 @@ public class AvrcpTargetService extends ProfileService {
 
             mNativeInterface.sendMediaUpdate(metadata, state, queue);
         }
+        public void run(BluetoothDevice device, MediaData data) {
+            // To be updated when true
+            boolean metadata = true;
+            boolean state = true;
+            boolean queue = true;
+            if (mCurrMediaDataExt.containsKey(device)) {
+                MediaData currentData = mCurrMediaDataExt.get(device);
+                if (Objects.equals(mCurrMediaDataExt.get(device).metadata,
+                        data.metadata)) {
+                    // need not upate meta data when no changed
+                    metadata = false;
+                }
+                if (MediaPlayerWrapper.playstateEquals(currentData.state, data.state)) {
+                    state = false;
+                }
+                if (Objects.equals(currentData.queue, data.queue)) {
+                    queue = false;
+                }
+            }
+            Log.d(TAG, "onMediaUpdated: device " + device + " track_changed="
+                    + metadata + " state=" + state + " queue=" + queue);
+
+            mCurrMediaDataExt.put(device, data);
+            mNativeInterface.sendMediaUpdateExt(device.getAddress(), metadata, state, queue);
+        }
 
         @Override
         public void run(boolean availablePlayers, boolean addressedPlayers, boolean uids) {
             mNativeInterface.sendFolderUpdate(availablePlayers, addressedPlayers, uids);
+        }
+
+        public void sendVolumeChanged(BluetoothDevice device, int volume, int maxVolume) {
+            sendVolumeChangedExt(device, volume, maxVolume);
         }
     }
 
@@ -226,7 +268,11 @@ public class AvrcpTargetService extends ProfileService {
     public AvrcpCoverArtService getCoverArtService() {
         return mAvrcpCoverArtService;
     }
-
+/*
+    private boolean isAvrcpEnabled() {
+        return AdapterUtil.isProfileSupported(BluetoothProfile.AVRCP);
+    }
+*/
     @Override
     protected IProfileServiceBinder initBinder() {
         return null;
@@ -261,12 +307,14 @@ public class AvrcpTargetService extends ProfileService {
      * <p>This will be called by the native stack when a play event is received from a remote
      * device. See packages/modules/Bluetooth/system/profile/avrcp/device.cc.
      */
-    private void setA2dpActiveDevice(@NonNull BluetoothDevice device) {
+    private void setA2dpActiveDevice(@NonNull BluetoothDevice device, boolean active) {
         if (Flags.setA2dpActiveDeviceThroughAdapterService()) {
-            mAdapterService.setActiveDevice(device, BluetoothAdapter.ACTIVE_DEVICE_AUDIO);
+            if (active) {
+              mAdapterService.setActiveDevice(device, BluetoothAdapter.ACTIVE_DEVICE_AUDIO);
+            }
             return;
         }
-        mAdapterService.getA2dpService().ifPresent(a2dp -> a2dp.setActiveDevice(device));
+        mAdapterService.getA2dpService().ifPresent(a2dp -> a2dp.setActiveDevice(device, active));
     }
 
     /** Informs {@link AvrcpVolumeManager} that a new device is connected */
@@ -279,6 +327,8 @@ public class AvrcpTargetService extends ProfileService {
     void deviceDisconnected(BluetoothDevice device) {
         Log.i(TAG, "deviceDisconnected: device=" + device);
         mVolumeManager.deviceDisconnected(device);
+        sendMediaKeyEventExt(device, BluetoothAvrcp.PASSTHROUGH_ID_PAUSE, true);
+        sendMediaKeyEventExt(device, BluetoothAvrcp.PASSTHROUGH_ID_PAUSE, false);
     }
 
     /** Removes the stored volume for a device. */
@@ -340,6 +390,22 @@ public class AvrcpTargetService extends ProfileService {
         mVolumeManager.setVolume(activeDevice, avrcpVolume);
     }
 
+    void setVolumeExt(BluetoothDevice device, int avrcpVolume) {
+        int maxVolume = getMaxVolume(device);
+        if (maxVolume < 0) {
+            Log.w(TAG, "setVolumeExt(" + device + ") failed");
+            return;
+        }
+        int deviceVolume =
+                (int) Math.floor((double) avrcpVolume * maxVolume / AvrcpVolumeManager.AVRCP_MAX_VOL);
+        Log.d(TAG, "setVolumeExt: " + device
+                + " avrcpVolume=" + avrcpVolume
+                + " deviceVolume=" + deviceVolume
+                + " maxVolume=" + maxVolume);
+
+        mMediaPlayerList.setStreamVolume(device, deviceVolume);
+    }
+
     /**
      * Sends a volume change request to the remote device.
      *
@@ -357,18 +423,42 @@ public class AvrcpTargetService extends ProfileService {
         mVolumeManager.sendVolumeChanged(activeDevice, deviceVolume);
     }
 
-    /**
-     * Returns the current song info from the active player in {@link MediaPlayerList}.
-     *
-     * <p>If a {@link com.android.bluetooth.audio_util.Image} is present in the {@link Metadata},
-     * add its handle from {@link AvrcpCoverArtService}.
+     /**
+     * Set the volume on the remote device. Does nothing if the device doesn't support absolute
+     * volume.
      */
+    public void sendVolumeChangedExt(BluetoothDevice device, int deviceVolume, int maxVolume) {
+        int avrcpVolume =
+                (int) Math.floor((double) deviceVolume * AvrcpVolumeManager.AVRCP_MAX_VOL / maxVolume);
+        if (avrcpVolume > AvrcpVolumeManager.AVRCP_MAX_VOL) avrcpVolume = AvrcpVolumeManager.AVRCP_MAX_VOL;
+        Log.d(TAG, "SendVolumeChangedExt: avrcpVolume=" + avrcpVolume
+                + " deviceVolume=" + deviceVolume
+                + " maxVolume=" + maxVolume);
+        mNativeInterface.sendVolumeChanged(device, avrcpVolume);
+    }
+
+    public void setActivePlayerExt(String packagename, BluetoothDevice device) {
+        Log.d(TAG, "setActivePlayerExt(" + packagename + "," + device + ")");
+        mMediaPlayerList.setActivePlayerExt(packagename, device);
+        mVolumeManager.switchVolumeDevice(device);
+    }
+
+    /**
+    * Returns the current song info from the active player in {@link MediaPlayerList}.
+    *
+    * <p>If a {@link com.android.bluetooth.audio_util.Image} is present in the {@link Metadata},
+    * add its handle from {@link AvrcpCoverArtService}.
+    */
     Metadata getCurrentSongInfo() {
         Metadata metadata = mMediaPlayerList.getCurrentSongInfo();
         if (mAvrcpCoverArtService != null && metadata.image != null) {
             metadata.image.setImageHandle(mAvrcpCoverArtService.storeImage(metadata.image));
         }
         return metadata;
+    }
+
+    Metadata getCurrentSongInfoExt(BluetoothDevice device) {
+        return mMediaPlayerList.getCurrentSongInfoExt(device);
     }
 
     /** Returns the current play status of the active player from {@link MediaPlayerList}. */
@@ -378,6 +468,11 @@ public class AvrcpTargetService extends ProfileService {
                 Long.parseLong(getCurrentSongInfo().duration));
     }
 
+    PlayStatus getPlayStateExt(BluetoothDevice device) {
+        return PlayStatus.fromPlaybackState(mMediaPlayerList.getCurrentPlayStatusExt(device),
+                Long.parseLong(getCurrentSongInfoExt(device).duration));
+    }
+
     /** Returns the current media ID of the active player from {@link MediaPlayerList}. */
     String getCurrentMediaId() {
         String id = mMediaPlayerList.getCurrentMediaId();
@@ -385,6 +480,17 @@ public class AvrcpTargetService extends ProfileService {
 
         Metadata song = getCurrentSongInfo();
         if (song != null && !song.mediaId.isEmpty()) return song.mediaId;
+
+        // We always want to return something, the error string just makes debugging easier
+        return "error";
+    }
+
+    String getCurrentMediaIdExt(BluetoothDevice device) {
+        String id = mMediaPlayerList.getCurrentMediaIdExt(device);
+        if (id != null) return id;
+
+        Metadata song = getCurrentSongInfoExt(device);
+        if (song != null) return song.mediaId;
 
         // We always want to return something, the error string just makes debugging easier
         return "error";
@@ -416,6 +522,10 @@ public class AvrcpTargetService extends ProfileService {
             }
         }
         return nowPlayingList;
+    }
+
+    List<Metadata> getNowPlayingListExt(BluetoothDevice device) {
+        return mMediaPlayerList.getNowPlayingListExt(device);
     }
 
     /**
@@ -541,6 +651,12 @@ public class AvrcpTargetService extends ProfileService {
                         .orElse(BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
     }
 
+    void sendMediaKeyEventExt(BluetoothDevice device, int event, boolean pushed) {
+        Log.d(TAG, "sendMediaKeyEventExt: device=" + device +
+            " event=" + event + " pushed=" + pushed);
+        mMediaPlayerList.sendMediaKeyEventExt(device, event, pushed);
+    }
+
     /**
      * Sets a {@link BluetoothDevice} as active A2DP device.
      *
@@ -553,7 +669,7 @@ public class AvrcpTargetService extends ProfileService {
             Log.wtf(TAG, "setActiveDevice: could not find device " + device);
             return;
         }
-        setA2dpActiveDevice(device);
+        setA2dpActiveDevice(device, true);
     }
 
     /** Called from native to update current active player shuffle mode. */
@@ -579,6 +695,14 @@ public class AvrcpTargetService extends ProfileService {
     /** Called from player callback to indicate new settings to remote device. */
     public void sendPlayerSettings(int repeatMode, int shuffleMode) {
         mNativeInterface.sendPlayerSettings(repeatMode, shuffleMode);
+    }
+
+    int getMaxVolume(BluetoothDevice device) {
+        return mMediaPlayerList.getMaxVolume(device);
+    }
+
+    int getStreamVolume(BluetoothDevice device) {
+        return mMediaPlayerList.getStreamVolume(device);
     }
 
     /**

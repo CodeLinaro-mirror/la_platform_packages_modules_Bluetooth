@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /*
@@ -28,4 +33,4 @@ void bta_av_ci_setconfig(tBTA_AV_HNDL /* bta_av_handle */, uint8_t /* err_code *
                          uint8_t /* avdt_handle */) {
   inc_func_call_count(__func__);
 }
-void bta_av_ci_src_data_ready(tBTA_AV_CHNL /* chnl */) { inc_func_call_count(__func__); }
+void bta_av_ci_src_data_ready(const RawAddress& peer_address, tBTA_AV_CHNL /* chnl */) { inc_func_call_count(__func__); }

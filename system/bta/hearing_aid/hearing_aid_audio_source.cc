@@ -14,7 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *******************************************************************************/
 
 #define LOG_TAG "bluetooth-asha"
 
@@ -189,6 +192,7 @@ void HearingAidAudioSource::Initialize() {
           .on_resume_ = hearing_aid_on_resume_req,
           .on_suspend_ = hearing_aid_on_suspend_req,
   };
+
   if (!bluetooth::audio::hearing_aid::init(stream_cb, get_main_thread())) {
     log::error("Hearing AID HAL failed to initialize");
   }

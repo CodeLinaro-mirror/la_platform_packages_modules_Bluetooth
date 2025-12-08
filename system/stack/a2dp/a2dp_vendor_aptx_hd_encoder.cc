@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -300,7 +305,7 @@ void a2dp_vendor_aptx_hd_send_frames(uint64_t /* timestamp_us */) {
   a2dp_aptx_hd_encoder_cb.stats.media_read_total_expected_read_bytes += expected_read_bytes;
 
   log::verbose("PCM read of size {}", expected_read_bytes);
-  bytes_read = a2dp_aptx_hd_encoder_cb.read_callback((uint8_t*)read_buffer32, expected_read_bytes);
+  //bytes_read = a2dp_aptx_hd_encoder_cb.read_callback((uint8_t*)read_buffer32, expected_read_bytes);
   a2dp_aptx_hd_encoder_cb.stats.media_read_total_actual_read_bytes += bytes_read;
   if (bytes_read < expected_read_bytes) {
     // TODO(b/409124193): remove this logic after cleaning a2dp_fmq_read_exact
@@ -338,7 +343,7 @@ void a2dp_vendor_aptx_hd_send_frames(uint64_t /* timestamp_us */) {
           ((uint64_t)a2dp_aptx_hd_encoder_cb.timestamp + rtp_timestamp) & UINT32_MAX;
 
   if (p_buf->len > 0) {
-    a2dp_aptx_hd_encoder_cb.enqueue_callback(p_buf, 1, bytes_read);
+//    a2dp_aptx_hd_encoder_cb.enqueue_callback(p_buf, 1, bytes_read);
   } else {
     a2dp_aptx_hd_encoder_cb.stats.media_read_total_dropped_packets++;
     osi_free(p_buf);

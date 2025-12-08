@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #ifndef BTIF_AV_CO_H
@@ -36,7 +41,7 @@ bool bta_av_co_set_active_sink_peer(const RawAddress& peer_address);
  * @param peer_address peer address of the remote device.
  * @return true on success, otherwise false.
  */
-bool bta_av_co_set_active_source_peer(const RawAddress& peer_address);
+bool bta_av_co_set_active_source_peer(const RawAddress& peer_address, bool active);
 
 void bta_av_co_save_codec(const RawAddress& peer_address, const uint8_t* new_codec_config);
 
@@ -48,10 +53,17 @@ void bta_av_co_get_peer_params(const RawAddress& peer_addr,
                                tA2DP_ENCODER_INIT_PEER_PARAMS* p_peer_params);
 
 // Gets the current A2DP encoder interface that can be used to encode and
-// prepare A2DP packets for transmission - see |tA2DP_ENCODER_INTERFACE|.
+// prepare A2DP packets for transmission - see |A2dpEncoderInterface|.
 // Returns the A2DP encoder interface if the current codec is setup,
 // otherwise NULL.
-const tA2DP_ENCODER_INTERFACE* bta_av_co_get_encoder_interface(const RawAddress& peer_address);
+//const tA2DP_ENCODER_INTERFACE* bta_av_co_get_encoder_interface(const RawAddress& peer_address);
+
+// Gets the current A2DP encoder interface that can be used to encode and
+// prepare A2DP packets for transmission - see |A2dpEncoderInterface|.
+// Returns the A2DP encoder interface if the current codec is setup,
+// otherwise NULL.
+// The peer address is |peer_addr|.
+A2dpEncoderInterface* bta_av_co_get_encoder_interface(const RawAddress& peer_addr);
 
 // Sets the user preferred codec configuration.
 // The peer address is |peer_addr|.
@@ -64,9 +76,10 @@ bool bta_av_co_set_codec_user_config(const RawAddress& peer_addr,
 
 // Sets the Audio HAL selected audio feeding parameters.
 // Those parameters are applied only to the currently selected codec.
+// The peer address is |peer_addr|.
 // |codec_audio_config| contains the selected audio feeding configuration.
 // Returns true on success, otherwise false.
-bool bta_av_co_set_codec_audio_config(const btav_a2dp_codec_config_t& codec_audio_config);
+bool bta_av_co_set_codec_audio_config(const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_audio_config);
 
 // Initializes the control block.
 // |codec_priorities| contains the A2DP Source codec priorities to use.
@@ -95,7 +108,7 @@ int bta_av_co_get_encoder_effective_frame_size(const RawAddress& peer_address);
 // Gets the preferred encoding interval from the current encoder.
 // Returns the preferred encoding interval if the encoder is configured,
 // otherwise 0.
-int bta_av_co_get_encoder_preferred_interval_us();
+int bta_av_co_get_encoder_preferred_interval_us(const RawAddress& peer_address);
 
 // Dump A2DP codec debug-related information for the A2DP module.
 // |fd| is the file descriptor to use for writing the ASCII formatted

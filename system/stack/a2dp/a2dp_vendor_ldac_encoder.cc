@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -404,7 +408,7 @@ static void a2dp_ldac_get_num_frame_iteration(uint8_t* num_of_iterations, uint8_
 
 static void a2dp_ldac_encode_frames(uint8_t nb_frame) {
   tA2DP_LDAC_ENCODER_PARAMS* p_encoder_params = &a2dp_ldac_encoder_cb.ldac_encoder_params;
-  uint8_t remain_nb_frame = nb_frame;
+  //uint8_t remain_nb_frame = nb_frame;
   uint16_t ldac_frame_size;
   uint8_t read_buffer[LDACBT_MAX_LSU * 4 /* byte/sample */ * 2 /* ch */];
 
@@ -429,7 +433,7 @@ static void a2dp_ldac_encode_frames(uint8_t nb_frame) {
   int32_t out_frames = 0;
   int written = 0;
 
-  uint32_t bytes_read = 0;
+  // uint32_t bytes_read = 0;
   while (nb_frame) {
     BT_HDR* p_buf = (BT_HDR*)osi_malloc(BT_DEFAULT_BUFFER_SIZE);
     p_buf->offset = A2DP_LDAC_OFFSET;
@@ -444,7 +448,7 @@ static void a2dp_ldac_encode_frames(uint8_t nb_frame) {
       //
       uint32_t temp_bytes_read = 0;
       if (a2dp_ldac_read_feeding(read_buffer, &temp_bytes_read)) {
-        bytes_read += temp_bytes_read;
+        //bytes_read += temp_bytes_read;
         uint8_t* packet = (uint8_t*)(p_buf + 1) + p_buf->offset + p_buf->len;
         if (a2dp_ldac_encoder_cb.ldac_handle == NULL) {
           log::error("invalid LDAC handle");
@@ -495,11 +499,11 @@ static void a2dp_ldac_encode_frames(uint8_t nb_frame) {
                                         (p_buf->layer_specific * ldac_frame_size)) &
                                        UINT32_MAX;
 
-      uint8_t done_nb_frame = remain_nb_frame - nb_frame;
-      remain_nb_frame = nb_frame;
-      if (!a2dp_ldac_encoder_cb.enqueue_callback(p_buf, done_nb_frame, bytes_read)) {
+  //    uint8_t done_nb_frame = remain_nb_frame - nb_frame;
+ //     remain_nb_frame = nb_frame;
+/*      if (!a2dp_ldac_encoder_cb.enqueue_callback(p_buf, done_nb_frame, bytes_read)) {
         return;
-      }
+      }*/
     } else {
       // NOTE: Unlike the execution path for other codecs, it is normal for
       // LDAC to NOT write encoded data to the last buffer if there wasn't
@@ -511,7 +515,7 @@ static void a2dp_ldac_encode_frames(uint8_t nb_frame) {
   }
 }
 
-static bool a2dp_ldac_read_feeding(uint8_t* read_buffer, uint32_t* bytes_read) {
+static bool a2dp_ldac_read_feeding(uint8_t* /* read_buffer */, uint32_t* /* bytes_read */) {
   uint32_t read_size = LDACBT_ENC_LSU * a2dp_ldac_encoder_cb.feeding_params.channel_count *
                        a2dp_ldac_encoder_cb.feeding_params.bits_per_sample / 8;
 
@@ -519,6 +523,7 @@ static bool a2dp_ldac_read_feeding(uint8_t* read_buffer, uint32_t* bytes_read) {
   a2dp_ldac_encoder_cb.stats.media_read_total_expected_read_bytes += read_size;
 
   /* Read Data from UIPC channel */
+#if 0
   uint32_t nb_byte_read = a2dp_ldac_encoder_cb.read_callback(read_buffer, read_size);
   a2dp_ldac_encoder_cb.stats.media_read_total_actual_read_bytes += nb_byte_read;
 
@@ -535,6 +540,7 @@ static bool a2dp_ldac_read_feeding(uint8_t* read_buffer, uint32_t* bytes_read) {
   a2dp_ldac_encoder_cb.stats.media_read_total_actual_reads_count++;
 
   *bytes_read = nb_byte_read;
+#endif
   return true;
 }
 

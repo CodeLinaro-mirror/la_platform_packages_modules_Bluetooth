@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -19,6 +24,7 @@
 #include <bluetooth/types/address.h>
 #include <bluetooth/types/uuid.h>
 
+#include <set>
 #include "stack/include/a2dp_api.h"
 #include "stack/include/avrc_api.h"
 #include "stack/include/bt_hdr.h"
@@ -85,7 +91,7 @@ public:
 
 class A2dpInterface {
 public:
-  virtual RawAddress active_peer() = 0;
+  virtual std::set<RawAddress> active_peers() = 0;
   virtual bool is_peer_in_silence_mode(const RawAddress& peer_address) = 0;
   virtual void connect_audio_sink_delayed(uint8_t handle, const RawAddress& peer_address) = 0;
   virtual uint16_t find_audio_sink_service(const RawAddress& peer_address,

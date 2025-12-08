@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #ifndef BT_STACK_FUZZ_A2DP_CODEC_FUNCTIONS_H_
@@ -155,7 +160,7 @@ std::vector<std::function<void(FuzzedDataProvider*)>> a2dp_codec_operations = {
           std::unique_ptr<uint8_t, void (*)(void*)> p_result_codec_config(
                   reinterpret_cast<uint8_t*>(calloc(500, sizeof(uint8_t))), free);
           if (p_result_codec_config) {
-            codecs->setCodecConfig(peer_codec_info, fdp->ConsumeBool(), p_result_codec_config.get(),
+            codecs->setCodecConfig(RawAddress::kEmpty, peer_codec_info, fdp->ConsumeBool(), p_result_codec_config.get(),
                                    fdp->ConsumeBool());
           }
         },
@@ -204,7 +209,7 @@ std::vector<std::function<void(FuzzedDataProvider*)>> a2dp_codec_operations = {
           btav_a2dp_codec_config_t result_codec_config;
           bool restart_input, restart_output, config_updated;
           uint8_t* p_result_codec_config = reinterpret_cast<uint8_t*>(&result_codec_config);
-          codecs->setCodecUserConfig(codec_user_config, &p_peer_params, p_peer_sink_capabilities,
+          codecs->setCodecUserConfig(RawAddress::kEmpty, codec_user_config, &p_peer_params, p_peer_sink_capabilities,
                                      p_result_codec_config, &restart_input, &restart_output,
                                      &config_updated);
         },

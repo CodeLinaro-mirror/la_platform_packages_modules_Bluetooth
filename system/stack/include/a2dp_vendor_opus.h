@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 //
@@ -165,7 +169,7 @@ std::string A2DP_VendorCodecInfoStringOpus(const uint8_t* p_codec_info);
 // |p_codec_info| contains the codec information.
 // Returns the A2DP Opus encoder interface if the |p_codec_info| is valid and
 // supported, otherwise NULL.
-const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceOpus(const uint8_t* p_codec_info);
+//const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceOpus(const uint8_t* p_codec_info);
 
 // Gets the current A2DP Opus decoder interface that can be used to decode
 // received A2DP packets - see |tA2DP_DECODER_INTERFACE|.

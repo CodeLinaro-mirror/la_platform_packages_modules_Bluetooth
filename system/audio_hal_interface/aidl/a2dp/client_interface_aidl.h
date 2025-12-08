@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -88,7 +93,7 @@ inline BluetoothAudioStatus StatusToHalStatus(Status ack) {
  ***/
 class BluetoothAudioClientInterface {
 public:
-  BluetoothAudioClientInterface(IBluetoothTransportInstance* instance);
+  BluetoothAudioClientInterface(IBluetoothTransportInstance* instance, uint8_t index);
   virtual ~BluetoothAudioClientInterface();
 
   bool IsValid() const;
@@ -96,8 +101,8 @@ public:
 
   std::vector<AudioCapabilities> GetAudioCapabilities() const;
 
-  static std::vector<AudioCapabilities> GetAudioCapabilities(SessionType session_type);
-  static std::optional<IBluetoothAudioProviderFactory::ProviderInfo> GetProviderInfo(
+  std::vector<AudioCapabilities> GetAudioCapabilities(SessionType session_type);
+  std::optional<IBluetoothAudioProviderFactory::ProviderInfo> GetProviderInfo(
           SessionType session_type,
           std::shared_ptr<IBluetoothAudioProviderFactory> provider_factory = nullptr);
 
@@ -134,7 +139,7 @@ public:
 
   static constexpr PcmConfiguration kInvalidPcmConfiguration = {};
 
-  static bool is_aidl_available();
+  bool is_aidl_available() const;
 
 protected:
   mutable std::mutex internal_mutex_;
@@ -162,13 +167,16 @@ protected:
   ::ndk::ScopedAIBinder_DeathRecipient death_recipient_;
   // static constexpr const char* kDefaultAudioProviderFactoryInterface =
   //     "android.hardware.bluetooth.audio.IBluetoothAudioProviderFactory/default";
-  static inline const std::string kDefaultAudioProviderFactoryInterface =
-          std::string() + IBluetoothAudioProviderFactory::descriptor + "/default";
+  static inline const std::string kAudioProviderFactoryInterfaces[] ={
+          std::string() + IBluetoothAudioProviderFactory::descriptor + "/default",
+          std::string() + IBluetoothAudioProviderFactory::descriptor + "/new",
+  };
 
 private:
   IBluetoothTransportInstance* transport_;
   std::vector<AudioCapabilities> capabilities_;
   std::vector<LatencyMode> latency_modes_;
+  uint8_t index_;
 
   static constexpr int kDefaultDataReadTimeoutMs = 10;
   static constexpr int kDefaultDataReadPollIntervalMs = 1;

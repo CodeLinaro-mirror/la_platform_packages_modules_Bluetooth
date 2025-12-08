@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -41,6 +46,10 @@ enum class Status {
   RECONFIGURATION,
 };
 
+// Define MAXimum allowed A2DP CONNected devices
+constexpr int MAX_A2DP_CONN = 2;
+constexpr uint8_t INVALID_A2DP_INDEX = 0xFF;
+
 /// Loosely copied after the definition from the Bluetooth Audio interface:
 /// audio/aidl/android/hardware/bluetooth/audio/IBluetoothAudioPort.aidl
 ///
@@ -68,41 +77,69 @@ struct ahal_codec_configuration {
   std::string ToString() const;
 };
 
+/**
+ * Extended StreamCallbacks for multi-connection A2DP.
+ *
+ * Declared here so both `a2dp_encoding.cc` and `a2dp_encoding_aidl.cc`
+ * can downcast and access extended methods like GetIndex() and GetActivePeer().
+ */
+class A2dpStreamCallbacks : public StreamCallbacks {
+public:
+  A2dpStreamCallbacks();
+  explicit A2dpStreamCallbacks(int index = 0);
+
+  int GetIndex() const;
+  void SetActivePeer(const RawAddress& peer_address);
+  const RawAddress& GetActivePeer() const;
+
+  Status StartStream(bool low_latency) const override;
+  Status SuspendStream() const override;
+  Status StopStream() const override;
+  Status SetLatencyMode(bool low_latency) const override;
+
+private:
+  RawAddress active_peer_;
+  uint8_t mIndex;
+};
+
 bool update_codec_offloading_capabilities(
         const std::vector<btav_a2dp_codec_config_t>& framework_preference,
-        bool supports_a2dp_hw_offload_v2);
+        bool supports_a2dp_hw_offload_v2, uint8_t index = 0);
 
 // Check if new bluetooth_audio is enabled
-bool is_hal_enabled();
+bool is_hal_enabled(uint8_t index = 0);
 
 // Check if new bluetooth_audio is running with offloading encoders
-bool is_hal_offloading();
+bool is_hal_offloading(uint8_t index = 0);
 
 // Initialize BluetoothAudio HAL: openProvider
 bool init(bluetooth::common::MessageLoopThread* message_loop,
-          StreamCallbacks const* strean_callbacks, bool offload_enabled);
+          StreamCallbacks const* strean_callbacks, bool offload_enabled, uint8_t index = 0);
 
 // Clean up BluetoothAudio HAL
 void cleanup();
 
+// Clean up BluetoothAudio HAL
+void cleanup(uint8_t index);
+
 // Set up the codec into BluetoothAudio HAL
-bool setup_codec(const ahal_codec_configuration& config);
+bool setup_codec(const ahal_codec_configuration& config,  uint8_t index = 0);
 
 // Set low latency buffer mode allowed or disallowed
-void set_audio_low_latency_mode_allowed(bool allowed);
+void set_audio_low_latency_mode_allowed(bool allowed, uint8_t index = 0);
 
 // Send command to the BluetoothAudio HAL: StartSession, EndSession,
 // StreamStarted, StreamSuspended
-void start_session();
-void end_session();
-void ack_stream_started(Status status);
-void ack_stream_suspended(Status status);
+void start_session(uint8_t index = 0);
+void end_session(uint8_t index = 0);
+void ack_stream_started(Status status, uint8_t index = 0);
+void ack_stream_suspended(Status status, uint8_t index = 0);
 
 // Read from the FMQ of BluetoothAudio HAL
-size_t read(uint8_t* p_buf, uint32_t len);
+size_t read(uint8_t* p_buf, uint32_t len, uint8_t index = 0);
 
 // Update A2DP delay report to BluetoothAudio HAL
-void set_remote_delay(uint16_t delay_report);
+void set_remote_delay(uint16_t delay_report, uint8_t index = 0);
 
 // Check whether OPUS is supported
 bool is_opus_supported();
@@ -188,8 +225,8 @@ struct a2dp_remote_capabilities {
 // discovered remote SEPs.
 std::optional<a2dp_configuration> get_a2dp_configuration(
         RawAddress peer_address, std::vector<a2dp_remote_capabilities> const& remote_seps,
-        btav_a2dp_codec_config_t const& user_preferences,
-        ::bluetooth::a2dp::CodecId user_preferred_codec_id);
+        btav_a2dp_codec_config_t const& user_preferences, 
+        ::bluetooth::a2dp::CodecId user_preferred_codec_id, uint8_t index = 0);
 
 // Query the codec parameters from the audio HAL.
 // The HAL is expected to parse the codec configuration

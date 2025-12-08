@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /**
@@ -99,7 +104,7 @@ bt_status_t btif_av_source_init(btav_source_callbacks_t* callbacks, int max_conn
 bt_status_t btif_av_source_connect(const RawAddress& peer_address);
 bt_status_t btif_av_source_disconnect(const RawAddress& peer_address);
 bt_status_t btif_av_source_set_silence_device(const RawAddress& peer_address, bool silence);
-bt_status_t btif_av_source_set_active_device(const RawAddress& peer_address);
+bt_status_t btif_av_source_set_active_device(const RawAddress& peer_address, bool active);
 bt_status_t btif_av_source_set_codec_config_preference(
         const RawAddress& peer_address, std::vector<btav_a2dp_codec_config_t> codec_preferences);
 void btif_av_source_cleanup();
@@ -122,7 +127,7 @@ enum class A2dpType { kSource, kSink, kUnknown };
 /**
  * When the local device is A2DP source, get the address of the active peer.
  */
-RawAddress btif_av_source_active_peer(void);
+std::set<RawAddress> btif_av_source_active_peers(void);
 
 /**
  * When the local device is A2DP sink, get the address of the active peer.
@@ -141,14 +146,15 @@ bool btif_av_is_source_enabled(void);
 
 /**
  * Start streaming.
+ * @param peer_address the peer address
  * @param local_a2dp_type type of local a2dp profile.
  */
-void btif_av_stream_start(const A2dpType local_a2dp_type);
+void btif_av_stream_start(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  * Start streaming with latency setting.
  */
-void btif_av_stream_start_with_latency(bool use_latency_mode);
+void btif_av_stream_start_with_latency(const RawAddress& peer_address, bool use_latency_mode);
 
 /**
  * Stop streaming.
@@ -159,46 +165,64 @@ void btif_av_stream_stop(const RawAddress& peer_address);
 
 /**
  * Suspend streaming.
+ *
+ * @param peer_address the peer address
  */
-void btif_av_stream_suspend(void);
+void btif_av_stream_suspend(const RawAddress& peer_address);
 
 /**
  * Start offload streaming.
+ *
+ * @param peer_address the peer address
  */
-void btif_av_stream_start_offload(void);
+void btif_av_stream_start_offload(const RawAddress& peer_address);
 
 /**
  * Check whether ready to start the A2DP stream.
+ * @param peer_address the peer address
  * @param local_a2dp_type type of local a2dp profile.
  */
-bool btif_av_stream_ready(const A2dpType local_a2dp_type);
+bool btif_av_stream_ready(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  * Check whether the A2DP stream is in started state and ready
  * for media start.
+ * @param peer_address the peer address
  * @param local_a2dp_type type of local a2dp profile.
  */
-bool btif_av_stream_started_ready(const A2dpType local_a2dp_type);
+bool btif_av_stream_started_ready(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  * Check whether there is a connected peer (either Source or Sink)
+ * @param peer_address the peer address
  * @param local_a2dp_type type of local a2dp profile.
  */
-bool btif_av_is_connected(const A2dpType local_a2dp_type);
+bool btif_av_is_connected(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  * Get the Stream Endpoint Type of the Active peer.
  * @param local_a2dp_type type of local a2dp profile.
  *
+ * @param peer_address the peer address
+ *
  * @return the stream endpoint type: either AVDT_TSEP_SRC or AVDT_TSEP_SNK
  */
-uint8_t btif_av_get_peer_sep(const A2dpType local_a2dp_type);
+uint8_t btif_av_get_peer_sep(const RawAddress& peer_address);
+
+/**
+ * Get the Stream Endpoint Type of the Active peer for active.
+ *
+ * @param peer_address the peer address
+ * @return the stream endpoint type: either AVDT_TSEP_SRC or AVDT_TSEP_SNK
+ */
+uint8_t btif_av_get_peer_sep(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  * Clear the remote suspended flag for the active peer.
+ * @param peer_address the peer address
  * @param local_a2dp_type type of local a2dp profile.
  */
-void btif_av_clear_remote_suspend_flag(const A2dpType local_a2dp_type);
+void btif_av_clear_remote_suspend_flag(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  * Check whether the connected A2DP peer supports EDR.
@@ -292,9 +316,10 @@ void btif_av_set_audio_delay(const RawAddress& peer_address, uint16_t delay,
 
 /**
  * Get the audio delay for the stream.
+ * @param peer_address the peer address
  * @param local_a2dp_type type of local a2dp profile.
  */
-uint16_t btif_av_get_audio_delay(const A2dpType local_a2dp_type);
+uint16_t btif_av_get_audio_delay(const RawAddress& peer_address, const A2dpType local_a2dp_type);
 
 /**
  *  check A2DP offload support enabled
@@ -337,7 +362,7 @@ void btif_av_set_dynamic_audio_buffer_size(uint8_t dynamic_audio_buffer_size);
  *
  * @param is_low_latency to set
  */
-void btif_av_set_low_latency(bool is_low_latency);
+void btif_av_set_low_latency(const RawAddress& peer_address, bool is_low_latency);
 
 /**
  * Initiate an AV connection after 3s timeout to peer audio sink
@@ -356,5 +381,16 @@ bool btif_av_peer_is_connected_source(const RawAddress& peer_address);
 bool btif_av_peer_is_sink(const RawAddress& peer_address);
 bool btif_av_peer_is_source(const RawAddress& peer_address);
 const RawAddress& btif_av_find_by_handle(tBTA_AV_HNDL bta_handle);
+
+/**
+ * Check whether the peer is active
+ *
+ * @param peer_address the peer address
+ */
+bool btif_av_source_is_active_peer(const RawAddress& peer_address);
+
+bool IsSupportDualA2dpSource();
+
+uint8_t btif_av_source_stream_index(const RawAddress& peer_address);
 
 #endif /* BTIF_AV_H */

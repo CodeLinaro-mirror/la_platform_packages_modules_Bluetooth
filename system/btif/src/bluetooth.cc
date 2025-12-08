@@ -1128,8 +1128,8 @@ static int set_dynamic_audio_buffer_size(int codec, int size) {
   return btif_set_dynamic_audio_buffer_size(codec, size);
 }
 
-static bool allow_low_latency_audio(bool allowed, const RawAddress& /* address */) {
-  btif_a2dp_source_allow_low_latency_audio(allowed);
+static bool allow_low_latency_audio(bool allowed, const RawAddress& address) {
+  btif_a2dp_source_allow_low_latency_audio(address, allowed);
   return true;
 }
 
@@ -1545,10 +1545,10 @@ void invoke_switch_buffer_size_cb(bool is_low_latency_buffer_size) {
           is_low_latency_buffer_size));
 }
 
-void invoke_switch_codec_cb(bool is_low_latency_buffer_size) {
+void invoke_switch_codec_cb(RawAddress /* raw_address */, bool is_low_latency_buffer_size) {
   do_in_jni_thread(base::BindOnce(
           [](bool is_low_latency_buffer_size) {
-            HAL_CBACK(bt_hal_cbacks, switch_codec_cb, is_low_latency_buffer_size);
+            HAL_CBACK(bt_hal_cbacks, switch_codec_cb, is_low_latency_buffer_size); // to be fixed
           },
           is_low_latency_buffer_size));
 }

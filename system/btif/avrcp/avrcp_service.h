@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -77,6 +77,10 @@ public:
 
   // Functions inherited from MediaCallbacks in order to receive updates
   void SendMediaUpdate(bool track_changed, bool play_state, bool queue) override;
+
+  void SendMediaUpdateExt(const RawAddress& bdaddr, bool track_changed,
+                          bool play_state, bool queue);
+
   void SendFolderUpdate(bool available_players, bool addressed_player, bool queue) override;
 
   void SendPlayerSettingsChanged(std::vector<PlayerAttribute> attributes,

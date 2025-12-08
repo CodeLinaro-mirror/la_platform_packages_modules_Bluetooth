@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -133,6 +138,11 @@ public:
   virtual void SendMediaUpdate(bool metadata, bool play_status, bool queue);
 
   /**
+   * Extended from SendMediaUpdate to support dual AVRCP target
+   */
+  virtual void SendMediaUpdateExt(bool metadata, bool play_status, bool queue);
+
+  /**
    * Notify the device that the available_player, addressed_player, or UIDs
    * have updated via a boolean. Each boolean represents whether its respective
    * content has updated.
@@ -156,6 +166,7 @@ public:
    ********************/
   // CURRENT TRACK CHANGED
   virtual void HandleTrackUpdate();
+  virtual void HandleTrackUpdateExt();
   virtual void TrackChangedNotificationResponse(uint8_t label, bool interim,
                                                 std::string curr_song_id,
                                                 std::vector<SongInfo> song_list);
@@ -170,15 +181,18 @@ public:
 
   // PLAY STATUS CHANGED
   virtual void HandlePlayStatusUpdate();
+  virtual void HandlePlayStatusUpdateExt();
 
   // NOW PLAYING LIST CHANGED
   virtual void HandleNowPlayingUpdate();
+  virtual void HandleNowPlayingUpdateExt();
   virtual void HandleNowPlayingNotificationResponse(uint8_t label, bool interim,
                                                     std::string curr_song_id,
                                                     std::vector<SongInfo> song_list);
 
   // PLAY POSITION CHANGED
   virtual void HandlePlayPosUpdate();
+  virtual void HandlePlayPosUpdateExt();
   virtual void PlaybackPosNotificationResponse(uint8_t label, bool interim, PlayStatus status);
 
   // GET PLAY STATUS
@@ -332,7 +346,7 @@ private:
 
   // Enables AVRCP 1.3 Compatibility mode. This disables any AVRCP 1.4+ features
   // such as browsing and playlists but has the highest chance of working.
-  bool avrcp13_compatibility_ = false;
+  bool avrcp13_compatibility_ = true;
   base::RepeatingCallback<void(uint8_t label, bool browse,
                                std::unique_ptr<::bluetooth::PacketBuilder> message)>
           send_message_cb_;

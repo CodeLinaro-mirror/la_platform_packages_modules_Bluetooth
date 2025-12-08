@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -569,7 +574,7 @@ static void btif_a2dp_sink_audio_handle_start_decoding() {
 
 // Must be called while locked.
 static void btif_a2dp_sink_handle_inc_media(BT_HDR* p_msg) {
-  if ((btif_av_get_peer_sep(A2dpType::kSink) == AVDT_TSEP_SNK) || (btif_a2dp_sink_cb.rx_flush)) {
+  if ((btif_av_get_peer_sep(RawAddress::kEmpty, A2dpType::kSink) == AVDT_TSEP_SNK) || (btif_a2dp_sink_cb.rx_flush)) {
     log::verbose("state changed happened in this tick");
     return;
   }

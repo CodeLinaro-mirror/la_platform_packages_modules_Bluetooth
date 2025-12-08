@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /**
@@ -228,16 +233,16 @@ A2dpCodecConfig* A2dpCodecConfig::createCodec(btav_a2dp_codec_index_t codec_inde
       codec_config = new A2dpCodecConfigAptxSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD:
-      codec_config = new A2dpCodecConfigAptxHdSource(codec_priority);
+      // codec_config = new A2dpCodecConfigAptxHdSource(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SINK_APTX_HD:
       codec_config = new A2dpCodecConfigAptxHdSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
-      codec_config = new A2dpCodecConfigLdacSource(codec_priority);
+      //codec_config = new A2dpCodecConfigLdacSource(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS:
-      codec_config = new A2dpCodecConfigOpusSource(codec_priority);
+      //codec_config = new A2dpCodecConfigOpusSource(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SINK_OPUS:
       codec_config = new A2dpCodecConfigOpusSink(codec_priority);
@@ -258,19 +263,19 @@ A2dpCodecConfig* A2dpCodecConfig::createCodec(btav_a2dp_codec_index_t codec_inde
   return codec_config;
 }
 
-int A2dpCodecConfig::getTrackBitRate() const {
+int A2dpCodecConfig::getTrackBitRate()       {
   uint8_t p_codec_info[AVDT_CODEC_SIZE];
   memcpy(p_codec_info, ota_codec_config_, sizeof(ota_codec_config_));
   tA2DP_CODEC_TYPE codec_type = A2DP_GetCodecType(p_codec_info);
 
   switch (codec_type) {
     case A2DP_MEDIA_CT_SBC:
-      return A2DP_GetBitrateSbc();
+      return A2DP_GetBitrateSbc(getPeerAddress());
 #if !defined(EXCLUDE_NONSTANDARD_CODECS)
     case A2DP_MEDIA_CT_AAC:
       return A2DP_GetBitRateAac(p_codec_info);
     case A2DP_MEDIA_CT_NON_A2DP:
-      return A2DP_VendorGetBitRate(p_codec_info);
+      return A2DP_VendorGetBitRate(getPeerAddress(), p_codec_info);
 #endif
     default:
       break;
@@ -719,12 +724,14 @@ bool A2dpCodecs::init() {
 
     A2dpCodecConfig* codec_config = A2dpCodecConfig::createCodec(codec_index, codec_priority);
     if (codec_config == nullptr) {
+      log::warn("codec_config is null");
       continue;
     }
 
     // Test if the codec is disabled
     if (codec_config->codecPriority() == BTAV_A2DP_CODEC_PRIORITY_DISABLED) {
       disabled_codecs_.insert(std::make_pair(codec_index, codec_config));
+      log::warn("codecPriority is BTAV_A2DP_CODEC_PRIORITY_DISABLED");
       continue;
     }
 
@@ -790,7 +797,7 @@ bool A2dpCodecs::isSupportedCodec(btav_a2dp_codec_index_t codec_index) {
   return indexed_codecs_.find(codec_index) != indexed_codecs_.end();
 }
 
-bool A2dpCodecs::setCodecConfig(const uint8_t* p_peer_codec_info, bool is_capability,
+bool A2dpCodecs::setCodecConfig(const RawAddress& peer_address, const uint8_t* p_peer_codec_info, bool is_capability,
                                 uint8_t* p_result_codec_config, bool select_current_codec) {
   std::lock_guard<std::recursive_mutex> lock(codec_mutex_);
   A2dpCodecConfig* a2dp_codec_config = findSourceCodecConfig(p_peer_codec_info);
@@ -803,6 +810,7 @@ bool A2dpCodecs::setCodecConfig(const uint8_t* p_peer_codec_info, bool is_capabi
   }
   if (select_current_codec) {
     current_codec_config_ = a2dp_codec_config;
+    current_codec_config_->setPeerAddress(peer_address);
   }
   return true;
 }
@@ -824,7 +832,7 @@ bool A2dpCodecs::setSinkCodecConfig(const uint8_t* p_peer_codec_info, bool is_ca
   return true;
 }
 
-bool A2dpCodecs::setCodecUserConfig(const btav_a2dp_codec_config_t& codec_user_config,
+bool A2dpCodecs::setCodecUserConfig(const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_user_config,
                                     const tA2DP_ENCODER_INIT_PEER_PARAMS* p_peer_params,
                                     const uint8_t* p_peer_sink_capabilities,
                                     uint8_t* p_result_codec_config, bool* p_restart_input,
@@ -925,6 +933,7 @@ bool A2dpCodecs::setCodecUserConfig(const btav_a2dp_codec_config_t& codec_user_c
   log::info("Configured: restart_input = {} restart_output = {} config_updated = {}",
             *p_restart_input, *p_restart_output, *p_config_updated);
 
+  current_codec_config_->setPeerAddress(peer_address);
   return true;
 
 fail:
@@ -1473,21 +1482,24 @@ bool A2DP_BuildCodecHeader(const uint8_t* p_codec_info, BT_HDR* p_buf, uint16_t 
   return false;
 }
 
-const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterface(const uint8_t* p_codec_info) {
+A2dpEncoderInterface* A2DP_GetEncoderInterface(
+    const RawAddress& peer_address,
+    const uint8_t* p_codec_info) {
   tA2DP_CODEC_TYPE codec_type = A2DP_GetCodecType(p_codec_info);
-
+  // to be fixed
+/*
   if (::bluetooth::audio::a2dp::provider::supports_codec(A2DP_SourceCodecIndex(p_codec_info))) {
     return A2DP_GetEncoderInterfaceExt(p_codec_info);
   }
-
+*/
   switch (codec_type) {
     case A2DP_MEDIA_CT_SBC:
-      return A2DP_GetEncoderInterfaceSbc(p_codec_info);
+      return A2DP_GetEncoderInterfaceSbc(peer_address, p_codec_info);
 #if !defined(EXCLUDE_NONSTANDARD_CODECS)
     case A2DP_MEDIA_CT_AAC:
-      return A2DP_GetEncoderInterfaceAac(p_codec_info);
+      return A2DP_GetEncoderInterfaceAac(peer_address, p_codec_info);
     case A2DP_MEDIA_CT_NON_A2DP:
-      return A2DP_VendorGetEncoderInterface(p_codec_info);
+      return A2DP_VendorGetEncoderInterface(peer_address, p_codec_info);
 #endif
     default:
       break;
@@ -1754,8 +1766,8 @@ std::string A2DP_CodecInfoString(const uint8_t* p_codec_info) {
   return std::format("Unsupported codec type: {:x}", codec_type);
 }
 
-int A2DP_GetEecoderEffectiveFrameSize(const uint8_t* p_codec_info) {
-  const tA2DP_ENCODER_INTERFACE* a2dp_encoder_interface = A2DP_GetEncoderInterface(p_codec_info);
+int A2DP_GetEecoderEffectiveFrameSize(const RawAddress& peer_address, const uint8_t* p_codec_info) {
+  A2dpEncoderInterface* a2dp_encoder_interface = A2DP_GetEncoderInterface(peer_address, p_codec_info);
   return a2dp_encoder_interface ? a2dp_encoder_interface->get_effective_frame_size() : 0;
 }
 

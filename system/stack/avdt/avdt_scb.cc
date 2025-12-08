@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -781,10 +786,10 @@ void avdt_scb_event(AvdtpScb* p_scb, uint8_t event, tAVDT_SCB_EVT* p_data) {
       }
     }
   }
-
-  if (num_st_streams == 1) {
+  // To support dual A2DP streams
+  if (num_st_streams > 0 && num_st_streams < 3) {
     avdtp_cb.ccb[ccb_index].scb[scb_index].curr_stream = true;
-  } else if (num_st_streams > 1 && !p_scb->curr_stream && event == AVDT_SCB_API_WRITE_REQ_EVT) {
+  } else if (num_st_streams > 2 && !p_scb->curr_stream && event == AVDT_SCB_API_WRITE_REQ_EVT) {
     log::error("ignore AVDT_SCB_API_WRITE_REQ_EVT");
     avdt_scb_free_pkt(p_scb, p_data);
     return;

@@ -28,7 +28,6 @@ public final class A2dpAudioZone {
     private static final int MAX_A2DP_AUDIO_ZONE = 2;
     private final Context mContext;
     private final BluetoothDevice mDevice;
-//    private final AudioManager mAudioManager;
     private static final HashMap<Integer, CarAudioZone> sCarAudioZone = new HashMap<>();
     private static final Object sLock = new Object();
     private static Car sCar;
@@ -36,8 +35,6 @@ public final class A2dpAudioZone {
     A2dpAudioZone(Context context, BluetoothDevice device) {
         mContext = Objects.requireNonNull(context);
         mDevice = Objects.requireNonNull(device);
-  //      mAudioManager = (AudioManager) Objects.requireNonNull(
-  //              mContext.getSystemService(Context.AUDIO_SERVICE));
     }
     public static boolean isAudioZoneAvailable(Context context) {
         synchronized (sLock) {
@@ -101,12 +98,6 @@ public final class A2dpAudioZone {
         }
         return sCarAudioManager;
     }
-    public void notifyA2dpStatus(boolean connected) {
-        /*mAudioManager.setParameters(String.format(
-                "bt_a2dp: addr=%s, connected=%d",
-                mDevice.getAddress(),
-                connected ? 1 : 0));*/
-    }
     public boolean setMediaPlayer(String mediaPlayer, int zoneIndex) {
         if (!bindMediaPlayer(mediaPlayer, zoneIndex)) {
             Log.e(TAG, "setMediaPlayer: fail to bind media player: " +
@@ -116,6 +107,8 @@ public final class A2dpAudioZone {
         return mapAudioZone(zoneIndex);
     }
     public static boolean validMediaPlayer(Context context, String mediaPlayer) {
+        if (mediaPlayer.isEmpty())
+            return false;
         return getApplicationInfo(context, mediaPlayer) != null;
     }
     private static ApplicationInfo getApplicationInfo(Context context, String mediaPlayer) {
@@ -129,7 +122,6 @@ public final class A2dpAudioZone {
     private ApplicationInfo getApplicationInfo(String mediaPlayer) {
         return getApplicationInfo(mContext, mediaPlayer);
     }
-    //@RequiresPermission("android.car.permission.CAR_CONTROL_AUDIO_SETTINGS")
     private boolean bindMediaPlayer(String mediaPlayer, int zoneIndex) {
         synchronized (sLock) {
             CarAudioZone audioZone = sCarAudioZone.get(zoneIndex);
@@ -146,16 +138,7 @@ public final class A2dpAudioZone {
             if (carAudioManager == null) {
                 return false;
             }
-
-            try {
-                Method method = carAudioManager.getClass().getMethod("setZoneIdForUid", int.class, int.class);
-                Object result = method.invoke(carAudioManager, zone, uid);
-                return result instanceof Boolean && (Boolean) result;
-            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-                Log.e(TAG, "Failed to invoke setZoneIdForUid via reflection", e);
-                return false;
-            }
-            //return carAudioManager.setZoneIdForUid(zone, uid);
+            return /*carAudioManager.setZoneIdForUid(zone, uid)*/true;
         }
     }
     private boolean mapAudioZone(int zoneIndex) {
@@ -164,9 +147,6 @@ public final class A2dpAudioZone {
             CarAudioZone audioZone = sCarAudioZone.get(zoneIndex);
             String bus = audioZone.getBus();
             debugLog("mapAudioZone: bt addr: " + addr + ", audio bus: " + bus);
-            /*mAudioManager.setParameters(String.format(
-                    "bt_a2dp: addr=%s, bus=%s",
-                    addr, bus));*/
             audioZone.setMediaPlayerMapped(mDevice);
         }
         return true;
@@ -186,13 +166,12 @@ public final class A2dpAudioZone {
     public void clearMediaPlayer() {
         clearZoneId(mDevice);
     }
-    //@RequiresPermission("android.car.permission.CAR_CONTROL_AUDIO_SETTINGS")
     private void clearZoneId(BluetoothDevice device) {
         synchronized (sLock) {
             for (int zoneIndex : sCarAudioZone.keySet()) {
                 CarAudioZone audioZone = sCarAudioZone.get(zoneIndex);
                 String mediaPlayer = audioZone.getMediaPlayer(device);
-                if (mediaPlayer.isEmpty()) {
+                if (mediaPlayer == null || mediaPlayer.isEmpty()) {
                     continue;
                 }
                 // Clear audio zone mapping of media player's uid if there is only 1 BluetoothDevice
@@ -201,12 +180,6 @@ public final class A2dpAudioZone {
                     if (appInfo != null) {
                         CarAudioManager carAudioManager = getCarAudioManager(mContext);
                         if (carAudioManager != null) {
-                            try {
-                                Method method = carAudioManager.getClass().getMethod("clearZoneIdForUid", int.class);
-                                method.invoke(carAudioManager, appInfo.uid);
-                            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-                                Log.e(TAG, "Failed to invoke clearZoneIdForUid via reflection", e);
-                            }
                             //carAudioManager.clearZoneIdForUid(appInfo.uid);
                         }
                     }
@@ -222,6 +195,18 @@ public final class A2dpAudioZone {
                 audioZone.clearMediaPlayer(device);
             }
         }
+    }
+    public static String getMediaPlayer(BluetoothDevice device) {
+        synchronized (sLock) {
+            for (int zoneIndex : sCarAudioZone.keySet()) {
+                CarAudioZone audioZone = sCarAudioZone.get(zoneIndex);
+                String mediaPlayer = audioZone.getMediaPlayer(device);
+                if (mediaPlayer != null && !mediaPlayer.isEmpty()) {
+                    return mediaPlayer;
+                }
+            }
+        }
+        return null;
     }
     public static boolean isMediaPlayerMapped(BluetoothDevice device, String mediaPlayer) {
         synchronized (sLock) {
@@ -283,7 +268,7 @@ public final class A2dpAudioZone {
                 }
             }
             // NOT found media player for device
-            return "";
+            return null;
         }
         boolean existMediaPlayer(String mediaPlayer) {
             for (MediaPlayerInfo mpInfo : mMediaPlayerList.values()) {
@@ -307,6 +292,8 @@ public final class A2dpAudioZone {
             if (mMediaPlayerList.containsKey(device)) {
                 MediaPlayerInfo mpInfo = mMediaPlayerList.get(device);
                 mpInfo.setMapped();
+            } else {
+                Log.w(TAG, "No MediaPlayerInfo for " + device);
             }
         }
         boolean isMediaPlayerMapped(BluetoothDevice device, String mediaPlayer) {
