@@ -40,6 +40,7 @@
 #include "stack/include/main_thread.h"
 #include "types/raw_address.h"
 #include "utils.h"
+#include "osi/include/properties.h"
 
 using bluetooth::hci::Address;
 using bluetooth::hci::AddressType;
@@ -429,7 +430,14 @@ private:
     config.interval_min = params.min_interval;
     config.interval_max = params.max_interval;
     config.channel_map = params.channel_map;
-    config.tx_power = params.tx_power;
+    // If persist.vendor.qcom.bluetooth.max_tx_power is set, use it, else use value from app params
+    int max_tx_power = osi_property_get_int32("persist.vendor.qcom.bluetooth.max_tx_power", 0);
+    if (max_tx_power != 0) {
+        config.tx_power = max_tx_power;
+    } else {
+        config.tx_power = params.tx_power;
+    }
+    log::warn("config tx power set to : {}", config.tx_power);
     config.use_le_coded_phy = params.primary_advertising_phy == 0x03;
     config.secondary_advertising_phy =
             static_cast<bluetooth::hci::SecondaryPhyType>(params.secondary_advertising_phy);

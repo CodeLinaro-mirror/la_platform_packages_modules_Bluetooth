@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "stack/l2cap/internal/l2c_api.h"
+#include "bta/ag/bta_ag_int.h"
 #include "bta/include/bta_ag_api.h"
 #include "bta/include/bta_hh_api.h"
 #include "btcore/include/module.h"
@@ -38,6 +39,9 @@ void set_hal_cbacks(bt_callbacks_t* callbacks);
 }  // namespace bluetooth::testing
 
 bool bta_ag_is_call_present(const RawAddress* peer_addr) { return true; }
+tBTA_AG_SCB* bta_ag_scb_by_idx(uint16_t idx) {return nullptr;}
+bool bta_ag_inband_enabled(tBTA_AG_SCB* p_scb) {return true;}
+
 bool L2CA_Echo(const RawAddress& p_bd_addr, BT_HDR* p_data,
                tL2CA_ECHO_DATA_CB* p_callback) { return true; }
 bool L2CA_Ping(const RawAddress& p_bd_addr,

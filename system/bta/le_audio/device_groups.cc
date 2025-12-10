@@ -1354,7 +1354,7 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::GetGroupSinkStrategy() c
       if ((!(locations.to_ulong() & codec_spec_conf::kLeAudioLocationAnyLeft) ||
           !(locations.to_ulong() & codec_spec_conf::kLeAudioLocationAnyRight) ||
           locations.none()) && !mCapNoAudioLocPts) {
-        log::debug("startgy set to MONO_ONE_CIS_PER_DEVICE");
+        log::debug("strategy set to MONO_ONE_CIS_PER_DEVICE");
         return types::LeAudioConfigurationStrategy::MONO_ONE_CIS_PER_DEVICE;
       }
 

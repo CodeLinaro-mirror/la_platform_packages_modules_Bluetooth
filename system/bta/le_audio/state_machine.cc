@@ -3697,7 +3697,6 @@ private:
           uint8_t* data, uint16_t len, LeAudioDeviceGroup* group, LeAudioDevice* leAudioDevice) {
     if (!group) {
       log::error("leAudioDevice doesn't belong to any group");
-
       return;
     }
 
@@ -3732,6 +3731,14 @@ private:
         SetAseState(leAudioDevice, ase, AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING);
         if (streaming_audio_context) {
           group->SetStreamingMetadataContexts(streaming_audio_context.value(), ase->direction);
+        }
+
+        if (CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
+          state_machine_callbacks_->UpdateMetadataCb(ase->state, rsp.cig_id, rsp.cis_id,
+            rsp.metadata);
+        } else {
+          parseVSMetadata(rsp.metadata.size(), rsp.metadata, rsp.cig_id,
+             rsp.cis_id, ase);
         }
 
         if (!group->HaveAllActiveDevicesAsesTheSameState(
@@ -3782,13 +3789,6 @@ private:
           return;
         }
 
-        if (CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
-          state_machine_callbacks_->UpdateMetadataCb(ase->state, rsp.cig_id, rsp.cis_id,
-            rsp.metadata);
-        } else {
-          parseVSMetadata(rsp.metadata.size(), rsp.metadata, rsp.cig_id,
-             rsp.cis_id, ase);
-        }
         /* Cache current as streaming metadata */
         if (streaming_audio_context) {
           group->SetStreamingMetadataContexts(streaming_audio_context.value(), ase->direction);

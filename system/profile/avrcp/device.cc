@@ -711,7 +711,7 @@ void Device::HandleVolumeChanged(uint8_t label,
 
   // Handle the first volume update.
   if (volume_ == VOL_NOT_SUPPORTED) {
-    log::info("Absolute voluem updated later in the DeviceConnected");
+    log::info("Absolute volume updated later in the DeviceConnected");
     volume_interface_->DeviceConnected(
             GetAddress(), base::Bind(&Device::SetVolume, weak_ptr_factory_.GetWeakPtr()));
 

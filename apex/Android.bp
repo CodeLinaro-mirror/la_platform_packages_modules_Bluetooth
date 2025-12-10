@@ -81,7 +81,6 @@ apex {
         "bt_did.conf",
         "bt_stack.conf",
         "interop_database.conf",
-	"cs_configs.xml",
     ],
     key: "com.android.bt.key",
     certificate: ":com.android.bt.certificate",
