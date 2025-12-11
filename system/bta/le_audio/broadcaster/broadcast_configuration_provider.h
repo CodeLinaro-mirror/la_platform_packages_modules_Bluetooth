@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 #pragma once
 
@@ -195,7 +201,7 @@ static const BroadcastConfiguration lc3_stereo_16_2_2 = {
         .qos = qos_config_4_60,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 80,
+        .maxSduOctets = 40,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0,  // Unframed
@@ -207,7 +213,7 @@ static const BroadcastConfiguration lc3_stereo_24_2_1 = {
         .qos = qos_config_2_10,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 120,
+        .maxSduOctets = 60,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0,  // Unframed
@@ -219,7 +225,7 @@ static const BroadcastConfiguration lc3_stereo_24_2_2 = {
         .qos = qos_config_4_60,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 120,
+        .maxSduOctets = 60,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0,  // Unframed
@@ -231,7 +237,7 @@ static const BroadcastConfiguration lc3_stereo_48_1_2 = {
         .qos = qos_config_4_50,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 150,
+        .maxSduOctets = 75,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0   // Unframed,
@@ -243,7 +249,7 @@ static const BroadcastConfiguration lc3_stereo_48_2_2 = {
         .qos = qos_config_4_65,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 200,
+        .maxSduOctets = 100,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0   // Unframed,
@@ -255,7 +261,7 @@ static const BroadcastConfiguration lc3_stereo_48_3_2 = {
         .qos = qos_config_4_50,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 180,
+        .maxSduOctets = 90,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0   // Unframed,
@@ -267,7 +273,7 @@ static const BroadcastConfiguration lc3_stereo_48_4_2 = {
         .qos = qos_config_4_65,
         .data_path = lc3_data_path,
         .sduIntervalUs = 10000,
-        .maxSduOctets = 240,
+        .maxSduOctets = 120,
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0   // Unframed,
