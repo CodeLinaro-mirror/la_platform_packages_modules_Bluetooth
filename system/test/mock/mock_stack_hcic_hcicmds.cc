@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /*
@@ -63,6 +68,7 @@ struct btsnd_hcic_reject_conn btsnd_hcic_reject_conn;
 struct btsnd_hcic_reject_esco_conn btsnd_hcic_reject_esco_conn;
 struct btsnd_hcic_rem_oob_neg_reply btsnd_hcic_rem_oob_neg_reply;
 struct btsnd_hcic_rem_oob_reply btsnd_hcic_rem_oob_reply;
+struct btsnd_hcic_rem_oob_ext_reply btsnd_hcic_rem_oob_ext_reply;
 struct btsnd_hcic_rmt_ext_features btsnd_hcic_rmt_ext_features;
 struct btsnd_hcic_rmt_ver_req btsnd_hcic_rmt_ver_req;
 struct btsnd_hcic_set_conn_encrypt btsnd_hcic_set_conn_encrypt;
@@ -218,6 +224,12 @@ void btsnd_hcic_rem_oob_neg_reply(const RawAddress& bd_addr) {
 void btsnd_hcic_rem_oob_reply(const RawAddress& bd_addr, const Octet16& c, const Octet16& r) {
   inc_func_call_count(__func__);
   test::mock::stack_hcic_hcicmds::btsnd_hcic_rem_oob_reply(bd_addr, c, r);
+}
+void btsnd_hcic_rem_oob_ext_reply(const RawAddress& bd_addr, const Octet16& c192,
+                                  const Octet16& r192, const Octet16& c256,
+                                  const Octet16& r256) {
+  mock_function_count_map[__func__]++;
+  test::mock::stack_hcic_hcicmds::btsnd_hcic_rem_oob_ext_reply(bd_addr, c192, r192, c256, r256);
 }
 void btsnd_hcic_rmt_ext_features(uint16_t handle, uint8_t page_num) {
   inc_func_call_count(__func__);

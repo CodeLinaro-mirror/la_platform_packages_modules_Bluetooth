@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #pragma once
@@ -93,9 +98,12 @@ void btif_dm_set_oob_for_le_io_req(const RawAddress& bd_addr, tBTM_OOB_DATA* p_o
                                    tBTM_LE_AUTH_REQ* p_auth_req);
 void btif_dm_load_local_oob(void);
 void btif_dm_proc_loc_oob(tBT_TRANSPORT transport, bool is_valid, const Octet16& c,
-                          const Octet16& r);
-bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c, Octet16* p_r);
+                          const Octet16& r, const Octet16& c_256, const Octet16& r_256);
+bool btif_dm_proc_rmt_oob(const RawAddress& bd_addr, Octet16* p_c, Octet16* p_r, Octet16* p_c_256,
+                          Octet16* p_r_256);
 void btif_dm_generate_local_oob_data(tBT_TRANSPORT transport);
+void btif_dm_load_remote_oob_data(const RawAddress bd_addr, tBT_TRANSPORT transport,
+                                  bt_oob_data_t p192_data,  bt_oob_data_t p256_data);
 
 void btif_check_device_in_inquiry_db(const RawAddress& address);
 bool btif_get_address_type(const RawAddress& bda, tBLE_ADDR_TYPE* p_addr_type);

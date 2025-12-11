@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #pragma once
@@ -128,6 +134,9 @@ typedef struct {
 
   void (*BTM_RemoteOobDataReply)(tBTM_STATUS res, const RawAddress& bd_addr, const Octet16& c,
                                  const Octet16& r);
+  void (*BTM_RemoteOobExtendedDataReply) (tBTM_STATUS res, const RawAddress& bd_addr,
+                                          const Octet16& c, const Octet16& r,
+                                          const Octet16& c_256, const Octet16& r_256);
   void (*BTM_PINCodeReply)(const RawAddress& bd_addr, tBTM_STATUS res, uint8_t pin_len,
                            uint8_t* p_pin);
   void (*BTM_SecConfirmReqReply)(tBTM_STATUS res, tBT_TRANSPORT transport,

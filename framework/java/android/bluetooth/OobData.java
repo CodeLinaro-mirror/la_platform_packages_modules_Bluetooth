@@ -10,6 +10,12 @@
  * License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 package android.bluetooth;
 
@@ -640,10 +646,342 @@ public final class OobData implements Parcelable {
         }
     }
 
+    /**
+     * Builds an {@link OobData} object and validates that the required combination
+     * of values are present to create the Classic specific OobData type.
+     *
+     * @hide
+     */
+    public static final class ClassicExtendedBuilder {
+        // Used by both Classic and LE
+        /**
+         * It is recommended that this Hash C is generated anew for each
+         * pairing.
+         *
+         * <p>It should be noted that on passive NFC this isn't possible as the data is static
+         * and immutable.
+         *
+         * @hide
+         */
+        private byte[] mConfirmationHash = new byte[] {
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        };
+        /**
+         * Optional, but adds more validity to the pairing.
+         *
+         * <p>If not present a value of 0 is assumed.
+         *
+         * @hide
+         */
+        private byte[] mRandomizerHash = new byte[] {
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        };
+
+        /**
+         * Optional, but adds more validity to the pairing.
+         *
+         * <p>If not present a value of 0 is assumed.
+         *
+         * @hide
+         */
+        private byte[] mConfirmationExtendedHash = new byte[] {
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        };
+
+        /**
+         * Optional, but adds more validity to the pairing.
+         *
+         * <p>If not present a value of 0 is assumed.
+         *
+         * @hide
+         */
+        private byte[] mRandomizerExtendedHash = new byte[] {
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        };
+
+        /**
+         * The Bluetooth Device user-friendly name presented over Bluetooth Technology.
+         *
+         * <p>This is the name that may be displayed to the device user as part of the UI.
+         *
+         * @hide
+         */
+        private byte[] mDeviceName = null;
+
+        /**
+         * This length value provides the absolute length of total OOB data block used for
+         * Bluetooth BR/EDR
+         *
+         * <p>OOB communication, which includes the length field itself and the Bluetooth
+         * Device Address.
+         *
+         * <p>The minimum length that may be represented in this field is 8.
+         *
+         * @hide
+         */
+        private final byte[] mClassicLength;
+
+        /**
+         * The Bluetooth Device Address is the address to which the OOB data belongs.
+         *
+         * <p>The length MUST be {@link OobData#DEVICE_ADDRESS_OCTETS} octets.
+         *
+         * <p> Address is encoded in Little Endian order.
+         *
+         * <p>e.g. 00:01:02:03:04:05 would be x05x04x03x02x01x00
+         *
+         * @hide
+         */
+        private final byte[] mDeviceAddressWithType;
+
+        /**
+         * Class of Device information is to be used to provide a graphical representation
+         * to the user as part of UI involving operations.
+         *
+         * <p>This is not to be used to determine a particular service can be used.
+         *
+         * <p>The length MUST be {@link OobData#CLASS_OF_DEVICE_OCTETS} octets.
+         *
+         * @hide
+         */
+        private byte[] mClassOfDevice = null;
+
+        /**
+         * Main creation method for creating a Classic version of {@link OobData}.
+         *
+         * <p>This object will allow the caller to call {@link ClassicExtendedBuilder#build()}
+         * to build the data object or add any option information to the builder.
+         *
+         * @param confirmationHash byte array consisting of {@link OobData#CONFIRMATION_OCTETS}
+         * octets of data. Data is derived from controller/host stack and is required for pairing
+         * OOB.
+         * @param classicLength byte array representing the length of data from 8-65535 across 2
+         * octets (0xXXXX).
+         * @param deviceAddressWithType byte array representing the Bluetooth Address of the device
+         * that owns the OOB data. (i.e. the originator) [6 octets]
+         *
+         * @throws IllegalArgumentException if any of the values fail to be set.
+         * @throws NullPointerException if any argument is null.
+         *
+         * @hide
+         */
+        public ClassicExtendedBuilder(@NonNull byte[] confirmationHash, @NonNull byte[] randomizerHash,
+                                            @NonNull byte[] confirmationExtendedHash, @NonNull byte[] randomizerExtendedHash,
+                                            @NonNull byte[] classicLength, @NonNull byte[] deviceAddressWithType) {
+            requireNonNull(confirmationHash);
+            requireNonNull(randomizerHash);
+            requireNonNull(confirmationExtendedHash);
+            requireNonNull(randomizerExtendedHash);
+            requireNonNull(classicLength);
+            requireNonNull(deviceAddressWithType);
+            if (confirmationHash.length != OobData.CONFIRMATION_OCTETS) {
+                throw new IllegalArgumentException("confirmationHash must be "
+                                                   + OobData.CONFIRMATION_OCTETS + " octets in length.");
+            }
+            this.mConfirmationHash = confirmationHash;
+
+            if (randomizerHash.length != OobData.RANDOMIZER_OCTETS) {
+                throw new IllegalArgumentException("randomizerHash must be "
+                                                   + OobData.RANDOMIZER_OCTETS + " octets in length.");
+            }
+            this.mRandomizerHash = randomizerHash;
+
+            if (confirmationExtendedHash.length != OobData.CONFIRMATION_OCTETS) {
+                throw new IllegalArgumentException("confirmationExtendedHash must be "
+                                                   + OobData.CONFIRMATION_OCTETS + " octets in length.");
+            }
+            this.mConfirmationExtendedHash = confirmationExtendedHash;
+
+            if (randomizerExtendedHash.length != OobData.RANDOMIZER_OCTETS) {
+                throw new IllegalArgumentException("randomizerExtendedHash must be "
+                                                   + OobData.RANDOMIZER_OCTETS + " octets in length.");
+            }
+            this.mRandomizerExtendedHash = randomizerExtendedHash;
+
+            if (classicLength.length != OOB_LENGTH_OCTETS) {
+                throw new IllegalArgumentException("classicLength must be "
+                                                   + OOB_LENGTH_OCTETS + " octets in length.");
+            }
+            this.mClassicLength = classicLength;
+            if (deviceAddressWithType.length != DEVICE_ADDRESS_OCTETS) {
+                throw new IllegalArgumentException("deviceAddressWithType must be "
+                                                   + DEVICE_ADDRESS_OCTETS + " octets in length.");
+            }
+            this.mDeviceAddressWithType = deviceAddressWithType;
+        }
+
+        /**
+         * @param randomizerHash byte array consisting of {@link OobData#RANDOMIZER_OCTETS} octets
+         * of data. Data is derived from controller/host stack and is required for pairing OOB.
+         * Also, randomizerHash may be all 0s or null in which case it becomes all 0s.
+         *
+         * @throws IllegalArgumentException if null or incorrect length randomizerHash was passed.
+         * @throws NullPointerException if randomizerHash is null.
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public ClassicExtendedBuilder setRandomizerHash(@NonNull byte[] randomizerHash) {
+            requireNonNull(randomizerHash);
+            if (randomizerHash.length != OobData.RANDOMIZER_OCTETS) {
+                throw new IllegalArgumentException("randomizerHash must be "
+                                                   + OobData.RANDOMIZER_OCTETS + " octets in length.");
+            }
+            this.mRandomizerHash = randomizerHash;
+            return this;
+        }
+
+        /**
+         * @param confirmationHash byte array consisting of {@link OobData#RANDOMIZER_OCTETS} octets
+         * of data. Data is derived from controller/host stack and is required for pairing OOB.
+         * Also, randomizerHash may be all 0s or null in which case it becomes all 0s.
+         *
+         * @throws IllegalArgumentException if null or incorrect length confirmationHash was passed.
+         * @throws NullPointerException if confirmationHash is null.
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public ClassicExtendedBuilder setConfirmationHash(@NonNull byte[] confirmationHash) {
+            requireNonNull(confirmationHash);
+            if (confirmationHash.length != OobData.CONFIRMATION_OCTETS) {
+                throw new IllegalArgumentException("confirmationHash must be "
+                                                   + OobData.CONFIRMATION_OCTETS + " octets in length.");
+            }
+            this.mConfirmationHash = confirmationHash;
+            return this;
+        }
+
+        /**
+         * @param randomizerExtendedHash byte array consisting of {@link OobData#RANDOMIZER_OCTETS}
+         * octets of data. Data is derived from controller/host stack and is required for pairing OOB.
+         * Also, randomizerExtendedHash may be all 0s or null in which case it becomes all 0s.
+         *
+         * @throws IllegalArgumentException if null or incorrect length randomizerExtendedHash was passed.
+         * @throws NullPointerException if randomizerExtendedHash is null.
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public ClassicExtendedBuilder setRandomizerExtendedHash(@NonNull byte[] randomizerExtendedHash) {
+            requireNonNull(randomizerExtendedHash);
+            if (randomizerExtendedHash.length != OobData.RANDOMIZER_OCTETS) {
+                throw new IllegalArgumentException("randomizerExtendedHash must be "
+                                                   + OobData.RANDOMIZER_OCTETS + " octets in length.");
+            }
+            this.mRandomizerExtendedHash = randomizerExtendedHash;
+            return this;
+        }
+
+        /**
+         * @param confirmationExtendedHash byte array consisting of {@link OobData#CONFIRMATION_OCTETS}
+         * octets of data. Data is derived from controller/host stack and is required for pairing OOB.
+         * Also, confirmationExtendedHash may be all 0s or null in which case it becomes all 0s.
+         *
+         * @throws IllegalArgumentException if null or incorrect length confirmationExtendedHash was passed.
+         * @throws NullPointerException if confirmationExtendedHash is null.
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public ClassicExtendedBuilder setConfirmationExtendedHash(@NonNull byte[] confirmationExtendedHash) {
+            requireNonNull(confirmationExtendedHash);
+            if (confirmationExtendedHash.length != OobData.CONFIRMATION_OCTETS) {
+                throw new IllegalArgumentException("confirmationExtendedHash must be "
+                                                   + OobData.CONFIRMATION_OCTETS + " octets in length.");
+            }
+            this.mConfirmationExtendedHash = confirmationExtendedHash;
+            return this;
+        }
+
+        /**
+         * Sets the Bluetooth Device name to be used for UI purposes.
+         *
+         * <p>Optional attribute.
+         *
+         * @param deviceName byte array representing the name, may be 0 in length, not null.
+         *
+         * @return {@link OobData#ClassicBuilder}
+         *
+         * @throws NullPointerException if deviceName is null
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public ClassicExtendedBuilder setDeviceName(@NonNull byte[] deviceName) {
+            requireNonNull(deviceName);
+            this.mDeviceName = deviceName;
+            return this;
+        }
+
+        /**
+         * Sets the Bluetooth Class of Device; used for UI purposes only.
+         *
+         * <p>Not an indicator of available services!
+         *
+         * <p>Optional attribute.
+         *
+         * @param classOfDevice byte array of {@link OobData#CLASS_OF_DEVICE_OCTETS} octets.
+         *
+         * @return {@link OobData#ClassicBuilder}
+         *
+         * @throws IllegalArgumentException if length is not equal to
+         * {@link OobData#CLASS_OF_DEVICE_OCTETS} octets.
+         * @throws NullPointerException if classOfDevice is null.
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public ClassicExtendedBuilder setClassOfDevice(@NonNull byte[] classOfDevice) {
+            requireNonNull(classOfDevice);
+            if (classOfDevice.length != OobData.CLASS_OF_DEVICE_OCTETS) {
+                throw new IllegalArgumentException("classOfDevice must be "
+                                                   + OobData.CLASS_OF_DEVICE_OCTETS + " octets in length.");
+            }
+            this.mClassOfDevice = classOfDevice;
+            return this;
+        }
+
+        /**
+         * Validates and builds the {@link OobData} object for Classic Security, P192 & P256.
+         * Include P192 & P256 data both.
+         *
+         * @return {@link OobData} with previously given builder values.
+         *
+         * @hide
+         */
+        @NonNull
+        @RequiresNoPermission
+        public OobData build() {
+             final OobData oob =
+                new OobData(this.mClassicLength, this.mDeviceAddressWithType,this.mConfirmationHash,
+                            this.mRandomizerHash, this.mConfirmationExtendedHash, this.mRandomizerExtendedHash);
+            // If we have values, set them, otherwise use default
+            oob.mDeviceName = (this.mDeviceName != null) ? this.mDeviceName : oob.mDeviceName;
+            oob.mClassOfDevice = (this.mClassOfDevice != null)
+                                  ? this.mClassOfDevice : oob.mClassOfDevice;
+            oob.mConfirmationHash = this.mConfirmationHash;
+            oob.mRandomizerHash = this.mRandomizerHash;
+            oob.mConfirmationExtendedHash = this.mConfirmationExtendedHash;
+            oob.mRandomizerExtendedHash = this.mRandomizerExtendedHash;
+            return oob;
+        }
+    }
+
     // Members (Defaults for Optionals must be set or Parceling fails on NPE)
     // Both
     private final byte[] mDeviceAddressWithType;
-    private final byte[] mConfirmationHash;
+    private byte[] mConfirmationHash;
     private byte[] mRandomizerHash =
             new byte[] {
                 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -675,6 +1013,15 @@ public final class OobData implements Parcelable {
     // Classic
     private final byte[] mClassicLength;
     private byte[] mClassOfDevice = new byte[CLASS_OF_DEVICE_OCTETS];
+    // Used for C-256/R-256 when P192 & P256 coexsist
+    private byte[] mConfirmationExtendedHash = new byte[] {
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    };
+    private byte[] mRandomizerExtendedHash = new byte[] {
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    };
 
     // LE
     private final @LeRole int mLeDeviceRole;
@@ -715,6 +1062,30 @@ public final class OobData implements Parcelable {
     @RequiresNoPermission
     public @NonNull byte[] getRandomizerHash() {
         return mRandomizerHash;
+    }
+
+    /**
+     * @return byte array representing the confirmationExtendedHash value
+     * which is used to confirm the identity to the controller.
+     *
+     * @hide
+     */
+    @NonNull
+    @RequiresNoPermission
+    public byte[] getConfirmationExtendedHash() {
+        return mConfirmationExtendedHash;
+    }
+
+    /**
+     * @return byte array representing the randomizerExtendedHash value
+     * which is used to verify the identity of the controller.
+     *
+     * @hide
+     */
+    @NonNull
+    @RequiresNoPermission
+    public byte[] getRandomizerExtendedHash() {
+        return mRandomizerExtendedHash;
     }
 
     /**
@@ -814,6 +1185,23 @@ public final class OobData implements Parcelable {
         mLeDeviceRole = -1; // Satisfy final
     }
 
+    /**
+     * Classic Security Constructor for P192 & P256 coexsist
+     *
+     * @hide
+     */
+    public OobData(@NonNull byte[] classicLength, @NonNull byte[] deviceAddressWithType,
+                   @NonNull byte[] confirmationHash, @NonNull byte[] randomizerHash,
+                   @NonNull byte[] confirmationExtendHash, @NonNull byte[] randomizerExtendHash) {
+        mClassicLength = classicLength;
+        mDeviceAddressWithType = deviceAddressWithType;
+        mConfirmationHash = confirmationHash;
+        mRandomizerHash = randomizerHash;
+        mConfirmationExtendedHash = confirmationExtendHash;
+        mRandomizerExtendedHash = randomizerExtendHash;
+        mLeDeviceRole = -1; // Satisfy final
+    }
+
     /** LE Security Constructor */
     private OobData(
             @NonNull byte[] deviceAddressWithType,
@@ -835,6 +1223,8 @@ public final class OobData implements Parcelable {
         // Classic
         mClassicLength = in.createByteArray();
         mClassOfDevice = in.createByteArray();
+        mConfirmationExtendedHash = in.createByteArray();
+        mRandomizerExtendedHash = in.createByteArray();
 
         // LE
         mLeDeviceRole = in.readInt();
@@ -867,6 +1257,10 @@ public final class OobData implements Parcelable {
         out.writeByteArray(mClassicLength);
         // Optional
         out.writeByteArray(mClassOfDevice);
+        // Optional
+        out.writeByteArray(mConfirmationExtendedHash);
+        // Optional
+        out.writeByteArray(mRandomizerExtendedHash);
 
         // LE
         // Required
