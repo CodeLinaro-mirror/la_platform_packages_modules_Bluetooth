@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #define LOG_TAG "bt_bta_dm_sec"
@@ -766,6 +772,8 @@ static tBTM_STATUS bta_dm_ble_smp_cback(tBTM_LE_EVT event, const RawAddress& bda
       bd_name_from_char_pointer(sec_event.auth_cmpl.bd_name,
                                 get_btm_client_interface().security.BTM_SecReadDevName(bda));
 
+      log::info("smp_over_br {}", p_data->complt.smp_over_br);
+      sec_event.auth_cmpl.smp_over_br = p_data->complt.smp_over_br;
       if (p_data->complt.reason != SMP_SUCCESS) {
         // TODO This is not a proper use of this type
         sec_event.auth_cmpl.fail_reason = static_cast<tHCI_STATUS>(

@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -3778,8 +3783,19 @@ static void btif_dm_ble_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
 
       if (pairing_cb.gatt_over_le == btif_dm_pairing_cb_t::ServiceDiscoveryState::NOT_STARTED) {
         log::info("scheduling GATT discovery over LE for {}", bd_addr);
-        pairing_cb.gatt_over_le = btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED;
-        btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_LE);
+        log::info("smp_over_br {}", p_auth_cmpl->smp_over_br);
+        // Ensure inquiry is stopped before attempting service discovery
+        btif_dm_cancel_discovery();
+        // Discover service over BR transport if smp pair is over BR
+        if (p_auth_cmpl->smp_over_br) {
+          pairing_cb.sdp_over_classic =
+              btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED;
+          btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_BR_EDR);
+        } else {
+          pairing_cb.gatt_over_le =
+              btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED;
+          btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_LE);
+        }
       } else {
         log::info(
                 "skipping GATT discovery over LE - was already scheduled or "
