@@ -3324,6 +3324,14 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
 
 bool btif_av_both_enable(void) { return btif_av_sink.Enabled() && btif_av_source.Enabled(); }
 
+static bool is_dual_bt_property_enabled() {
+  return osi_property_get_bool("persist.bluetooth.dual_bt", false);
+}
+
+static bool is_a2dp_sink_source_coexist_property_enabled() {
+  return osi_property_get_bool("persist.bluetooth.a2dp_sink_source_coexist", false);
+}
+
 static bool is_a2dp_source_property_enabled(void) {
 #ifdef __ANDROID__
   return android::sysprop::BluetoothProperties::isProfileA2dpSourceEnabled().value_or(false);
@@ -3340,6 +3348,10 @@ static bool is_a2dp_sink_property_enabled(void) {
 #endif
 }
 bool btif_av_src_sink_coexist_enabled(void) {
+  if (is_dual_bt_property_enabled() && !is_a2dp_sink_source_coexist_property_enabled()) {
+    return false;
+  }
+
   return is_a2dp_sink_property_enabled() && is_a2dp_source_property_enabled();
 }
 
