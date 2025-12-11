@@ -656,13 +656,14 @@ public:
 
   void AseInitialStateReadRequest(LeAudioDevice* leAudioDevice) {
     int ases_num = leAudioDevice->ases_.size();
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
     bool is_multiread_expected =
             gatt_profile_get_eatt_support_by_conn_id(leAudioDevice->conn_id_) && ases_num > 1;
-
+#endif
     void* notify_flag_ptr = NULL;
-
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
     tBTA_GATTC_MULTI multi_read{};
-
+#endif
     for (int i = 0; i < ases_num; i++) {
       /* Last read ase characteristic should issue connected state callback to upper layer */
       if (leAudioDevice->notify_connected_after_read_ && (i == (ases_num - 1))) {
@@ -670,7 +671,7 @@ public:
       }
 
 #if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
-      if (!com_android_bluetooth_flags_le_ase_read_multiple_variable() || !is_multiread_expected) {
+      if (!is_multiread_expected) {
         BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                          leAudioDevice->ases_[i].hdls.val_hdl, OnGattReadRspStatic,
                                          notify_flag_ptr);
@@ -687,8 +688,7 @@ public:
       }
     }
 
-    if (com_android_bluetooth_flags_le_ase_read_multiple_variable() && is_multiread_expected &&
-        (ases_num % GATT_MAX_READ_MULTI_HANDLES != 0)) {
+    if (!is_multiread_expected && (ases_num % GATT_MAX_READ_MULTI_HANDLES != 0)) {
       multi_read.num_attr = ases_num % GATT_MAX_READ_MULTI_HANDLES;
       BtaGattQueue::ReadMultiCharacteristic(leAudioDevice->conn_id_, multi_read,
                                             OnGattReadMultiRspStatic, notify_flag_ptr);
@@ -2945,7 +2945,7 @@ public:
      *    remote devices
      */
 #if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
-    if (!com_android_bluetooth_flags_le_ase_read_multiple_variable() || !is_eatt_supported) {
+    if (!is_eatt_supported) {
       BtaGattQueue::ReadCharacteristic(leAudioDevice->conn_id_,
                                        leAudioDevice->audio_avail_hdls_.val_hdl,
                                        OnGattReadRspStatic, NULL);

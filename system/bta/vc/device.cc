@@ -429,7 +429,9 @@ void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
                                                    GATT_READ_OP_CB chrc_read_cb,
                                                    [[maybe_unused]] GATT_READ_MULTI_OP_CB chrc_multi_read_cb,
                                                    GATT_WRITE_OP_CB /*cccd_write_cb*/) {
+#if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
   const auto is_eatt_supported = gatt_profile_get_eatt_support_by_conn_id(connection_id);
+#endif
 
   /* List of handles to the attributes having known and fixed-size values to read using the
    * ATT_READ_MULTIPLE_REQ. The `.second` component contains 2 octets for the length + the actual
@@ -462,7 +464,7 @@ void VolumeControlDevice::EnqueueRemainingRequests(tGATT_IF /*gatt_if*/,
              handles_to_read_variable_length.size());
 
 #if (GATT_READ_MULT_VARIABLE_LENGTH == TRUE)
-  if (com_android_bluetooth_flags_le_ase_read_multiple_variable() && is_eatt_supported) {
+  if (is_eatt_supported) {
     const size_t payload_limit = this->mtu_ - 1;
 
     auto pair_it = handles_to_read.begin();
