@@ -514,18 +514,26 @@ ServiceInterface* AvrcpService::GetServiceInterface() {
 
 void AvrcpService::ConnectDevice(const RawAddress& bdaddr) {
   log::info("address={}", bdaddr);
-
+  if (connection_handler_ == nullptr) {
+    return;
+  }
   connection_handler_->ConnectDevice(bdaddr);
 }
 
 void AvrcpService::DisconnectDevice(const RawAddress& bdaddr) {
   log::info("address={}", bdaddr);
+  if (connection_handler_ == nullptr) {
+    return;
+  }
   connection_handler_->DisconnectDevice(bdaddr);
 }
 
 void AvrcpService::SetBipClientStatus(const RawAddress& bdaddr,
                                       bool connected) {
   log::info("address={}, connected={}", bdaddr, connected);
+  if (connection_handler_ == nullptr) {
+    return;
+  }
   connection_handler_->SetBipClientStatus(bdaddr, connected);
 }
 
@@ -534,6 +542,9 @@ void AvrcpService::SendMediaUpdate(bool track_changed, bool play_state,
   log::info("track_changed={} :  play_state={} :  queue={}", track_changed,
             play_state, queue);
 
+  if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
+    return;
+  }
   // This function may be called on any thread, we need to make sure that the
   // device update happens on the main thread.
   for (const auto& device :
@@ -559,6 +570,9 @@ void AvrcpService::SendFolderUpdate(bool available_players,
   log::info("available_players={} :  addressed_players={} :  uids={}",
             available_players, addressed_players, uids);
 
+  if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
+    return;
+  }
   // Ensure that the update is posted to the correct thread
   for (const auto& device :
        instance_->connection_handler_->GetListOfDevices()) {
