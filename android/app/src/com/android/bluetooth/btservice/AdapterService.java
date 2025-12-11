@@ -2246,6 +2246,7 @@ public class AdapterService extends Service {
                     && mLeAudioService.getConnectionState(device) == STATE_CONNECTED) {
                 Bundle defaultPreferencesBundle = new Bundle();
                 Log.d(TAG, "getPreferredAudioProfiles: return LE_AUDIO profile while VOIP WAR enabled");
+                defaultPreferencesBundle.putInt(BluetoothAdapter.AUDIO_MODE_OUTPUT_ONLY, BluetoothProfile.LE_AUDIO);
                 defaultPreferencesBundle.putInt(BluetoothAdapter.AUDIO_MODE_DUPLEX, BluetoothProfile.LE_AUDIO);
                 return defaultPreferencesBundle;
             }

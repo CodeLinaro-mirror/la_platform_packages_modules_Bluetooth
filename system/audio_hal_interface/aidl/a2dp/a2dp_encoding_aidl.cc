@@ -37,8 +37,16 @@
 #include <a2dp_vendor.h>
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_vendor_types.h"
+
+#ifdef __ANDROID__
+#include <android/sysprop/BluetoothProperties.sysprop.h>
+#endif
+
 #define AAC_SAMPLE_SIZE  1024
 #define AAC_LATM_HEADER  12
+
+/* Global Variable */
+bool source_enabled;
 
 typedef enum {
   A2DP_CTRL_CMD_NONE,
@@ -50,6 +58,7 @@ typedef enum {
   A2DP_CTRL_GET_OUTPUT_AUDIO_CONFIG,
   A2DP_CTRL_SET_OUTPUT_AUDIO_CONFIG,
   A2DP_CTRL_GET_PRESENTATION_POSITION,
+  A2DP_CTRL_UPDATE_SINK_LATENCY,
 } tA2DP_CTRL_CMD;
 
 namespace std {
@@ -88,6 +97,10 @@ public:
                                timespec* data_position) override;
 
   void SourceMetadataChanged(bool is_low_latency);
+
+  void SinkMetadataChanged(uint16_t sink_latency);
+
+  void NotifyHalRestart() override;
 
   tA2DP_CTRL_CMD GetPendingCmd() const;
 
@@ -223,6 +236,14 @@ void A2dpTransport::SourceMetadataChanged(bool is_low_latency) {
   stream_callbacks_->UpdateSourceMetadata(is_low_latency);
 }
 
+void A2dpTransport::SinkMetadataChanged(uint16_t sink_latency) {
+  stream_callbacks_->UpdateSinkMetadata(sink_latency);
+}
+
+void A2dpTransport::NotifyHalRestart() {
+  stream_callbacks_->NotifyHalRestart();
+}
+
 bool A2dpTransport::GetPresentationPosition(uint64_t* remote_delay_report_ns,
                                             uint64_t* total_bytes_read, timespec* data_position) {
   *remote_delay_report_ns = remote_delay_report_ * 100000u;
@@ -351,9 +372,11 @@ bool a2dp_get_selected_hal_codec_config(A2dpCodecConfig* a2dp_config, uint16_t p
     codec_config->peerMtu = MAX_3MBPS_AVDTP_MTU;
   }
 #endif
-  RawAddress peer_addr = btif_av_source_active_peer();
   tA2DP_ENCODER_INIT_PEER_PARAMS peer_param;
-  bta_av_co_get_peer_params(peer_addr, &peer_param);
+  if (source_enabled) {
+    RawAddress peer_addr = btif_av_source_active_peer();
+    bta_av_co_get_peer_params(peer_addr, &peer_param);
+  }
   // Obtain the MTU
   memset(p_codec_info, 0, AVDT_CODEC_SIZE);
   if (!a2dp_config->copyOutOtaCodecConfig(p_codec_info))
@@ -364,9 +387,17 @@ bool a2dp_get_selected_hal_codec_config(A2dpCodecConfig* a2dp_config, uint16_t p
   uint8_t codec_type;
   uint32_t bitrate = 0;
   codec_type = A2DP_GetCodecType((const uint8_t*)p_codec_info);
-  codec_config->peerMtu = peer_param.peer_mtu - A2DP_HEADER_SIZE;
+  if(btif_av_is_a2dp_sink_offload_enabled()) {
+    codec_config->peerMtu = peer_mtu;
+  } else {
+    codec_config->peerMtu = peer_param.peer_mtu - A2DP_HEADER_SIZE;
+  }
   if (A2DP_MEDIA_CT_SBC == codec_type) {
-    bitrate = A2DP_GetBitrateSbc();
+    if(current_codec.codec_type == BTAV_A2DP_CODEC_INDEX_SINK_SBC) {
+      bitrate = A2DP_SinkGetBitrateSbc();
+    } else {
+      bitrate = A2DP_GetBitrateSbc();
+    }
     log::info("AIDL SBC bitrate: {}", bitrate);
     codec_config->encodedAudioBitrate = bitrate;
   }  else if (A2DP_MEDIA_CT_NON_A2DP == codec_type) {
@@ -434,9 +465,13 @@ static bool a2dp_get_selected_hal_pcm_config(A2dpCodecConfig* a2dp_codec_configs
 bool update_codec_offloading_capabilities(
         const std::vector<btav_a2dp_codec_config_t>& framework_preference,
         bool supports_a2dp_hw_offload_v2) {
-  /* Load the provider information if supported by the HAL. */
-  provider_info = ::bluetooth::audio::aidl::a2dp::ProviderInfo::GetProviderInfo(
-          supports_a2dp_hw_offload_v2);
+
+  //For A2dp Sink, Vendor Extensibility Feature not required
+  if (btif_av_is_a2dp_offload_enabled()) {
+    /* Load the provider information if supported by the HAL. */
+    provider_info = ::bluetooth::audio::aidl::a2dp::ProviderInfo::GetProviderInfo(
+            supports_a2dp_hw_offload_v2);
+  }
   return ::bluetooth::audio::aidl::a2dp::codec::UpdateOffloadingCapabilities(framework_preference);
 }
 
@@ -449,7 +484,9 @@ bool is_hal_offloading() {
     return false;
   }
   return active_hal_interface->GetTransportInstance()->GetSessionType() ==
-         SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH;
+         SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH ||
+         active_hal_interface->GetTransportInstance()->GetSessionType() ==
+         SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH;
 }
 
 bool is_hal_2_0_offloading_session_unknown() {
@@ -489,30 +526,39 @@ static void delete_hal_interface(BluetoothAudioClientInterface* hal_interface) {
 
 // Initialize BluetoothAudio HAL: openProvider
 bool init(bluetooth::common::MessageLoopThread* /*message_loop*/,
-          StreamCallbacks const* stream_callbacks, bool offload_enabled) {
+          StreamCallbacks const* stream_callbacks, bool source_offloaded) {
   log::info("");
   log::assert_that(stream_callbacks != nullptr, "stream_callbacks != nullptr");
-
-  if (software_hal_interface != nullptr) {
-    return true;
-  }
 
   if (!BluetoothAudioClientInterface::is_aidl_available()) {
     log::error("BluetoothAudio AIDL implementation does not exist");
     return false;
   }
 
-  software_hal_interface = new_hal_interface(SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH);
-  if (software_hal_interface == nullptr) {
-    return false;
+  source_enabled = android::sysprop::BluetoothProperties::
+                                  isProfileA2dpSourceEnabled().value_or(false);
+
+  if (source_enabled) {
+    if (source_offloaded && offloading_hal_interface == nullptr) {
+      offloading_hal_interface =
+       new_hal_interface(SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH);
+      if (offloading_hal_interface == nullptr) {
+        return false;
+      }
+    } else {
+        software_hal_interface =
+               new_hal_interface(SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH);
+        if (software_hal_interface == nullptr) {
+          return false;
+        }
+    }
   }
 
-  if (offload_enabled && offloading_hal_interface == nullptr) {
+  if (btif_av_is_a2dp_sink_offload_enabled() &&
+                                         offloading_hal_interface == nullptr) {
     offloading_hal_interface =
-            new_hal_interface(SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH);
+       new_hal_interface(SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH);
     if (offloading_hal_interface == nullptr) {
-      delete_hal_interface(software_hal_interface);
-      software_hal_interface = nullptr;
       return false;
     }
   }
@@ -542,10 +588,13 @@ void cleanup() {
   static_cast<A2dpTransport*>(a2dp_sink)->ResetPresentationPosition();
   active_hal_interface = nullptr;
 
-  a2dp_sink = software_hal_interface->GetTransportInstance();
-  delete software_hal_interface;
-  software_hal_interface = nullptr;
-  delete a2dp_sink;
+  if (software_hal_interface != nullptr) {
+    a2dp_sink = software_hal_interface->GetTransportInstance();
+    delete software_hal_interface;
+    software_hal_interface = nullptr;
+    delete a2dp_sink;
+  }
+
   if (offloading_hal_interface != nullptr) {
     a2dp_sink = offloading_hal_interface->GetTransportInstance();
     delete offloading_hal_interface;
@@ -567,7 +616,9 @@ bool setup_codec(A2dpCodecConfig* a2dp_config, uint16_t peer_mtu,
     return false;
   }
 
-  if (provider::supports_codec(a2dp_config->codecIndex())) {
+  //For A2dp Sink, Vendor Extensibility Feature not required
+  if (btif_av_is_a2dp_offload_enabled() &&
+                         provider::supports_codec(a2dp_config->codecIndex())) {
     // The codec is supported in the provider info (AIDL v4).
     // In this case, the codec is offloaded, and the configuration passed
     // as A2dpStreamConfiguration to the UpdateAudioConfig() interface
@@ -617,6 +668,7 @@ bool setup_codec(A2dpCodecConfig* a2dp_config, uint16_t peer_mtu,
 
   bool should_codec_offloading =
           bluetooth::audio::aidl::a2dp::codec::IsCodecOffloadingEnabled(codec_config);
+
   if (should_codec_offloading && !is_hal_offloading()) {
     log::warn("Switching BluetoothAudio HAL to Hardware");
     end_session();
@@ -629,7 +681,9 @@ bool setup_codec(A2dpCodecConfig* a2dp_config, uint16_t peer_mtu,
 
   AudioConfiguration audio_config{};
   if (active_hal_interface->GetTransportInstance()->GetSessionType() ==
-      SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH) {
+      SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH ||
+      active_hal_interface->GetTransportInstance()->GetSessionType() ==
+      SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH) {
     audio_config.set<AudioConfiguration::a2dpConfig>(codec_config);
   } else {
     PcmConfiguration pcm_config{};
@@ -1059,8 +1113,6 @@ provider::get_a2dp_configuration(
           ~((int64_t)QHS_SUPPORT_MASK);
     a2dp_configuration.codec_parameters.codec_specific_3 |=
          (int64_t)QHS_SUPPORT_AVAILABLE;
-    a2dp_configuration.codec_parameters.codec_specific_3 |=
-         (int64_t)APTX_ADAPTIVE_R2_2_SUPPORT_AVAILABLE;
   }
   return std::make_optional(a2dp_configuration);
 }

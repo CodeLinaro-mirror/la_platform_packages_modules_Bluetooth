@@ -3466,7 +3466,7 @@ public class LeAudioService extends ProfileService {
                     updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
                 }
             }
-        } else if (context_type == BluetoothLeAudio.CONTEXT_TYPE_MEDIA) {
+        } else {
             if (isBroadcastActive()) {
                 BluetoothDevice device =
                     mAdapterService.getDeviceFromByte(

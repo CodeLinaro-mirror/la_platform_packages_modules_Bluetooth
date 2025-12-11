@@ -47,22 +47,23 @@ const char* const avdt_scb_st_str[] = {"SCB_IDLE_ST", "SCB_CONF_ST",   "SCB_OPEN
 
 /* verbose event strings for trace */
 const char* const avdt_scb_evt_str[] = {
-        "API_REMOVE_EVT",        "API_WRITE_REQ_EVT",     "API_GETCONFIG_REQ_EVT",
-        "API_DELAY_RPT_REQ",     "API_SETCONFIG_REQ_EVT", "API_OPEN_REQ_EVT",
-        "API_CLOSE_REQ_EVT",     "API_RECONFIG_REQ_EVT",  "API_SECURITY_REQ_EVT",
-        "API_ABORT_REQ_EVT",     "API_GETCONFIG_RSP_EVT", "API_SETCONFIG_RSP_EVT",
-        "API_SETCONFIG_REJ_EVT", "API_OPEN_RSP_EVT",      "API_CLOSE_RSP_EVT",
-        "API_RECONFIG_RSP_EVT",  "API_SECURITY_RSP_EVT",  "API_ABORT_RSP_EVT",
-        "MSG_SETCONFIG_CMD_EVT", "MSG_GETCONFIG_CMD_EVT", "MSG_OPEN_CMD_EVT",
-        "MSG_START_CMD_EVT",     "MSG_SUSPEND_CMD_EVT",   "MSG_CLOSE_CMD_EVT",
-        "MSG_ABORT_CMD_EVT",     "MSG_RECONFIG_CMD_EVT",  "MSG_SECURITY_CMD_EVT",
-        "MSG_DELAY_RPT_CMD_EVT", "MSG_DELAY_RPT_RSP_EVT", "MSG_SETCONFIG_RSP_EVT",
-        "MSG_GETCONFIG_RSP_EVT", "MSG_OPEN_RSP_EVT",      "MSG_START_RSP_EVT",
-        "MSG_SUSPEND_RSP_EVT",   "MSG_CLOSE_RSP_EVT",     "MSG_ABORT_RSP_EVT",
-        "MSG_RECONFIG_RSP_EVT",  "MSG_SECURITY_RSP_EVT",  "MSG_SETCONFIG_REJ_EVT",
-        "MSG_OPEN_REJ_EVT",      "MSG_START_REJ_EVT",     "MSG_SUSPEND_REJ_EVT",
-        "TC_TOUT_EVT",           "TC_OPEN_EVT",           "TC_CLOSE_EVT",
-        "TC_CONG_EVT",           "TC_DATA_EVT",           "CC_CLOSE_EVT"};
+        "API_REMOVE_EVT",              "API_WRITE_REQ_EVT",           "API_GETCONFIG_REQ_EVT",
+        "API_DELAY_RPT_REQ",           "API_SETCONFIG_REQ_EVT",       "API_OPEN_REQ_EVT",
+        "API_CLOSE_REQ_EVT",           "API_RECONFIG_REQ_EVT",        "API_SECURITY_REQ_EVT",
+        "API_ABORT_REQ_EVT",           "API_GETCONFIG_RSP_EVT",       "API_SETCONFIG_RSP_EVT",
+        "API_SETCONFIG_REJ_EVT",       "API_OPEN_RSP_EVT",            "API_PENDING_START_RSP_EVT",
+        "API_PENDING_START_REJ_EVT",   "API_PENDING_SUSPEND_RSP_EVT", "API_CLOSE_RSP_EVT",
+        "API_RECONFIG_RSP_EVT",        "API_SECURITY_RSP_EVT",        "API_ABORT_RSP_EVT",
+        "MSG_SETCONFIG_CMD_EVT",       "MSG_GETCONFIG_CMD_EVT",       "MSG_OPEN_CMD_EVT",
+        "MSG_START_CMD_EVT",           "MSG_SUSPEND_CMD_EVT",         "MSG_CLOSE_CMD_EVT",
+        "MSG_ABORT_CMD_EVT",           "MSG_RECONFIG_CMD_EVT",        "MSG_SECURITY_CMD_EVT",
+        "MSG_DELAY_RPT_CMD_EVT",       "MSG_DELAY_RPT_RSP_EVT",       "MSG_SETCONFIG_RSP_EVT",
+        "MSG_GETCONFIG_RSP_EVT",       "MSG_OPEN_RSP_EVT",            "MSG_START_RSP_EVT",
+        "MSG_SUSPEND_RSP_EVT",         "MSG_CLOSE_RSP_EVT",           "MSG_ABORT_RSP_EVT",
+        "MSG_RECONFIG_RSP_EVT",        "MSG_SECURITY_RSP_EVT",        "MSG_SETCONFIG_REJ_EVT",
+        "MSG_OPEN_REJ_EVT",            "MSG_START_REJ_EVT",           "MSG_SUSPEND_REJ_EVT",
+        "TC_TOUT_EVT",                 "TC_OPEN_EVT",                 "TC_CLOSE_EVT",
+        "TC_CONG_EVT",                 "TC_DATA_EVT",                 "CC_CLOSE_EVT"};
 
 /* action function list */
 const tAVDT_SCB_ACTION avdt_scb_action[] = {avdt_scb_hdl_abort_cmd,
@@ -85,8 +86,11 @@ const tAVDT_SCB_ACTION avdt_scb_action[] = {avdt_scb_hdl_abort_cmd,
                                             avdt_scb_hdl_setconfig_rsp,
                                             avdt_scb_hdl_start_cmd,
                                             avdt_scb_hdl_start_rsp,
+                                            avdt_scb_hdl_pending_start_rsp,
+                                            avdt_scb_hdl_pending_start_rej,
                                             avdt_scb_hdl_suspend_cmd,
                                             avdt_scb_hdl_suspend_rsp,
+                                            avdt_scb_hdl_pending_suspend_rsp,
                                             avdt_scb_hdl_tc_close,
                                             avdt_scb_hdl_tc_close_sto,
                                             avdt_scb_hdl_tc_open,
@@ -165,6 +169,12 @@ const uint8_t avdt_scb_st_idle[][AVDT_SCB_NUM_COLS] = {
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_IDLE_ST},
         /* AVDT_SCB_API_CLOSE_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_IDLE_ST},
+        /* AVDT_SCB_API_PENDING_START_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
+        /* AVDT_SCB_API_PENDING_START_REJ_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
+        /* AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
         /* AVDT_SCB_API_RECONFIG_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_IDLE_ST},
         /* AVDT_SCB_API_SECURITY_RSP_EVT */
@@ -264,6 +274,12 @@ const uint8_t avdt_scb_st_conf[][AVDT_SCB_NUM_COLS] = {
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CONF_ST},
         /* AVDT_SCB_API_OPEN_RSP_EVT */
         {AVDT_SCB_SND_OPEN_RSP, AVDT_SCB_IGNORE, AVDT_SCB_OPENING_ST},
+        /* AVDT_SCB_API_PENDING_START_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CONF_ST},
+        /* AVDT_SCB_API_PENDING_START_REJ_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CONF_ST},
+        /* AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CONF_ST},
         /* AVDT_SCB_API_CLOSE_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CONF_ST},
         /* AVDT_SCB_API_RECONFIG_RSP_EVT */
@@ -364,6 +380,12 @@ const uint8_t avdt_scb_st_opening[][AVDT_SCB_NUM_COLS] = {
         /* AVDT_SCB_API_SETCONFIG_REJ_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPENING_ST},
         /* AVDT_SCB_API_OPEN_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPENING_ST},
+        /* AVDT_SCB_API_PENDING_START_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPENING_ST},
+        /* AVDT_SCB_API_PENDING_START_REJ_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPENING_ST},
+        /* AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPENING_ST},
         /* AVDT_SCB_API_CLOSE_RSP_EVT */
         {AVDT_SCB_SND_CLOSE_RSP, AVDT_SCB_SND_TC_CLOSE, AVDT_SCB_CLOSING_ST},
@@ -466,6 +488,12 @@ const uint8_t avdt_scb_st_open[][AVDT_SCB_NUM_COLS] = {
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
         /* AVDT_SCB_API_OPEN_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
+        /* AVDT_SCB_API_PENDING_START_RSP_EVT */
+        {AVDT_SCB_HDL_PENDING_START_RSP, AVDT_SCB_IGNORE, AVDT_SCB_STREAM_ST},
+        /* AVDT_SCB_API_PENDING_START_REJ_EVT */
+        {AVDT_SCB_HDL_PENDING_START_REJ, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
+        /* AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
         /* AVDT_SCB_API_CLOSE_RSP_EVT */
         {AVDT_SCB_SND_CLOSE_RSP, AVDT_SCB_TC_TIMER, AVDT_SCB_CLOSING_ST},
         /* AVDT_SCB_API_RECONFIG_RSP_EVT */
@@ -567,6 +595,12 @@ const uint8_t avdt_scb_st_stream[][AVDT_SCB_NUM_COLS] = {
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_STREAM_ST},
         /* AVDT_SCB_API_OPEN_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_STREAM_ST},
+        /* AVDT_SCB_API_PENDING_START_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_STREAM_ST},
+        /* AVDT_SCB_API_PENDING_START_REJ_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_STREAM_ST},
+        /* AVDT_SCB_API_PENDING_SUPSEND_RSP_EVT */
+        {AVDT_SCB_HDL_PENDING_SUSPEND_RSP, AVDT_SCB_IGNORE, AVDT_SCB_OPEN_ST},
         /* AVDT_SCB_API_CLOSE_RSP_EVT */
         {AVDT_SCB_SND_CLOSE_RSP, AVDT_SCB_TC_TIMER, AVDT_SCB_CLOSING_ST},
         /* AVDT_SCB_API_RECONFIG_RSP_EVT */
@@ -667,6 +701,12 @@ const uint8_t avdt_scb_st_closing[][AVDT_SCB_NUM_COLS] = {
         /* AVDT_SCB_API_SETCONFIG_REJ_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CLOSING_ST},
         /* AVDT_SCB_API_OPEN_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CLOSING_ST},
+        /* AVDT_SCB_API_PENDING_START_RSP_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CLOSING_ST},
+        /* AVDT_SCB_API_PENDING_START_REJ_EVT */
+        {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CLOSING_ST},
+        /* AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CLOSING_ST},
         /* AVDT_SCB_API_CLOSE_RSP_EVT */
         {AVDT_SCB_IGNORE, AVDT_SCB_IGNORE, AVDT_SCB_CLOSING_ST},
@@ -804,6 +844,7 @@ void avdt_scb_event(AvdtpScb* p_scb, uint8_t event, tAVDT_SCB_EVT* p_data) {
   /* execute action functions */
   for (int i = 0; i < AVDT_SCB_ACTIONS; i++) {
     action = state_table[event][i];
+    log::info("action = {}", action);
     if (action != AVDT_SCB_IGNORE) {
       (*avdtp_cb.p_scb_act[action])(p_scb, p_data);
     } else {
@@ -944,7 +985,7 @@ AvdtpScb* avdt_scb_by_hdl(uint8_t hdl) {
  ******************************************************************************/
 uint8_t avdt_scb_verify(AvdtpCcb* p_ccb, uint8_t state, uint8_t* p_seid, uint16_t num_seid,
                         uint8_t* p_err_code) {
-  log::verbose("avdt_scb_verify state {}", state);
+  log::verbose("state {} num seid = %d", state, num_seid);
   /* set nonsupported command mask */
   /* translate public state into private state */
   uint8_t nsc_mask = 0;

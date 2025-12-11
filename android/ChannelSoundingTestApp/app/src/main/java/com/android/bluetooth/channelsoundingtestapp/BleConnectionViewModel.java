@@ -163,11 +163,8 @@ public class BleConnectionViewModel extends AndroidViewModel {
     }
 
     private void startConnectableAdvertising() {
-        if (mIsAdvertising.getValue()) {
-            return;
-        }
-        if(is_advertising) {
-            printLog("Advertising callback allready registered");
+        if (mIsAdvertising.getValue() || is_advertising) {
+            printLog("Advertising already in progress. Ignoring new request.");
             return;
         }
 
@@ -217,9 +214,9 @@ public class BleConnectionViewModel extends AndroidViewModel {
 
         printLog("Start connectable advertising");
 
+        is_advertising = true; // Set flag immediately before API call to avoid race condition
         advertiser.startAdvertisingSet(
                 parameters, advertiseData, null, null, null, 0, 0, mAdvertisingSetCallback);
-        is_advertising = true;
     }
 
     private void stopAdvertising() {

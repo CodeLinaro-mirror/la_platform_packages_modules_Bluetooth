@@ -5897,8 +5897,9 @@ public:
       return false;
     }
 
-    if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
-      log::debug("Group is not streaming");
+    if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+        group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
+      log::debug("Group is not streaming and target state is not streaming");
       return false;
     }
 
@@ -6586,6 +6587,7 @@ public:
     if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
         LeAudioBroadcaster::Get()->IsLeAudioBroadcastActive() &&
         group->IsStreaming() && !group->IsReleasingOrIdle() &&
+        configuration_context_type_ != LeAudioContextType::GAME &&
         new_config_context == LeAudioContextType::MEDIA) {
       log::info(
               "Broadcast is active, current configuration context is {}. "

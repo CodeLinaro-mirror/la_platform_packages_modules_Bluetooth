@@ -524,6 +524,7 @@ public:
   uint8_t tsep;                              // SEP type
   uint8_t media_type;                        // Media type: AVDT_MEDIA_TYPE_*
   uint16_t nsc_mask;                         // Nonsupported protocol command messages
+  bool is_split_enabled;                     // variable to indicate is split is enabled on this SEP
 };
 
 /* AVDT data option mask is used in the write request */
@@ -895,6 +896,28 @@ uint16_t AVDT_DisconnectReq(const RawAddress& bd_addr, tAVDT_CTRL_CBACK* p_cback
  ******************************************************************************/
 uint16_t AVDT_GetL2CapChannel(uint8_t handle);
 
+/*******************************************************************************
+ *
+ * Function         AVDT_SndPendingSigStart_Rsp
+ *
+ * Description      Send pending Start Response to remote
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void AVDT_SndPendingSigStart_Rsp(uint8_t handle, bool accepted);
+
+/*******************************************************************************
+ *
+ * Function         AVDT_SndPendingSigSuspend_Rsp
+ *
+ * Description      Send pending Suspend Response to remote
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void AVDT_SndPendingSigSuspend_Rsp(uint8_t handle, bool accepted);
+
 /**
  * Dump debug-related information for the Stack AVDTP module.
  *
@@ -902,5 +925,16 @@ uint16_t AVDT_GetL2CapChannel(uint8_t handle);
  * information
  */
 void stack_debug_avdtp_api_dump(int fd);
+
+/*******************************************************************************
+ *
+ * Function         AVDT_UpdateDelayReport
+ *
+ * Description      Send delay report to peer device
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void AVDT_UpdateDelayReport(uint8_t handle, uint16_t sink_latency);
 
 #endif /* AVDT_API_H */

@@ -404,11 +404,35 @@ void avdt_ccb_hdl_getcap_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
  ******************************************************************************/
 void avdt_ccb_hdl_start_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
   uint8_t err_code = 0;
+  uint8_t i = 0;
+  AvdtpScb *p_scb;
 
   /* verify all streams in the right state */
-  uint8_t seid = avdt_scb_verify(p_ccb, AVDT_VERIFY_START, p_data->msg.multi.seid_list,
+  uint8_t seid = avdt_scb_verify(p_ccb, AVDT_VERIFY_START,
+                                 p_data->msg.multi.seid_list,
                                  p_data->msg.multi.num_seps, &err_code);
   if (seid == 0 && err_code == 0) {
+    /* If tsep is SNK , snd start IND to BTA */
+    for (i = 0; i < p_data->msg.multi.num_seps; i++)
+    {
+      p_scb = avdt_scb_by_hdl(p_data->msg.multi.seid_list[i]);
+      if (p_scb!= NULL) {
+          log::debug("SEP={} split_enabled = {} ", p_scb->stream_config.tsep,
+                                        p_scb->stream_config.is_split_enabled);
+      }
+      if ((p_scb != NULL) && (p_scb->stream_config.tsep == AVDT_TSEP_SNK) &&
+          (p_scb->p_ccb == p_ccb) && (p_scb->stream_config.is_split_enabled))
+      {
+        // we don't need timer (delay reporting) for split a2dp case
+        (*p_scb->stream_config.p_avdt_ctrl_cback)(avdt_scb_to_hdl(p_scb),
+                 p_ccb->peer_addr, AVDT_START_IND_EVT, NULL,
+                 p_scb->stream_config.scb_index);
+        p_ccb->start_pending_label = p_data->msg.hdr.label;
+        log::debug("split_sink start_ind seid = {} label = {}",
+                    p_data->msg.multi.seid_list[i],p_ccb->start_pending_label);
+        return;
+      }
+    }
     /* we're ok, send response */
     avdt_ccb_event(p_ccb, AVDT_CCB_API_START_RSP_EVT, p_data);
   } else {
@@ -455,6 +479,34 @@ void avdt_ccb_hdl_start_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
 
 /*******************************************************************************
  *
+ * Function         avdt_ccb_snd_pending_start_rsp
+ *
+ * Description      This funciton is called when response to avdtp start is sent
+ *                  from applicaiton.
+ *
+ *
+ * Returns          void.
+ *
+ ******************************************************************************/
+
+void avdt_ccb_snd_pending_start_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
+  tAVDT_MSG msg;
+  uint8_t accepted = p_data->msg.hdr.err_code;
+  msg.hdr.label = p_ccb->start_pending_label;
+
+  log::debug("label = {} accepted = {}", msg.hdr.label, accepted);
+  if (accepted == 0) {
+    avdt_msg_send_rsp(p_ccb, AVDT_SIG_START, &msg);
+  } else {
+    msg.hdr.err_code = AVDT_ERR_NSC;
+    //TODO:  Find right SEID
+    avdt_msg_send_rej(p_ccb, AVDT_SIG_START, &msg);
+  }
+  p_ccb->start_pending_label = UNUSED_T_LABEL;
+}
+
+/*******************************************************************************
+ *
  * Function         avdt_ccb_hdl_suspend_cmd
  *
  * Description      This function is called when a suspend command is received
@@ -470,11 +522,37 @@ void avdt_ccb_hdl_start_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
 void avdt_ccb_hdl_suspend_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
   uint8_t seid;
   uint8_t err_code = 0;
+  uint8_t i = 0;
+  AvdtpScb *p_scb;
 
   /* verify all streams in the right state */
-  if ((seid = avdt_scb_verify(p_ccb, AVDT_VERIFY_SUSPEND, p_data->msg.multi.seid_list,
+  if ((seid = avdt_scb_verify(p_ccb, AVDT_VERIFY_SUSPEND,
+                              p_data->msg.multi.seid_list,
                               p_data->msg.multi.num_seps, &err_code)) == 0 &&
       err_code == 0) {
+    /* If tsep is SNK , snd start IND to BTA */
+    for (i = 0; i < p_data->msg.multi.num_seps; i++)
+    {
+      p_scb = avdt_scb_by_hdl(p_data->msg.multi.seid_list[i]);
+      if (p_scb!= NULL) {
+          log::debug("SEP={} split_enabled = {} ", p_scb->stream_config.tsep,
+            p_scb->stream_config.is_split_enabled);
+      }
+      if ((p_scb != NULL) && (p_scb->stream_config.tsep == AVDT_TSEP_SNK) &&
+          (p_scb->p_ccb == p_ccb) && (p_scb->stream_config.is_split_enabled))
+      {
+        // we don't need timer (delay reporting) for split a2dp case
+        (*p_scb->stream_config.p_avdt_ctrl_cback)(avdt_scb_to_hdl(p_scb),
+                                  p_ccb->peer_addr, AVDT_SUSPEND_IND_EVT, NULL,
+                                  p_scb->stream_config.scb_index);
+
+        p_ccb->suspend_pending_label = p_data->msg.hdr.label;
+        log::debug("split_sink suspend_ind seid = {} label = {}",
+                  p_data->msg.multi.seid_list[i], p_ccb->suspend_pending_label);
+        return;
+      }
+    }
+    // split is not enabled on this SCB.
     /* we're ok, send response */
     avdt_ccb_event(p_ccb, AVDT_CCB_API_SUSPEND_RSP_EVT, p_data);
   } else {
@@ -520,6 +598,34 @@ void avdt_ccb_hdl_suspend_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
       avdt_scb_event(p_scb, event, (tAVDT_SCB_EVT*)&p_data->msg);
     }
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         avdt_ccb_snd_pending_suspend_rsp
+ *
+ * Description      This funciton is called when response to avdtp suspend is sent
+ *                  from applicaiton.
+ *
+ *
+ * Returns          void.
+ *
+ ******************************************************************************/
+
+void avdt_ccb_snd_pending_suspend_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
+  tAVDT_MSG msg;
+  uint8_t accepted = p_data->msg.hdr.err_code;
+  msg.hdr.label = p_ccb->suspend_pending_label;
+
+  log::debug("label = {} accepted = {}", msg.hdr.label, accepted);
+  if (accepted == 0) {
+    avdt_msg_send_rsp(p_ccb, AVDT_SIG_SUSPEND, &msg);
+  } else {
+    msg.hdr.err_code = AVDT_ERR_BAD_STATE;
+    //TODO:  Find right SEID
+    avdt_msg_send_rej(p_ccb, AVDT_SIG_SUSPEND, &msg);
+  }
+  p_ccb->suspend_pending_label = UNUSED_T_LABEL;
 }
 
 /*******************************************************************************

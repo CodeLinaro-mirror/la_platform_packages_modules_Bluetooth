@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package com.android.bluetooth.a2dpsink;
 
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
@@ -30,6 +36,9 @@ import android.bluetooth.BluetoothProfile;
 import android.os.Looper;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
+import android.content.Context;
+import android.media.AudioManager;
+import android.os.Message;
 
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
@@ -62,6 +71,9 @@ public class A2dpSinkService extends ProfileService {
     private final A2dpSinkNativeInterface mNativeInterface;
     private final Looper mLooper;
     private final int mMaxConnectedAudioDevices;
+    private final A2dpSinkVendorService mA2dpSinkVendor;
+    private final AudioManager mAudioManager;
+    private boolean sAudioIsEnabled = false;
 
     @GuardedBy("mStreamHandlerLock")
     private final A2dpSinkStreamHandler mA2dpSinkStreamHandler;
@@ -84,6 +96,11 @@ public class A2dpSinkService extends ProfileService {
 
         mMaxConnectedAudioDevices = mAdapterService.getMaxConnectedAudioDevices();
         mNativeInterface.init(mMaxConnectedAudioDevices);
+        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        mA2dpSinkVendor = new A2dpSinkVendorService(this);
+        if (mA2dpSinkVendor != null) {
+            mA2dpSinkVendor.init();
+        }
         synchronized (mStreamHandlerLock) {
             mA2dpSinkStreamHandler = new A2dpSinkStreamHandler(mAdapterService, mNativeInterface);
         }
@@ -98,7 +115,15 @@ public class A2dpSinkService extends ProfileService {
     @Override
     public void cleanup() {
         Log.i(TAG, "Cleanup A2DP Sink Service");
-
+        if(sAudioIsEnabled == true) {
+            if (mAudioManager != null) {
+              mAudioManager.setParameters("btsink_enable=false");
+            }
+            sAudioIsEnabled = false;
+        }
+        if (mA2dpSinkVendor != null) {
+            mA2dpSinkVendor.cleanup();
+        }
         setA2dpSinkService(null);
         mNativeInterface.cleanup();
         synchronized (mDeviceStateMap) {
@@ -395,6 +420,34 @@ public class A2dpSinkService extends ProfileService {
             return;
         }
         A2dpSinkStateMachine stateMachine = getOrCreateStateMachine(device);
+
+        if (event.mState == BluetoothProfile.STATE_DISCONNECTED) {
+            synchronized (mStreamHandlerLock) {
+                if (sAudioIsEnabled == true) {
+                    mA2dpSinkStreamHandler
+                            .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
+                            .sendToTarget();
+                    sAudioIsEnabled = false;
+                }
+                if (mAudioManager != null) {
+                    Message msg =
+                            mA2dpSinkStreamHandler.obtainMessage(
+                                    A2dpSinkStreamHandler.REMOVE_ACTIVE);
+                    msg.obj = device;
+                    mA2dpSinkStreamHandler.sendMessage(msg);
+                }
+            }
+        }
+        if (event.mState == BluetoothProfile.STATE_CONNECTED) {
+            if (mAudioManager != null) {
+                synchronized (mStreamHandlerLock) {
+                    Message msg =
+                            mA2dpSinkStreamHandler.obtainMessage(A2dpSinkStreamHandler.SET_ACTIVE);
+                    msg.obj = device;
+                    mA2dpSinkStreamHandler.sendMessage(msg);
+                }
+            }
+        }
         stateMachine.onStackEvent(event);
     }
 
@@ -433,5 +486,26 @@ public class A2dpSinkService extends ProfileService {
                 BluetoothProfile.A2DP_SINK, fromState, toState);
         mAdapterService.updateProfileConnectionAdapterProperties(
                 device, BluetoothProfile.A2DP_SINK, toState, fromState);
+    }
+
+    public void onStartIndCallback(byte[] address) {
+        Log.d(TAG, "onStartIndCallback" );
+       synchronized (mStreamHandlerLock) {
+           if(sAudioIsEnabled == false) {
+             mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.START_SINK);
+             sAudioIsEnabled = true;
+           }
+       }
+    }
+
+    public void onSuspendIndCallback(byte[] address) {
+        // TODO to call set param to intimate Audio HAL
+        Log.d(TAG, "onSuspendIndCallback" );
+        synchronized (mStreamHandlerLock) {
+            if(sAudioIsEnabled == true) {
+              mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.STOP_SINK);
+              sAudioIsEnabled = false;
+            }
+        }
     }
 }
