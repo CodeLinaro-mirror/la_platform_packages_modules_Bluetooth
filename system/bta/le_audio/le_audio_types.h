@@ -13,8 +13,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
-
 /*
  * This file contains definitions for Basic Audio Profile / Audio Stream Control
  * and Published Audio Capabilities definitions, structures etc.
@@ -372,6 +376,14 @@ constexpr uint8_t kTargetPhy2M = 0x02;
 constexpr uint8_t kTargetPhyCoded = 0x03;
 
 constexpr uint32_t kPresDelayNoPreference = 0x00000000;
+
+/* BLUETOOTH CORE SPECIFICATION Version 5.3 | Vol 4, Part E
+ * The SDU_Interval_P_To_C parameter specifies the time interval of periodic
+ * SDUs from the Peripheral.s Host.
+ * The value of SDU_Interval_P_To_C parameter should from 0x0000FF to 0x0FFFFF
+ */
+constexpr uint32_t kSduIntervalMin = 0x000000FF;
+constexpr uint32_t kSduIntervalMax = 0x000FFFFF;
 
 constexpr uint16_t kMaxTransportLatencyMin = 0x0005;
 constexpr uint16_t kMaxTransportLatencyMax = 0x0FA0;
