@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.pbapclient;
@@ -278,9 +283,13 @@ public class PbapClientService extends ConnectableProfile {
             BluetoothDevice device, int oldState, int newState) {
         if (newState == STATE_DISCONNECTED) {
             Log.d(TAG, "Received intent to disconnect HFP with " + device);
-            Account account = mPbapClientContactsStorage.getStorageAccountForDevice(device);
-            mPbapClientContactsStorage.removeCallHistory(account);
-            return;
+            if (getConnectionState(device) == STATE_DISCONNECTED) {
+                if (getConnectionState(device) == STATE_DISCONNECTED) {
+                    Account account = mPbapClientContactsStorage.getStorageAccountForDevice(device);
+                    mPbapClientContactsStorage.removeCallHistory(account);
+                    return;
+                }
+            }
         }
     }
 
