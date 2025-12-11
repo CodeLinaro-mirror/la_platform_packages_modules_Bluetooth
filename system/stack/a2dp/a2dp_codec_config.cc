@@ -62,6 +62,15 @@
 /* The Media Type offset within the codec info byte array */
 #define A2DP_MEDIA_TYPE_OFFSET 1
 
+#define PROPERTY_CODEC_LOCATION_LEN 100
+
+static bool A2DP_CheckCodecLocation(btav_a2dp_codec_index_t codec_index,
+                                    int32_t default_codecs,
+                                    char* property_name);
+static bool A2DP_IsSoftwareCodec(btav_a2dp_codec_index_t codec_index);
+static bool A2DP_IsADSPCodec(btav_a2dp_codec_index_t codec_index);
+static bool A2DP_IsOnchipCodec(btav_a2dp_codec_index_t codec_index);
+
 namespace bluetooth::a2dp {
 
 std::optional<CodecId> ParseCodecId(uint8_t const media_codec_capabilities[]) {
@@ -206,7 +215,10 @@ A2dpCodecConfig* A2dpCodecConfig::createCodec(btav_a2dp_codec_index_t codec_inde
       codec_config = new A2dpCodecConfigAacSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX:
-      codec_config = new A2dpCodecConfigAptx(codec_priority);
+      codec_config = new A2dpCodecConfigAptxSource(codec_priority);
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SINK_APTX:
+      codec_config = new A2dpCodecConfigAptxSink(codec_priority);
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD:
       codec_config = new A2dpCodecConfigAptxHd(codec_priority);
@@ -1629,6 +1641,92 @@ bool A2DP_InitCodecConfig(btav_a2dp_codec_index_t codec_index, AvdtpSepConfig* p
 #endif
 
   return false;
+}
+
+bool A2DP_IsCodecSupported(btav_a2dp_codec_index_t codec_index) {
+  char value[PROPERTY_VALUE_MAX] = {0};
+  int32_t base = 1;
+  int32_t default_codec_supported = base << BTAV_A2DP_CODEC_INDEX_SINK_SBC |
+                                    base << BTAV_A2DP_CODEC_INDEX_SINK_AAC |
+                                    base << BTAV_A2DP_CODEC_INDEX_SINK_APTX |
+                                    base << BTAV_A2DP_CODEC_INDEX_SINK_OPUS;
+  int32_t codec_supported = 0;
+  int32_t codec_flag = base << codec_index;
+
+  osi_property_get("persist.bt.a2dp.codec.support", value, "");
+  if (strncmp("", value, sizeof("")) == 0) {
+    codec_supported = default_codec_supported;
+  } else {
+    codec_supported = atoi(value);
+  }
+
+  log::debug("codec_supported {}", codec_supported);
+  return (codec_flag & codec_supported) == codec_flag ? true : false;
+}
+
+btav_a2dp_codec_location_t A2DP_GetCodecLocation(btav_a2dp_codec_index_t codec_index) {
+  log::debug("codec_index {}", codec_index);
+
+  if (A2DP_IsSoftwareCodec(codec_index) == true) {
+    log::debug("Codec in software");
+    return BTAV_A2DP_CODEC_LOCATION_SOFTWARE;
+  } else if (A2DP_IsADSPCodec(codec_index) == true) {
+    log::debug("Codec in ADSP");
+    return BTAV_A2DP_CODEC_LOCATION_ADSP;
+  } else if (A2DP_IsOnchipCodec(codec_index) == true){
+    log::debug("Codec in Bluetooth chip");
+    return BTAV_A2DP_CODEC_LOCATION_ONCHIP;
+  }
+
+  log::warn("None of the above codec location, set to default software codec");
+  return BTAV_A2DP_CODEC_LOCATION_SOFTWARE;
+}
+
+static bool A2DP_CheckCodecLocation(btav_a2dp_codec_index_t codec_index,
+                                             int32_t default_codecs,
+                                             char* property_name) {
+  int32_t base       = 1;
+  int32_t codecs     = 0;
+  int32_t codec_flag = base << codec_index;
+  char value[PROPERTY_VALUE_MAX] = {0};
+
+  osi_property_get(property_name, value, "");
+  if (strncmp("", value, sizeof("")) == 0) {
+    codecs = default_codecs;
+    log::debug("codecs u {}", codecs);
+  } else {
+    codecs = atoi(value);
+    log::debug("codecs d {}", codecs);
+  }
+
+  return (codec_flag & codecs) == codec_flag ? true : false;
+}
+
+static bool A2DP_IsSoftwareCodec(btav_a2dp_codec_index_t codec_index) {
+  int32_t base       = 1;
+  int32_t default_software_codecs = base << BTAV_A2DP_CODEC_INDEX_SINK_SBC |
+                                    base << BTAV_A2DP_CODEC_INDEX_SINK_AAC |
+                                    base << BTAV_A2DP_CODEC_INDEX_SINK_APTX |
+                                    base << BTAV_A2DP_CODEC_INDEX_SINK_OPUS;
+  char value[PROPERTY_CODEC_LOCATION_LEN]   = "persist.bt.a2dp.codec.location.software";
+
+  log::debug("default_software_codecs {}", default_software_codecs);
+
+  return A2DP_CheckCodecLocation(codec_index, default_software_codecs, value);
+}
+
+static bool A2DP_IsADSPCodec(btav_a2dp_codec_index_t codec_index) {
+  int32_t default_adsp_codecs   = 0;
+  char value[PROPERTY_CODEC_LOCATION_LEN] = "persist.bt.a2dp.codec.location.adsp";
+
+  return A2DP_CheckCodecLocation(codec_index, default_adsp_codecs, value);
+}
+
+static bool A2DP_IsOnchipCodec(btav_a2dp_codec_index_t codec_index) {
+  int32_t default_onchip_codecs = 0;
+  char value[PROPERTY_CODEC_LOCATION_LEN] = "persist.bt.a2dp.codec.location.onchip";
+
+  return A2DP_CheckCodecLocation(codec_index, default_onchip_codecs, value);
 }
 
 std::string A2DP_CodecInfoString(const uint8_t* p_codec_info) {

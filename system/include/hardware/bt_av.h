@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BT_AV_H
@@ -76,6 +81,7 @@ typedef enum {
   // Add an entry for each sink codec here
   BTAV_A2DP_CODEC_INDEX_SINK_SBC = BTAV_A2DP_CODEC_INDEX_SINK_MIN,
   BTAV_A2DP_CODEC_INDEX_SINK_AAC,
+  BTAV_A2DP_CODEC_INDEX_SINK_APTX,
   BTAV_A2DP_CODEC_INDEX_SINK_OPUS,
 
   BTAV_A2DP_CODEC_INDEX_SINK_MAX,
@@ -89,6 +95,12 @@ typedef enum {
   BTAV_A2DP_CODEC_INDEX_MIN = BTAV_A2DP_CODEC_INDEX_SOURCE_MIN,
   BTAV_A2DP_CODEC_INDEX_MAX = BTAV_A2DP_CODEC_INDEX_SINK_EXT_MAX
 } btav_a2dp_codec_index_t;
+
+typedef enum {
+  BTAV_A2DP_CODEC_LOCATION_SOFTWARE = 0,
+  BTAV_A2DP_CODEC_LOCATION_ADSP,
+  BTAV_A2DP_CODEC_LOCATION_ONCHIP,
+} btav_a2dp_codec_location_t;
 
 typedef enum {
   // Disable the codec.
@@ -189,6 +201,8 @@ struct btav_a2dp_codec_config_t {
         return "SBC (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SINK_AAC:
         return "AAC (Sink)";
+      case BTAV_A2DP_CODEC_INDEX_SINK_APTX:
+        return "aptX (Sink)";
       case BTAV_A2DP_CODEC_INDEX_SOURCE_LC3:
         return "LC3";
       case BTAV_A2DP_CODEC_INDEX_SINK_OPUS:

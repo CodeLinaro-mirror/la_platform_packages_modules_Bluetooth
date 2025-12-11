@@ -1375,6 +1375,9 @@ A2dpCodecConfigAacSink::A2dpCodecConfigAacSink(btav_a2dp_codec_priority_t codec_
 A2dpCodecConfigAacSink::~A2dpCodecConfigAacSink() {}
 
 bool A2dpCodecConfigAacSink::init() {
+  if (!A2DP_IsCodecSupported(BTAV_A2DP_CODEC_INDEX_SINK_AAC))
+    return false;
+
   // Load the decoder
   if (!A2DP_LoadDecoderAac()) {
     log::error("cannot load the decoder");
