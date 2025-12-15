@@ -203,6 +203,7 @@ void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, tBTA_HH_INT_EVT event, const tBTA_H
     case BTA_HH_W4_CONN_ST:
       switch (event) {
         case BTA_HH_API_CLOSE_EVT:
+          bta_hh_gatt_cancel(p_cb);
           p_cb->state = BTA_HH_IDLE_ST;
           break;
         case BTA_HH_INT_OPEN_EVT:
@@ -219,8 +220,8 @@ void bta_hh_sm_execute(tBTA_HH_DEV_CB* p_cb, tBTA_HH_INT_EVT event, const tBTA_H
           bta_hh_write_dev_act(p_cb, p_data);
           break;
         case BTA_HH_API_MAINT_DEV_EVT:
-          p_cb->state = BTA_HH_IDLE_ST;
           bta_hh_maint_dev_act(p_cb, p_data);
+          p_cb->state = BTA_HH_IDLE_ST;
           break;
         case BTA_HH_OPEN_CMPL_EVT:
           p_cb->state = BTA_HH_CONN_ST;

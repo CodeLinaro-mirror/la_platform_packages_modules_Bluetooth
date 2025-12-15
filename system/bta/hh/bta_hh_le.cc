@@ -97,6 +97,25 @@ static bool bta_hh_le_iso_data_callback(const RawAddress& addr, uint16_t cis_con
 
 static const char* bta_hh_le_rpt_name[4] = {"UNKNOWN", "INPUT", "OUTPUT", "FEATURE"};
 
+static void bta_hh_le_gatt_read_cb(uint16_t conn_id, tGATT_STATUS status, uint16_t handle,
+                                      uint16_t len, const uint8_t* value, void* data) {
+  if (status != GATT_SUCCESS) {
+    log::error("read_cb: status != GATT_SUCCESS");
+    return;
+  }
+  if (*value == GATT_CLT_CONFIG_NONE) {
+    GATT_WRITE_OP_CB bta_hh_le_gatt_write_cb = [](uint16_t /*conn_id*/, tGATT_STATUS status,
+                uint16_t /*handle*/, uint16_t /*len*/, const uint8_t* value, void* /*data*/){
+      log::info("write_cb: Status:{}", status);
+    };
+    vector<uint8_t> val(2);
+    uint8_t* ptr = val.data();
+    UINT16_TO_STREAM(ptr, GATT_CLT_CONFIG_NOTIFICATION);
+    BtaGattQueue::WriteDescriptor(conn_id, handle, std::move(val), GATT_WRITE,
+                                                   bta_hh_le_gatt_write_cb, nullptr);
+  }
+}
+
 /*******************************************************************************
  *
  * Function         bta_hh_le_hid_report_dbg
@@ -638,6 +657,17 @@ static void bta_hh_le_open_cmpl(tBTA_HH_DEV_CB* p_cb) {
                                          p_cb->dscp_info.product_id)) {
       BTA_GATTC_ConfigureMTU(p_cb->conn_id, GATT_MAX_MTU_SIZE);
     }
+    if (interop_match_name(INTEROP_ENABLE_REMOTE_NOTIFICATIONS, "FeiZhiWee")) {
+      tBTA_HH_LE_RPT* p_rpt = &p_cb->hid_srvc.report[0];
+      const gatt::Descriptor* p_desc = find_descriptor_by_short_uuid(p_cb->conn_id,
+                                           p_rpt->char_inst_id, GATT_UUID_CHAR_CLIENT_CONFIG);
+      if (!p_desc) return;
+      BtaGattQueue::ReadDescriptor(p_cb->conn_id, p_desc->handle,
+                        [](uint16_t conn_id, tGATT_STATUS status, uint16_t handle,
+                                    uint16_t len, uint8_t* value, void* user_data) {
+                        bta_hh_le_gatt_read_cb(conn_id, status, handle, len, value, user_data);
+                        }, p_cb);
+   }
   }
 }
 
@@ -1787,6 +1817,30 @@ void bta_hh_gatt_close(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
                 p_cb->link_spec, gatt_disconnection_reason_text(le_close->reason));
         break;
     }
+  }
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_hh_gatt_cancel
+ *
+ * Description      Cancel/Close a gatt connection
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void bta_hh_gatt_cancel(tBTA_HH_DEV_CB* p_cb) {
+  if (p_cb->link_spec.transport == BT_TRANSPORT_LE) {
+    log::debug("Cancel GATT connection: gatt_if={}, addr={}, conn_id={}",
+                bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, p_cb->conn_id);
+    if (p_cb->conn_id == GATT_INVALID_CONN_ID) {
+      BTA_GATTC_CancelOpen(bta_hh_cb.gatt_if,
+                       p_cb->link_spec.addrt.bda, true);
+    } else {
+      BtaGattQueue::Clean(p_cb->conn_id);
+      BTA_GATTC_Close(p_cb->conn_id);
+    }
+    bta_hh_le_remove_dev_bg_conn(p_cb);
   }
 }
 

@@ -47,6 +47,7 @@
 #include "osi/include/allocator.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/l2cap/l2c_int.h"
+#include <cutils/properties.h>
 
 using namespace bluetooth;
 
@@ -200,8 +201,15 @@ unregistered psm is passed etc.
 static uint16_t g_Psm = 0;
 static uint16_t g_lcid = 0;
 
+static void set_pts_properties() {
+  char l2c_send_s_frame_rr_opt[PROPERTY_VALUE_MAX];
+  property_get("persist.vendor.qcom.bluetooth.l2c_send_s_frame_rr", l2c_send_s_frame_rr_opt, "0");
+  pts_send_rr_s_frame = (strcmp(l2c_send_s_frame_rr_opt, "true") == 0);
+}
+
 static bt_status_t L2cap_Init(tL2CAP_APPL_INFO* p) {
   pl2test_l2c_appl = p;
+  set_pts_properties();
   return BT_STATUS_SUCCESS;
 }
 /*******************************************************************************

@@ -258,12 +258,12 @@ public class DistanceMeasurementManager {
                         + params.getLocationType()
 			+ "mCsSecurityLevel"
 			+ params.getCsSecurityLevel()
-			+ "mFrequency" + tracker.mFrequency);
+			+ "mFrequency " + tracker.mFrequency + " mInterval: " + tracker.mInterval + " mDuration: " + tracker.mDuration);
 	mDistanceMeasurementNativeInterface.setCsParams(tracker.mIdentityAddress,
 			params.getSightType(),
 			params.getLocationType(),
 			params.getCsSecurityLevel(),
-			tracker.mFrequency,tracker.mInterval);
+			tracker.mFrequency,tracker.mDuration);
         mDistanceMeasurementNativeInterface.startDistanceMeasurement(
                 tracker.mIdentityAddress,
                 tracker.mInterval,
@@ -546,7 +546,7 @@ public class DistanceMeasurementManager {
 
     void onDistanceMeasurementResult(
             String address,
-            int centimeter,
+            double meter,
             int errorCentimeter,
             int azimuthAngle,
             int errorAzimuthAngle,
@@ -562,12 +562,12 @@ public class DistanceMeasurementManager {
         logd(
                 "onDistanceMeasurementResult "
                         + BluetoothUtils.toAnonymizedAddress(address)
-                        + ", centimeter "
-                        + centimeter
+                        + ", meter "
+                        + meter
                         + ", confidenceLevel "
                         + confidenceLevel);
         DistanceMeasurementResult.Builder builder =
-                new DistanceMeasurementResult.Builder(centimeter / 100.0, errorCentimeter / 100.0)
+                new DistanceMeasurementResult.Builder(meter, errorCentimeter / 100.0)
                         .setMeasurementTimestampNanos(elapsedRealtimeNanos);
 
         switch (method) {

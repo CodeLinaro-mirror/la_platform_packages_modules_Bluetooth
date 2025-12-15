@@ -1145,6 +1145,11 @@ public class AdapterService extends Service {
 
     private void stopGattProfileService() {
         Log.i(TAG, "stopGattProfileService() called");
+
+        if (mGattService != null) {
+            mGattService.setAdvertiseManagerAvailable(false);
+        }
+
         setScanMode(SCAN_MODE_NONE, "stopGattProfileService");
 
         if (mRunningProfiles.size() == 0) {

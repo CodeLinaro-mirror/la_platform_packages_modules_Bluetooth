@@ -302,6 +302,7 @@ void bta_hh_le_remove_dev_bg_conn(tBTA_HH_DEV_CB* p_cb);
 void bta_hh_le_open_fail(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
 void bta_hh_gatt_open(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
 void bta_hh_gatt_close(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data);
+void bta_hh_gatt_cancel(tBTA_HH_DEV_CB* p_cb);
 void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_buf);
 
 void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_buf);

@@ -12,7 +12,7 @@
         <MainModeType>2</MainModeType>
         <SubModeType>255</SubModeType>
         <MainModeMinSteps>2</MainModeMinSteps>
-        <MainModeMaxSteps>6</MainModeMaxSteps>
+        <MainModeMaxSteps>3</MainModeMaxSteps>
         <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
@@ -29,14 +29,14 @@
         <ConfigId>1</ConfigId>
         <MainModeType>2</MainModeType>
         <SubModeType>1</SubModeType>
-        <MainModeMinSteps>2</MainModeMinSteps>
-        <MainModeMaxSteps>3</MainModeMaxSteps>
+        <MainModeMinSteps>5</MainModeMinSteps>
+        <MainModeMaxSteps>6</MainModeMaxSteps>
         <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
         <RTTTypes>0</RTTTypes>
         <CsSyncPhy>1</CsSyncPhy>
-        <ChannelMap>252 255 127 252 255 255 255 255 255 31</ChannelMap>
+        <ChannelMap>84 85 85 84 85 85 85 85 85 21</ChannelMap>
         <ChannelMapRepetition>1</ChannelMapRepetition>
         <ChannelSelectionType>0</ChannelSelectionType>
         <ChannelShape>0</ChannelShape>
@@ -52,9 +52,9 @@
         <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
-        <RTTTypes>2</RTTTypes>
+        <RTTTypes>3</RTTTypes>
         <CsSyncPhy>1</CsSyncPhy>
-        <ChannelMap>252 255 127 252 255 255 255 255 255 31</ChannelMap>
+        <ChannelMap>84 85 85 84 85 85 85 85 85 21</ChannelMap>
         <ChannelMapRepetition>1</ChannelMapRepetition>
         <ChannelSelectionType>0</ChannelSelectionType>
         <ChannelShape>0</ChannelShape>
@@ -63,16 +63,16 @@
     </CsConfigSetting>
     <CsConfigSetting>
         <ConfigId>3</ConfigId>
-        <MainModeType>3</MainModeType>
-        <SubModeType>255</SubModeType>
+        <MainModeType>2</MainModeType>
+        <SubModeType>1</SubModeType>
         <MainModeMinSteps>2</MainModeMinSteps>
-        <MainModeMaxSteps>6</MainModeMaxSteps>
+        <MainModeMaxSteps>3</MainModeMaxSteps>
         <MainModeRepetition>1</MainModeRepetition>
         <Mode0Steps>2</Mode0Steps>
         <Role>0</Role>
         <RTTTypes>4</RTTTypes>
         <CsSyncPhy>1</CsSyncPhy>
-        <ChannelMap>252 255 127 252 255 255 255 255 255 31</ChannelMap>
+        <ChannelMap>84 85 85 84 85 85 85 85 85 21</ChannelMap>
         <ChannelMapRepetition>1</ChannelMapRepetition>
         <ChannelSelectionType>0</ChannelSelectionType>
         <ChannelShape>0</ChannelShape>
@@ -111,7 +111,7 @@
         <SnrControlReflector>255</SnrControlReflector>
     </CsProcedureSettings>
     <CsProcedureSettings>
-        <MaxProcedureDuration>480</MaxProcedureDuration>
+        <MaxProcedureDuration>200</MaxProcedureDuration>
         <MinPeriodBetweenProcedures>0</MinPeriodBetweenProcedures>
         <MaxPeriodBetweenProcedures>150</MaxPeriodBetweenProcedures>
         <MaxProcedureCount>0</MaxProcedureCount>
@@ -126,4 +126,3 @@
     </CsProcedureSettings>
 </CsProcedure>
 </CsConfigurationList>
-

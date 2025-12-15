@@ -538,6 +538,7 @@ public:
         track_call_start_update_(0),
         track_call_end_update_(0),
         defer_reconfig_complete_update_(false),
+        defer_call_reconfig_(false),
         le_audio_source_hal_client_(nullptr),
         le_audio_sink_hal_client_(nullptr),
         close_vbc_timeout_(alarm_new("LeAudioCloseVbcTimeout")),
@@ -715,6 +716,11 @@ public:
       alarm_cancel(reconfiguration_timeout_);
     }
     reconfiguration_group_ = bluetooth::groups::kGroupUnknown;
+
+    LeAudioDeviceGroup* group = aseGroups_.FindById(group_id);
+    if (group && group->IsSuspendedForReconfiguration()) {
+      reconfigurationComplete();
+    }
   }
 
   void StartSuspendTimeout(void) {
@@ -982,6 +988,15 @@ public:
                                               kLogAfSuspendForReconfig + "LocalSource",
                                               "r_state: " + ToString(audio_receiver_state_) +
                                                       "s_state: " + ToString(audio_sender_state_));
+      if (audio_receiver_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && IsDirectionAvailableForCurrentConfiguration(
+                            group, bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+          log::info("Suspended for SNK since current context has directional config");
+          le_audio_sink_hal_client_->SuspendedForReconfiguration();
+        }
+      }
+
       if(le_audio_source_hal_client_) {
         le_audio_source_hal_client_->SuspendedForReconfiguration();
       }
@@ -991,6 +1006,15 @@ public:
                                               kLogAfSuspendForReconfig + "LocalSink",
                                               "r_state: " + ToString(audio_receiver_state_) +
                                                       "s_state: " + ToString(audio_sender_state_));
+      if (audio_sender_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && IsDirectionAvailableForCurrentConfiguration(
+                            group, bluetooth::le_audio::types::kLeAudioDirectionSink)) {
+          log::info("Suspended for SRC since current context has directional config");
+          le_audio_source_hal_client_->SuspendedForReconfiguration();
+        }
+      }
+
       if(le_audio_sink_hal_client_) {
         le_audio_sink_hal_client_->SuspendedForReconfiguration();
       }
@@ -1436,6 +1460,7 @@ public:
       if (IsInCall()) {
         log::debug("Clear cached call updates during group In-Active");
         track_call_start_update_ = 0;
+        defer_call_reconfig_ = false;
         defer_reconfig_complete_update_ = false;
         auto group = aseGroups_.FindById(group_id);
         if (group) {
@@ -1628,6 +1653,8 @@ public:
     log::debug("in_call: {}", in_call);
     if (!in_call) {
       track_call_start_update_ = 0;
+      defer_call_reconfig_ = false;
+      defer_reconfig_complete_update_ = false;
     }
 
     if (in_call == in_call_) {
@@ -1650,6 +1677,18 @@ public:
     LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
     if (group && !in_call) {
       group->ClearStreamingPendingTargetState();
+    }
+
+    //Sometimes metadata uopdates call comes before BT-App updates call
+    if (in_call_ && track_call_start_update_ != 0) {
+      track_call_start_update_ |= CALL_START_UPDATE_FROM_BT_APP;
+      log::debug("set track_call_start_update_ when BT-App comes after metadata");
+      if (track_call_start_update_ == CALL_START_UPDATE_FROM_BT_APP_AND_BT_HAL &&
+          defer_reconfig_complete_update_) {
+        log::warn("Both BT App and UpdateMetadata received for call,"
+                  " send reconfigurationComplete to BT HAL");
+        reconfigurationComplete();
+      }
     }
 
     //If group is under configuring/streaming to other context, it should do reconfiguration.
@@ -1676,6 +1715,11 @@ public:
 
       auto audio_set_conf = group->GetConfiguration(LeAudioContextType::CONVERSATIONAL);
       if (audio_set_conf && group->IsGroupConfiguredTo(*audio_set_conf)) {
+        if (group->IsPendingConfiguration() &&
+                configuration_context_type_ != LeAudioContextType::CONVERSATIONAL) {
+          log::info("stack is pending configuration, defer call reconfig.");
+          defer_call_reconfig_ = true;
+        }
         log::info("Call is coming, but CIG already set for a call");
         return;
       }
@@ -1983,6 +2027,7 @@ public:
       if (IsInCall()) {
         log::debug("Clear cached call updates during group In-Active");
         track_call_start_update_ = 0;
+        defer_call_reconfig_ = false;
         defer_reconfig_complete_update_ = false;
         auto group = aseGroups_.FindById(active_group_id_);
         if (group) {
@@ -5251,7 +5296,7 @@ public:
                 configuration_context_type_, bluetooth::le_audio::types::kLeAudioDirectionSink)) {
       log::error("invalid resume request for context type: {}",
                  ToHexString(configuration_context_type_));
-      CancelLocalAudioSourceStreamingRequest();
+      CancelLocalAudioSourceStreamingRequestWithUnsupported();
       return;
     }
 
@@ -5610,7 +5655,7 @@ public:
                 configuration_context_type_, bluetooth::le_audio::types::kLeAudioDirectionSource)) {
       log::error("invalid resume request for context type: {}",
                  ToHexString(configuration_context_type_));
-      CancelLocalAudioSinkStreamingRequest();
+      CancelLocalAudioSinkStreamingRequestWithUnsupported();
       return;
     }
 
@@ -5938,7 +5983,9 @@ public:
     log::debug("check track_call_start_update_= {}", track_call_start_update_);
     //Assuming BT-App updates to BT-Stack before UpdateMetadata from BT-HAL
     //during use-case switch to Call.
-    if (IsInCall() && track_call_start_update_ != 0) {
+    if ((IsInCall() && track_call_start_update_ != 0) ||
+        (!IsInCall() && track_call_start_update_ == 0 &&
+         track_call_end_update_ == 0)) {
       if (local_metadata_context_types_.source.test(LeAudioContextType::CONVERSATIONAL) ||
           local_metadata_context_types_.source.test(LeAudioContextType::RINGTONE)) {
         track_call_start_update_ |= CALL_START_UPDATE_METADATA_FROM_BT_HAL;
@@ -7093,9 +7140,26 @@ public:
     // Check which directions were suspended
     uint8_t previously_active_directions = 0;
     if (audio_sender_state_ >= AudioState::READY_TO_START) {
+      if (audio_receiver_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && IsDirectionAvailableForCurrentConfiguration(
+                                group, bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+          log::info("Reconfiguration complete for SNK since current context has SNK config");
+          previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSource;
+        }
+      }
       previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSink;
     }
     if (audio_receiver_state_ >= AudioState::READY_TO_START) {
+      if (audio_sender_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && IsDirectionAvailableForCurrentConfiguration(
+                                  group, bluetooth::le_audio::types::kLeAudioDirectionSink)) {
+          log::info("Reconfiguration complete for SRC since current context has SRC config");
+          previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSink;
+        }
+      }
+
       previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSource;
     }
 
@@ -7250,7 +7314,12 @@ public:
 
                 GroupStream(group, configuration_context_type_, remote_contexts);
               }
-
+              if (defer_call_reconfig_) {
+                reconfigurationComplete();
+                in_call_ = false;
+                defer_call_reconfig_ = false;
+                SetInCall(true);
+              }
             }
           } else {
             if(track_call_end_update_ != 0) {
@@ -7535,6 +7604,8 @@ private:
   uint8_t track_call_end_update_;
   /*To track reconfig competle update sent to BT HAL*/
   bool defer_reconfig_complete_update_;
+  /*To track call reconfig when call comes during other reconfiguration*/
+  bool defer_call_reconfig_;
 
   /* Reconnection mode */
   tBTM_BLE_CONN_TYPE reconnection_mode_;

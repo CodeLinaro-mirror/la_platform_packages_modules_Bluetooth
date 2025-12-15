@@ -56,6 +56,10 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     private HeadsetService getService(AttributionSource source) {
+        if (source == null) {
+            Log.w(TAG, "getService received a null source");
+            return null;
+        }
         HeadsetService service = mService;
 
         if (Utils.isInstrumentationTestMode()) {

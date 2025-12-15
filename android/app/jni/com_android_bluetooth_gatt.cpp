@@ -1201,7 +1201,7 @@ public:
                                  method_onDistanceMeasurementStopped, addr.get(), reason, method);
   }
 
-  void OnDistanceMeasurementResult(RawAddress address, uint32_t centimeter,
+  void OnDistanceMeasurementResult(RawAddress address, double meter,
                                    uint32_t error_centimeter, int azimuth_angle,
                                    int error_azimuth_angle, int altitude_angle,
                                    int error_altitude_angle, uint64_t elapsed_realtime_nanos,
@@ -1216,7 +1216,7 @@ public:
     ScopedLocalRef<jstring> addr(sCallbackEnv.get(), bdaddr2newjstr(sCallbackEnv.get(), &address));
     sCallbackEnv->CallVoidMethod(
             mDistanceMeasurementCallbacksObj, method_onDistanceMeasurementResult, addr.get(),
-            centimeter, error_centimeter, azimuth_angle, error_azimuth_angle, altitude_angle,
+            meter, error_centimeter, azimuth_angle, error_azimuth_angle, altitude_angle,
             error_altitude_angle, elapsed_realtime_nanos, confidence_level, delay_spread_meters,
             detected_attack_level, velocity_meters_per_second, method);
   }
@@ -2083,6 +2083,13 @@ static void gattServerUnregisterAppNative(JNIEnv* /* env */, jobject /* object *
     return;
   }
   bluetooth::gatt::close_server(serverIf);
+
+  if (!sGattIf || !(sGattIf->server)) {
+    log::warn("server obj is NULL, ignoring request for serverIf: {}",
+              serverIf);
+    return;
+  }
+
   sGattIf->server->unregister_server(serverIf);
 }
 
@@ -2993,7 +3000,7 @@ static int register_com_android_bluetooth_gatt_distance_measurement(JNIEnv* env)
            &method_onDistanceMeasurementStarted},
           {"onDistanceMeasurementStopped", "(Ljava/lang/String;II)V",
            &method_onDistanceMeasurementStopped},
-          {"onDistanceMeasurementResult", "(Ljava/lang/String;IIIIIIJIDIDI)V",
+          {"onDistanceMeasurementResult", "(Ljava/lang/String;DIIIIIJIDIDI)V",
            &method_onDistanceMeasurementResult},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/gatt/DistanceMeasurementNativeInterface",

@@ -49,6 +49,7 @@ namespace bluetooth {
 namespace avrcp {
 
 ConnectionHandler* ConnectionHandler::instance_ = nullptr;
+int8_t acceptor_arcp_handle = -1;
 
 // ConnectionHandler::CleanUp take the lock and calls
 // ConnectionHandler::AcceptorControlCB with AVRC_CLOSE_IND_EVT
@@ -89,11 +90,13 @@ bool ConnectionHandler::Initialize(const ConnectionCallback& callback, AvrcpInte
   instance_->sdp_ = sdp;
   instance_->vol_ = vol;
 
+  acceptor_arcp_handle = -1;
   // Set up the AVRCP acceptor connection
-  if (!instance_->AvrcpConnect(false, RawAddress::kAny)) {
+  if (!instance_->AvrcpConnect(false, RawAddress::kAny, (uint8_t*) &acceptor_arcp_handle)) {
     instance_->CleanUp();
     return false;
   }
+  log::info("{}: acceptor_arcp_handle = {}", __func__, acceptor_arcp_handle);
 
   return true;
 }
@@ -108,6 +111,13 @@ bool ConnectionHandler::CleanUp() {
     entry++;
     curr->second->DeviceDisconnected();
     instance_->avrc_->Close(curr->first);
+    if (curr->first == acceptor_arcp_handle) {
+      acceptor_arcp_handle = -1;
+    }
+  }
+  if (acceptor_arcp_handle != -1) {
+    log::info("{}: clear avrcp handle {}", __func__, acceptor_arcp_handle);
+    instance_->avrc_->Close((uint8_t) acceptor_arcp_handle);
   }
   instance_->device_map_.clear();
   instance_->feature_map_.clear();
@@ -219,6 +229,11 @@ bool ConnectionHandler::SdpLookup(const RawAddress& bdaddr, SdpCallback cb, bool
 }
 
 bool ConnectionHandler::AvrcpConnect(bool initiator, const RawAddress& bdaddr) {
+  uint8_t handle = 0;
+  return ConnectionHandler::AvrcpConnect(initiator, bdaddr, &handle);
+}
+
+bool ConnectionHandler::AvrcpConnect(bool initiator, const RawAddress& bdaddr, uint8_t* handle) {
   log::info("Connect to device {}", bdaddr);
 
   tAVRC_CONN_CB open_cb;
@@ -236,9 +251,8 @@ bool ConnectionHandler::AvrcpConnect(bool initiator, const RawAddress& bdaddr) {
   // AVRC_API requires it though.
   open_cb.control = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT | BTA_AV_FEAT_METADATA | AVRC_CT_PASSIVE;
 
-  uint8_t handle = 0;
-  uint16_t status = avrc_->Open(&handle, &open_cb, bdaddr);
-  log::info("handle=0x{:x} status=0x{:x}", handle, status);
+  uint16_t status = avrc_->Open(handle, &open_cb, bdaddr);
+  log::info("handle=0x{:x} status=0x{:x}", *handle, status);
   return status == AVRC_SUCCESS;
 }
 

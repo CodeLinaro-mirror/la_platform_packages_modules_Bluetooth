@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 /******************************************************************************
  *
  *  This file contains action functions for the audio gateway.
@@ -41,7 +47,7 @@
 #include "osi/include/alarm.h"
 #include "sdp_status.h"
 #include "types/bt_transport.h"
-
+#include "osi/include/properties.h"
 #ifdef __ANDROID__
 #endif
 
@@ -55,9 +61,14 @@
 #include "stack/include/sdp_api.h"
 #include "storage/config_keys.h"
 #include "types/raw_address.h"
+#include "stack/include/acl_api.h"
+#include "bta/hf_client/bta_hf_client_int.h"
+#include "stack/include/btm_client_interface.h"
+
 
 using namespace bluetooth;
 using namespace bluetooth::legacy::stack::sdp;
+bool mAgDeviceConnected = false;
 
 /*****************************************************************************
  *  Constants
@@ -89,6 +100,42 @@ typedef void (*tBTA_AG_ATCMD_CBACK)(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t ar
 const tBTA_AG_ATCMD_CBACK bta_ag_at_cback_tbl[BTA_AG_NUM_IDX] = {bta_ag_at_hsp_cback,
                                                                  bta_ag_at_hfp_cback};
 
+void bta_ag_switch_central_role(tBTA_AG_SCB* p_scb) {
+   bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+   bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
+   if (is_ag_role_enabled && is_hf_client_enabled) {
+      tHCI_ROLE role;
+      if (get_btm_client_interface().link_policy.BTM_GetRole(p_scb->peer_addr, &role) 
+             != tBTM_STATUS::BTM_SUCCESS) {
+         log::warn("Unable to find link role for device:{}", p_scb->peer_addr);
+         return;
+      }
+
+      if (role != HCI_ROLE_CENTRAL) {
+         const tBTM_STATUS status = 
+                  get_btm_client_interface().link_policy.BTM_SwitchRoleToCentral(p_scb->peer_addr);
+         switch (status) {
+           case tBTM_STATUS::BTM_CMD_STARTED:
+             break;
+           case tBTM_STATUS::BTM_MODE_UNSUPPORTED:
+           case tBTM_STATUS::BTM_DEV_RESTRICT_LISTED:
+             // Role switch can never happen, but indicate to caller
+             // a result such that a timer will not start to repeatedly
+             // try something not possible.
+             log::error("Link can never role switch to central device:{}",
+                        p_scb->peer_addr);
+             break;
+           default:
+              /* can not switch role on SCB - start the timer on SCB */
+             log::error("Unable to switch role to central device:{} error:{}",
+                        p_scb->peer_addr, btm_status_text(status));
+         }
+      }
+   }
+   return;
+}
+
+
 /*******************************************************************************
  *
  * Function         bta_ag_cback_open
@@ -111,6 +158,8 @@ static void bta_ag_cback_open(tBTA_AG_SCB* p_scb, const RawAddress& bd_addr,
   open.bd_addr = bd_addr;
 
   (*bta_ag_cb.p_cback)(BTA_AG_OPEN_EVT, (tBTA_AG*)&open);
+  bta_ag_switch_central_role(p_scb);
+  
 }
 
 /*******************************************************************************
@@ -424,11 +473,18 @@ void bta_ag_rfc_close(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
 
   /* stop timers */
   alarm_cancel(p_scb->ring_timer);
-  alarm_cancel(p_scb->codec_negotiation_timer);
 
   close.hdr.handle = bta_ag_scb_to_idx(p_scb);
   close.hdr.app_id = p_scb->app_id;
   close.bd_addr = p_scb->peer_addr;
+
+  if (alarm_is_scheduled(p_scb->codec_negotiation_timer)) {
+    alarm_cancel(p_scb->codec_negotiation_timer);
+    /* Announce that codec negotiation failed. */
+    bta_ag_sco_codec_nego(p_scb, false);
+    /* call audio close callback */
+    (*bta_ag_cb.p_cback)(BTA_AG_AUDIO_CLOSE_EVT, (tBTA_AG*)&close);
+  }
 
   bta_sys_conn_close(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
 
@@ -436,6 +492,7 @@ void bta_ag_rfc_close(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
     bta_clear_active_device();
   }
 
+   mAgDeviceConnected = false;
   /* call close cback */
   (*bta_ag_cb.p_cback)(BTA_AG_CLOSE_EVT, (tBTA_AG*)&close);
 
@@ -815,6 +872,21 @@ void bta_ag_post_sco_close(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data) {
   }
 }
 
+/**
+ * Check if any of the device has a connection
+ *
+ */
+bool bta_ag_is_ag_device_connected() {
+  log::info("AG device connection status is", mAgDeviceConnected);
+  return mAgDeviceConnected;
+}
+
+bool bta_ag_get_hfClient_connection_status() {
+   return bta_is_hf_client_device_connected();
+}
+
+
+
 /*******************************************************************************
  *
  * Function         bta_ag_svc_conn_open
@@ -852,6 +924,7 @@ void bta_ag_svc_conn_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
       bta_ag_api_set_active_device(p_scb->peer_addr);
     }
     (*bta_ag_cb.p_cback)(BTA_AG_CONN_EVT, (tBTA_AG*)&evt);
+    mAgDeviceConnected = true;
   }
 }
 

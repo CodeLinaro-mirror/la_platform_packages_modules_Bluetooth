@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+#include <bluetooth/log.h>
+
 #include "bta_ag_swb_aptx.h"
 
 #include <android_bluetooth_sysprop.h>
@@ -34,10 +42,16 @@
 #include "stack/btm/btm_sco_hfp_hal.h"
 #include "stack/include/btm_api_types.h"
 #include "types/raw_address.h"
+#include "osi/include/properties.h"
 
 using namespace bluetooth;
 
 bool is_hfp_aptx_voice_enabled() {
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+  if (is_hf_client_enabled) {
+     log::error("hf client role is also enabled. Not enabling aptx voice");
+     return false;
+  }
   return android::sysprop::bluetooth::Hfp::codec_aptx_voice().value_or(false);
 }
 

@@ -16,6 +16,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 /*******************************************************************************
  *
  *  Filename:      btif_hf.c
@@ -28,6 +34,8 @@
 #define LOG_TAG "bt_btif_hf"
 
 #include "btif/include/btif_hf.h"
+#include <com_android_bluetooth_flags.h>
+#include "osi/include/properties.h"
 
 #include <android_bluetooth_sysprop.h>
 #include <base/functional/bind.h>
@@ -78,9 +86,11 @@
            .c_str())
 
 using namespace bluetooth::shim;
+using namespace bluetooth;
 namespace {
 constexpr char kBtmLogTag[] = "HFP";
 }
+extern bool is_hf_client_device_connected();
 
 namespace bluetooth::headset {
 
@@ -111,6 +121,7 @@ static uint32_t btif_hf_features = get_hf_features();
 /* Max HF clients supported from App */
 static int btif_max_hf_clients = 1;
 static RawAddress active_bda = {};
+bool mAgDeviceConnected = false;
 
 /*******************************************************************************
  *  Static variables
@@ -142,7 +153,6 @@ struct btif_hf_cb_t {
 };
 
 static btif_hf_cb_t btif_hf_cb[BTA_AG_MAX_NUM_CLIENTS];
-
 static const char* dump_hf_call_state(bthf_call_state_t call_state) {
   switch (call_state) {
     CASE_RETURN_STR(BTHF_CALL_STATE_IDLE)
@@ -170,6 +180,17 @@ static int btif_hf_idx_by_bdaddr(RawAddress* bd_addr);
 static bool is_active_device(const RawAddress& bd_addr) {
   return !active_bda.IsEmpty() && active_bda == bd_addr;
 }
+
+bool btif_ag_is_sco_managed_by_audio() {
+   bool value = false;
+   if (com::android::bluetooth::flags::is_sco_managed_by_audio()) {
+     value = osi_property_get_bool("bluetooth.sco.managed_by_audio", false);
+     log::verbose("is_sco_managed_by_audio enabled={}", value);
+   }
+   return value;
+}
+
+
 
 static tBTA_SERVICE_MASK get_BTIF_HF_SERVICES() {
   return android::sysprop::bluetooth::Hfp::hf_services().value_or(BTA_HSP_SERVICE_MASK |
@@ -329,6 +350,19 @@ static bool IsSlcConnected(RawAddress* bd_addr) {
     return false;
   }
   return btif_hf_cb[idx].state == BTHF_CONNECTION_STATE_SLC_CONNECTED;
+}
+
+/**
+ * Check if any of the device has a connection
+ *
+ */
+bool IsAgDeviceConnected() {
+  log::info("AG device connection status is", mAgDeviceConnected);
+  return mAgDeviceConnected;
+}
+
+bool getHfClientConnectionStatus() {
+   return is_hf_client_device_connected();
 }
 
 /*******************************************************************************
@@ -529,6 +563,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
       btif_hf_cb[idx].state = BTHF_CONNECTION_STATE_SLC_CONNECTED;
       bt_hf_callbacks->ConnectionStateCallback(btif_hf_cb[idx].state,
                                                &btif_hf_cb[idx].connected_bda);
+      mAgDeviceConnected = true;
       if (btif_hf_cb[idx].is_initiator) {
         btif_queue_advance_by_uuid(UUID_SERVCLASS_AG_HANDSFREE,
                                    &btif_hf_cb[idx].connected_bda);
@@ -549,6 +584,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
                                          IOT_CONF_KEY_HFP_SCO_CONN_FAIL_COUNT);
 
       btif_hf_cb[idx].audio_state = BTHF_AUDIO_STATE_DISCONNECTED;
+      mAgDeviceConnected = false;
       bt_hf_callbacks->AudioStateCallback(BTHF_AUDIO_STATE_DISCONNECTED,
                                           &btif_hf_cb[idx].connected_bda);
       break;
@@ -1368,8 +1404,11 @@ bt_status_t HeadsetInterface::PhoneStateChange(int num_active, int num_held,
       (control_block.num_held == 0) && (control_block.call_setup_state == BTHF_CALL_STATE_IDLE)) {
     tBTA_AG_RES_DATA ag_res = {};
     log::verbose("Active/Held call notification received without call setup update");
-
-    ag_res.audio_handle = BTA_AG_HANDLE_SCO_NO_CHANGE;
+    if (!btif_ag_is_sco_managed_by_audio()) {
+      ag_res.audio_handle = btif_hf_cb[idx].handle;
+    } else {
+      ag_res.audio_handle = BTA_AG_HANDLE_SCO_NO_CHANGE;
+    }
     // Addition call setup with the Active call
     // CIND response should have been updated.
     // just open SCO connection.

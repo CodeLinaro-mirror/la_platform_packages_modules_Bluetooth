@@ -70,6 +70,7 @@
 
 #define PID_FILE "/data/.bdt_pid"
 #define L2CAP_PROP_FOC_ENABLED 1
+#define L2CAP_PROP_SEND_S_FRAME_RR_ENABLED 1
 
 #ifndef MAX
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -731,7 +732,7 @@ void do_l2cap_init(char* p) {
   property_get("persist.vendor.qcom.bluetooth.l2c_opt", l2c_opt, "0");
   g_l2cap_option = atoi(l2c_opt);
   if(g_l2cap_option == L2CAP_PROP_FOC_ENABLED) {
-    tl2cap_cfg_info.fcs = 1;
+    tl2cap_cfg_info.fcs = g_l2cap_option;
   } else {
     tl2cap_cfg_info.fcs = 0;
   }
@@ -1043,7 +1044,12 @@ int main(int argc, char* argv[]) {
   struct sigaction sa;
   int opt, mode = RECEIVE, addr_required = 0;
   char temp[3] = {0};
-
+  int adding_flag_to_send_rr = 0;
+  char l2c_send_s_frame_rr_opt[PROPERTY_VALUE_MAX];
+  property_get("persist.vendor.qcom.bluetooth.l2c_send_s_frame_rr", l2c_send_s_frame_rr_opt, "0");
+  if(atoi(l2c_send_s_frame_rr_opt) == L2CAP_PROP_SEND_S_FRAME_RR_ENABLED) {
+	  adding_flag_to_send_rr = 1;
+  }
   while ((opt = getopt(argc, argv,
                        "aerswcpb:i:P:K:O:H:F:N:L:C:D:X:Q:I:W:Z:UGATMES")) !=
          EOF) {
@@ -1289,6 +1295,9 @@ int main(int argc, char* argv[]) {
 ERR:
   while (1) {
     sleep(5);
+	if(adding_flag_to_send_rr) {
+        l2c_disconnect(NULL);
+     }
     printf("Enter Y/y to Exit... \n");
     len = read(0, &temp, 2);
     if ((temp[0] == 'Y') || (temp[0] == 'y')) break;

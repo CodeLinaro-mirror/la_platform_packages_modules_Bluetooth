@@ -1084,6 +1084,13 @@ void gatt_chk_srv_chg(tGATTS_SRV_CHG* p_srv_chg_clt) {
 
   if (p_srv_chg_clt->srv_changed) {
     char remote_name[BD_NAME_LEN] = "";
+    if (stack_config_get_interface()->get_pts_configure_svc_chg_indication()) {
+      uint8_t svc_chg_cccd = btif_storage_get_svc_chg_cccd(p_srv_chg_clt->bda);
+      if (svc_chg_cccd != GATT_CHAR_CLIENT_CONFIG_INDICTION) {
+        log::verbose("discard srv chg - CCCD disabled");
+        return;
+      }
+    }
     if (btif_storage_get_stored_remote_name(p_srv_chg_clt->bda, remote_name) &&
         (interop_match_name(INTEROP_GATTC_NO_SERVICE_CHANGED_IND, remote_name))) {
       VLOG(1) << "discard srv chg - interop matched " << remote_name;
@@ -1145,7 +1152,16 @@ void gatt_proc_srv_chg(void) {
   uint8_t start_idx = 0;
   while (gatt_find_the_connected_bda(start_idx, bda, &found_idx, &transport)) {
     tGATT_TCB* p_tcb = &gatt_cb.tcb[found_idx];
-
+    if (stack_config_get_interface()->get_pts_configure_svc_chg_indication()) {
+      if (p_tcb) {
+        // Get the CCCD value from the TCB which was initialized during connection
+        if (p_tcb->svc_chg_cccd != GATT_CHAR_CLIENT_CONFIG_INDICTION) {
+          start_idx = ++found_idx;
+          log::verbose("discard srv chg - CCCD not configured");
+          continue;
+        }
+      }
+    }
     bool send_indication = true;
 
     if (gatt_is_srv_chg_ind_pending(p_tcb)) {

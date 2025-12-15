@@ -44,6 +44,7 @@ using os::Alarm;
 using os::Handler;
 
 static const std::string kFactoryResetProperty = "persist.bluetooth.factoryreset";
+static const std::string CONFIG_DATABASE_DYNAMIC = "/data/misc/bluedroid/interop_database_dynamic.conf";
 
 static const size_t kDefaultTempDeviceCapacity = 10000;
 // Save config whenever there is a change, but delay it by this value so that burst config change
@@ -157,6 +158,7 @@ void StorageModule::Start() {
   if (os::GetSystemProperty(kFactoryResetProperty) == "true") {
     log::info("{} is true, delete config files", kFactoryResetProperty);
     LegacyConfigFile::FromPath(config_file_path_).Delete();
+    LegacyConfigFile::FromPath(CONFIG_DATABASE_DYNAMIC).Delete();
     os::SetSystemProperty(kFactoryResetProperty, "false");
   }
   if (!is_config_checksum_pass(kConfigFileComparePass)) {

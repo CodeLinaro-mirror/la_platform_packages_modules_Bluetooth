@@ -610,7 +610,7 @@ public class VolumeControlService extends ProfileService {
                             + isMute
                             + ", new volume: "
                             + volume);
-            if (isStreamMute) {
+            if (isStreamMute && (volume == 0)) {
                 Log.i(TAG, "Mute the device " + device);
                 mute(device);
             }
@@ -1067,10 +1067,15 @@ public class VolumeControlService extends ProfileService {
                     }
                     if (getConnectedDevices(groupId).size() == 1) {
                         // Ignore volume from AF because cached volume was used
+                        Log.d(TAG, "mIgnoreSetVolumeFromAF set to true");
                         mIgnoreSetVolumeFromAF = true;
                     }
                 }
+                else{
+                    Log.d(TAG, "deviceVolume = VOLUME_CONTROL_UNKNOWN_VOLUME");
+                }
             } else {
+                Log.d(TAG, "vcpDeviceVolumeApiImprovements : getGroupVolume");
                 int groupVolume = getGroupVolume(groupId);
                 if (groupVolume != VOLUME_CONTROL_UNKNOWN_VOLUME) {
                     Log.i(
@@ -1085,7 +1090,6 @@ public class VolumeControlService extends ProfileService {
                     setGroupVolume(groupId, systemVolume);
                 }
             }
-
             return;
         }
 

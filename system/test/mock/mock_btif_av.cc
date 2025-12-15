@@ -26,6 +26,7 @@
 
 #include <cstdint>
 
+#include "a2dp_constants.h"
 #include "test/common/mock_functions.h"
 
 // Original usings

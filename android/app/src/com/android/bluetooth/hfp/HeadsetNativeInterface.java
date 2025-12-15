@@ -88,7 +88,7 @@ public class HeadsetNativeInterface {
             // Set bt_stack's active device to default if java layer set active device to null
             return Utils.getBytesFromAddress("00:00:00:00:00:00");
         }
-        return Utils.getByteBrEdrAddress(device);
+        return Utils.getByteAddress(device);
     }
 
     void onConnectionStateChanged(int state, byte[] address) {
@@ -294,6 +294,7 @@ public class HeadsetNativeInterface {
      * @return True on success, False on failure
      */
     boolean connectHfp(BluetoothDevice device) {
+        Log.d(TAG, "connectHfp: " + device);
         return connectHfpNative(getByteAddress(device));
     }
 

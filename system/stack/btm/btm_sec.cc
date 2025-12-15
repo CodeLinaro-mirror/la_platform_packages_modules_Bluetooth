@@ -4264,6 +4264,7 @@ static void btm_sec_pairing_timeout(void* /* data */) {
   switch (p_cb->pairing_state) {
     case BTM_PAIR_STATE_WAIT_PIN_REQ:
       btm_sec_bond_cancel_complete();
+      btm_sec_cb.change_pairing_state(BTM_PAIR_STATE_IDLE);
       break;
 
     case BTM_PAIR_STATE_WAIT_LOCAL_PIN:
@@ -4729,8 +4730,12 @@ static void btm_sec_auth_timer_timeout(void* data) {
     log::info("invalid device or not found");
   } else if (btm_dev_authenticated(p_dev_rec)) {
     log::info("device is already authenticated");
-    if (p_dev_rec->sec_rec.p_callback) {
-      (*p_dev_rec->sec_rec.p_callback)(p_dev_rec->bd_addr, BT_TRANSPORT_BR_EDR,
+
+    tBTM_SEC_CALLBACK* p_callback = p_dev_rec->sec_rec.p_callback;
+    p_dev_rec->sec_rec.p_callback = NULL;
+
+    if (p_callback != nullptr) {
+      (*p_callback)(p_dev_rec->bd_addr, BT_TRANSPORT_BR_EDR,
                                        p_dev_rec->sec_rec.p_ref_data, tBTM_STATUS::BTM_SUCCESS);
     }
   } else if (p_dev_rec->sec_rec.classic_link == tSECURITY_STATE::AUTHENTICATING) {

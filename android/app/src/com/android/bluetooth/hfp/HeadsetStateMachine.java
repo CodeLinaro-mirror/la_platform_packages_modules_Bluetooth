@@ -57,6 +57,8 @@ import android.telephony.ServiceState;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.bluetooth.agClient.BluetoothAgClientService;
+
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
@@ -155,6 +157,8 @@ class HeadsetStateMachine extends StateMachine {
     private final HeadsetNativeInterface mNativeInterface;
     private final HeadsetSystemInterface mSystemInterface;
     private final DatabaseManager mDatabaseManager;
+    private final BluetoothAgClientService mBluetoothAgClientService =
+              BluetoothAgClientService.getBluetoothAgClientService();
 
     // Runtime states
     @VisibleForTesting int mSpeakerVolume;
@@ -2245,6 +2249,13 @@ class HeadsetStateMachine extends StateMachine {
             }
             dialNumber = Utils.convertPreDial(number);
         }
+        if (mHeadsetService.getAGClientConnectionStatus()) {
+           //if both AG and client are connected,
+           //need to send the dialing request to client
+           Log.w(TAG, "processDialCall, from Client");
+           mBluetoothAgClientService.dialOutgoingCall(number);
+           return;
+        }
         if (!mHeadsetService.dialOutgoingCall(mDevice, dialNumber)) {
             Log.w(TAG, "processDialCall, failed to dial in service");
             mNativeInterface.atResponseCode(mDevice, HeadsetHalConstants.AT_RESPONSE_ERROR, 0);
@@ -2718,6 +2729,10 @@ class HeadsetStateMachine extends StateMachine {
                 mNativeInterface.clccResponse(device, 1, 0, 0, 0, false, phoneNumber, type);
             }
             mNativeInterface.clccResponse(device, 0, 0, 0, 0, false, "", 0);
+        } else if (hasMessages(SEND_CLCC_RESP_AFTER_VOIP_CALL)) {
+            Log.w(TAG, "processAtClcc: send OK response as VOIP call ended just now");
+            mNativeInterface.clccResponse(device, 0, 0, 0, 0, false, "", 0);
+            removeMessages(SEND_CLCC_RESP_AFTER_VOIP_CALL);
         } else {
             // In Telecom call, ask Telecom to send send remote phone number
             if (!mSystemInterface.listCurrentCalls(mHeadsetService)) {

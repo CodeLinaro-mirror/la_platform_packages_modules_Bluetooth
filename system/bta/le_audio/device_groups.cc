@@ -99,6 +99,21 @@ bool LeAudioDeviceGroup::IsEmpty(void) const { return leAudioDevices_.size() == 
 
 bool LeAudioDeviceGroup::IsAnyDeviceConnected(void) const { return NumOfConnected() != 0; }
 
+bool LeAudioDeviceGroup::IsAnyDeviceDisconnecting(void) const {
+  /* return true if any device is disconnecting or pending*/
+  for (auto const leAudioDevice : leAudioDevices_) {
+    auto dev = leAudioDevice.lock();
+    if (dev && (dev->conn_id_ != GATT_INVALID_CONN_ID)) {
+      auto state = dev->GetConnectionState();
+      if (state == DeviceConnectState::DISCONNECTING ||
+          state == DeviceConnectState::DISCONNECTING_AND_RECOVER) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 int LeAudioDeviceGroup::Size(void) const { return leAudioDevices_.size(); }
 
 int LeAudioDeviceGroup::DesiredSize(void) const {
@@ -1457,16 +1472,6 @@ int LeAudioDeviceGroup::GetAseCount(uint8_t direction) const {
   return result;
 }
 
-//Require this update as remote device during VA acts same as Call.
-void updateVAcontext(types::BidirectionalPair<types::AudioContexts>& group_contexts) {
-  if (group_contexts.sink.test(LeAudioContextType::CONVERSATIONAL) &&
-      group_contexts.source.test(LeAudioContextType::CONVERSATIONAL)) {
-    log::info("update VoiceAssistants as available audio context in both direction");
-    group_contexts.sink.set(LeAudioContextType::VOICEASSISTANTS);
-    group_contexts.source.set(LeAudioContextType::VOICEASSISTANTS);
-  }
-}
-
 /* Calculate the total number of sink, source and bidirectional CISes required by the CIG,
  * for the given configuration audio context.
  */
@@ -1573,8 +1578,7 @@ void LeAudioDeviceGroup::CigConfiguration::GetCisCount(LeAudioContextType contex
                  out_cis_count_unidir_sink = expected_device_cnt;
               }
             }
-          } else if (context_type == LeAudioContextType::LIVE ||
-                     context_type == LeAudioContextType::VOICEASSISTANTS) {
+          } else if (context_type == LeAudioContextType::LIVE) {
             out_cis_count_bidir = 2 * expected_device_cnt;
           } else if (context_type == LeAudioContextType::GAME) {
             out_cis_count_bidir = expected_device_cnt;

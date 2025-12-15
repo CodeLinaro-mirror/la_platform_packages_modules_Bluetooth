@@ -73,6 +73,8 @@ using aidl::android::hardware::bluetooth::ranging::SubeventAbortReason;
 using aidl::android::hardware::bluetooth::ranging::SubeventResultData;
 using aidl::android::hardware::bluetooth::ranging::Reason;
 using aidl::android::hardware::bluetooth::ranging::Nadm;
+using aidl::android::hardware::bluetooth::ranging::LocationType;
+using aidl::android::hardware::bluetooth::ranging::SightType;
 
 namespace bluetooth {
 namespace hal {
@@ -184,20 +186,28 @@ public:
     return vendor_specific_characteristics;
   }
 
-  void OpenSession(uint16_t connection_handle, uint16_t att_handle,
+  void OpenSession(ChannelSoundingParameters channel_sounding_parameters,
                    const std::vector<hal::VendorSpecificCharacteristic>& vendor_specific_data) {
+    uint16_t connection_handle = channel_sounding_parameters.acl_handle_;
     log::info("connection_handle 0x{:04x}, att_handle 0x{:04x} size of vendor_specific_data {}",
-              connection_handle, att_handle, vendor_specific_data.size());
+              connection_handle, channel_sounding_parameters.real_time_procedure_data_att_handle_,
+              vendor_specific_data.size());
     session_trackers_[connection_handle] =
             ndk::SharedRefBase::make<BluetoothChannelSoundingSessionTracker>(
                     connection_handle, ranging_hal_callback_, false, hal_ver_);
     BluetoothChannelSoundingParameters parameters;
     parameters.aclHandle = connection_handle;
     parameters.role = aidl::android::hardware::bluetooth::ranging::Role::INITIATOR;
-    parameters.realTimeProcedureDataAttHandle = att_handle;
+    parameters.realTimeProcedureDataAttHandle =
+      channel_sounding_parameters.real_time_procedure_data_att_handle_;
+    parameters.locationType = static_cast<LocationType>(channel_sounding_parameters.location_type_);
+    parameters.sightType = static_cast<SightType>(channel_sounding_parameters.sight_type_);
     CopyVendorSpecificData(vendor_specific_data, parameters.vendorSpecificData);
 
     auto& tracker = session_trackers_[connection_handle];
+    log::warn("connection_handle 0x{:04x}, att_handle 0x{:04x} locationType: {} SightType: {}",
+              connection_handle, channel_sounding_parameters.real_time_procedure_data_att_handle_,
+              channel_sounding_parameters.location_type_, channel_sounding_parameters.sight_type_);
     bluetooth_channel_sounding_->openSession(parameters, tracker, &tracker->GetSession());
 
     if (tracker->GetSession() != nullptr) {

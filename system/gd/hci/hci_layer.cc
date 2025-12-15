@@ -252,6 +252,14 @@ struct HciLayer::impl {
       log::error("Discarding vendor bttpi event {} recvied in stack", OpCodeText(op_code));
       return;
     }
+    if (hal_test_supported && waiting_command_ != op_code) {
+      log::warn(
+              "Received event for OpCode {} while waiting for {}, ignoring (is the HAL sending "
+              "commands, but not handling the events?)",
+              OpCodeText(op_code), OpCodeText(waiting_command_));
+      return;
+    }
+
     log::assert_that(waiting_command_ == op_code, "Waiting for {}, got {}",
                      OpCodeText(waiting_command_), OpCodeText(op_code));
 
@@ -288,7 +296,7 @@ struct HciLayer::impl {
               std::move(response_view));
     }
 
-#ifdef TARGET_FLOSS
+
     // Although UNKNOWN_CONNECTION might be a controller issue in some command status, we treat it
     // as a disconnect event to maintain consistent connection state between stack and controller
     // since there might not be further HCI Disconnect Event after this status event.
@@ -304,7 +312,7 @@ struct HciLayer::impl {
         module_.Disconnect(handle, ErrorCode::UNKNOWN_CONNECTION);
       }
     }
-#endif
+
 
     command_queue_.pop_front();
     waiting_command_ = OpCode::NONE;

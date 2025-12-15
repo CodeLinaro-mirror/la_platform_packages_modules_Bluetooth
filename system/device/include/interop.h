@@ -386,6 +386,13 @@ typedef enum {
 
   INTEROP_INBAND_RINGTONE_SET_TO_FALSE,
 
+  // Some HOGP devices requires notifications to be enabled on reconnection.
+  INTEROP_ENABLE_REMOTE_NOTIFICATIONS,
+
+  // For remote devices with BD_ADDR starting CA:1A:EE
+  // disables stack's 'wait for LE service discovery' logic if LE advertising cannot be established.
+  INTEROP_SKIP_WAIT_FOR_LE_SERVICE_SEARCH,
+
   END_OF_INTEROP_LIST
 } interop_feature_t;
 

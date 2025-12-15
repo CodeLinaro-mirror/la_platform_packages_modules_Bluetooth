@@ -475,6 +475,36 @@ struct btif_storage_get_services {
 };
 extern struct btif_storage_get_services btif_storage_get_services;
 
+// Name: btif_storage_get_svc_chg_cccd
+// Params: const RawAddress& bda
+// Return: uint8_t
+struct btif_storage_get_svc_chg_cccd {
+  static uint8_t return_value;
+  std::function<uint8_t(const RawAddress& bda)> body{
+          [](const RawAddress& /* bda */) { return return_value; }};
+  uint8_t operator()(const RawAddress& bda) { return body(bda); }
+};
+extern struct btif_storage_get_svc_chg_cccd btif_storage_get_svc_chg_cccd;
+
+// Name: btif_storage_set_svc_chg_cccd
+// Params: const RawAddress& bd_addr, uint8_t cccd
+// Return: void
+struct btif_storage_set_svc_chg_cccd {
+  std::function<void(const RawAddress& bd_addr, uint8_t cccd)> body{
+          [](const RawAddress& /* bd_addr */, uint8_t /* cccd */) {}};
+  void operator()(const RawAddress& bd_addr, uint8_t cccd) { body(bd_addr, cccd); }
+};
+extern struct btif_storage_set_svc_chg_cccd btif_storage_set_svc_chg_cccd;
+
+// Name: btif_storage_remove_svc_chg_cccd
+// Params: const RawAddress& bd_addr
+// Return: void
+struct btif_storage_remove_svc_chg_cccd {
+  std::function<void(const RawAddress& bd_addr)> body{[](const RawAddress& /* bd_addr */) {}};
+  void operator()(const RawAddress& bd_addr) { body(bd_addr); }
+};
+extern struct btif_storage_remove_svc_chg_cccd btif_storage_remove_svc_chg_cccd;
+
 }  // namespace btif_storage
 }  // namespace mock
 }  // namespace test

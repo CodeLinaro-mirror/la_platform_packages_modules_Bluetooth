@@ -49,6 +49,7 @@ public class ReflectorFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
 
         mBleConnectionViewModel = new ViewModelProvider(this).get(BleConnectionViewModel.class);
+        mBleConnectionViewModel.setShowTxPower(true);
         mBleConnectionViewModel
                 .getLogText()
                 .observe(

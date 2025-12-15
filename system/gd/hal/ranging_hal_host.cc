@@ -37,7 +37,7 @@ public:
     std::vector<VendorSpecificCharacteristic> vendor_specific_characteristics = {};
     return vendor_specific_characteristics;
   }
-  void OpenSession(uint16_t /* connection_handle */, uint16_t /* att_handle */,
+  void OpenSession(ChannelSoundingParameters /*channel_sounding_parameters*/,
                    const std::vector<hal::VendorSpecificCharacteristic>& /* vendor_specific_data */)
           override {}
 

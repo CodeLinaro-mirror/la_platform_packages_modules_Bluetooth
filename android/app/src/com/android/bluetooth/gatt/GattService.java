@@ -274,6 +274,10 @@ public class GattService extends ProfileService {
         mHandlerThread.quit();
     }
 
+    public void setAdvertiseManagerAvailable(boolean available) {
+        mAdvertiseManager.setAvailable(available);
+    }
+
     /** This is only used when Flags.onlyStartScanDuringBleOn() is true. */
     public static synchronized GattService getGattService() {
         if (sGattService == null) {

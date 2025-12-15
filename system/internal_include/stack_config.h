@@ -53,7 +53,8 @@ typedef struct {
   const std::string* (*get_pts_broadcast_audio_config_options)(void);
   bool (*get_pts_le_audio_disable_ases_before_stopping)(void);
   bool(*get_pts_gatt_skip_service_discovery)(void);
+  bool (*get_pts_configure_svc_chg_indication)(void);
   config_t* (*get_all)(void);
 } stack_config_t;
 
-const stack_config_t* stack_config_get_interface(void);
+extern const stack_config_t* stack_config_get_interface(void);

@@ -838,8 +838,14 @@ void bta_hh_co_close(btif_hh_device_t* p_dev) {
     tBTA_HH_TO_UHID_EVT to_uhid = {};
     to_uhid.type = BTA_HH_UHID_INBOUND_CLOSE_EVT;
     to_uhid_thread(p_dev->internal_send_fd, &to_uhid, 0);
-    pthread_join(p_dev->hh_poll_thread_id, NULL);
-    p_dev->hh_poll_thread_id = -1;
+    // Join only if hh_poll_thread_id is valid
+    if (p_dev->hh_poll_thread_id > 0) {
+      // Safely capture and invalidate thread ID
+      pthread_t hh_poll_thread_id = p_dev->hh_poll_thread_id;
+      p_dev->hh_poll_thread_id = -1;
+      pthread_join(hh_poll_thread_id, NULL);
+      log::info("Closing device hh_poll_thread_id=0x{:x}", hh_poll_thread_id);
+    }
 
     close(p_dev->internal_send_fd);
     p_dev->internal_send_fd = -1;

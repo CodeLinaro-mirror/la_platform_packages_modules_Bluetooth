@@ -150,6 +150,7 @@ private:
              tSDP_STATUS status);
 
   virtual bool AvrcpConnect(bool initiator, const RawAddress& bdaddr);
+  virtual bool AvrcpConnect(bool initiator, const RawAddress& bdaddr, uint8_t* handle);
 
   // Callbacks when connecting to a device
   void InitiatorControlCb(uint8_t handle, uint8_t event, uint16_t result,

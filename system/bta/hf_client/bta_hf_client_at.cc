@@ -17,6 +17,12 @@
  *
  ******************************************************************************/
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #define LOG_TAG "bt_hf_client"
 
 #include <bluetooth/log.h>
@@ -39,6 +45,7 @@
 #include "power_mode.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/port_api.h"
+#include "bta/ag/bta_ag_int.h"
 
 #define PRIVATE_CELL(number)                                        \
   (number.replace(0, (number.size() > 2) ? number.size() - 2 : 0,   \
@@ -61,6 +68,12 @@ using namespace bluetooth;
 
 static constexpr char kPropertyEnhancedDrivingIndicatorEnabled[] =
         "bluetooth.headset_client.indicator.enhanced_driver_safety.enabled";
+
+uint16_t mRemoteCodecsSupported = BTM_SCO_CODEC_CVSD; //default is cvsd
+uint8_t  mClientConnectedHandle = 0xFF; //Unknown default handle
+uint16_t mNegotiatedClientScoCodec = BTM_SCO_CODEC_CVSD; //default is CVSD
+
+
 
 /******************************************************************************
  *       SUPPORTED EVENT MESSAGES
@@ -507,6 +520,7 @@ static void bta_hf_client_handle_bcs(tBTA_HF_CLIENT_CB* client_cb, uint32_t code
         client_cb->negotiated_codec = BTM_SCO_CODEC_CVSD;
         break;
     }
+    mNegotiatedClientScoCodec = client_cb->negotiated_codec;
     bta_hf_client_send_at_bcs(client_cb, codec);
   } else {
     client_cb->negotiated_codec = BTM_SCO_CODEC_CVSD;
@@ -1737,10 +1751,52 @@ void bta_hf_client_send_at_brsf(tBTA_HF_CLIENT_CB* client_cb, tBTA_HF_CLIENT_FEA
   bta_hf_client_send_at(client_cb, BTA_HF_CLIENT_AT_BRSF, buf, at_len);
 }
 
+void update_remote_codecs(uint16_t peer_codecs) {
+    log::verbose("update_remote_codecs is called");
+    const char* buf;
+    mRemoteCodecsSupported = peer_codecs;
+    if (bta_is_hf_client_device_connected()) {
+       if (mClientConnectedHandle != 0xFF) {
+           tBTA_HF_CLIENT_CB* client_cb =
+              bta_hf_client_find_cb_by_handle(mClientConnectedHandle);
+           if (!client_cb) {
+              log::error("cb not found for handle {}", mClientConnectedHandle);
+              return;
+           } else {
+             log::verbose("sending BAC update as per remote");
+             if (peer_codecs == BTM_SCO_CODEC_CVSD) {
+                log::verbose("Remote supports only CVSD");
+                buf = "AT+BAC=1\r" ;
+             } else if (peer_codecs == (BTM_SCO_CODEC_CVSD | BTM_SCO_CODEC_MSBC)) {
+                log::verbose("Remote supports only CVSD and MSBC");
+                buf = "AT+BAC=1,2\r";
+             } else if (peer_codecs == (BTM_SCO_CODEC_CVSD |
+                                       BTM_SCO_CODEC_MSBC |
+                                       BTM_SCO_CODEC_LC3)) {
+                log::verbose("Remote supports CVSD, LC3, MSBC");
+                if (bta_hf_client_cb_arr.is_support_lc3) {
+                   log::verbose("Remote and AG supports CVSD, LC3, MSBC");
+                   buf = "AT+BAC=1,2,3\r";
+                } else {
+                   log::verbose("AG doesnt support LC3");
+                   buf = "AT+BAC=1,2\r";
+                }
+             }
+             bta_hf_client_send_at(client_cb, BTA_HF_CLIENT_AT_BAC, buf, strlen(buf));
+           }
+       }
+    }
+}
+
+uint16_t fetch_client_negotiated_codec() {
+     log::verbose("negotiated codec is {}", mNegotiatedClientScoCodec);
+     return mNegotiatedClientScoCodec;
+}
 void bta_hf_client_send_at_bac(tBTA_HF_CLIENT_CB* client_cb) {
   const char* buf;
 
   log::verbose("");
+  mClientConnectedHandle = client_cb->handle;
 
   if (bta_hf_client_cb_arr.is_support_lc3) {
     buf = "AT+BAC=1,2,3\r";
@@ -1748,6 +1804,17 @@ void bta_hf_client_send_at_bac(tBTA_HF_CLIENT_CB* client_cb) {
     buf = "AT+BAC=1,2\r";
   }
 
+  if (bta_ag_is_ag_device_connected()) {
+     log::verbose("AG device is connected, fetching from remote codecs");
+     uint16_t remoteCodecs = fetch_remote_supported_codecs();
+     if (remoteCodecs == 1) { //only cvsd remote
+        log::verbose("remote support only cvsd codec");
+        buf = "AT+BAC=1\r" ;
+     } else {
+       log::verbose("remote supports cvsd and Msbc");
+     }
+  }
+  log::error("sending BAC");
   bta_hf_client_send_at(client_cb, BTA_HF_CLIENT_AT_BAC, buf, strlen(buf));
 }
 

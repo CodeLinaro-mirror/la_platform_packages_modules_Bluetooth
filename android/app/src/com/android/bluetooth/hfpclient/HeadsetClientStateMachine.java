@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+
 // Bluetooth Headset Client State Machine
 //                (Disconnected)
 //                  |        ^
@@ -1250,14 +1257,18 @@ public class HeadsetClientStateMachine extends StateMachine {
                         case StackEvent.EVENT_TYPE_ROAMING_STATE:
                         case StackEvent.EVENT_TYPE_NETWORK_SIGNAL:
                         case StackEvent.EVENT_TYPE_BATTERY_LEVEL:
-                        case StackEvent.EVENT_TYPE_CALL:
-                        case StackEvent.EVENT_TYPE_CALLSETUP:
-                        case StackEvent.EVENT_TYPE_CALLHELD:
                         case StackEvent.EVENT_TYPE_RESP_AND_HOLD:
                         case StackEvent.EVENT_TYPE_CLIP:
                         case StackEvent.EVENT_TYPE_CALL_WAITING:
                         case StackEvent.EVENT_TYPE_VOLUME_CHANGED:
                         case StackEvent.EVENT_TYPE_IN_BAND_RINGTONE:
+                            deferMessage(message);
+                            break;
+                        case StackEvent.EVENT_TYPE_CALL:
+                        case StackEvent.EVENT_TYPE_CALLSETUP:
+                        case StackEvent.EVENT_TYPE_CALLHELD:
+                            debug("Connecting: event type: call states during slc ");
+                            mService.CallStatesDuringSlc(event.device, event.type, event.valueInt);
                             deferMessage(message);
                             break;
                         case StackEvent.EVENT_TYPE_CMD_RESULT:
@@ -2446,6 +2457,10 @@ public class HeadsetClientStateMachine extends StateMachine {
 
     public List<HfpClientCall> getCurrentCalls() {
         return new ArrayList<HfpClientCall>(mCalls.values());
+    }
+
+    public List<HfpClientCall> getCurrentHFCalls() {
+        return new ArrayList<HfpClientCall>(mCallsUpdate.values());
     }
 
     public Bundle getCurrentAgEvents() {
