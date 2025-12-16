@@ -12,11 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
 
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.Manifest.permission.BLUETOOTH_SCAN;
 import static android.Manifest.permission.DUMP;
 
 import static com.android.bluetooth.Utils.callerIsSystemOrActiveOrManagedUser;
@@ -88,22 +95,26 @@ class AdapterBinder extends IAdapter.Stub {
     }
 
     @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public void offToBleOn(boolean quietMode, String hciInstanceName) {
         Log.v(TAG, "offToBleOn(" + quietMode + ", " + hciInstanceName + " )");
         AdapterService service = getServiceAndEnforcePrivileged();
         if (service == null || !callerIsSystemOrActiveOrManagedUser(service, TAG, "offToBleOn")) {
             return;
         }
+        service.handleDualAdapterMode(AdapterService.ENABLE);
         service.offToBleOn(quietMode, hciInstanceName);
     }
 
     @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public void onToBleOn() {
         Log.v(TAG, "onToBleOn");
         AdapterService service = getServiceAndEnforcePrivileged();
         if (service == null || !callerIsSystemOrActiveOrManagedUser(service, TAG, "onToBleOn")) {
             return;
         }
+        service.handleDualAdapterMode(AdapterService.DISABLE);
         service.onToBleOn();
     }
 

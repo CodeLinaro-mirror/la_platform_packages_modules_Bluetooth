@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -90,6 +95,7 @@ static const uint8_t avrc_ctrl_event_map[] = {
 #define AVRC_MSG_MASK_IS_CONTINUATION_RSP 0x02
 
 static void avrc_start_cmd_timer(uint8_t handle, uint8_t label, uint8_t msg_mask);
+extern int GetAdapterIndex();
 
 /******************************************************************************
  *
@@ -102,6 +108,21 @@ static void avrc_start_cmd_timer(uint8_t handle, uint8_t label, uint8_t msg_mask
  *****************************************************************************/
 bool avrcp_absolute_volume_is_enabled() {
   return android::sysprop::bluetooth::Avrcp::absolute_volume().value_or(true);
+}
+
+/******************************************************************************
+ *
+ * Function         is_new_avrcp_enabled
+ *
+ * Description      Check whether new AVRCP(TG) is enabled
+ *
+ * Returns          true: enabled, false: disabled.
+ *
+ *****************************************************************************/
+static bool is_new_avrcp_enabled() {
+  // New Bluetooth adapter supports AVRCP(TG)
+  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", true) &&
+        (GetAdapterIndex() != 0);
 }
 
 /******************************************************************************
@@ -1195,7 +1216,7 @@ uint16_t AVRC_MsgReq(uint8_t handle, uint8_t label, uint8_t ctype, BT_HDR* p_pkt
   log::verbose("handle = {} label = {} ctype = {} len = {}", handle, label, ctype, p_pkt->len);
   /* Handle for AVRCP fragment */
   if (btif_av_src_sink_coexist_enabled()) {
-    is_new_avrcp = osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false);
+    is_new_avrcp = is_new_avrcp_enabled();
   }
   if (ctype >= AVRC_RSP_NOT_IMPL) {
     cr = AVCT_RSP;

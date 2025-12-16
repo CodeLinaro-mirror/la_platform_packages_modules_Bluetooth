@@ -11,6 +11,11 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+   Changes from Qualcomm Technologies, Inc. are provided under the following license:
+
+   Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+   SPDX-License-Identifier: BSD-3-Clause-Clear.
 -->
 <resources>
     <bool name="pbap_include_photos_in_vcard">true</bool>
@@ -87,6 +92,9 @@
     <!-- If true, device requests audio focus and start avrcp updates on source start or play -->
     <bool name="a2dp_sink_automatically_request_audio_focus">false</bool>
 
+    <!--For A2DP source set media player feature. -->
+    <bool name="a2dp_source_broadcast_set_media_player">true</bool>
+
     <!-- For enabling the AVRCP Controller Cover Artwork feature -->
     <bool name="avrcp_controller_enable_cover_art">true</bool>
 
@@ -157,4 +165,6 @@
             https://support.google.com/pixelphone/answer/12639358
     </string>
 
+    <!-- [Dual Bluetooth] Flag whether or not to filter local counterpart Bluetooth device -->
+    <bool name="filter_device">false</bool>
 </resources>

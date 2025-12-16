@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
@@ -166,6 +171,25 @@ public final class BluetoothA2dp implements BluetoothProfile {
      * #EXTRA_PREVIOUS_STATE} of {@link #ACTION_PLAYING_STATE_CHANGED} intent.
      */
     public static final int STATE_PLAYING = 10;
+
+    /**
+     * Intent used to broadcast setting media player request for the A2DP
+     * device.
+     *
+     * <p>This intent will have 1 extras:
+     * <ul>
+     * <li> {@link BluetoothDevice#EXTRA_DEVICE} - The remote device. </li>
+     * </ul>
+     *
+     * @hide
+     */
+    @RequiresLegacyBluetoothPermission
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+    @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
+    @SuppressLint("ActionValue")
+    public static final String ACTION_SET_MEDIA_PLAYER =
+            "android.bluetooth.a2dp.profile.action.SET_MEDIA_PLAYER";
 
     /**
      * A2DP sink device is NOT streaming music. This state can be one of {@link #EXTRA_STATE} or
@@ -975,6 +999,73 @@ public final class BluetoothA2dp implements BluetoothProfile {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
         }
+    }
+
+    /**
+     * Get A2DP media player
+     *
+     * <p> The device should already be paired.
+     * Connection policy can be one of {@link #CONNECTION_POLICY_ALLOWED},
+     * {@link #CONNECTION_POLICY_FORBIDDEN}, {@link #CONNECTION_POLICY_UNKNOWN}
+     *
+     * @param device Paired bluetooth device
+     * @return media player's name
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+    })
+    @NonNull
+    public String getMediaPlayer(@NonNull BluetoothDevice device) {
+        log("getMediaPlayer(" + device + ")");
+        final IBluetoothA2dp service = getService();
+        //final String defaultValue = null;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled() && isValidDevice(device)) {
+            try {
+                return service.getMediaPlayer(device, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Set A2DP media player
+     *
+     * <p> The device should already be paired.
+     * Connection policy can be one of {@link #CONNECTION_POLICY_ALLOWED},
+     * {@link #CONNECTION_POLICY_FORBIDDEN}, {@link #CONNECTION_POLICY_UNKNOWN}
+     *
+     * @param device Paired bluetooth device
+     * @param mediaPlayer media player's name
+     * @return true if success, false on error
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+    })
+    public boolean setMediaPlayer(@NonNull BluetoothDevice device,
+            @NonNull String mediaPlayer) {
+        log("setMediaPlayer(" + device + ", media player: " + mediaPlayer + ")");
+        final IBluetoothA2dp service = getService();
+        //final boolean defaultValue = false;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled() && isValidDevice(device)) {
+            try {
+                return service.setMediaPlayer(device, mediaPlayer, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return false;
     }
 
     /**

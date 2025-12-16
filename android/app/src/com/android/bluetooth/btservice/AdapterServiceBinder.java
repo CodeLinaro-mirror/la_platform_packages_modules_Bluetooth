@@ -12,11 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
 
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.Manifest.permission.BLUETOOTH_SCAN;
 import static android.Manifest.permission.DUMP;
 import static android.Manifest.permission.MODIFY_PHONE_STATE;
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_NONE;
@@ -34,6 +41,7 @@ import static com.android.bluetooth.Utils.getUidPidString;
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.NonNull;
+import android.annotation.RequiresPermission;
 import android.app.PendingIntent;
 import android.app.compat.CompatChanges;
 import android.bluetooth.BluetoothAdapter;
@@ -267,6 +275,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public boolean startDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -276,10 +285,12 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         Log.i(TAG, "startDiscovery: from " + getUidPidString());
+        service.handleDualAdapterMode(AdapterService.START_DISCOVERY);
         return service.startDiscovery(source);
     }
 
     @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public boolean cancelDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -289,6 +300,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         Log.i(TAG, "cancelDiscovery: from " + getUidPidString());
+        service.handleDualAdapterMode(AdapterService.CANCEL_DISCOVERY);
         return service.getNative().cancelDiscovery();
     }
 
@@ -523,6 +535,20 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         service.generateLocalOobData(transport, callback);
+    }
+
+    @Override
+    public void loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data, AttributionSource source) {
+        AdapterService service = getService();
+        if (service == null
+                || !callerIsSystemOrActiveOrManagedUser(service, TAG, "generateLocalOobData")
+                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
+            return;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_CONNECT, null);
+        service.loadRemoteOobData(device, transport, remoteP192Data, remoteP256Data);
     }
 
     @Override

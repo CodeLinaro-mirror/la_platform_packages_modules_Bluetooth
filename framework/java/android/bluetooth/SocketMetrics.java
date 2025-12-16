@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
@@ -44,8 +49,9 @@ class SocketMetrics {
             int port,
             boolean auth,
             long socketCreationTimeNanos,
-            long socketCreationLatencyNanos) {
-        IBluetooth bluetoothProxy = BluetoothAdapter.getDefaultAdapter().getBluetoothService();
+            long socketCreationLatencyNanos,
+            int adapterIndex) {
+        IBluetooth bluetoothProxy = BluetoothAdapterUtil.getAdapter(adapterIndex).getBluetoothService();
         if (bluetoothProxy == null) {
             Log.w(TAG, "logSocketConnect: bluetoothProxy is null");
             return;
@@ -77,11 +83,12 @@ class SocketMetrics {
             int result,
             long socketCreationTimeMillis,
             long socketCreationLatencyMillis,
-            long socketConnectionTimeMillis) {
+            long socketConnectionTimeMillis,
+            int adapterIndex) {
         if (connType != BluetoothSocket.TYPE_LE) {
             return;
         }
-        IBluetooth bluetoothProxy = BluetoothAdapter.getDefaultAdapter().getBluetoothService();
+        IBluetooth bluetoothProxy = BluetoothAdapterUtil.getAdapter(adapterIndex).getBluetoothService();
         if (bluetoothProxy == null) {
             Log.w(TAG, "logSocketConnect: bluetoothProxy is null");
             return;

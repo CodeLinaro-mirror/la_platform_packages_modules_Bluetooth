@@ -14,6 +14,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  */
 
 #include "device_groups.h"
@@ -581,16 +587,22 @@ LeAudioDevice* LeAudioDeviceGroup::GetNextActiveDeviceByCisAndDataPathState(
 }
 
 uint32_t LeAudioDeviceGroup::GetSduInterval(uint8_t direction) const {
+  uint32_t sdu_interval = types::kSduIntervalMin;
   for (LeAudioDevice* leAudioDevice = GetFirstActiveDevice(); leAudioDevice != nullptr;
        leAudioDevice = GetNextActiveDevice(leAudioDevice)) {
     struct ase* ase = leAudioDevice->GetFirstActiveAseByDirection(direction);
     if (!ase) {
       continue;
     }
-    return ase->qos_config.sdu_interval;
+    sdu_interval = ase->qos_config.sdu_interval;
+    if (sdu_interval < types::kSduIntervalMin)
+        sdu_interval = types::kSduIntervalMin;
+    else if (sdu_interval > types::kSduIntervalMax)
+        sdu_interval = types::kSduIntervalMax;
+    return sdu_interval;
   }
 
-  return 0;
+  return sdu_interval;
 }
 
 uint8_t LeAudioDeviceGroup::GetSCA(void) const {

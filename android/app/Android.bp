@@ -44,6 +44,9 @@ cc_library_shared {
         "latest_android_hardware_bluetooth_audio_ndk_static",
         "latest_android_media_audio_common_types_ndk_static",
     ],
+    cflags: [
+        "-DDUAL_BT",
+    ],
     srcs: ["jni/**/*.cpp"],
     version_script: "libbluetooth_jni.map",
     header_libs: [
@@ -174,6 +177,8 @@ android_library {
         "framework-tethering.stubs.module_lib",
         "framework-wifi.stubs.module_lib",
         "modules-utils-build",
+        "android.car-module.stubs.module_lib",
+        "android.car",
     ],
     static_libs: [
         "android.hardware.radio-V1.0-java",

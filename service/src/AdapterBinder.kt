@@ -12,27 +12,46 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.server.bluetooth
 
 import android.bluetooth.IAdapter
+import android.bluetooth.IAdapterExt
+import android.bluetooth.BluetoothAdapterCommon
 import android.bluetooth.IBluetoothCallback
 import android.os.IBinder
 import android.os.RemoteException
 
 private const val TAG = "AdapterBinder"
 
-class AdapterBinder(rawBinder: IBinder) {
-    val adapterBinder: IAdapter = IAdapter.Stub.asInterface(rawBinder)
+class AdapterBinder(rawBinder: IBinder, index: Int? =
+                    BluetoothAdapterCommon.ADAPTER_DEFAULT) {
+    lateinit var adapterBinder: IAdapter
     var adapterServiceBinder: IBinder? = null
     private val createdAt = System.currentTimeMillis()
+    private var adapterIndex: Int? = index
+
+    init {
+        adapterBinder = if (BluetoothAdapterCommon.isAdapterDefault(adapterIndex ?:
+            BluetoothAdapterCommon.ADAPTER_DEFAULT)) {
+            IAdapter.Stub.asInterface(rawBinder)
+        } else {
+            IAdapterExt.Stub.asInterface(rawBinder).getBluetoothAdapter()
+        }
+    }
 
     override fun toString(): String =
         "[Binder=" +
             adapterBinder.hashCode() +
             ", createdAt=" +
             Log.timeToStringWithZone(createdAt) +
+            (adapterIndex?.let { ", index=$it" } ?: "") +
             "]"
 
     @Throws(RemoteException::class)

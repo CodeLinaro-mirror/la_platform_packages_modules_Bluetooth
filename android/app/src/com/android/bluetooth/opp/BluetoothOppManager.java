@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -121,7 +126,7 @@ public class BluetoothOppManager {
 
     BluetoothOppManager(Context context) {
         mContext = context;
-        mAdapter = mContext.getSystemService(BluetoothManager.class).getAdapter();
+        mAdapter = AdapterService.getAdapter();
 
         restoreApplicationData(); // Restore data from preference
     }

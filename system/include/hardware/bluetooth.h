@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BLUETOOTH_H
@@ -513,6 +518,8 @@ typedef struct bt_oob_data_s {
   uint8_t oob_data_length[OOB_DATA_LEN_SIZE]; /* Classic only data Length. Value includes this
                                                  in length */
   uint8_t class_of_device[OOB_COD_SIZE];      /* Class of Device (Classic or LE) */
+  uint8_t c_256[16];        /* Simple Pairing Hash C-256 (Classic P192 & P256 coexsist) */
+  uint8_t r_256[16];        /* Simple Pairing Randomizer R-256 Classic P192 & P256 coexsist) */
 
   // LE
   uint8_t le_device_role;                        /* Supported and preferred role of device */
@@ -737,7 +744,7 @@ typedef struct {
 typedef struct {
   /** set to sizeof(bt_interface_t) */
   size_t size;
-#ifdef TARGET_FLOSS
+#if defined(TARGET_FLOSS) || defined(DUAL_BT)
   /** set index of the adapter to use */
   void (*set_adapter_index)(int adapter_index);
 #endif
@@ -1047,6 +1054,11 @@ typedef struct {
 
   /** check if pbap pse dynamic version upgrade is enable */
   bool (*pbap_pse_dynamic_version_upgrade_is_enabled)();
+
+  /** load remote Out of Band data to BT stack */
+  int (*load_remote_oob_data)(const RawAddress* bd_addr, int transport,
+                              const bt_oob_data_t* p192_data, const bt_oob_data_t* p256_data);
+
 } bt_interface_t;
 
 #define BLUETOOTH_INTERFACE_STRING "bluetoothInterface"

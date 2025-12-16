@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #define LOG_TAG "bt_bta_dm_sec"
@@ -200,6 +206,13 @@ void bta_dm_ci_rmt_oob_act(std::unique_ptr<tBTA_DM_CI_RMT_OOB> msg) {
   get_btm_client_interface().security.BTM_RemoteOobDataReply(
           msg->accept ? tBTM_STATUS::BTM_SUCCESS : tBTM_STATUS::BTM_NOT_AUTHORIZED, msg->bd_addr,
           msg->c, msg->r);
+}
+
+/** respond to the OOB extended data request for the remote device from BTM */
+void bta_dm_ci_rmt_oob_extended_act(std::unique_ptr<tBTA_DM_CI_RMT_OOB_EXTENDED> msg) {
+  get_btm_client_interface().security.BTM_RemoteOobExtendedDataReply(
+       msg->accept ? tBTM_STATUS::BTM_SUCCESS : tBTM_STATUS::BTM_NOT_AUTHORIZED,
+       msg->bd_addr, msg->c192, msg->r192, msg->c256, msg->r256);
 }
 
 /*******************************************************************************
@@ -511,16 +524,39 @@ static tBTM_STATUS bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data) 
       // BR/EDR OOB pairing is not supported with Secure Connections
       btif_dm_proc_loc_oob(BT_TRANSPORT_BR_EDR,
                            (bool)(p_data->loc_oob.status == tBTM_STATUS::BTM_SUCCESS),
-                           p_data->loc_oob.c_192, p_data->loc_oob.r_192);
+                           p_data->loc_oob.c_192, p_data->loc_oob.r_192, {0}, {0});
       break;
-
+    case BTM_SP_LOC_OOB_EXT_EVT:
+      btif_dm_proc_loc_oob(BT_TRANSPORT_BR_EDR,
+                           (bool)(p_data->loc_oob.status == tBTM_STATUS::BTM_SUCCESS),
+                           p_data->loc_oob.c_192, p_data->loc_oob.r_192,
+                           p_data->loc_oob.c_256, p_data->loc_oob.r_256);
+      break;
     case BTM_SP_RMT_OOB_EVT: {
-      Octet16 c;
-      Octet16 r;
+      Octet16 c192;
+      Octet16 r192;
+      Octet16 c256;
+      Octet16 r256;
       sp_rmt_result = false;
-      sp_rmt_result = btif_dm_proc_rmt_oob(p_data->rmt_oob.bd_addr, &c, &r);
+      /* If the device name is not known, save bdaddr and devclass and initiate
+       * a name request */
+      if (p_data->rmt_oob.bd_name[0] == 0) {
+        bta_dm_sec_cb.pin_evt = BTA_DM_SP_RMT_OOB_EVT;
+        bta_dm_sec_cb.pin_bd_addr = p_data->rmt_oob.bd_addr;
+        bta_dm_sec_cb.pin_dev_class = p_data->rmt_oob.dev_class;
+        if ((get_stack_rnr_interface().BTM_ReadRemoteDeviceName(
+                p_data->rmt_oob.bd_addr, bta_dm_pinname_cback,
+                BT_TRANSPORT_BR_EDR)) == tBTM_STATUS::BTM_CMD_STARTED)
+          return tBTM_STATUS::BTM_CMD_STARTED;
+      }
+      sec_event.rmt_oob.bd_addr = p_data->rmt_oob.bd_addr;
+      sec_event.rmt_oob.dev_class = p_data->rmt_oob.dev_class;
+      bd_name_copy(sec_event.rmt_oob.bd_name, p_data->rmt_oob.bd_name);
+      bta_dm_sec_cb.p_sec_cback(BTA_DM_SP_RMT_OOB_EVT, &sec_event);
+
+      sp_rmt_result = btif_dm_proc_rmt_oob(p_data->rmt_oob.bd_addr, &c192, &r192, &c256 ,&r256);
       log::verbose("result={}", sp_rmt_result);
-      bta_dm_ci_rmt_oob(sp_rmt_result, p_data->rmt_oob.bd_addr, c, r);
+      bta_dm_ci_rmt_oob_extended(sp_rmt_result, p_data->rmt_oob.bd_addr, c192, r192, c256, r256);
       break;
     }
 
@@ -766,6 +802,8 @@ static tBTM_STATUS bta_dm_ble_smp_cback(tBTM_LE_EVT event, const RawAddress& bda
       bd_name_from_char_pointer(sec_event.auth_cmpl.bd_name,
                                 get_btm_client_interface().security.BTM_SecReadDevName(bda));
 
+      log::info("smp_over_br {}", p_data->complt.smp_over_br);
+      sec_event.auth_cmpl.smp_over_br = p_data->complt.smp_over_br;
       if (p_data->complt.reason != SMP_SUCCESS) {
         // TODO This is not a proper use of this type
         sec_event.auth_cmpl.fail_reason = static_cast<tHCI_STATUS>(

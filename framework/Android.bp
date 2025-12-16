@@ -93,7 +93,9 @@ java_sdk_library {
         "//packages/services/Car/car-builtin-lib",
         // TODO(240720385)
         "//packages/services/Car/tests/CarBuiltinLibUnitTest",
+        "//frameworks/base/packages/SettingsLib",
         ":__subpackages__",
+        "//packages/apps/Car/Settings",
     ],
 
     apex_available: ["com.android.bt"],

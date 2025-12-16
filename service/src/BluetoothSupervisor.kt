@@ -16,6 +16,7 @@
 
 package com.android.server.bluetooth
 
+import android.bluetooth.BluetoothAdapterCommon
 import android.content.Context
 import android.os.Looper
 import android.os.UserHandle
@@ -26,18 +27,24 @@ class BluetoothSupervisor(
     val looper: Looper,
     bluetoothComponent: BluetoothComponent?,
 ) {
+    val adapterIndex: Int = bluetoothComponent?.adapterIndex ?:
+                            BluetoothAdapterCommon.ADAPTER_DEFAULT
+
     private val bms: BluetoothManagerService
 
     init {
-        val hciInstance =
-            if (Flags.hciInstanceNameUseInjected()) {
-                BluetoothHciInstance().getInstance()
-            } else {
-                "default"
+        val hciInstance = if (Flags.hciInstanceNameUseInjected()) {
+            BluetoothHciInstance().getInstance(adapterIndex)
+        } else {
+            when (adapterIndex) {
+                0 -> BluetoothHciInstance.HCI_DEFAULT_INSTANCE_NAME
+                1 -> BluetoothHciInstance.HCI_NEW_INSTANCE_NAME
+                else -> BluetoothHciInstance.HCI_DEFAULT_INSTANCE_NAME
             }
+        }
 
         bms = BluetoothManagerService(context, looper, hciInstance, bluetoothComponent)
-        Log.i("Created BluetoothSupervisor")
+        Log.i("BluetoothSupervisor", "Created BluetoothSupervisor with HCI instance: $hciInstance")
     }
 
     fun api(): BluetoothManagerServiceApi {

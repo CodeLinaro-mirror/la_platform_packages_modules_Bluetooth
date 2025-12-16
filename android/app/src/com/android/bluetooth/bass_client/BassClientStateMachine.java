@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.bass_client;
@@ -57,6 +62,7 @@ import android.provider.DeviceConfig;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothStatsLog;
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.MetricsLogger;
@@ -132,7 +138,6 @@ class BassClientStateMachine extends StateMachine {
             new LinkedHashMap<>();
 
     private final AdapterService mAdapterService;
-    private final BluetoothAdapter mAdapter;
     private final PeriodicAdvertisingManager mPeriodicAdvertisingManager;
 
     @VisibleForTesting
@@ -157,6 +162,7 @@ class BassClientStateMachine extends StateMachine {
     // !leaudioBroadcastSimplifySetBcastCode()
     private BluetoothLeBroadcastMetadata mSetBroadcastPINMetadata = null;
     @VisibleForTesting boolean mSetBroadcastCodePending = false;
+    private BluetoothAdapter mBluetoothAdapter = null;
 
     private final Map<Integer, Boolean> mPendingRemove = new HashMap<>();
     private boolean mForceSB = false;
@@ -178,13 +184,13 @@ class BassClientStateMachine extends StateMachine {
         mDevice = device;
         mService = svc;
         mAdapterService = adapterService;
-        mAdapter = mAdapterService.getSystemService(BluetoothManager.class).getAdapter();
         mPeriodicAdvertisingManager = periodicAdvertisingManager;
         addState(mDisconnected);
         addState(mConnected);
         addState(mConnecting);
         addState(mConnectedProcessing);
         setInitialState(mDisconnected);
+        mBluetoothAdapter = mAdapterService.getAdapter();
         final long token = Binder.clearCallingIdentity();
         try {
             mIsAllowedList =
@@ -725,7 +731,8 @@ class BassClientStateMachine extends StateMachine {
                     receiverState[BassConstants.BCAST_RCVR_STATE_SRC_ADDR_TYPE_IDX];
             Utils.reverse(sourceAddress);
             String address = Utils.getAddressStringFromByte(sourceAddress);
-            BluetoothDevice device = mAdapter.getRemoteLeDevice(address, sourceAddressType);
+            BluetoothDevice device = mBluetoothAdapter.getRemoteLeDevice(
+                    address, sourceAddressType);
             byte sourceAdvSid = receiverState[BassConstants.BCAST_RCVR_STATE_SRC_ADV_SID_IDX];
             recvState =
                     new BluetoothLeBroadcastReceiveState(

@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -60,6 +65,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.BluetoothStatsLog;
+import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.R;
 import com.android.bluetooth.content_profiles.ContentProfileErrorReportUtils;
 
@@ -363,7 +369,7 @@ public class BluetoothOppTransferHistory extends Activity
      * so need update manually.
      */
     private void updateNotificationWhenBtDisabled() {
-        BluetoothAdapter adapter = getSystemService(BluetoothManager.class).getAdapter();
+        BluetoothAdapter adapter = AdapterService.getAdapter();
         if (!adapter.isEnabled()) {
             Log.v(TAG, "Bluetooth is not enabled, update notification manually.");
             mNotifier.updateNotification();

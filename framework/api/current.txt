@@ -93,6 +93,41 @@ package android.bluetooth {
     method public void onLeScan(android.bluetooth.BluetoothDevice, int, byte[]);
   }
 
+  public final class BluetoothAdapterExt {
+    method @Nullable public android.bluetooth.BluetoothAdapter getBluetoothAdapter();
+    method @Deprecated public static android.bluetooth.BluetoothAdapterExt getDefaultAdapter();
+    method public static boolean isSupported();
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public static final String ACTION_CONNECTION_STATE_CHANGED = "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED";
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN) public static final String ACTION_DISCOVERY_FINISHED = "android.bluetooth.adapterext.action.DISCOVERY_FINISHED";
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN) public static final String ACTION_DISCOVERY_STARTED = "android.bluetooth.adapterext.action.DISCOVERY_STARTED";
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public static final String ACTION_LOCAL_NAME_CHANGED = "android.bluetooth.adapterext.action.LOCAL_NAME_CHANGED";
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public static final String ACTION_REQUEST_DISCOVERABLE = "android.bluetooth.adapterext.action.REQUEST_DISCOVERABLE";
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public static final String ACTION_REQUEST_ENABLE = "android.bluetooth.adapterext.action.REQUEST_ENABLE";
+    field @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN) public static final String ACTION_SCAN_MODE_CHANGED = "android.bluetooth.adapterext.action.SCAN_MODE_CHANGED";
+    field public static final String ACTION_STATE_CHANGED = "android.bluetooth.adapterext.action.STATE_CHANGED";
+    field public static final String EXTRA_CONNECTION_STATE = "android.bluetooth.adapter.extra.CONNECTION_STATE";
+    field public static final String EXTRA_DISCOVERABLE_DURATION = "android.bluetooth.adapter.extra.DISCOVERABLE_DURATION";
+    field public static final String EXTRA_LOCAL_NAME = "android.bluetooth.adapter.extra.LOCAL_NAME";
+    field public static final String EXTRA_PREVIOUS_SCAN_MODE = "android.bluetooth.adapter.extra.PREVIOUS_SCAN_MODE";
+    field public static final String EXTRA_PREVIOUS_STATE = "android.bluetooth.adapter.extra.PREVIOUS_STATE";
+    field public static final String EXTRA_SCAN_MODE = "android.bluetooth.adapter.extra.SCAN_MODE";
+    field public static final String EXTRA_STATE = "android.bluetooth.adapter.extra.STATE";
+  }
+
+  public final class BluetoothAdapterUtil {
+    method @NonNull public static android.bluetooth.BluetoothAdapter getAdapter();
+    method public static int getAdapterIndex(int);
+    method @NonNull public static android.bluetooth.BluetoothAdapter getDefaultAdapter();
+    method @Nullable public static android.bluetooth.BluetoothAdapter getNewAdapter();
+    method @Nullable @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public static android.bluetooth.BluetoothAdapter getNewAdapter(@Nullable android.bluetooth.BluetoothDevice);
+    method public static boolean isDefaultAdapter(@Nullable android.bluetooth.BluetoothAdapter);
+    method public static boolean isDefaultAdapter(@Nullable android.bluetooth.BluetoothDevice);
+    method public static boolean isDualBluetoothSupported();
+    method public static boolean isNewAdapter(@Nullable android.bluetooth.BluetoothAdapter);
+    method public static boolean isNewAdapter(@Nullable android.bluetooth.BluetoothDevice);
+    method public static boolean isProfileSupported(int);
+  }
+
   public class BluetoothAssignedNumbers {
     field public static final int AAMP_OF_AMERICA = 190; // 0xbe
     field public static final int ACCEL_SEMICONDUCTOR = 74; // 0x4a
@@ -1076,9 +1111,13 @@ package android.bluetooth {
   public final class BluetoothManager {
     method public android.bluetooth.BluetoothAdapter getAdapter();
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public java.util.List<android.bluetooth.BluetoothDevice> getConnectedDevices(int);
+    method @NonNull @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public java.util.List<android.bluetooth.BluetoothDevice> getConnectedDevices(int, int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public int getConnectionState(android.bluetooth.BluetoothDevice, int);
+    method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public int getConnectionState(int, @NonNull android.bluetooth.BluetoothDevice, int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public java.util.List<android.bluetooth.BluetoothDevice> getDevicesMatchingConnectionStates(int, int[]);
+    method @NonNull @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public java.util.List<android.bluetooth.BluetoothDevice> getDevicesMatchingConnectionStates(int, int, @NonNull int[]);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGattServer openGattServer(android.content.Context, android.bluetooth.BluetoothGattServerCallback);
+    method @Nullable @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGattServer openGattServer(@NonNull android.content.Context, int, @NonNull android.bluetooth.BluetoothGattServerCallback);
   }
 
   public interface BluetoothProfile {

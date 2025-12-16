@@ -10391,8 +10391,6 @@ TEST_F(UnicastTest, CheckDeviceIsNotAttachedToStreamWhenNotNeeded) {
 }
 
 TEST_F(UnicastTest, ReconnectedDeviceAndAttachedToStreamBecauseOfAvailableContextTypeChange) {
-  com::android::bluetooth::flags::provider_->le_ase_read_multiple_variable(true);
-
   uint8_t group_size = 2;
   int group_id = 2;
 

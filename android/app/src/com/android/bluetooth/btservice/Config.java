@@ -12,10 +12,16 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
 
+import android.bluetooth.BluetoothAdapterCommon;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.os.SystemProperties;
@@ -246,7 +252,18 @@ public class Config {
     static int[] getSupportedProfiles() {
         return Arrays.stream(PROFILE_SERVICES_AND_FLAGS)
                 .filter(config -> config.mSupported)
+                .filter(config -> AdapterUtil.isProfileSupported(config.mProfileId))
                 .mapToInt(config -> config.mProfileId)
                 .toArray();
+    }
+
+    static long getSupportedProfilesBitMask() {
+        long mask = 0;
+        for (ProfileConfig config : PROFILE_SERVICES_AND_FLAGS) {
+            if (config.mSupported && AdapterUtil.isProfileSupported(config.mProfileId)) {
+                mask |= (1L << config.mProfileId);
+            }
+        }
+        return mask;
     }
 }

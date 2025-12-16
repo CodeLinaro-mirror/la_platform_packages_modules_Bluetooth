@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 /*
  * Generated mock file from original source file
@@ -179,6 +184,10 @@ void BTM_RemoteOobDataReply(tBTM_STATUS res, const RawAddress& bd_addr, const Oc
                             const Octet16& r) {
   inc_func_call_count(__func__);
   test::mock::stack_btm_sec::BTM_RemoteOobDataReply(res, bd_addr, c, r);
+}
+void BTM_RemoteOobExtendedDataReply(tBTM_STATUS res, const RawAddress& bd_addr, const Octet16& c,
+                                    const Octet16& r, const Octet16& c_256, const Octet16& r_256) {
+  mock_function_count_map[__func__]++;
 }
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                         tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {

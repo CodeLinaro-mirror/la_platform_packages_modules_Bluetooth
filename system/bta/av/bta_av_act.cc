@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -122,6 +127,8 @@ tBTA_AV_RCB* bta_av_get_rcb_by_shdl(uint8_t shdl) {
  *
  ******************************************************************************/
 void bta_av_del_rc(tBTA_AV_RCB* p_rcb) {
+  tBTA_AV_CB* p_cb = &bta_av_cb;
+  tBTA_AV_LCB* p_lcb_rc;
   tBTA_AV_SCB* p_scb;
   uint8_t rc_handle; /* connected AVRCP handle */
 
@@ -158,6 +165,13 @@ void bta_av_del_rc(tBTA_AV_RCB* p_rcb) {
     AVRC_Close(rc_handle);
     if (rc_handle == bta_av_cb.rc_acp_handle) {
       bta_av_cb.rc_acp_handle = BTA_AV_RC_HANDLE_NONE;
+      p_lcb_rc = &p_cb->lcb[BTA_AV_NUM_LINKS];
+      log::verbose("p_lcb_rc: bda:%s, conn_msk:%d, lidx:%d",
+                    p_lcb_rc->addr.ToString().c_str(), p_lcb_rc->conn_msk,
+                    p_lcb_rc->lidx);
+      p_lcb_rc->conn_msk = 0;
+      p_lcb_rc->lidx = 0;
+      p_lcb_rc->addr = RawAddress::kEmpty;
     }
     log::verbose("end del_rc handle: {} status=0x{:x}, rc_acp_handle:{}, lidx:{}", p_rcb->handle,
                  p_rcb->status, bta_av_cb.rc_acp_handle, p_rcb->lidx);
@@ -1404,7 +1418,10 @@ void bta_av_disable(tBTA_AV_CB* p_cb, tBTA_AV_DATA* /* p_data */) {
 
   bta_av_close_all_rc(p_cb);
 
-  osi_free_and_reset((void**)&p_cb->p_disc_db);
+  if (p_cb->p_disc_db) {
+    (void)SDP_CancelServiceSearch(p_cb->p_disc_db);
+    osi_free_and_reset((void**)&p_cb->p_disc_db);
+  }
 
   /* disable audio/video - de-register all channels,
    * expect BTA_AV_DEREG_COMP_EVT when deregister is complete */
@@ -2383,7 +2400,11 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
        * we still need to send RC feature event. So we need to get BD
        * from Message.  Note that lidx is 1 based not 0 based
        */
-      rc_feat.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      if (p_cb->rcb[rc_handle].lidx > 0) {
+        rc_feat.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      } else {
+        rc_feat.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx].addr;
+      }
     } else {
       rc_feat.peer_addr = p_scb->PeerAddress();
     }
@@ -2404,7 +2425,11 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
     rc_psm.rc_handle = rc_handle;
     rc_psm.cover_art_psm = cover_art_psm;
     if (p_scb == NULL) {
-      rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      if (p_cb->rcb[rc_handle].lidx > 0) {
+        rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx - 1].addr;
+      } else {
+        rc_psm.peer_addr = p_cb->lcb[p_cb->rcb[rc_handle].lidx].addr;
+      }
     } else {
       rc_psm.peer_addr = p_scb->PeerAddress();
     }

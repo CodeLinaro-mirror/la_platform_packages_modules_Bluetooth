@@ -17,7 +17,9 @@
 
 package com.android.server.bluetooth
 
+import android.bluetooth.BluetoothAdapterCommon
 import android.bluetooth.IAdapter
+import android.bluetooth.IAdapterExt
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -27,7 +29,8 @@ import android.os.Process
 private const val TAG = "BluetoothComponent"
 
 /** Stores the package and component name of the Bluetooth application */
-class BluetoothComponent(context: Context) {
+class BluetoothComponent(context: Context, index: Int? =
+                         BluetoothAdapterCommon.ADAPTER_DEFAULT) {
     /**
      * The package name of the Bluetooth application.
      *
@@ -38,9 +41,16 @@ class BluetoothComponent(context: Context) {
     /** The component name of the Bluetooth AdapterService */
     val componentName: ComponentName
 
+    val adapterIndex: Int = index ?: BluetoothAdapterCommon.ADAPTER_DEFAULT
+
     init {
         val pm = context.packageManager
-        val intent = Intent(IAdapter::class.java.name)
+        val intent = if (BluetoothAdapterCommon.isAdapterDefault(index ?:
+            BluetoothAdapterCommon.ADAPTER_DEFAULT)) {
+            Intent(IAdapter::class.java.name)
+        } else {
+            Intent(IAdapterExt::class.java.name)
+        }
 
         // The Bluetooth UID is shared by a very limited number of packages.
         // We can optimize the resolveService lookup by only considering those packages.

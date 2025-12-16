@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bt_bta_gattc"
@@ -37,6 +42,8 @@ using gatt::StoredAttribute;
 using std::string;
 using std::vector;
 
+extern int GetAdapterIndex();
+
 #ifdef TARGET_FLOSS
 #define GATT_CACHE_PREFIX "/var/lib/bluetooth/gatt/gatt_cache_"
 #define GATT_CACHE_VERSION 6
@@ -47,12 +54,17 @@ using std::vector;
 #define GATT_HASH_FILE_PREFIX "gatt_hash_"
 #else
 #define GATT_CACHE_PREFIX "/data/misc/bluetooth/gatt_cache_"
+#define GATT_NEW_CACHE_PREFIX "/data/misc/bluetooth/gatt_new_cache_"
+
 #define GATT_CACHE_VERSION 6
 
 #define GATT_HASH_MAX_SIZE 30
 #define GATT_HASH_PATH_PREFIX "/data/misc/bluetooth/gatt_hash_"
+#define GATT_NEW_HASH_PATH_PREFIX "/data/misc/bluetooth/gatt_new_hash_"
 #define GATT_HASH_PATH "/data/misc/bluetooth"
 #define GATT_HASH_FILE_PREFIX "gatt_hash_"
+#define GATT_NEW_HASH_FILE_PREFIX "gatt_new_hash_"
+
 #endif
 
 // Default expired time is 7 days
@@ -60,15 +72,39 @@ using std::vector;
 
 static void bta_gattc_hash_remove_least_recently_used_if_possible();
 
+static const char* get_gatt_cache_prefix() {
+#ifdef TARGET_FLOSS
+    return GATT_CACHE_PREFIX;
+#else
+    return (GetAdapterIndex() == 0) ? GATT_CACHE_PREFIX : GATT_NEW_CACHE_PREFIX;
+#endif
+}
+
+static const char* get_gatt_path_prefix() {
+#ifdef TARGET_FLOSS
+    return GATT_HASH_PATH_PREFIX;
+#else
+    return (GetAdapterIndex() == 0) ? GATT_HASH_PATH_PREFIX : GATT_NEW_HASH_PATH_PREFIX;
+#endif
+}
+
+static const char* get_gatt_file_prefix() {
+#ifdef TARGET_FLOSS
+    return GATT_HASH_FILE_PREFIX;
+#else
+    return (GetAdapterIndex() == 0) ? GATT_HASH_FILE_PREFIX : GATT_NEW_HASH_FILE_PREFIX;
+#endif
+}
+
 static void bta_gattc_generate_cache_file_name(char* buffer, size_t buffer_len,
                                                const RawAddress& bda) {
-  snprintf(buffer, buffer_len, "%s%02x%02x%02x%02x%02x%02x", GATT_CACHE_PREFIX, bda.address[0],
+  snprintf(buffer, buffer_len, "%s%02x%02x%02x%02x%02x%02x", get_gatt_cache_prefix(), bda.address[0],
            bda.address[1], bda.address[2], bda.address[3], bda.address[4], bda.address[5]);
 }
 
 static void bta_gattc_generate_hash_file_name(char* buffer, size_t buffer_len,
                                               const Octet16& hash) {
-  snprintf(buffer, buffer_len, "%s%s", GATT_HASH_PATH_PREFIX,
+  snprintf(buffer, buffer_len, "%s%s", get_gatt_path_prefix(),
            base::HexEncode(hash.data(), 16).c_str());
 }
 
@@ -394,7 +430,7 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
 
     // pattern match: gatt_hash_
     size_t fname_len = strlen(dp->d_name);
-    size_t pattern_len = strlen(GATT_HASH_FILE_PREFIX);
+    size_t pattern_len = strlen(get_gatt_file_prefix());
     if (pattern_len > fname_len) {
       continue;
     }
@@ -402,7 +438,7 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
     // check if the file name has gatt_hash_ as prefix
     char tmp[255] = {0};
     strncpy(tmp, dp->d_name, pattern_len);
-    if (strncmp(tmp, GATT_HASH_FILE_PREFIX, pattern_len) != 0) {
+    if (strncmp(tmp, get_gatt_file_prefix(), pattern_len) != 0) {
       continue;
     }
 

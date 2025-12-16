@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.le_scan;
@@ -64,7 +69,7 @@ public class PeriodicScanManager {
             ScanController scanController,
             PeriodicScanNativeInterface nativeInterface) {
         mAdapterService = requireNonNull(service);
-        mAdapter = mAdapterService.getSystemService(BluetoothManager.class).getAdapter();
+        mAdapter = AdapterService.getAdapter();
         mScanController = scanController;
         mNativeInterface =
                 requireNonNullElseGet(nativeInterface, () -> new PeriodicScanNativeInterface(this));

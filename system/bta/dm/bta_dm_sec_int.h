@@ -12,6 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  */
 
 #pragma once
@@ -45,6 +51,16 @@ typedef struct {
   Octet16 r;
   bool accept;
 } tBTA_DM_CI_RMT_OOB;
+
+/* data type for BTA_DM_CI_RMT_OOB_EXTENDED */
+typedef struct {
+  RawAddress bd_addr;
+  Octet16 c192;
+  Octet16 r192;
+  Octet16 c256;
+  Octet16 r256;
+  bool accept;
+} tBTA_DM_CI_RMT_OOB_EXTENDED;
 
 typedef struct {
   tBTA_DM_SEC_CBACK* p_sec_cback;
@@ -83,6 +99,7 @@ void bta_dm_bond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type, tBT_TRANSP
 void bta_dm_bond_cancel(const RawAddress& bd_addr);
 void bta_dm_remove_device(const RawAddress& bd_addr);
 void bta_dm_ci_rmt_oob_act(std::unique_ptr<tBTA_DM_CI_RMT_OOB> msg);
+void bta_dm_ci_rmt_oob_extended_act(std::unique_ptr<tBTA_DM_CI_RMT_OOB_EXTENDED> msg);
 void bta_dm_confirm(const RawAddress& bd_addr, bool accept);
 void bta_dm_consolidate(const RawAddress& identity_addr, const RawAddress& rpa);
 void bta_dm_enable(tBTA_DM_SEC_CBACK* p_sec_cback);

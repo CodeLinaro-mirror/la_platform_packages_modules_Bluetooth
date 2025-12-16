@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -26,6 +31,8 @@
 #include "osi/include/properties.h"
 #include "profile/avrcp/avrcp_sdp_service.h"
 #include "profile/avrcp/connection_handler.h"
+
+extern int GetAdapterIndex();
 
 namespace bluetooth {
 namespace avrcp {
@@ -121,5 +128,7 @@ private:
 }  // namespace bluetooth
 
 inline bool is_new_avrcp_enabled() {
-  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false);
+  // New Bluetooth adapter supports AVRCP(TG)
+  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false) &&
+         (GetAdapterIndex() != 0);
 }

@@ -17,20 +17,38 @@
 package com.android.server.bluetooth
 
 import android.os.ServiceManager
+import android.util.Log
+
+private const val TAG = "BluetoothHciInstance"
 
 private const val BLUETOOTH_HCI_INTERFACE = "android.hardware.bluetooth.IBluetoothHci"
-private const val HCI_DEFAULT_INSTANCE_NAME = "default"
 
 class BluetoothHciInstance {
     private val hciInstances: Array<String> =
         ServiceManager.getDeclaredInstances(BLUETOOTH_HCI_INTERFACE)
 
     init {
-        Log.i("Service manager declared bluetooth hci instances: ${hciInstances.contentToString()}")
+        Log.i(TAG, "Service manager declared bluetooth hci instances: ${hciInstances.contentToString()}")
     }
 
-    fun getInstance(): String {
-        // For now return only the first one, or default if none to adhere to legacy behavior
-        return if (hciInstances.isEmpty()) HCI_DEFAULT_INSTANCE_NAME else hciInstances[0]
+    fun getInstance(index: Int = 0): String {
+        return if (hciInstances.isEmpty()) {
+            Log.w("BluetoothHciInstance", "No declared HCI instances found. Falling back to default instance.")
+            HCI_DEFAULT_INSTANCE_NAME // fallback
+        } else {
+            when (index) {
+                0 -> HCI_DEFAULT_INSTANCE_NAME
+                1 -> HCI_NEW_INSTANCE_NAME
+                else -> hciInstances.getOrElse(index) {
+                    Log.w(TAG, "Index $index out of range. Falling back to default instance.")
+                    HCI_DEFAULT_INSTANCE_NAME
+                }
+            }
+        }
+    }
+
+    companion object {
+        const val HCI_DEFAULT_INSTANCE_NAME = "default"
+        const val HCI_NEW_INSTANCE_NAME = "hci1"
     }
 }

@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #pragma once
@@ -48,6 +53,7 @@ typedef enum : uint8_t {
   BTA_DM_BOND_CANCEL_CMPL_EVT = 9,   /* Bond cancel complete indication */
   BTA_DM_SP_CFM_REQ_EVT = 10,        /* Simple Pairing User Confirmation request */
   BTA_DM_SP_KEY_NOTIF_EVT = 11,      /* Simple Pairing Passkey Notification */
+  BTA_DM_SP_RMT_OOB_EVT = 12,        /* Simple Pairing Remote OOB Data request. */
   BTA_DM_BLE_KEY_EVT = 15,           /* BLE SMP key event for peer device keys */
   BTA_DM_BLE_SEC_REQ_EVT = 16,       /* BLE SMP security request */
   BTA_DM_BLE_PASSKEY_NOTIF_EVT = 17, /* SMP passkey notification event */
@@ -148,6 +154,7 @@ typedef struct {
   tBLE_ADDR_TYPE addr_type; /* Peer device address type */
   tBT_DEVICE_TYPE dev_type;
   bool is_ctkd; /* True if key is derived using CTKD procedure */
+  bool smp_over_br;
 } tBTA_DM_AUTH_CMPL;
 
 /* Structure associated with BTA_DM_DEV_UNPAIRED_EVT */
