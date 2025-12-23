@@ -1608,8 +1608,33 @@ void smp_pairing_cmpl(tSMP_CB* p_cb, tSMP_INT_DATA* /* p_data */) {
  *                  callback and remove the connection if needed.
  ******************************************************************************/
 void smp_pair_terminate(tSMP_CB* p_cb, tSMP_INT_DATA* /* p_data */) {
-  log::verbose("addr:{}", p_cb->pairing_bda);
-  p_cb->status = SMP_CONN_TOUT;
+  log::verbose("addr:{}, role={}, local_i_key=0x{:02x}, local_r_key=0x{:02x}",
+               p_cb->pairing_bda, p_cb->role, p_cb->local_i_key, p_cb->local_r_key);
+
+  if (p_cb->role == HCI_ROLE_PERIPHERAL && p_cb->local_i_key != 0) {
+    // Check if device is already bonded to differentiate between:
+    // 1. Initial pairing failure (should remove bond)
+    // 2. Encryption failure on existing bond (should preserve bond)
+    tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(p_cb->pairing_bda);
+    bool is_already_bonded = (p_dev_rec &&
+                             (p_dev_rec->sec_rec.sec_flags & BTM_SEC_LE_LINK_KEY_KNOWN));
+
+    if (is_already_bonded) {
+      // For existing bonds, treat as connection timeout, not auth failure
+      // This preserves the bond and allows retry on next connection
+      p_cb->status = SMP_CONN_TOUT;
+      log::warn("Encryption timeout on existing bond addr:{}, preserving keys, local_i_key=0x{:02x}",
+               p_cb->pairing_bda, p_cb->local_i_key);
+    } else {
+      // For initial pairing, treat as auth failure (removes bond)
+      p_cb->status = SMP_PAIR_AUTH_FAIL;
+      log::error("Initial pairing failed addr:{}, removing bond, local_i_key=0x{:02x}",
+                p_cb->pairing_bda, p_cb->local_i_key);
+    }
+  } else {
+    p_cb->status = SMP_CONN_TOUT;
+  }
+
   smp_proc_pairing_cmpl(p_cb);
 }
 
