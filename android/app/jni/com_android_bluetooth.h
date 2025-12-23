@@ -15,6 +15,12 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #pragma once
 
 #include <bluetooth/log.h>
@@ -165,6 +171,9 @@ int register_com_android_bluetooth_csip_set_coordinator(JNIEnv* env);
 int register_com_android_bluetooth_btservice_BluetoothQualityReport(JNIEnv* env);
 
 int register_com_android_bluetooth_btservice_BluetoothHciVendorSpecific(JNIEnv* env);
+
+int register_com_android_bluetooth_a2dp_sink_vendor_service(JNIEnv* env);
+
 
 struct JNIJavaMethod {
   const char* name;

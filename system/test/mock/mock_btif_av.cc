@@ -44,6 +44,7 @@ struct btif_av_find_by_handle btif_av_find_by_handle;
 struct btif_av_get_audio_delay btif_av_get_audio_delay;
 struct btif_av_get_peer_sep btif_av_get_peer_sep;
 struct btif_av_is_a2dp_offload_enabled btif_av_is_a2dp_offload_enabled;
+struct btif_av_is_a2dp_sink_offload_enabled btif_av_is_a2dp_sink_offload_enabled;
 struct btif_av_is_a2dp_offload_running btif_av_is_a2dp_offload_running;
 struct btif_av_is_connected btif_av_is_connected;
 struct btif_av_is_connected_addr btif_av_is_connected_addr;
@@ -88,6 +89,7 @@ const RawAddress& btif_av_find_by_handle::return_value = RawAddress::kEmpty;
 uint16_t btif_av_get_audio_delay::return_value = 0;
 uint8_t btif_av_get_peer_sep::return_value = 0;
 bool btif_av_is_a2dp_offload_enabled::return_value = false;
+bool btif_av_is_a2dp_sink_offload_enabled::return_value = false;
 bool btif_av_is_a2dp_offload_running::return_value = false;
 bool btif_av_is_connected::return_value = false;
 bool btif_av_is_connected_addr::return_value = false;
@@ -137,6 +139,10 @@ uint8_t btif_av_get_peer_sep(const A2dpType local_a2dp_type) {
 bool btif_av_is_a2dp_offload_enabled() {
   inc_func_call_count(__func__);
   return test::mock::btif_av::btif_av_is_a2dp_offload_enabled();
+}
+bool btif_av_is_a2dp_sink_offload_enabled() {
+  inc_func_call_count(__func__);
+  return test::mock::btif_av::btif_av_is_a2dp_sink_offload_enabled();
 }
 bool btif_av_is_a2dp_offload_running() {
   inc_func_call_count(__func__);

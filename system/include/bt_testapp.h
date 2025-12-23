@@ -69,7 +69,7 @@ typedef void(tREMOTE_DEVICE_NAME_CB)(void* p1);
 
 enum { SUCCESS, FAIL };
 static bool pts_send_rr_s_frame = false;
-
+static bool send_l2ca_conn_rsp_with_sec_block = false;
 typedef enum {
   TEST_APP_L2CAP,
   TEST_APP_GATT,

@@ -122,6 +122,16 @@ struct btif_av_is_a2dp_offload_enabled {
 };
 extern struct btif_av_is_a2dp_offload_enabled btif_av_is_a2dp_offload_enabled;
 
+// Name: btif_av_is_a2dp_sink_offload_enabled
+// Params:
+// Return: bool
+struct btif_av_is_a2dp_sink_offload_enabled {
+  static bool return_value;
+  std::function<bool()> body{[]() { return return_value; }};
+  bool operator()() { return body(); }
+};
+extern struct btif_av_is_a2dp_sink_offload_enabled btif_av_is_a2dp_sink_offload_enabled;
+
 // Name: btif_av_is_a2dp_offload_running
 // Params:
 // Return: bool

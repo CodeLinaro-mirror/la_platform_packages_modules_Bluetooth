@@ -57,6 +57,8 @@ public:
   virtual Status StopStream() const { return SuspendStream(); }
   virtual Status SetLatencyMode(bool /*low_latency*/) const { return Status::FAILURE; }
   virtual Status UpdateSourceMetadata(bool /*is_gaming_mode*/) const { return Status::FAILURE; }
+  virtual Status UpdateSinkMetadata(uint16_t /*sink_latency*/) const { return Status::FAILURE; }
+  virtual Status NotifyHalRestart() const { return Status::FAILURE; }
 };
 
 bool update_codec_offloading_capabilities(
@@ -65,11 +67,10 @@ bool update_codec_offloading_capabilities(
 
 // Check if new bluetooth_audio is enabled
 bool is_hal_enabled();
-
+bool is_aidl_enabled();
 // Check if new bluetooth_audio is running with offloading encoders
 bool is_hal_offloading();
 
-//
 bool is_offload_session_unknown();
 
 // Initialize BluetoothAudio HAL: openProvider

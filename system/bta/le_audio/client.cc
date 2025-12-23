@@ -2402,6 +2402,10 @@ public:
      */
     if (leAudioDevice->group_id_ != bluetooth::groups::kGroupUnknown) {
       auto group = aseGroups_.FindById(leAudioDevice->group_id_);
+      if (leAudioDevice->group_id_ == active_group_id_ && (group->Size() == 1)) {
+        log::warn("Set device inactive before removing.");
+        groupSetAndNotifyInactive();
+      }
       group_remove_node(group, address, true);
     }
 
@@ -5897,8 +5901,9 @@ public:
       return false;
     }
 
-    if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
-      log::debug("Group is not streaming");
+    if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+        group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
+      log::debug("Group is not streaming and target state is not streaming");
       return false;
     }
 
@@ -6586,6 +6591,7 @@ public:
     if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
         LeAudioBroadcaster::Get()->IsLeAudioBroadcastActive() &&
         group->IsStreaming() && !group->IsReleasingOrIdle() &&
+        configuration_context_type_ != LeAudioContextType::GAME &&
         new_config_context == LeAudioContextType::MEDIA) {
       log::info(
               "Broadcast is active, current configuration context is {}. "

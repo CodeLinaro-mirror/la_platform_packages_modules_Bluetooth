@@ -331,6 +331,27 @@ void bta_av_ssm_execute(tBTA_AV_SCB* p_scb, uint16_t event, tBTA_AV_DATA* p_data
         case BTA_AV_STR_DISC_OK_EVT:
           event_handler1 = &bta_av_disc_res_as_acp;
           break;
+        case BTA_AV_SINK_API_OFFLOAD_START_EVT:
+          event_handler1 = &bta_av_sink_offload_start_req;
+          break;
+        case BTA_AV_SINK_API_OFFLOAD_STOP_EVT:
+          event_handler1 = &bta_av_sink_offload_stop_req;
+          break;
+        case BTA_AV_SINK_API_PENDING_START_CNF_EVT:
+          event_handler1 = &bta_av_sink_send_pending_start_cnf;
+          break;
+        case BTA_AV_SINK_API_PENDING_START_REJECT_EVT:
+          event_handler1 = &bta_av_sink_send_pending_start_rej;
+          break;
+        case BTA_AV_SINK_API_PENDING_SUSPEND_CNF_EVT:
+          event_handler1 = &bta_av_sink_send_pending_suspend_cnf;
+          break;
+        case BTA_AV_SINK_API_PENDING_SUSPEND_REJECT_EVT:
+          event_handler1 = &bta_av_sink_send_pending_suspend_rej;
+          break;
+        case BTA_AV_SINK_API_UPDATE_DELAY_REPORT_EVT:
+          event_handler1 = &bta_avk_update_delay_report;
+          break;
       }
       break;
     case BTA_AV_RCFG_SST:

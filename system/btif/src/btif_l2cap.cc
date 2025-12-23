@@ -209,6 +209,10 @@ static void set_pts_properties() {
   char sending_flow_control_for_pts[PROPERTY_VALUE_MAX];
   property_get("persist.vendor.qcom.bluetooth.l2c_enable_flow_control", sending_flow_control_for_pts, "0");
   l2cap_flow_control_enabled = (strcmp(sending_flow_control_for_pts, "true") == 0);
+
+  char l2c_send_conn_rsp_sec_block[PROPERTY_VALUE_MAX];
+  property_get("persist.vendor.qcom.bluetooth.l2c_conn_sec_block", l2c_send_conn_rsp_sec_block, "0");
+  send_l2ca_conn_rsp_with_sec_block = (strcmp(l2c_send_conn_rsp_sec_block, "true") == 0);
 }
 
 static bt_status_t L2cap_Init(tL2CAP_APPL_INFO* p) {

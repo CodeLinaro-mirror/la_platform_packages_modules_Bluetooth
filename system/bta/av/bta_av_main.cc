@@ -582,6 +582,10 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
       codec_index_max = BTAV_A2DP_CODEC_INDEX_SINK_MAX;
     }
 
+    if (btif_av_is_a2dp_sink_offload_enabled()) {
+      avdtp_stream_config.is_split_enabled = TRUE;
+    }
+
     if (btif_av_src_sink_coexist_enabled()) {
       for (int xx = codec_index_min; xx < codec_index_max; xx++) {
         p_scb->seps[xx].av_handle = 0;
@@ -1375,6 +1379,18 @@ const char* bta_av_evt_code(uint16_t evt_code) {
       return "OFFLOAD_START";
     case BTA_AV_API_OFFLOAD_START_RSP_EVT:
       return "OFFLOAD_START_RSP";
+    case BTA_AV_SINK_API_OFFLOAD_START_EVT:
+      return "API_SINK_OFFLOAD_START_REQ";
+    case BTA_AV_SINK_API_OFFLOAD_STOP_EVT:
+      return "API_SINK_OFFLOAD_STOP_REQ";
+    case BTA_AV_SINK_API_PENDING_START_CNF_EVT:
+      return "API_SINK_PENDING_START_CNF";
+    case BTA_AV_SINK_API_PENDING_START_REJECT_EVT:
+      return "API_SINK_PENDING_START_REJ";
+    case BTA_AV_SINK_API_PENDING_SUSPEND_CNF_EVT:
+      return "API_SINK_PENDING_SUSPEND_CNF";
+    case BTA_AV_SINK_API_PENDING_SUSPEND_REJECT_EVT:
+      return "API_PENDING_SUSPEND_REJECT";
 
     case BTA_AV_API_ENABLE_EVT:
       return "API_ENABLE";

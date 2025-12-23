@@ -35,6 +35,9 @@ cc_library_static {
     ],
     target: {
         android: {
+            whole_static_libs: [
+                "libPlatformProperties",
+            ],
             shared_libs: [
                 "vendor.qti.hardware.bluetooth.audio-V1-ndk",
                 "vendor.qti.hardware.bluetooth_audio@2.1",

@@ -56,6 +56,15 @@ bool is_hal_enabled() {
   return false;
 }
 
+bool is_aidl_enabled(){
+  LOG(INFO) << __func__;
+  if (HalVersionManager::GetHalTransport() ==
+     BluetoothAudioHalTransport::AIDL) {
+     return aidl::a2dp::is_hal_enabled();
+  }
+  return false;
+}
+
 bool is_offload_session_unknown() {
   LOG(INFO) << __func__;
  if (HalVersionManager::GetHalTransport() ==
