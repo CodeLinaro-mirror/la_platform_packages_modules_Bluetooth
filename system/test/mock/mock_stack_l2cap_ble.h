@@ -264,6 +264,19 @@ struct L2CA_AdjustConnectionIntervals {
   }
 };
 extern struct L2CA_AdjustConnectionIntervals L2CA_AdjustConnectionIntervals;
+
+// Name: L2CA_FlowControl
+// Params: uint16_t cid, bool data_enabled
+// floor_interval Returns: void
+struct L2CA_FlowControl {
+  std::function<bool(uint16_t cid, bool data_enabled)> body{
+          [](uint16_t /* cid */, bool /* data_enabled */){return false;}};
+  bool operator()(uint16_t cid, bool data_enabled) {
+    return body(cid, data_enabled);
+  }
+};
+extern struct L2CA_FlowControl L2CA_FlowControl;
+
 // Name: L2CA_SetEcosystemBaseInterval
 // Params: uint16_t* min_interval, uint16_t* max_interval, uint16_t
 // floor_interval Returns: void

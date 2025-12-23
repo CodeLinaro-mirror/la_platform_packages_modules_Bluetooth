@@ -63,7 +63,7 @@ using namespace bluetooth;
 
 bool btif_get_address_type(const RawAddress& bda, tBLE_ADDR_TYPE* p_addr_type);
 bool btif_get_device_type(const RawAddress& bda, int* p_device_type);
-
+static bool l2cap_flow_control_enabled = false;
 static tL2CAP_APPL_INFO* pl2test_l2c_appl = NULL;
 static bt_status_t L2cap_Init(tL2CAP_APPL_INFO* p);
 static bt_status_t L2cap_Register(uint16_t psm, bool conn_type,
@@ -205,6 +205,10 @@ static void set_pts_properties() {
   char l2c_send_s_frame_rr_opt[PROPERTY_VALUE_MAX];
   property_get("persist.vendor.qcom.bluetooth.l2c_send_s_frame_rr", l2c_send_s_frame_rr_opt, "0");
   pts_send_rr_s_frame = (strcmp(l2c_send_s_frame_rr_opt, "true") == 0);
+
+  char sending_flow_control_for_pts[PROPERTY_VALUE_MAX];
+  property_get("persist.vendor.qcom.bluetooth.l2c_enable_flow_control", sending_flow_control_for_pts, "0");
+  l2cap_flow_control_enabled = (strcmp(sending_flow_control_for_pts, "true") == 0);
 }
 
 static bt_status_t L2cap_Init(tL2CAP_APPL_INFO* p) {
@@ -520,6 +524,9 @@ static bool L2cap_SetAclPriority(RawAddress bd_addr, uint8_t priority) {
 static bool L2cap_FlowControl(uint16_t cid, bool data_enabled) {
   log::debug("L2cap_FlowControl:: Invoked with LocalBusy={}\n",
              (data_enabled) ? "FALSE" : "TRUE");
+  if(l2cap_flow_control_enabled) {
+    return L2CA_FlowControl(cid, data_enabled);
+  }
   return false;
 }
 
