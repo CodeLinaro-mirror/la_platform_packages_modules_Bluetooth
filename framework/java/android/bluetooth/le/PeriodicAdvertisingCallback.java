@@ -96,4 +96,14 @@ public abstract class PeriodicAdvertisingCallback {
      */
     public void onBigInfoAdvertisingReport(int syncHandle, boolean encrypted) {
     }
+
+    /**
+     * Callback when BIGInfo advertising report is received.
+     *
+     * @param syncHandle handle used to identify this synchronization.
+     * @param encrypted BIG carries encrypted data or not
+     * @param isoInterval ISO Interval
+     */
+    public void onEnhancedBigInfoAdvertisingReport(int syncHandle, boolean encrypted, int isoInterval) {
+    }
 }
