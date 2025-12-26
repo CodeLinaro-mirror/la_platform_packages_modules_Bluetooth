@@ -256,7 +256,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
     private boolean mQuietEnable = false;
     private boolean mEnable;
     private boolean mShutdownInProgress = false;
-
+    private boolean mHasPendingAddProxyMessages = false;
     private static String timeToLog(long timestamp) {
         return DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault())
             .format(Instant.ofEpochMilli(timestamp));
@@ -656,7 +656,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
         mName = null;
         mErrorRecoveryRetryCounter = 0;
         mContentResolver = context.getContentResolver();
-
+        mHasPendingAddProxyMessages = false;
         // Observe BLE scan only mode settings change.
         registerForBleScanModeChange();
         mCallbacks = new RemoteCallbackList<IBluetoothManagerCallback>();
@@ -1863,6 +1863,7 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
         Message addProxyMsg = mHandler.obtainMessage(MESSAGE_ADD_PROXY_DELAYED);
         addProxyMsg.arg1 = bluetoothProfile;
         addProxyMsg.obj = proxy;
+        mHasPendingAddProxyMessages = true;
         mHandler.sendMessageDelayed(addProxyMsg, ADD_PROXY_DELAY_MS);
         return true;
     }
@@ -1887,14 +1888,18 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                     Log.e(TAG, "Unable to unbind service with intent: " + psc.mIntent, e);
                 }
                 if (!mUnbindingAll) {
-                    Log.w(TAG, "psc.isEmpty is true, removing psc entry for profile "
-                                 + profile);
-                    mProfileServices.remove(profile);
-                }
+                      if (mHasPendingAddProxyMessages) {
+                        Log.w(TAG,
+                            "psc.isEmpty but pending MESSAGE_ADD_PROXY_DELAYED exists, "
+                            + "keeping psc entry for profile " + profile);
+                       } else {
+                           Log.w(TAG, "psc.isEmpty is true, removing psc entry for profile "+ profile);
+                           mProfileServices.remove(profile);
+                       }
             }
         }
     }
-
+  }
     private void unbindAllBluetoothProfileServices() {
         synchronized (mProfileServices) {
             mUnbindingAll = true;
@@ -2791,12 +2796,16 @@ public class BluetoothManagerService extends IBluetoothManager.Stub {
                 }
                 case MESSAGE_ADD_PROXY_DELAYED: {
                     ProfileServiceConnections psc = mProfileServices.get(msg.arg1);
-                    if (psc == null) {
-                        break;
-                    }
-                    IBluetoothProfileServiceConnection proxy =
+                    Log.w(TAG, "MESSAGE_ADD_PROXY_DELAYED");
+                    if(psc != null){
+                         IBluetoothProfileServiceConnection proxy =
                             (IBluetoothProfileServiceConnection) msg.obj;
-                    psc.addProxy(proxy);
+                     psc.addProxy(proxy);
+                    }
+                    if (!mHandler.hasMessages(MESSAGE_ADD_PROXY_DELAYED)) {
+                            Log.w(TAG, "MESSAGE_ADD_PROXY_DELAYED - clear");
+                            mHasPendingAddProxyMessages = false;
+                    }
                     break;
                 }
                 case MESSAGE_BIND_PROFILE_SERVICE: {
