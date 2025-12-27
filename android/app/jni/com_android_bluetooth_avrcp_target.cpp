@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "AvrcpTargetJni"
@@ -65,9 +70,13 @@ static std::shared_timed_mutex callbacks_mutex;
 // Forward Declarations
 static void sendMediaKeyEvent(const RawAddress& address, int, KeyState);
 static std::string getCurrentMediaId();
+static std::string getCurrentMediaIdExt(const RawAddress& address);
 static SongInfo getSongInfo();
+static SongInfo getSongInfoExt(const RawAddress& address);
 static PlayStatus getCurrentPlayStatus();
+static PlayStatus getCurrentPlayStatusExt(const RawAddress& address);
 static std::vector<SongInfo> getNowPlayingList();
+static std::vector<SongInfo> getNowPlayingListExt(const RawAddress& address);
 static uint16_t getCurrentPlayerId();
 static std::vector<MediaPlayerInfo> getMediaPlayerList();
 using SetBrowsedPlayerCb = MediaInterface::SetBrowsedPlayerCallback;
@@ -83,6 +92,7 @@ static void volumeDeviceConnected(const RawAddress& address,
                                   ::bluetooth::avrcp::VolumeInterface::VolumeChangedCb cb);
 static void volumeDeviceDisconnected(const RawAddress& address);
 static void setVolume(int8_t volume);
+static void setVolumeExt(const RawAddress& address, int8_t volume);
 
 using ListPlayerSettingsCb = PlayerSettingsInterface::ListPlayerSettingsCallback;
 static void listPlayerSettings(ListPlayerSettingsCb cb);
@@ -137,8 +147,18 @@ public:
     cb.Run(info);
   }
 
+  void GetSongInfoExt(const RawAddress& address, SongInfoCallback cb) override {
+    auto info = getSongInfoExt(address);
+    cb.Run(info);
+  }
+
   void GetPlayStatus(PlayStatusCallback cb) override {
     auto status = getCurrentPlayStatus();
+    cb.Run(status);
+  }
+
+  void GetPlayStatusExt(const RawAddress& address, PlayStatusCallback cb) override {
+    auto status = getCurrentPlayStatusExt(address);
     cb.Run(status);
   }
 
@@ -148,6 +168,14 @@ public:
     cb.Run(curr_song_id, std::move(now_playing_list));
   }
 
+  void GetNowPlayingListExt(const RawAddress& address, NowPlayingCallback cb) override {
+    log::debug("address={}", address.ToString().c_str());
+    auto curr_song_id = getCurrentMediaIdExt(address);
+    auto now_playing_list = getNowPlayingListExt(address);
+    cb.Run(curr_song_id, std::move(now_playing_list));
+  }
+
+  // need not to be extended
   void GetMediaPlayerList(MediaListCallback cb) override {
     uint16_t current_player = getCurrentPlayerId();
     auto player_list = getMediaPlayerList();
@@ -201,6 +229,8 @@ public:
   void DeviceDisconnected(const RawAddress& bdaddr) override { volumeDeviceDisconnected(bdaddr); }
 
   void SetVolume(int8_t volume) override { setVolume(volume); }
+
+  void SetVolumeExt(const RawAddress& bdaddr, int8_t volume) override { setVolumeExt(bdaddr, volume); }
 };
 static VolumeInterfaceImpl mVolumeInterface;
 
@@ -225,11 +255,18 @@ public:
 static PlayerSettingsInterfaceImpl mPlayerSettingsInterface;
 
 static jmethodID method_getCurrentSongInfo;
+static jmethodID method_getCurrentSongInfoExt;
+
 static jmethodID method_getPlaybackStatus;
+static jmethodID method_getPlaybackStatusExt;
 static jmethodID method_sendMediaKeyEvent;
+static jmethodID method_sendMediaKeyEventExt;
 
 static jmethodID method_getCurrentMediaId;
+static jmethodID method_getCurrentMediaIdExt;
+
 static jmethodID method_getNowPlayingList;
+static jmethodID method_getNowPlayingListExt;
 
 static jmethodID method_setBrowsedPlayer;
 static jmethodID method_setAddressedPlayer;
@@ -244,6 +281,7 @@ static jmethodID method_volumeDeviceConnected;
 static jmethodID method_volumeDeviceDisconnected;
 
 static jmethodID method_setVolume;
+static jmethodID method_setVolumeExt;
 
 static jmethodID method_listPlayerSettings;
 static jmethodID method_listPlayerSettingValues;
@@ -290,6 +328,27 @@ static void sendMediaUpdateNative(JNIEnv* /* env */, jobject /* object */, jbool
   }
 
   mServiceCallbacks->SendMediaUpdate(metadata == JNI_TRUE, state == JNI_TRUE, queue == JNI_TRUE);
+}
+
+static void sendMediaUpdateExtNative(JNIEnv* env, jobject /* object */,
+                                  jstring address, jboolean metadata,
+                                  jboolean state, jboolean queue) {
+  std::unique_lock<std::shared_timed_mutex> interface_lock(interface_mutex);
+  if (mServiceCallbacks == nullptr) {
+    log::warn("Service not loaded.");
+    return;
+  }
+
+  const char* tmp_addr = env->GetStringUTFChars(address, 0);
+  auto bdaddr = RawAddress::FromString(tmp_addr);
+  env->ReleaseStringUTFChars(address, tmp_addr);
+
+  if (!bdaddr.has_value()) {
+    return;
+  }
+
+  mServiceCallbacks->SendMediaUpdateExt(bdaddr.value(), metadata == JNI_TRUE, state == JNI_TRUE,
+                                     queue == JNI_TRUE);
 }
 
 static void sendFolderUpdateNative(JNIEnv* /* env */, jobject /* object */,
@@ -366,7 +425,7 @@ static void sendMediaKeyEvent(const RawAddress& address, int key, KeyState state
     return;
   }
   jstring j_bdaddr = sCallbackEnv->NewStringUTF(address.ToString().c_str());
-  sCallbackEnv->CallVoidMethod(mJavaInterface, method_sendMediaKeyEvent, j_bdaddr, key,
+  sCallbackEnv->CallVoidMethod(mJavaInterface, method_sendMediaKeyEventExt, j_bdaddr, key,
                                state == KeyState::PUSHED ? JNI_TRUE : JNI_FALSE);
 }
 
@@ -533,6 +592,19 @@ static SongInfo getSongInfo() {
   return info;
 }
 
+static SongInfo getSongInfoExt(const RawAddress& address) {
+  std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mJavaInterface) return SongInfo();
+
+  jstring j_bdaddr = sCallbackEnv->NewStringUTF(address.ToString().c_str());
+  log::debug("address={}", address.ToString().c_str());
+  jobject metadata =
+      sCallbackEnv->CallObjectMethod(mJavaInterface, method_getCurrentSongInfoExt,
+                                     j_bdaddr);
+  return getSongInfoFromJavaObj(sCallbackEnv.get(), metadata);
+}
+
 static PlayStatus getCurrentPlayStatus() {
   log::debug("");
   std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
@@ -564,6 +636,37 @@ static PlayStatus getCurrentPlayStatus() {
   return status;
 }
 
+static PlayStatus getCurrentPlayStatusExt(const RawAddress& address) {
+  std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mJavaInterface) return PlayStatus();
+
+  jstring j_bdaddr = sCallbackEnv->NewStringUTF(address.ToString().c_str());
+  log::debug("address={}", address.ToString().c_str());
+  PlayStatus status;
+  jobject playStatus =
+      sCallbackEnv->CallObjectMethod(mJavaInterface, method_getPlaybackStatusExt, j_bdaddr);
+
+  if (playStatus == nullptr) {
+    log::error("Got a null play status");
+    return status;
+  }
+
+  jclass class_playStatus = sCallbackEnv->GetObjectClass(playStatus);
+  jfieldID field_position =
+      sCallbackEnv->GetFieldID(class_playStatus, "position", "J");
+  jfieldID field_duration =
+      sCallbackEnv->GetFieldID(class_playStatus, "duration", "J");
+  jfieldID field_state =
+      sCallbackEnv->GetFieldID(class_playStatus, "state", "B");
+
+  status.position = sCallbackEnv->GetLongField(playStatus, field_position);
+  status.duration = sCallbackEnv->GetLongField(playStatus, field_duration);
+  status.state = (PlayState)sCallbackEnv->GetByteField(playStatus, field_state);
+
+  return status;
+}
+
 static std::string getCurrentMediaId() {
   log::debug("");
   std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
@@ -583,6 +686,26 @@ static std::string getCurrentMediaId() {
   std::string ret(value);
   sCallbackEnv->ReleaseStringUTFChars(media_id, value);
   sCallbackEnv->DeleteLocalRef(media_id);
+  return ret;
+}
+
+static std::string getCurrentMediaIdExt(const RawAddress& address) {
+  std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mJavaInterface) return "";
+
+  jstring j_bdaddr = sCallbackEnv->NewStringUTF(address.ToString().c_str());
+  log::debug("address={}", address.ToString().c_str());
+  jstring media_id = (jstring)sCallbackEnv->CallObjectMethod(
+      mJavaInterface, method_getCurrentMediaIdExt, j_bdaddr);
+  if (media_id == nullptr) {
+    log::error("Got a null media ID");
+    return "";
+  }
+
+  const char* value = sCallbackEnv->GetStringUTFChars(media_id, nullptr);
+  std::string ret(value);
+  sCallbackEnv->ReleaseStringUTFChars(media_id, value);
   return ret;
 }
 
@@ -617,6 +740,37 @@ static std::vector<SongInfo> getNowPlayingList() {
   }
 
   sCallbackEnv->DeleteLocalRef(song_list);
+
+  return ret;
+}
+
+static std::vector<SongInfo> getNowPlayingListExt(const RawAddress& address) {
+  log::debug("address={}", address);
+  std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mJavaInterface) return std::vector<SongInfo>();
+
+  jstring j_bdaddr = sCallbackEnv->NewStringUTF(address.ToString().c_str());
+  jobject song_list =
+      sCallbackEnv->CallObjectMethod(mJavaInterface, method_getNowPlayingListExt, j_bdaddr);
+  if (song_list == nullptr) {
+    log::error("Got a null now playing list");
+    return std::vector<SongInfo>();
+  }
+
+  jclass class_list = sCallbackEnv->GetObjectClass(song_list);
+  jmethodID method_get =
+      sCallbackEnv->GetMethodID(class_list, "get", "(I)Ljava/lang/Object;");
+  jmethodID method_size = sCallbackEnv->GetMethodID(class_list, "size", "()I");
+
+  auto size = sCallbackEnv->CallIntMethod(song_list, method_size);
+  if (size == 0) return std::vector<SongInfo>();
+  std::vector<SongInfo> ret;
+  for (int i = 0; i < size; i++) {
+    jobject song = sCallbackEnv->CallObjectMethod(song_list, method_get, i);
+    ret.push_back(getSongInfoFromJavaObj(sCallbackEnv.get(), song));
+    sCallbackEnv->DeleteLocalRef(song);
+  }
 
   return ret;
 }
@@ -916,8 +1070,19 @@ static void setVolume(int8_t volume) {
   sCallbackEnv->CallVoidMethod(mJavaInterface, method_setVolume, volume);
 }
 
+static void setVolumeExt(const RawAddress& address, int8_t volume) {
+  log::debug("address={}", address);
+  std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mJavaInterface) return;
+
+  jstring j_bdaddr = sCallbackEnv->NewStringUTF(address.ToString().c_str());
+
+  sCallbackEnv->CallVoidMethod(mJavaInterface, method_setVolumeExt, j_bdaddr, volume);
+}
+
 static void setBipClientStatusNative(JNIEnv* env, jobject /* object */, jstring address,
-                                     jboolean connected) {
+                                       jboolean connected) {
   std::unique_lock<std::shared_timed_mutex> interface_lock(interface_mutex);
   if (mServiceCallbacks == nullptr) {
     log::warn("Service not loaded.");
@@ -1090,6 +1255,7 @@ int register_com_android_bluetooth_avrcp_target(JNIEnv* env) {
            reinterpret_cast<void*>(setPlayerSettingsResponseNative)},
           {"sendPlayerSettingsNative", "([B[B)V",
            reinterpret_cast<void*>(sendPlayerSettingsNative)},
+          {"sendMediaUpdateExtNative", "(Ljava/lang/String;ZZZ)V", (void*)sendMediaUpdateExtNative},
   };
   const int result =
           REGISTER_NATIVE_METHODS(env, "com/android/bluetooth/avrcp/AvrcpNativeInterface", methods);
@@ -1100,11 +1266,18 @@ int register_com_android_bluetooth_avrcp_target(JNIEnv* env) {
   const JNIJavaMethod javaMethods[] = {
           {"getCurrentSongInfo", "()Lcom/android/bluetooth/audio_util/Metadata;",
            &method_getCurrentSongInfo},
+          {"getCurrentSongInfoExt", "(Ljava/lang/String;)Lcom/android/bluetooth/audio_util/Metadata;",
+           &method_getCurrentSongInfoExt},
           {"getPlayStatus", "()Lcom/android/bluetooth/audio_util/PlayStatus;",
            &method_getPlaybackStatus},
           {"sendMediaKeyEvent", "(Ljava/lang/String;IZ)V", &method_sendMediaKeyEvent},
+          {"sendMediaKeyEventExt", "(Ljava/lang/String;IZ)V", &method_sendMediaKeyEventExt},
+          {"getPlayStatusExt", "(Ljava/lang/String;)Lcom/android/bluetooth/audio_util/PlayStatus;",
+           &method_getPlaybackStatusExt},
           {"getCurrentMediaId", "()Ljava/lang/String;", &method_getCurrentMediaId},
+          {"getCurrentMediaIdExt", "(Ljava/lang/String;)Ljava/lang/String;", &method_getCurrentMediaIdExt},
           {"getNowPlayingList", "()Ljava/util/List;", &method_getNowPlayingList},
+          {"getNowPlayingListExt", "(Ljava/lang/String;)Ljava/util/List;", &method_getNowPlayingListExt},
           {"getCurrentPlayerId", "()I", &method_getCurrentPlayerId},
           {"getMediaPlayerList", "()Ljava/util/List;", &method_getMediaPlayerList},
           {"setBrowsedPlayer", "(ILjava/lang/String;)V", &method_setBrowsedPlayer},
@@ -1115,6 +1288,7 @@ int register_com_android_bluetooth_avrcp_target(JNIEnv* env) {
           {"deviceConnected", "(Ljava/lang/String;Z)V", &method_volumeDeviceConnected},
           {"deviceDisconnected", "(Ljava/lang/String;)V", &method_volumeDeviceDisconnected},
           {"setVolume", "(I)V", &method_setVolume},
+          {"setVolumeExt", "(Ljava/lang/String;I)V", &method_setVolumeExt},
           {"listPlayerSettingsRequest", "()V", &method_listPlayerSettings},
           {"listPlayerSettingValuesRequest", "(B)V", &method_listPlayerSettingValues},
           {"getCurrentPlayerSettingValuesRequest", "([B)V", &method_getPlayerSettings},

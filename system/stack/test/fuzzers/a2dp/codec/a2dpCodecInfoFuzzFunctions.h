@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #ifndef BT_STACK_FUZZ_A2DP_CODECINFO_FUNCTIONS_H_
@@ -159,7 +164,7 @@ std::vector<std::function<void(FuzzedDataProvider*, uint8_t*)>> a2dp_codec_info_
 
         // A2DP_GetEncoderInterface
         [](FuzzedDataProvider* /*fdp*/, uint8_t* codec_info) -> void {
-          A2DP_GetEncoderInterface(codec_info);
+          A2DP_GetEncoderInterface(RawAddress::kEmpty, codec_info);
         },
 
         // A2DP_GetDecoderInterface

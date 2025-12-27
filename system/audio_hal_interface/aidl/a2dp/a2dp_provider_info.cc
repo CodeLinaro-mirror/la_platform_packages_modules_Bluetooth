@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "AIDLA2dpProviderInfo"
@@ -48,18 +53,24 @@ using ::aidl::android::hardware::bluetooth::audio::SessionType;
  * getProviderInfo, or if the feature flag for codec
  * extensibility is disabled.
  ***/
-std::unique_ptr<ProviderInfo> ProviderInfo::GetProviderInfo(bool supports_a2dp_hw_offload_v2) {
+std::unique_ptr<ProviderInfo> ProviderInfo::GetProviderInfo(bool supports_a2dp_hw_offload_v2,
+                                                            BluetoothAudioClientInterface* offloading_hal_interface) {
   if (!supports_a2dp_hw_offload_v2) {
     log::info(
             "a2dp hw offload v2 is not supported by the controller,"
             " not going to load the ProviderInfo");
     return nullptr;
   }
+  if (!offloading_hal_interface) {
+    log::warn(
+            "a2dp hw offload interface is not available");
+    return nullptr;
+  }
 
-  auto source_provider_info = BluetoothAudioClientInterface::GetProviderInfo(
+  auto source_provider_info = offloading_hal_interface->GetProviderInfo(
           SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH, nullptr);
 
-  auto sink_provider_info = BluetoothAudioClientInterface::GetProviderInfo(
+  auto sink_provider_info = offloading_hal_interface->GetProviderInfo(
           SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH, nullptr);
 
   if (!source_provider_info.has_value() && !sink_provider_info.has_value()) {

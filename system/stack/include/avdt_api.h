@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -41,7 +44,7 @@
 #define AVDT_VERSION_1_3 0x0103
 
 /* Maximum size in bytes of the codec capabilities information element. */
-#define AVDT_CODEC_SIZE 20
+#define AVDT_CODEC_SIZE 52
 
 /* API function return value result codes. */
 typedef enum : uint16_t {

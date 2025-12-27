@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -40,8 +45,11 @@ class MockMediaInterface : public MediaInterface {
 public:
   MOCK_METHOD3(SendKeyEvent, void(const RawAddress&, uint8_t, KeyState));
   MOCK_METHOD1(GetSongInfo, void(MediaInterface::SongInfoCallback));
+  MOCK_METHOD2(GetSongInfoExt, void(const RawAddress&, MediaInterface::SongInfoCallback));
   MOCK_METHOD1(GetPlayStatus, void(MediaInterface::PlayStatusCallback));
+  MOCK_METHOD2(GetPlayStatusExt, void(const RawAddress&, MediaInterface::PlayStatusCallback));
   MOCK_METHOD1(GetNowPlayingList, void(MediaInterface::NowPlayingCallback));
+  MOCK_METHOD2(GetNowPlayingListExt, void(const RawAddress&, MediaInterface::NowPlayingCallback));
   MOCK_METHOD1(GetMediaPlayerList, void(MediaInterface::MediaListCallback));
   MOCK_METHOD1(GetAddressedPlayer, void(MediaInterface::GetAddressedPlayerCallback));
   MOCK_METHOD3(GetFolderItems, void(uint16_t, std::string, MediaInterface::FolderItemsCallback));
@@ -60,6 +68,7 @@ public:
   MOCK_METHOD2(DeviceConnected, void(const RawAddress&, VolumeChangedCb));
   MOCK_METHOD1(DeviceDisconnected, void(const RawAddress&));
   MOCK_METHOD1(SetVolume, void(int8_t));
+  MOCK_METHOD2(SetVolumeExt, void(const RawAddress&, int8_t));
 };
 
 class MockPlayerSettingsInterface : public PlayerSettingsInterface {
@@ -96,6 +105,7 @@ public:
   MOCK_METHOD1(event_open, void(const RawAddress&));
   MOCK_METHOD1(event_close, void(const RawAddress&));
   MOCK_METHOD0(active_peer, RawAddress());
+  MOCK_METHOD0(active_peers, std::set<RawAddress>());
   MOCK_METHOD1(is_peer_in_silence_mode, bool(const RawAddress&));
   MOCK_METHOD2(connect_audio_sink_delayed, void(uint8_t, const RawAddress&));
   MOCK_METHOD2(find_audio_sink_service, uint16_t(const RawAddress&, tA2DP_FIND_CBACK));

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "avrcp"
@@ -43,6 +48,8 @@ extern bool btif_av_peer_is_connected_source(const RawAddress& peer_address);
 extern bool btif_av_both_enable(void);
 extern bool btif_av_src_sink_coexist_enabled(void);
 extern bool btif_av_peer_is_source(const RawAddress& peer_address);
+
+extern bool IsSupportDualA2dpSource();
 
 namespace bluetooth {
 namespace avrcp {
@@ -199,6 +206,15 @@ std::vector<std::shared_ptr<Device>> ConnectionHandler::GetListOfDevices() const
   return list;
 }
 
+std::shared_ptr<Device> ConnectionHandler::GetDevice(const RawAddress& bdaddr) {
+  for (auto it = device_map_.begin(); it != device_map_.end(); it++) {
+    if (bdaddr == it->second->GetAddress()) {
+        return it->second;
+    }
+  }
+  return nullptr;
+}
+
 bool ConnectionHandler::SdpLookup(const RawAddress& bdaddr, SdpCallback cb, bool retry,
                                   bool incoming_connection) {
   log::info("");
@@ -278,8 +294,13 @@ void ConnectionHandler::InitiatorControlCb(uint8_t handle, uint8_t event, uint16
         return;
       }
 
-      bool supports_browsing = feature_iter->second & BTA_AV_FEAT_BROWSE;
-
+      bool supports_browsing;
+      if (IsSupportDualA2dpSource()) {
+        supports_browsing = false;
+      } else {
+        supports_browsing = feature_iter->second & BTA_AV_FEAT_BROWSE;
+      }
+      log::info("supports_browsing={}", supports_browsing);
       if (supports_browsing) {
         avrc_->OpenBrowse(handle, AVCT_ROLE_INITIATOR);
       }
@@ -379,8 +400,14 @@ void ConnectionHandler::AcceptorControlCb(uint8_t handle, uint8_t event, uint16_
                                             weak_ptr_factory_.GetWeakPtr(), handle);
       auto&& ctrl_mtu = avrc_->GetPeerMtu(handle) - AVCT_HDR_LEN;
       auto&& browse_mtu = avrc_->GetBrowseMtu(handle) - AVCT_HDR_LEN;
+      bool avrcp13_compatibility = false;
+      bool browsing = true;
+      if (IsSupportDualA2dpSource()) {
+        avrcp13_compatibility = true;
+        browsing = false;
+      }
       std::shared_ptr<Device> newDevice =
-              std::make_shared<Device>(*peer_addr, false, callback, ctrl_mtu, browse_mtu);
+              std::make_shared<Device>(*peer_addr, avrcp13_compatibility, callback, ctrl_mtu, browse_mtu);
 
       device_map_[handle] = newDevice;
       connection_cb_.Run(newDevice);
@@ -410,7 +437,9 @@ void ConnectionHandler::AcceptorControlCb(uint8_t handle, uint8_t event, uint16_
       };
 
       if (SdpLookup(*peer_addr, base::Bind(sdp_lambda, this, handle), false, true)) {
-        avrc_->OpenBrowse(handle, AVCT_ROLE_ACCEPTOR);
+        if (browsing) {
+          avrc_->OpenBrowse(handle, AVCT_ROLE_ACCEPTOR);
+        }
       } else {
         // SDP search failed, this could be due to a collision between outgoing
         // and incoming connection. In any case, we need to reject the current

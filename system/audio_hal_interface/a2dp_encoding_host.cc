@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "a2dp_encoding_host.h"
@@ -152,7 +157,7 @@ bool SetAudioConfig(AudioConfig config) {
   codec_config.sample_rate = config.sample_rate;
   codec_config.bits_per_sample = config.bits_per_sample;
   codec_config.channel_mode = config.channel_mode;
-  btif_a2dp_source_feeding_update_req(codec_config);
+  btif_a2dp_source_feeding_update_req(RawAddress::kEmpty, codec_config);
   return true;
 }
 
@@ -178,12 +183,12 @@ bool StartRequest() {
     return false;
   }
 
-  if (btif_av_stream_started_ready(A2dpType::kSource)) {
+  if (btif_av_stream_started_ready(RawAddress::kEmpty, A2dpType::kSource)) {
     // Already started, ACK back immediately.
     a2dp_data_path_open();
     return true;
   }
-  if (btif_av_stream_ready(A2dpType::kSource)) {
+  if (btif_av_stream_ready(RawAddress::kEmpty, A2dpType::kSource)) {
     a2dp_data_path_open();
     /*
      * Post start event and wait for audio path to open.
@@ -191,8 +196,8 @@ bool StartRequest() {
      * procedure is completed.
      */
     a2dp_pending_cmd_ = A2DP_CTRL_CMD_START;
-    btif_av_stream_start(A2dpType::kSource);
-    if (btif_av_get_peer_sep(A2dpType::kSource) != AVDT_TSEP_SRC) {
+    btif_av_stream_start(RawAddress::kEmpty, A2dpType::kSource);
+    if (btif_av_get_peer_sep(RawAddress::kEmpty, A2dpType::kSource) != AVDT_TSEP_SRC) {
       log::info("accepted");
       return true;  // NOTE: The request is placed, but could still fail.
     }
@@ -205,9 +210,9 @@ bool StartRequest() {
 
 // Invoked by audio server when audio streaming is done.
 bool StopRequest() {
-  if (btif_av_get_peer_sep(A2dpType::kSource) == AVDT_TSEP_SNK &&
-      !btif_av_stream_started_ready(A2dpType::kSource)) {
-    btif_av_clear_remote_suspend_flag(A2dpType::kSource);
+  if (btif_av_get_peer_sep(RawAddress::kEmpty, A2dpType::kSource) == AVDT_TSEP_SNK &&
+      !btif_av_stream_started_ready(RawAddress::kEmpty, A2dpType::kSource)) {
+    btif_av_clear_remote_suspend_flag(RawAddress::kEmpty, A2dpType::kSource);
     return true;
   }
   log::info("handling");
@@ -227,7 +232,7 @@ bool SuspendRequest() {
   }
   log::info("handling");
   a2dp_pending_cmd_ = A2DP_CTRL_CMD_SUSPEND;
-  btif_av_stream_suspend();
+  btif_av_stream_suspend(RawAddress::kEmpty);
   return true;
 }
 

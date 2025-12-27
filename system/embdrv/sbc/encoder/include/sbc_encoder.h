@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -29,6 +34,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 /*DEFINES*/
 #ifndef FALSE
@@ -188,17 +194,15 @@ typedef struct SBC_ENC_PARAMS_TAG {
                     Assigning to SBC_FORMAT_MSBC for mSBC */
 } SBC_ENC_PARAMS;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#define SBC_ENCODE_INTERFACE_STRING "sbc_encode_interface"
 
-/* Encode the frame using SBC. The output is written into |output|. Return
- * number of bytes written. */
-uint32_t SBC_Encode(SBC_ENC_PARAMS* strEncParams, int16_t* input, uint8_t* output);
-void SBC_Encoder_Init(SBC_ENC_PARAMS* strEncParams);
+typedef struct {
+  size_t size;
 
-#ifdef __cplusplus
-}
-#endif
+  void (*tSBC_Encoder_Init)(SBC_ENC_PARAMS* strEncParams);
+
+  uint32_t (*tSBC_Encode)(SBC_ENC_PARAMS* strEncParams, int16_t* input,
+                           uint8_t* output);
+}sbc_encode_interface_t;
 
 #endif /* SBC_ENCODER_H */

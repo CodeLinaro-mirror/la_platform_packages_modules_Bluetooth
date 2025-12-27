@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -22,16 +27,30 @@
 #include "a2dp_encoding.h"
 #include "audio_aidl_interfaces.h"
 #include "audio_hal_interface/a2dp_encoding.h"
+#include "client_interface_aidl.h"
 
 namespace bluetooth::audio::aidl::a2dp::codec {
 
+using ::aidl::android::hardware::bluetooth::audio::ChannelMode;
 using ::aidl::android::hardware::bluetooth::audio::CodecConfiguration;
 using ::aidl::android::hardware::bluetooth::audio::PcmConfiguration;
 using ::bluetooth::audio::a2dp::ahal_codec_configuration;
 
+using ::bluetooth::audio::aidl::a2dp::BluetoothAudioClientInterface;
+
 /// Configure the framework supported offload capabilities.
+
+extern const CodecConfiguration kInvalidCodecConfiguration;
+
+bool A2dpSbcToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp_config);
+bool A2dpAacToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp_config);
+bool A2dpAptxToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp_config);
+bool A2dpLdacToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp_config);
+bool A2dpOpusToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp_config);
+
 bool UpdateOffloadingCapabilities(
-        const std::vector<btav_a2dp_codec_config_t>& framework_preference);
+        const std::vector<btav_a2dp_codec_config_t>& framework_preference,
+        BluetoothAudioClientInterface* offloading_hal_interface);
 
 /// Return the pcm configuration to be used for the software encoding audio
 /// session with the Bluetooth Audio HAL. Returns false if the

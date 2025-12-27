@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "topshim/btav/btav_shim.h"
@@ -149,6 +154,13 @@ private:
   uint16_t currentPlayer_;
 
   uint16_t player_id_ = 0;
+
+  void GetSongInfoExt(const RawAddress& address, SongInfoCallback info_cb) override {}
+
+  void GetPlayStatusExt(const RawAddress& address, PlayStatusCallback status_cb) override {}
+
+  void GetNowPlayingListExt(const RawAddress& address, NowPlayingCallback now_playing_cb) override {}
+
 };
 
 class VolumeInterfaceImpl : public VolumeInterface {
@@ -187,6 +199,7 @@ public:
       cb_iter->second.Run(volume);
     }
   }
+  void SetVolumeExt(const RawAddress& bdaddr, int8_t volume) override {}
 
 private:
   std::map<RawAddress, VolumeInterface::VolumeChangedCb> volumeCbs;
@@ -308,7 +321,7 @@ int A2dpIntf::set_silence_device(RawAddress addr, bool silent) const {
   return btif_av_source_set_silence_device(addr, silent);
 }
 int A2dpIntf::set_active_device(RawAddress addr) const {
-  return btif_av_source_set_active_device(addr);
+  return btif_av_source_set_active_device(addr, true);
 }
 int A2dpIntf::config_codec(RawAddress addr, ::rust::Vec<A2dpCodecConfig> codec_preferences) const {
   std::vector<btav_a2dp_codec_config_t> prefs;

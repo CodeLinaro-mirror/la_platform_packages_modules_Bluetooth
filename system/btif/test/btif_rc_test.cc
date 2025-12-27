@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #undef LOG_TAG  // Undefine the LOG_TAG by this compilation unit
@@ -76,7 +81,7 @@ const RawAddress kDeviceAddress({0x11, 0x22, 0x33, 0x44, 0x55, 0x66});
 const uint8_t kRcHandle = 123;
 }  // namespace
 
-void btif_av_clear_remote_suspend_flag(const A2dpType /*local_a2dp_type*/) {}
+void btif_av_clear_remote_suspend_flag(const RawAddress& peer_address, const A2dpType /*local_a2dp_type*/) {}
 bool btif_av_is_connected(const A2dpType /*local_a2dp_type*/) { return true; }
 bool btif_av_is_sink_enabled(void) { return true; }
 RawAddress btif_av_sink_active_peer(void) { return RawAddress(); }
@@ -86,6 +91,13 @@ bt_status_t btif_transfer_context(tBTIF_CBACK* /*p_cback*/, uint16_t /*event*/, 
                                   int /*param_len*/, tBTIF_COPY_CBACK* /*p_copy_cback*/) {
   return BT_STATUS_SUCCESS;
 }
+std::set<RawAddress> btif_av_source_active_peers(void) { return std::set<RawAddress>(); }
+bool btif_av_source_is_active_peer(const RawAddress& peer_address) { return true;}
+bool btif_av_is_connected(const RawAddress& peer_address) { return true;}
+bool btif_av_stream_started_ready(const RawAddress& peer_address) { return false; }
+bt_status_t btif_transfer_context(tBTIF_CBACK* p_cback, uint16_t event,
+                                  char* p_params, int param_len,
+                                  tBTIF_COPY_CBACK* p_copy_cback) {
 bool btif_av_src_sink_coexist_enabled() { return true; }
 bool btif_av_is_connected_addr(const RawAddress& /*peer_address*/,
                                const A2dpType /*local_a2dp_type*/) {

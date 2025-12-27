@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.mcp;
@@ -1301,7 +1305,7 @@ public class MediaControlGattService implements MediaControlGattServiceInterface
         // TODO: Activate/deactivate devices with ActiveDeviceManager
         if (!isBroadcastActive() && req.opcode() == Request.Opcodes.PLAY) {
             if (mAdapterService.getActiveDevices(BluetoothProfile.A2DP).size() > 0) {
-                mAdapterService.getA2dpService().ifPresent(a2dp -> a2dp.removeActiveDevice(false));
+                mAdapterService.getA2dpService().ifPresent(a2dp -> a2dp.removeActiveDevice(device, false));
             }
             if (mAdapterService.getActiveDevices(BluetoothProfile.HEARING_AID).size() > 0) {
                 mAdapterService

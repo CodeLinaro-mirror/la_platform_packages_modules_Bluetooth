@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -181,7 +186,7 @@ typedef void (*tBTA_AV_CO_CLOSE)(tBTA_AV_HNDL bta_av_handle, const RawAddress& p
 typedef void (*tBTA_AV_CO_START)(tBTA_AV_HNDL bta_av_handle, const RawAddress& peer_addr,
                                  const uint8_t* p_codec_info, bool* p_no_rtp_header);
 typedef void (*tBTA_AV_CO_STOP)(tBTA_AV_HNDL bta_av_handle, const RawAddress& peer_addr);
-typedef BT_HDR* (*tBTA_AV_CO_DATAPATH)(const uint8_t* p_codec_info, uint32_t* p_timestamp);
+typedef BT_HDR* (*tBTA_AV_CO_DATAPATH)(const RawAddress& peer_addr, const uint8_t* p_codec_info, uint32_t* p_timestamp);
 typedef void (*tBTA_AV_CO_DELAY)(tBTA_AV_HNDL bta_av_handle, const RawAddress& peer_addr,
                                  uint16_t delay);
 typedef void (*tBTA_AV_CO_UPDATE_MTU)(tBTA_AV_HNDL bta_av_handle, const RawAddress& peer_addr,
@@ -403,6 +408,12 @@ typedef struct {
   tBTA_AV_SINK_DATA_CBACK* p_app_sink_data_cback; /* Sink application callback for media packets */
 } tBTA_AV_SEP;
 
+/* Data type for BTA_AV_CI_SRC_DATA_READY_EVT */
+typedef struct {
+  BT_HDR_RIGID hdr;
+  RawAddress peer_address;
+} tBTA_AV_CI_SRC_DATA;
+
 enum : uint8_t {
   /* initiator/acceptor role for adaptation */
   BTA_AV_ROLE_AD_INT = 0x00, /* initiator */
@@ -448,6 +459,7 @@ union tBTA_AV_DATA {
   tBTA_AV_API_META_RSP api_meta_rsp;
   tBTA_AV_API_STATUS_RSP api_status_rsp;
   tBTA_AV_API_PEER_SEP peer_sep;
+  tBTA_AV_CI_SRC_DATA ci_src_data;
 };
 
 typedef union {

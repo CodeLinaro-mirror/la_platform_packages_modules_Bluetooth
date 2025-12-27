@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 //
@@ -47,7 +52,7 @@ private:
 class A2dpCodecConfigSbcSource : public A2dpCodecConfigSbcBase {
 public:
   A2dpCodecConfigSbcSource(btav_a2dp_codec_priority_t codec_priority);
-  virtual ~A2dpCodecConfigSbcSource();
+  ~A2dpCodecConfigSbcSource();
 
   bool init() override;
 
@@ -191,11 +196,16 @@ bool A2DP_BuildCodecHeaderSbc(const uint8_t* p_codec_info, BT_HDR* p_buf,
 std::string A2DP_CodecInfoStringSbc(const uint8_t* p_codec_info);
 
 // Gets the A2DP SBC encoder interface that can be used to encode and prepare
-// A2DP packets for transmission - see |tA2DP_ENCODER_INTERFACE|.
+// A2DP packets for transmission - see |A2dpEncoderInterface|.
+// |peer_address| is the peer address
 // |p_codec_info| contains the codec information.
 // Returns the A2DP SBC encoder interface if the |p_codec_info| is valid and
 // supported, otherwise NULL.
-const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterfaceSbc(const uint8_t* p_codec_info);
+
+//const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterfaceSbc(const uint8_t* p_codec_info);
+A2dpEncoderInterface* A2DP_GetEncoderInterfaceSbc(
+    const RawAddress& peer_address,
+    const uint8_t* p_codec_info);
 
 // Gets the A2DP SBC decoder interface that can be used to decode received A2DP
 // packets - see |tA2DP_DECODER_INTERFACE|.
@@ -235,7 +245,8 @@ bool A2DP_InitCodecConfigSbc(AvdtpSepConfig* p_cfg);
 bool A2DP_InitCodecConfigSbcSink(AvdtpSepConfig* p_cfg);
 
 // Get SBC bitrate
+// |peer_address| is the peer address
 // Returns |uint32_t| bitrate value in bits per second
-uint32_t A2DP_GetBitrateSbc();
+uint32_t A2DP_GetBitrateSbc(const RawAddress& peer_address);
 
 #endif  // A2DP_SBC_H

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "BTAudioCodecStatusAIDL"
@@ -534,8 +539,14 @@ bool A2dpOpusToHalConfig(const ahal_codec_configuration& config, CodecConfigurat
 }  // namespace
 
 bool UpdateOffloadingCapabilities(
-        const std::vector<btav_a2dp_codec_config_t>& framework_preference) {
-  audio_hal_capabilities = BluetoothAudioClientInterface::GetAudioCapabilities(
+        const std::vector<btav_a2dp_codec_config_t>& framework_preference,
+        BluetoothAudioClientInterface* offloading_hal_interface) {
+  if (!offloading_hal_interface) {
+    log::warn(
+            "a2dp hw offload interface is not available");
+    return false;
+  }
+  audio_hal_capabilities = offloading_hal_interface->GetAudioCapabilities(
           SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH);
   std::unordered_set<CodecType> codec_type_set;
   for (auto preference : framework_preference) {

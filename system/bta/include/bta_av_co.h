@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -171,7 +176,7 @@ void bta_av_co_audio_stop(tBTA_AV_HNDL bta_av_handle, const RawAddress& peer_add
  *                  Otherwise, a buffer (BT_HDR*) containing the audio data.
  *
  ******************************************************************************/
-BT_HDR* bta_av_co_audio_source_data_path(const uint8_t* p_codec_info, uint32_t* p_timestamp);
+BT_HDR* bta_av_co_audio_source_data_path(const RawAddress& peer_address, const uint8_t* p_codec_info, uint32_t* p_timestamp);
 
 /*******************************************************************************
  *

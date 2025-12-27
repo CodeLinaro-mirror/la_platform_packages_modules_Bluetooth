@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "stack/include/a2dp_sbc.h"
@@ -66,8 +71,8 @@ class A2dpSbcTest : public ::testing::Test {
 protected:
   void SetUp() override {
     SetCodecConfig();
-    encoder_iface_ = const_cast<tA2DP_ENCODER_INTERFACE*>(
-            A2DP_GetEncoderInterfaceSbc(kCodecInfoSbcCapability));
+    encoder_iface_ = const_cast<A2dpEncoderInterface*>(
+            A2DP_GetEncoderInterfaceSbc(RawAddress::kEmpty, kCodecInfoSbcCapability));
     ASSERT_NE(encoder_iface_, nullptr);
     decoder_iface_ = const_cast<tA2DP_DECODER_INTERFACE*>(
             A2DP_GetDecoderInterfaceSbc(kCodecInfoSbcCapability));
@@ -108,7 +113,7 @@ protected:
       ASSERT_EQ(codec_info_result[i], kCodecInfoSbcCapability[i]);
     }
     ASSERT_TRUE(
-            a2dp_codecs_->setCodecConfig(kCodecInfoSbcCapability, true, codec_info_result, true));
+            a2dp_codecs_->setCodecConfig(RawAddress::kEmpty, kCodecInfoSbcCapability, true, codec_info_result, true));
     source_codec_config_ = a2dp_codecs_->getCurrentCodecConfig();
   }
 
@@ -134,17 +139,17 @@ protected:
   A2dpCodecConfig* sink_codec_config_;
   A2dpCodecConfig* source_codec_config_;
   A2dpCodecs* a2dp_codecs_;
-  tA2DP_ENCODER_INTERFACE* encoder_iface_;
+  A2dpEncoderInterface* encoder_iface_;
   tA2DP_DECODER_INTERFACE* decoder_iface_;
 };
 
 TEST_F(A2dpSbcTest, a2dp_source_read_underflow) {
   promise = {};
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t /*len*/) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t /*len*/) -> uint32_t {
     // underflow
     return 0;
   };
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     promise.set_value();
     osi_free(p_buf);
     return false;
@@ -161,11 +166,11 @@ TEST_F(A2dpSbcTest, a2dp_source_read_underflow) {
 
 TEST_F(A2dpSbcTest, a2dp_enqueue_cb_is_invoked) {
   promise = {};
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
     log::assert_that(kSbcReadSize == len, "assert failed: kSbcReadSize == len");
     return len;
   };
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     static bool first_invocation = true;
     if (first_invocation) {
       promise.set_value();
@@ -197,13 +202,13 @@ TEST_F(A2dpSbcTest, decoded_data_cb_invoked) {
   auto data_cb = +[](uint8_t* /*p_buf*/, uint32_t /*len*/) {};
   InitializeDecoder(data_cb);
 
-  auto read_cb = +[](uint8_t* p_buf, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* p_buf, uint32_t len) -> uint32_t {
     static uint32_t counter = 0;
     memcpy(p_buf, wav_reader.GetSamples() + counter, len);
     counter += len;
     return len;
   };
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t frames_n, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t frames_n, uint32_t /*len*/) -> bool {
     static bool first_invocation = true;
     if (first_invocation) {
       packet = reinterpret_cast<BT_HDR*>(osi_malloc(sizeof(*p_buf) + p_buf->len + 1));
@@ -230,7 +235,7 @@ TEST_F(A2dpSbcTest, decoded_data_cb_invoked) {
 
 TEST_F(A2dpSbcTest, set_source_codec_config_works) {
   uint8_t codec_info_result[AVDT_CODEC_SIZE];
-  ASSERT_TRUE(a2dp_codecs_->setCodecConfig(kCodecInfoSbcCapability, true, codec_info_result, true));
+  ASSERT_TRUE(a2dp_codecs_->setCodecConfig(RawAddress::kEmpty, kCodecInfoSbcCapability, true, codec_info_result, true));
   ASSERT_TRUE(A2DP_CodecTypeEqualsSbc(codec_info_result, kCodecInfoSbcCapability));
   ASSERT_TRUE(A2DP_CodecEqualsSbc(codec_info_result, kCodecInfoSbcCapability));
   auto* codec_config = a2dp_codecs_->findSourceCodecConfig(kCodecInfoSbcCapability);
@@ -243,7 +248,7 @@ TEST_F(A2dpSbcTest, sink_supports_sbc) {
 }
 
 TEST_F(A2dpSbcTest, effective_mtu_when_peer_supports_3mbps) {
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
     log::assert_that(kSbcReadSize == len, "assert failed: kSbcReadSize == len");
     return len;
   };
@@ -251,12 +256,12 @@ TEST_F(A2dpSbcTest, effective_mtu_when_peer_supports_3mbps) {
     osi_free(p_buf);
     return false;
   };
-  InitializeEncoder(true, read_cb, enqueue_cb);
-  ASSERT_EQ(a2dp_sbc_get_effective_frame_size(), kPeerMtu);
+  InitializeEncoder(RawAddress::kEmpty, true, read_cb, enqueue_cb);
+  ASSERT_EQ(encoder_iface_->get_effective_frame_size(), kPeerMtu);
 }
 
 TEST_F(A2dpSbcTest, effective_mtu_when_peer_does_not_support_3mbps) {
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
     log::assert_that(kSbcReadSize == len, "assert failed: kSbcReadSize == len");
     return len;
   };
@@ -264,8 +269,8 @@ TEST_F(A2dpSbcTest, effective_mtu_when_peer_does_not_support_3mbps) {
     osi_free(p_buf);
     return false;
   };
-  InitializeEncoder(false, read_cb, enqueue_cb);
-  ASSERT_EQ(a2dp_sbc_get_effective_frame_size(), 663 /* MAX_2MBPS_AVDTP_MTU */);
+  InitializeEncoder(RawAddress::kEmpty, false, read_cb, enqueue_cb);
+  ASSERT_EQ(encoder_iface_->get_effective_frame_size(), 663 /* MAX_2MBPS_AVDTP_MTU */);
 }
 
 TEST_F(A2dpSbcTest, codec_info_string) {

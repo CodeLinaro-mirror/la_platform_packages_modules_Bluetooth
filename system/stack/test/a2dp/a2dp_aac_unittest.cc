@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "stack/include/a2dp_aac.h"
@@ -65,8 +70,8 @@ class A2dpAacTest : public ::testing::Test {
 protected:
   void SetUp() override {
     SetCodecConfig();
-    encoder_iface_ = const_cast<tA2DP_ENCODER_INTERFACE*>(
-            A2DP_GetEncoderInterfaceAac(kCodecInfoAacCapability));
+    encoder_iface_ = const_cast<A2dpEncoderInterface*>(
+            A2DP_GetEncoderInterfaceAac(RawAddress::kEmpty, kCodecInfoAacCapability));
     ASSERT_NE(encoder_iface_, nullptr);
     decoder_iface_ = const_cast<tA2DP_DECODER_INTERFACE*>(
             A2DP_GetDecoderInterfaceAac(kCodecInfoAacCapability));
@@ -80,7 +85,7 @@ protected:
     if (encoder_iface_ != nullptr) {
       encoder_iface_->encoder_cleanup();
     }
-    A2DP_UnloadEncoderAac();
+    //encoder_iface_->A2DP_UnloadEncoderAac();
     if (decoder_iface_ != nullptr) {
       decoder_iface_->decoder_cleanup();
     }
@@ -109,7 +114,7 @@ protected:
       ASSERT_EQ(codec_info_result[i], kCodecInfoAacCapability[i]);
     }
     ASSERT_TRUE(
-            a2dp_codecs_->setCodecConfig(kCodecInfoAacCapability, true, codec_info_result, true));
+            a2dp_codecs_->setCodecConfig(RawAddress::kEmpty, kCodecInfoAacCapability, true, codec_info_result, true));
     source_codec_config_ = a2dp_codecs_->getCurrentCodecConfig();
   }
 
@@ -135,16 +140,16 @@ protected:
   A2dpCodecConfig* sink_codec_config_;
   A2dpCodecConfig* source_codec_config_;
   A2dpCodecs* a2dp_codecs_;
-  tA2DP_ENCODER_INTERFACE* encoder_iface_;
+  A2dpEncoderInterface* encoder_iface_;
   tA2DP_DECODER_INTERFACE* decoder_iface_;
 };
 
 TEST_F(A2dpAacTest, a2dp_source_read_underflow) {
   static int enqueue_cb_invoked = 0;
 
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t /*len*/) -> uint32_t { return 0; };
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t /*len*/) -> uint32_t { return 0; };
 
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     enqueue_cb_invoked += 1;
     osi_free(p_buf);
     return false;
@@ -161,9 +166,9 @@ TEST_F(A2dpAacTest, a2dp_source_read_underflow) {
 TEST_F(A2dpAacTest, a2dp_enqueue_cb_is_invoked) {
   static int enqueue_cb_invoked = 0;
 
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t len) -> uint32_t { return len; };
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t len) -> uint32_t { return len; };
 
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     enqueue_cb_invoked += 1;
     osi_free(p_buf);
     return false;
@@ -194,14 +199,14 @@ TEST_F(A2dpAacTest, decoded_data_cb_invoked) {
 
   InitializeDecoder(data_cb);
 
-  auto read_cb = +[](uint8_t* p_buf, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* p_buf, uint32_t len) -> uint32_t {
     static uint32_t counter = 0;
     memcpy(p_buf, wav_reader.GetSamples() + counter, len);
     counter += len;
     return len;
   };
 
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     enqueue_cb_invoked += 1;
     packet = p_buf;
     return false;
@@ -221,7 +226,7 @@ TEST_F(A2dpAacTest, decoded_data_cb_invoked) {
 
 TEST_F(A2dpAacTest, set_source_codec_config_works) {
   uint8_t codec_info_result[AVDT_CODEC_SIZE];
-  ASSERT_TRUE(a2dp_codecs_->setCodecConfig(kCodecInfoAacCapability, true, codec_info_result, true));
+  ASSERT_TRUE(a2dp_codecs_->setCodecConfig(RawAddress::kEmpty, kCodecInfoAacCapability, true, codec_info_result, true));
   ASSERT_TRUE(A2DP_CodecTypeEqualsAac(codec_info_result, kCodecInfoAacCapability));
   ASSERT_TRUE(A2DP_CodecEqualsAac(codec_info_result, kCodecInfoAacCapability));
   auto* codec_config = a2dp_codecs_->findSourceCodecConfig(kCodecInfoAacCapability);
@@ -234,29 +239,29 @@ TEST_F(A2dpAacTest, sink_supports_aac) {
 }
 
 TEST_F(A2dpAacTest, effective_mtu_when_peer_supports_3mbps) {
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
     log::assert_that(kAacReadSize == len, "assert failed: kAacReadSize == len");
     return len;
   };
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address, BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     osi_free(p_buf);
     return false;
   };
   InitializeEncoder(true, read_cb, enqueue_cb);
-  ASSERT_EQ(a2dp_aac_get_effective_frame_size(), kPeerMtu);
+  ASSERT_EQ(encoder_iface_->get_effective_frame_size(), kPeerMtu);
 }
 
 TEST_F(A2dpAacTest, effective_mtu_when_peer_does_not_support_3mbps) {
-  auto read_cb = +[](uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
+  auto read_cb = +[](const RawAddress& peer_address, uint8_t* /*p_buf*/, uint32_t len) -> uint32_t {
     log::assert_that(kAacReadSize == len, "assert failed: kAacReadSize == len");
     return len;
   };
-  auto enqueue_cb = +[](BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
+  auto enqueue_cb = +[](const RawAddress& peer_address,  BT_HDR* p_buf, size_t /*frames_n*/, uint32_t /*len*/) -> bool {
     osi_free(p_buf);
     return false;
   };
   InitializeEncoder(false, read_cb, enqueue_cb);
-  ASSERT_EQ(a2dp_aac_get_effective_frame_size(), 663 /* MAX_2MBPS_AVDTP_MTU */);
+  ASSERT_EQ(encoder_iface_->get_effective_frame_size(), 663 /* MAX_2MBPS_AVDTP_MTU */);
 }
 
 TEST_F(A2dpAacTest, codec_info_string) {

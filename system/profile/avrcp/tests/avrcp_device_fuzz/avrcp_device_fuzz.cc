@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "device.h"
@@ -76,12 +80,14 @@ public:
     info_cb.Run(sInfo);
     return;
   }
+  virtual void GetSongInfoExt(const RawAddress& address, SongInfoCallback info_cb) {}
   using PlayStatusCallback = base::Callback<void(PlayStatus)>;
   void GetPlayStatus(PlayStatusCallback status_cb) {
     PlayStatus pst;
     status_cb.Run(pst);
     return;
   }
+  virtual void GetPlayStatusExt(const RawAddress& address, PlayStatusCallback status_cb) {}
   using NowPlayingCallback = base::Callback<void(std::string, std::vector<SongInfo>)>;
   void GetNowPlayingList(NowPlayingCallback now_playing_cb) {
     std::string currentSongId = mFdp->ConsumeRandomLengthString(kMaxLen);
@@ -99,6 +105,7 @@ public:
     now_playing_cb.Run(currentSongId, songInfoVec);
     return;
   }
+  virtual void GetNowPlayingListExt(const RawAddress& address, NowPlayingCallback now_playing_cb) {}
   using MediaListCallback =
           base::Callback<void(uint16_t curr_player, std::vector<MediaPlayerInfo>)>;
   void GetMediaPlayerList(MediaListCallback list_cb) {
@@ -175,6 +182,7 @@ public:
   }
   void DeviceDisconnected(const RawAddress& /* bdaddr */) { return; }
   void SetVolume(int8_t /* volume */) { return; }
+  void SetVolumeExt(const RawAddress& bdaddr, int8_t volume) {}
 
 private:
   FuzzedDataProvider* mFdp;
@@ -224,6 +232,7 @@ private:
 class FakeA2dpInterface : public A2dpInterface {
 public:
   RawAddress active_peer() { return RawAddress::kAny; }
+  std::set<RawAddress> active_peers() {return std::set<RawAddress>();}
   bool is_peer_in_silence_mode(const RawAddress& /* peer_address */) { return false; }
   void connect_audio_sink_delayed(uint8_t /* handle */, const RawAddress& /* peer_address */) {
     return;

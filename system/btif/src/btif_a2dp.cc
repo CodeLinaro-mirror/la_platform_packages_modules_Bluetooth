@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bluetooth-a2dp"
@@ -40,12 +45,12 @@
 using namespace bluetooth;
 using bluetooth::audio::a2dp::Status;
 
-void btif_a2dp_on_idle(const RawAddress& /*peer_addr*/, const A2dpType local_a2dp_type) {
+void btif_a2dp_on_idle(const RawAddress& peer_addr, const A2dpType local_a2dp_type) {
   log::verbose("Peer stream endpoint type:{}",
-               peer_stream_endpoint_text(btif_av_get_peer_sep(local_a2dp_type)));
-  if (btif_av_get_peer_sep(local_a2dp_type) == AVDT_TSEP_SNK) {
-    btif_a2dp_source_on_idle();
-  } else if (btif_av_get_peer_sep(local_a2dp_type) == AVDT_TSEP_SRC) {
+               peer_stream_endpoint_text(btif_av_get_peer_sep(peer_addr, local_a2dp_type)));
+  if (btif_av_get_peer_sep(peer_addr, local_a2dp_type) == AVDT_TSEP_SNK) {
+    btif_a2dp_source_on_idle(peer_addr);
+  } else if (btif_av_get_peer_sep(peer_addr, local_a2dp_type) == AVDT_TSEP_SRC) {
     btif_a2dp_sink_on_idle();
   }
 }
@@ -62,7 +67,7 @@ bool btif_a2dp_on_started(const RawAddress& peer_addr, tBTA_AV_START* p_av_start
     }
     /* just ack back a local start request, do not start the media encoder since
      * this is not for BTA_AV_START_EVT. */
-    bluetooth::audio::a2dp::ack_stream_started(status);
+    bluetooth::audio::a2dp::ack_stream_started(status, btif_a2dp_source_get_stream_index(peer_addr));
     return true;
   }
 
@@ -75,51 +80,51 @@ bool btif_a2dp_on_started(const RawAddress& peer_addr, tBTA_AV_START* p_av_start
       return false;
     }
     if (btif_av_is_a2dp_offload_running()) {
-      btif_av_stream_start_offload();
+      btif_av_stream_start_offload(peer_addr);
     } else {
-      if (btif_av_get_peer_sep(local_a2dp_type) == AVDT_TSEP_SNK) {
+      if (btif_av_get_peer_sep(peer_addr, local_a2dp_type) == AVDT_TSEP_SNK) {
         /* Start the media encoder to do the SW audio stream */
-        btif_a2dp_source_start_audio_req();
+        btif_a2dp_source_start_audio_req(peer_addr);
       }
       if (p_av_start->initiator) {
-        bluetooth::audio::a2dp::ack_stream_started(Status::SUCCESS);
+        bluetooth::audio::a2dp::ack_stream_started(Status::SUCCESS, btif_a2dp_source_get_stream_index(peer_addr));
         return true;
       }
     }
   } else if (p_av_start->initiator) {
     log::error("peer {} A2DP start request failed: status = {}", peer_addr, p_av_start->status);
-    bluetooth::audio::a2dp::ack_stream_started(Status::FAILURE);
+    bluetooth::audio::a2dp::ack_stream_started(Status::FAILURE, btif_a2dp_source_get_stream_index(peer_addr));
     return true;
   }
   return false;
 }
 
-void btif_a2dp_on_stopped(tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type) {
+void btif_a2dp_on_stopped(const RawAddress& peer_addr, tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type) {
   log::info("## ON A2DP STOPPED ## p_av_suspend={}", std::format_ptr(p_av_suspend));
 
-  const uint8_t peer_type_sep = btif_av_get_peer_sep(local_a2dp_type);
+  const uint8_t peer_type_sep = btif_av_get_peer_sep(peer_addr, local_a2dp_type);
   if (peer_type_sep == AVDT_TSEP_SRC) {
     btif_a2dp_sink_on_stopped(p_av_suspend);
     return;
   }
   if (peer_type_sep == AVDT_TSEP_SNK) {
-    if (bluetooth::audio::a2dp::is_hal_enabled() || !btif_av_is_a2dp_offload_running()) {
-      btif_a2dp_source_on_stopped(p_av_suspend);
+    if (bluetooth::audio::a2dp::is_hal_enabled(btif_a2dp_source_get_stream_index(peer_addr)) || !btif_av_is_a2dp_offload_running()) {
+      btif_a2dp_source_on_stopped(peer_addr, p_av_suspend);
       return;
     }
   }
 }
 
-void btif_a2dp_on_suspended(tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type) {
+void btif_a2dp_on_suspended(const RawAddress& peer_addr, tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type) {
   log::info("## ON A2DP SUSPENDED ## p_av_suspend={}", std::format_ptr(p_av_suspend));
-  const uint8_t peer_type_sep = btif_av_get_peer_sep(local_a2dp_type);
+  const uint8_t peer_type_sep = btif_av_get_peer_sep(peer_addr, local_a2dp_type);
   if (peer_type_sep == AVDT_TSEP_SRC) {
     btif_a2dp_sink_on_suspended(p_av_suspend);
     return;
   }
   if (peer_type_sep == AVDT_TSEP_SNK) {
-    if (bluetooth::audio::a2dp::is_hal_enabled() || !btif_av_is_a2dp_offload_running()) {
-      btif_a2dp_source_on_suspended(p_av_suspend);
+    if (bluetooth::audio::a2dp::is_hal_enabled(btif_a2dp_source_get_stream_index(peer_addr)) || !btif_av_is_a2dp_offload_running()) {
+      btif_a2dp_source_on_suspended(peer_addr, p_av_suspend);
       return;
     }
   }
@@ -132,7 +137,7 @@ void btif_a2dp_on_offload_started(const RawAddress& peer_addr, tBTA_AV_STATUS st
   switch (status) {
     case BTA_AV_SUCCESS:
       // Call required to update the session state for metrics.
-      btif_a2dp_source_start_audio_req();
+      btif_a2dp_source_start_audio_req(peer_addr);
       ack = Status::SUCCESS;
       break;
     case BTA_AV_FAIL_RESOURCES:
@@ -146,13 +151,13 @@ void btif_a2dp_on_offload_started(const RawAddress& peer_addr, tBTA_AV_STATUS st
   }
 
   if (btif_av_is_a2dp_offload_running()) {
-    if (ack != Status::SUCCESS && btif_av_stream_started_ready(A2dpType::kSource)) {
+    if (ack != Status::SUCCESS && btif_av_stream_started_ready(peer_addr, A2dpType::kSource)) {
       log::error("peer {} offload start failed", peer_addr);
       btif_av_stream_stop(peer_addr);
     }
   }
 
-  bluetooth::audio::a2dp::ack_stream_started(ack);
+  bluetooth::audio::a2dp::ack_stream_started(ack, btif_a2dp_source_get_stream_index(peer_addr));
 }
 
 void btif_debug_a2dp_dump(int fd) {

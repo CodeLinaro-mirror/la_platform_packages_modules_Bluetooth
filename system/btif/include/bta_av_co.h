@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -31,30 +35,30 @@ public:
    * Set the active peer for the state.
    * @param peer
    */
-  void setActivePeer(BtaAvCoPeer* peer);
+  void setActivePeer(BtaAvCoPeer* peer, bool active);
 
   /**
    * Gets the active peer for the state.
    * @return pointer to the active peer.
    */
-  BtaAvCoPeer* getActivePeer() const;
+  BtaAvCoPeer* getActivePeer();
 
   /**
    * Gets the codec config for the state.
    * @return the active codec config.
    */
-  uint8_t* getCodecConfig();
+  uint8_t* getCodecConfig(const RawAddress& peer_address);
 
   /**
    * Updates the codec config
    * @param codec_config codec config that needs to be updated.
    */
-  void setCodecConfig(const uint8_t* codec_config);
+  void setCodecConfig(const RawAddress& peer_address, const uint8_t* codec_config);
 
   /**
    * Clears the codec config.
    */
-  void clearCodecConfig();
+  void clearCodecConfig(const RawAddress& peer_address);
 
   /**
    * Resets the state.
@@ -64,9 +68,11 @@ public:
 
 private:
   // The current active peer
-  BtaAvCoPeer* active_peer_;
+  //BtaAvCoPeer* active_peer_;
+  std::map<RawAddress, BtaAvCoPeer*> active_peers_; // The active peers
   // Current codec configuration
-  uint8_t codec_config_[AVDT_CODEC_SIZE];
+  // uint8_t codec_config_[AVDT_CODEC_SIZE];
+  std::map<RawAddress, std::array<uint8_t, AVDT_CODEC_SIZE>> codec_configs_;
 };
 
 class BtaAvCo {
@@ -248,7 +254,7 @@ public:
    * @param p_timestamp on return, set to the timestamp of the data packet
    * @return the next encoded data packet or nullptr if no encoded data to send
    */
-  BT_HDR* GetNextSourceDataPacket(const uint8_t* p_codec_info, uint32_t* p_timestamp);
+  BT_HDR* GetNextSourceDataPacket(const RawAddress& peer_address, const uint8_t* p_codec_info, uint32_t* p_timestamp);
 
   /**
    * An audio packet has been dropped.
@@ -287,7 +293,7 @@ public:
    * @param t_local_sep update the active peer for the profile type.
    * @return true on success, otherwise false
    */
-  bool SetActivePeer(const RawAddress& peer_address, const uint8_t t_local_sep);
+  bool SetActivePeer(const RawAddress& peer_address, const uint8_t t_local_sep, bool active);
 
   /**
    * Save the reconfig codec
@@ -312,7 +318,8 @@ public:
    * @param peer_address the peer address.
    * @return the Source encoder interface for the current codec
    */
-  const tA2DP_ENCODER_INTERFACE* GetSourceEncoderInterface(const RawAddress& peer_address);
+  // const tA2DP_ENCODER_INTERFACE* GetSourceEncoderInterface(const RawAddress& peer_address);
+  A2dpEncoderInterface* GetSourceEncoderInterface(const RawAddress& peer_address);
 
   /**
    * Set the codec user configuration.
@@ -334,7 +341,7 @@ public:
    * @param codec_audio_config the codec audio configuration to set
    * @return true on success, otherwise false
    */
-  bool SetCodecAudioConfig(const btav_a2dp_codec_config_t& codec_audio_config);
+  bool SetCodecAudioConfig(const RawAddress& peer_address, const btav_a2dp_codec_config_t& codec_audio_config);
 
   /**
    * Get the Source encoder maximum frame size for the current codec.
@@ -349,7 +356,7 @@ public:
    *
    * @return the preferred encoding interval for the current codec
    */
-  int GetSourceEncoderPreferredIntervalUs();
+  int GetSourceEncoderPreferredIntervalUs(const RawAddress &peer_address);
 
   /**
    * Report the source codec state for a peer
@@ -564,4 +571,5 @@ private:
   uint8_t content_protect_flag_;        // Content Protect flag
   BtaAvCoState bta_av_source_state_;    // Source profile state
   BtaAvCoState bta_av_sink_state_;      // Sink profile state
+  std::map<RawAddress, BtaAvCoPeer*> active_peers_; // The active peers
 };

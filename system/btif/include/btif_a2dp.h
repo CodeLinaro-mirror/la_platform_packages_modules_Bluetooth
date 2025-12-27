@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #ifndef BTIF_A2DP_H
@@ -42,14 +47,14 @@ bool btif_a2dp_on_started(const RawAddress& peer_addr, tBTA_AV_START* p_av_start
 // |p_av_suspend| is the data associated with the request - see
 // |tBTA_AV_SUSPEND|.
 // |local_a2dp_type| type of local a2dp profile.
-void btif_a2dp_on_stopped(tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type);
+void btif_a2dp_on_stopped(const RawAddress& peer_addr, tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type);
 
 // Process 'suspend' request from the BTIF state machine to suspend A2DP
 // streaming.
 // |p_av_suspend| is the data associated with the request - see
 // |tBTA_AV_SUSPEND|.
 // |local_a2dp_type| type of local a2dp profile.
-void btif_a2dp_on_suspended(tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type);
+void btif_a2dp_on_suspended(const RawAddress& peer_addr, tBTA_AV_SUSPEND* p_av_suspend, const A2dpType local_a2dp_type);
 
 // Process 'offload start' request from the BTIF state machine to start
 // offloading of the A2DP streaming.
