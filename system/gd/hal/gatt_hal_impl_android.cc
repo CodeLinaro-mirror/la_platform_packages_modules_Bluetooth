@@ -16,16 +16,16 @@
 
 #include "hal/gatt_hal_impl_android.h"
 
-#include <aidl/android/hardware/bluetooth/gatt/BnBluetoothGattCallback.h>
-#include <aidl/android/hardware/bluetooth/gatt/IBluetoothGatt.h>
-#include <aidl/android/hardware/bluetooth/gatt/IBluetoothGattCallback.h>
+#include <aidl/vendor/qti/hardware/bluetooth/gatt/BnBluetoothGattCallback.h>
+#include <aidl/vendor/qti/hardware/bluetooth/gatt/IBluetoothGatt.h>
+#include <aidl/vendor/qti/hardware/bluetooth/gatt/IBluetoothGattCallback.h>
 #include <android/binder_manager.h>
 #include <bluetooth/log.h>
 
 #include <thread>
 
-using ::aidl::android::hardware::bluetooth::gatt::BnBluetoothGattCallback;
-using ::aidl::android::hardware::bluetooth::gatt::IBluetoothGatt;
+using ::aidl::vendor::qti::hardware::bluetooth::gatt::BnBluetoothGattCallback;
+using ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGatt;
 
 namespace bluetooth::hal {
 
@@ -63,7 +63,7 @@ public:
 
   ::ndk::ScopedAStatus registerServiceComplete(
           int32_t in_session_id,
-          ::aidl::android::hardware::bluetooth::gatt::IBluetoothGattCallback::Status in_status,
+          ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGattCallback::Status in_status,
           const std::string& in_reason) override {
     log::info("session_id: {}, status: {}, reason: {}", static_cast<uint16_t>(in_session_id),
               static_cast<int>(in_status), in_reason);
@@ -89,7 +89,7 @@ public:
 
   ::ndk::ScopedAStatus errorReport(
           int32_t in_acl_connection_handle, int32_t in_local_cid,
-          ::aidl::android::hardware::bluetooth::gatt::IBluetoothGattCallback::Error in_error,
+          ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGattCallback::Error in_error,
           const std::string& in_reason) override {
     log::info("acl_connection_handle: 0x{:x}, local_cid: 0x{:x}, error: {}, reason: {}",
               static_cast<uint16_t>(in_acl_connection_handle), static_cast<uint16_t>(in_local_cid),
@@ -170,7 +170,8 @@ struct GattHalImpl::impl {
     if (!is_bound()) {
       return {};
     }
-    ::aidl::android::hardware::bluetooth::gatt::GattCapabilities gatt_capabilities;
+
+    ::aidl::vendor::qti::hardware::bluetooth::gatt::GattCapabilities gatt_capabilities;
     ::ndk::ScopedAStatus status = gatt_hal_instance_->getGattCapabilities(&gatt_capabilities);
     if (!status.isOk()) {
       log::info("Failed to get gatt capabilities");
@@ -211,19 +212,19 @@ struct GattHalImpl::impl {
             static_cast<int>(session.role), session.service_uuid, session.endpoint_info.hub_id,
             session.endpoint_info.endpoint_id);
 
-    ::aidl::android::hardware::bluetooth::gatt::IBluetoothGatt::Role gatt_role =
+    ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGatt::Role gatt_role =
             (session.role == hal::GattRole::GATT_SERVER)
-                    ? ::aidl::android::hardware::bluetooth::gatt::IBluetoothGatt::Role::SERVER
-                    : ::aidl::android::hardware::bluetooth::gatt::IBluetoothGatt::Role::CLIENT;
+                    ? ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGatt::Role::SERVER
+                    : ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGatt::Role::CLIENT;
 
-    ::aidl::android::hardware::bluetooth::gatt::Uuid service_uuid;
+    ::aidl::vendor::qti::hardware::bluetooth::gatt::Uuid service_uuid;
     std::copy(session.service_uuid.To128BitLE().begin(), session.service_uuid.To128BitLE().end(),
               service_uuid.uuid.data());
 
-    std::vector<::aidl::android::hardware::bluetooth::gatt::GattCharacteristic> characteristics;
+    std::vector<::aidl::vendor::qti::hardware::bluetooth::gatt::GattCharacteristic> characteristics;
     std::transform(session.characteristics.begin(), session.characteristics.end(),
                   std::back_inserter(characteristics), [](hal::GattCharacteristic hal_char) {
-                    ::aidl::android::hardware::bluetooth::gatt::GattCharacteristic aidl_char{
+                    ::aidl::vendor::qti::hardware::bluetooth::gatt::GattCharacteristic aidl_char{
                             .properties = hal_char.properties,
                             .valueHandle = hal_char.value_handle,
                     };
