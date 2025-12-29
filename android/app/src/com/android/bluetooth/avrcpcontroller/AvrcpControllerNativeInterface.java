@@ -73,10 +73,6 @@ public class AvrcpControllerNativeInterface {
         cleanupNative();
     }
 
-    void stop() {
-        stopNative();
-    }
-
     boolean sendPassThroughCommand(byte[] address, int keyCode, int keyState) {
         return sendPassThroughCommandNative(address, keyCode, keyState);
     }
@@ -369,11 +365,6 @@ public class AvrcpControllerNativeInterface {
         mAvrcpController.onAvailablePlayerChanged(device);
     }
 
-    void onStop() {
-        Log.d(TAG, "onStop");
-        mAvrcpController.onStop();
-    }
-
     /*
      *  Play State Values from JNI
      */
@@ -407,8 +398,6 @@ public class AvrcpControllerNativeInterface {
     private native void initNative();
 
     private native void cleanupNative();
-
-    private native void stopNative();
 
     /**
      * Send button press commands to addressed device
