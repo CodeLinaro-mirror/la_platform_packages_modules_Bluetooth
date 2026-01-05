@@ -186,6 +186,6 @@ where
 {
     if let Err((s, _f)) = GLOBAL_MODULE_RUNNER.lock().expect("lock not poisoned").send(Box::new(f))
     {
-        panic!("Rust call failed: {s}");
+        warn!("Rust call failed: {s}");
     }
 }
