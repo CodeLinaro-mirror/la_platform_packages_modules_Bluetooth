@@ -4213,7 +4213,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         final int defaultValue = BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
         try {
             return service.disconnectAllEnabledProfiles(this, mAttributionSource);
-        } catch (Exception e) {
+        } catch (RemoteException e) {
             Log.e(TAG, "", e);
         }
 
