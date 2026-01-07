@@ -370,6 +370,21 @@ struct btif_a2dp_codec_debug_dump {
 };
 extern struct btif_a2dp_codec_debug_dump btif_a2dp_codec_debug_dump;
 
+// Name: bta_av_co_get_codec_config_a2dp_sink
+// Params: const RawAddress& peer_address, uint8_t* p_codec_info
+// Return: A2dpCodecConfig*
+struct bta_av_co_get_codec_config_a2dp_sink {
+  static A2dpCodecConfig* return_value;
+  std::function<A2dpCodecConfig*(const RawAddress& peer_address, uint8_t* p_codec_info)>
+  body{[](const RawAddress& /* peer_address */, uint8_t* /* p_codec_info */) {
+    return return_value;
+  }};
+  A2dpCodecConfig* operator()(const RawAddress& peer_address, uint8_t* p_codec_info) {
+    return body(peer_address, p_codec_info);
+  }
+};
+extern struct bta_av_co_get_codec_config_a2dp_sink bta_av_co_get_codec_config_a2dp_sink;
+
 }  // namespace btif_co_bta_av_co
 }  // namespace mock
 }  // namespace test

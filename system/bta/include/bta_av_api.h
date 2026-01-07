@@ -91,6 +91,10 @@ typedef uint8_t tBTA_AV_HNDL;
 #define BTA_AV_NUM_STRS 6
 #endif
 
+#ifndef BTA_AVK_MAX_A2DP_MTU
+#define BTA_AVK_MAX_A2DP_MTU 990
+#endif
+
 //Whenever we update peer MTU value, we need to deduct A2DP header, and
 //if SCMS-T enabled it would be 2 bytes else it would be 1 byte.
 #if (BTA_AV_CO_CP_SCMS_T == TRUE)
@@ -147,8 +151,12 @@ typedef uint8_t tBTA_AV_ERR;
 #define BTA_AV_RC_BROWSE_OPEN_EVT 23    /* remote control channel open */
 #define BTA_AV_RC_BROWSE_CLOSE_EVT 24   /* remote control channel closed */
 #define BTA_AV_RC_PSM_EVT 25            /* cover art psm update */
+#define BTA_AV_SINK_OFFLOAD_START_RSP_EVT 26  /* a2dp sink offload start rsp */
+#define BTA_AV_SINK_OFFLOAD_STOP_RSP_EVT 27    /* a2dp sink offload stop rsp */
+#define BTIF_AV_SINK_START_IND_RSP 28      /* a2dp sink offload start ind cb */
+#define BTIF_AV_SINK_SUSPEND_IND_RSP 29  /* a2dp sink offload suspend ind cb */
 /* Max BTA event */
-#define BTA_AV_MAX_EVT 26
+#define BTA_AV_MAX_EVT 30
 
 typedef uint8_t tBTA_AV_EVT;
 
@@ -249,6 +257,28 @@ typedef struct {
   RawAddress peer_addr;
   tBTA_AV_STATUS status;
 } tBTA_AV_RC_OPEN;
+
+/* data associated with BTA_AV_OFFLOAD_START_RSP*/
+typedef struct {
+  tBTA_AV_HNDL hndl;
+  tBTA_AV_STATUS status;
+  uint8_t stream_start;
+} tBTA_AV_OFFLOAD_RSP;
+
+typedef struct {
+  tBTA_AV_HNDL hndl;
+  tBTA_AV_STATUS status;
+} tBTA_AV_SINK_OFFLOAD_RSP;
+
+typedef struct {
+  RawAddress peer_addr;
+  bool accepted;
+} tBTA_AV_SINK_START_RSP;
+
+typedef struct {
+  RawAddress peer_addr;
+  bool accepted;
+} tBTA_AV_SINK_SUSPEND_RSP;
 
 /* data associated with BTA_AV_RC_CLOSE_EVT */
 typedef struct {
@@ -366,6 +396,10 @@ typedef union {
   tBTA_AV_RC_FEAT rc_feat;
   tBTA_AV_RC_PSM rc_cover_art_psm;
   tBTA_AV_STATUS status;
+  tBTA_AV_OFFLOAD_RSP offload_rsp;
+  tBTA_AV_SINK_OFFLOAD_RSP snk_offload_rsp;
+  tBTA_AV_SINK_START_RSP start_rsp;
+  tBTA_AV_SINK_SUSPEND_RSP suspend_rsp;
 } tBTA_AV;
 
 typedef struct {
@@ -767,6 +801,13 @@ void bta_debug_av_dump(int fd);
  */
 void BTA_AvSetPeerSep(const RawAddress& bdaddr, uint8_t sep);
 
+void BTA_AvkOffloadStart(tBTA_AV_HNDL  hndl);
+void BTA_AvkOffloadStop(tBTA_AV_HNDL hndl);
+void BTA_AvkSendPendingStartCnf(tBTA_AV_HNDL hndl);
+void BTA_AvkSendPendingStartRej(tBTA_AV_HNDL  hndl);
+void BTA_AvkSendPendingSuspendCnf(tBTA_AV_HNDL  hndl);
+void BTA_AvkSendPendingSuspendRej(tBTA_AV_HNDL  hndl);
+void BTA_AvkUpdateDelayReport(tBTA_AV_HNDL hndl, uint16_t sink_latency);
 void modify_sniff_policy(bool policy_enable, const RawAddress& peer_addr);
 
 #endif /* BTA_AV_API_H */

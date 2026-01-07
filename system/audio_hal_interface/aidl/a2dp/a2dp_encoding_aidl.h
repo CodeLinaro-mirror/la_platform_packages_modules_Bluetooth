@@ -50,7 +50,8 @@ bool is_hal_2_0_offloading_session_unknown();
  * Initialize BluetoothAudio HAL: openProvider
  ***/
 bool init(bluetooth::common::MessageLoopThread* message_loop,
-          bluetooth::audio::a2dp::StreamCallbacks const* stream_callbacks, bool offload_enabled);
+          bluetooth::audio::a2dp::StreamCallbacks const* stream_callbacks,
+          bool source_offloaded);
 
 /***
  * Clean up BluetoothAudio HAL

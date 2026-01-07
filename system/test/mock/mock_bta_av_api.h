@@ -355,6 +355,70 @@ struct BTA_AvUpdateAptxData {
 };
 extern struct BTA_AvUpdateAptxData BTA_AvUpdateAptxData;
 
+// Name: BTA_AvkOffloadStart
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkOffloadStart {
+  std::function<void(tBTA_AV_HNDL hndl)> body{[](tBTA_AV_HNDL /* hndl */) {}};
+  void operator()(tBTA_AV_HNDL hndl) { body(hndl); }
+};
+extern struct BTA_AvkOffloadStart BTA_AvkOffloadStart;
+
+// Name: BTA_AvkOffloadStop
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkOffloadStop {
+  std::function<void(tBTA_AV_HNDL hndl)> body{[](tBTA_AV_HNDL /* hndl */) {}};
+  void operator()(tBTA_AV_HNDL hndl) { body(hndl); }
+};
+extern struct BTA_AvkOffloadStop BTA_AvkOffloadStop;
+
+// Name: BTA_AvkSendPendingStartCnf
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkSendPendingStartCnf {
+  std::function<void(tBTA_AV_HNDL hndl)> body{[](tBTA_AV_HNDL /* hndl */) {}};
+  void operator()(tBTA_AV_HNDL hndl) { body(hndl); }
+};
+extern struct BTA_AvkSendPendingStartCnf BTA_AvkSendPendingStartCnf;
+
+// Name: BTA_AvkSendPendingStartRej
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkSendPendingStartRej {
+  std::function<void(tBTA_AV_HNDL hndl)> body{[](tBTA_AV_HNDL /* hndl */) {}};
+  void operator()(tBTA_AV_HNDL hndl) { body(hndl); }
+};
+extern struct BTA_AvkSendPendingStartRej BTA_AvkSendPendingStartRej;
+
+// Name: BTA_AvkSendPendingSuspendCnf
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkSendPendingSuspendCnf {
+  std::function<void(tBTA_AV_HNDL hndl)> body{[](tBTA_AV_HNDL /* hndl */) {}};
+  void operator()(tBTA_AV_HNDL hndl) { body(hndl); }
+};
+extern struct BTA_AvkSendPendingSuspendCnf BTA_AvkSendPendingSuspendCnf;
+
+// Name: BTA_AvkSendPendingSuspendRej
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkSendPendingSuspendRej {
+  std::function<void(tBTA_AV_HNDL hndl)> body{[](tBTA_AV_HNDL /* hndl */) {}};
+  void operator()(tBTA_AV_HNDL hndl) { body(hndl); }
+};
+extern struct BTA_AvkSendPendingSuspendRej BTA_AvkSendPendingSuspendRej;
+
+// Name: BTA_AvkUpdateDelayReport
+// Params: tBTA_AV_HNDL hndl
+// Return: void
+struct BTA_AvkUpdateDelayReport {
+  std::function<void(tBTA_AV_HNDL hndl, uint16_t sink_latency)> body{
+  [](tBTA_AV_HNDL /* hndl */, uint16_t /* sink_latency */) {}};
+  void operator()(tBTA_AV_HNDL hndl, uint16_t sink_latency) { body(hndl, sink_latency); }
+};
+extern struct BTA_AvkUpdateDelayReport BTA_AvkUpdateDelayReport;
+
 }  // namespace bta_av_api
 }  // namespace mock
 }  // namespace test

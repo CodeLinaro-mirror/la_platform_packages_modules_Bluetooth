@@ -238,4 +238,7 @@ bool A2DP_InitCodecConfigSbcSink(AvdtpSepConfig* p_cfg);
 // Returns |uint32_t| bitrate value in bits per second
 uint32_t A2DP_GetBitrateSbc();
 
+// Get SBC bitrate for Sink
+// Returns |uint32_t| bitrate value in bits per second
+uint32_t A2DP_SinkGetBitrateSbc();
 #endif  // A2DP_SBC_H

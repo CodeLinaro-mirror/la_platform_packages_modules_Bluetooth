@@ -128,7 +128,7 @@ static const tA2DP_DECODER_INTERFACE a2dp_decoder_interface_sbc = {
         a2dp_sbc_decoder_decode_packet,
         nullptr,  // decoder_start
         nullptr,  // decoder_suspend
-        nullptr,  // decoder_configure
+        a2dp_sbc_decoder_configure,  // decoder_configure
 };
 
 static tA2DP_STATUS A2DP_CodecInfoMatchesCapabilitySbc(const tA2DP_SBC_CIE* p_cap,
@@ -628,6 +628,7 @@ int A2DP_GetMaxBitpoolSbc(const uint8_t* p_codec_info) {
 }
 
 uint32_t A2DP_GetBitrateSbc() { return a2dp_sbc_get_bitrate(); }
+uint32_t A2DP_SinkGetBitrateSbc() { return a2dp_sbc_sink_get_bitrate(); }
 int A2DP_GetSinkTrackChannelTypeSbc(const uint8_t* p_codec_info) {
   tA2DP_SBC_CIE sbc_cie;
 
@@ -997,6 +998,7 @@ static bool select_audio_channel_mode(const btav_a2dp_codec_config_t* p_codec_au
 tA2DP_STATUS A2dpCodecConfigSbcBase::setCodecConfig(const uint8_t* p_peer_codec_info,
                                                     bool is_capability,
                                                     uint8_t* p_result_codec_config) {
+  log::debug("Saving ota codec info for SBC Codec.");
   std::lock_guard<std::recursive_mutex> lock(codec_mutex_);
   tA2DP_SBC_CIE peer_info_cie;
   tA2DP_SBC_CIE result_config_cie;

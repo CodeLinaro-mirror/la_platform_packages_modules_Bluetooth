@@ -1016,6 +1016,10 @@ public class TbsGatt {
 
     private void restoreCccValuesForStoredDevices() {
         BluetoothGattService gattService = mBluetoothGattServer.getService(UUID_GTBS);
+        if (gattService == null) {
+            Log.w(TAG, "Cannot restore CCC values - GATT service is null");
+            return;
+        }
 
         for (BluetoothDevice device : mAdapterService.getBondedDevices()) {
             byte[] gtbs_cccd = mAdapterService.getMetadata(device, METADATA_GTBS_CCCD);

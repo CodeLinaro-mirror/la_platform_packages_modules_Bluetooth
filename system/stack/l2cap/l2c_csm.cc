@@ -44,8 +44,9 @@
 #include "stack/include/l2cdefs.h"
 #include "stack/l2cap/l2c_int.h"
 #include "stack/include/bt_psm_types.h"
+#include <bt_testapp.h>
+#include <cutils/properties.h>
 using namespace bluetooth;
-
 /******************************************************************************/
 /*            L O C A L    F U N C T I O N     P R O T O T Y P E S            */
 /******************************************************************************/
@@ -58,7 +59,6 @@ static void l2c_csm_config(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
 static void l2c_csm_open(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
 static void l2c_csm_w4_l2cap_disconnect_rsp(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
 static void l2c_csm_w4_l2ca_disconnect_rsp(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data);
-
 static std::string l2c_csm_get_event_name(const tL2CEVT& event);
 
 // Send a connect response with result OK and adjust the state machine
@@ -134,6 +134,8 @@ static uint8_t get_fcs_option(void) {
   return 0x01;
 #endif
 }
+
+
 
 // Send a config request and adjust the state machine
 static void l2c_csm_send_config_req(tL2C_CCB* p_ccb) {
@@ -412,7 +414,11 @@ static void l2c_csm_closed(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data) {
                                                false, &l2c_link_sec_comp, p_ccb);
         if (status == tBTM_STATUS::BTM_CMD_STARTED) {
           // started the security process, tell the peer to set a longer timer
-          l2cu_send_peer_connect_rsp(p_ccb, tL2CAP_CONN::L2CAP_CONN_PENDING, 0);
+		  if(send_l2ca_conn_rsp_with_sec_block) {
+            l2cu_send_peer_connect_rsp(p_ccb,  tL2CAP_CONN::L2CAP_CONN_SECURITY_BLOCK, 0);  
+          } else {
+            l2cu_send_peer_connect_rsp(p_ccb, tL2CAP_CONN::L2CAP_CONN_PENDING, 0);
+          }
         } else {
           log::info("Check security for psm 0x{:04x}, status {}", p_ccb->p_rcb->psm, status);
         }
@@ -631,7 +637,11 @@ static void l2c_csm_term_w4_sec_comp(tL2C_CCB* p_ccb, tL2CEVT event, void* p_dat
 
         /* Waiting for the info resp, tell the peer to set a longer timer */
         log::debug("Waiting for info response, sending connect pending");
-        l2cu_send_peer_connect_rsp(p_ccb, tL2CAP_CONN::L2CAP_CONN_PENDING, 0);
+        if(send_l2ca_conn_rsp_with_sec_block) {
+            l2cu_send_peer_connect_rsp(p_ccb, tL2CAP_CONN::L2CAP_CONN_SECURITY_BLOCK, 0);  
+          } else {
+            l2cu_send_peer_connect_rsp(p_ccb, tL2CAP_CONN::L2CAP_CONN_PENDING, 0);
+          }
       }
       break;
 

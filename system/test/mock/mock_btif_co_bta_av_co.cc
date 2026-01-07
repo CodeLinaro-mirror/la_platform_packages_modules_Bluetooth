@@ -62,6 +62,7 @@ struct bta_av_co_set_codec_user_config bta_av_co_set_codec_user_config;
 struct bta_av_get_a2dp_current_codec bta_av_get_a2dp_current_codec;
 struct bta_av_get_a2dp_peer_current_codec bta_av_get_a2dp_peer_current_codec;
 struct btif_a2dp_codec_debug_dump btif_a2dp_codec_debug_dump;
+struct bta_av_co_get_codec_config_a2dp_sink bta_av_co_get_codec_config_a2dp_sink;
 
 }  // namespace btif_co_bta_av_co
 }  // namespace mock
@@ -84,6 +85,7 @@ bool bta_av_co_set_codec_audio_config::return_value = false;
 bool bta_av_co_set_codec_user_config::return_value = false;
 A2dpCodecConfig* bta_av_get_a2dp_current_codec::return_value = nullptr;
 A2dpCodecConfig* bta_av_get_a2dp_peer_current_codec::return_value = nullptr;
+A2dpCodecConfig* bta_av_co_get_codec_config_a2dp_sink::return_value = nullptr;
 
 }  // namespace btif_co_bta_av_co
 }  // namespace mock
@@ -207,6 +209,10 @@ A2dpCodecConfig* bta_av_get_a2dp_peer_current_codec(const RawAddress& peer_addre
 void btif_a2dp_codec_debug_dump(int fd) {
   inc_func_call_count(__func__);
   test::mock::btif_co_bta_av_co::btif_a2dp_codec_debug_dump(fd);
+}
+A2dpCodecConfig* bta_av_co_get_codec_config_a2dp_sink(const RawAddress& peer_address, uint8_t* p_codec_info) {
+  inc_func_call_count(__func__);
+  return test::mock::btif_co_bta_av_co::bta_av_co_get_codec_config_a2dp_sink(peer_address, p_codec_info);
 }
 // Mocked functions complete
 // END mockcify generation

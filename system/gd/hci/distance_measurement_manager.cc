@@ -70,7 +70,7 @@ static constexpr uint8_t kTxPowerNotAvailable = 0xfe;
 static constexpr int8_t kRSSIDropOffAt1M = 41;
 static constexpr uint8_t kCsMaxTxPower = 20;  // 10 dBm
 static constexpr CsSyncAntennaSelection kCsSyncAntennaSelection =
-         CsSyncAntennaSelection::ANTENNA_2;
+         CsSyncAntennaSelection::ANTENNAS_IN_ORDER;
 static constexpr uint8_t kConfigId = 0x01;  // Use 0x01 to create config and enable procedure
 static constexpr uint8_t kMinMainModeSteps = 0x02;
 static constexpr uint8_t kMaxMainModeSteps = 0x05;
@@ -1062,7 +1062,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
             min_subevent_len,
 	    max_subevent_len,
            // kToneAntennaConfigSelection,
-	    tone_antenna_config_selection,
+	    procedure_setting.tone_ant_cfg_selection,
             (CsPhy)procedure_setting.phy,
             procedure_setting.tx_pwr_delta,
             preferred_peer_antenna,
@@ -1418,7 +1418,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
 
 
 
-    if (live_tracker->local_start == true) {
+    if (live_tracker->local_hci_role == hci::Role::CENTRAL) {
       // send the cmd from the BLE central only.
       send_le_cs_security_enable(connection_handle, live_tracker->local_start);
     } else {
@@ -2018,8 +2018,15 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           local_subevent_result =
                   procedure_data->procedure_data_v2_.local_subevent_data_[subevent_sequence];
         } else {
-          log::error("there is no local subevent result.");
-          return;
+          if (subevent_header.num_steps_reported_ == 0 &&
+              subevent_header.ranging_done_status_ == RangingDoneStatus::ALL_RESULTS_COMPLETE) {
+            log::info("num_steps_reported is 0, All results complete");
+            procedure_data->remote_status = CsProcedureDoneStatus::ALL_RESULTS_COMPLETE;
+            break;
+          } else {
+            log::error("there is no local subevent result. subevent sequenece {}, local subevent size {} ", subevent_sequence, procedure_data->procedure_data_v2_.local_subevent_data_.size());
+            return;
+          }
         }
         remote_subevent_result->start_acl_conn_event_counter_ =
                 subevent_header.start_acl_conn_event_;

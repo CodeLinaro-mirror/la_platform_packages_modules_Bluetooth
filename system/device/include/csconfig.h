@@ -13,7 +13,7 @@
 #define CS_SUBEVENT_LEN_SIZE 3
 #define CS_CHANNEL_MAP_SIZE 10
 
-#define CS_CONFIG_PATH_LOCAL "/data/misc/bluetooth/cs_configs.xml"
+#define CS_CONFIG_PATH_LOCAL "/data/misc/bluetooth/cs_configs.conf"
 
 static const char CS_CONFIG_MODULE[] = "cs_config_module";
 typedef struct {

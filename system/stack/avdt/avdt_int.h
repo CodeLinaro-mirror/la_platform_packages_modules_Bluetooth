@@ -124,8 +124,10 @@ enum : uint8_t {
   AVDT_CCB_SND_GETCAP_RSP,
   AVDT_CCB_SND_START_CMD,
   AVDT_CCB_SND_START_RSP,
+  AVDT_CCB_SND_PENDING_START_RSP,
   AVDT_CCB_SND_SUSPEND_CMD,
   AVDT_CCB_SND_SUSPEND_RSP,
+  AVDT_CCB_SND_PENDING_SUSPEND_RSP,
   AVDT_CCB_CLEAR_CMDS,
   AVDT_CCB_CMD_FAIL,
   AVDT_CCB_FREE_CMD,
@@ -157,7 +159,9 @@ enum {
   AVDT_CCB_API_DISCOVER_RSP_EVT,
   AVDT_CCB_API_GETCAP_RSP_EVT,
   AVDT_CCB_API_START_RSP_EVT,
+  AVDT_CCB_API_PENDING_START_RSP_EVT,
   AVDT_CCB_API_SUSPEND_RSP_EVT,
+  AVDT_CCB_API_PENDING_SUSPEND_RSP_EVT,
   AVDT_CCB_API_CONNECT_REQ_EVT,
   AVDT_CCB_API_DISCONNECT_REQ_EVT,
   AVDT_CCB_MSG_DISCOVER_CMD_EVT,
@@ -214,8 +218,11 @@ enum {
   AVDT_SCB_HDL_SETCONFIG_RSP,
   AVDT_SCB_HDL_START_CMD,
   AVDT_SCB_HDL_START_RSP,
+  AVDT_SCB_HDL_PENDING_START_RSP,
+  AVDT_SCB_HDL_PENDING_START_REJ,
   AVDT_SCB_HDL_SUSPEND_CMD,
   AVDT_SCB_HDL_SUSPEND_RSP,
+  AVDT_SCB_HDL_PENDING_SUSPEND_RSP,
   AVDT_SCB_HDL_TC_CLOSE,
   AVDT_SCB_HDL_TC_CLOSE_STO,
   AVDT_SCB_HDL_TC_OPEN,
@@ -275,6 +282,9 @@ enum {
   AVDT_SCB_API_SETCONFIG_RSP_EVT,
   AVDT_SCB_API_SETCONFIG_REJ_EVT,
   AVDT_SCB_API_OPEN_RSP_EVT,
+  AVDT_SCB_API_PENDING_START_RSP_EVT,
+  AVDT_SCB_API_PENDING_START_REJ_EVT,
+  AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT,
   AVDT_SCB_API_CLOSE_RSP_EVT,
   AVDT_SCB_API_RECONFIG_RSP_EVT,
   AVDT_SCB_API_SECURITY_RSP_EVT,
@@ -360,6 +370,8 @@ struct formatter<tTRANSPORT_CHANNEL_TYPE> : enum_formatter<tTRANSPORT_CHANNEL_TY
 /*****************************************************************************
  * data types
  ****************************************************************************/
+
+#define UNUSED_T_LABEL        255
 
 /* msg union of all message parameter types */
 typedef union {
@@ -668,6 +680,8 @@ public:
                                    // or number of SEPS for discover
   bool cong;                       // True if the signaling channel is congested
   uint8_t label;                   // Message header "label" (sequence number)
+  uint8_t start_pending_label;     // T-label for pending Start command
+  uint8_t suspend_pending_label;   // T-label for pending Start command
   bool reconn;                     // If true, reinitiate connection after transitioning from
                                    // CLOSING to IDLE state
   uint8_t ret_count;               // Command retransmission count
@@ -851,8 +865,11 @@ void avdt_ccb_snd_getcap_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_snd_getcap_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_snd_start_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_snd_start_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
+void avdt_ccb_snd_pending_start_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
+void avdt_scb_hdl_pending_start_rej(AvdtpScb* p_ccb, tAVDT_SCB_EVT* p_data);
 void avdt_ccb_snd_suspend_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_snd_suspend_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
+void avdt_ccb_snd_pending_suspend_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_clear_cmds(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_cmd_fail(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
 void avdt_ccb_free_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data);
@@ -904,8 +921,10 @@ void avdt_scb_hdl_setconfig_rej(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_setconfig_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_start_cmd(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_start_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
+void avdt_scb_hdl_pending_start_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_suspend_cmd(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_suspend_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
+void avdt_scb_hdl_pending_suspend_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_snd_delay_rpt_req(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_delay_rpt_cmd(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);
 void avdt_scb_hdl_delay_rpt_rsp(AvdtpScb* p_scb, tAVDT_SCB_EVT* p_data);

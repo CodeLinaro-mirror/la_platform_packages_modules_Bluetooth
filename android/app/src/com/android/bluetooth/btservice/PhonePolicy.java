@@ -53,6 +53,7 @@ import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hap.HapClientService;
 import com.android.bluetooth.hearingaid.HearingAidService;
 import com.android.bluetooth.hfp.HeadsetService;
+import com.android.bluetooth.hfpclient.HeadsetClientService;
 import com.android.bluetooth.hid.HidHostService;
 import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.pan.PanService;
@@ -802,6 +803,17 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
     @VisibleForTesting
     void autoConnect() {
         String log = "autoConnect(): ";
+        if (SystemProperties.getBoolean(
+                 "bluetooth.hfp.hf_client_autoconnect.enabled", false)) {
+             Log.i(TAG, log + "hfp client autoconnect property enabled.");
+             final BluetoothDevice mostRecentlyConnectedHfpClientDevice =
+                   mDatabaseManager.getMostRecentlyConnectedHfpClientDevice();
+             if (mostRecentlyConnectedHfpClientDevice != null) {
+                  Log.d(TAG, log + "Attempting most recent HFP Client device "
+                              + mostRecentlyConnectedHfpClientDevice);
+                  autoConnectHeadsetClient(mostRecentlyConnectedHfpClientDevice);
+             }
+        }
         Log.d(TAG, log + "delay auto connect by 500 ms");
         if ((mHandler.hasMessages(MESSAGE_AUTO_CONNECT_PROFILES) == false) &&
             (mAdapterService.isQuietModeEnabled()== false)) {
@@ -901,6 +913,23 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
         }
         Log.d(TAG, log + "Connecting HFP");
         hsService.connect(device);
+    }
+
+    private void autoConnectHeadsetClient(BluetoothDevice device) {
+        String log = "autoConnectHeadsetClient(" + device + "): ";
+        final HeadsetClientService hsClientService = mFactory.getHeadsetClientService();
+        if (hsClientService == null) {
+            Log.w(TAG, log + "Failed to connect, HFP Client service is null");
+            return;
+        }
+        int connectionPolicy = hsClientService.getConnectionPolicy(device);
+        if (connectionPolicy != CONNECTION_POLICY_ALLOWED) {
+            Log.d(TAG, log + "Skipped HFP Client auto-connect. connectionPolicy = "
+                                              + connectionPolicy);
+            return;
+        }
+        Log.d(TAG, log + "Connecting HFP Client");
+        hsClientService.connect(device);
     }
 
     private void autoConnectHidHost(BluetoothDevice device) {
