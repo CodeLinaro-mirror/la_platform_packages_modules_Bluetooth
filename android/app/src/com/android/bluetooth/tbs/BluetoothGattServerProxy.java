@@ -78,6 +78,9 @@ public class BluetoothGattServerProxy {
      *     this device.
      */
     public BluetoothGattService getService(UUID uuid) {
+        if (mBluetoothGattServer == null) {
+            return null;
+        }
         return mBluetoothGattServer.getService(uuid);
     }
 

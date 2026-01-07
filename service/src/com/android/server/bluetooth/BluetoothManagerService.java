@@ -1705,7 +1705,8 @@ class BluetoothManagerService {
                     AutoOnFeature.pause();
                     int state = getState();
 
-                    if (mAdapter != null && isEnabled()) {
+                    if (mAdapter != null && (isEnabled() ||
+                        (mState.oneOf(STATE_BLE_ON) && isBleAppPresent()))) {
                         mCurrentUserContext = mContext.createContextAsUser(userTo, 0);
                         /* disable and enable BT when detect a user switch */
                         if (mState.oneOf(STATE_ON)) {
