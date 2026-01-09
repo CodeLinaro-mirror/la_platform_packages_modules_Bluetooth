@@ -23,6 +23,7 @@
 #include <bluetooth/log.h>
 
 #include "osi/include/future.h"
+#include "osi/include/properties.h"
 
 using namespace bluetooth;
 
@@ -66,9 +67,20 @@ static future_t* init() {
 #endif  // defined(__ANDROID__)
   log::assert_that(path != NULL, "assert failed: path != NULL");
 
-  log::info("attempt to load stack conf from {}", path);
+  bool running_pts = osi_property_get_bool("persist.bluetooth.pts.supported", false);
 
-  config = config_new(path);
+  if (!running_pts) {
+    log::info("attempt to load stack conf from {}", path);
+
+    config = config_new(path);
+  } else {
+    const char* pts_path = "/data/misc/bluedroid/bt_stack.conf";
+
+    log::info("attempt to load stack conf from {}", pts_path);
+
+    config = config_new(pts_path);
+  }
+
   if (!config) {
     log::info("file >{}< not found", path);
     config = config_new_empty();
