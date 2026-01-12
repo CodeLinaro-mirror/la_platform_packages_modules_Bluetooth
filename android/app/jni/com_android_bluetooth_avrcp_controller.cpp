@@ -68,6 +68,7 @@ static jclass class_AvrcpPlayer;
 static const btrc_ctrl_interface_t* sBluetoothAvrcpInterface = NULL;
 static jobject sCallbacksObj = NULL;
 static std::shared_timed_mutex sCallbacks_mutex;
+static std::shared_timed_mutex sInterface_mutex;
 
 static void btavrcp_passthrough_response_callback(const RawAddress& /* bd_addr */, int id,
                                                   int pressed) {
@@ -712,7 +713,8 @@ static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
 };
 
 static void initNative(JNIEnv* env, jobject object) {
-  std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
+  std::unique_lock<std::shared_timed_mutex> interface_lock(sInterface_mutex);
+  std::unique_lock<std::shared_timed_mutex> callbacks_lock(sCallbacks_mutex);
 
   jclass tmpAvrcpItem = env->FindClass("com/android/bluetooth/avrcpcontroller/AvrcpItem");
   class_AvrcpItem = (jclass)env->NewGlobalRef(tmpAvrcpItem);
@@ -784,7 +786,8 @@ static void stopNative([[maybe_unused]]JNIEnv* env, jobject /* object */) {
 }
 
 static void cleanupNative(JNIEnv* env, jobject /* object */) {
-  std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
+  std::unique_lock<std::shared_timed_mutex> interface_lock(sInterface_mutex);
+  std::unique_lock<std::shared_timed_mutex> callbacks_lock(sCallbacks_mutex);
 
   const bt_interface_t* btInf = getBluetoothInterface();
   if (btInf == NULL) {
@@ -805,6 +808,7 @@ static void cleanupNative(JNIEnv* env, jobject /* object */) {
 
 static jboolean sendPassThroughCommandNative(JNIEnv* env, jobject /* object */, jbyteArray address,
                                              jint key_code, jint key_state) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return JNI_FALSE;
   }
@@ -834,6 +838,7 @@ static jboolean sendPassThroughCommandNative(JNIEnv* env, jobject /* object */, 
 static jboolean sendGroupNavigationCommandNative(JNIEnv* env, jobject /* object */,
                                                  jbyteArray address, jint key_code,
                                                  jint key_state) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return JNI_FALSE;
   }
@@ -863,6 +868,7 @@ static jboolean sendGroupNavigationCommandNative(JNIEnv* env, jobject /* object 
 static void setPlayerApplicationSettingValuesNative(JNIEnv* env, jobject /* object */,
                                                     jbyteArray address, jbyte num_attrib,
                                                     jbyteArray attrib_ids, jbyteArray attrib_val) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   log::info("sBluetoothAvrcpInterface: {}", std::format_ptr(sBluetoothAvrcpInterface));
   if (!sBluetoothAvrcpInterface) {
     return;
@@ -912,6 +918,7 @@ static void setPlayerApplicationSettingValuesNative(JNIEnv* env, jobject /* obje
 
 static void sendAbsVolRspNative(JNIEnv* env, jobject /* object */, jbyteArray address, jint abs_vol,
                                 jint label) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -936,6 +943,7 @@ static void sendAbsVolRspNative(JNIEnv* env, jobject /* object */, jbyteArray ad
 
 static void sendRegisterAbsVolRspNative(JNIEnv* env, jobject /* object */, jbyteArray address,
                                         jbyte rsp_type, jint abs_vol, jint label) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -959,6 +967,7 @@ static void sendRegisterAbsVolRspNative(JNIEnv* env, jobject /* object */, jbyte
 }
 
 static void getCurrentMetadataNative(JNIEnv* env, jobject /* object */, jbyteArray address) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -981,6 +990,7 @@ static void getCurrentMetadataNative(JNIEnv* env, jobject /* object */, jbyteArr
 }
 
 static void getPlaybackStateNative(JNIEnv* env, jobject /* object */, jbyteArray address) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1003,6 +1013,7 @@ static void getPlaybackStateNative(JNIEnv* env, jobject /* object */, jbyteArray
 
 static void getNowPlayingListNative(JNIEnv* env, jobject /* object */, jbyteArray address,
                                     jint start, jint end) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1025,6 +1036,7 @@ static void getNowPlayingListNative(JNIEnv* env, jobject /* object */, jbyteArra
 
 static void getFolderListNative(JNIEnv* env, jobject /* object */, jbyteArray address, jint start,
                                 jint end) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1046,6 +1058,7 @@ static void getFolderListNative(JNIEnv* env, jobject /* object */, jbyteArray ad
 
 static void getPlayerListNative(JNIEnv* env, jobject /* object */, jbyteArray address, jint start,
                                 jint end) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1067,6 +1080,7 @@ static void getPlayerListNative(JNIEnv* env, jobject /* object */, jbyteArray ad
 
 static void changeFolderPathNative(JNIEnv* env, jobject /* object */, jbyteArray address,
                                    jbyte direction, jlong uid) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1089,6 +1103,7 @@ static void changeFolderPathNative(JNIEnv* env, jobject /* object */, jbyteArray
 }
 
 static void setBrowsedPlayerNative(JNIEnv* env, jobject /* object */, jbyteArray address, jint id) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1110,6 +1125,7 @@ static void setBrowsedPlayerNative(JNIEnv* env, jobject /* object */, jbyteArray
 
 static void setAddressedPlayerNative(JNIEnv* env, jobject /* object */, jbyteArray address,
                                      jint id) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
@@ -1132,6 +1148,7 @@ static void setAddressedPlayerNative(JNIEnv* env, jobject /* object */, jbyteArr
 
 static void playItemNative(JNIEnv* env, jobject /* object */, jbyteArray address, jbyte scope,
                            jlong uid, jint uidCounter) {
+  std::shared_lock<std::shared_timed_mutex> lock(sInterface_mutex);
   if (!sBluetoothAvrcpInterface) {
     return;
   }
