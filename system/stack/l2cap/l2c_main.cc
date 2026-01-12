@@ -25,11 +25,16 @@
 #define LOG_TAG "bt_l2c_main"
 
 #include <bluetooth/log.h>
+
+#include <cstdint>
+
 #include <string.h>
 #include <com_android_bluetooth_flags.h>
 
 #include "hal/snoop_logger.h"
 #include "internal_include/bt_target.h"
+#include "gd/os/system_properties.h"
+#include "common/time_util.h"
 #include "main/shim/entry.h"
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
@@ -55,6 +60,86 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len);
 /******************************************************************************/
 tL2C_CB l2cb;
 static bool is_l2c_cleanup_inprogress;
+
+
+// ---------------- Echo Flood Mitigation (begin) ----------------
+// This block rate-limits L2CAP ECHO_REQ (Signaling CID 0x0001) per remote device.
+// Why here: process_l2cap_cmd() is the central entry for Signaling PDUs, so
+// it lets us constrain only signaling traffic without impacting CoC/EATT data.
+// Strategy:
+//  - Per-address sliding window (1s) with a configurable rate limit.
+//  - If burst > threshold, enter cooldown: drop all echo requests for a period.
+//  - Dropping an echo request is allowed by the spec; echo is diagnostic only.
+//  - Optionally, we may disconnect the ACL in extreme cases (disabled by default).
+// NOTE: All thresholds are driven by system properties for easy rollout/rollback.
+
+// sysprop keys and defaults
+constexpr const char* kEchoRateLimitProp   = "bluetooth.l2cap.echo_rate_limit";   // Max responses per second
+constexpr const char* kEchoBurstProp       = "bluetooth.l2cap.echo_burst";        // Burst limit within window
+constexpr const char* kEchoCooldownMsProp  = "bluetooth.l2cap.echo_cooldown_ms";  // Cooldown duration in ms
+
+// Default values: 10/s, burst 50, cooldown 30s
+static const uint32_t kDefaultRateLimit    = 10;
+static const uint32_t kDefaultBurst        = 50;
+static const uint32_t kDefaultCooldownMs   = 30000;
+
+//Read sysprop(Similar to L2CAP credit)
+static uint32_t EchoRateLimit() {
+  return bluetooth::os::GetSystemPropertyUint32Base(kEchoRateLimitProp, kDefaultRateLimit);
+}
+static uint32_t EchoBurstLimit() {
+  return bluetooth::os::GetSystemPropertyUint32Base(kEchoBurstProp, kDefaultBurst);
+}
+static uint32_t EchoCooldownMs() {
+  return bluetooth::os::GetSystemPropertyUint32Base(kEchoCooldownMsProp, kDefaultCooldownMs);
+}
+
+// Return whether this Echo should be dropped (no response), and optionally trigger disconnection
+static bool ShouldDropEchoAndUpdateFloodState(tL2C_LCB* p_lcb) {
+  const uint64_t now = bluetooth::common::time_get_os_boottime_ms();
+
+  // Initialize if first time
+  if (p_lcb->echo_window_start_ms == 0) {
+    p_lcb->echo_window_start_ms = now;
+    p_lcb->echo_count_in_window = 0;
+    p_lcb->echo_burst_count = 0;
+    p_lcb->echo_cooldown_until_ms = 0;
+  }
+
+  const uint32_t rate_limit = EchoRateLimit();
+  const uint32_t burst_limit = EchoBurstLimit();
+  const uint32_t cooldown_ms = EchoCooldownMs();
+
+  // In cooldown: drop immediately
+  if (now < p_lcb->echo_cooldown_until_ms) {
+    return true;
+  }
+
+  // 1000ms window
+  if (now - p_lcb->echo_window_start_ms >= 1000) {
+    p_lcb->echo_window_start_ms = now;
+    p_lcb->echo_count_in_window = 0;
+    p_lcb->echo_burst_count = 0;
+   }
+
+  p_lcb->echo_count_in_window++;
+  p_lcb->echo_burst_count++;
+
+  // If burst threshold exceeded, enter cooldown
+  if (p_lcb->echo_burst_count > burst_limit) {
+    p_lcb->echo_cooldown_until_ms = now + cooldown_ms;
+    log::warn("L2CAP echo flood: enter cooldown for {}, {} ms",
+              p_lcb->remote_bd_addr, cooldown_ms);
+    return true;
+  }
+
+  // If rate threshold exceeded: drop (no response)
+  if (p_lcb->echo_count_in_window > rate_limit) {
+    return true;
+  }
+  return false;
+}
+// ---------------- Echo Flood Mitigation (end) ------------------
 
 /*******************************************************************************
  *
@@ -761,6 +846,9 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
       }
 
       case L2CAP_CMD_ECHO_REQ:
+        if (ShouldDropEchoAndUpdateFloodState(p_lcb)) {
+          return;
+        }
         l2cu_send_peer_echo_rsp(p_lcb, id, p, cmd_len);
         break;
 
