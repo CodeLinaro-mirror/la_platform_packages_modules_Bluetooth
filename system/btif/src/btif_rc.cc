@@ -2221,6 +2221,10 @@ static void handle_get_folder_items_response(tBTA_AV_META_MSG* pmeta_msg,
       }
     }
 
+    if (!bt_rc_ctrl_callbacks) {
+        cleanup_btrc_folder_items(btrc_items, item_count);
+        return;
+    }
     do_in_jni_thread(base::BindOnce(bt_rc_ctrl_callbacks->get_folder_items_cb, p_dev->rc_addr,
                                     BTRC_STS_NO_ERROR,
                                     /* We want to make the ownership explicit in native */
@@ -2240,8 +2244,9 @@ static void handle_get_folder_items_response(tBTA_AV_META_MSG* pmeta_msg,
     log::verbose("get_folder_items_cb sent to JNI thread");
   } else {
     log::error("Error {}", p_rsp->status);
-    do_in_jni_thread(base::BindOnce(bt_rc_ctrl_callbacks->get_folder_items_cb, p_dev->rc_addr,
-                                    (btrc_status_t)p_rsp->status, nullptr, 0));
+    if (bt_rc_ctrl_callbacks)
+        do_in_jni_thread(base::BindOnce(bt_rc_ctrl_callbacks->get_folder_items_cb, p_dev->rc_addr,
+                                        (btrc_status_t)p_rsp->status, nullptr, 0));
   }
 }
 /***************************************************************************
