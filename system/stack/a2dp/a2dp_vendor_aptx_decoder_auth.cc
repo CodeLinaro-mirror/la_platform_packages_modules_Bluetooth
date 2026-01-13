@@ -72,7 +72,8 @@ char PLATFORM_ID[][PLATFORM_ID_LENGTH] = {"msmnile",   "SA8155P",
                                           "sdmshrike", "SA8195P",
                                           "qssi",      "SA8155P",
                                           "gen4",      "SA8155P",
-                                          "gen5_gvm_gy", "SA8155P"};
+                                          "gen5_gvm_gy", "SA8155P",
+                                          "canoe",     "SA8155P"};
 
 #define INVALID_TOKEN_KEY  (0)
 
