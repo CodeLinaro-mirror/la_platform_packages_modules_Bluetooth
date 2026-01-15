@@ -1072,7 +1072,13 @@ bool gatt_profile_get_eatt_support_by_conn_id(tCONN_ID conn_id) {
  * Returns          true if enabled in gd flag, otherwise false
  *
  ******************************************************************************/
-static bool gatt_sr_is_robust_caching_enabled() { return false; }
+static bool gatt_sr_is_robust_caching_enabled() {
+  if (stack_config_get_interface()->get_pts_DB_out_of_sync()){
+    return true;
+  } else {
+      return false;
+  }
+}
 
 /*******************************************************************************
  *

@@ -36,7 +36,11 @@ public:
       : le_acl_connection_interface_(le_acl_connection_interface),
         connection_handle_(connection_handle) {}
   ~LeAclConnectionTracker() {
-    log::assert_that(queued_callbacks_.empty(), "assert failed: queued_callbacks_.empty()");
+    if (!queued_callbacks_.empty()) {
+      log::warn("LeAclConnectionTracker destroyed with {} queued callbacks for handle {}",
+                queued_callbacks_.size(), connection_handle_);
+      queued_callbacks_.clear();
+    }
   }
   void RegisterCallbacks(LeConnectionManagementCallbacks* callbacks, os::Handler* handler) {
     client_handler_ = handler;

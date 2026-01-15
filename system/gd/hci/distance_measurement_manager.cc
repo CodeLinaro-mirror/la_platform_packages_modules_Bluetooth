@@ -1051,18 +1051,32 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      if (procedure_setting.preferred_peer_antenna & 0x08)
        preferred_peer_antenna.use_fourth_ordered_antenna_element_ = 1;
 
+     uint16_t conn_interval = cs_requester_trackers_[connection_handle].conn_interval_;
+     uint16_t min_period_time_ms = procedure_setting.min_period_between_proc;
+     uint16_t max_period_time_ms = procedure_setting.max_period_between_proc;
+
+     uint16_t min_period_between_proc = static_cast<uint16_t>(std::round(
+         (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+     uint16_t max_period_between_proc = static_cast<uint16_t>(std::round(
+         (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+
+     log::info("config_avb: conn_interval={}, min_period_time={}ms, max_period_time={}ms, "
+               "min_period_between_proc={}, max_period_between_proc={}",
+               conn_interval, min_period_time_ms, max_period_time_ms,
+               min_period_between_proc, max_period_between_proc);
+
       hci_layer_->EnqueueCommand(
             LeCsSetProcedureParametersBuilder::Create(
             connection_handle,
             config_id,
             procedure_setting.max_proc_duration,
-            procedure_setting.min_period_between_proc,
-            procedure_setting.max_period_between_proc,
+            min_period_between_proc,
+            max_period_between_proc,
             procedure_setting.max_proc_count,
             min_subevent_len,
 	    max_subevent_len,
            // kToneAntennaConfigSelection,
-	    tone_antenna_config_selection,
+	    procedure_setting.tone_ant_cfg_selection,
             (CsPhy)procedure_setting.phy,
             procedure_setting.tx_pwr_delta,
             preferred_peer_antenna,
@@ -2018,8 +2032,15 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           local_subevent_result =
                   procedure_data->procedure_data_v2_.local_subevent_data_[subevent_sequence];
         } else {
-          log::error("there is no local subevent result.");
-          return;
+          if (subevent_header.num_steps_reported_ == 0 &&
+              subevent_header.ranging_done_status_ == RangingDoneStatus::ALL_RESULTS_COMPLETE) {
+            log::info("num_steps_reported is 0, All results complete");
+            procedure_data->remote_status = CsProcedureDoneStatus::ALL_RESULTS_COMPLETE;
+            break;
+          } else {
+            log::error("there is no local subevent result. subevent sequenece {}, local subevent size {} ", subevent_sequence, procedure_data->procedure_data_v2_.local_subevent_data_.size());
+            return;
+          }
         }
         remote_subevent_result->start_acl_conn_event_counter_ =
                 subevent_header.start_acl_conn_event_;

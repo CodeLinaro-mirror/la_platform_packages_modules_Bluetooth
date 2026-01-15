@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+SPDX-License-Identifier: BSD-3-Clause-Clear
+  -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#222240">
+
+    <LinearLayout
+        android:id="@+id/distance_view_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:layout_centerInParent="true"
+        android:padding="30dp">
+
+        <TextView
+            android:id="@+id/label_detail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Target is"
+            android:textColor="#ffffff"
+            android:textSize="45sp"
+            android:fontFamily="arial"
+            android:layout_marginBottom="12dp"/>
+        <TextView
+            android:id="@+id/distance_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0.0"
+            android:textSize="56sp"
+            android:fontFamily="arial"
+            android:textStyle="bold"
+            android:textColor="#00FF00"
+            android:layout_marginBottom="12dp"/>
+        <TextView
+            android:id="@+id/label_detail_unit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="meters away"
+            android:textColor="#ffffff"
+            android:textSize="45sp"
+            android:fontFamily="arial"/>
+    </LinearLayout>
+
+    <!-- See Less Button bottom left -->
+    <Button
+        android:id="@+id/btn_see_less"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="See More"
+        android:textSize="20sp"
+        android:background="@drawable/rounded_button_bg"
+        android:textColor="#222240"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginStart="24dp"
+        android:layout_marginBottom="24dp"
+        android:fontFamily="arial"/>
+</RelativeLayout>

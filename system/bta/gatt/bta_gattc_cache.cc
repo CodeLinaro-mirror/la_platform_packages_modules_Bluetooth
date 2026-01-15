@@ -127,6 +127,35 @@ static const Service* bta_gattc_find_matching_service(const std::list<Service>& 
 RobustCachingSupport GetRobustCachingSupport(const tBTA_GATTC_CLCB* p_clcb,
                                              const gatt::Database& db) {
   log::debug("GetRobustCachingSupport {}", p_clcb->bda.ToRedactedStringForLogging());
+  // This is workaround for the embedded devices being already on the market
+  // and having a serious problem with handle Read By Type with
+  // GATT_UUID_DATABASE_HASH. With this workaround, Android will assume that
+  // embedded device having LMP version lower than 5.1 (0x0a), it does not
+  // support GATT Caching.
+  uint8_t lmp_version = 0;
+  if (!get_btm_client_interface().peer.BTM_ReadRemoteVersion(p_clcb->bda, &lmp_version, nullptr,
+                                                             nullptr)) {
+    log::warn("Could not read remote version for {}", p_clcb->bda);
+  }
+
+  if (lmp_version < 0x0a) {
+    log::warn(
+            "Device LMP version 0x{:02x} < Bluetooth 5.1. Ignore database cache "
+            "read.",
+            lmp_version);
+    return RobustCachingSupport::UNSUPPORTED;
+  }
+
+  // Some LMP 5.2 devices also don't support robust caching. This workaround
+  // conditionally disables the feature based on a combination of LMP
+  // version and OUI prefix.
+  if (interop_match_addr(INTEROP_DISABLE_ROBUST_CACHING, &p_clcb->bda) &&  lmp_version < 0x0c) {
+    log::warn(
+            "Device LMP version 0x{:02x} <= Bluetooth 5.2 and MAC addr on interop "
+            "list, skipping robust caching",
+            lmp_version);
+    return RobustCachingSupport::UNSUPPORTED;
+  }
 
   // An empty database means that discovery hasn't taken place yet, so
   // we can't infer anything from that
@@ -157,36 +186,6 @@ RobustCachingSupport GetRobustCachingSupport(const tBTA_GATTC_CLCB* p_clcb,
       !get_btm_client_interface().ble.BTM_IsRemoteVersionReceived(p_clcb->bda)) {
     log::info("version info is not ready yet");
     return RobustCachingSupport::W4_REMOTE_VERSION;
-  }
-
-  // This is workaround for the embedded devices being already on the market
-  // and having a serious problem with handle Read By Type with
-  // GATT_UUID_DATABASE_HASH. With this workaround, Android will assume that
-  // embedded device having LMP version lower than 5.1 (0x0a), it does not
-  // support GATT Caching.
-  uint8_t lmp_version = 0;
-  if (!get_btm_client_interface().peer.BTM_ReadRemoteVersion(p_clcb->bda, &lmp_version, nullptr,
-                                                             nullptr)) {
-    log::warn("Could not read remote version for {}", p_clcb->bda);
-  }
-
-  if (lmp_version < 0x0a) {
-    log::warn(
-            "Device LMP version 0x{:02x} < Bluetooth 5.1. Ignore database cache "
-            "read.",
-            lmp_version);
-    return RobustCachingSupport::UNSUPPORTED;
-  }
-
-  // Some LMP 5.2 devices also don't support robust caching. This workaround
-  // conditionally disables the feature based on a combination of LMP
-  // version and OUI prefix.
-  if (lmp_version < 0x0c && interop_match_addr(INTEROP_DISABLE_ROBUST_CACHING, &p_clcb->bda)) {
-    log::warn(
-            "Device LMP version 0x{:02x} <= Bluetooth 5.2 and MAC addr on interop "
-            "list, skipping robust caching",
-            lmp_version);
-    return RobustCachingSupport::UNSUPPORTED;
   }
 
   // If we have no cached database and no interop considerations,
@@ -755,7 +754,7 @@ static void bta_gattc_read_db_hash_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATT
 
       Octet16 local_hash = p_clcb->p_srcb->gatt_database.Hash();
       matched = (local_hash == remote_hash);
-
+  
       log::debug("lhash={}", base::HexEncode(local_hash.data(), local_hash.size()));
       log::debug("rhash={}", base::HexEncode(remote_hash.data(), remote_hash.size()));
 

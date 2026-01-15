@@ -60,6 +60,7 @@ import com.android.bluetooth.pan.PanService;
 import com.android.bluetooth.util.SystemProperties;
 import com.android.bluetooth.vc.VolumeControlService;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.bluetooth.btservice.InteropUtil;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -678,7 +679,15 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
                 case BluetoothProfile.CSIP_SET_COORDINATOR ->
                         handleLeAudioOnlyDeviceAfterCsipConnect(device);
             }
-            connectOtherProfile(device);
+
+            if (profile == BluetoothProfile.HEADSET && device != null &&
+                    InteropUtil.interopMatchAddrOrName(
+                    InteropUtil.InteropFeature.INTEROP_SUPPRESS_A2DP_AUTO_CONNECT,
+                    device.getAddress())) {
+                Log.d(TAG,"fix to suppress auto a2dp when HFP is connected in some carkit");
+            } else {
+                connectOtherProfile(device);
+            }
         } else if (nextState == STATE_DISCONNECTED) {
             if (prevState == STATE_CONNECTING || prevState == STATE_DISCONNECTING) {
                 mDatabaseManager.setDisconnection(device, profile);

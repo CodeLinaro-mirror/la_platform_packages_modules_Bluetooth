@@ -67,7 +67,7 @@ bool update_codec_offloading_capabilities(
 
 // Check if new bluetooth_audio is enabled
 bool is_hal_enabled();
-
+bool is_aidl_enabled();
 // Check if new bluetooth_audio is running with offloading encoders
 bool is_hal_offloading();
 
