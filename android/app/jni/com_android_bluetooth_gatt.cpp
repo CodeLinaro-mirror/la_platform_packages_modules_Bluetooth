@@ -1374,6 +1374,21 @@ static void gattClientConnectNative(JNIEnv* env, jobject /* object */, jint clie
                            opportunistic, initiating_phys, preferred_mtu);
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static void gattClientConnectV2Native(JNIEnv* env, jobject /* object */, jint clientif,
+                                    jstring address, jint addressType, jboolean isDirect,
+                                    jint transport, jboolean opportunistic, jint initiating_phys,
+                                    jint preferred_mtu, jint advHandle, jint subEvent, jint filterPolicy) {
+  if (!sGattIf) {
+    return;
+  }
+
+  sGattIf->client->connect_v2(clientif, str2addr(env, address), addressType, isDirect, transport,
+                           opportunistic, initiating_phys, preferred_mtu, advHandle, subEvent, filterPolicy);
+}
+
+#endif
+
 static void gattClientDisconnectNative(JNIEnv* env, jobject /* object */, jint clientIf,
                                        jstring address, jint conn_id) {
   if (!sGattIf) {
@@ -3020,6 +3035,10 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"gattClientUnregisterAppNative", "(I)V", (void*)gattClientUnregisterAppNative},
           {"gattClientConnectNative", "(ILjava/lang/String;IZIZII)V",
            (void*)gattClientConnectNative},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"gattClientConnectV2Native", "(ILjava/lang/String;IZIZIIIII)V",
+           (void*)gattClientConnectV2Native},
+#endif
           {"gattClientDisconnectNative", "(ILjava/lang/String;I)V",
            (void*)gattClientDisconnectNative},
           {"gattClientSetPreferredPhyNative", "(ILjava/lang/String;III)V",

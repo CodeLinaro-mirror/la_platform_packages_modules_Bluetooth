@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 #include "hci/hci_metrics_logging.h"
 
@@ -619,6 +623,9 @@ void log_link_layer_connection_other_hci_event(EventView packet,
 void log_link_layer_connection_event_le_meta(LeMetaEventView le_meta_event_view) {
   SubeventCode leEvt = le_meta_event_view.GetSubeventCode();
   if (leEvt != SubeventCode::ENHANCED_CONNECTION_COMPLETE &&
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      leEvt != SubeventCode::ENHANCED_CONNECTION_COMPLETE_V2 &&
+#endif
       leEvt != SubeventCode::CONNECTION_COMPLETE) {
     // function is called for all le meta events. Only need to process le connection complete.
     return;
@@ -649,6 +656,16 @@ void log_link_layer_connection_event_le_meta(LeMetaEventView le_meta_event_view)
     address = le_enhanced_connection_complete_view.GetPeerAddress();
     connection_handle = le_enhanced_connection_complete_view.GetConnectionHandle();
     status = le_enhanced_connection_complete_view.GetStatus();
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  } else if (leEvt == SubeventCode::ENHANCED_CONNECTION_COMPLETE_V2) {
+    auto le_enhanced_connection_complete_view_v2 = LeEnhancedConnectionCompleteV2View::Create(std::move(le_meta_event_view));
+    log::assert_that(
+      le_enhanced_connection_complete_view_v2.IsValid(),
+        "assert failed: le_enhanced_connection_complete_v2_view.IsValid()");
+    address = le_enhanced_connection_complete_view_v2.GetPeerAddress();
+    connection_handle = le_enhanced_connection_complete_view_v2.GetConnectionHandle();
+    status = le_enhanced_connection_complete_view_v2.GetStatus();
+#endif
   } else {
     log::fatal("WTF");
     return;

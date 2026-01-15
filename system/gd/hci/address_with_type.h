@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #pragma once
@@ -34,14 +38,29 @@ class AddressWithType final {
 public:
   AddressWithType(Address address, AddressType address_type)
       : address_(std::move(address)), address_type_(address_type) {}
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  AddressWithType(Address address, AddressType address_type, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy)
+    : address_(std::move(address)), address_type_(address_type), pa_handle_(pa_handle), subevent_(subevent), filter_policy_(filter_policy){}
+#endif
   explicit AddressWithType()
       : address_(Address::kEmpty), address_type_(AddressType::PUBLIC_DEVICE_ADDRESS) {}
 
   inline Address GetAddress() const { return address_; }
 
   inline AddressType GetAddressType() const { return address_type_; }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  inline uint8_t GetPaHandle() const {
+    return pa_handle_;
+  }
 
+  inline uint8_t GetSubevent() const {
+    return subevent_;
+  }
+
+  inline uint8_t GetFilterPolicy() const {
+    return filter_policy_;
+  }
+#endif
   /* Is this an Resolvable Private Address ? */
   inline bool IsRpa() const {
     return address_type_ == hci::AddressType::RANDOM_DEVICE_ADDRESS &&
@@ -121,6 +140,11 @@ public:
 private:
   Address address_;
   AddressType address_type_;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  uint8_t pa_handle_;
+  uint8_t subevent_;
+  uint8_t filter_policy_;
+#endif
 };
 
 }  // namespace hci

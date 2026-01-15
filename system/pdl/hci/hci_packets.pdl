@@ -431,6 +431,7 @@ enum OpCode : 16 {
   LE_SET_DATA_RELATED_ADDRESS_CHANGES = 0x207C,
   LE_SET_DEFAULT_SUBRATE = 0x207D,
   LE_SUBRATE_REQUEST = 0x207E,
+  LE_EXTENDED_CREATE_CONNECTION_V2 = 0x2085,
   LE_CS_READ_LOCAL_SUPPORTED_CAPABILITIES = 0x2089,
   LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES = 0x208A,
   LE_CS_WRITE_CACHED_REMOTE_SUPPORTED_CAPABILITIES = 0x208B,
@@ -729,6 +730,7 @@ enum OpCodeIndex : 16 {
   LE_CLEAR_PERIODIC_ADVERTISER_LIST = 385,
   LE_READ_PERIODIC_ADVERTISER_LIST_SIZE = 386,
   LE_READ_TRANSMIT_POWER = 387,
+  LE_EXTENDED_CREATE_CONNECTION_V2 = 388,
   LE_READ_RF_PATH_COMPENSATION_POWER = 390,
   LE_WRITE_RF_PATH_COMPENSATION_POWER = 391,
   LE_SET_PRIVACY_MODE = 392,
@@ -915,6 +917,7 @@ enum SubeventCode : 8 {
   TRANSMIT_POWER_REPORTING = 0x21,
   BIG_INFO_ADVERTISING_REPORT = 0x22,
   LE_SUBRATE_CHANGE = 0x23,
+  ENHANCED_CONNECTION_COMPLETE_V2 = 0x29,
   LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES_COMPLETE = 0x2C,
   LE_CS_READ_REMOTE_FAE_TABLE_COMPLETE = 0x2D,
   LE_CS_SECURITY_ENABLE_COMPLETE = 0x2E,
@@ -4297,6 +4300,20 @@ test LeExtendedCreateConnection {
 packet LeExtendedCreateConnectionStatus : CommandStatus (command_op_code = LE_EXTENDED_CREATE_CONNECTION) {
 }
 
+packet LeExtendedCreateConnectionV2 : LeConnectionManagementCommand (op_code = LE_EXTENDED_CREATE_CONNECTION_V2) {
+  adv_handle : 8,
+  subevent : 8,
+  initiator_filter_policy : InitiatorFilterPolicy,
+  own_address_type : OwnAddressType,
+  peer_address_type : AddressType,
+  peer_address : Address,
+  initiating_phys : 8,
+  phy_scan_parameters : LeCreateConnPhyScanParameters[],
+}
+
+packet LeExtendedCreateConnectionv2Status : CommandStatus (command_op_code = LE_EXTENDED_CREATE_CONNECTION_V2) {
+}
+
 enum PeriodicSyncCteType : 8 {
   AVOID_AOA_CONSTANT_TONE_EXTENSION = 0x01,
   AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_ONE_US_SLOTS = 0x02,
@@ -6471,6 +6488,23 @@ packet LeEnhancedConnectionComplete : LeMetaEvent (subevent_code = ENHANCED_CONN
   conn_latency : 16,  // Number of connection events
   supervision_timeout : 16,  // 0x000A to 0x0C80 (100ms to 32s)
   central_clock_accuracy : ClockAccuracy,
+}
+
+packet LeEnhancedConnectionCompleteV2 : LeMetaEvent (subevent_code = ENHANCED_CONNECTION_COMPLETE_V2) {
+  status : ErrorCode,
+  connection_handle : 12,
+  _reserved_ : 4,
+  role : Role,
+  peer_address_type : AddressType,
+  peer_address : Address,
+  local_resolvable_private_address : Address,
+  peer_resolvable_private_address : Address,
+  conn_interval : 16, // 0x006 - 0x0C80 (7.5ms - 4000ms)
+  conn_latency : 16,  // Number of connection events
+  supervision_timeout : 16,  // 0x000A to 0x0C80 (100ms to 32s)
+  central_clock_accuracy : ClockAccuracy,
+  advertising_handle : 8,
+  sync_handle : 16,
 }
 
 enum DirectAdvertisingAddressType : 8 {

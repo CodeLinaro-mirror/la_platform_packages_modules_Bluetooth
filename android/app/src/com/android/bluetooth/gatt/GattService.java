@@ -1193,7 +1193,91 @@ public class GattService extends ProfileService {
             if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clientConnectV2")) {
                 return;
             }
-            //To be implemented
+            Log.d(
+                TAG,
+                "clientConnect() - address="
+                        + toAnonymizedAddress(address)
+                        + ", addressType="
+                        + addressType
+                        + ", isDirect="
+                        + isDirect
+                        + ", opportunistic="
+                        + opportunistic
+                        + ", phy="
+                        + phy);
+            statsLogAppPackage(address, source.getUid(), clientIf);
+
+            logClientForegroundInfo(source.getUid(), isDirect);
+
+            statsLogGattConnectionStateChange(
+                    BluetoothProfile.GATT,
+                    address,
+                    clientIf,
+                    BluetoothProtoEnums.CONNECTION_STATE_CONNECTING,
+                    -1);
+
+            MetricsLogger.getInstance()
+                    .logBluetoothEvent(
+                            getDevice(address),
+                            BluetoothStatsLog
+                                    .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__GATT_CONNECT_JAVA,
+                            isDirect
+                                    ? BluetoothStatsLog
+                                            .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__DIRECT_CONNECT
+                                    : BluetoothStatsLog
+                                            .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__INDIRECT_CONNECT,
+                            source.getUid());
+
+            int preferredMtu = 0;
+
+            String packageName = source.getPackageName();
+            if (packageName != null) {
+                mAdapterService.addAssociatedPackage(getDevice(address), packageName);
+
+                // Some apps expect MTU to be exchanged immediately on connections
+                for (Map.Entry<String, Integer> entry : EARLY_MTU_EXCHANGE_PACKAGES.entrySet()) {
+                    if (packageName.contains(entry.getKey())) {
+                        preferredMtu = entry.getValue();
+                        Log.i(
+                                TAG,
+                                "Early MTU exchange preference ("
+                                        + preferredMtu
+                                        + ") requested for "
+                                        + packageName);
+                        break;
+                    }
+                }
+            }
+
+            if (transport != BluetoothDevice.TRANSPORT_BREDR && isDirect && !opportunistic) {
+                String attributionTag = getLastAttributionTag(source);
+                if (packageName != null) {
+                    for (Map.Entry<String, String> entry :
+                            GATT_CLIENTS_NOTIFY_TO_ADAPTER_PACKAGES.entrySet()) {
+                        if (packageName.contains(entry.getKey())
+                                && ((attributionTag != null
+                                                && attributionTag.contains(entry.getValue()))
+                                        || entry.getValue().isEmpty())) {
+                            mAdapterService.notifyDirectLeGattClientConnect(
+                                    clientIf, getDevice(address));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            mNativeInterface.gattClientConnectV2(
+                    clientIf,
+                    address,
+                    addressType,
+                    isDirect,
+                    transport,
+                    opportunistic,
+                    phy,
+                    preferredMtu,
+                    advHandle,
+                    subEvent,
+                    filterPolicy);
         } else {
             Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
         }

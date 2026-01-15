@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -1421,9 +1425,15 @@ void GATT_StartIf(tGATT_IF gatt_if) {
  *                  failure.
  *
  ******************************************************************************/
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
+                  tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
+                  uint8_t initiating_phys, uint16_t preferred_mtu, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+#else
 bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                   tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
                   uint8_t initiating_phys, uint16_t preferred_mtu) {
+#endif
   /* Make sure app is registered */
   tGATT_REG* p_reg = gatt_get_regcb(gatt_if);
   if (!p_reg) {
@@ -1459,10 +1469,18 @@ bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE ad
 
     if (tcb_exist || transport == BT_TRANSPORT_BR_EDR) {
       /* Consider to remove gatt_act_connect at all */
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      ret = gatt_act_connect(p_reg, bd_addr, addr_type, transport, initiating_phys, pa_handle, subevent, filter_policy);
+#else
       ret = gatt_act_connect(p_reg, bd_addr, addr_type, transport, initiating_phys);
+#endif
     } else {
       log::verbose("Connecting without tcb to: {}", bd_addr);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      ret = connection_manager::direct_connect_add(gatt_if, bd_addr, addr_type, pa_handle, subevent, filter_policy);
+#else
       ret = connection_manager::direct_connect_add(gatt_if, bd_addr, addr_type);
+#endif
     }
 
   } else {
@@ -1476,7 +1494,11 @@ bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE ad
     } else {
       log::debug("Adding to background connect to device:{}", bd_addr);
       if (connection_type == BTM_BLE_BKG_CONNECT_ALLOW_LIST) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        ret = connection_manager::background_connect_add(gatt_if, bd_addr, pa_handle, subevent, filter_policy);
+#else
         ret = connection_manager::background_connect_add(gatt_if, bd_addr);
+#endif
       } else {
         ret = connection_manager::background_connect_targeted_announcement_add(gatt_if, bd_addr);
       }
@@ -1514,6 +1536,13 @@ bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBTM_BLE_CONN_TYP
                       LE_PHY_1M, 0);
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
+                  tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
+                  uint8_t initiating_phys, uint16_t preferred_mtu) {
+  return GATT_Connect(gatt_if, bd_addr, addr_type, connection_type, transport, opportunistic, initiating_phys, preferred_mtu, 0x01, 0xFF, 0x01);
+}
+#endif
 /*******************************************************************************
  *
  * Function         GATT_CancelConnect

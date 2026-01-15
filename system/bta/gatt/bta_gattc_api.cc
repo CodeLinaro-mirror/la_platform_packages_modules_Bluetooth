@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -158,9 +162,63 @@ void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_
 
 void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda,
                     tBTM_BLE_CONN_TYPE connection_type, bool opportunistic) {
+  #ifdef TARGET_QCOM_IOT_BT_EXT
+  BTA_GATTC_Open(client_if, remote_bda, BLE_ADDR_PUBLIC, connection_type, BT_TRANSPORT_LE,
+                 opportunistic, LE_PHY_1M, 0, 0x01, 0xFF/*invalide subevent*/, 0x01/*filter_policy*/);
+  #else
   BTA_GATTC_Open(client_if, remote_bda, BLE_ADDR_PUBLIC, connection_type, BT_TRANSPORT_LE,
                  opportunistic, LE_PHY_1M, 0);
+  #endif
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function         BTA_GATTC_Open
+ *
+ * Description      Open a direct connection or add a background auto connection
+ *                  bd address
+ *
+ * Parameters       client_if: server interface.
+ *                  remote_bda: remote device BD address.
+ *                  connection_type: connection type used for the peer device
+ *                  transport: Transport to be used for GATT connection
+ *                             (BREDR/LE)
+ *                  initiating_phys: LE PHY to use, optional
+ *                  opportunistic: whether the connection shall be
+ *                  opportunistic, and don't impact the disconnection timer
+ *                  pa_handle: periodic advertising handle.
+ *                  subevent: subevent of periodic advertising.
+ *                  filter_policy: connection filter policy
+ *
+ ******************************************************************************/
+void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
+                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
+                    uint8_t initiating_phys, uint16_t preferred_mtu, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+  tBTA_GATTC_DATA data = {
+          .api_conn =
+                  {
+                          .hdr =
+                                  {
+                                          .event = BTA_GATTC_API_OPEN_EVT,
+                                  },
+                          .remote_bda = remote_bda,
+                          .client_if = client_if,
+                          .connection_type = connection_type,
+                          .transport = transport,
+                          .initiating_phys = initiating_phys,
+                          .opportunistic = opportunistic,
+                          .remote_addr_type = addr_type,
+                          .preferred_mtu = preferred_mtu,
+                          .pa_handle = pa_handle,
+                          .subevent = subevent,
+                          .filter_policy = filter_policy,
+                  },
+  };
+
+  post_on_bt_main([data]() { bta_gattc_process_api_open(&data); });
+}
+#endif
 
 /*******************************************************************************
  *
