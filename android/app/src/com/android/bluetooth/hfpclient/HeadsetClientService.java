@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.hfpclient;
@@ -71,8 +76,10 @@ import java.util.UUID;
 public class HeadsetClientService extends ConnectableProfile {
     private static final String TAG = HeadsetClientService.class.getSimpleName();
 
+    // Per chapter 4.28.1 in Hands-Free Profile (HFP) 1.5, both the speaker and microphone
+    // gains are represented as parameter to the +VGS and +VGM, on a scale from 0 to 15.
     @VisibleForTesting static final int MAX_HFP_SCO_VOICE_CALL_VOLUME = 15; // HFP 1.5 spec.
-    @VisibleForTesting static final int MIN_HFP_SCO_VOICE_CALL_VOLUME = 1; // HFP 1.5 spec.
+    @VisibleForTesting static final int MIN_HFP_SCO_VOICE_CALL_VOLUME = 0; // HFP 1.5 spec.
     static final String HFP_CLIENT_STOP_TAG = "hfp_client_stop_tag";
 
     // Maximum number of devices we can try connecting to in one session
