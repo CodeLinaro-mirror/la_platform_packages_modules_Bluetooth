@@ -2492,7 +2492,8 @@ void bta_av_rc_closed(tBTA_AV_DATA* p_data) {
           p_scb = bta_av_cb.p_scb[p_rcb->shdl - 1];
         }
         if (p_scb) {
-          rc_close.peer_addr = p_scb->PeerAddress();
+          rc_close.peer_addr = (p_scb->IsAssigned()) ?
+            p_scb->PeerAddress() : p_msg->peer_addr;
           if (p_scb->rc_handle == p_rcb->handle) {
             p_scb->rc_handle = BTA_AV_RC_HANDLE_NONE;
           }
@@ -2506,6 +2507,12 @@ void bta_av_rc_closed(tBTA_AV_DATA* p_data) {
         log::info("rc_only closed bd_addr: {}", p_msg->peer_addr);
         p_lcb->conn_msk = 0;
         p_lcb->lidx = 0;
+      } else {
+        /* In case of A2DP being disconnected earlier than AVRCP or peer device only
+         * supports AVRCP, due p_rcb->shdl equals '0' and p_rcb->lidx doesn't equal
+         * (BTA_AV_NUM_LINKS + 1), therefore, rc_close.peer_addr isn't set correctly */
+        rc_close.peer_addr = p_msg->peer_addr;
+        log::info("rc_only or av disconnection earlier, bd_addr:{}", rc_close.peer_addr);
       }
       p_rcb->lidx = 0;
 
