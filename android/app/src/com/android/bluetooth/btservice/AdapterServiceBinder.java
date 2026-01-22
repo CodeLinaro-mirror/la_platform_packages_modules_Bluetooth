@@ -48,6 +48,7 @@ import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothProtoEnums;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.bluetooth.BluetoothStatusCodes;
+import android.bluetooth.GattOffloadCapabilities;
 import android.bluetooth.IBluetooth;
 import android.bluetooth.IBluetoothActivityEnergyInfoListener;
 import android.bluetooth.IBluetoothCallback;
@@ -2310,5 +2311,16 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     @SuppressLint("AndroidFrameworkRequiresPermission")
     public boolean isBroadcastActive(AttributionSource attributionSource) {
 	return true;
+    }
+
+    @Override
+    public GattOffloadCapabilities.InnerParcel getSupportedGattOffloadCapabilities(
+            AttributionSource source) {
+        AdapterService service = getService();
+        if (service == null) {
+            return null;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        return service.getSupportedGattOffloadCapabilities();
     }
 }

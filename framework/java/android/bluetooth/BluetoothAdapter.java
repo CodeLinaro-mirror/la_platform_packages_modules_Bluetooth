@@ -6103,4 +6103,32 @@ public final class BluetoothAdapter {
         }
         return false;
     }
+
+    /**
+     * Get the supported GATT offload capabilities.
+     *
+     * @return instance of {@link GattOffloadCapabilities} or null if an error has occurred
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_GATT_OFFLOAD_API)
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public @Nullable GattOffloadCapabilities getSupportedGattOffloadCapabilities() {
+        if (!isEnabled()) {
+            return null;
+        }
+        mServiceLock.readLock().lock();
+        try {
+            if (mService != null) {
+                return mService.getSupportedGattOffloadCapabilities(mAttributionSource)
+                        .toGattOffloadCapabilities();
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+        } finally {
+            mServiceLock.readLock().unlock();
+        }
+        return null;
+    }
+
 }

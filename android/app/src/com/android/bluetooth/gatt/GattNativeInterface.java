@@ -17,6 +17,7 @@
 package com.android.bluetooth.gatt;
 
 import android.os.RemoteException;
+import android.bluetooth.GattOffloadSession;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
@@ -176,6 +177,10 @@ public class GattNativeInterface {
         getGattService().onClientCongestion(connId, congested);
     }
 
+    void onClientCharacteristicsUnoffloaded(int connId, int sessionId, int status) {
+        mGattService.onClientCharacteristicsUnoffloadedFromNative(connId, sessionId, status);
+    }
+
     /* Server callbacks */
 
     void onServerRegistered(int status, int serverIf, long uuidLsb, long uuidMsb)
@@ -265,6 +270,10 @@ public class GattNativeInterface {
 
     void onMtuChanged(int connId, int mtu) throws RemoteException {
         getGattService().onMtuChanged(connId, mtu);
+    }
+
+    void onServerCharacteristicsUnoffloaded(int connId, int sessionId, int status) {
+        mGattService.onServerCharacteristicsUnoffloadedFromNative(connId, sessionId, status);
     }
 
     /**********************************************************************************************/
@@ -395,6 +404,16 @@ public class GattNativeInterface {
             int p3,
             int p4,
             int p5);
+
+    private native GattOffloadSession.InnerParcel gattClientOffloadCharacteristicsNative(
+            int connId, List<GattDbElement> characteristics, long endpointId, long hubId);
+
+    private native GattOffloadSession.InnerParcel gattServerOffloadCharacteristicsNative(
+            int connId, List<GattDbElement> characteristics, long endpointId, long hubId);
+
+    private native void gattClientUnoffloadCharacteristicsNative(int connId, int sessionId);
+
+    private native void gattServerUnoffloadCharacteristicsNative(int connId, int sessionId);
 
     /** Initialize the native interface and native components */
     public void init(GattService gattService) {
@@ -661,5 +680,27 @@ public class GattNativeInterface {
             int p4,
             int p5) {
         gattTestNative(command, uuid1Lsb, uuid1Msb, bda1, p1, p2, p3, p4, p5);
+    }
+
+    /** Offload client characteristics */
+    public GattOffloadSession.InnerParcel gattClientOffloadCharacteristics(
+            int connId, List<GattDbElement> characteristics, long endpointId, long hubId) {
+        return gattClientOffloadCharacteristicsNative(connId, characteristics, endpointId, hubId);
+    }
+
+    /** Offload server characteristics */
+    public GattOffloadSession.InnerParcel gattServerOffloadCharacteristics(
+            int connId, List<GattDbElement> characteristics, long endpointId, long hubId) {
+        return gattServerOffloadCharacteristicsNative(connId, characteristics, endpointId, hubId);
+    }
+
+    /** Unoffload client characteristics */
+    public void gattClientUnoffloadCharacteristics(int connId, int sessionId) {
+        gattClientUnoffloadCharacteristicsNative(connId, sessionId);
+    }
+
+    /** Unoffload server characteristics */
+    public void gattServerUnoffloadCharacteristics(int connId, int sessionId) {
+        gattServerUnoffloadCharacteristicsNative(connId, sessionId);
     }
 }
