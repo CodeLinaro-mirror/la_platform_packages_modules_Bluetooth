@@ -462,6 +462,7 @@ enum OpCode : 16 {
   MSFT_OPCODE_MEDIATEK = 0xFD30,
   MSFT_OPCODE_QUALCOMM = 0xFD70,
   HCI_VS_QBCE_OCF = 0xFC51,
+  HCI_VS_LE_SET_CHANNEL_MASK = 0xFCCD,
 }
 
 // For mapping Local Supported Commands command
@@ -5783,6 +5784,16 @@ packet LeExtendedScanParams : LeScanningCommand (op_code = LE_EXTENDED_SCAN_PARA
 
 packet LeExtendedScanParamsComplete : CommandComplete (command_op_code = LE_EXTENDED_SCAN_PARAMS) {
   status : ErrorCode,
+}
+
+packet LeExtendedScanChannelParams : VendorCommand  (op_code = HCI_VS_LE_SET_CHANNEL_MASK) {
+  sub_op_code : 8,
+  scan_mask : 8,
+}
+
+packet LeExtendedScanChannelParamsComplete : CommandComplete (command_op_code = HCI_VS_LE_SET_CHANNEL_MASK) {
+  status : ErrorCode,
+  scan_mask : 8,
 }
 
 packet ControllerDebugInfo : VendorCommand (op_code = CONTROLLER_DEBUG_INFO) {

@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.le_scan;
@@ -80,6 +84,8 @@ public class ScanNativeInterface {
 
     private native void gattClientScanNative(boolean start);
 
+    private native void gattSetScanChannelParametersNative(int clientIf, int scanInterval);
+
     private native void gattSetScanParametersNative(
             int clientIf, int scanInterval, int scanWindow, int scanPhy);
 
@@ -132,6 +138,9 @@ public class ScanNativeInterface {
         gattClientScanNative(start);
     }
 
+    public void gattSetScanChannelParameters(int clientIf, int scanChannel) {
+        gattSetScanChannelParametersNative(clientIf, scanChannel);
+    }
     /** Configure BLE scan parameters */
     public void gattSetScanParameters(int clientIf, int scanInterval, int scanWindow, int scanPhy) {
         gattSetScanParametersNative(clientIf, scanInterval, scanWindow, scanPhy);
@@ -370,5 +379,13 @@ public class ScanNativeInterface {
             return;
         }
         mScanHelper.onScanParamSetupCompleted(status, scannerId);
+    }
+
+    void onScanChannelParamSetupCompleted(int status, int scannerId) throws RemoteException {
+        if (mScanHelper == null) {
+            Log.e(TAG, "Scan helper is null!");
+            return;
+        }
+        mScanHelper.onScanChannelParamSetupCompleted(status, scannerId);
     }
 }

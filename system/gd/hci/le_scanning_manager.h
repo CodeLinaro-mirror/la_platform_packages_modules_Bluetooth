@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 #pragma once
@@ -60,6 +60,10 @@ class LeScanningManager : public bluetooth::Module {
   virtual void Unregister(ScannerId scanner_id);
 
   virtual void Scan(bool start);
+
+  virtual void SetScanChannelParameters(
+      ScannerId scanner_id,
+      uint8_t scan_channel);
 
   virtual void SetScanParameters(
       ScannerId scanner_id,

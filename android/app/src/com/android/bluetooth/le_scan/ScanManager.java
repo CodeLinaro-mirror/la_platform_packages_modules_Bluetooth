@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.le_scan;
@@ -52,6 +56,7 @@ import com.android.bluetooth.gatt.FilterParams;
 import com.android.bluetooth.gatt.GattServiceConfig;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.qcomfeatureconfig.QcomScanChannelConfig;
 
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -1091,6 +1096,12 @@ public class ScanManager {
                     int scanWindow = Utils.millsToUnit(scanWindowMs);
                     int scanInterval = Utils.millsToUnit(scanIntervalMs);
                     int scanPhyMask = getScanPhyMask(client.settings);
+                    int scanChannel = -1;
+                    if (QcomScanChannelConfig.TARGET_QCOM_IOT_SCANCHANNEL) {
+                        Log.i(TAG, "specific Scan Channel is supported");
+                        scanChannel = getScanChannel(client.settings);
+                    }
+                    Log.i(TAG, "scanChannel is " + scanChannel);
                     mNativeInterface.gattClientScan(false);
                     if (!AppScanStats.recordScanRadioStop()) {
                         Log.w(TAG, "There is no scan radio to stop");
@@ -1117,6 +1128,15 @@ public class ScanManager {
                                     + client);
                     mNativeInterface.gattSetScanParameters(
                             client.scannerId, scanInterval, scanWindow, scanPhyMask);
+
+                    if (QcomScanChannelConfig.TARGET_QCOM_IOT_SCANCHANNEL) {
+                        Log.i(TAG, "specific Scan Channel is supported");
+                        if (scanChannel != 0 && scanChannel != -1) {
+                            mNativeInterface.gattSetScanChannelParameters(client.scannerId, scanChannel);
+                        }
+                    } else {
+                        Log.i(TAG, "specific Scan Channel is not supported");
+                    }
                     mNativeInterface.gattClientScan(true);
                     if (!AppScanStats.recordScanRadioStart(curScanSetting)) {
                         Log.w(TAG, "Scan radio already started");
@@ -1851,6 +1871,16 @@ public class ScanManager {
                 return BluetoothDevice.PHY_LE_1M;
             }
             return settings.getPhy();
+        }
+
+        private int getScanChannel(ScanSettings settings) {
+            if (QcomScanChannelConfig.TARGET_QCOM_IOT_SCANCHANNEL) {
+                if (settings == null) {
+                    return 0;
+                }
+                return settings.getScanChannel();
+            }
+            return 0;
         }
 
         private int getScanPhyMask(ScanSettings settings) {
