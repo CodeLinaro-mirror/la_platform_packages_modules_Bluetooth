@@ -21,6 +21,7 @@
 #include <string>
 
 #include "lpp_offload_interface.h"
+#include "hal/gatt_hal_impl.h"
 #include "module.h"
 
 namespace bluetooth::lpp {
@@ -42,6 +43,16 @@ public:
   bool SocketOpened(const hal::SocketContext& context) override;
 
   void SocketClosed(uint64_t socket_id) override;
+
+  bool InitializeGattHal(hal::GattHalCallback* callbacks) override;
+
+  hal::GattCapabilities GetGattCapabilities() const override;
+
+  bool RegisterGattService(const hal::GattSession& session) override;
+
+  void UnregisterGattService(int session_id) override;
+
+  void ClearGattServices(int acl_connection_handle) override;
 
   static const ModuleFactory Factory;
 

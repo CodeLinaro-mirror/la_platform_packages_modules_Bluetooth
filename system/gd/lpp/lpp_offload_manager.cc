@@ -16,9 +16,11 @@
 #include "lpp_offload_manager.h"
 
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <string>
 
+#include "hal/gatt_hal.h"
 #include "hal/socket_hal.h"
 #include "module.h"
 #include "os/handler.h"
@@ -32,11 +34,13 @@ const ModuleFactory LppOffloadManager::Factory =
 struct LppOffloadManager::impl {
   ~impl() {}
 
-  void start(os::Handler* handler, hal::SocketHal* socket_hal) {
+  void start(os::Handler* handler, hal::SocketHal* socket_hal, hal::GattHalImpl* gatt_hal) {
     log::info("");
     handler_ = handler;
     socket_hal_ = socket_hal;
+    gatt_hal_ = gatt_hal;
     socket_capabilities_ = socket_hal_->GetSocketCapabilities();
+    gatt_capabilities_ = gatt_hal_->GetGattCapabilities();
   }
 
   void stop() {
@@ -64,18 +68,45 @@ struct LppOffloadManager::impl {
     return socket_hal_->Closed(socket_id);
   }
 
+  bool initialize_gatt_hal(hal::GattHalCallback* callbacks) {
+    log::info("");
+    return gatt_hal_->Initialize(callbacks);
+  }
+
+  hal::GattCapabilities get_gatt_capabilities() const {
+    log::info("");
+    return gatt_capabilities_;
+  }
+
+  bool register_gatt_service(const hal::GattSession& session) {
+    log::info("session_id: {}", session.id);
+    return gatt_hal_->RegisterService(session);
+  }
+
+  void unregister_gatt_service(int session_id) {
+    log::info("session_id: {}", session_id);
+    gatt_hal_->UnregisterService(session_id);
+  }
+
+  void clear_gatt_services(int acl_connection_handle) {
+    log::info("acl_connection_handle: 0x{:x}", acl_connection_handle);
+    gatt_hal_->ClearServices(acl_connection_handle);
+  }
+
   os::Handler* handler_;
   hal::SocketHal* socket_hal_;
+  hal::GattHal* gatt_hal_;
   hal::SocketCapabilities socket_capabilities_;
+  hal::GattCapabilities gatt_capabilities_;
 };
 
 LppOffloadManager::LppOffloadManager() { pimpl_ = std::make_unique<impl>(); }
 
 LppOffloadManager::~LppOffloadManager() = default;
 
-void LppOffloadManager::ListDependencies(ModuleList* list) const { list->add<hal::SocketHal>(); }
+void LppOffloadManager::ListDependencies(ModuleList* list) const { list->add<hal::SocketHal>(); list->add<hal::GattHalImpl>(); }
 
-void LppOffloadManager::Start() { pimpl_->start(GetHandler(), GetDependency<hal::SocketHal>()); }
+void LppOffloadManager::Start() { pimpl_->start(GetHandler(), GetDependency<hal::SocketHal>(), GetDependency<hal::GattHalImpl>()); }
 
 void LppOffloadManager::Stop() { pimpl_->stop(); }
 
@@ -95,6 +126,26 @@ bool LppOffloadManager::SocketOpened(const hal::SocketContext& context) {
 
 void LppOffloadManager::SocketClosed(uint64_t socket_id) {
   CallOn(pimpl_.get(), &impl::socket_closed, socket_id);
+}
+
+bool LppOffloadManager::InitializeGattHal(hal::GattHalCallback* callbacks) {
+  return pimpl_->initialize_gatt_hal(callbacks);
+}
+
+hal::GattCapabilities LppOffloadManager::GetGattCapabilities() const {
+  return pimpl_->get_gatt_capabilities();
+}
+
+bool LppOffloadManager::RegisterGattService(const hal::GattSession& session) {
+  return pimpl_->register_gatt_service(session);
+}
+
+void LppOffloadManager::UnregisterGattService(int session_id) {
+  pimpl_->handler_->CallOn(pimpl_.get(), &impl::unregister_gatt_service, session_id);
+}
+
+void LppOffloadManager::ClearGattServices(int acl_connection_handle) {
+  pimpl_->handler_->CallOn(pimpl_.get(), &impl::clear_gatt_services, acl_connection_handle);
 }
 
 }  // namespace bluetooth::lpp
