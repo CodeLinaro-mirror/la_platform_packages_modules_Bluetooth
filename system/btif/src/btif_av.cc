@@ -718,6 +718,7 @@ public:
         log::warn("unable to set active peer to empty in BtaAvCo");
       }
 
+      btif_a2dp_sink_on_idle();
       btif_a2dp_sink_end_session(active_peer_);
       btif_a2dp_sink_shutdown();
       active_peer_ = peer_address;
