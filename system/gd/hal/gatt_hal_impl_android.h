@@ -20,11 +20,11 @@
 
 #include "hal/gatt_hal.h"
 
-namespace aidl::android::hardware::bluetooth::gatt {
+namespace aidl::vendor::qti::hardware::bluetooth::gatt {
 class IBluetoothGatt;
 }
 
-using ::aidl::android::hardware::bluetooth::gatt::IBluetoothGatt;
+using ::aidl::vendor::qti::hardware::bluetooth::gatt::IBluetoothGatt;
 
 namespace bluetooth::hal {
 class GattAidlCallback;
