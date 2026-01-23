@@ -73,6 +73,9 @@ inline std::string avdt_result_text(const tAVDT_RESULT& result) {
   }
 }
 
+/* The index to access the codec length in codec_info[]. */
+#define AVDT_CODEC_LENGTH_INDEX 0
+
 /* The index to access the codec type in codec_info[]. */
 #define AVDT_CODEC_TYPE_INDEX 2
 

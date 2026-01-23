@@ -31,6 +31,7 @@
 
 #include "hardware/bt_gatt_types.h"
 #include "internal_include/bt_target.h"
+#include "internal_include/stack_config.h"
 #include "osi/include/allocator.h"
 #include "stack/arbiter/acl_arbiter.h"
 #include "stack/eatt/eatt.h"
@@ -1274,7 +1275,7 @@ static void gatts_chk_pending_ind(tGATT_TCB& tcb) {
  ******************************************************************************/
 static bool gatts_proc_ind_ack(tGATT_TCB& tcb, uint16_t ack_handle) {
   bool continue_processing = true;
-
+  bool chg_aware = true;
   log::verbose("ack handle={}", ack_handle);
 
   if (ack_handle == gatt_cb.handle_of_h_r) {
@@ -1283,8 +1284,11 @@ static bool gatts_proc_ind_ack(tGATT_TCB& tcb, uint16_t ack_handle) {
      * internally by GATT */
     continue_processing = false;
 
+  if (stack_config_get_interface()->get_pts_DB_out_of_sync()){
+    chg_aware = false;
+  }
     // After receiving ack of svc_chg_ind, reset client status
-    gatt_sr_update_cl_status(tcb, /* chg_aware= */ true);
+    gatt_sr_update_cl_status(tcb, chg_aware);
   }
 
   gatts_chk_pending_ind(tcb);
@@ -1370,6 +1374,7 @@ static bool gatts_process_db_out_of_sync(tGATT_TCB& tcb, uint16_t cid, uint8_t o
     case GATT_REQ_FIND_INFO:        /* discover char descrptor */
     case GATT_REQ_READ_BLOB:        /* read long char */
     case GATT_REQ_READ_MULTI:       /* read multi char*/
+    case GATT_REQ_READ_MULTI_VAR:
     case GATT_REQ_WRITE:            /* write char/char descriptor value */
     case GATT_REQ_PREPARE_WRITE:    /* write long char */
       // Use default value

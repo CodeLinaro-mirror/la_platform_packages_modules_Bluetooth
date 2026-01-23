@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+SPDX-License-Identifier: BSD-3-Clause-Clear
+  -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/text_distance_detail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Target is 0.0 meters away"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:textColor="#222288"
+        android:gravity="center"/>
+</LinearLayout>

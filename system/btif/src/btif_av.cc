@@ -2540,6 +2540,10 @@ void BtifAvStateMachine::StateOpened::OnEnter() {
 
   if (peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
       log::warn("HAL Restart Recovery");
+      sleep(20); /* Wait for Audio HAL Server to restart */
+      btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_CONNECTED,
+                                   bt_status_t::BT_STATUS_SUCCESS, BTA_AV_SUCCESS,
+                                   peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
       do_in_jni_thread(base::BindOnce(
              bt_vendor_av_sink_callbacks->start_ind_cb, &peer_.PeerAddress()));
       peer_.ClearFlags(BtifAvPeer::kFlagHalRestartRecovery);
@@ -2698,8 +2702,10 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
     case BTIF_AV_SINK_OFFLOAD_START_CFM_EVT: {
           // send a message to send VSC command
           if(peer_.IsStreamStoppedInternally()) {
-            log::debug("Resuming internally stopped stream  ");
+            log::debug("Resuming internally stopped stream");
             peer_.StreamStoppedInternally(false);
+            peer_.StartConfPending(true);
+            peer_.SetFlags(BtifAvPeer::kFlagPendingStart);
           }
           peer_.SetVscStatus(BTIF_AVK_VSC_STARTING);
           BTA_AvkOffloadStart(peer_.BtaHandle());
@@ -3183,12 +3189,21 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
       BTA_AvOffloadStart(peer_.BtaHandle());
       break;
 
-    case BTA_AV_OFFLOAD_START_RSP_EVT:
-      btif_a2dp_on_offload_started(peer_.PeerAddress(), p_av->status);
-      if (p_av->status == BTA_AV_SUCCESS) {
+    case BTA_AV_OFFLOAD_START_RSP_EVT: {
+      int status = p_av->status;
+      if (peer_.CheckFlags(BtifAvPeer::kFlagLocalSuspendPending |
+                           BtifAvPeer::kFlagRemoteSuspend |
+                           BtifAvPeer::kFlagPendingStop)) {
+        log::warn("Peer {} : event={} flags={}: stream is Suspending, ignore",
+                  peer_.PeerAddress(), BtifAvEvent::EventName(event),
+                  peer_.FlagsToString());
+        status = BTA_AV_FAIL;
+      }
+      btif_a2dp_on_offload_started(peer_.PeerAddress(), status);
+      if (status == BTA_AV_SUCCESS) {
         btif_av_update_codec_mode();
       }
-      break;
+    } break;
 
     case BTIF_AV_SET_LATENCY_REQ_EVT: {
       const btif_av_set_latency_req_t* p_set_latency_req =
@@ -3324,6 +3339,13 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
         btif_report_audio_state(peer_.PeerAddress(),
                              BTAV_AUDIO_STATE_REMOTE_SUSPEND, A2dpType::kSink);
       }
+
+      if (peer_.IsStreamStoppedInternally()) {
+        log::info("Sending suspend indication for HAL recovery");
+        do_in_jni_thread(base::BindOnce(
+             bt_vendor_av_sink_callbacks->suspend_ind_cb, &peer_.PeerAddress()));
+      }
+
       peer_.StateMachine().TransitionTo(BtifAvStateMachine::kStateOpened);
     } break;
 

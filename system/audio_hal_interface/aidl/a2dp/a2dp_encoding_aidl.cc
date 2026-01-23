@@ -1113,6 +1113,42 @@ provider::get_a2dp_configuration(
           ~((int64_t)QHS_SUPPORT_MASK);
     a2dp_configuration.codec_parameters.codec_specific_3 |=
          (int64_t)QHS_SUPPORT_AVAILABLE;
+    // Check if codec is aptX Adaptive and if remote supports aptX Adaptive 2.2
+    if (result->id.getTag() == CodecId::vendor) {
+      auto vendor_codec = result->id.get<CodecId::vendor>();
+      uint32_t vendor_id = static_cast<uint32_t>(vendor_codec.id);
+      uint16_t codec_id = static_cast<uint16_t>(vendor_codec.codecId);
+      // Check if this is aptX Adaptive
+      if (vendor_id == A2DP_APTX_ADAPTIVE_VENDOR_ID &&
+          codec_id == A2DP_APTX_ADAPTIVE_CODEC_ID_BLUETOOTH) {
+        // Based on logs, codec_config[18] should be 0x01 and codec_config[19] should be 0x97
+        // for R2.2 support
+        // Check if codec_config has enough bytes
+        if (a2dp_configuration.codec_config[AVDT_CODEC_LENGTH_INDEX] ==
+          A2DP_APTX_ADAPTIVE_CODEC_LEN) {
+          uint8_t r2_2_version =
+          a2dp_configuration.codec_config[A2DP_APTX_ADAPTIVE_R2_X_VERSION_INDEX];
+          uint8_t r2_2_feature =
+          a2dp_configuration.codec_config[A2DP_APTX_ADAPTIVE_R2_X_FEATURE_INDEX];
+
+          // Check if codec_config[18] is 0x01
+          // Check if codec_config[19] supports source encoder and sink decoder
+          if (r2_2_version == A2DP_APTX_ADAPTIVE_CAP_EXT_VER_NUM &&
+            (r2_2_feature & A2DP_APTX_ADAPTIVE_SOURCE_ENCODER_R2_2_SUPPORTED) &&
+            (r2_2_feature & A2DP_APTX_ADAPTIVE_SINK_DECODER_R2_2_SUPPORTED)) {
+            a2dp_configuration.codec_parameters.codec_specific_3 &=
+                  ~((int64_t)APTX_ADAPTIVE_R2_2_SUPPORT_MASK);
+            a2dp_configuration.codec_parameters.codec_specific_3 |=
+                (int64_t)APTX_ADAPTIVE_R2_2_SUPPORT_AVAILABLE;
+          } else {
+            a2dp_configuration.codec_parameters.codec_specific_3 &=
+                  ~((int64_t)APTX_ADAPTIVE_R2_2_SUPPORT_MASK);
+            a2dp_configuration.codec_parameters.codec_specific_3 |=
+                (int64_t)APTX_ADAPTIVE_R2_2_SUPPORT_NOT_AVAILABLE;
+          }
+        }
+      }
+    }
   }
   return std::make_optional(a2dp_configuration);
 }
