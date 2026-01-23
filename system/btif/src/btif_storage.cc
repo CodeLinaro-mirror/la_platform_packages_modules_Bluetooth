@@ -944,7 +944,6 @@ void btif_storage_load_le_devices(void) {
   for (uint16_t i = 0; i < bonded_devices.num_devices; i++) {
     bonded_addresses.insert(bonded_devices.devices[i]);
   }
-
   std::vector<std::pair<RawAddress, RawAddress>> consolidated_devices;
   for (uint16_t i = 0; i < bonded_devices.num_devices; i++) {
     // RawAddress* p_remote_addr;
@@ -964,9 +963,16 @@ void btif_storage_load_le_devices(void) {
                                             key.pid_key.identity_addr);
         }
       }
+      else{
+      static thread_local std::unordered_set<RawAddress> s_logged_equal_addrs;
+      if (s_logged_equal_addrs.insert(bonded_devices.devices[i]).second)
+      {
+      log::info("loaded public devices");
+      consolidated_devices.emplace_back(bonded_devices.devices[i], key.pid_key.identity_addr);
+      }
+      }
     }
   }
-
   bt_property_t adapter_prop = {};
   /* Send the adapter_properties_cb with bonded consolidated device */
   {
@@ -986,10 +992,12 @@ void btif_storage_load_le_devices(void) {
   for (const auto& device : consolidated_devices) {
     if (bonded_addresses.find(device.second) != bonded_addresses.end()) {
       // Invokes address consolidation for DuMo devices
+      log::info("loaded le devices dumo mode");
       GetInterfaceToProfiles()->events->invoke_address_consolidate_cb(
           device.first, device.second);
     } else {
       // Associates RPA & identity address for LE-only devices
+      log::info("loaded le devices le device");
       GetInterfaceToProfiles()->events->invoke_le_address_associate_cb(
           device.first, device.second);
     }
