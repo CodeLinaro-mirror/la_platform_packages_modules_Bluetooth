@@ -21,6 +21,7 @@
 package com.android.bluetooth.channelsoundingtestapp;
 
 import android.bluetooth.BluetoothGatt;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
@@ -76,6 +77,7 @@ public class InitiatorFragment extends Fragment {
   private TextView mLogText;
   private BleConnectionViewModel mBleConnectionViewModel;
   private InitiatorViewModel mInitiatorViewModel;
+  private Button mSeeMoreButton;
 
   private ArrayAdapter<String> mFreqArrayAdapter;
   private Spinner mSpinnerFreq;
@@ -109,6 +111,17 @@ public class InitiatorFragment extends Fragment {
     mLogText = (TextView) root.findViewById(R.id.text_log);
     mConnUpSpinner = (Spinner) root.findViewById(R.id.conn_up_spinner);
     mConnUpButton = (Button) root.findViewById(R.id.conn_up_button);
+    mSeeMoreButton = (Button) root.findViewById(R.id.btn_see_more);
+    if (mSeeMoreButton != null) {
+        mSeeMoreButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(getActivity(), SeeMoreActivity.class);
+                intent.putExtra("distance", curr_distance);
+                startActivity(intent);
+            }
+        });
+    }
     return root;
     }
 
@@ -132,6 +145,15 @@ public class InitiatorFragment extends Fragment {
         mDurationArrayAdapter.setDropDownViewResource(
                 android.R.layout.simple_spinner_dropdown_item);
         mSpinnerDuration.setAdapter(mDurationArrayAdapter);
+
+        mSeeMoreButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(getActivity(), SeeMoreActivity.class);
+                intent.putExtra("distance", curr_distance);
+                startActivity(intent);
+            }
+        });
 
         mInitiatorViewModel = new ViewModelProvider(this).get(InitiatorViewModel.class);
         mBleConnectionViewModel = new ViewModelProvider(this).get(BleConnectionViewModel.class);

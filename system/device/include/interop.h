@@ -393,6 +393,11 @@ typedef enum {
   // disables stack's 'wait for LE service discovery' logic if LE advertising cannot be established.
   INTEROP_SKIP_WAIT_FOR_LE_SERVICE_SEARCH,
 
+  INTEROP_SKIP_GATT_DISCOVERY_OVER_LE,
+
+  //To Suppredd A2DP while HFP is connected in particular carkits
+  INTEROP_SUPPRESS_A2DP_AUTO_CONNECT,
+
   END_OF_INTEROP_LIST
 } interop_feature_t;
 

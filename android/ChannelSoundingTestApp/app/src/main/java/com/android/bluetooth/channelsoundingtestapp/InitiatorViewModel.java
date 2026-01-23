@@ -41,6 +41,9 @@ public class InitiatorViewModel extends AndroidViewModel {
     private final MutableLiveData<Boolean> mCsStarted = new MutableLiveData<>(false);
 
     private final MutableLiveData<Double> mDistanceResult = new MutableLiveData<>();
+    // Cross-activity static singleton LiveData for live data sharing
+    private static final MutableLiveData<Double> liveDistanceSingleton = new MutableLiveData<>(-1.0);
+    public static MutableLiveData<Double> getLiveDistanceSingleton() { return liveDistanceSingleton; }
 
     private final DistanceMeasurementInitiator
             mDistanceMeasurementInitiator; // mDistanceMeasurementInitiator;
@@ -146,6 +149,7 @@ public class InitiatorViewModel extends AndroidViewModel {
                 @Override
                 public void onDistanceResult(double distanceMeters) {
                     mDistanceResult.postValue(distanceMeters);
+                    liveDistanceSingleton.postValue(distanceMeters);
                 }
             };
 }

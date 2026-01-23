@@ -47,6 +47,7 @@ typedef struct {
 
 typedef struct {
     uint16_t max_proc_duration;
+    uint16_t min_period_between_proc;
     uint16_t max_period_between_proc;
     uint16_t max_proc_count;
     uint8_t min_subevent_len[3];
@@ -55,8 +56,8 @@ typedef struct {
     uint8_t tx_pwr_delta;
     uint8_t snr_control_initiator;
     uint8_t snr_control_reflector;
-    // Note: enable, config_id, tone_ant_cfg_selection, preferred_peer_antenna, 
-    // min_period_between_proc are EXCLUDED (dynamic)
+    // Note: enable, config_id, tone_ant_cfg_selection, preferred_peer_antenna 
+    // are EXCLUDED (dynamic)
 } tCS_PROCEDURE_STATIC;
 
 /*
@@ -78,17 +79,18 @@ static const tCS_CONFIG_STATIC cs_config_static_data[] = {
 
 /*
  * Static CS Procedure Table
- * Fields: max_proc_duration, max_period_between_proc, max_proc_count,
+ * Fields: max_proc_duration, min_period_between_proc, max_period_between_proc, max_proc_count,
  *         min_subevent_len[3], max_subevent_len[3], phy, tx_pwr_delta,
  *         snr_control_initiator, snr_control_reflector
+ * Note: min_period_between_proc and max_period_between_proc are stored as time in milliseconds
  */
 static const tCS_PROCEDURE_STATIC cs_procedure_static_data[] = {
-    /* Procedure 0 (Frequency 0): MaxDuration=1600 */
-    {1600, 150, 0, {0x00, 0x50, 0x00}, {0x03, 0x50, 0x00}, 1, 128, 255, 255},
-    /* Procedure 1 (Frequency 1): MaxDuration=800 */
-    {800, 150, 0, {0x00, 0x50, 0x00}, {0x03, 0x50, 0x00}, 1, 128, 255, 255},
-    /* Procedure 2 (Frequency 2): MaxDuration=200 */
-    {200, 150, 0, {0x00, 0x50, 0x00}, {0x03, 0x50, 0x00}, 1, 128, 255, 255}
+    /* Procedure 0 (Frequency 0): MaxDuration=0x2710 (10000), min=1000ms, max=5000ms - LOW frequency */
+    {0x2710, 1000, 5000, 0, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255},
+    /* Procedure 1 (Frequency 1): MaxDuration=0x2710 (10000), min=500ms, max=1000ms - MEDIUM frequency */
+    {0x2710, 500, 1000, 0, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255},
+    /* Procedure 2 (Frequency 2): MaxDuration=0x2710 (10000), min=150ms, max=500ms - HIGH frequency */
+    {0x2710, 150, 500, 0, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255}
 };
 
 
@@ -146,7 +148,7 @@ void InitializecsProcedureSettings(void) {
         proc.enable = 0;  // Default, will be computed dynamically
         proc.config_id = 0;  // Default, will be computed dynamically
         proc.max_proc_duration = static_data->max_proc_duration;
-        proc.min_period_between_proc = 0;  // Default, will be computed dynamically
+        proc.min_period_between_proc = static_data->min_period_between_proc;
         proc.max_period_between_proc = static_data->max_period_between_proc;
         proc.max_proc_count = static_data->max_proc_count;
         memcpy(proc.min_subevent_len, static_data->min_subevent_len, 3);
