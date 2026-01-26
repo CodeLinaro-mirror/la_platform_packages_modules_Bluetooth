@@ -2568,8 +2568,11 @@ public class HeadsetClientStateMachine extends StateMachine {
         if (unassigned == null || unassigned.getNumber() == null) return;
 
         debug("Unassigned call exists, number: " + unassigned.getNumber());
-        boolean needAssociate = mCallsUpdate.values().stream()
-                .anyMatch(c -> c != null && unassigned.getNumber().equals(c.getNumber()));
+        // If unassigned number equals "", this means the outgoing is dialed out through
+        // redial, the number would be available after receieving CLCC result
+        boolean needAssociate = (mCallsUpdate.values().stream()
+                .anyMatch(c -> c != null && unassigned.getNumber().equals(c.getNumber())))
+                                 || (unassigned.getNumber().equals(""));
 
         if (!needAssociate) {
             unassigned.setState(HfpClientCall.CALL_STATE_TERMINATED);
