@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth.le;
@@ -25,6 +29,13 @@ import android.os.Parcel;
 import android.os.Parcelable;
 
 import java.util.Objects;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
+import android.annotation.RequiresPermission;
+import android.annotation.RequiresNoPermission;
+import android.annotation.FlaggedApi;
+import android.bluetooth.annotations.RequiresBluetoothScanPermission;
+import static android.Manifest.permission.BLUETOOTH_SCAN;
+import com.android.bluetooth.flags.Flags;
 
 /** ScanResult for Bluetooth LE scan. */
 public final class ScanResult implements Parcelable, Attributable {
@@ -290,6 +301,19 @@ public final class ScanResult implements Parcelable, Attributable {
     public int getDataStatus() {
         // return bit 5 and 6
         return (mEventType >> 5) & 0x03;
+    }
+
+    /**
+     * Returns the event type.
+     */
+    @RequiresNoPermission
+    @FlaggedApi(Flags.FLAG_BLUETOOTH_ADV_EVENT_TYPE)
+    public int getEventType() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return mEventType;
+        } else {
+            return 0;
+        }
     }
 
     /**

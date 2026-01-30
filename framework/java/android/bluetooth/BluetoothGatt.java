@@ -55,6 +55,7 @@ import android.annotation.SystemApi;
 
 import java.util.Objects;
 import com.android.qcomfeatureconfig.QcomBtExtConfig;
+import android.annotation.FlaggedApi;
 
 /**
  * Public API for the Bluetooth GATT Profile.
@@ -1828,12 +1829,12 @@ public final class BluetoothGatt implements BluetoothProfile {
      *
      * @param uuid UUID of characteristic to read from the remote device
      * @return true, if the read operation was initiated successfully
-     * @hide
      */
     @RequiresLegacyBluetoothPermission
     @RequiresBluetoothConnectPermission
     @RequiresPermission(BLUETOOTH_CONNECT)
-    public boolean readUsingCharacteristicUuid(UUID uuid, int startHandle, int endHandle) {
+    @FlaggedApi(Flags.FLAG_BLUETOOTH_GATT_EXECUTE)
+    public boolean readUsingCharacteristicUuid(@NonNull UUID uuid, int startHandle, int endHandle) {
         if (VDBG) Log.d(TAG, "readUsingCharacteristicUuid() - uuid: " + uuid);
         int clientIf = mClientIf;
         if (mService == null || clientIf == 0) return false;

@@ -650,6 +650,7 @@ package android.bluetooth {
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean readDescriptor(android.bluetooth.BluetoothGattDescriptor);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public void readPhy();
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean readRemoteRssi();
+    method @FlaggedApi("com.android.bluetooth.flags.bluetooth_gatt_execute") @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean readUsingCharacteristicUuid(@NonNull java.util.UUID, int, int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean requestConnectionPriority(int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean requestMtu(int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean setCharacteristicNotification(android.bluetooth.BluetoothGattCharacteristic, boolean);
@@ -753,6 +754,7 @@ package android.bluetooth {
     ctor public BluetoothGattDescriptor(java.util.UUID, int);
     method public int describeContents();
     method public android.bluetooth.BluetoothGattCharacteristic getCharacteristic();
+    method @FlaggedApi("com.android.bluetooth.flags.bluetooth_gatt_execute") public int getInstanceId();
     method public int getPermissions();
     method public java.util.UUID getUuid();
     method @Deprecated public byte[] getValue();
@@ -1521,6 +1523,7 @@ package android.bluetooth.le {
     method public int getAdvertisingSid();
     method public int getDataStatus();
     method public android.bluetooth.BluetoothDevice getDevice();
+    method @FlaggedApi("com.android.bluetooth.flags.bluetooth_adv_event_type") public int getEventType();
     method public int getPeriodicAdvertisingInterval();
     method public int getPrimaryPhy();
     method public int getRssi();

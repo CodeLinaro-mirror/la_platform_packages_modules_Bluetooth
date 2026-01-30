@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth;
@@ -23,6 +27,10 @@ import android.os.ParcelUuid;
 import android.os.Parcelable;
 
 import java.util.UUID;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
+import android.annotation.RequiresNoPermission;
+import com.android.bluetooth.flags.Flags;
+import android.annotation.FlaggedApi;
 
 /**
  * Represents a Bluetooth GATT Descriptor
@@ -200,8 +208,9 @@ public class BluetoothGattDescriptor implements Parcelable {
      * to distinguish between descriptors.
      *
      * @return Instance ID of this descriptor
-     * @hide
      */
+    @RequiresNoPermission
+    @FlaggedApi(Flags.FLAG_BLUETOOTH_GATT_EXECUTE)
     public int getInstanceId() {
         return mInstance;
     }
