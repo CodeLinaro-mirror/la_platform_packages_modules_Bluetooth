@@ -3932,6 +3932,7 @@ public class AdapterService extends Service {
         }
 
         @Override
+        @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
         public void bleOnToOn(AttributionSource source) {
             AdapterService service = getService();
             if (service == null
@@ -3940,6 +3941,10 @@ public class AdapterService extends Service {
             }
 
             service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+
+            // In case the LE only mode is enabled default adapter
+            // The initial state is BleOnState when to turn on adapter, instead of OffState
+            service.handleDualAdapterMode(ENABLE);
 
             service.bleOnToOn();
         }
@@ -7038,9 +7043,14 @@ public class AdapterService extends Service {
                 // new adapter concurrently.
                 switch(option) {
                     case ENABLE:
-                        mEnableNewAdapter = AdapterExt.enable();
+                        mDisableNewAdapter = false;
+                        // Avoid enabling the new adapter multiple times.
+                        if (!canEnableNewAdapter()) {
+                            mEnableNewAdapter = AdapterExt.enable();
+                        }
                         break;
                     case DISABLE:
+                        mEnableNewAdapter = false;
                         mDisableNewAdapter = AdapterExt.disable();
                         break;
                     case START_DISCOVERY:
