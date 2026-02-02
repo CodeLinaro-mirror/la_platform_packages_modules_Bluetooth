@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -21,7 +25,9 @@
 #include "base/functional/callback.h"
 #include "stack/include/btm_status.h"
 #include "types/raw_address.h"
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+#include "gd/common/contextual_callback.h"
+#endif
 namespace bluetooth {
 namespace shim {
 
@@ -127,6 +133,57 @@ tBTM_STATUS BTM_SetDefaultEventMaskExcept(uint64_t mask, uint64_t le_mask);
  *
  *******************************************************************************/
 tBTM_STATUS BTM_SetEventFilterInquiryResultAllDevices(void);
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function        BTM_SetHostChannelClassification
+ *
+ * Description    Floss: Set the host channel clssification
+ *
+ * Parameters     channel map
+ *
+ *******************************************************************************/
+
+tBTM_STATUS BTM_SetHostChannelClassification(std::vector<uint8_t> channel_map,
+                                             common::OnceCallback<void(uint8_t)> bta_cb);
+
+/*******************************************************************************
+ *
+ * Function        BTM_WriteSuggestedDefaultDataLength
+ *
+ * Description     Floss: Write the LE Suggested Default Data Length used by
+ *                 the Controller for *new LE connections*. These values are
+ *                 used by the Controller when negotiating Data Length Extension
+ *                 (DLE) parameters before any LL_LENGTH_REQ/RSP procedure.
+ *
+ * Parameters      suggested_max_tx_octets : Suggested maximum number of
+ *                                           payload octets for TX.
+ *                 suggested_max_tx_time   : Suggested maximum TX time in
+ *                                           microseconds.
+ *
+ *******************************************************************************/
+tBTM_STATUS BTM_WriteSuggestedDefaultDataLength(uint16_t suggested_max_tx_octets,
+                                                uint16_t suggested_max_tx_time,
+                                                common::OnceCallback<void(uint8_t)> bta_cb);
+
+/*******************************************************************************
+ *
+ * Function        BTM_SetDefaultPhy
+ *
+ * Description     Floss: Write the LE Default PHYs used by the Controller
+ *                 for new LE connections and PHY update procedures.
+ *
+ * Parameters      all_phys : Bitmask to specify whether to use default PHYs.
+ *                 tx_phys  : Bitmask of preferred TX PHYs.
+ *                 rx_phys  : Bitmask of preferred RX PHYs.
+ *
+ *******************************************************************************/
+tBTM_STATUS BTM_SetDefaultPhy(uint8_t all_phys,
+                              uint8_t tx_phys,
+                              uint8_t rx_phys,
+                              common::OnceCallback<void(uint8_t)> bta_cb);
+#endif
 
 /*******************************************************************************
  *

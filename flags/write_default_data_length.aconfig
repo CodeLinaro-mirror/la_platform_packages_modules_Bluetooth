@@ -1,0 +1,10 @@
+package: "com.android.bluetooth.flags"
+container: "com.android.bt"
+
+flag {
+    name: "write_suggested_default_data_length"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "Write Suggested Default Data Length."
+    bug: "<none>"
+}

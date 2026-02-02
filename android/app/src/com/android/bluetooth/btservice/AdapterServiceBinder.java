@@ -63,6 +63,10 @@ import android.bluetooth.IBluetoothPreferredAudioProfilesCallback;
 import android.bluetooth.IBluetoothQualityReportReadyCallback;
 import android.bluetooth.IBluetoothSocketManager;
 import android.bluetooth.IncomingRfcommSocketInfo;
+import android.bluetooth.IBluetoothHostChannelClassificationCallback;
+import android.bluetooth.IBluetoothLeWriteSuggestedDefaultDataLengthCallback;
+import android.bluetooth.IBluetoothLeSetDefaultPhyCallback;
+
 import android.bluetooth.OobData;
 import android.content.AttributionSource;
 import android.os.Binder;
@@ -2081,11 +2085,69 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             if (service == null) {
                 return -1;
             }
+
             service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
             return service.getLeAcceptlistSize();
         } else {
             Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
             return -1;
+        }
+    }
+
+    @Override
+    public boolean setHostChannelClassification(byte[] channelMap, IBluetoothHostChannelClassificationCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder setHostChannelClassification");
+            if (service == null) {
+                return false;
+            }
+
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.setHostChannelClassification(channelMap, cb);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean writeLeSuggestedDefaultDataLength(int octets, int timeUs,
+            IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder writeLeSuggestedDefaultDataLength: octets=" + octets
+                    + ", timeUs=" + timeUs);
+            if (service == null) {
+                Log.w(TAG, "AdapterService is null");
+                return false;
+            }
+
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.writeLeSuggestedDefaultDataLength(octets, timeUs, cb);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean setLeDefaultPhy(int allPhys, int txPhys, int rxPhys,
+            IBluetoothLeSetDefaultPhyCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder setLeDefaultPhy: allPhys=" + allPhys
+                    + ", txPhys=" + txPhys + ", rxPhys=" + rxPhys);
+
+            if (service == null) {
+                Log.w(TAG, "AdapterService is null");
+                return false;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.setLeDefaultPhy(allPhys, txPhys, rxPhys, cb);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
         }
     }
 

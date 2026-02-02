@@ -70,5 +70,8 @@ filegroup {
         "android/bluetooth/IBluetoothDeviceGroup.aidl",
         "android/bluetooth/IBluetoothGroupCallback.aidl",
         "android/bluetooth/IBluetoothVcp.aidl",
+        "android/bluetooth/IBluetoothHostChannelClassificationCallback.aidl",
+        "android/bluetooth/IBluetoothLeWriteSuggestedDefaultDataLengthCallback.aidl",
+        "android/bluetooth/IBluetoothLeSetDefaultPhyCallback.aidl",
     ],
 }

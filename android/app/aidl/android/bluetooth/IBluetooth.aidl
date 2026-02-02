@@ -65,6 +65,9 @@ import android.bluetooth.IBluetoothConnectionCallback;
 import android.bluetooth.IBluetoothMetadataListener;
 import android.bluetooth.IBluetoothOobDataCallback;
 import android.bluetooth.IBluetoothSocketManager;
+import android.bluetooth.IBluetoothHostChannelClassificationCallback;
+import android.bluetooth.IBluetoothLeWriteSuggestedDefaultDataLengthCallback;
+import android.bluetooth.IBluetoothLeSetDefaultPhyCallback;
 import android.bluetooth.BluetoothActivityEnergyInfo;
 import android.bluetooth.BluetoothSinkAudioPolicy;
 import android.bluetooth.BluetoothClass;
@@ -385,6 +388,15 @@ interface IBluetooth
 
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED)")
     int getLeAcceptlistSize();
+
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED)")
+    boolean setHostChannelClassification(in byte[] channelMap, in IBluetoothHostChannelClassificationCallback cb);
+
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED)")
+    boolean writeLeSuggestedDefaultDataLength(int octets, int timeUs, IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb);
+
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED)")
+    boolean setLeDefaultPhy(int allPhys, int txPhys, int rxPhys, IBluetoothLeSetDefaultPhyCallback cb);
 
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     boolean isMediaProfileConnected(in AttributionSource attributionSource);

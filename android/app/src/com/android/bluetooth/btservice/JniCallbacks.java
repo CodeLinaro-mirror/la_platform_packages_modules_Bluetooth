@@ -12,12 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
 
 import android.bluetooth.OobData;
 import android.bluetooth.UidTraffic;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 class JniCallbacks {
 
@@ -163,5 +169,23 @@ class JniCallbacks {
             UidTraffic[] data) {
         mAdapterService.energyInfoCallback(
                 status, ctrlState, txTime, rxTime, idleTime, energyUsed, data);
+    }
+
+    void onHostChannelClassificationCallback(int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mAdapterService.onHostChannelClassificationCommandComplete(status);
+        }
+    }
+
+    void onLeSuggestedDefaultDataLengthCallback(int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mAdapterService.onLeSuggestedDefaultDataLengthCommandComplete(status);
+        }
+    }
+
+    void onLeSetDefaultPhyCallback(int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mAdapterService.onLeSetDefaultPhyCommandComplete(status);
+        }
     }
 }

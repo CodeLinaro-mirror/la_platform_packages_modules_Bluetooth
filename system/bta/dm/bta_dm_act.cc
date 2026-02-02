@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -1690,6 +1694,117 @@ void bta_dm_set_event_filter_inquiry_result_all_devices() {
   // Autoplumbed
   bluetooth::shim::BTM_SetEventFilterInquiryResultAllDevices();
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function         BTA_dm_host_channel_classification_done
+ *
+ * Description      Callback function called when setting host channel classification
+ *                  is complete. Posts the completion status to the main thread.
+ *
+ * Parameters:      status - Status of the operation
+ *
+ ******************************************************************************/
+void bta_dm_host_channel_classification_done(uint8_t status) {
+  do_in_main_thread(base::BindOnce(&btif_dm_host_channel_classification_complete,
+                     status));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_dm_ble_set_host_channel_classification
+ *
+ * Description      Sets the channel classification for the available 40 BLE
+ *                  data channels. This allows the controller to avoid using
+ *                  channels that are congested or experiencing interference.
+ *
+ * Parameters:      channel_map - Vector containing the channel classification
+ *                                where each bit represents a channel state
+ *                                (0=bad, 1=unknown)
+ *
+ ******************************************************************************/
+void bta_dm_ble_set_host_channel_classification(std::vector<uint8_t> channel_map) {
+  log::verbose("bta_dm_ble_set_host_channel_classification");
+  base::OnceCallback<void(uint8_t)> bta_cb =
+      base::BindOnce(&bta_dm_host_channel_classification_done);
+
+  bluetooth::shim::BTM_SetHostChannelClassification(channel_map, std::move(bta_cb));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_dm_write_suggested_defualt_data_length_done
+ *
+ * Description      Callback function called when setting suggested default data
+ *                  length is complete. Posts the completion status to the main thread.
+ *
+ * Parameters:      status - Status of the operation
+ *
+ ******************************************************************************/
+ void bta_dm_write_suggested_defualt_data_length_done(uint8_t status) {
+  do_in_main_thread(base::BindOnce(&btif_dm_write_suggested_default_data_length_complete,
+                     status));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_dm_write_suggested_defualt_data_length_done
+ *
+ * Description      Callback function called when setting suggested default data
+ *                  length is complete. Posts the completion status to the main thread.
+ *
+ * Parameters:      status - Status of the operation
+ *
+ ******************************************************************************/
+ void bta_dm_ble_write_suggested_defualt_data_length(uint16_t tx_octets, uint16_t tx_time_us) {
+  log::verbose("bta_dm_ble_write_suggested_defualt_data_length");
+  base::OnceCallback<void(uint8_t)> bta_cb =
+      base::BindOnce(&bta_dm_write_suggested_defualt_data_length_done);
+
+  bluetooth::shim::BTM_WriteSuggestedDefaultDataLength(tx_octets, tx_time_us, std::move(bta_cb));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_dm_le_set_default_phy_done
+ *
+ * Description      Callback function called when setting default PHY is complete.
+ *                  Posts the completion status to the main thread.
+ *
+ * Parameters:      status - Status of the operation
+ *
+ ******************************************************************************/
+void bta_dm_le_set_default_phy_done(uint8_t status) {
+  do_in_main_thread(
+      base::BindOnce(&btif_dm_le_set_default_phy_complete, status));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_dm_ble_set_default_phy
+ *
+ * Description      Sets the default PHY preferences for future LE connections.
+ *                  The controller can use these preferences for all subsequent
+ *                  connections unless overridden by specific PHY parameters.
+ *
+ * Parameters:      all_phys - PHY preference flags:
+ *                             - Bit 0: no preference for transmitter PHY
+ *                             - Bit 1: no preference for receiver PHY
+ *                  tx_phys  - Preferred transmitter PHY (1=1M, 2=2M, 3=LE Coded)
+ *                  rx_phys  - Preferred receiver PHY (1=1M, 2=2M, 3=LE Coded)
+ *
+ ******************************************************************************/
+ void bta_dm_ble_set_default_phy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys) {
+  log::verbose("bta_dm_ble_set_default_phy: all=%u tx=%u rx=%u",
+               all_phys, tx_phys, rx_phys);
+
+  base::OnceCallback<void(uint8_t)> bta_cb =
+      base::BindOnce(&bta_dm_le_set_default_phy_done);
+
+  bluetooth::shim::BTM_SetDefaultPhy(all_phys, tx_phys, rx_phys, std::move(bta_cb));
+}
+#endif
 
 /*******************************************************************************
  *

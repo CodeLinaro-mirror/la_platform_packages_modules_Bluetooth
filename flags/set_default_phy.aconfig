@@ -1,0 +1,10 @@
+package: "com.android.bluetooth.flags"
+container: "com.android.bt"
+
+flag {
+    name: "le_set_default_phy"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "set deafult phy."
+    bug: "<none>"
+}

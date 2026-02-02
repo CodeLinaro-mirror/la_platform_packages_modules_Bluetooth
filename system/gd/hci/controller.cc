@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -877,6 +877,119 @@ struct Controller::impl {
                                                     check_complete<LeSetEventMaskCompleteView>));
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void le_set_host_channel_classification_complete_handler(
+    common::OnceCallback<void(uint8_t)> on_complete,
+    bluetooth::hci::CommandCompleteView view) {
+  ASSERT(view.IsValid());
+  auto complete_view =
+      bluetooth::hci::LeSetHostChannelClassificationCompleteView::Create(view);
+  ASSERT(complete_view.IsValid());
+
+  uint8_t status = static_cast<uint8_t>(complete_view.GetStatus());
+  log::info("LeSetHostChannelClassification complete, status={}",
+             static_cast<int>(status));
+
+  std::move(on_complete).Run(status);
+}
+
+void le_set_host_channel_classification(
+    uint8_t channel_map[5],
+    common::OnceCallback<void(uint8_t)> on_complete) {
+  log::info("impl::le_set_host_channel_classification");
+
+  std::array<uint8_t, 5> arr{};
+  std::copy(channel_map, channel_map + 5, arr.begin());
+  auto packet = LeSetHostChannelClassificationBuilder::Create(arr);
+
+  // CommandComplete parse the ErrorCode，then call the  on_complete(status)
+  Handler* handler = module_.GetHandler();
+  auto cb_wrapper = handler->BindOnceOn(
+    this,
+    &Controller::impl::le_set_host_channel_classification_complete_handler,
+    std::move(on_complete));
+
+  hci_->EnqueueCommand(std::move(packet), std::move(cb_wrapper));
+}
+
+void le_write_suggested_default_data_length_complete_handler(
+    common::OnceCallback<void(uint8_t /*status*/)> on_complete,
+    bluetooth::hci::CommandCompleteView view) {
+  ASSERT(view.IsValid());
+  auto complete_view =
+      bluetooth::hci::LeWriteSuggestedDefaultDataLengthCompleteView::Create(view);
+  ASSERT(complete_view.IsValid());
+
+  uint8_t status = static_cast<uint8_t>(complete_view.GetStatus());
+  log::info("LeWriteSuggestedDefaultDataLength complete, status={}",
+            static_cast<int>(status));
+
+  std::move(on_complete).Run(status);
+}
+
+void le_write_suggested_default_data_length(
+    uint16_t suggested_max_tx_octets,
+    uint16_t suggested_max_tx_time,
+    common::OnceCallback<void(uint8_t)> on_complete) {
+  log::info("impl::le_write_suggested_default_data_length "
+            "octets={} time_us={}",
+            static_cast<int>(suggested_max_tx_octets),
+            static_cast<int>(suggested_max_tx_time));
+
+  auto packet = bluetooth::hci::LeWriteSuggestedDefaultDataLengthBuilder::Create(
+      suggested_max_tx_octets, suggested_max_tx_time);
+
+  Handler* handler = module_.GetHandler();
+  auto cb_wrapper = handler->BindOnceOn(
+      this,
+      &Controller::impl::le_write_suggested_default_data_length_complete_handler,
+      std::move(on_complete));
+
+  hci_->EnqueueCommand(std::move(packet), std::move(cb_wrapper));
+}
+
+void le_set_default_phy_complete_handler(
+    common::OnceCallback<void(uint8_t /*status*/)> on_complete,
+    bluetooth::hci::CommandCompleteView view) {
+  ASSERT(view.IsValid());
+
+  auto complete_view =
+      bluetooth::hci::LeSetDefaultPhyCompleteView::Create(view);
+  ASSERT(complete_view.IsValid());
+
+  uint8_t status = static_cast<uint8_t>(complete_view.GetStatus());
+  log::info("LeSetDefaultPhy complete, status={}", static_cast<int>(status));
+
+  std::move(on_complete).Run(status);
+}
+
+void le_set_default_phy(
+    uint8_t all_phys,
+    uint8_t tx_phys,
+    uint8_t rx_phys,
+    common::OnceCallback<void(uint8_t)> on_complete) {
+  log::info("impl::le_set_default_phy all={} tx={} rx={}",
+            static_cast<int>(all_phys),
+            static_cast<int>(tx_phys),
+            static_cast<int>(rx_phys));
+
+
+ uint8_t all_phys_no_tx_pref = (all_phys & 0x01) ? 1 : 0;
+ uint8_t all_phys_no_rx_pref = (all_phys & 0x02) ? 1 : 0;
+
+  auto packet = bluetooth::hci::LeSetDefaultPhyBuilder::Create(
+      all_phys_no_tx_pref, all_phys_no_rx_pref, tx_phys, rx_phys);
+
+  Handler* handler = module_.GetHandler();
+  auto cb_wrapper = handler->BindOnceOn(
+      this,
+      &Controller::impl::le_set_default_phy_complete_handler,
+      std::move(on_complete));
+
+  hci_->EnqueueCommand(std::move(packet), std::move(cb_wrapper));
+}
+#endif
+
 #define OP_CODE_MAPPING(name)                                                     \
   case OpCode::name: {                                                            \
     uint16_t index = (uint16_t)OpCodeIndex::name;                                 \
@@ -1555,6 +1668,25 @@ void Controller::SetDabAudioBufferTime(uint16_t buffer_time_ms) {
 uint8_t Controller::GetLePeriodicAdvertiserListSize() const {
   return impl_->le_periodic_advertiser_list_size_;
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void Controller::LeSetHostChannelClassification(uint8_t channel_map[5], common::OnceCallback<void(uint8_t)> on_complete) {
+  CallOn(impl_.get(), &impl::le_set_host_channel_classification, channel_map, std::move(on_complete));
+}
+
+void Controller::LeWriteSuggestedDefaultDataLength(uint16_t suggested_max_tx_octets,
+                                                   uint16_t suggested_max_tx_time,
+                                                   common::OnceCallback<void(uint8_t)> on_complete) {
+  CallOn(impl_.get(), &impl::le_write_suggested_default_data_length, suggested_max_tx_octets, suggested_max_tx_time, std::move(on_complete));
+}
+
+void Controller::LeSetDefaultPhy(uint8_t all_phys,
+                                 uint8_t tx_phys,
+                                 uint8_t rx_phys,
+                                 common::OnceCallback<void(uint8_t)> on_complete) {
+  CallOn(impl_.get(), &impl::le_set_default_phy, all_phys, tx_phys, rx_phys, std::move(on_complete));
+}
+#endif
 
 bool Controller::IsSupported(bluetooth::hci::OpCode op_code) const {
   return impl_->is_supported(op_code);

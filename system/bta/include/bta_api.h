@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -844,6 +847,74 @@ void BTA_DmBleSubrateRequest(const RawAddress& bd_addr, uint16_t subrate_min, ui
  *
  ******************************************************************************/
 bool BTA_DmCheckLeAudioCapable(const RawAddress& address);
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleSetHostChannelClassification
+ *
+ * Description      This function configures the channel classification for BLE
+ *                  data channels.
+ *
+ * Parameters       channel_map - Vector containing the channel classification
+ *                                where each bit represents a channel state
+ *                                (0=bad, 1=unknown/good)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleSetHostChannelClassification(const std::vector<uint8_t>& channel_map);
+#endif
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleWriteSuggestedDefaultDataLength
+ *
+ * Description      This function suggests the default LE data packet length and
+ *                  transmission time to be used for all subsequent connections.
+ *
+ * Parameters       tx_octets - Suggested value for the transmitter packet size
+ *                              (in octets, range: 0x001B-0x00FB)
+ *                  tx_time_us - Suggested value for the transmitter packet
+ *                               transmission time (in microseconds,
+ *                               range: 0x0148-0x4290)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleWriteSuggestedDefaultDataLength(uint16_t tx_octets, uint16_t tx_time_us);
+#endif
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleSetDefaultPhy
+ *
+ * Description      This function sets the default PHY preferences for future LE
+ *                  connections. PHY selection affects data rate, range, and power
+ *                  consumption of BLE connections.
+ *
+ * Parameters       all_phys - PHY preference flags:
+ *                             - Bit 0: no preference for transmitter PHY
+ *                             - Bit 1: no preference for receiver PHY
+ *                  tx_phys  - Preferred transmitter PHY, a bit field that indicates
+ *                             the PHY(s) on which the advertising packets should be
+ *                             transmitted:
+ *                             - Bit 0: LE 1M PHY
+ *                             - Bit 1: LE 2M PHY
+ *                             - Bit 2: LE Coded PHY
+ *                  rx_phys  - Preferred receiver PHY, a bit field that indicates
+ *                             the PHY(s) on which the scanner should listen:
+ *                             - Bit 0: LE 1M PHY
+ *                             - Bit 1: LE 2M PHY
+ *                             - Bit 2: LE Coded PHY
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleSetDefaultPhy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys);
+#endif
 
 void DumpsysBtaDm(int fd);
 
