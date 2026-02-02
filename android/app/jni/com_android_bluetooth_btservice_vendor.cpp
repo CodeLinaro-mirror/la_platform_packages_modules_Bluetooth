@@ -50,11 +50,8 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Changes from Qualcomm Innovation Center are provided under the following
- * license:
- *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ******************************************************************************/
@@ -253,6 +250,60 @@ static bool setPowerBackoffNative(JNIEnv* env, jobject obj, jboolean status) {
   return JNI_TRUE;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static bool addBleKeyNative(JNIEnv* env, jobject obj, jbyteArray address, jbyteArray keyArray, jint keyType, jboolean add) {
+  log::info("{}", __FUNCTION__);
+
+  jboolean result = JNI_FALSE;
+  if (!sBluetoothVendorInterface) {
+    return result;
+  }
+
+  jbyte* addr = env->GetByteArrayElements(address, NULL);
+  if (addr == NULL) {
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+
+  jbyte* keyPtr = env->GetByteArrayElements(keyArray, NULL);
+  if (keyPtr == NULL) {
+    jniThrowIOException(env, EINVAL);
+    env->ReleaseByteArrayElements(address, addr, 0);
+    return JNI_FALSE;
+  }
+
+  jint key_len = env->GetArrayLength(keyArray);
+
+  int ret = sBluetoothVendorInterface->add_ble_key(reinterpret_cast<RawAddress*>(addr), key_len, reinterpret_cast<uint8_t*>(keyPtr), keyType, add);
+
+  env->ReleaseByteArrayElements(address, addr, 0);
+  env->ReleaseByteArrayElements(keyArray, keyPtr, 0);
+
+  return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
+}
+
+static bool setEncryptionNative(JNIEnv* env, jobject obj, jbyteArray address, jint transport, jint sec_act) {
+  log::info("{}", __FUNCTION__);
+
+  jboolean result = JNI_FALSE;
+  if (!sBluetoothVendorInterface) {
+    return result;
+  }
+
+  jbyte* addr = env->GetByteArrayElements(address, nullptr);
+  if (addr == nullptr) {
+    jniThrowIOException(env, EINVAL);
+    return JNI_FALSE;
+  }
+  RawAddress addr_obj = {};
+  addr_obj.FromOctets(reinterpret_cast<uint8_t*>(addr));
+  env->ReleaseByteArrayElements(address, addr, 0);
+
+  sBluetoothVendorInterface->set_encryption(addr_obj, (tBT_TRANSPORT)transport, sec_act);
+  return JNI_TRUE;
+}
+#endif
+
 static JNINativeMethod sMethods[] = {
         {"classInitNative", "()V", (void*)classInitNative},
         {"initNative", "()V", (void*)initNative},
@@ -260,6 +311,10 @@ static JNINativeMethod sMethods[] = {
         {"setWifiStateNative", "(Z)V", (void*)setWifiStateNative},
         {"setPowerBackoffNative", "(Z)V", (void*)setPowerBackoffNative},
         {"informTimeoutToHidlNative", "()V", (void*)informTimeoutToHidlNative},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        {"addBleKeyNative", "([B[BIZ)Z", (void*)addBleKeyNative},
+        {"setEncryptionNative", "([BII)Z", (void*)setEncryptionNative},
+#endif
 };
 
 int register_com_android_bluetooth_btservice_vendor(JNIEnv* env) {

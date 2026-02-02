@@ -423,4 +423,10 @@ interface IBluetooth
 
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)")
     int getKeyMissingCount(in BluetoothDevice device, in AttributionSource source);
+
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    boolean addBleKey(in BluetoothDevice device, in byte[] key, int keyType, boolean add, in AttributionSource source);
+
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    boolean setEncryption(in BluetoothDevice device, in int transport, in int sec_act, in AttributionSource source);
 }

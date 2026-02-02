@@ -50,9 +50,9 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
@@ -82,6 +82,8 @@ import android.content.IntentFilter;
 import android.content.Context;
 
 import java.util.UUID;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 final class Vendor {
     private static final String TAG = "BluetoothVendorService";
@@ -230,6 +232,26 @@ final class Vendor {
         if (isPowerBackoffEnabled != status) {
             isPowerBackoffEnabled = status;
             setPowerBackoffNative(status);
+        }
+    }
+
+    public boolean addBleKey(BluetoothDevice device, byte[] key, int keyType, boolean add) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG, "addBleKeyNative ");
+            return addBleKeyNative(Utils.getBytesFromAddress(device.getAddress()), key, keyType, add);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    public boolean setEncryption(BluetoothDevice device, int transport, int sec_act) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG, "setEncryption ");
+            return setEncryptionNative(Utils.getBytesFromAddress(device.getAddress()), transport, sec_act);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
         }
     }
 
@@ -697,6 +719,10 @@ final class Vendor {
     private native void setWifiStateNative(boolean status);
 
     private native void setPowerBackoffNative(boolean status);
+
+    private native boolean addBleKeyNative(byte[] address, byte[] key, int keyType, boolean add);
+
+    private native boolean setEncryptionNative(byte[] address, int transport, int sec_act);
 
     private native void informTimeoutToHidlNative();
 }

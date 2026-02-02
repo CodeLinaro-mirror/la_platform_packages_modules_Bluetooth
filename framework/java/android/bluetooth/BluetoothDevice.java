@@ -4416,6 +4416,70 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         return -1;
     }
 
+    /**
+     * Add ble LTK of the device for later link encryption.
+     *
+     * @param key - The key to add. Currently only support LTK.
+     * @param keyType - The type of key to add
+     * @param add - Whether add or remove the key
+     * @return true if the key is successfully added, false if there is a error when adding the
+     *     key.
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_BLE_SECURITY_EXTENSION)
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public boolean addBleKey(@NonNull byte[] key, int keyType, boolean add) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            final IBluetooth service = getService();
+            if (service == null || !isBluetoothEnabled()) {
+                Log.e(TAG, "Bluetooth is not enabled. Cannot addBleKey.");
+                if (DBG) log(Log.getStackTraceString(new Throwable()));
+            } else {
+                try {
+                    return service.addBleKey(this, key, keyType, add, mAttributionSource);
+                } catch (RemoteException e) {
+                    Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                }
+            }
+            return false;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    /**
+     * Encrypt the link using current key.
+     *
+     * @param transport - Transport to use
+     * @param sec_act - Encryption type to use
+     * @return true true on success, false on error.
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_BLE_SECURITY_EXTENSION)
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public boolean setEncryption(int transport, int sec_act) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            final IBluetooth service = getService();
+            if (service == null || !isBluetoothEnabled()) {
+                Log.e(TAG, "Bluetooth is not enabled. Cannot setEncryption.");
+                if (DBG) log(Log.getStackTraceString(new Throwable()));
+            } else {
+                try {
+                    return service.setEncryption(this, transport, sec_act, mAttributionSource);
+                } catch (RemoteException e) {
+                    Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                }
+            }
+            return false;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
     private static void log(String msg) {
         Log.d(TAG, msg);
     }
