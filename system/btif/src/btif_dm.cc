@@ -15,6 +15,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /*******************************************************************************
@@ -4228,6 +4231,12 @@ void btif_dm_set_event_filter_inquiry_result_all_devices() {
   // Autoplumbed
   BTA_DmSetEventFilterInquiryResultAllDevices();
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+uint8_t btif_ble_get_acceptlist_size(){
+  return bluetooth::shim::GetController()->GetLeFilterAcceptListSize();
+}
+#endif
 
 void btif_dm_metadata_changed(const RawAddress& remote_bd_addr, int key,
                               std::vector<uint8_t> value) {

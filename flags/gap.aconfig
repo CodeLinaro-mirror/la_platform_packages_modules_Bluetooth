@@ -288,3 +288,11 @@ flag {
     description: "Support BLE V2 connection"
     bug: "<none>"
 }
+
+flag {
+    name: "get_filter_accept_list_size"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "get the filter accept list size"
+    bug: "None"
+}

@@ -2208,6 +2208,18 @@ static jboolean clearEventFilterNative(JNIEnv* /* env */, jobject /* obj */) {
   return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static jint getLeAcceptListSizeNative(JNIEnv* /*env*/, jobject /*obj*/) {
+  log::verbose("");
+
+  if (!sBluetoothInterface) {
+    return -1;
+  }
+
+  return sBluetoothInterface->get_filter_accept_list_size();
+}
+#endif
+
 static jboolean clearFilterAcceptListNative(JNIEnv* /* env */, jobject /* obj */) {
   log::verbose("");
 
@@ -2338,6 +2350,9 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
           {"setDefaultEventMaskExceptNative", "(JJ)Z",
            reinterpret_cast<void*>(setDefaultEventMaskExceptNative)},
           {"clearEventFilterNative", "()Z", reinterpret_cast<void*>(clearEventFilterNative)},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"getLeAcceptListSizeNative", "()I", reinterpret_cast<void*>(getLeAcceptListSizeNative)},
+#endif
           {"clearFilterAcceptListNative", "()Z",
            reinterpret_cast<void*>(clearFilterAcceptListNative)},
           {"disconnectAllAclsNative", "()Z", reinterpret_cast<void*>(disconnectAllAclsNative)},

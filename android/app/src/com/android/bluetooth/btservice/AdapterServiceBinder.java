@@ -2074,6 +2074,22 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    public int getLeAcceptlistSize() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder getLeAcceptlistSize");
+            if (service == null) {
+                return -1;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.getLeAcceptlistSize();
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return -1;
+        }
+    }
+
+    @Override
     public int getOffloadedTransportDiscoveryDataScanSupported(AttributionSource source) {
         AdapterService service = getService();
         if (service == null

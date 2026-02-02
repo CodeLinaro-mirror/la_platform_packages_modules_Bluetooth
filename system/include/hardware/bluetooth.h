@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BLUETOOTH_H
@@ -1010,6 +1014,13 @@ typedef struct {
 
   /** check if pbap pse dynamic version upgrade is enable */
   bool (*pbap_pse_dynamic_version_upgrade_is_enabled)();
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  /**
+   * Get the filter accept list size
+   */
+  int (*get_filter_accept_list_size)();
+#endif
 } bt_interface_t;
 
 #define BLUETOOTH_INTERFACE_STRING "bluetoothInterface"

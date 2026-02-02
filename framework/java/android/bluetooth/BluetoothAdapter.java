@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth;
@@ -112,6 +116,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /**
  * Represents the local device Bluetooth adapter. The {@link BluetoothAdapter} lets you perform
@@ -6007,6 +6013,33 @@ public final class BluetoothAdapter {
             logRemoteException(TAG, e);
         } finally {
             mServiceLock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Returns the size of the LE Filter Accept List in the controller.
+     * @return size >= 1, or -1 on error.
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_GET_FILTER_ACCEPT_LIST_SIZE)
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public int getLeFilterAcceptListSize() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (mService == null) {
+                return -1;
+            }
+            int size = 0;
+            try {
+                size= mService.getLeAcceptlistSize();
+            } catch (RemoteException e) {
+                Log.e(TAG, "getLeAcceptlistSize failed", e);
+                size = -1;
+            }
+            return size;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return -1;
         }
     }
 

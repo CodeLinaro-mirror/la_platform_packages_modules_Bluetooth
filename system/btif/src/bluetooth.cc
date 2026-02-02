@@ -15,6 +15,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -798,6 +802,16 @@ static int clear_event_mask() {
   return BT_STATUS_SUCCESS;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static int get_filter_accept_list_size() {
+  log::verbose("");
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+  return (int)btif_ble_get_acceptlist_size();
+}
+#endif
+
 static int clear_filter_accept_list() {
   log::verbose("");
   if (!interface_ready()) {
@@ -1318,6 +1332,9 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .interop_database_add_remove_name = interop_database_add_remove_name,
         .get_remote_pbap_pce_version = get_remote_pbap_pce_version,
         .pbap_pse_dynamic_version_upgrade_is_enabled = pbap_pse_dynamic_version_upgrade_is_enabled,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        .get_filter_accept_list_size = get_filter_accept_list_size,
+#endif
 };
 
 // callback reporting helpers
