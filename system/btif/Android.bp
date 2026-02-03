@@ -88,7 +88,10 @@ genrule {
 
 cc_library_static {
     name: "libbtif",
-    defaults: ["fluoride_defaults"],
+    defaults: [
+        "fluoride_defaults",
+        "bt_ext_defaults",
+    ],
     include_dirs: btifCommonIncludes,
     srcs: [
         "avrcp/avrcp_service.cc",

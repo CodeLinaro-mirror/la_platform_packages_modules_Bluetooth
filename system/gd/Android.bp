@@ -41,6 +41,7 @@ cc_defaults {
     name: "libbluetooth_gd_defaults",
     defaults: [
         "gd_defaults",
+        "bt_ext_defaults",
     ],
     host_supported: true,
     target: {
