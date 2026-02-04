@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -207,6 +211,9 @@ public:
   static constexpr uint64_t kDefaultEventMaskPage2 = 0x2000000;
   static constexpr uint64_t kDefaultLeEventMask = 0x000000074d02fe7f;
   static constexpr uint64_t kLeCSEventMask = 0x0007f80000000000;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  static constexpr uint64_t kLePAwREventMask = 0x000001C000000000;
+#endif
 
   static constexpr uint64_t kLeEventMask53 = 0x00000007ffffffff;
   static constexpr uint64_t kLeEventMask52 = 0x00000003ffffffff;
@@ -219,6 +226,9 @@ public:
 
   virtual bool IsRpaGenerationSupported(void) const override;
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  virtual bool SupportsPeriodicAdvertisingwithResponsesAdvertiser() const override;
+#endif
 protected:
   void ListDependencies(ModuleList* list) const override;
 
