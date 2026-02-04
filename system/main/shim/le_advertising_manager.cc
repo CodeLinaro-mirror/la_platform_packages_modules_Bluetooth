@@ -246,7 +246,18 @@ public:
       int advertiser_id, PeriodicAdvertisingParametersV2 periodic_params,
       StatusCallback /* cb */) override {
     log::info("in shim layer");
-    //TBD
+    log::debug("in shim layer");
+    bluetooth::hci::PeriodicAdvertisingParametersV2 parameters;
+    parameters.min_interval = periodic_params.min_interval;
+    parameters.max_interval = periodic_params.max_interval;
+    parameters.properties = periodic_params.periodic_advertising_properties;
+    parameters.num_subevents = periodic_params.num_subevents;
+    parameters.subevent_interval = periodic_params.subevent_interval;
+    parameters.response_slot_delay = periodic_params.response_slot_delay;
+    parameters.response_slot_spacing = periodic_params.response_slot_spacing;
+    parameters.num_response_slots = periodic_params.num_response_slots;
+    bluetooth::shim::GetAdvertising()->SetPeriodicParametersV2(advertiser_id,
+                                                             parameters);
   }
 #endif
 
@@ -273,7 +284,9 @@ public:
   void SetPeriodicAdvertisingSubeventData(int advertiser_id, uint8_t num_subevents,
                                           std::vector<uint8_t> data, StatusCallback /* cb */) override {
     log::info("in shim layer");
-    //TBD
+    bluetooth::shim::GetAdvertising()->SetPeriodicSubeventData(advertiser_id,
+                                                               num_subevents,
+                                                               data);
   }
 
 #endif
@@ -410,7 +423,20 @@ public:
 
 #ifdef TARGET_QCOM_IOT_BT_EXT
   // bluetooth::hci::AdvertisingCallback
-  //TBD: OnPeriodicAdvertisingParametersV2Updated and OnPeriodicAdvertisingSubeventDataSet
+  void OnPeriodicAdvertisingParametersV2Updated(uint8_t advertiser_id,
+                                              AdvertisingStatus status) override {
+    do_in_jni_thread(base::BindOnce(
+        &AdvertisingCallbacks::OnPeriodicAdvertisingParametersV2Updated,
+        base::Unretained(advertising_callbacks_), advertiser_id, status));
+  }
+
+  // bluetooth::hci::AdvertisingCallback
+  void OnPeriodicAdvertisingSubeventDataSet(uint8_t advertiser_id,
+                                              AdvertisingStatus status) override {
+    do_in_jni_thread(base::BindOnce(
+        &AdvertisingCallbacks::OnPeriodicAdvertisingSubeventDataSet,
+        base::Unretained(advertising_callbacks_), advertiser_id, status));
+  }
 #endif
 
   // bluetooth::hci::AdvertisingCallback
@@ -436,7 +462,37 @@ public:
 
 #ifdef TARGET_QCOM_IOT_BT_EXT
   // bluetooth::hci::AdvertisingCallback
-  // TBD: OnPeriodicAdvertisingSubeventRequest and OnPeriodicAdvertisingSubeventResponse
+  void OnPeriodicAdvertisingSubeventRequest(uint8_t advertiser_id, uint8_t subevent_start, uint8_t subevent_count) override {
+    int reg_id = bluetooth::shim::GetAdvertising()->GetAdvertiserRegId(advertiser_id);
+    uint8_t client_id = is_native_advertiser(reg_id);
+    if (client_id != kAdvertiserClientIdJni) {
+      // Invoke callback for native client
+      do_in_main_thread(base::Bind(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventRequest,
+                                   base::Unretained(native_adv_callbacks_map_[client_id]),
+                                   advertiser_id, subevent_start, subevent_count));
+      return;
+    }
+    do_in_jni_thread(base::BindOnce(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventRequest,
+                                    base::Unretained(advertising_callbacks_),
+                                    advertiser_id, subevent_start, subevent_count));
+  }
+
+  // bluetooth::hci::AdvertisingCallback
+  void OnPeriodicAdvertisingSubeventResponse(uint8_t advertiser_id, uint8_t subevent, uint8_t tx_status,
+                                             uint8_t num_responses, std::vector<uint8_t> payload) override {
+    int reg_id = bluetooth::shim::GetAdvertising()->GetAdvertiserRegId(advertiser_id);
+    uint8_t client_id = is_native_advertiser(reg_id);
+    if (client_id != kAdvertiserClientIdJni) {
+      // Invoke callback for native client
+      do_in_main_thread(base::Bind(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventResponse,
+                                   base::Unretained(native_adv_callbacks_map_[client_id]),
+                                   advertiser_id, subevent, tx_status, num_responses, payload));
+      return;
+    }
+    do_in_jni_thread(base::BindOnce(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventResponse,
+                                    base::Unretained(advertising_callbacks_),
+                                    advertiser_id, subevent, tx_status, num_responses, payload));
+  }
 #endif
 
   void CreateBIG(int advertiser_id, CreateBIGParameters create_big_params, CreateBIGCallback cb) {}

@@ -28,6 +28,7 @@ import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.IAdvertisingSetCallback;
 import android.bluetooth.le.PeriodicAdvertisingParameters;
+import android.bluetooth.le.PeriodicAdvertisingParametersV2;
 import android.content.AttributionSource;
 import android.content.pm.PackageManager;
 import android.os.Binder;
@@ -48,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Manages Bluetooth LE advertising operations. */
 public class AdvertiseManager {
@@ -504,6 +506,21 @@ public class AdvertiseManager {
         mAdvertiserMap.setPeriodicAdvertisingParameters(advertiserId, parameters);
     }
 
+    void setPeriodicAdvertisingParametersV2(
+            int advertiserId, PeriodicAdvertisingParametersV2 parameters) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            checkThread();
+            Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
+            if (entry == null) {
+                Log.w(TAG, "setPeriodicAdvertisingParametersV2() - bad advertiserId " + advertiserId);
+                return;
+            }
+            mNativeInterface.setPeriodicAdvertisingParametersV2(advertiserId, parameters);
+
+            mAdvertiserMap.setPeriodicAdvertisingParametersV2(advertiserId, parameters);
+        }
+    }
+
     void setPeriodicAdvertisingData(int advertiserId, AdvertiseData data) {
         checkThread();
         Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
@@ -526,6 +543,20 @@ public class AdvertiseManager {
             } catch (Exception exception) {
                 Log.e(TAG, "Failed to callback:" + Log.getStackTraceString(exception));
             }
+        }
+    }
+
+    void setPeriodicAdvertisingSubeventData(
+            int advertiserId, int num_subevents, byte[] data) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
+            if (entry == null) {
+                Log.w(TAG, "setPeriodicAdvertisingSubeventData() - bad advertiserId " + advertiserId);
+                return;
+            }
+            mNativeInterface.setPeriodicAdvertisingSubeventData(advertiserId, num_subevents, data);
+
+            mAdvertiserMap.setPeriodicAdvertisingSubeventData(advertiserId, num_subevents, data);
         }
     }
 
@@ -613,6 +644,31 @@ public class AdvertiseManager {
                 () -> callback.onPeriodicAdvertisingParametersUpdated(advertiserId, status));
     }
 
+    void onPeriodicAdvertisingParametersV2Updated(int advertiserId, int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(
+                    TAG,
+                    "onPeriodicAdvertisingParametersV2Updated() advertiserId="
+                            + advertiserId
+                            + ", status="
+                            + status);
+            checkThread();
+
+            Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
+            if (entry == null) {
+                Log.i(
+                        TAG,
+                        "onPeriodicAdvertisingParametersV2Updated() - bad advertiserId " + advertiserId);
+                return;
+            }
+
+            IAdvertisingSetCallback callback = entry.getValue().callback;
+            sendToCallback(
+                    advertiserId,
+                    () -> callback.onPeriodicAdvertisingParametersV2Updated(advertiserId, status));
+        }
+    }
+
     void onPeriodicAdvertisingDataSet(int advertiserId, int status) {
         Log.d(
                 TAG,
@@ -631,6 +687,30 @@ public class AdvertiseManager {
         IAdvertisingSetCallback callback = entry.getValue().callback;
         sendToCallback(
                 advertiserId, () -> callback.onPeriodicAdvertisingDataSet(advertiserId, status));
+    }
+
+    void onPeriodicAdvertisingSubeventDataSet(int advertiserId, int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(
+                    TAG,
+                    "onPeriodicAdvertisingSubeventDataSet() advertiserId="
+                            + advertiserId
+                            + ", status="
+                            + status);
+            checkThread();
+            Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
+            if (entry == null) {
+                Log.i(
+                        TAG,
+                        "onPeriodicAdvertisingSubeventDataSet() - bad advertiserId " + advertiserId);
+                return;
+            }
+
+            IAdvertisingSetCallback callback = entry.getValue().callback;
+            sendToCallback(
+                    advertiserId,
+                    () -> callback.onPeriodicAdvertisingSubeventDataSet(advertiserId, status));
+        }
     }
 
     void onPeriodicAdvertisingEnabled(int advertiserId, boolean enable, int status) {
@@ -656,6 +736,42 @@ public class AdvertiseManager {
         AppAdvertiseStats stats = mAdvertiserMap.getAppAdvertiseStatsById(advertiserId);
         if (stats != null) {
             stats.onPeriodicAdvertiseEnabled(enable);
+        }
+    }
+
+    void onPeriodicAdvertisingSubeventRequest(int advertiserId, int SubeventStart, int SubeventCount) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG,
+                    "OnPeriodicAdvertisingSubeventRequest() advertiserId = " + advertiserId);
+            checkThread();
+            Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
+            if (entry == null) {
+                Log.i(TAG, "OnPeriodicAdvertisingSubeventRequest() - bad advertiserId " + advertiserId);
+                return;
+            }
+
+            IAdvertisingSetCallback callback = entry.getValue().callback;
+            sendToCallback(
+                    advertiserId,
+                    () -> callback.onPeriodicAdvertisingSubeventRequest(advertiserId, SubeventStart, SubeventCount));
+        }
+    }
+
+    void onPeriodicAdvertisingSubeventResponse(int advertiserId, int Subevent, int txStatus, int numResponses, byte[] payload) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG,
+                    "onPeriodicAdvertisingSubeventResponse() advertiserId = " + advertiserId);
+            checkThread();
+            Map.Entry<IBinder, AdvertiserInfo> entry = findAdvertiser(advertiserId);
+            if (entry == null) {
+                Log.i(TAG, "onPeriodicAdvertisingSubeventResponse() - bad advertiserId " + advertiserId);
+                return;
+            }
+
+            IAdvertisingSetCallback callback = entry.getValue().callback;
+            sendToCallback(
+                    advertiserId,
+                    () -> callback.onPeriodicAdvertisingSubeventResponse(advertiserId, Subevent, txStatus, numResponses, payload));
         }
     }
 

@@ -174,12 +174,11 @@ class AdvertiseBinder(
         source: AttributionSource,
     ) {
         if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
-            /*TBD
             getManager(source)?.let { manager ->
                 manager.doOnAdvertiseThread {
                     manager.setPeriodicAdvertisingParametersV2(advertiserId, parameters)
                 }
-            }*/
+            }
         }
     }
 
@@ -200,10 +199,9 @@ class AdvertiseBinder(
         source: AttributionSource,
     ) {
         if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
-            /*TBD
             getManager(source)?.let { manager ->
                 manager.doOnAdvertiseThread { manager.setPeriodicAdvertisingSubeventData(advertiserId, numSubevents, data) }
-            }*/
+            }
         }
     }
 

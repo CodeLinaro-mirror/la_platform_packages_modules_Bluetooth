@@ -431,7 +431,9 @@ enum OpCode : 16 {
   LE_SET_DATA_RELATED_ADDRESS_CHANGES = 0x207C,
   LE_SET_DEFAULT_SUBRATE = 0x207D,
   LE_SUBRATE_REQUEST = 0x207E,
+  LE_SET_PERIODIC_ADVERTISING_SUBEVENT_DATA = 0x2082,
   LE_EXTENDED_CREATE_CONNECTION_V2 = 0x2085,
+  LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2 = 0x2086,
   LE_CS_READ_LOCAL_SUPPORTED_CAPABILITIES = 0x2089,
   LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES = 0x208A,
   LE_CS_WRITE_CACHED_REMOTE_SUPPORTED_CAPABILITIES = 0x208B,
@@ -789,6 +791,8 @@ enum OpCodeIndex : 16 {
   SET_MIN_ENCRYPTION_KEY_SIZE = 457,
   LE_SET_DEFAULT_SUBRATE = 460,
   LE_SUBRATE_REQUEST = 461,
+  LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2 = 462,
+  LE_SET_PERIODIC_ADVERTISING_SUBEVENT_DATA = 463,
   LE_SET_RESOLVABLE_PRIVATE_ADDRESS_TIMEOUT_V2 = 482,
 }
 
@@ -917,6 +921,8 @@ enum SubeventCode : 8 {
   TRANSMIT_POWER_REPORTING = 0x21,
   BIG_INFO_ADVERTISING_REPORT = 0x22,
   LE_SUBRATE_CHANGE = 0x23,
+  BLE_META_SUBEVENT_PAWR_SUBEVENT_REQUEST = 0x27,
+  BLE_META_SUBEVENT_PAWR_SUBEVENT_RESPONSE = 0x28,
   ENHANCED_CONNECTION_COMPLETE_V2 = 0x29,
   LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES_COMPLETE = 0x2C,
   LE_CS_READ_REMOTE_FAE_TABLE_COMPLETE = 0x2D,
@@ -4190,6 +4196,34 @@ packet LeSetPeriodicAdvertisingParametersComplete : CommandComplete (command_op_
   status : ErrorCode,
 }
 
+packet LeSetPeriodicAdvertisingParametersV2 : LeAdvertisingCommand (op_code = LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2) {
+  advertising_handle : 8,
+  periodic_advertising_interval_min : 16, // 0x006 to 0xFFFF (7.5 ms to 82s)
+  periodic_advertising_interval_max : 16, // 0x006 to 0xFFFF (7.5 ms to 82s)
+  _reserved_ : 6,
+  include_tx_power : 1,
+  _reserved_ : 9,
+  num_subevents : 8,
+  subevent_interval : 8,
+  response_slot_delay : 8,
+  response_slot_spacing : 8,
+  num_response_slots : 8,
+}
+
+packet LeSetPeriodicAdvertisingParametersV2Complete : CommandComplete (command_op_code = LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2) {
+  status : ErrorCode,
+}
+
+packet LeSetPeriodicAdvertisingSubeventData : LeAdvertisingCommand (op_code = LE_SET_PERIODIC_ADVERTISING_SUBEVENT_DATA) {
+  advertising_handle : 8,
+  num_subevents : 8,
+  subevents_data : 8[],
+}
+
+packet LeSetPeriodicAdvertisingSubeventDataComplete : CommandComplete (command_op_code = LE_SET_PERIODIC_ADVERTISING_SUBEVENT_DATA) {
+  status : ErrorCode,
+}
+
 packet LeSetPeriodicAdvertisingData : LeAdvertisingCommand (op_code = LE_SET_PERIODIC_ADVERTISING_DATA) {
   advertising_handle : 8,
   operation : Operation,
@@ -6505,6 +6539,20 @@ packet LeEnhancedConnectionCompleteV2 : LeMetaEvent (subevent_code = ENHANCED_CO
   central_clock_accuracy : ClockAccuracy,
   advertising_handle : 8,
   sync_handle : 16,
+}
+
+packet LePawrNewPKTReq : LeMetaEvent (subevent_code = BLE_META_SUBEVENT_PAWR_SUBEVENT_REQUEST) {
+  advertiser_id : 8,
+  subevent_start : 8,
+  subevent_count : 8,
+}
+
+packet LePawrAccessRespone : LeMetaEvent (subevent_code = BLE_META_SUBEVENT_PAWR_SUBEVENT_RESPONSE) {
+  advertiser_id : 8,
+  subevent : 8,
+  tx_status : 8,
+  num_responses : 8,
+  payload : 8[],
 }
 
 enum DirectAdvertisingAddressType : 8 {
