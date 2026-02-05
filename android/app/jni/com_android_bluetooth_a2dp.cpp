@@ -517,8 +517,7 @@ static jint getStreamIndexNative(JNIEnv* env, jobject /* object */, jbyteArray a
     return JNI_FALSE;
   }
 
-  RawAddress bd_addr;
-  bd_addr.FromOctets(reinterpret_cast<const uint8_t*>(addr));
+  RawAddress bd_addr = RawAddress::FromOctets(reinterpret_cast<const uint8_t*>(addr));
 
   log::info("{}", bd_addr);
   uint8_t index = btif_av_source_stream_index(bd_addr);
