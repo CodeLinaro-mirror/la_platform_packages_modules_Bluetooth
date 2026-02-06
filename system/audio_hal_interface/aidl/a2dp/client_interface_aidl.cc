@@ -386,6 +386,7 @@ int BluetoothAudioClientInterface::StartSession() {
   if (data_mq && data_mq->isValid()) {
     data_mq_ = std::move(data_mq);
   } else if (transport_->GetSessionType() == SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH ||
+             transport_->GetSessionType() == SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH ||
              transport_->GetSessionType() ==
                      SessionType::LE_AUDIO_HARDWARE_OFFLOAD_DECODING_DATAPATH ||
              transport_->GetSessionType() ==

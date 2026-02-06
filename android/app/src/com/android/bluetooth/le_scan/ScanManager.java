@@ -28,6 +28,7 @@ import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.ScanCallback;
@@ -408,6 +409,15 @@ public class ScanManager {
 
         private void handleStartScan(ScanClient client) {
             Log.d(TAG, "handling starting scan");
+
+            // Check if adapter state is OFF or BLE_TURNING_OFF
+            int adapterState = mAdapterService.getState();
+            if (adapterState == BluetoothAdapter.STATE_OFF
+                    || adapterState == BluetoothAdapter.STATE_BLE_TURNING_OFF) {
+                Log.w(TAG, "Cannot start scan, adapter state is " + adapterState);
+                return;
+            }
+
             fetchAppForegroundState(client);
 
             if (!isScanSupported(client)) {

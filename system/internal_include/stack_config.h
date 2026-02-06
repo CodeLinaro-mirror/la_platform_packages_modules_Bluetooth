@@ -54,6 +54,7 @@ typedef struct {
   bool (*get_pts_le_audio_disable_ases_before_stopping)(void);
   bool(*get_pts_gatt_skip_service_discovery)(void);
   bool (*get_pts_configure_svc_chg_indication)(void);
+  bool (*get_pts_DB_out_of_sync)(void);
   config_t* (*get_all)(void);
 } stack_config_t;
 

@@ -3553,7 +3553,7 @@ static void btif_dm_ble_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
   /* Save link key, if not temporary */
   bt_status_t status = BT_STATUS_FAIL;
   bt_bond_state_t state = BT_BOND_STATE_NONE;
-
+  bool skip_GATT_discovery = false;
   RawAddress bd_addr = p_auth_cmpl->bd_addr;
 
   /* Clear OOB data */
@@ -3588,7 +3588,13 @@ static void btif_dm_ble_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
         }
       }
 
-      if (pairing_cb.gatt_over_le == btif_dm_pairing_cb_t::ServiceDiscoveryState::NOT_STARTED) {
+      if(interop_match_addr(INTEROP_SKIP_GATT_DISCOVERY_OVER_LE, &bd_addr) &&
+                                                 p_auth_cmpl->smp_over_br) {
+        log::info(" skip_GATT_discovery ");
+        skip_GATT_discovery = true;
+      }
+      if (!skip_GATT_discovery && pairing_cb.gatt_over_le == 
+          btif_dm_pairing_cb_t::ServiceDiscoveryState::NOT_STARTED) {
         log::info("scheduling GATT discovery over LE for {}", bd_addr);
         pairing_cb.gatt_over_le = btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED;
         btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_LE);
