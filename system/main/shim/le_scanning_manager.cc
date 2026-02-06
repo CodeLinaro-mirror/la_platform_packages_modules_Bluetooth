@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -78,6 +78,10 @@ class DefaultScanningCallback : public ::ScanningCallbacks {
     LogUnused();
   }
   void OnSetScannerParameterComplete(uint8_t /* scanner_id */,
+                                     uint8_t /* status */) override {
+    LogUnused();
+  }
+  void OnSetScannerChannelParameterComplete(uint8_t /* scanner_id */,
                                      uint8_t /* status */) override {
     LogUnused();
   }
@@ -355,6 +359,15 @@ void BleScannerInterfaceImpl::OnMsftAdvMonitorEnable(
 }
 #endif
 
+/** Sets the LE scan Channel */
+void BleScannerInterfaceImpl::SetScanChannelParameters(int scanner_id,
+                                                int scan_channel,
+                                                Callback /* cb */) {
+  log::info("in shim layer, scannerId={}", scanner_id);
+  bluetooth::shim::GetScanning()->SetScanChannelParameters(
+      scanner_id, scan_channel);
+}
+
 /** Sets the LE scan interval and window in units of N*0.625 msec */
 void BleScannerInterfaceImpl::SetScanParameters(int scanner_id,
                                                 uint8_t scan_type,
@@ -548,6 +561,13 @@ void BleScannerInterfaceImpl::OnSetScannerParameterComplete(
     bluetooth::hci::ScannerId scanner_id, ScanningStatus status) {
   do_in_jni_thread(base::BindOnce(
       &ScanningCallbacks::OnSetScannerParameterComplete,
+      base::Unretained(scanning_callbacks_), scanner_id, status));
+}
+
+void BleScannerInterfaceImpl::OnSetScannerChannelParameterComplete(
+    bluetooth::hci::ScannerId scanner_id, ScanningStatus status) {
+  do_in_jni_thread(base::BindOnce(
+      &ScanningCallbacks::OnSetScannerChannelParameterComplete,
       base::Unretained(scanning_callbacks_), scanner_id, status));
 }
 

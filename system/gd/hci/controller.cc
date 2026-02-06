@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "hci/controller.h"
@@ -1178,6 +1182,8 @@ struct Controller::impl {
       case OpCode::MSFT_OPCODE_QUALCOMM:
         return false;
       case OpCode::HCI_VS_QBCE_OCF:
+        return true;
+      case OpCode::HCI_VS_LE_SET_CHANNEL_MASK:
         return true;
       // undefined in local_supported_commands_
       case OpCode::READ_LOCAL_SUPPORTED_COMMANDS:

@@ -12,18 +12,26 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth.le;
 
 import android.annotation.SuppressLint;
 import android.annotation.SystemApi;
+import android.annotation.FlaggedApi;
 import android.bluetooth.BluetoothDevice;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.bluetooth.annotations.RequiresBluetoothLocationPermission;
 import android.bluetooth.annotations.RequiresBluetoothScanPermission;
 import android.annotation.RequiresPermission;
+
+import com.android.bluetooth.flags.Flags;
+import com.android.qcomfeatureconfig.QcomScanChannelConfig;
 
 /**
  * Bluetooth LE scan settings are passed to {@link BluetoothLeScanner#startScan} to define the
@@ -196,6 +204,8 @@ public final class ScanSettings implements Parcelable {
     private int mRssiHighThreshold = Byte.MIN_VALUE;
     private int mRssiLowThreshold = Byte.MIN_VALUE;
 
+    private int mScanChannel = 0;
+
     public int getScanMode() {
         return mScanMode;
     }
@@ -251,6 +261,14 @@ public final class ScanSettings implements Parcelable {
     }
 
     /**
+     * Returns the specific scan Channel.
+     */
+    @FlaggedApi(Flags.FLAG_SPECIFIC_SCAN_CHANNEL)
+    public int getScanChannel() {
+        return mScanChannel;
+    }
+
+    /**
      * @hide
      * Returns low rssi threshold for the scan results.
      */
@@ -274,8 +292,8 @@ public final class ScanSettings implements Parcelable {
             boolean legacy,
             int phy,
             int rssiLowThreshold,
-            int rssiHighThreshold) {
-
+            int rssiHighThreshold,
+            int ScanChannel) {
         mScanMode = scanMode;
         mCallbackType = callbackType;
         mScanResultType = scanResultType;
@@ -286,6 +304,7 @@ public final class ScanSettings implements Parcelable {
         mPhy = phy;
         mRssiLowThreshold = rssiLowThreshold;
         mRssiHighThreshold = rssiHighThreshold;
+        mScanChannel = ScanChannel;
     }
 
     private ScanSettings(Parcel in) {
@@ -299,6 +318,9 @@ public final class ScanSettings implements Parcelable {
         mPhy = in.readInt();
         mRssiLowThreshold = in.readInt();
         mRssiHighThreshold = in.readInt();
+        if (QcomScanChannelConfig.TARGET_QCOM_IOT_SCANCHANNEL) {
+            mScanChannel = in.readInt();
+        }
     }
 
     @Override
@@ -313,6 +335,9 @@ public final class ScanSettings implements Parcelable {
         dest.writeInt(mPhy);
         dest.writeInt(mRssiLowThreshold);
         dest.writeInt(mRssiHighThreshold);
+        if (QcomScanChannelConfig.TARGET_QCOM_IOT_SCANCHANNEL) {
+            dest.writeInt(mScanChannel);
+        }
     }
 
     @Override
@@ -345,6 +370,7 @@ public final class ScanSettings implements Parcelable {
         private int mPhy = PHY_LE_ALL_SUPPORTED;
         private int mRssiHighThreshold = Byte.MIN_VALUE;
         private int mRssiLowThreshold = Byte.MIN_VALUE;
+        private int mScanChannel = 0;
 
         /**
          * Set scan mode for Bluetooth LE scan.
@@ -511,6 +537,19 @@ public final class ScanSettings implements Parcelable {
         }
 
         /**
+         * Set the specific scan channel to use during the scan.
+         * Scan Results will be displayed only from the specified Channel
+         *
+         * @param ScanChannel Only Primary Channels can be used
+         */
+        @SuppressLint("MissingNullability")
+        @FlaggedApi(Flags.FLAG_SPECIFIC_SCAN_CHANNEL)
+        public Builder setScanChannel(int ScanChannel) {
+            mScanChannel = ScanChannel;
+            return this;
+        }
+
+        /**
          * @hide
          */
         @RequiresBluetoothScanPermission
@@ -547,7 +586,8 @@ public final class ScanSettings implements Parcelable {
                     mLegacy,
                     mPhy,
                     mRssiLowThreshold,
-                    mRssiHighThreshold);
+                    mRssiHighThreshold,
+                    mScanChannel);
         }
     }
 }
