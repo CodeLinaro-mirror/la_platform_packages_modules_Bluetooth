@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.gatt
@@ -24,9 +28,12 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.IAdvertisingSetCallback
 import android.bluetooth.le.PeriodicAdvertisingParameters
+import android.bluetooth.le.PeriodicAdvertisingParametersV2
 import android.content.AttributionSource
 import android.content.Context
 import com.android.bluetooth.Utils
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig
 
 class AdvertiseBinder(
     private val mContext: Context,
@@ -161,6 +168,21 @@ class AdvertiseBinder(
         }
     }
 
+    override fun setPeriodicAdvertisingParametersV2(
+        advertiserId: Int,
+        parameters: PeriodicAdvertisingParametersV2?,
+        source: AttributionSource,
+    ) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            /*TBD
+            getManager(source)?.let { manager ->
+                manager.doOnAdvertiseThread {
+                    manager.setPeriodicAdvertisingParametersV2(advertiserId, parameters)
+                }
+            }*/
+        }
+    }
+
     override fun setPeriodicAdvertisingData(
         advertiserId: Int,
         data: AdvertiseData?,
@@ -168,6 +190,20 @@ class AdvertiseBinder(
     ) {
         getManager(source)?.let { manager ->
             manager.doOnAdvertiseThread { manager.setPeriodicAdvertisingData(advertiserId, data) }
+        }
+    }
+
+    override fun setPeriodicAdvertisingSubeventData(
+        advertiserId: Int,
+        numSubevents: Int,
+        data: ByteArray,
+        source: AttributionSource,
+    ) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            /*TBD
+            getManager(source)?.let { manager ->
+                manager.doOnAdvertiseThread { manager.setPeriodicAdvertisingSubeventData(advertiserId, numSubevents, data) }
+            }*/
         }
     }
 

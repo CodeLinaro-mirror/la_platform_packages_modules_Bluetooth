@@ -12,9 +12,19 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth.le;
+
+import android.annotation.FlaggedApi;
+import android.annotation.NonNull;
+import com.android.bluetooth.flags.Flags;
+import android.bluetooth.BluetoothDevice;
+import android.annotation.SystemApi;
 
 /** Bluetooth LE advertising set callbacks, used to deliver advertising operation status. */
 public abstract class AdvertisingSetCallback {
@@ -106,6 +116,16 @@ public abstract class AdvertisingSetCallback {
     public void onPeriodicAdvertisingParametersUpdated(AdvertisingSet advertisingSet, int status) {}
 
     /**
+     * Callback triggered in response to {@link AdvertisingSet#setPeriodicAdvertisingParametersV2}
+     * indicating result of the operation.
+     *
+     * @param advertisingSet The advertising set.
+     * @param status Status of the operation.
+     */
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void onPeriodicAdvertisingParametersV2Updated(@NonNull AdvertisingSet advertisingSet, int status) {}
+
+    /**
      * Callback triggered in response to {@link AdvertisingSet#setPeriodicAdvertisingData}
      * indicating result of the operation.
      *
@@ -113,6 +133,16 @@ public abstract class AdvertisingSetCallback {
      * @param status Status of the operation.
      */
     public void onPeriodicAdvertisingDataSet(AdvertisingSet advertisingSet, int status) {}
+
+    /**
+     * Callback triggered in response to {@link AdvertisingSet#setPeriodicAdvertisingSubeventData}
+     * indicating result of the operation.
+     *
+     * @param advertisingSet The advertising set.
+     * @param status Status of the operation.
+     */
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void onPeriodicAdvertisingSubeventDataSet(@NonNull AdvertisingSet advertisingSet, int status) {}
 
     /**
      * Callback triggered in response to {@link AdvertisingSet#setPeriodicAdvertisingEnabled}
@@ -134,4 +164,54 @@ public abstract class AdvertisingSetCallback {
      * @hide
      */
     public void onOwnAddressRead(AdvertisingSet advertisingSet, int addressType, String address) {}
+
+    /**
+     * Callback triggered when Periodic Advertising Subevent Request event is
+     * reported
+     *
+     * @param advertisingSet The advertising set.
+     * @param subeventStart  The subevent start number.
+     * @param subeventStart  The subevent count number.
+     */
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void onPeriodicAdvertisingSubeventRequest(
+                    @NonNull AdvertisingSet advertisingSet, int subeventStart, int subeventCount) {
+    }
+
+    /**
+     * Callback triggered when Periodic Advertising Subevent Response is reported.
+     *
+     * @param advertisingSet The advertising set.
+     * @param subevent       The subevent number.
+     * @param txStatus       TX status of the command in controller.
+     * @param numResponses   The number of the responses.
+     * @param payload        The payload data.
+     */
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void onPeriodicAdvertisingSubeventResponse(@NonNull AdvertisingSet advertisingSet, int subevent,
+                    int txStatus, int numResponses, @NonNull byte[] payload) {
+    }
+
+    /**
+     * Called when {@link AdvertisingSet#transferSetInfo(BluetoothDevice, int)}
+     * finishes.
+     *
+     * This is a system-only API callback to deliver the controller command status
+     * of the PAST Set Info Transfer initiated on this {@link AdvertisingSet}.
+     *
+     * @param advertisingSet The advertising set.
+     * @param device The peer device that received the periodic advertising set
+     *               info.
+     * @param status The controller command status. A value of {@code 0} indicates
+     *               success;
+     *               non-zero indicates a controller-reported failure.
+     *
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void onTransferSetInfo(@NonNull AdvertisingSet advertisingSet, @NonNull BluetoothDevice device,
+                        int status) {
+    }
+
 }

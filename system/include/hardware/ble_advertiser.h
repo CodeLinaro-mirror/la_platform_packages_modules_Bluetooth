@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -70,6 +70,21 @@ struct PeriodicAdvertisingParameters {
   uint16_t periodic_advertising_properties;
 };
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+struct PeriodicAdvertisingParametersV2 {
+  bool enable;
+  bool include_adi;
+  uint16_t min_interval;
+  uint16_t max_interval;
+  uint16_t periodic_advertising_properties;
+  uint8_t num_subevents;
+  uint8_t subevent_interval;
+  uint8_t response_slot_delay;
+  uint8_t response_slot_spacing;
+  uint8_t num_response_slots;
+};
+#endif
+
 /**
  * LE Advertising related callbacks invoked from from the Bluetooth native stack
  * All callbacks are invoked on the JNI thread
@@ -89,6 +104,13 @@ public:
   virtual void OnPeriodicAdvertisingEnabled(uint8_t advertiser_id, bool enable, uint8_t status) = 0;
   virtual void OnOwnAddressRead(uint8_t advertiser_id, uint8_t address_type,
                                 RawAddress address) = 0;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  virtual void OnPeriodicAdvertisingParametersV2Updated(uint8_t advertiser_id, uint8_t status) = 0;
+  virtual void OnPeriodicAdvertisingSubeventDataSet(uint8_t advertiser_id, uint8_t status) = 0;
+  virtual void OnPeriodicAdvertisingSubeventRequest(uint8_t advertiser_id, uint8_t subevent_start, uint8_t subevent_count) = 0;
+  virtual void OnPeriodicAdvertisingSubeventResponse(uint8_t advertiser_id, uint8_t subevent, uint8_t tx_status,
+                                                     uint8_t num_responses, std::vector<uint8_t> payload) = 0;
+#endif
 };
 
 class BleAdvertiserInterface {
@@ -168,6 +190,15 @@ public:
                                             StatusCallback cb) = 0;
   virtual void RegisterCallbacks(AdvertisingCallbacks* callbacks) = 0;
   virtual void RegisterCallbacksNative(AdvertisingCallbacks* callbacks, uint8_t client_id) = 0;
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  virtual void SetPeriodicAdvertisingParametersV2(int advertiser_id,
+                                                  PeriodicAdvertisingParametersV2 parameters,
+                                                  StatusCallback cb) = 0;
+  virtual void SetPeriodicAdvertisingSubeventData(int advertiser_id,
+                                                  uint8_t num_subevents, std::vector<uint8_t> data,
+                                                  StatusCallback cb) = 0;
+#endif
 };
 
 #endif /* ANDROID_INCLUDE_BLE_ADVERTISER_H */
