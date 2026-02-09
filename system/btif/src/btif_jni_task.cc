@@ -54,9 +54,16 @@ void jni_thread_shutdown() { jni_thread.ShutDown(); }
  ******************************************************************************/
 static void bt_jni_msg_ready(void* context) {
   tBTIF_CONTEXT_SWITCH_CBACK* p = (tBTIF_CONTEXT_SWITCH_CBACK*)context;
-  if (p->p_cb) {
-    p->p_cb(p->event, p->p_param);
+  if (!p) {
+    log::error("Callback context is nullptr! Abort dispatch.");
+    return;
   }
+  if (!p->p_cb) {
+    log::warn("Callback pointer is NULL (possible shutdown race); skipping safe.");
+    osi_free(p);
+    return;
+  }
+  p->p_cb(p->event, p->p_param);
   osi_free(p);
 }
 

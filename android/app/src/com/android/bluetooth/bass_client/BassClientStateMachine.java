@@ -2283,6 +2283,7 @@ class BassClientStateMachine extends StateMachine {
                 case START_SCAN_OFFLOAD:
                 case STOP_SCAN_OFFLOAD:
                 case ADD_BCAST_SOURCE:
+                case UPDATE_BCAST_SOURCE:
                 case SET_BCAST_CODE:
                 case REMOVE_BCAST_SOURCE:
                 case SWITCH_BCAST_SOURCE:

@@ -25,11 +25,33 @@ namespace avrcp {
 
 std::unique_ptr<SetBrowsedPlayerResponseBuilder> SetBrowsedPlayerResponseBuilder::MakeBuilder(
         Status status, uint16_t uid_counter, uint32_t num_items_in_folder, uint8_t folder_depth,
-        std::string folder_name) {
+        std::stack<std::string> &folder_name_list, uint16_t browse_mtu) {
   std::unique_ptr<SetBrowsedPlayerResponseBuilder> builder(new SetBrowsedPlayerResponseBuilder(
-          status, uid_counter, num_items_in_folder, folder_depth, folder_name));
+          status, uid_counter, num_items_in_folder, folder_depth, folder_name_list, browse_mtu));
 
   return builder;
+}
+
+size_t SetBrowsedPlayerResponseBuilder::GetFolderItemsSize(
+                                        std::stack<std::string> &folder_name_list) {
+  size_t len = size();
+  if (status_ != Status::NO_ERROR) return len;
+  // This is only included if the folder returned isn't the root folder
+
+  int i = 0;
+  if (folder_depth_ != 0) {
+    // copy ordered_folder_list to temp stack
+    std::stack<std::string> temp_folder_list(folder_name_list);
+    // pushing folders if len + size <= browse_mtu
+    while ((!temp_folder_list.empty()) && (len <= browse_mtu_)) {
+      len += 2;                                    // Folder Name Size
+      len += temp_folder_list.top().size();        // Folder Name
+      temp_folder_list.pop();
+      i++;
+    }
+    folder_depth_ = i;
+  }
+  return len;
 }
 
 size_t SetBrowsedPlayerResponseBuilder::size() const {
@@ -46,19 +68,21 @@ size_t SetBrowsedPlayerResponseBuilder::size() const {
   len += 2;  // UTF-8 Character Set
   len += 1;  // Folder Depth
 
-  // This is only included if the folder returned isn't the root folder
-  if (folder_depth_ != 0) {
-    len += 2;                    // Folder Name Size;
-    len += folder_name_.size();  // Folder Name
-  }
-
   return len;
 }
 
 bool SetBrowsedPlayerResponseBuilder::Serialize(const std::shared_ptr<::bluetooth::Packet>& pkt) {
-  ReserveSpace(pkt, size());
+  std::stack<std::string> ordered_folder_list;
+  while(!folder_name_list_.empty()) {
+    ordered_folder_list.push(folder_name_list_.top());
+    folder_name_list_.pop();
+  }
 
-  BrowsePacketBuilder::PushHeader(pkt, size() - BrowsePacket::kMinSize());
+  size_t folders_size = GetFolderItemsSize(ordered_folder_list);
+
+  ReserveSpace(pkt, folders_size);
+
+  BrowsePacketBuilder::PushHeader(pkt, folders_size - BrowsePacket::kMinSize());
 
   AddPayloadOctets1(pkt, (uint8_t)status_);
 
@@ -74,10 +98,16 @@ bool SetBrowsedPlayerResponseBuilder::Serialize(const std::shared_ptr<::bluetoot
   if (folder_depth_ == 0) {
     return true;
   }
-  uint16_t folder_name_len = folder_name_.size();
-  AddPayloadOctets2(pkt, base::ByteSwap(folder_name_len));
-  for (auto it = folder_name_.begin(); it != folder_name_.end(); it++) {
-    AddPayloadOctets1(pkt, *it);
+
+  while(folder_depth_ > 0) {
+    std::string folder_name = ordered_folder_list.top();
+    uint16_t folder_name_len = folder_name.size();
+    AddPayloadOctets2(pkt, base::ByteSwap(folder_name_len));
+    for (auto it = folder_name.begin(); it != folder_name.end(); it++) {
+      AddPayloadOctets1(pkt, *it);
+    }
+    ordered_folder_list.pop();
+    folder_depth_--;
   }
 
   return true;

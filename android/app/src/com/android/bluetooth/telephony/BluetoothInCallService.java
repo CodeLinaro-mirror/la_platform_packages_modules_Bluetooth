@@ -1044,8 +1044,10 @@ public class BluetoothInCallService extends InCallService {
             address = PhoneNumberUtils.stripSeparators(address);
         }
         String subsNum = getSubscriberNumber();
-        if(subsNum.equals(address)){
-            return true;
+        if (subsNum != null && address != null) {
+            if(subsNum.equals(address)){
+                return true;
+            }
         }
         return false;
     }
