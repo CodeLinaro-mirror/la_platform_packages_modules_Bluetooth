@@ -661,6 +661,11 @@ public class A2dpService extends ConnectableProfile {
     }
 
     public void setAvrcpAbsoluteVolume(int volume) {
+        // Dual A2dp source volume should be changed by CarAudioManager APIs
+        if (isDualA2dp()) {
+            Log.d(TAG, "Bypass setAvrcpAbsoluteVolume for dual a2dp");
+            return;
+        }
         mAdapterService
                 .getAvrcpTargetService()
                 .ifPresent(avrcpTarget -> avrcpTarget.sendVolumeChanged(volume));

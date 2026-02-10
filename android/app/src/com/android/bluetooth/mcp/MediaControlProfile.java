@@ -149,7 +149,7 @@ public class MediaControlProfile implements MediaControlServiceCallbacks {
         }
 
         @Override
-        public void sendVolumeChanged(BluetoothDevice device, int volume, int maxVolume) {
+        public void sendVolumeChanged(BluetoothDevice device, int volume) {
             Log.w(TAG, "ListCallback sendVolumeChanged: device= " + device);
         }
     }
