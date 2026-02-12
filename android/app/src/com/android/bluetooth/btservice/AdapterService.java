@@ -1051,7 +1051,8 @@ public class AdapterService extends Service {
          * Android Automotive OS builds, in favor of a policy currently located in
          * CarBluetoothService.
          */
-        if (!isAutomotiveDevice && getResources().getBoolean(R.bool.enable_phone_policy)) {
+        if ((!isAutomotiveDevice || AdapterUtil.isDualBluetoothEnabled())
+            && getResources().getBoolean(R.bool.enable_phone_policy)) {
             Log.i(TAG, "Phone policy enabled");
             mPhonePolicy = Optional.of(new PhonePolicy(this, mLooper));
         } else {

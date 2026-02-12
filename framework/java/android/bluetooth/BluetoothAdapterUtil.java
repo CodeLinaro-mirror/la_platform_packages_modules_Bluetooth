@@ -72,7 +72,16 @@ public final class BluetoothAdapterUtil {
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
-                BluetoothProfile.HID_HOST)));
+                BluetoothProfile.HID_HOST,
+                BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
+                BluetoothProfile.CSIP_SET_COORDINATOR,
+                BluetoothProfile.HAP_CLIENT,
+                BluetoothProfile.HEARING_AID,
+                BluetoothProfile.LE_CALL_CONTROL,
+                BluetoothProfile.MCP_SERVER,
+                BluetoothProfile.VOLUME_CONTROL,
+                BluetoothProfile.LE_AUDIO,
+                BluetoothProfile.LE_AUDIO_BROADCAST)));
     }
 
     // Fully-static utility classes must not have constructor

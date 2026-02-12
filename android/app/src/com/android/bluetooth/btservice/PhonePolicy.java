@@ -32,6 +32,7 @@ import static com.android.bluetooth.btservice.BondStateMachine.bondStateToString
 import static java.util.Objects.requireNonNull;
 
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothAdapterUtil;
 import android.bluetooth.BluetoothCsipSetCoordinator;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -283,8 +284,12 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
         final var pan = mAdapterService.getPanService();
         final var volumeControl = mAdapterService.getVolumeControlService();
 
-        final boolean isBypassLeAudioAllowlist =
+        boolean isBypassLeAudioAllowlist =
                 SystemProperties.getBoolean(BYPASS_LE_AUDIO_ALLOWLIST_PROPERTY, false);
+
+        if (BluetoothAdapterUtil.isDualBluetoothSupported()) {
+            isBypassLeAudioAllowlist = true;
+        }
 
         boolean isLeAudioOnly = isLeAudioOnlyDevice(device, uuids);
         boolean shouldEnableHapByDefault = shouldEnableHapByDefault(device, uuids);
