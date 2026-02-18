@@ -54,3 +54,4 @@ typedef struct {
 
 bool get_cs_procedure_settings(int, tCS_PROCEDURE_PARAM *);
 bool get_cs_config_settings(int, tCS_CONFIG *);
+extern bool config_used;

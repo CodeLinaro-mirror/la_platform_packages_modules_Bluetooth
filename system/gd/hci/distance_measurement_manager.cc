@@ -893,10 +893,22 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      uint16_t min_period_time_ms = procedure_setting.min_period_between_proc;
      uint16_t max_period_time_ms = procedure_setting.max_period_between_proc;
 
-     uint16_t min_period_between_proc = static_cast<uint16_t>(std::round(
-         (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
-     uint16_t max_period_between_proc = static_cast<uint16_t>(std::round(
-         (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+     uint16_t min_period_between_proc;
+     uint16_t max_period_between_proc;
+
+     if (config_used) {
+       min_period_between_proc = procedure_setting.min_period_between_proc;
+       max_period_between_proc = procedure_setting.max_period_between_proc;
+       log::info("Using local config: min_period_between_proc={}, max_period_between_proc={}",
+                 min_period_between_proc, max_period_between_proc);
+     } else {
+       min_period_between_proc = static_cast<uint16_t>(std::round(
+           (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+       max_period_between_proc = static_cast<uint16_t>(std::round(
+           (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+       log::info("Using static config: min_period_between_proc={}, max_period_between_proc={}",
+                 min_period_between_proc, max_period_between_proc);
+     }
 
      log::info("config_avb: conn_interval={}, min_period_time={}ms, max_period_time={}ms, "
                "min_period_between_proc={}, max_period_between_proc={}",
