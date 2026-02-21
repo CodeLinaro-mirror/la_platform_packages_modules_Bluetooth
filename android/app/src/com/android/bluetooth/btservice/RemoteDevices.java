@@ -61,6 +61,7 @@ import com.android.bluetooth.Util;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hfp.HeadsetHalConstants;
+import com.android.bluetooth.metrics.MetricsLogger;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.PrintWriter;
@@ -99,6 +100,10 @@ public class RemoteDevices {
     private final HashMap<String, String> mAddressMap =
             new HashMap<>(); // Identity address to pseudo address map
     private final WatchConnectionStateListener mWatchConnectionStateListener;
+
+    record AclLinkSpec(BluetoothDevice device, int transport) {}
+
+    private final Set<AclLinkSpec> mConnectedDevices = new HashSet<AclLinkSpec>();
 
     /**
      * Bluetooth HFP v1.8 specifies the Battery Charge indicator of AG can take values from {@code
@@ -228,6 +233,7 @@ public class RemoteDevices {
         }
 
         mAddressMap.clear();
+        mConnectedDevices.clear();
     }
 
     @Override
@@ -250,6 +256,10 @@ public class RemoteDevices {
         }
     }
 
+    Set<AclLinkSpec> getConnectedDevices() {
+        return Collections.unmodifiableSet(mConnectedDevices);
+    }
+
     int getBondState(BluetoothDevice device) {
         DeviceProperties deviceProp = getDeviceProperties(device);
         if (deviceProp == null) {
@@ -258,7 +268,7 @@ public class RemoteDevices {
         return deviceProp.getBondState();
     }
 
-    String getName(BluetoothDevice device) {
+    public String getName(BluetoothDevice device) {
         DeviceProperties deviceProp = getDeviceProperties(device);
         if (deviceProp == null) {
             return null;
@@ -1366,6 +1376,10 @@ public class RemoteDevices {
                             break;
                         }
                         deviceProperties.setBluetoothClass(newBluetoothClass);
+                        if (Flags.sendClassChangeIntentForBondedDevicesOnly()
+                                && deviceProperties.getBondState() != BluetoothDevice.BOND_BONDED) {
+                            break;
+                        }
                         intent = new Intent(BluetoothDevice.ACTION_CLASS_CHANGED);
                         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, bdDevice);
                         intent.putExtra(
@@ -1499,8 +1513,10 @@ public class RemoteDevices {
 
     private static void updateBondStatus(
             DeviceProperties deviceProperties, int transport, byte[] pairingType) {
-        final int pairingAlgorithm = pairingType[0];
+        final int nativePairingAlgorithm = pairingType[0];
         final int nativePairingVariant = pairingType[1];
+        final int pairingAlgorithm =
+                BondStateMachine.getPairingAlgorithm(transport, nativePairingAlgorithm);
         final int pairingVariant =
                 BondStateMachine.getPairingVariant(
                         transport, pairingAlgorithm, nativePairingVariant);
@@ -1707,6 +1723,10 @@ public class RemoteDevices {
         Intent intent = null;
         if (newState == AbstractionLayer.BT_ACL_STATE_CONNECTED) {
             deviceProperties.setConnected(transport, handle);
+            if (Flags.leHidConnectionPolicySuspend()) {
+                mConnectedDevices.add(new AclLinkSpec(device, transport));
+            }
+
             if (Flags.fixIntentSelectionForAcl()
                     || state == State.ON
                     || state == State.TURNING_ON) {
@@ -1729,6 +1749,9 @@ public class RemoteDevices {
                     "");
         } else {
             deviceProperties.setDisconnected(transport);
+            if (Flags.leHidConnectionPolicySuspend()) {
+                mConnectedDevices.remove(new AclLinkSpec(device, transport));
+            }
             if (getBondState(device) == BluetoothDevice.BOND_BONDING) {
                 // Send PAIRING_CANCEL intent to dismiss any dialog requesting bonding.
                 sendPairingCancelIntent(device);
@@ -1846,8 +1869,8 @@ public class RemoteDevices {
 
             if (Flags.addNewLocalDisconnectReason()
                     && hciReason == 0x16 /* HCI_ERR_CONN_CAUSE_LOCAL_HOST */) {
-                // When disconnectAllEnabledProfiles() is user-triggered, the disconnect reason
-                // changes from HCI_ERR_CONN_CAUSE_LOCAL_HOST to
+                // When disconnectAllEnabledProfiles() or disconnectAllAcl() is user-triggered,
+                // the disconnect reason changes from HCI_ERR_CONN_CAUSE_LOCAL_HOST to
                 // ERROR_DISCONNECT_REASON_USER_REQUEST or ERROR_DISCONNECT_REASON_ADAPTER_SUSPEND.
                 final int disconnectReason = mAdapterService.popDeviceDisconnectReason(device);
                 Log.d(TAG, "ACTION_ACL_DISCONNECTED: reason=" + disconnectReason);
@@ -1980,7 +2003,11 @@ public class RemoteDevices {
         // Bond loss detected, add to the count.
         mAdapterService.updateKeyMissingCount(device, true);
 
-        MetricsLogger.getInstance().count(BluetoothProtoEnums.BOND_LOSS_DETECTED, 1);
+        if (Utils.isAutonomousRepairingSupported()) {
+            MetricsLogger.getInstance().count(BluetoothProtoEnums.BOND_LOSS_DETECTED_REPAIRING, 1);
+        } else {
+            MetricsLogger.getInstance().count(BluetoothProtoEnums.BOND_LOSS_DETECTED, 1);
+        }
 
         // Some apps are not able to handle the key missing broadcast, so we need to remove
         // the bond to prevent them from misbehaving.
@@ -2614,6 +2641,8 @@ public class RemoteDevices {
                                         | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
 
         keyMissingIntent.putExtra(BluetoothDevice.EXTRA_BOND_LOSS_REASON, reason);
+
+        Log.d(TAG, "sendKeyMissingIntent: device=" + device + " reason=" + reason);
 
         mAdapterService.sendOrderedBroadcast(
                 keyMissingIntent,

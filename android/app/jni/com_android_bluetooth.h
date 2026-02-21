@@ -176,13 +176,15 @@ int register_com_android_bluetooth_le_audio(JNIEnv* env);
 
 int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env);
 
+int register_com_android_bluetooth_le_audio_peripheral(JNIEnv* env);
+
 int register_com_android_bluetooth_mcp_client(JNIEnv* env);
 
 int register_com_android_bluetooth_vc(JNIEnv* env);
 
 int register_com_android_bluetooth_csip_set_coordinator(JNIEnv* env);
 
-int register_com_android_bluetooth_vaps_server(JNIEnv* env);
+int register_com_android_bluetooth_vap_server(JNIEnv* env);
 
 int register_com_android_bluetooth_btservice_BluetoothQualityReport(JNIEnv* env);
 

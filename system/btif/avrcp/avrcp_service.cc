@@ -55,7 +55,6 @@
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/main_thread.h"
 #include "stack/include/sdp_api.h"
-#include "stack/include/sdp_callback.h"
 #include "stack/include/sdp_discovery_db.h"
 #include "stack/include/sdpdefs.h"
 
@@ -144,24 +143,24 @@ static class SdpInterfaceImpl : public SdpInterface {
 public:
   bool InitDiscoveryDb(tSDP_DISCOVERY_DB* a, uint32_t b, uint16_t c, const bluetooth::Uuid* d,
                        uint16_t e, uint16_t* f) override {
-    return get_legacy_stack_sdp_api()->service.SDP_InitDiscoveryDb(a, b, c, d, e, f);
+    return get_legacy_stack_sdp_api()->SDP_InitDiscoveryDb(a, b, c, d, e, f);
   }
 
   bool ServiceSearchAttributeRequest(const RawAddress& a, tSDP_DISCOVERY_DB* b,
                                      tSDP_DISC_CMPL_CB* c) override {
-    return get_legacy_stack_sdp_api()->service.SDP_ServiceSearchAttributeRequest(a, b, c);
+    return get_legacy_stack_sdp_api()->SDP_ServiceSearchAttributeRequest(a, b, c);
   }
 
   tSDP_DISC_REC* FindServiceInDb(tSDP_DISCOVERY_DB* a, uint16_t b, t_sdp_disc_rec* c) override {
-    return get_legacy_stack_sdp_api()->db.SDP_FindServiceInDb(a, b, c);
+    return get_legacy_stack_sdp_api()->SDP_FindServiceInDb(a, b, c);
   }
 
   tSDP_DISC_ATTR* FindAttributeInRec(t_sdp_disc_rec* a, uint16_t b) override {
-    return get_legacy_stack_sdp_api()->record.SDP_FindAttributeInRec(a, b);
+    return get_legacy_stack_sdp_api()->SDP_FindAttributeInRec(a, b);
   }
 
   bool FindProfileVersionInRec(t_sdp_disc_rec* a, uint16_t b, uint16_t* c) override {
-    return get_legacy_stack_sdp_api()->record.SDP_FindProfileVersionInRec(a, b, c);
+    return get_legacy_stack_sdp_api()->SDP_FindProfileVersionInRec(a, b, c);
   }
 } sdp_interface_;
 

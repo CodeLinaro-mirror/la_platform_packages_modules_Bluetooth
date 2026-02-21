@@ -30,10 +30,10 @@
 #include "bta/ag/bta_ag_int.h"
 #include "btif/include/btif_hf.h"
 #include "btif_status.h"
-#include "btm_api_types.h"
 #include "hardware/bluetooth.h"
 #include "hardware/bluetooth_headset_interface.h"
 #include "provider_info.h"
+#include "stack/include/btm_api_types.h"
 
 namespace bluetooth {
 namespace audio {
@@ -77,7 +77,7 @@ static std::string command_to_text(tHFP_CTRL_CMD cmd) {
 }
 
 static tBTA_AG_SCB* get_hfp_active_device_control_block() {
-  const RawAddress& addr = bta_ag_get_active_device();
+  const RawAddress addr = bta_ag_get_active_device();
   if (addr.IsEmpty()) {
     log::error("No active device found");
     return nullptr;

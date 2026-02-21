@@ -116,6 +116,15 @@ typedef enum {
 /* Report types */
 typedef enum { BTHH_INPUT_REPORT = 1, BTHH_OUTPUT_REPORT, BTHH_FEATURE_REPORT } bthh_report_type_t;
 
+/* Reconnect policies */
+// LINT.IfChange
+typedef enum {
+  RECONNECT_ALLOWED = 0,            // Reconnection allowed
+  RECONNECT_NOT_ALLOWED_TEMPORARY,  // Reconnection is not allowed till next BT restart
+  RECONNECT_NOT_ALLOWED,            // Reconnection is not allowed
+} bthh_reconnect_policy_t;
+// LINT.ThenChange(/android/app/src/com/android/bluetooth/hid/HidHostService.java)
+
 /* Info for which profiles to enable */
 typedef struct {
   bool hidp_enabled;
@@ -205,11 +214,12 @@ typedef struct {
   BtStatus (*init)(bthh_callbacks_t* callbacks);
 
   /** connect to hid device */
-  BtStatus (*connect)(RawAddress bd_addr, tBLE_ADDR_TYPE addr_type, tBT_TRANSPORT transport);
+  BtStatus (*connect)(RawAddress bd_addr, tBLE_ADDR_TYPE addr_type, tBT_TRANSPORT transport,
+                      bool direct);
 
   /** dis-connect from hid device */
   BtStatus (*disconnect)(RawAddress bd_addr, tBLE_ADDR_TYPE addr_type, tBT_TRANSPORT transport,
-                         bool reconnect_allowed);
+                         bthh_reconnect_policy_t reconnect_policy);
 
   /** Virtual UnPlug (VUP) the specified HID device */
   BtStatus (*virtual_unplug)(RawAddress bd_addr, tBLE_ADDR_TYPE addr_type, tBT_TRANSPORT transport);

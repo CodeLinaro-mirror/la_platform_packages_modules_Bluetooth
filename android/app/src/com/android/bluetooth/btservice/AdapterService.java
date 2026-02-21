@@ -27,6 +27,7 @@ import static android.bluetooth.BluetoothAdapter.nameForState;
 import static android.bluetooth.BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
 import static android.bluetooth.BluetoothDevice.BOND_BONDED;
 import static android.bluetooth.BluetoothDevice.BOND_NONE;
+import static android.bluetooth.BluetoothDevice.TRANSPORT_AUTO;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_LE;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
@@ -116,6 +117,7 @@ import android.os.PowerManager;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.DeviceConfig;
@@ -164,6 +166,7 @@ import com.android.bluetooth.le_scan.ScanUtil;
 import com.android.bluetooth.map.BluetoothMapService;
 import com.android.bluetooth.mapclient.MapClientService;
 import com.android.bluetooth.mcp.McpService;
+import com.android.bluetooth.metrics.MetricsLogger;
 import com.android.bluetooth.notification.NotificationHelperService;
 import com.android.bluetooth.opp.BluetoothOppService;
 import com.android.bluetooth.pan.PanService;
@@ -237,6 +240,8 @@ public class AdapterService extends Service {
     static final String PHONEBOOK_ACCESS_PERMISSION_PREFERENCE_FILE = "phonebook_access_permission";
     static final String MESSAGE_ACCESS_PERMISSION_PREFERENCE_FILE = "message_access_permission";
     static final String SIM_ACCESS_PERMISSION_PREFERENCE_FILE = "sim_access_permission";
+
+    static final String LE_AUDIO_ALLOW_LIST_EXTEND = "persist.bluetooth.leaudio.allow_list_extend";
 
     // The Bluetooth Device Name can be up to 248 bytes (see [Vol 2] Part C, Section 4.3.5).
     static final int BLUETOOTH_NAME_MAX_LENGTH_BYTES = 248;
@@ -338,7 +343,7 @@ public class AdapterService extends Service {
     @GuardedBy("mEnergyInfoLock")
     private long mEnergyUsedTotalVoltAmpSecMicro;
 
-    private final HashSet<String> mLeAudioAllowDevices = new HashSet<>();
+    private final Set<String> mLeAudioAllowDevices = ConcurrentHashMap.newKeySet();
 
     /* List of pairs of gatt clients which controls AutoActiveMode on the device.*/
     @VisibleForTesting
@@ -1122,6 +1127,9 @@ public class AdapterService extends Service {
         }
 
         invalidateBluetoothCaches();
+        if (Flags.leaudioAllowlistRefactor()) {
+            cacheLeAudioAllowlistDevicesFromProp();
+        }
 
         // First call to getSharedPreferences will result in a file read into
         // memory cache. Call it here asynchronously to avoid potential ANR
@@ -1207,6 +1215,25 @@ public class AdapterService extends Service {
         BluetoothAdapter.invalidateGetAdapterConnectionStateCache();
         BluetoothMap.invalidateBluetoothGetConnectionStateCache();
         BluetoothSap.invalidateBluetoothGetConnectionStateCache();
+    }
+
+    void cacheLeAudioAllowlistDevicesFromProp() {
+        Set<String> newDevices = ConcurrentHashMap.newKeySet();
+
+        List<String> leAudioAllowlistProp = BluetoothProperties.le_audio_allow_list();
+        if (leAudioAllowlistProp != null && !leAudioAllowlistProp.isEmpty()) {
+            newDevices.addAll(leAudioAllowlistProp);
+        }
+
+        String allowlistExtend = SystemProperties.get(LE_AUDIO_ALLOW_LIST_EXTEND, "");
+        if (!allowlistExtend.isEmpty()) {
+            newDevices.addAll(Arrays.asList(allowlistExtend.split(",")));
+        }
+
+        Log.d(TAG, "Le Audio allowlist from sysprop: " + newDevices);
+
+        mLeAudioAllowDevices.clear();
+        mLeAudioAllowDevices.addAll(newDevices);
     }
 
     void bringUpBle() {
@@ -2402,6 +2429,9 @@ public class AdapterService extends Service {
                 () ->
                         mAdapterProperties.updateOnProfileConnectionChanged(
                                 device, profile, state, prevState));
+        if (Flags.adapterSuspendMgmt() && Flags.leHidConnectionPolicySuspend()) {
+            mAdapterSuspend.profileConnectionStateChanged(profile, device, prevState, state);
+        }
     }
 
     /**
@@ -3708,53 +3738,53 @@ public class AdapterService extends Service {
         switch (profile) {
             case BluetoothProfile.HEADSET -> {
                 final var headset = getHeadsetService();
-                if (headset.isPresent()) {
-                    BluetoothDevice device = headset.get().getActiveDevice();
-                    if (device != null) {
-                        activeDevices.add(device);
-                    }
-                    Log.i(TAG, "getActiveDevices: Headset device: " + device);
-                } else {
+                if (!headset.isPresent()) {
                     Log.e(TAG, "getActiveDevices: HeadsetService is null");
+                    break;
                 }
+                BluetoothDevice device = headset.get().getActiveDevice();
+                if (device != null) {
+                    activeDevices.add(device);
+                }
+                Log.i(TAG, "getActiveDevices: Headset device: " + device);
             }
             case BluetoothProfile.A2DP -> {
                 final var a2dp = getA2dpService();
-                if (a2dp.isPresent()) {
-                    BluetoothDevice device = a2dp.get().getActiveDevice();
-                    if (device != null) {
-                        activeDevices.add(device);
-                    }
-                    Log.i(TAG, "getActiveDevices: A2dp device: " + device);
-                } else {
+                if (!a2dp.isPresent()) {
                     Log.e(TAG, "getActiveDevices: A2dpService is null");
+                    break;
                 }
+                BluetoothDevice device = a2dp.get().getActiveDevice();
+                if (device != null) {
+                    activeDevices.add(device);
+                }
+                Log.i(TAG, "getActiveDevices: A2dp device: " + device);
             }
             case BluetoothProfile.HEARING_AID -> {
                 final var hearingAid = getHearingAidService();
-                if (hearingAid.isPresent()) {
-                    activeDevices = hearingAid.get().getActiveDevices();
-                    Log.i(
-                            TAG,
-                            "getActiveDevices: Hearing Aid devices:"
-                                    + (" Left[" + activeDevices.get(0) + "] -")
-                                    + (" Right[" + activeDevices.get(1) + "]"));
-                } else {
+                if (!hearingAid.isPresent()) {
                     Log.e(TAG, "getActiveDevices: HearingAidService is null");
+                    break;
                 }
+                activeDevices = hearingAid.get().getActiveDevices();
+                Log.i(
+                        TAG,
+                        "getActiveDevices: Hearing Aid devices:"
+                                + (" Left[" + activeDevices.get(0) + "] -")
+                                + (" Right[" + activeDevices.get(1) + "]"));
             }
             case BluetoothProfile.LE_AUDIO -> {
                 final var leAudio = getLeAudioService();
-                if (leAudio.isPresent()) {
-                    activeDevices = leAudio.get().getActiveDevices();
-                    Log.i(
-                            TAG,
-                            "getActiveDevices: LeAudio devices:"
-                                    + (" Lead[" + activeDevices.get(0) + "] -")
-                                    + (" member_1[" + activeDevices.get(1) + "]"));
-                } else {
+                if (!leAudio.isPresent()) {
                     Log.e(TAG, "getActiveDevices: LeAudioService is null");
+                    break;
                 }
+                activeDevices = leAudio.get().getActiveDevices();
+                Log.i(
+                        TAG,
+                        "getActiveDevices: LeAudio devices:"
+                                + (" Lead[" + activeDevices.get(0) + "] -")
+                                + (" member_1[" + activeDevices.get(1) + "]"));
             }
             default -> Log.e(TAG, "getActiveDevices: profile value is not valid");
         }
@@ -3860,6 +3890,11 @@ public class AdapterService extends Service {
             setDeviceDisconnectReason(device, reason);
         }
 
+        if (Util.isTv(this)) {
+            mNativeInterface.disconnectAllAcls(device);
+            return BluetoothStatusCodes.SUCCESS;
+        }
+
         if (!profileServicesRunning()) {
             Log.e(TAG, "disconnectAllEnabledProfiles: Not all profile services bound");
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
@@ -3888,6 +3923,22 @@ public class AdapterService extends Service {
         disconnectEnabledProfile(BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT, device);
         disconnectEnabledProfile(BluetoothProfile.BATTERY, device);
         return BluetoothStatusCodes.SUCCESS;
+    }
+
+    /**
+     * Disconnects all ACL connections between the local and remote device
+     *
+     * @param device is the remote device with which to disconnect
+     * @param reason is the reason for the disconnection
+     * @return SUCCESS if successful, ERROR_UNKNOWN otherwise
+     */
+    public int disconnectAllAcl(BluetoothDevice device, int reason) {
+        if (reason != BluetoothStatusCodes.SUCCESS) {
+            setDeviceDisconnectReason(device, reason);
+        }
+        return mNativeInterface.disconnectAcl(device, TRANSPORT_AUTO)
+                ? BluetoothStatusCodes.SUCCESS
+                : BluetoothStatusCodes.ERROR_UNKNOWN;
     }
 
     private void disconnectEnabledProfile(int id, BluetoothDevice device) {
@@ -4013,6 +4064,13 @@ public class AdapterService extends Service {
                                     : BluetoothStatsLog
                                             .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__FAIL,
                             source.getUid());
+
+            if (Utils.isAutonomousRepairingSupported()
+                    && getBondState(device) == BluetoothDevice.BOND_BONDING
+                    && isBondLost(device)
+                    && !accepted) {
+                MetricsLogger.getInstance().count(BluetoothProtoEnums.BOND_REPAIR_LOCAL_CANCEL, 1);
+            }
         } finally {
             Binder.restoreCallingIdentity(token);
         }
@@ -4432,7 +4490,7 @@ public class AdapterService extends Service {
         return false;
     }
 
-    List<BluetoothDevice> getConnectedMediaDevices(int profile) {
+    List<BluetoothDevice> getConnectedDevicesForProfile(int profile) {
         List<BluetoothDevice> connectedDevices = new ArrayList<>();
         switch (profile) {
             case BluetoothProfile.A2DP -> {
@@ -4453,7 +4511,13 @@ public class AdapterService extends Service {
                     connectedDevices = leAudio.get().getConnectedDevices();
                 }
             }
-            default -> Log.e(TAG, "getConnectedMediaDevices: profile value is not valid");
+            case BluetoothProfile.HID_HOST -> {
+                final var hh = getHidHostService();
+                if (hh.isPresent()) {
+                    connectedDevices = hh.get().getConnectedDevices();
+                }
+            }
+            default -> Log.e(TAG, "getConnectedDevicesForProfile: profile value is not valid");
         }
         return connectedDevices;
     }
@@ -4467,6 +4531,9 @@ public class AdapterService extends Service {
      * for a given {@code transport}.
      */
     public void notifyAclDisconnected(BluetoothDevice device, int transport) {
+        if (Flags.leHidConnectionPolicySuspend() && Flags.adapterSuspendMgmt()) {
+            mAdapterSuspend.aclDisconnected(device, transport);
+        }
         getMapService().ifPresent(profile -> profile.aclDisconnected(device));
         getMapClientService().ifPresent(profile -> profile.aclDisconnected(device, transport));
         getSapService().ifPresent(profile -> profile.aclDisconnected(device));
@@ -4497,7 +4564,9 @@ public class AdapterService extends Service {
         mPhonePolicy.ifPresent(
                 policy ->
                         policy.profileConnectionStateChanged(profile, device, fromState, toState));
-        if (Flags.adapterSuspendMgmt()) {
+        if (Flags.adapterSuspendMgmt() && !Flags.leHidConnectionPolicySuspend()) {
+            // When leHidConnectionPolicySuspend is true, the function call below is done by
+            // updateProfileConnectionAdapterProperties, so it can be safely removed.
             mAdapterSuspend.profileConnectionStateChanged(profile, device, fromState, toState);
         }
         boolean mediaConnected = isMediaProfileConnected();
@@ -5073,10 +5142,14 @@ public class AdapterService extends Service {
                     BluetoothProperties.le_audio_allow_list(leAudioAllowlistFromDeviceConfig);
                 }
 
-                List<String> leAudioAllowlistProp = BluetoothProperties.le_audio_allow_list();
-                if (leAudioAllowlistProp != null && !leAudioAllowlistProp.isEmpty()) {
-                    mLeAudioAllowDevices.clear();
-                    mLeAudioAllowDevices.addAll(leAudioAllowlistProp);
+                if (Flags.leaudioAllowlistRefactor()) {
+                    cacheLeAudioAllowlistDevicesFromProp();
+                } else {
+                    List<String> leAudioAllowlistProp = BluetoothProperties.le_audio_allow_list();
+                    if (leAudioAllowlistProp != null && !leAudioAllowlistProp.isEmpty()) {
+                        mLeAudioAllowDevices.clear();
+                        mLeAudioAllowDevices.addAll(leAudioAllowlistProp);
+                    }
                 }
             }
         }

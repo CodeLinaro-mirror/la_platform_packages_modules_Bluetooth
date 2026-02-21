@@ -15,7 +15,6 @@ btifCommonIncludes = [
     "packages/modules/Bluetooth/system/btif/include",
     "packages/modules/Bluetooth/system/gd",
     "packages/modules/Bluetooth/system/include",
-    "packages/modules/Bluetooth/system/stack/include",
     "packages/modules/Bluetooth/system/types/include",
 ]
 
@@ -27,7 +26,6 @@ cc_library_static {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/include",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: ["src/btif_jni_task.cc"],
     static_libs: [
@@ -83,6 +81,7 @@ cc_library_static {
         "src/btif_keystore.cc",
         "src/btif_le_audio.cc",
         "src/btif_le_audio_broadcaster.cc",
+        "src/btif_le_audio_server.cc",
         "src/btif_mcp_client.cc",
         "src/btif_pan.cc",
         "src/btif_profile_queue.cc",
@@ -103,7 +102,7 @@ cc_library_static {
         "src/btif_storage.cc",
         "src/btif_uid.cc",
         "src/btif_util.cc",
-        "src/btif_vaps_server.cc",
+        "src/btif_vap_server.cc",
         "src/btif_vcp_controller.cc",
         "src/btif_vcp_renderer.cc",
         "src/stack_manager.cc",
@@ -362,11 +361,6 @@ cc_test {
             shared_libs: ["libstatssocket"],
         },
     },
-    sanitize: {
-        address: true,
-        cfi: true,
-        misc_undefined: ["bounds"],
-    },
 }
 
 // btif hf client service tests for target
@@ -443,7 +437,7 @@ cc_test {
         ":TestMockBtaScn",
         ":TestMockBtaSdp",
         ":TestMockBtaSys",
-        ":TestMockBtaVaps",
+        ":TestMockBtaVap",
         ":TestMockBtaVcp",
         ":TestMockBtcore",
         ":TestMockBtu",
@@ -509,12 +503,15 @@ cc_test {
                 "libbinder_ndk",
                 "libstatssocket",
             ],
+            sanitize: {
+                never: true, // Required or else the test doesn't build
+            },
         },
-    },
-    sanitize: {
-        address: true,
-        cfi: true,
-        misc_undefined: ["bounds"],
+        host: {
+            sanitize: {
+                address: true,
+            },
+        },
     },
 }
 
@@ -560,7 +557,7 @@ cc_test {
         ":TestMockBtaScn",
         ":TestMockBtaSdp",
         ":TestMockBtaSys",
-        ":TestMockBtaVaps",
+        ":TestMockBtaVap",
         ":TestMockBtaVcp",
         ":TestMockBtcore",
         ":TestMockBtu",
@@ -628,11 +625,14 @@ cc_test {
                 "libbinder_ndk",
                 "libstatssocket",
             ],
+            sanitize: {
+                never: true, // Required or else the test doesn't build
+            },
         },
-    },
-    sanitize: {
-        address: true,
-        cfi: true,
-        misc_undefined: ["bounds"],
+        host: {
+            sanitize: {
+                address: true,
+            },
+        },
     },
 }

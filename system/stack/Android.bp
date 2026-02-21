@@ -16,7 +16,6 @@ cc_library_static {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/include",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     static_libs: [
         "bluetooth_flags_c_lib",
@@ -164,6 +163,8 @@ cc_library_static {
         "gatt/gatt_cl.cc",
         "gatt/gatt_db.cc",
         "gatt/gatt_main.cc",
+        "gatt/gatt_main_br.cc",
+        "gatt/gatt_main_le.cc",
         "gatt/gatt_offload.cc",
         "gatt/gatt_sr.cc",
         "gatt/gatt_sr_hash.cc",
@@ -275,7 +276,6 @@ cc_defaults {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/include",
-        "packages/modules/Bluetooth/system/stack/include",
         "packages/modules/Bluetooth/system/test/common",
     ],
     static_libs: [
@@ -1033,8 +1033,8 @@ cc_test {
         "mts_defaults",
     ],
     test_suites: ["general-tests"],
-    local_include_dirs: [
-        "include",
+    include_dirs: [
+        "packages/modules/Bluetooth/system",
     ],
     srcs: [
         "test/ad_parser_unittest.cc",
@@ -1144,7 +1144,6 @@ cc_test {
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/stack/btm",
         "packages/modules/Bluetooth/system/stack/eatt",
-        "packages/modules/Bluetooth/system/stack/include",
         "packages/modules/Bluetooth/system/stack/l2cap",
     ],
     srcs: [
@@ -1214,7 +1213,6 @@ cc_test {
         "external/libldac/inc",
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1285,7 +1283,6 @@ cc_test {
         "external/libldac/inc",
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1331,10 +1328,18 @@ cc_test {
     target: {
         android: {
             shared_libs: ["libstatssocket"],
+            sanitize: {
+                address: false, // TODO(b/481480264) - Mts can't run with asan
+            },
+        },
+        host: {
+            sanitize: {
+                address: true,
+            },
         },
     },
     sanitize: {
-        address: true,
+        // address: See above
         cfi: true,
         misc_undefined: ["bounds"],
     },
@@ -1365,7 +1370,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/embdrv/encoder_for_aptxhd/include",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     target: {
         android: {
@@ -1472,7 +1476,6 @@ cc_test {
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/stack/btm",
         "packages/modules/Bluetooth/system/stack/eatt",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":LegacyStackSdp",
@@ -1746,6 +1749,7 @@ cc_test {
         "test/btm/sco_hci_test.cc",
         "test/btm/sco_pkt_status_test.cc",
         "test/btm/stack_btm_ble_sec_test.cc",
+        "test/btm/stack_btm_ble_test.cc",
         "test/btm/stack_btm_dev_test.cc",
         "test/btm/stack_btm_power_mode_test.cc",
         "test/btm/stack_btm_regression_tests.cc",
@@ -1793,10 +1797,18 @@ cc_test {
             static_libs: [
                 "libperfetto_client_experimental",
             ],
+            sanitize: {
+                address: false, // TODO(b/481480264) - Mts can't run with asan
+            },
+        },
+        host: {
+            sanitize: {
+                address: true,
+            },
         },
     },
     sanitize: {
-        address: true,
+        // address: See above
         all_undefined: true,
         cfi: true,
         integer_overflow: true,
@@ -2047,6 +2059,8 @@ cc_test {
         "gatt/gatt_cl.cc",
         "gatt/gatt_db.cc",
         "gatt/gatt_main.cc",
+        "gatt/gatt_main_br.cc",
+        "gatt/gatt_main_le.cc",
         "gatt/gatt_sr.cc",
         "gatt/gatt_sr_hash.cc",
         "gatt/gatt_subrate_manager.cc",
@@ -2117,7 +2131,6 @@ cc_test {
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/stack/btm",
         "packages/modules/Bluetooth/system/stack/eatt",
-        "packages/modules/Bluetooth/system/stack/include",
         "packages/modules/Bluetooth/system/stack/l2cap",
     ],
     srcs: [
@@ -2148,6 +2161,8 @@ cc_test {
         "gatt/gatt_cl.cc",
         "gatt/gatt_db.cc",
         "gatt/gatt_main.cc",
+        "gatt/gatt_main_br.cc",
+        "gatt/gatt_main_le.cc",
         "gatt/gatt_offload.cc",
         "gatt/gatt_sr.cc",
         "gatt/gatt_sr_hash.cc",
@@ -2242,6 +2257,8 @@ cc_test {
         "gatt/gatt_cl.cc",
         "gatt/gatt_db.cc",
         "gatt/gatt_main.cc",
+        "gatt/gatt_main_br.cc",
+        "gatt/gatt_main_le.cc",
         "gatt/gatt_sr.cc",
         "gatt/gatt_sr_hash.cc",
         "gatt/gatt_subrate_manager.cc",

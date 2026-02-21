@@ -38,10 +38,10 @@
 #include "bta_ag_swb_aptx.h"
 #include "bta_api.h"
 #include "bta_sys.h"
-#include "btm_api_types.h"
 #include "device/include/device_iot_conf_defs.h"
 #include "osi/include/alarm.h"
-#include "sdp_status.h"
+#include "stack/include/btm_api_types.h"
+#include "stack/include/sdp_status.h"
 
 #ifdef __ANDROID__
 #endif
@@ -1090,7 +1090,7 @@ static void bta_ag_collision_timer_cback(void* data) {
 void bta_ag_handle_collision(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
   /* Cancel SDP if it had been started. */
   if (p_scb->p_disc_db) {
-    if (!get_legacy_stack_sdp_api()->service.SDP_CancelServiceSearch(p_scb->p_disc_db)) {
+    if (!get_legacy_stack_sdp_api()->SDP_CancelServiceSearch(p_scb->p_disc_db)) {
       log::warn("Unable to cancel SDP service discovery search peer:{}", p_scb->peer_addr);
     }
     bta_ag_free_db(p_scb, tBTA_AG_DATA::kEmpty);

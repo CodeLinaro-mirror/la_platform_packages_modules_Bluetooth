@@ -17,6 +17,7 @@
 
 #include <base/functional/bind.h>
 #include <base/functional/callback.h>
+#include <base/memory/weak_ptr.h>
 #include <base/strings/string_number_conversions.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
@@ -47,13 +48,7 @@
 #include "bta_has_api.h"
 #include "bta_le_audio_uuids.h"
 #include "btif/include/btif_profile_storage.h"
-#include "btm_ble_api_types.h"
-#include "btm_sec_api_types.h"
-#include "btm_status.h"
-#include "gap_api.h"
 #include "gatt/database.h"
-#include "gatt_api.h"
-#include "gattdefs.h"
 #include "has_ctp.h"
 #include "has_journal.h"
 #include "has_preset.h"
@@ -62,7 +57,13 @@
 #include "osi/include/properties.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_types.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/btm_sec_api_types.h"
+#include "stack/include/btm_status.h"
+#include "stack/include/gap_api.h"
+#include "stack/include/gatt_api.h"
+#include "stack/include/gattdefs.h"
 
 using bluetooth::Uuid;
 using bluetooth::csis::CsisClient;
@@ -199,7 +200,9 @@ public:
     auto is_connecting_actively = device->is_connecting_actively;
 
     DoDisconnectCleanUp(*device);
-    devices_.erase(device);
+    if (!com_android_bluetooth_flags_hap_keep_bonded_dev_in_ram()) {
+      devices_.erase(device);
+    }
 
     if (conn_id != GATT_INVALID_CONN_ID) {
       BTA_GATTC_Close(conn_id);
@@ -214,6 +217,21 @@ public:
         BTA_GATTC_CancelOpen(gatt_if_, address, false);
       }
     }
+  }
+
+  void RemoveDevice(const RawAddress& address) override {
+    log::debug("{}", address);
+    if (!com_android_bluetooth_flags_hap_keep_bonded_dev_in_ram()) {
+      return;
+    }
+    auto device = std::find_if(devices_.begin(), devices_.end(), HasDevice::MatchAddress(address));
+    if (device == devices_.end()) {
+      log::warn("Device not connected to profile{}", address);
+      return;
+    }
+
+    Disconnect(address);
+    devices_.erase(device);
   }
 
   void UpdateJournalOpEntryStatus(HasDevice& device, HasGattOpContext context,
@@ -2170,6 +2188,9 @@ private:
   std::list<HasCtpOp> pending_operations_;
 
   std::map<decltype(HasCtpOp::op_id), HasCtpGroupOpCoordinator> pending_group_operation_timeouts_;
+
+public:
+  base::WeakPtrFactory<HasClientImpl> weak_ptr_factory_{this};
 };
 
 }  // namespace
@@ -2230,4 +2251,8 @@ void HasClient::DebugDump(int fd) {
   } else {
     dprintf(fd, "  no instance\n\n");
   }
+}
+
+base::WeakPtr<HasClient> HasClient::GetWeakPtr() {
+  return instance->weak_ptr_factory_.GetWeakPtr();
 }

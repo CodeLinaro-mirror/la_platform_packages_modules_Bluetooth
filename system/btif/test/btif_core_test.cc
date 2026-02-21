@@ -66,7 +66,7 @@ void set_hal_cbacks(bt_callbacks_t* callbacks);
 
 namespace bluetooth::legacy::testing {
 void bta_dm_acl_down(const AclLinkSpec& link_spec);
-void bta_dm_acl_up(const AclLinkSpec& acl_link_spec, uint16_t acl_handle);
+void bta_dm_acl_up(const AclLinkSpec& acl_link_spec, uint16_t acl_handle, bool locally_initiated);
 }  // namespace bluetooth::legacy::testing
 
 const tBTA_AG_RES_DATA tBTA_AG_RES_DATA::kEmpty = {};
@@ -145,8 +145,9 @@ void discovery_state_changed_callback(bt_discovery_state_t /* state */) {}
 void pin_request_callback(RawAddress /* remote_bd_addr */, bt_bdname_t* /* bd_name */,
                           uint32_t /* cod */, bool /* min_16_digit */,
                           int /* pairing_algorithm */) {}
-void ssp_request_callback(RawAddress /* remote_bd_addr */, PairingVariant /* pairing_variant */,
-                          uint32_t /* pass_key */, int /* pairing_algorithm */) {}
+void ssp_request_callback(RawAddress /* remote_bd_addr */, int /* transport */,
+                          PairingVariant /* pairing_variant */, uint32_t /* pass_key */,
+                          int /* pairing_algorithm */) {}
 void bond_state_changed_callback(bt_status_t /* status */, RawAddress /* remote_bd_addr */,
                                  tBT_TRANSPORT /* transport */, bt_bond_state_t /* state */,
                                  PairingType /* pairing_type */, int /* fail_reason */,
@@ -257,7 +258,8 @@ protected:
     BtifCoreWithControllerTest::SetUp();
     AclLinkSpec link_spec = {.addrt = {.type = BLE_ADDR_PUBLIC, .bda = kRawAddress},
                              .transport = BT_TRANSPORT_AUTO};
-    bluetooth::legacy::testing::bta_dm_acl_up(link_spec, kHciHandle);
+    bool locally_initiated = false;
+    bluetooth::legacy::testing::bta_dm_acl_up(link_spec, kHciHandle, locally_initiated);
   }
 
   void TearDown() override {

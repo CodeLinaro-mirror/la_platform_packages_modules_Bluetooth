@@ -346,6 +346,8 @@ struct tBTA_AG_SCB {
                                                                HF indicators */
   tBTA_AG_HF_IND local_hf_indicators[BTA_AG_MAX_NUM_LOCAL_HF_IND]; /* Local supported
                                                                HF indicators */
+  bool sendAcceptConnectionRsp = false;  /* whether to defer sending the accept rsp */
+  tBTM_ESCO_CONN_REQ_EVT_DATA conn_data; /* SCO data for pending conn request */
 
   std::string ToString() const {
     return std::format(
@@ -499,7 +501,7 @@ bool bta_ag_get_swb_supported();
 bool bta_ag_get_sco_offload_enabled();
 void bta_ag_set_sco_offload_enabled(bool value);
 void bta_ag_set_sco_allowed(bool value);
-const RawAddress& bta_ag_get_active_device();
+const RawAddress bta_ag_get_active_device();
 void bta_clear_active_device();
 void bta_ag_send_qac(tBTA_AG_SCB* p_scb);
 void bta_ag_send_qcs(tBTA_AG_SCB* p_scb);

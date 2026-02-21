@@ -27,13 +27,13 @@ import android.content.BroadcastReceiver
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.os.UserHandle
 import android.provider.Settings
 import androidx.annotation.VisibleForTesting
+import com.android.bluetooth.util.registerReceiver
 import com.android.server.bluetooth.airplane.AirplaneModeController
 import com.android.server.bluetooth.airplane.hasAirplaneModeEnhanced
 import com.android.server.bluetooth.satellite.isOn as isSatelliteModeOn
@@ -68,6 +68,10 @@ class AutoOn(
             Log.d(TAG, "Not Enabled for $user")
             return
         }
+        if (!BluetoothRestriction.isBluetoothAllowed) {
+            Log.d(TAG, "Bluetooth is disallowed, no need for timer")
+            return
+        }
         if (state.oneOf(State.ON)) {
             Log.d(TAG, "Bluetooth already ON, no need for timer")
             return
@@ -84,15 +88,6 @@ class AutoOn(
             Log.d(TAG, "Airplane bypassed as airplane enhanced mode has been activated previously")
         }
 
-        val receiver =
-            object : BroadcastReceiver() {
-                override fun onReceive(ctx: Context, intent: Intent) {
-                    Log.i(TAG, "Received ${intent.action} that trigger a new alarm scheduling")
-                    pause()
-                    resetAutoOnTimer()
-                }
-            }
-
         val now = LocalDateTime.now()
         val target = getDateFromStorage(contentResolver) ?: nextTimeout(now)
         val timeToSleep = now.until(target, ChronoUnit.NANOS).toDuration(DurationUnit.NANOSECONDS)
@@ -104,7 +99,13 @@ class AutoOn(
             return
         }
 
-        timer = Timer(looper, context, receiver, callback_on, now, target, timeToSleep)
+        timer = Timer(looper, context, callback_on, now, target, timeToSleep)
+    }
+
+    private fun onReceiveIntent(intent: Intent) {
+        Log.i(TAG, "Received ${intent.action} that trigger a new alarm scheduling")
+        pause()
+        resetAutoOnTimer()
     }
 
     fun pause() {
@@ -127,7 +128,7 @@ class AutoOn(
         }
     }
 
-    fun isSupported() = Settings.Secure.getInt(contentResolver, USER_SETTINGS_KEY, -1) != -1
+    fun isSupported() = Settings.Secure.getInt(contentResolver, AUTO_ON_KEY, -1) != -1
 
     fun isEnabled(): Boolean {
         check(isSupported()) { "AutoOn not supported for $user" }
@@ -146,7 +147,7 @@ class AutoOn(
     }
 
     fun factoryReset() {
-        Settings.Secure.putInt(contentResolver, USER_SETTINGS_KEY, 0)
+        Settings.Secure.putInt(contentResolver, AUTO_ON_KEY, 0)
         timer?.cancel()
         timer = null
     }
@@ -156,7 +157,6 @@ class AutoOn(
     constructor(
         looper: Looper,
         private val context: Context,
-        private val receiver: BroadcastReceiver,
         private val callback_on: () -> Unit,
         private val now: LocalDateTime,
         private val target: LocalDateTime,
@@ -165,6 +165,7 @@ class AutoOn(
         private val alarmManager: AlarmManager =
             context.getSystemService(AlarmManager::class.java)!!
 
+        private val receiver: BroadcastReceiver
         private val handler = Handler(looper)
 
         init {
@@ -178,16 +179,15 @@ class AutoOn(
             )
             Log.i(TAG, "[$this]: Scheduling next Bluetooth restart")
 
-            context.registerReceiver(
-                receiver,
-                IntentFilter().apply {
-                    addAction(Intent.ACTION_DATE_CHANGED)
-                    addAction(Intent.ACTION_TIMEZONE_CHANGED)
-                    addAction(Intent.ACTION_TIME_CHANGED)
-                },
-                null,
-                handler,
-            )
+            receiver =
+                context.registerReceiver(
+                    looper,
+                    Intent.ACTION_DATE_CHANGED,
+                    Intent.ACTION_TIMEZONE_CHANGED,
+                    Intent.ACTION_TIME_CHANGED,
+                ) { _, intent ->
+                    onReceiveIntent(intent)
+                }
         }
 
         override fun onAlarm() {
@@ -219,11 +219,10 @@ class AutoOn(
             "Timer: scheduled at $now. expire at $target. (sleep for $timeToSleep)."
     }
 
-    private fun isEnabledUnchecked() =
-        Settings.Secure.getInt(contentResolver, USER_SETTINGS_KEY, 0) == 1
+    private fun isEnabledUnchecked() = Settings.Secure.getInt(contentResolver, AUTO_ON_KEY, 0) == 1
 
     private fun setEnabledUnchecked(status: Boolean) {
-        Settings.Secure.putInt(contentResolver, USER_SETTINGS_KEY, if (status) 1 else 0)
+        Settings.Secure.putInt(contentResolver, AUTO_ON_KEY, if (status) 1 else 0)
         context.sendBroadcast(
             Intent(ACTION_AUTO_ON_STATE_CHANGED)
                 .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
@@ -242,7 +241,7 @@ class AutoOn(
     }
 
     companion object {
-        @VisibleForTesting internal const val USER_SETTINGS_KEY = "bluetooth_automatic_turn_on"
+        @VisibleForTesting internal const val AUTO_ON_KEY = "bluetooth_automatic_turn_on"
         @VisibleForTesting
         internal const val STORAGE_KEY = "bluetooth_internal_automatic_turn_on_timer"
 

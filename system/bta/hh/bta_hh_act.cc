@@ -42,15 +42,15 @@
 #include "bta_api.h"
 #include "bta_gatt_api.h"
 #include "osi/include/allocator.h"
-#include "sdp_device_id.h"
-#include "sdp_status.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/hiddefs.h"
 #include "stack/include/hidh_api.h"
 #include "stack/include/sdp_api.h"
+#include "stack/include/sdp_device_id.h"
 #include "stack/include/sdp_discovery_db.h"
+#include "stack/include/sdp_status.h"
 
 using namespace bluetooth::legacy::stack::sdp;
 using namespace bluetooth;
@@ -298,11 +298,11 @@ static void bta_hh_di_sdp_cback(const RawAddress& bd_addr, tSDP_RESULT result) {
    */
   if (result == tSDP_STATUS::SDP_SUCCESS || result == tSDP_STATUS::SDP_NO_RECS_MATCH) {
     if (result == tSDP_STATUS::SDP_SUCCESS &&
-        get_legacy_stack_sdp_api()->device_id.SDP_GetNumDiRecords(p_cb->p_disc_db) != 0) {
+        get_legacy_stack_sdp_api()->SDP_GetNumDiRecords(p_cb->p_disc_db) != 0) {
       tSDP_DI_GET_RECORD di_rec;
 
       /* always update information with primary DI record */
-      if (get_legacy_stack_sdp_api()->device_id.SDP_GetDiRecord(1, &di_rec, p_cb->p_disc_db) ==
+      if (get_legacy_stack_sdp_api()->SDP_GetDiRecord(1, &di_rec, p_cb->p_disc_db) ==
           tSDP_STATUS::SDP_SUCCESS) {
         bta_hh_update_di_info(p_cb, di_rec.rec.vendor, di_rec.rec.product, di_rec.rec.version, 0,
                               0);
@@ -357,9 +357,9 @@ static void bta_hh_start_sdp(tBTA_HH_DEV_CB* p_cb) {
   p_cb->p_disc_db = (tSDP_DISCOVERY_DB*)osi_malloc(p_bta_hh_cfg->sdp_db_size);
 
   /* Do DI discovery first */
-  if (get_legacy_stack_sdp_api()->device_id.SDP_DiDiscover(
-              p_cb->link_spec.addrt.bda, p_cb->p_disc_db, p_bta_hh_cfg->sdp_db_size,
-              bta_hh_di_sdp_cback) == tSDP_STATUS::SDP_SUCCESS) {
+  if (get_legacy_stack_sdp_api()->SDP_DiDiscover(p_cb->link_spec.addrt.bda, p_cb->p_disc_db,
+                                                 p_bta_hh_cfg->sdp_db_size,
+                                                 bta_hh_di_sdp_cback) == tSDP_STATUS::SDP_SUCCESS) {
     // SDP search started successfully. Connection will be triggered at the end of successful SDP
     // search
   } else {

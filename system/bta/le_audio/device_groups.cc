@@ -41,16 +41,11 @@
 #include "bta_csis_api.h"
 #include "bta_groups.h"
 #include "btif/include/btif_profile_storage.h"
-#include "btm_ble_api_types.h"
-#include "btm_iso_api.h"
-#include "btm_iso_api_types.h"
 #include "client_parser.h"
 #include "com_android_bluetooth_flags.h"
 #include "common/strings.h"
-#include "gatt_api.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/controller.h"
-#include "hci_error_code.h"
 #include "internal_include/bt_trace.h"
 #include "le_audio/codec_manager.h"
 #include "le_audio/devices.h"
@@ -59,7 +54,12 @@
 #include "main/shim/entry.h"
 #include "metrics_collector.h"
 #include "osi/include/properties.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
+#include "stack/include/gatt_api.h"
+#include "stack/include/hci_error_code.h"
 
 namespace bluetooth::le_audio {
 
@@ -2546,9 +2546,8 @@ void LeAudioDeviceGroup::Disable(int gatt_if) {
     log::info("Group {} in state {}. Removing {} from background connect", group_id_,
               bluetooth::common::ToString(GetState()), address);
 
-    BTA_GATTC_CancelOpen(gatt_if, address, false);
-
     if (connection_state == DeviceConnectState::CONNECTING_AUTOCONNECT) {
+      BTA_GATTC_CancelOpen(gatt_if, address, false);
       device_iter.lock()->SetConnectionState(DeviceConnectState::DISCONNECTED);
     }
   }

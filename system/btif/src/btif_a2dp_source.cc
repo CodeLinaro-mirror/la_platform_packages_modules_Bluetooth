@@ -39,17 +39,13 @@
 #include <utility>
 #include <vector>
 
-#include "a2dp_api.h"
-#include "a2dp_codec_api.h"
 #include "audio_hal_interface/a2dp_encoding.h"
-#include "avdt_api.h"
 #include "bta_av_api.h"
 #include "bta_av_ci.h"
 #include "btif_av.h"
 #include "btif_av_co.h"
 #include "btif_common.h"
 #include "btif_hf.h"
-#include "btm_iso_api.h"
 #include "common/message_loop_thread.h"
 #include "common/repeating_timer.h"
 #include "common/time_util.h"
@@ -57,9 +53,13 @@
 #include "osi/include/allocator.h"
 #include "osi/include/fixed_queue.h"
 #include "osi/include/wakelock.h"
+#include "stack/include/a2dp_api.h"
+#include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_sbc_constants.h"
 #include "stack/include/a2dp_vendor_ldac_constants.h"
+#include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/btm_iso_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
 
@@ -882,16 +882,21 @@ static void btif_a2dp_source_audio_tx_stop_event(void) {
     return;
   }
 
-  /* Stop the timer first */
+  if (com_android_bluetooth_flags_flush_a2dp_fmq_on_stop()) {
+    // Flush the audio data left in the FMQ.
+    bluetooth::audio::a2dp::flush_source();
+  }
+
+  // Stop the timer first.
   btif_a2dp_source_cb.media_alarm.CancelAndWait();
   wakelock_release();
 
   bluetooth::audio::a2dp::ack_stream_suspended(Status::SUCCESS);
 
-  /* audio engine stopped, reset tx suspended flag */
+  // audio engine stopped, reset tx suspended flag.
   btif_a2dp_source_cb.tx_flush = false;
 
-  /* Reset the media feeding state */
+  // Reset the media feeding state.
   if (btif_a2dp_source_cb.encoder_interface != nullptr) {
     btif_a2dp_source_cb.encoder_interface->feeding_reset();
   }

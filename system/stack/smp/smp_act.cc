@@ -122,7 +122,7 @@ void smp_send_app_cback(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
       case SMP_IO_CAP_REQ_EVT:
         cb_data.io_req.auth_req = p_cb->peer_auth_req;
         cb_data.io_req.oob_data = SMP_OOB_NONE;
-        cb_data.io_req.io_cap = BtIoCap::KEYBOARD_DISPLAY;
+        cb_data.io_req.io_cap = kBtIoCapLeMax;  // This will be overridden by BTM
         cb_data.io_req.max_key_size = SMP_MAX_ENC_KEY_SIZE;
         cb_data.io_req.init_keys = p_cb->local_i_key;
         cb_data.io_req.resp_keys = p_cb->local_r_key;
@@ -592,10 +592,12 @@ void smp_proc_pair_cmd(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
 
   p_cb->peer_io_caps = static_cast<BtIoCap>(peer_io_caps);
 
-  tSMP_STATUS reason = p_cb->cert_failure;
-  if (reason == SMP_ENC_KEY_SIZE) {
+  int min_key_size = btm_sec_get_min_enc_key_size();
+  if (p_cb->cert_failure == SMP_ENC_KEY_SIZE || p_cb->peer_enc_size < min_key_size) {
+    log::warn("Encryption key size {} smaller than the minimum {}", p_cb->peer_enc_size,
+              min_key_size);
     tSMP_INT_DATA smp_int_data;
-    smp_int_data.status = reason;
+    smp_int_data.status = SMP_ENC_KEY_SIZE;
     smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, &smp_int_data);
     return;
   }
@@ -887,6 +889,16 @@ void smp_br_process_pairing_command(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
   STREAM_TO_UINT8(p_cb->peer_r_key, p);
 
   p_cb->peer_io_caps = static_cast<BtIoCap>(peer_io_caps);
+
+  int min_key_size = btm_sec_get_min_enc_key_size();
+  if (p_cb->peer_enc_size < min_key_size) {
+    log::warn("Encryption key size {} smaller than the minimum {}", p_cb->peer_enc_size,
+              min_key_size);
+    tSMP_INT_DATA smp_int_data;
+    smp_int_data.status = SMP_ENC_KEY_SIZE;
+    smp_br_state_machine_event(p_cb, SMP_BR_AUTH_CMPL_EVT, &smp_int_data);
+    return;
+  }
 
   if (smp_command_has_invalid_parameters(p_cb)) {
     tSMP_INT_DATA smp_int_data;
@@ -1393,11 +1405,17 @@ void smp_key_distribution(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
           return;
         }
 
-        if (!(p_device->sec_rec.sec_flags & BTM_SEC_LE_LINK_KEY_AUTHED) &&
-            (p_device->sec_rec.sec_flags & BTM_SEC_LINK_KEY_AUTHED)) {
-          log::verbose("BR key is higher security than existing LE keys, don't derive LK from LTK");
-        } else {
+        if ((p_device->sec_rec.sec_flags & BTM_SEC_LE_LINK_KEY_AUTHED) ||
+            !(p_device->sec_rec.sec_flags & BTM_SEC_LINK_KEY_AUTHED)) {
           smp_derive_link_key_from_long_term_key(p_cb, NULL);
+        } else if (is_autonomous_repairing_supported() &&
+                   com::android::bluetooth::flags::bugfix_autonomous_repairing() &&
+                   p_device->bond_lost) {
+          // Derive the LK again, if the device is recovering from a bond loss.
+          log::error("Forcing LK derivation from LTK due to bond loss recovery!!");
+          smp_derive_link_key_from_long_term_key(p_cb, NULL);
+        } else {
+          log::verbose("BR key is higher security than existing LE keys, don't derive LK from LTK");
         }
         p_cb->derive_lk = false;
       }

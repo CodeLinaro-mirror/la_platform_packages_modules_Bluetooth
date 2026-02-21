@@ -463,12 +463,13 @@ extern struct btm_sec_conn_req btm_sec_conn_req;
 // enc_mode, tHCI_ROLE assigned_role Return: void
 struct btm_sec_connected {
   std::function<void(const RawAddress& bda, uint16_t handle, tHCI_STATUS status, uint8_t enc_mode,
-                     tHCI_ROLE assigned_role)>
+                     bool locally_initiated, tHCI_ROLE assigned_role)>
           body{[](const RawAddress& /* bda */, uint16_t /* handle */, tHCI_STATUS /* status */,
-                  uint8_t /* enc_mode */, tHCI_ROLE /* assigned_role */) {}};
+                  uint8_t /* enc_mode */, bool /* locally_initiated */,
+                  tHCI_ROLE /* assigned_role */) {}};
   void operator()(const RawAddress& bda, uint16_t handle, tHCI_STATUS status, uint8_t enc_mode,
-                  tHCI_ROLE assigned_role) {
-    body(bda, handle, status, enc_mode, assigned_role);
+                  bool locally_initiated, tHCI_ROLE assigned_role) {
+    body(bda, handle, status, enc_mode, locally_initiated, assigned_role);
   }
 };
 extern struct btm_sec_connected btm_sec_connected;
@@ -811,6 +812,16 @@ struct btm_sec_hci_delete_stored_link_key {
   void operator()(const RawAddress& bd_addr) { body(bd_addr); }
 };
 extern struct btm_sec_hci_delete_stored_link_key btm_sec_hci_delete_stored_link_key;
+
+// Name: btm_sec_get_min_enc_key_size
+// Params: void
+// Return: uint8_t
+struct btm_sec_get_min_enc_key_size {
+  static uint8_t return_value;
+  std::function<uint8_t(void)> body{[](void) { return return_value; }};
+  uint8_t operator()(void) { return body(); }
+};
+extern struct btm_sec_get_min_enc_key_size btm_sec_get_min_enc_key_size;
 
 }  // namespace stack_btm_sec
 }  // namespace mock

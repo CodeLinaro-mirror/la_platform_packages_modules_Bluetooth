@@ -38,6 +38,7 @@
 #include "hci/controller.h"
 #include "main/shim/btm_api.h"
 #include "main/shim/entry.h"
+#include "main/shim/shim.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/btm/internal/btm_api.h"
@@ -162,8 +163,14 @@ void BTM_reset_complete() {
       bluetooth::shim::GetController()->SupportsBlePrivacy() &&
       bluetooth::shim::GetController()->GetLeResolvingListSize() > 0) {
     btm_ble_resolving_list_init(bluetooth::shim::GetController()->GetLeResolvingListSize());
-    /* set the default random private address timeout */
-    btsnd_hcic_ble_set_rand_priv_addr_timeout(btm_get_next_private_address_interval_ms() / 1000);
+
+    // If HCI_LE_Set_Resolvable_Private_Address_Timeout [v2] is supported, RPA generation will be
+    // completely offloaded to the controller by LE Address Manager. In that we don't need to use
+    // the HCI_LE_Set_Resolvable_Private_Address_Timeout [v1] here.
+    if (!bluetooth::shim::GetController()->IsRpaGenerationSupported()) {
+      /* Set the default random private address timeout */
+      btsnd_hcic_ble_set_rand_priv_addr_timeout(btm_get_next_private_address_interval_ms() / 1000);
+    }
   } else {
     log::info("Le Address Resolving list disabled due to lack of controller support");
   }
@@ -191,7 +198,7 @@ void BTM_reset_complete() {
  * Returns          true if device is up, else false
  *
  ******************************************************************************/
-bool BTM_IsDeviceUp(void) { return bluetooth::shim::GetController() != nullptr; }
+bool BTM_IsDeviceUp(void) { return bluetooth::shim::is_gd_stack_started_up(); }
 
 static void decode_controller_support() {
   /* Create (e)SCO supported packet types mask */

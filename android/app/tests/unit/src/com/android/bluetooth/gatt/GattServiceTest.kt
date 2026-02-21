@@ -17,6 +17,7 @@
 package com.android.bluetooth.gatt
 
 import android.app.ActivityManager
+import android.app.compat.CompatChanges
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothProfile
@@ -40,6 +41,7 @@ import android.test.mock.MockContentResolver
 import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.bluetooth.ActionOnDeathRecipient
+import com.android.bluetooth.ChangeIds.DONOT_STEAL_AUDIO_ON_GATT_CONN
 import com.android.bluetooth.TestLooper
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.btservice.CompanionManager
@@ -58,6 +60,7 @@ import java.util.Optional
 import java.util.UUID
 import kotlin.time.ExperimentalTime
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -87,6 +90,7 @@ class GattServiceTest(flags: FlagsWrapper) {
 
     @Mock private lateinit var source: AttributionSource
     @Mock private lateinit var gattCallback: IBluetoothGattCallback
+    @Mock private lateinit var gattCallback2: IBluetoothGattCallback
     @Mock private lateinit var clientMap: ContextMap<IBluetoothGattCallback>
     @Mock private lateinit var reliableQueue: MutableSet<BluetoothDevice>
     @Mock private lateinit var nativeInterface: GattNativeInterface
@@ -135,6 +139,12 @@ class GattServiceTest(flags: FlagsWrapper) {
         doReturn(clientApp, null as Array<Any>?)
             .whenever(clientMap)
             .remove(any<Int>(), any<ContextMap.RemoveReason>())
+
+        val clientApp2 = mock<ContextApp<IBluetoothGattCallback>>()
+        doReturn(gattCallback2).whenever(clientApp2).callback
+        doReturn(CLIENT_IF2).whenever(clientApp2).id
+        doReturn(clientApp2).whenever(clientMap).getByCallbackId(gattCallback2)
+        doReturn(clientApp2).whenever(clientMap).getById(CLIENT_IF2)
 
         doReturn(context.packageManager).whenever(adapterService).packageManager
         doReturn(context.getSharedPreferences("GattServiceTestPrefs", Context.MODE_PRIVATE))
@@ -486,19 +496,16 @@ class GattServiceTest(flags: FlagsWrapper) {
 
     @Test
     fun clientConnectOverLeFailed() {
+        assumeTrue(CompatChanges.isChangeEnabled(DONOT_STEAL_AUDIO_ON_GATT_CONN))
         val addressType = BluetoothDevice.ADDRESS_TYPE_RANDOM
         val isDirect = true
         val transport = BluetoothDevice.TRANSPORT_LE
         val opportunistic = false
         val isAutomaticMtuEnabled = false
 
-        val testAttributeSource =
-            AttributionSource.Builder(Process.SYSTEM_UID)
-                .setPid(Process.myPid())
-                .setDeviceId(Context.DEVICE_ID_DEFAULT)
-                .setPackageName("com.google.android.gms")
-                .setAttributionTag("com.google.android.gms.findmydevice")
-                .build()
+        InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation()
+            .adoptShellPermissionIdentity()
 
         service.clientConnect(
             gattCallback,
@@ -508,7 +515,7 @@ class GattServiceTest(flags: FlagsWrapper) {
             transport,
             opportunistic,
             isAutomaticMtuEnabled,
-            testAttributeSource,
+            source,
         )
 
         verify(adapterService).notifyDirectLeGattClientConnect(any<Int>(), any<BluetoothDevice>())
@@ -537,19 +544,16 @@ class GattServiceTest(flags: FlagsWrapper) {
 
     @Test
     fun clientConnectDisconnectOverLe() {
+        assumeTrue(CompatChanges.isChangeEnabled(DONOT_STEAL_AUDIO_ON_GATT_CONN))
         val addressType = BluetoothDevice.ADDRESS_TYPE_RANDOM
         val isDirect = true
         val transport = BluetoothDevice.TRANSPORT_LE
         val opportunistic = false
         val isAutomaticMtuEnabled = false
 
-        val testAttributeSource =
-            AttributionSource.Builder(Process.SYSTEM_UID)
-                .setPid(Process.myPid())
-                .setDeviceId(Context.DEVICE_ID_DEFAULT)
-                .setPackageName("com.google.android.gms")
-                .setAttributionTag("com.google.android.gms.findmydevice")
-                .build()
+        InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation()
+            .adoptShellPermissionIdentity()
 
         service.clientConnect(
             gattCallback,
@@ -559,7 +563,7 @@ class GattServiceTest(flags: FlagsWrapper) {
             transport,
             opportunistic,
             isAutomaticMtuEnabled,
-            testAttributeSource,
+            source,
         )
 
         verify(adapterService).notifyDirectLeGattClientConnect(any<Int>(), any<BluetoothDevice>())
@@ -584,19 +588,16 @@ class GattServiceTest(flags: FlagsWrapper) {
 
     @Test
     fun clientConnectOverLeDisconnectedByRemote() {
+        assumeTrue(CompatChanges.isChangeEnabled(DONOT_STEAL_AUDIO_ON_GATT_CONN))
         val addressType = BluetoothDevice.ADDRESS_TYPE_RANDOM
         val isDirect = true
         val transport = BluetoothDevice.TRANSPORT_LE
         val opportunistic = false
         val isAutomaticMtuEnabled = false
 
-        val testAttributeSource =
-            AttributionSource.Builder(Process.SYSTEM_UID)
-                .setPid(Process.myPid())
-                .setDeviceId(Context.DEVICE_ID_DEFAULT)
-                .setPackageName("com.google.android.gms")
-                .setAttributionTag("com.google.android.gms.findmydevice")
-                .build()
+        InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation()
+            .adoptShellPermissionIdentity()
 
         service.clientConnect(
             gattCallback,
@@ -606,7 +607,7 @@ class GattServiceTest(flags: FlagsWrapper) {
             transport,
             opportunistic,
             isAutomaticMtuEnabled,
-            testAttributeSource,
+            source,
         )
 
         verify(adapterService).notifyDirectLeGattClientConnect(any<Int>(), any<BluetoothDevice>())
@@ -712,10 +713,29 @@ class GattServiceTest(flags: FlagsWrapper) {
 
     @Test
     fun clientOnReadRemoteRssiFromNative() {
+        if (Flags.supportMultipleReadRssi()) {
+            service.mClientsPendingRssi.add(CLIENT_IF)
+        }
+
         service.onReadRemoteRssiFromNative(CLIENT_IF, device, TEST_RSSI, BluetoothGatt.GATT_SUCCESS)
 
         assertThat(service.mRssiCache[device.address]!!.rssi).isEqualTo(TEST_RSSI)
         verify(gattCallback).onReadRemoteRssi(device, TEST_RSSI, BluetoothGatt.GATT_SUCCESS)
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_SUPPORT_MULTIPLE_READ_RSSI)
+    fun twoClientsReadRemoteRssi() {
+        service.readRemoteRssi(gattCallback, device)
+        service.readRemoteRssi(gattCallback2, device)
+
+        verify(nativeInterface).gattClientReadRemoteRssi(CLIENT_IF, device)
+        verify(nativeInterface, never()).gattClientReadRemoteRssi(CLIENT_IF2, device)
+        service.onReadRemoteRssiFromNative(CLIENT_IF, device, TEST_RSSI, BluetoothGatt.GATT_SUCCESS)
+
+        assertThat(service.mRssiCache[device.address]!!.rssi).isEqualTo(TEST_RSSI)
+        verify(gattCallback).onReadRemoteRssi(device, TEST_RSSI, BluetoothGatt.GATT_SUCCESS)
+        verify(gattCallback2).onReadRemoteRssi(device, TEST_RSSI, BluetoothGatt.GATT_SUCCESS)
     }
 
     @Test
@@ -849,12 +869,6 @@ class GattServiceTest(flags: FlagsWrapper) {
 
         verify(nativeInterface)
             .gattClientRegisterForNotifications(CLIENT_IF, device, handle, enable)
-    }
-
-    @Test
-    fun clientReadRemoteRssi() {
-        service.readRemoteRssi(gattCallback, device)
-        verify(nativeInterface).gattClientReadRemoteRssi(CLIENT_IF, device)
     }
 
     @Test
@@ -1000,6 +1014,7 @@ class GattServiceTest(flags: FlagsWrapper) {
     companion object {
         private const val TEST_RSSI = 43
         private const val CLIENT_IF = 12
+        private const val CLIENT_IF2 = 13
         private const val CLIENT_CONN_ID = 42
 
         @JvmStatic

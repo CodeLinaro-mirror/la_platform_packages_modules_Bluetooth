@@ -41,9 +41,12 @@ import android.os.Process.SYSTEM_UID
 import android.os.UserHandle
 import android.os.UserManager
 import android.permission.PermissionManager
+import com.android.bluetooth.flags.Flags
 import com.android.server.bluetooth.ChangeIds.RESTRICT_ENABLE_DISABLE
 
 private const val TAG = "PermissionChecker"
+
+fun AttributionSource.isCallingFromNfc() = UserHandle.getAppId(this.uid) == NFC_UID
 
 internal class PermissionChecker(
     private val context: Context,
@@ -119,15 +122,16 @@ internal class PermissionChecker(
         enforceBluetoothRestriction()
 
         val callingAppId = UserHandle.getAppId(source.uid)
-        if (arrayOf(SYSTEM_UID, NFC_UID, SHELL_UID, ROOT_UID).contains(callingAppId)) {
-            // special uid can always toggle
-            // TODO: b/280890575 - remove process bypass
-            return
+        if (!Flags.systemServerNoLongerProvideProcessExemption()) {
+            if (arrayOf(SYSTEM_UID, NFC_UID, SHELL_UID, ROOT_UID).contains(callingAppId)) {
+                // special uid can always toggle
+                // TODO: b/280890575 - remove process bypass
+                return
+            }
         }
 
         val packageName =
-            source.packageName
-                ?: throw BluetoothPermissionException("Null package name from ${source.uid}")
+            requireNotNull(source.packageName) { "Unknown package caller. Identify yourself" }
         checkPackageName(callingAppId, packageName)
 
         if (foregroundRequired) {
@@ -155,7 +159,7 @@ internal class PermissionChecker(
                         context.packageManager.getPackageUid(name, MATCH_ANY_USER)
                     } catch (e: NameNotFoundException) {
                         Log.w(TAG, "checkPackageName($appId, $name): Failed", e)
-                        throw SecurityException(e.message)
+                        throw SecurityException(e)
                     } finally {
                         Binder.restoreCallingIdentity(callingIdentity)
                     }

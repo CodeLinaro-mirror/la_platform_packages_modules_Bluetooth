@@ -44,9 +44,10 @@ import android.bluetooth.BluetoothProfile.STATE_DISCONNECTED
 import android.bluetooth.BluetoothProfile.VOLUME_CONTROL
 import android.bluetooth.BluetoothProfile.getProfileName
 import android.bluetooth.BluetoothUuid
+import android.os.ParcelUuid
 import android.util.Log
 import com.android.bluetooth.Util
-import com.android.bluetooth.Utils.arrayContains
+import com.android.bluetooth.Util.arrayContains
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.flags.Flags
 import com.android.bluetooth.hid.HidHostService
@@ -75,10 +76,10 @@ constructor(
      *
      * @return `true` if the connection was successful, `false` otherwise
      */
-    abstract fun connect(device: BluetoothDevice?): Boolean
+    abstract fun connect(device: BluetoothDevice): Boolean
 
     /** Disconnects the given device from the profile. */
-    abstract fun disconnect(device: BluetoothDevice?): Boolean
+    abstract fun disconnect(device: BluetoothDevice): Boolean
 
     /** @return `true` if connection to remote device is allowed, otherwise `false` */
     open fun okToConnect(device: BluetoothDevice): Boolean {
@@ -119,7 +120,7 @@ constructor(
      *   which case implementations should typically return [BluetoothProfile.STATE_DISCONNECTED].
      * @return The current connection state for the device with this profile.
      */
-    abstract fun getConnectionState(device: BluetoothDevice?): Int
+    abstract fun getConnectionState(device: BluetoothDevice): Int
 
     /**
      * Get the connection policy of the profile.
@@ -143,29 +144,25 @@ constructor(
      * @return true if connectionPolicy is set, false on error
      */
     abstract fun setConnectionPolicy(
-        device: BluetoothDevice?,
+        device: BluetoothDevice,
         @BluetoothProfile.ConnectionPolicy connectionPolicy: Int,
     ): Boolean
 
     /** Process a change in the bonding state for a device */
-    open fun handleBondStateChanged(device: BluetoothDevice?, fromState: Int, toState: Int) {
+    open fun handleBondStateChanged(device: BluetoothDevice, fromState: Int, toState: Int) {
         Log.w(name, "handleBondStateChanged(): Called but not implemented")
     }
 
     companion object {
         @JvmStatic
-        fun isSupported(
-            adapterService: AdapterService,
-            device: BluetoothDevice?,
-            id: Int,
-        ): Boolean {
-            val remoteDeviceUuids = adapterService.getRemoteUuids(device)
+        fun isSupported(adapterService: AdapterService, device: BluetoothDevice, id: Int): Boolean {
+            val remoteDeviceUuids: Array<ParcelUuid>? = adapterService.getRemoteUuids(device)
             if (remoteDeviceUuids.isNullOrEmpty()) {
                 Log.e(TAG, "isSupported(): remoteUuids is null for device: $device")
             }
 
             val profile = getProfileName(id)
-            val localDeviceUuids = adapterService.getAdapterProperties().getUuids()
+            val localDeviceUuids: Array<ParcelUuid>? = adapterService.adapterProperties.uuids
             Log.v(
                 TAG,
                 "isSupported(device=$device, profile=$profile): " +
@@ -175,39 +172,39 @@ constructor(
 
             return when (id) {
                 A2DP ->
-                    arrayContains(remoteDeviceUuids, BluetoothUuid.ADV_AUDIO_DIST) ||
-                        arrayContains(remoteDeviceUuids, BluetoothUuid.A2DP_SINK)
+                    remoteDeviceUuids.arrayContains(BluetoothUuid.ADV_AUDIO_DIST) ||
+                        remoteDeviceUuids.arrayContains(BluetoothUuid.A2DP_SINK)
                 A2DP_SINK ->
-                    arrayContains(remoteDeviceUuids, BluetoothUuid.ADV_AUDIO_DIST) ||
-                        arrayContains(remoteDeviceUuids, BluetoothUuid.A2DP_SOURCE)
-                BATTERY -> arrayContains(remoteDeviceUuids, BluetoothUuid.BATTERY)
+                    remoteDeviceUuids.arrayContains(BluetoothUuid.ADV_AUDIO_DIST) ||
+                        remoteDeviceUuids.arrayContains(BluetoothUuid.A2DP_SOURCE)
+                BATTERY -> remoteDeviceUuids.arrayContains(BluetoothUuid.BATTERY)
                 CSIP_SET_COORDINATOR ->
-                    arrayContains(remoteDeviceUuids, BluetoothUuid.COORDINATED_SET)
-                HAP_CLIENT -> arrayContains(remoteDeviceUuids, BluetoothUuid.HAS)
+                    remoteDeviceUuids.arrayContains(BluetoothUuid.COORDINATED_SET)
+                HAP_CLIENT -> remoteDeviceUuids.arrayContains(BluetoothUuid.HAS)
                 HEADSET ->
-                    arrayContains(localDeviceUuids, BluetoothUuid.HSP_AG) &&
-                        arrayContains(remoteDeviceUuids, BluetoothUuid.HSP) ||
-                        (arrayContains(localDeviceUuids, BluetoothUuid.HFP_AG) &&
-                            arrayContains(remoteDeviceUuids, BluetoothUuid.HFP))
+                    localDeviceUuids.arrayContains(BluetoothUuid.HSP_AG) &&
+                        remoteDeviceUuids.arrayContains(BluetoothUuid.HSP) ||
+                        (localDeviceUuids.arrayContains(BluetoothUuid.HFP_AG) &&
+                            remoteDeviceUuids.arrayContains(BluetoothUuid.HFP))
                 HEADSET_CLIENT ->
-                    arrayContains(remoteDeviceUuids, BluetoothUuid.HFP_AG) &&
-                        arrayContains(localDeviceUuids, BluetoothUuid.HFP)
-                HEARING_AID -> arrayContains(remoteDeviceUuids, BluetoothUuid.HEARING_AID)
+                    remoteDeviceUuids.arrayContains(BluetoothUuid.HFP_AG) &&
+                        localDeviceUuids.arrayContains(BluetoothUuid.HFP)
+                HEARING_AID -> remoteDeviceUuids.arrayContains(BluetoothUuid.HEARING_AID)
                 HID_HOST ->
-                    arrayContains(remoteDeviceUuids, BluetoothUuid.HID) ||
-                        arrayContains(remoteDeviceUuids, BluetoothUuid.HOGP) ||
-                        arrayContains(remoteDeviceUuids, HidHostService.ANDROID_HEADTRACKER_UUID)
-                LE_AUDIO -> arrayContains(remoteDeviceUuids, BluetoothUuid.LE_AUDIO)
-                LE_AUDIO_BROADCAST_ASSISTANT -> arrayContains(remoteDeviceUuids, BluetoothUuid.BASS)
+                    remoteDeviceUuids.arrayContains(BluetoothUuid.HID) ||
+                        remoteDeviceUuids.arrayContains(BluetoothUuid.HOGP) ||
+                        remoteDeviceUuids.arrayContains(HidHostService.ANDROID_HEADTRACKER_UUID)
+                LE_AUDIO -> remoteDeviceUuids.arrayContains(BluetoothUuid.LE_AUDIO)
+                LE_AUDIO_BROADCAST_ASSISTANT -> remoteDeviceUuids.arrayContains(BluetoothUuid.BASS)
                 MAP_CLIENT ->
-                    arrayContains(localDeviceUuids, BluetoothUuid.MNS) &&
-                        arrayContains(remoteDeviceUuids, BluetoothUuid.MAS)
-                PAN -> arrayContains(remoteDeviceUuids, BluetoothUuid.NAP)
+                    localDeviceUuids.arrayContains(BluetoothUuid.MNS) &&
+                        remoteDeviceUuids.arrayContains(BluetoothUuid.MAS)
+                PAN -> remoteDeviceUuids.arrayContains(BluetoothUuid.NAP)
                 PBAP_CLIENT ->
-                    arrayContains(localDeviceUuids, BluetoothUuid.PBAP_PCE) &&
-                        arrayContains(remoteDeviceUuids, BluetoothUuid.PBAP_PSE)
-                SAP -> arrayContains(remoteDeviceUuids, BluetoothUuid.SAP)
-                VOLUME_CONTROL -> arrayContains(remoteDeviceUuids, BluetoothUuid.VOLUME_CONTROL)
+                    localDeviceUuids.arrayContains(BluetoothUuid.PBAP_PCE) &&
+                        remoteDeviceUuids.arrayContains(BluetoothUuid.PBAP_PSE)
+                SAP -> remoteDeviceUuids.arrayContains(BluetoothUuid.SAP)
+                VOLUME_CONTROL -> remoteDeviceUuids.arrayContains(BluetoothUuid.VOLUME_CONTROL)
                 HID_DEVICE ->
                     adapterService
                         .getStartedConnectableProfile(id)

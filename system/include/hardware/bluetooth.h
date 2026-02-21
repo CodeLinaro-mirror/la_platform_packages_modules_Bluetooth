@@ -43,6 +43,7 @@
 #define BT_PROFILE_ADVANCED_AUDIO_ID "a2dp"
 #define BT_PROFILE_ADVANCED_AUDIO_SINK_ID "a2dp_sink"
 #define BT_PROFILE_AV_RC_CTRL_ID "avrcp_ctrl"
+#define BT_PROFILE_LE_AUDIO_PERIPHERAL_ID "le_audio_peripheral"
 #define BT_PROFILE_CSIS_CLIENT_ID "csis_client"
 #define BT_PROFILE_GATT_ID "gatt"
 #define BT_PROFILE_HANDSFREE_CLIENT_ID "handsfree_client"
@@ -58,7 +59,7 @@
 #define BT_PROFILE_PAN_ID "pan"
 #define BT_PROFILE_SDP_CLIENT_ID "sdp"
 #define BT_PROFILE_SOCKETS_ID "socket"
-#define BT_PROFILE_VAPS_SERVER_ID "vaps_server"
+#define BT_PROFILE_VAP_SERVER_ID "vap_server"
 #define BT_PROFILE_VCP_CONTROLLER_ID "volume_control"
 #define BT_PROFILE_VCP_RENDERER_ID "vcp_renderer"
 
@@ -722,8 +723,9 @@ typedef void (*pin_request_callback)(RawAddress remote_bd_addr, bt_bdname_t* bd_
  *  BT_SSP_PAIRING_PASSKEY_ENTRY */
 /* TODO: Passkey request callback shall not be needed for devices with display
  * capability. We still need support this in the stack for completeness */
-typedef void (*ssp_request_callback)(RawAddress remote_bd_addr, PairingVariant pairing_variant,
-                                     uint32_t pass_key, int pairing_algorithm);
+typedef void (*ssp_request_callback)(RawAddress remote_bd_addr, int transport,
+                                     PairingVariant pairing_variant, uint32_t pass_key,
+                                     int pairing_algorithm);
 
 /** Bluetooth Bond state changed callback */
 /* Invoked in response to create_bond, cancel_bond or remove_bond */
@@ -1104,6 +1106,14 @@ typedef struct {
    *
    */
   int (*set_event_filter_connection_setup_all_devices)();
+
+  /**
+   *
+   * Set the suspend state. This information can be used to determine a few things,
+   * e.g. the parameter used for scanning.
+   *
+   */
+  int (*set_suspend_state)(bool suspend);
 
   /**
    *

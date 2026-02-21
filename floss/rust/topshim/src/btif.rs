@@ -846,14 +846,11 @@ impl From<CxxBluetoothProperty> for BluetoothProperty {
                 BluetoothProperty::BdAddr(RawAddress::from_bytes(slice).unwrap_or_default())
             }
             bindings::bt_property_type_t_BT_PROPERTY_UUIDS
-            | bindings::bt_property_type_t_BT_PROPERTY_UUIDS_LE => {
+            | bindings::bt_property_type_t_BT_PROPERTY_UUIDS_LE
+            | bindings::bt_property_type_t_BT_PROPERTY_UUIDS_FROM_EXTENDED_INQUIRY_RESPONSE
+            | bindings::bt_property_type_t_BT_PROPERTY_UUIDS_FROM_LE_ADVERTISING_DATA => {
                 let count = len / mem::size_of::<Uuid>();
                 BluetoothProperty::Uuids(ptr_to_vec(prop.val as *const Uuid, count))
-            }
-            // TODO(b/445332302): Make use of this and remove EIR TARGET_FLOSS quirk
-            bindings::bt_property_type_t_BT_PROPERTY_UUIDS_FROM_EXTENDED_INQUIRY_RESPONSE
-            | bindings::bt_property_type_t_BT_PROPERTY_UUIDS_FROM_LE_ADVERTISING_DATA => {
-                BluetoothProperty::Unknown
             }
             bindings::bt_property_type_t_BT_PROPERTY_CLASS_OF_DEVICE => {
                 BluetoothProperty::ClassOfDevice(u32_from_bytes(slice))
@@ -1077,6 +1074,7 @@ cb_variant!(BaseCb, pin_request_cb -> BaseCallbacks::PinRequest,
 );
 cb_variant!(BaseCb, ssp_request_cb -> BaseCallbacks::SspRequest,
     RawAddress,
+    i32 -> _,
     CxxPairingVariant -> PairingVariant,
     u32,
     i32 -> _
@@ -1246,6 +1244,7 @@ pub(crate) mod ffi {
         fn restore_filter_accept_list(self: &BtIntf) -> i32;
         fn allow_wake_by_hid(self: &BtIntf) -> i32;
         fn set_event_filter_connection_setup_all_devices(self: &BtIntf) -> i32;
+        fn set_suspend_state(self: &BtIntf, suspend: bool) -> i32;
         fn get_wbs_supported(self: &BtIntf) -> bool;
         fn get_swb_supported(self: &BtIntf) -> bool;
         fn is_coding_format_supported(self: &BtIntf, coding_format: u8) -> bool;
@@ -1272,6 +1271,7 @@ pub(crate) mod ffi {
         );
         fn ssp_request_cb(
             remote_addr: RawAddress,
+            transport: i32,
             variant: PairingVariant,
             passkey: u32,
             pairing_alg: i32,
@@ -1501,6 +1501,10 @@ impl BluetoothInterface {
 
     pub fn set_event_filter_connection_setup_all_devices(&self) -> i32 {
         self.internal.set_event_filter_connection_setup_all_devices()
+    }
+
+    pub fn set_suspend_state(&self, suspend: bool) -> i32 {
+        self.internal.set_suspend_state(suspend)
     }
 
     pub(crate) fn as_btif(&self) -> &ffi::BtIntf {

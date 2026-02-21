@@ -37,6 +37,7 @@
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
 #include "main/shim/le_scanning_manager.h"
+#include "os/system_properties.h"
 #include "osi/include/alarm.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/include/advertise_data_parser.h"
@@ -46,7 +47,8 @@
 #include "stack/include/btm_log_history.h"
 #include "stack/include/main_thread.h"
 
-#define DIRECT_CONNECT_TIMEOUT (30 * 1000) /* 30 seconds */
+constexpr uint32_t kCreateConnectionTimeoutMs = 30 * 1000;
+static const std::string kPropertyDirectConnTimeout = "bluetooth.core.le.direct_connection_timeout";
 
 using namespace bluetooth;
 
@@ -86,6 +88,12 @@ static void ACL_AcceptLeConnectionFrom(const tBLE_BD_ADDR& legacy_address_with_t
 static void ACL_IgnoreLeConnectionFrom(const tBLE_BD_ADDR& legacy_address_with_type) {
   BTM_LogHistory(kBtmLogTagACL, legacy_address_with_type, "Ignore connection from", "Le");
   bluetooth::shim::GetAclManagerLe()->CancelLeConnect(
+          bluetooth::ToAddressWithTypeFromLegacy(legacy_address_with_type));
+}
+
+static void ACL_CancelDirectConnect(const tBLE_BD_ADDR& legacy_address_with_type) {
+  BTM_LogHistory(kBtmLogTagACL, legacy_address_with_type, "Ignore connection from", "Le");
+  bluetooth::shim::GetAclManagerLe()->CancelDirectConnect(
           bluetooth::ToAddressWithTypeFromLegacy(legacy_address_with_type));
 }
 }  // namespace
@@ -398,6 +406,15 @@ bool background_connect_remove(uint8_t app_id, const RawAddress& address) {
     BTM_LogHistory(kBtmLogTagTA, address, "Ignore connection from");
   }
 
+  log::debug(
+          "num_of_targeted_announcements_before_remove : {}, num_of_targeted_announcements_users : "
+          "{}",
+          num_of_targeted_announcements_before_remove, num_of_targeted_announcements_users());
+  if ((num_of_targeted_announcements_before_remove > 0) &&
+      num_of_targeted_announcements_users() == 0) {
+    target_announcements_filtering_set(false);
+  }
+
   if (is_anyone_connecting(it)) {
     log::debug("some app is still connecting, app_id={}, address={}", static_cast<int>(app_id),
                address);
@@ -421,11 +438,6 @@ bool background_connect_remove(uint8_t app_id, const RawAddress& address) {
   if (accept_list_enabled) {
     ACL_IgnoreLeConnectionFrom(BTM_Sec_GetAddressWithType(address));
     return true;
-  }
-
-  if ((num_of_targeted_announcements_before_remove > 0) &&
-      num_of_targeted_announcements_users() == 0) {
-    target_announcements_filtering_set(true);
   }
 
   return true;
@@ -488,6 +500,23 @@ void on_connection_complete(const RawAddress& address) {
   remove_all_clients_with_pending_connections(address);
 }
 
+void on_connection_maybe(const RawAddress& address) {
+  /* We received signal that connection is established, so stop the direct connect timer.
+   *
+   * Later we would check connection establishment success/failure by either configuring it or
+   * receiving data through it, before sending callbacks that it's ready */
+
+  std::lock_guard<std::recursive_mutex> lock(bgconn_dev_mutex);
+  auto it = bgconn_dev.find(address);
+  if (it == bgconn_dev.end()) {
+    return;
+  }
+
+  for (auto& [key, value] : it->second.doing_direct_conn) {
+    value.reset();
+  }
+}
+
 void on_connection_timed_out_from_shim(const RawAddress& address) {
   log::info("Connection failed {}", address);
   on_connection_timed_out(0x00, address);
@@ -512,6 +541,12 @@ static void wl_direct_connect_timeout_cb(uint8_t app_id, const RawAddress& addre
 
   // Notify others about timeout
   on_connection_timed_out(app_id, address);
+
+  if (com::android::bluetooth::flags::gd_conn_mgr_one_timeout()) {
+    // Temporary mapping the error code to PAGE_TIMEOUT
+    bluetooth::metrics::LogLeAclCompletionEvent(address, bluetooth::hci::ErrorCode::PAGE_TIMEOUT,
+                                                true /* is locally initiated */);
+  }
 }
 
 static void find_in_device_record(const RawAddress& bd_addr, tBLE_BD_ADDR* address_with_type) {
@@ -592,8 +627,10 @@ bool direct_connect_add(uint8_t app_id, const RawAddress& address, tBLE_ADDR_TYP
   }
 
   // Setup a timer
-  alarm_t* timeout = alarm_new("wl_conn_params_30s");
-  alarm_set_closure(timeout, DIRECT_CONNECT_TIMEOUT,
+  uint32_t connection_timeout =
+          os::GetSystemPropertyUint32(kPropertyDirectConnTimeout, kCreateConnectionTimeoutMs);
+  alarm_t* timeout = alarm_new("direct_connect_tout_30s");
+  alarm_set_closure(timeout, connection_timeout,
                     base::BindOnce(&wl_direct_connect_timeout_cb, app_id, address));
 
   bgconn_dev[address].doing_direct_conn.emplace(app_id, unique_alarm_ptr(timeout, &alarm_free));
@@ -629,10 +666,16 @@ bool direct_connect_remove(uint8_t app_id, const RawAddress& address, bool conne
   if (is_anyone_interested_to_use_accept_list(it)) {
     log::debug("There is somebody interested in accept list for {}", address);
     if (connection_timeout) {
-      /* In such case we need to add device back to allow list because, when connection timeout
-       * out, the lower layer removes device from the allow list.
-       */
-      ACL_AcceptLeConnectionFrom(BTM_Sec_GetAddressWithType(address), false /* is_direct */, false);
+      if (com::android::bluetooth::flags::gd_conn_mgr_one_timeout()) {
+        /* Cancel direct connect. Any pending background connect will be preserved. */
+        ACL_CancelDirectConnect(BTM_Sec_GetAddressWithType(address));
+      } else {
+        /* In such case we need to add device back to allow list because, when connection timeout
+         * out, the lower layer removes device from the allow list.
+         */
+        ACL_AcceptLeConnectionFrom(BTM_Sec_GetAddressWithType(address), false /* is_direct */,
+                                   false);
+      }
     }
     return true;
   }

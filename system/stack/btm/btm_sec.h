@@ -43,6 +43,10 @@
 
 #define BTM_SEC_MAX_COLLISION_DELAY (5000)
 
+constexpr int MIN_KEY_SIZE = 7;
+constexpr int MIN_KEY_SIZE_DEFAULT = MIN_KEY_SIZE;
+constexpr int MAX_KEY_SIZE = 16;
+
 /*******************************************************************************
  *
  * Function         btm_sec_register
@@ -590,7 +594,7 @@ void btm_sec_encrypt_change(uint16_t handle, tHCI_STATUS status, uint8_t encr_en
  *
  ******************************************************************************/
 void btm_sec_connected(const RawAddress& bda, uint16_t handle, tHCI_STATUS status, uint8_t enc_mode,
-                       tHCI_ROLE assigned_role = HCI_ROLE_PERIPHERAL);
+                       bool locally_initiated, tHCI_ROLE assigned_role = HCI_ROLE_PERIPHERAL);
 
 /*******************************************************************************
  *
@@ -760,3 +764,14 @@ bool btm_is_bonded(const RawAddress& bd_addr, tBT_TRANSPORT transport);
  *
  ******************************************************************************/
 void btm_sec_hci_delete_stored_link_key(const RawAddress& bd_addr);
+
+/*******************************************************************************
+ *
+ * Function         btm_sec_get_min_enc_key_size
+ *
+ * Description      Get the minimum encryption key size allowed by the system.
+ *
+ * Returns          The minimum encryption key size.
+ *
+ ******************************************************************************/
+uint8_t btm_sec_get_min_enc_key_size();

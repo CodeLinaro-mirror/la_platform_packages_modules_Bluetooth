@@ -25,11 +25,11 @@
 
 #include "audio_hal_client/audio_hal_client.h"
 #include "bta_groups.h"
-#include "gatt_api.h"
 #include "gmap_client.h"
 #include "le_audio_types.h"
 #include "osi/include/alarm.h"
 #include "stack/btm/btm_dev.h"
+#include "stack/include/gatt_api.h"
 
 namespace bluetooth::le_audio {
 
@@ -264,7 +264,9 @@ public:
   bool IsMetadataChanged(const types::BidirectionalPair<types::AudioContexts>& context_types,
                          const types::BidirectionalPair<std::vector<uint8_t>>& ccid_lists);
 
+  // TODO: will remove when Flags.leaudioAllowlistRefactor() publish
   void GetDeviceModelName(void);
+  // TODO: will remove when Flags.leaudioAllowlistRefactor() publish
   void UpdateDeviceAllowlistFlag(void);
   DsaModes GetDsaModes(void);
   bool DsaReducedSduSizeSupported();

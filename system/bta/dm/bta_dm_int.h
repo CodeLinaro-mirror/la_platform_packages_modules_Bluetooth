@@ -326,6 +326,7 @@ void bta_dm_allow_wake_by_hid(std::vector<RawAddress> classic_hid_devices,
 void bta_dm_restore_filter_accept_list(std::vector<std::pair<RawAddress, uint8_t>> le_devices);
 void bta_dm_set_default_event_mask_except(uint64_t mask, uint64_t le_mask);
 void bta_dm_set_event_filter_inquiry_result_all_devices();
+void bta_dm_set_suspend_state(bool suspend);
 
 void bta_dm_ble_reset_id(void);
 
@@ -341,8 +342,8 @@ tBTM_PM_PWR_MD bta_dm_pm_get_sniff_entry(size_t index);
 namespace bluetooth::legacy::testing {
 
 BtaDmLink* allocate_link_for(const RawAddress& bd_addr, tBT_TRANSPORT transport);
-void bta_dm_acl_up(const AclLinkSpec& link_spec, uint16_t acl_handle);
-void bta_dm_acl_down(const AclLinkSpec& link_spec);
+void bta_dm_acl_up(const AclLinkSpec& link_spec, uint16_t acl_handle, bool locally_initiated);
+void bta_dm_acl_down(const AclLinkSpec& link_spec, bool locally_initiated);
 void bta_dm_init_cb();
 void bta_dm_deinit_cb();
 

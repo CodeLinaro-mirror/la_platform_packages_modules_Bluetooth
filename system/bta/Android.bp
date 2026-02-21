@@ -23,7 +23,6 @@ cc_defaults {
         "packages/modules/Bluetooth/system/btif/avrcp",
         "packages/modules/Bluetooth/system/gd",
         "packages/modules/Bluetooth/system/stack/btm",
-        "packages/modules/Bluetooth/system/stack/include",
         "packages/modules/Bluetooth/system/udrv/include",
     ],
     header_libs: ["libbluetooth_headers"],
@@ -128,9 +127,12 @@ cc_library_static {
         "jv/bta_jv_act.cc",
         "jv/bta_jv_api.cc",
         "le_audio/ascs/ascs.cc",
+        "le_audio/ascs/ase_manager.cc",
+        "le_audio/ascs/ase_state_machine.cc",
         "le_audio/audio_context_type_manager.cc",
         "le_audio/audio_hal_client/audio_sink_hal_client.cc",
         "le_audio/audio_hal_client/audio_source_hal_client.cc",
+        "le_audio/audio_hal_client/peripheral_audio_hal_client.cc",
         "le_audio/broadcaster/broadcast_configuration_provider.cc",
         "le_audio/broadcaster/broadcaster.cc",
         "le_audio/broadcaster/broadcaster_types.cc",
@@ -139,6 +141,8 @@ cc_library_static {
         "le_audio/client_parser.cc",
         "le_audio/codec_interface.cc",
         "le_audio/codec_manager.cc",
+        "le_audio/common/iso_app_proxy.cc",
+        "le_audio/common/le_audio_event_tracker.cc",
         "le_audio/content_control_id_keeper.cc",
         "le_audio/device_groups.cc",
         "le_audio/devices.cc",
@@ -150,6 +154,8 @@ cc_library_static {
         "le_audio/le_audio_utils.cc",
         "le_audio/metrics_collector.cc",
         "le_audio/pacs/pacs.cc",
+        "le_audio/server/le_audio_server_config_manager.cc",
+        "le_audio/server/server.cc",
         "le_audio/state_machine.cc",
         "le_audio/storage_helper.cc",
         "mcp/mcp_client.cc",
@@ -169,8 +175,8 @@ cc_library_static {
         "sys/bta_sys_conn.cc",
         "sys/bta_sys_main.cc",
         "sys/utl.cc",
-        "vaps/vaps_server.cc",
-        "vaps/vaps_server_utils.cc",
+        "vap/vap_server.cc",
+        "vap/vap_server_utils.cc",
         "vcp/vcp_controller.cc",
         "vcp/vcp_controller_device.cc",
         "vcp/vcp_renderer.cc",
@@ -636,7 +642,6 @@ cc_test {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -906,7 +911,6 @@ cc_test {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -990,7 +994,6 @@ cc_test {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1073,9 +1076,6 @@ cc_test {
         "libgtest",
         "libosi",
     ],
-    sanitize: {
-        cfi: false,
-    },
     header_libs: ["libbluetooth_headers"],
 }
 
@@ -1093,7 +1093,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1139,10 +1138,10 @@ cc_test {
         "test/common/btm_api_mock.cc",
         "test/common/mock_csis_client.cc",
         "test/common/mock_device_groups.cc",
-        "vaps/vaps_server.cc",
-        "vaps/vaps_server_test.cc",
-        "vaps/vaps_server_utils.cc",
-        "vaps/vaps_utils_test.cc",
+        "vap/vap_server.cc",
+        "vap/vap_server_test.cc",
+        "vap/vap_server_utils.cc",
+        "vap/vap_utils_test.cc",
     ],
     shared_libs: [
         "libaconfig_storage_read_api_cc",
@@ -1191,17 +1190,23 @@ cc_test {
             static_libs: [
                 "libPlatformProperties",
             ],
+            sanitize: {
+                address: false, // TODO(b/481480264) - Mts can't run with asan
+            },
         },
         host: {
             static_libs: [
                 "libbinder_ndk",
             ],
+            sanitize: {
+                address: true,
+            },
         },
     },
     sanitize: {
         cfi: true,
         scs: true,
-        address: true,
+        // address: See above
         all_undefined: true,
         integer_overflow: true,
         diag: {
@@ -1223,7 +1228,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1319,7 +1323,6 @@ cc_test {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/le_audio",
         "packages/modules/Bluetooth/system/stack/btm",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1385,7 +1388,6 @@ cc_test {
         "packages/modules/Bluetooth/system/bta/le_audio",
         "packages/modules/Bluetooth/system/bta/test/common",
         "packages/modules/Bluetooth/system/stack/btm",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1440,11 +1442,23 @@ cc_test {
     sanitize: {
         cfi: true,
         scs: true,
-        address: true,
+        // address: See below
         all_undefined: true,
         integer_overflow: true,
         diag: {
             undefined: true,
+        },
+    },
+    target: {
+        android: {
+            sanitize: {
+                address: false, // TODO(b/481480264) - Mts can't run with asan
+            },
+        },
+        host: {
+            sanitize: {
+                address: true,
+            },
         },
     },
 }
@@ -1463,7 +1477,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1525,7 +1538,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
@@ -1595,7 +1607,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":BtaDmSources",
@@ -1669,7 +1680,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":BtaDmSources",
@@ -1744,7 +1754,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":BtaDmSources",
@@ -1816,7 +1825,6 @@ cc_test {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/sys",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
 
     shared_libs: [
@@ -1867,26 +1875,40 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/test/common",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         ":TestCommonMockFunctions",
+        ":TestCommonSyncMainHandler",
         ":TestMockLegacyHciInterface",
         ":TestMockMainShimEntry",
-        ":TestMockStackBtm",
         ":TestMockStackBtmInterface",
         ":TestMockStackBtmIso",
         ":TestStubOsi",
         "le_audio/ascs/ascs.cc",
         "le_audio/ascs/ascs_packets_test.cc",
         "le_audio/ascs/ascs_test.cc",
+        "le_audio/ascs/ase_manager.cc",
+        "le_audio/ascs/ase_manager_test.cc",
+        "le_audio/ascs/ase_state_machine.cc",
+        "le_audio/ascs/ase_state_machine_test.cc",
+        "le_audio/audio_hal_client/mock_peripheral_audio_hal.cc",
+        "le_audio/audio_hal_client/peripheral_audio_hal_client.cc",
+        "le_audio/audio_hal_client/peripheral_audio_hal_client_test.cc",
         "le_audio/common/gatt_client_data_tracker_test.cc",
+        "le_audio/common/iso_app_proxy.cc",
+        "le_audio/common/iso_app_proxy_test.cc",
+        "le_audio/common/le_audio_event_tracker.cc",
+        "le_audio/le_audio_log_history.cc",
         "le_audio/le_audio_types.cc",
         "le_audio/le_audio_utils.cc",
         "le_audio/pacs/pacs.cc",
         "le_audio/pacs/pacs_packets_test.cc",
         "le_audio/pacs/pacs_test.cc",
+        "le_audio/server/le_audio_server_config_manager.cc",
+        "le_audio/server/server.cc",
+        "le_audio/server/server_test.cc",
         "test/common/bta_gatt_api_mock.cc",
+        "test/common/btm_api_mock.cc",
     ],
     shared_libs: [
         "libbase",
@@ -1903,9 +1925,13 @@ cc_test {
         "libbluetooth_pacs_pdl",
         "libbluetooth_private_gatt_rs_bridge",
         "libbluetooth_types",
+        "libbt-btu-main-thread",
         "libbt-common",
         "libchrome",
+        "libcom.android.sysprop.bluetooth.wrapped",
+        "libevent",
         "libgmock",
+        "libgtest",
         "server_configurable_flags",
     ],
 }

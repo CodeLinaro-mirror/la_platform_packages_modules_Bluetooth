@@ -1745,7 +1745,10 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         subevent_result->frequency_compensation_ = cs_event_result.GetFrequencyCompensation();
         subevent_result->reference_power_level_ = cs_event_result.GetReferencePowerLevel();
         subevent_result->num_antenna_paths_ = cs_event_result.GetNumAntennaPaths();
-        subevent_result->timestamp_nanos_ = ::android::elapsedRealtimeNano();
+        subevent_result->timestamp_nanos_ =
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
         procedure_data->procedure_data_v2_.local_subevent_data_.emplace_back(subevent_result);
       }
     } else {
@@ -1833,15 +1836,11 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       procedure_data->contains_complete_subevent_ = true;
     }
 
-    if (procedure_abort_reason != ProcedureAbortReason::NO_ABORT ||
-        subevent_abort_reason != SubeventAbortReason::NO_ABORT) {
-      // Even the procedure is aborted, we should keep following process and
-      // handle it when all corresponding remote data received.
-      procedure_data->ras_subevent_header_.ranging_abort_reason_ =
-              static_cast<RangingAbortReason>(procedure_abort_reason);
-      procedure_data->ras_subevent_header_.subevent_abort_reason_ =
-              static_cast<bluetooth::ras::SubeventAbortReason>(subevent_abort_reason);
-    }
+    procedure_data->ras_subevent_header_.ranging_abort_reason_ =
+            static_cast<RangingAbortReason>(procedure_abort_reason);
+    procedure_data->ras_subevent_header_.subevent_abort_reason_ =
+            static_cast<bluetooth::ras::SubeventAbortReason>(subevent_abort_reason);
+
     parse_cs_result_data(result_data_structures, *procedure_data, live_tracker->role);
 
     if (live_tracker->local_start) {

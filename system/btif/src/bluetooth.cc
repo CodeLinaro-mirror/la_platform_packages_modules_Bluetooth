@@ -58,8 +58,9 @@
 #include "bta/include/bta_hf_client_api.h"
 #include "bta/include/bta_le_audio_api.h"
 #include "bta/include/bta_le_audio_broadcaster_api.h"
+#include "bta/include/bta_le_audio_server_api.h"
 #include "bta/include/bta_mcp_client_api.h"
-#include "bta/include/bta_vaps_server_api.h"
+#include "bta/include/bta_vap_server_api.h"
 #include "bta/include/bta_vcp_controller_api.h"
 #include "bta/include/bta_vcp_renderer_api.h"
 #include "btif/avrcp/avrcp_service.h"
@@ -157,6 +158,12 @@ tBT_TRANSPORT to_bt_transport(int val) {
   }
   log::warn("Passed unexpected transport value:{}", val);
   return BT_TRANSPORT_AUTO;
+}
+
+void btif_bluetooth_dump(int fd) {
+  dprintf(fd, "\nNative:\n");
+  dprintf(fd, "  hci_instance_name: %s\n",
+          bluetooth::os::ParameterProvider::GetHciInstanceName().c_str());
 }
 
 }  // namespace
@@ -329,6 +336,12 @@ struct CoreInterfaceImpl : bluetooth::core::CoreInterface {
 
     if (VolumeController::IsRunning()) {
       btif_vcp_controller_get_interface()->RemoveDevice(bd_addr);
+    }
+
+    if (com_android_bluetooth_flags_hap_keep_bonded_dev_in_ram()) {
+      if (bluetooth::le_audio::has::HasClient::IsHasClientRunning()) {
+        btif_has_client_get_interface()->RemoveDevice(bd_addr);
+      }
     }
   }
 
@@ -747,7 +760,10 @@ static int clear_event_filter() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
-
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_clear_event_filter();
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_clear_event_filter));
   return BT_STATUS_SUCCESS;
 }
@@ -757,7 +773,10 @@ static int clear_event_mask() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
-
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_clear_event_mask();
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_clear_event_mask));
   return BT_STATUS_SUCCESS;
 }
@@ -767,7 +786,10 @@ static int clear_filter_accept_list() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
-
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_clear_filter_accept_list();
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_clear_filter_accept_list));
   return BT_STATUS_SUCCESS;
 }
@@ -777,7 +799,10 @@ static int disconnect_all_acls() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
-
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_disconnect_all_acls();
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_disconnect_all_acls));
   return BT_STATUS_SUCCESS;
 }
@@ -803,7 +828,10 @@ static int le_rand() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
-
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_le_rand(get_main_thread()->BindOnce(&le_rand_btif_cb));
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_le_rand, get_main_thread()->BindOnce(&le_rand_btif_cb)));
   return BT_STATUS_SUCCESS;
 }
@@ -812,6 +840,10 @@ static int set_event_filter_inquiry_result_all_devices() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_set_event_filter_inquiry_result_all_devices();
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_set_event_filter_inquiry_result_all_devices));
   return BT_STATUS_SUCCESS;
 }
@@ -819,6 +851,10 @@ static int set_event_filter_inquiry_result_all_devices() {
 static int set_default_event_mask_except(uint64_t mask, uint64_t le_mask) {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
+  }
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_set_default_event_mask_except(mask, le_mask);
+    return BT_STATUS_SUCCESS;
   }
   do_in_main_thread(base::BindOnce(btif_dm_set_default_event_mask_except, mask, le_mask));
   return BT_STATUS_SUCCESS;
@@ -833,7 +869,14 @@ static int restore_filter_accept_list() {
   // This should be the list of bonded devices and potentially any GATT
   // connections that have `is_direct=False`. Currently, we only restore LE hid
   // devices.
-  auto le_hid_addrs = btif_storage_get_le_hid_devices();
+  std::vector<std::pair<RawAddress, uint8_t>> le_hid_addrs;
+  if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+    le_hid_addrs = btif_storage_get_le_hid_devices();
+  }
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_restore_filter_accept_list(std::move(le_hid_addrs));
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_restore_filter_accept_list, std::move(le_hid_addrs)));
   return BT_STATUS_SUCCESS;
 }
@@ -842,8 +885,15 @@ static int allow_wake_by_hid() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
-  auto le_hid_addrs = btif_storage_get_le_hid_devices();
+  std::vector<std::pair<RawAddress, uint8_t>> le_hid_addrs;
+  if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+    le_hid_addrs = btif_storage_get_le_hid_devices();
+  }
   auto classic_hid_addrs = btif_storage_get_wake_capable_classic_hid_devices();
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_allow_wake_by_hid(std::move(classic_hid_addrs), std::move(le_hid_addrs));
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_allow_wake_by_hid, std::move(classic_hid_addrs),
                                    std::move(le_hid_addrs)));
   return BT_STATUS_SUCCESS;
@@ -853,7 +903,23 @@ static int set_event_filter_connection_setup_all_devices() {
   if (!interface_ready()) {
     return BT_STATUS_NOT_READY;
   }
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_set_event_filter_connection_setup_all_devices();
+    return BT_STATUS_SUCCESS;
+  }
   do_in_main_thread(base::BindOnce(btif_dm_set_event_filter_connection_setup_all_devices));
+  return BT_STATUS_SUCCESS;
+}
+
+static int set_suspend_state(bool suspend) {
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+  if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
+    btif_dm_set_suspend_state(suspend);
+    return BT_STATUS_SUCCESS;
+  }
+  do_in_main_thread(base::BindOnce(btif_dm_set_suspend_state, suspend));
   return BT_STATUS_SUCCESS;
 }
 
@@ -864,6 +930,7 @@ static void dump(int fd, const char** /*arguments*/) {
   }
 
   log::debug("Started bluetooth dumpsys");
+  btif_bluetooth_dump(fd);
   btif_debug_conn_dump(fd);
   btif_debug_bond_event_dump(fd);
   btif_debug_linkkey_type_dump(fd);
@@ -887,11 +954,12 @@ static void dump(int fd, const char** /*arguments*/) {
   ::bluetooth::le_audio::has::HasClient::DebugDump(fd);
   ::bluetooth::asha::HearingAid::DebugDump(fd);
   LeAudioClient::DebugDump(fd);
+  btif_debug_le_audio_server_dump(fd);
   LeAudioBroadcaster::DebugDump(fd);
   ::bluetooth::mcp::McpClient::DebugDump(fd);
   VolumeController::DebugDump(fd);
   ::bluetooth::vcp::VolumeRenderer::DebugDump(fd);
-  bluetooth::vaps::GetVapsServer()->DebugDump(fd);
+  bluetooth::vap::GetVapServer()->DebugDump(fd);
   connection_manager::dump(fd);
   bluetooth::bqr::DebugDump(fd);
   AVCT_Dumpsys(fd);
@@ -984,6 +1052,10 @@ static const void* get_profile_interface(const char* profile_id) {
     return btif_le_audio_get_interface();
   }
 
+  if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_PERIPHERAL_ID)) {
+    return btif_le_audio_server_get_interface();
+  }
+
   if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_BROADCASTER_ID)) {
     return btif_le_audio_broadcaster_get_interface();
   }
@@ -1000,8 +1072,8 @@ static const void* get_profile_interface(const char* profile_id) {
     return btif_csis_client_get_interface();
   }
 
-  if (is_profile(profile_id, BT_PROFILE_VAPS_SERVER_ID)) {
-    return btif_vaps_server_get_interface();
+  if (is_profile(profile_id, BT_PROFILE_VAP_SERVER_ID)) {
+    return btif_vap_server_get_interface();
   }
 
   if (is_profile(profile_id, BT_PROFILE_VCP_RENDERER_ID)) {
@@ -1212,6 +1284,7 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .allow_wake_by_hid = allow_wake_by_hid,
         .set_event_filter_connection_setup_all_devices =
                 set_event_filter_connection_setup_all_devices,
+        .set_suspend_state = set_suspend_state,
         .get_wbs_supported = get_wbs_supported,
         .get_swb_supported = get_swb_supported,
         .is_coding_format_supported = is_coding_format_supported,
@@ -1321,15 +1394,15 @@ void invoke_pin_request_cb(RawAddress bd_addr, bt_bdname_t bd_name, uint32_t cod
           bd_addr, bd_name, cod, min_16_digit, pairing_algorithm));
 }
 
-void invoke_ssp_request_cb(RawAddress bd_addr, PairingVariant pairing_variant, uint32_t pass_key,
-                           int pairing_algorithm) {
+void invoke_ssp_request_cb(RawAddress bd_addr, int transport, PairingVariant pairing_variant,
+                           uint32_t pass_key, int pairing_algorithm) {
   do_in_jni_thread(base::BindOnce(
-          [](RawAddress bd_addr, PairingVariant pairing_variant, uint32_t pass_key,
+          [](RawAddress bd_addr, int transport, PairingVariant pairing_variant, uint32_t pass_key,
              int pairing_algorithm) {
-            HAL_CBACK(bt_hal_cbacks, ssp_request_cb, bd_addr, pairing_variant, pass_key,
+            HAL_CBACK(bt_hal_cbacks, ssp_request_cb, bd_addr, transport, pairing_variant, pass_key,
                       pairing_algorithm);
           },
-          bd_addr, pairing_variant, pass_key, pairing_algorithm));
+          bd_addr, transport, pairing_variant, pass_key, pairing_algorithm));
 }
 
 void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c, Octet16 r,

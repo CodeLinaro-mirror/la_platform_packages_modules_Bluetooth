@@ -38,7 +38,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.ParameterizedRobolectricTestRunner.Parameters
-import org.robolectric.Shadows
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
@@ -59,7 +59,7 @@ class BluetoothComponentTest(flags: FlagsWrapper) {
 
         assertThat(component.packageName).isEqualTo(PACKAGE_NAME)
         assertThat(component.componentName.packageName).isEqualTo(PACKAGE_NAME)
-        assertThat(component.componentName.className).isEqualTo(BluetoothComponent.ADAPTER_CLASS)
+        assertThat(component.componentName.className).isEqualTo(BLUETOOTH_SERVICE)
     }
 
     @Test(expected = IllegalStateException::class)
@@ -99,7 +99,7 @@ class BluetoothComponentTest(flags: FlagsWrapper) {
         setupPackage(context, false)
 
         // Only the last call to setPackagesForUid is taken into consideration
-        Shadows.shadowOf(context.packageManager)
+        shadowOf(context.packageManager)
             .setPackagesForUid(
                 Process.BLUETOOTH_UID,
                 "random.first.package.name",
@@ -111,10 +111,12 @@ class BluetoothComponentTest(flags: FlagsWrapper) {
 
         assertThat(component.packageName).isEqualTo(PACKAGE_NAME)
         assertThat(component.componentName.packageName).isEqualTo(PACKAGE_NAME)
-        assertThat(component.componentName.className).isEqualTo(BluetoothComponent.ADAPTER_CLASS)
+        assertThat(component.componentName.className).isEqualTo(BLUETOOTH_SERVICE)
     }
 
     companion object {
+        const val BLUETOOTH_SERVICE = "my.awesome.bluetooth.service"
+
         internal fun setup(
             config_systemBluetoothStack: String = PACKAGE_NAME,
             safeMode: Boolean = false,
@@ -128,15 +130,15 @@ class BluetoothComponentTest(flags: FlagsWrapper) {
         }
 
         private fun setupPackage(context: Context, safeMode: Boolean) {
-            val pm = Shadows.shadowOf(context.packageManager)
+            val pm = shadowOf(context.packageManager)
             pm.setSafeMode(safeMode)
 
-            val componentName = ComponentName(PACKAGE_NAME, BluetoothComponent.ADAPTER_CLASS)
+            val componentName = ComponentName(PACKAGE_NAME, BLUETOOTH_SERVICE)
 
             val serviceInfo =
                 ServiceInfo().apply {
                     this.packageName = PACKAGE_NAME
-                    name = BluetoothComponent.ADAPTER_CLASS
+                    name = BLUETOOTH_SERVICE
                     applicationInfo =
                         ApplicationInfo().apply { flags = ApplicationInfo.FLAG_SYSTEM }
                 }

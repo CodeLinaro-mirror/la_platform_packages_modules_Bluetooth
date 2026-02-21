@@ -26,16 +26,16 @@
 #include <cstdint>
 #include <cstring>
 
-#include "bt_name.h"
 #include "bta/hh/bta_hh_int.h"
 #include "bta_hh_api.h"
 #include "btif/include/btif_storage.h"
 #include "device/include/interop.h"
-#include "hiddefs.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/allocator.h"
+#include "stack/include/bt_name.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/hiddefs.h"
 #include "stack/include/sdp_api.h"
 
 using namespace bluetooth::legacy::stack::sdp;
@@ -183,7 +183,7 @@ static void bta_hh_reset_cb(tBTA_HH_DEV_CB* p_cb) {
 
   // Cancel SDP if it had been started
   if (p_cb->p_disc_db != nullptr) {
-    (void)get_legacy_stack_sdp_api()->service.SDP_CancelServiceSearch(p_cb->p_disc_db);
+    (void)get_legacy_stack_sdp_api()->SDP_CancelServiceSearch(p_cb->p_disc_db);
     osi_free_and_reset((void**)&p_cb->p_disc_db);
   }
   *p_cb = {};

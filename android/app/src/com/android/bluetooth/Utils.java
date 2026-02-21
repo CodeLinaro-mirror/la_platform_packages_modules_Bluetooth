@@ -24,7 +24,6 @@ import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -54,7 +53,6 @@ import java.nio.charset.CharsetDecoder;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -76,6 +74,10 @@ public final class Utils {
     private static final String PTS_TEST_MODE_PROPERTY = "persist.bluetooth.pts";
 
     private static final String ENABLE_DUAL_MODE_AUDIO = "persist.bluetooth.enable_dual_mode_audio";
+
+    private static final String MAX_TX_POWER_DBM_PROPERTY = "bluetooth.ble.max_tx_power_dbm.config";
+    private static final int DEFAULT_MAX_TX_POWER_DBM = 10;
+    private static final int MAX_SUPPORTED_TX_POWER_DBM = 10;
 
     // See https://en.wikipedia.org/wiki/Initialization-on-demand_holder_idiom
     private static class DualModeAudioSetting {
@@ -422,21 +424,6 @@ public final class Utils {
     }
 
     /**
-     * Checks that value is present as at least one of the elements of the array.
-     *
-     * @param array the array to check in
-     * @param value the value to check for
-     * @return true if the value is present in the array
-     */
-    public static <T> boolean arrayContains(@Nullable T[] array, T value) {
-        if (array == null) return false;
-        for (T element : array) {
-            if (Objects.equals(element, value)) return true;
-        }
-        return false;
-    }
-
-    /**
      * CCC descriptor short integer value to string.
      *
      * @param cccValue the short value of CCC descriptor
@@ -532,5 +519,15 @@ public final class Utils {
     public static boolean isBluetoothPairingHardeningSupported() {
         return com.android.bluetooth.flags.Flags.apairing26q2PermissionImprovements()
                 && android.bluetooth.platform.flags.Flags.bluetoothPairingHardening();
+    }
+
+    /** Determines the maximum TX power (in dBm) that's allowed for the system. */
+    public static int getMaxTxPowerDbm() {
+        if (!com.android.bluetooth.flags.Flags.allowMoreTxPower()) {
+            return 1;
+        }
+        return Math.min(
+                SystemProperties.getInt(MAX_TX_POWER_DBM_PROPERTY, DEFAULT_MAX_TX_POWER_DBM),
+                MAX_SUPPORTED_TX_POWER_DBM);
     }
 }

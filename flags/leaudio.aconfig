@@ -2,6 +2,16 @@ package: "com.android.bluetooth.flags"
 container: "com.android.bt"
 
 flag {
+    name: "leaudio_csis_handle_misconfigured_sets"
+    namespace: "bluetooth"
+    description: "Disconnect CSIS from devices which has invalid SIRK"
+    bug: "478807871"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
     name: "leaudio_improve_state_machine_invalid_status"
     namespace: "bluetooth"
     description: "Improve handling state machine internal invalid status"
@@ -16,6 +26,16 @@ flag {
     namespace: "bluetooth"
     description: "Add support for confirm suspend"
     bug: "446634001"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_fix_reporting_csis_members"
+    namespace: "bluetooth"
+    description: "Fix reporting available set members to Application"
+    bug: "480026651"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -129,6 +149,16 @@ flag {
     namespace: "bluetooth"
     description: "LE Audio peripheral feature"
     bug: "428719427"
+}
+
+flag {
+    name: "leaudio_peripheral_mcp_link_abstraction_layer"
+    namespace: "bluetooth"
+    description: "Integration of MCP with MediaAudioServer abstraction layer"
+    bug: "483613067"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
 }
 
 flag {
@@ -418,4 +448,14 @@ flag {
     namespace: "bluetooth"
     description: "Make TMAP GATT service centralized for central and peripheral Bluetooth services"
     bug: "477546285"
+}
+
+flag {
+    name: "leaudio_allowlist_refactor"
+    namespace: "bluetooth"
+    description: "Refactor LE Audio allowlist to increase device capacity"
+    bug: "477447231"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
 }

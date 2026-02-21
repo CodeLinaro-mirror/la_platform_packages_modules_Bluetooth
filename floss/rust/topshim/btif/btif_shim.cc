@@ -69,9 +69,9 @@ static void pin_request_cb(RawAddress remote_bd_addr, bt_bdname_t* bd_name, uint
   rusty::pin_request_cb(remote_bd_addr, bd_name_str, cod, min_16_digit, pairing_algorithm);
 }
 
-static void ssp_request_cb(RawAddress remote_bd_addr, PairingVariant pairing_variant,
+static void ssp_request_cb(RawAddress remote_bd_addr, int transport, PairingVariant pairing_variant,
                            uint32_t pass_key, int pairing_algorithm) {
-  rusty::ssp_request_cb(remote_bd_addr, pairing_variant, pass_key, pairing_algorithm);
+  rusty::ssp_request_cb(remote_bd_addr, transport, pairing_variant, pass_key, pairing_algorithm);
 }
 
 static void bond_state_cb(bt_status_t status, RawAddress remote_bd_addr, tBT_TRANSPORT transport,
@@ -272,6 +272,8 @@ int BtIntf::allow_wake_by_hid() const { return intf_->allow_wake_by_hid(); }
 int BtIntf::set_event_filter_connection_setup_all_devices() const {
   return intf_->set_event_filter_connection_setup_all_devices();
 }
+
+int BtIntf::set_suspend_state(bool suspend) const { return intf_->set_suspend_state(suspend); }
 
 bool BtIntf::get_wbs_supported() const { return intf_->get_wbs_supported(); }
 

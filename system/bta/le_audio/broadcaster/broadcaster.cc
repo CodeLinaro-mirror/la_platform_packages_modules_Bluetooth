@@ -42,15 +42,12 @@
 #include "bta/le_audio/le_audio_utils.h"
 #include "bta/le_audio/metrics_collector.h"
 #include "bta_le_audio_api.h"
-#include "btm_iso_api_types.h"
 #include "common/strings.h"
 #include "gd/common/utils.h"
 #include "hardware/ble_advertiser.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/controller.h"
 #include "hci/hci_packets.h"
-#include "hcidefs.h"
-#include "hcimsgs.h"
 #include "internal_include/stack_config.h"
 #include "le_audio/audio_hal_client/audio_hal_client.h"
 #include "le_audio/broadcaster/broadcaster_types.h"
@@ -61,6 +58,9 @@
 #include "stack/include/btm_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
+#include "stack/include/hcidefs.h"
+#include "stack/include/hcimsgs.h"
 #include "stack/include/main_thread.h"
 
 #ifdef TARGET_FLOSS
@@ -1307,8 +1307,8 @@ private:
       for (uint8_t chan = 0; chan < encoders.size(); ++chan) {
         IsoManager::GetInstance()->SendIsoData(
                 config->connection_handles[chan],
-                (const uint8_t*)encoders[chan]->GetDecodedSamples().data(),
-                encoders[chan]->GetDecodedSamples().size() * 2);
+                (const uint8_t*)encoders[chan]->GetOutputBuffer().data(),
+                encoders[chan]->GetOutputBuffer().size() * 2);
       }
     }
 

@@ -131,8 +131,36 @@ bool BTM_UseLeLink(const RawAddress& bd_addr) {
     return true;
   }
 
-  auto dev_info = get_btm_client_interface().peer.BTM_ReadDevInfo(bd_addr);
-  return dev_info.device_type == BT_DEVICE_TYPE_BLE;
+  auto dev_info = BTM_ReadDevInfo(bd_addr);
+  if (!com_android_bluetooth_flags_pairing_transport_selection()) {
+    return dev_info.device_type == BT_DEVICE_TYPE_BLE;
+  }
+
+  if (dev_info.device_type == BT_DEVICE_TYPE_BLE) {
+    return true;
+  }
+
+  if (dev_info.device_type == BT_DEVICE_TYPE_BREDR) {
+    return false;
+  }
+
+  // Dual mode device, check the inquiry record for the transport type
+  const tBTM_INQ_INFO* p_inq_info = BTM_InqDbRead(bd_addr);
+  if (p_inq_info == nullptr) {
+    return false;  // No inquiry record, assume BR/EDR
+  }
+
+  if (p_inq_info->results.inq_result_type == BT_DEVICE_TYPE_BLE) {  // Only seen on LE transport
+    return true;
+  }
+
+  if (p_inq_info->results.inq_result_type ==
+      BT_DEVICE_TYPE_BREDR) {  // Only seen on BR/EDR transport
+    return false;
+  }
+
+  // Seen on both transports, use the most recently seen transport
+  return p_inq_info->results.last_inq_result_transport == BT_TRANSPORT_LE;
 }
 
 static void read_phy_cb(base::OnceCallback<void(uint8_t tx_phy, uint8_t rx_phy, uint8_t status)> cb,
@@ -265,7 +293,7 @@ DevInfo BTM_ReadDevInfo(const RawAddress& remote_bda) {
 
   if (p_device == nullptr) {
     /* Check with the BT manager if details about remote device are known */
-    if (p_inq_info != NULL) {
+    if (p_inq_info != nullptr) {
       dev_info.device_type = p_inq_info->results.device_type;
       dev_info.addr_type = p_inq_info->results.ble_addr_type;
     } else { /* unknown device, assume BR/EDR */
@@ -273,8 +301,16 @@ DevInfo BTM_ReadDevInfo(const RawAddress& remote_bda) {
       log::verbose("unknown device, BR/EDR assumed");
     }
   } else { /* there is a security device record existing */
-    /* new inquiry result, merge device type in security device record */
-    if (p_inq_info) {
+    /* New inquiry result, merge device type in security device record */
+    if (p_inq_info != nullptr) {
+      // If the device type is unknown, use the device type from the device discovery results
+      if (com_android_bluetooth_flags_pairing_transport_selection() &&
+          p_device->device_type == BT_DEVICE_TYPE_UNKNOWN &&
+          p_inq_info->results.device_type != BT_DEVICE_TYPE_UNKNOWN) {
+        p_device->device_type = p_inq_info->results.device_type;
+        dev_info.device_type = p_inq_info->results.device_type;
+      }
+
       p_device->device_type |= p_inq_info->results.device_type;
       if (is_ble_addr_type_known(p_inq_info->results.ble_addr_type)) {
         p_device->ble.SetAddressType(p_inq_info->results.ble_addr_type);

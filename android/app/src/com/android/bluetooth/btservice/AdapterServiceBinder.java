@@ -82,6 +82,7 @@ import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.RemoteDevices.DeviceProperties;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.le_scan.ScanUtil;
+import com.android.bluetooth.metrics.MetricsLogger;
 
 import libcore.util.SneakyThrow;
 
@@ -760,6 +761,40 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             SneakyThrow.sneakyThrow(e);
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public int disconnectAllAcl(BluetoothDevice device, AttributionSource source) {
+        requireNonNull(device);
+        AdapterService service = getService();
+        if (service == null) {
+            return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED;
+        }
+        if (!callerIsSystemOrActiveOrManagedUser(service, TAG, "disconnectAllAcl")) {
+            return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
+        }
+        if (!enforceConnectPermissionForDataDelivery(service, source, TAG, "disconnectAllAcl")) {
+            return BluetoothStatusCodes.ERROR_MISSING_BLUETOOTH_CONNECT_PERMISSION;
+        }
+
+        if (!Flags.gattConnSettings()) {
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        } else {
+            Utils.enforceCdmAssociationIfNotBluetoothPrivileged(
+                    service, service.getCompanionDeviceManager(), source, device);
+        }
+
+        Log.i(
+                TAG,
+                "disconnectAllAcl: device="
+                        + device
+                        + ", from "
+                        + getUidPidString()
+                        + " packageName:"
+                        + source.getPackageName());
+
+        return service.disconnectAllAcl(
+                device, BluetoothStatusCodes.ERROR_DISCONNECT_REASON_USER_REQUEST);
     }
 
     @Override
@@ -1873,7 +1908,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
         if (Flags.mainlineBetaStorage()) {
-            if (!Utils.arrayContains(service.getBondedDevices(), device)) {
+            if (!Util.arrayContains(service.getBondedDevices(), device)) {
                 return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
             }
             service.setActiveAudioPolicy(device, policy);
@@ -1924,7 +1959,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
         if (Flags.mainlineBetaStorage()) {
-            if (!Utils.arrayContains(service.getBondedDevices(), device)) {
+            if (!Util.arrayContains(service.getBondedDevices(), device)) {
                 return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
             }
             service.setMicrophonePreferredForCalls(device, enabled);

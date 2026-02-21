@@ -496,18 +496,23 @@ public class BluetoothManagerService {
     private void handleSatelliteModeChanged(boolean isSatelliteModeOn) {
         final int currentState = mState.get();
 
-        if (shouldBluetoothBeOn(isSatelliteModeOn) && currentState != State.ON) {
+        boolean shouldBeOn = shouldBluetoothBeOn(isSatelliteModeOn);
+
+        if (shouldBeOn && currentState != State.ON) {
             sendEnableMsg(mQuietEnableExternal, ENABLE_DISABLE_REASON_SATELLITE_MODE);
-        } else if (!shouldBluetoothBeOn(isSatelliteModeOn) && currentState != State.OFF) {
+        } else if (!shouldBeOn && currentState != State.OFF) {
             forceToOffFromModeChange(currentState, ENABLE_DISABLE_REASON_SATELLITE_MODE);
-        } else if (!isSatelliteModeOn
-                && !shouldBluetoothBeOn(isSatelliteModeOn)
-                && currentState != State.ON) {
+        } else if (!isSatelliteModeOn && !shouldBeOn && currentState != State.ON) {
             autoOnSetupTimer();
         }
     }
 
     private boolean shouldBluetoothBeOn(boolean isSatelliteModeOn) {
+        if (!BluetoothRestriction.isBluetoothAllowed()) {
+            Log.d(TAG, "shouldBluetoothBeOn: Bluetooth is not allowed");
+            return false;
+        }
+
         if (!isBluetoothPersistedStateOn()) {
             Log.d(TAG, "shouldBluetoothBeOn: User want BT off.");
             return false;
@@ -629,26 +634,32 @@ public class BluetoothManagerService {
                 BluetoothServerProxy.getInstance()
                         .settingsSecureGetString(
                                 mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS);
-        Log.d(
-                TAG,
-                ("Local adapter: Name=" + mName)
-                        + (", Address=" + Log.address(mAddress))
-                        + (" HciInstanceName=" + mHciInstanceName));
 
-        if (isBluetoothPersistedStateOn()) {
-            Log.i(TAG, "Startup: Bluetooth persisted state is ON.");
-            mEnableExternal = true;
-        }
+        int persistedState = getBluetoothPersistedState();
+
+        mEnableExternal = persistedState != BLUETOOTH_OFF;
 
         mConfigAllowAutoOn =
                 SystemProperties.getBoolean("bluetooth.server.automatic_turn_on", false);
-        Log.d(TAG, "AutoOn allowed by config=" + mConfigAllowAutoOn);
+
+        Log.i(
+                TAG,
+                "BluetoothManagerService Start with:"
+                        + (" Name=" + mName)
+                        + (" Address=" + Log.address(mAddress))
+                        + (" HciInstance=" + mHciInstanceName)
+                        + (" BluetoothAllowed=" + BluetoothRestriction.isBluetoothAllowed())
+                        + (" PersistentState=" + persistedState)
+                        + (" EnableExternal=" + mEnableExternal)
+                        + (" AutoOnEnabled=" + mConfigAllowAutoOn));
     }
 
     Unit onBluetoothDisallowed() {
         if (mSharingRestriction != null) {
             mSharingRestriction.updateRestriction();
         }
+
+        autoOnSetupTimer();
 
         if (mState.oneOf(State.OFF)) {
             return Unit.INSTANCE;
@@ -695,28 +706,27 @@ public class BluetoothManagerService {
 
     /** Returns true if the Bluetooth saved state is "on" */
     private boolean isBluetoothPersistedStateOn() {
-        final int state =
-                BluetoothServerProxy.getInstance()
-                        .getBluetoothPersistedState(mContentResolver, BLUETOOTH_ON_BLUETOOTH);
-        Log.d(TAG, "isBluetoothPersistedStateOn: " + state);
+        final int state = getBluetoothPersistedState();
+        Log.v(TAG, "isBluetoothPersistedStateOn: " + state);
         return state != BLUETOOTH_OFF;
     }
 
     private boolean isBluetoothPersistedStateOnAirplane() {
-        final int state =
-                BluetoothServerProxy.getInstance()
-                        .getBluetoothPersistedState(mContentResolver, BLUETOOTH_ON_BLUETOOTH);
-        Log.d(TAG, "isBluetoothPersistedStateOnAirplane: " + state);
+        final int state = getBluetoothPersistedState();
+        Log.v(TAG, "isBluetoothPersistedStateOnAirplane: " + state);
         return state == BLUETOOTH_ON_AIRPLANE;
     }
 
     /** Returns true if the Bluetooth saved state is BLUETOOTH_ON_BLUETOOTH */
     private boolean isBluetoothPersistedStateOnBluetooth() {
-        final int state =
-                BluetoothServerProxy.getInstance()
-                        .getBluetoothPersistedState(mContentResolver, BLUETOOTH_ON_BLUETOOTH);
-        Log.d(TAG, "isBluetoothPersistedStateOnBluetooth: " + state);
+        final int state = getBluetoothPersistedState();
+        Log.v(TAG, "isBluetoothPersistedStateOnBluetooth: " + state);
         return state == BLUETOOTH_ON_BLUETOOTH;
+    }
+
+    private int getBluetoothPersistedState() {
+        return BluetoothServerProxy.getInstance()
+                .getBluetoothPersistedState(mContentResolver, BLUETOOTH_ON_BLUETOOTH);
     }
 
     private void setBluetoothPersistedState(int state) {
@@ -741,6 +751,9 @@ public class BluetoothManagerService {
 
     boolean isBleScanAvailable() {
         if (mUser == null) {
+            return false;
+        }
+        if (!BluetoothRestriction.isBluetoothAllowed()) {
             return false;
         }
         if (AirplaneModeListener.isOn() && !mEnable) {
@@ -894,6 +907,13 @@ public class BluetoothManagerService {
     }
 
     boolean enableNoAutoConnect(String packageName) {
+        Log.d(
+                TAG,
+                ("enableNoAutoConnect(" + packageName + "):")
+                        + (" mAdapter=" + mAdapter)
+                        + (" isBinding=" + isBinding())
+                        + (" mState=" + mState));
+
         if (isSatelliteModeOn()) {
             Log.d(TAG, "enableNoAutoConnect(" + packageName + "): Blocked by satellite mode");
             return false;
@@ -950,6 +970,8 @@ public class BluetoothManagerService {
                 TAG,
                 ("disable(" + packageName + ", " + persist + "):")
                         + (" mAdapter=" + mAdapter)
+                        + (" mEnable=" + mEnable)
+                        + (" mBleAppManager=" + mBleAppManager)
                         + (" isBinding=" + isBinding())
                         + (" mState=" + mState));
 
@@ -1113,7 +1135,7 @@ public class BluetoothManagerService {
     }
 
     @FunctionalInterface
-    public interface RemoteExceptionConsumer<T> {
+    private interface RemoteExceptionConsumer<T> {
         void accept(T t) throws RemoteException;
     }
 
@@ -1190,7 +1212,7 @@ public class BluetoothManagerService {
                 Log.e(TAG, "Unknown service disconnected: " + name);
                 return;
             }
-            sendMessage(MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED, componentName.getPackageName());
+            sendMessage(MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED);
         }
 
         @Override
@@ -1308,7 +1330,7 @@ public class BluetoothManagerService {
                 }
                 case MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED -> {
                     Log.e(TAG, "MESSAGE_BLUETOOTH_SERVICE_DISCONNECTED");
-                    disableBluetoothComponents((String) msg.obj);
+                    disableBluetoothComponents();
 
                     if (!resetAdapter()) {
                         break;
@@ -1744,35 +1766,23 @@ public class BluetoothManagerService {
         mActiveLogs.add(reason, false, packageName, false);
         mHandler.removeMessages(MESSAGE_RESTART_BLUETOOTH_SERVICE);
 
-        if (mState.oneOf(State.OFF)) {
-            Log.d(TAG, "Disable while already OFF. Nothing to do");
-        } else if (isBinding()) {
-            Log.d(TAG, "Disable while binding");
-            mEnable = false;
+        mEnable = false;
+
+        if (mState.oneOf(State.ON)) {
+            Log.d(TAG, "Disable - Initiate shutdown");
+            onToBleOn();
+        } else if (!mBleAppManager.isBleAppPresent() && isBinding()) {
+            Log.d(TAG, "Disable - Cancel binding");
             mContext.unbindService(mConnection);
             mHandler.removeMessages(MESSAGE_TIMEOUT_BIND);
             bluetoothStateChangeHandler(State.BLE_TURNING_ON, State.OFF);
             mHandler.removeMessages(MESSAGE_BLUETOOTH_SERVICE_CONNECTED);
-        } else if (mState.oneOf(State.BLE_TURNING_ON)) {
-            Log.d(TAG, "Disable while BLE_TURNING_ON");
-            mEnable = false;
+        } else if (!mBleAppManager.isBleAppPresent() && mState.oneOf(State.BLE_TURNING_ON)) {
+            Log.d(TAG, "Disable - Cancel BLE_TURNING_ON");
             bluetoothStateChangeHandler(State.BLE_TURNING_ON, State.OFF);
         } else {
-            if (mState.oneOf(State.ON)) {
-                Log.d(TAG, "Disable while ON");
-                onToBleOn();
-            } else if (mState.oneOf(State.TURNING_ON)) {
-                Log.d(TAG, "Disable while TURNING_ON, set mEnable for later");
-            } else if (mState.oneOf(State.BLE_ON)) {
-                Log.d(TAG, "Disable while BLE_ON");
-            } else if (mEnable) {
-                Log.w(TAG, "Disable during unexpected state " + mState + ". mEnable is true !");
-            } else {
-                Log.d(TAG, "Disable during state " + mState + ". mEnable is false. Nothing to do");
-            }
+            Log.d(TAG, "Disable - Nothing to do. `mEnable` set to false. mState=" + mState);
         }
-
-        mEnable = false;
     }
 
     private void sendEnableMsg(boolean quietMode, int reason) {
@@ -2015,7 +2025,8 @@ public class BluetoothManagerService {
      * the PACKAGE_CHANGED intent. This should not be needed in a normal shutdown as the Bluetooth
      * clean its components on its own
      */
-    private void disableBluetoothComponents(String packageName) {
+    private void disableBluetoothComponents() {
+        String packageName = mBluetoothComponent.getPackageName();
         PackageManager pm = mContext.getPackageManager();
         PackageInfo packageInfo;
 

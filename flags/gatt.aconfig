@@ -129,3 +129,23 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "support_multiple_read_rssi"
+    namespace: "bluetooth"
+    description: "Allow multiple clients to read RSSI simultaneously"
+    bug: "481172393"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "correct_gatt_error_code"
+    namespace: "bluetooth"
+    description: "Returns correct status in onConnectionStateChange"
+    bug: "482945446"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}

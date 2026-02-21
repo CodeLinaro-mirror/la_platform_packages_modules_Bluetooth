@@ -57,10 +57,11 @@ import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Util;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.flags.Flags;
+import com.android.bluetooth.le_audio.LeAudioConstants;
 import com.android.bluetooth.le_audio.LeAudioUtils;
 import com.android.bluetooth.le_scan.ScanController;
+import com.android.bluetooth.metrics.MetricsLogger;
 import com.android.bluetooth.profile.ProfileService;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.State;
@@ -358,6 +359,16 @@ class BassClientStateMachine extends StateMachine {
                 && mPendingSourceToSwitch.getBroadcastId() == broadcastId;
     }
 
+    int getPendingOperationBroadcastId() {
+        if (mPendingSourceToSwitch != null) {
+            return mPendingSourceToSwitch.getBroadcastId();
+        }
+        if (mPendingMetadata != null) {
+            return mPendingMetadata.getBroadcastId();
+        }
+        return LeAudioConstants.INVALID_BROADCAST_ID;
+    }
+
     private void setCurrentBroadcastMetadata(
             Integer sourceId, BluetoothLeBroadcastMetadata metadata) {
         if (metadata != null) {
@@ -412,10 +423,22 @@ class BassClientStateMachine extends StateMachine {
     boolean isSyncedToTheSource(int sourceId) {
         BluetoothLeBroadcastReceiveState recvState = getBroadcastReceiveStateForSourceId(sourceId);
 
-        return recvState != null
-                && (recvState.getPaSyncState()
-                                == BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED
-                        || recvState.getBisSyncState().stream().anyMatch(bitmap -> bitmap != 0));
+        return recvState != null && (isPaSynced(recvState) || isBisSynced(recvState));
+    }
+
+    private static boolean isPaSynced(BluetoothLeBroadcastReceiveState recvState) {
+        return recvState.getPaSyncState()
+                == BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED;
+    }
+
+    private static boolean isBisSynced(BluetoothLeBroadcastReceiveState recvState) {
+        return recvState.getBisSyncState().stream()
+                .anyMatch(
+                        state ->
+                                state != BassConstants.BCAST_RCVR_STATE_BIS_SYNC_FAILED_SYNC_TO_BIG
+                                        && state
+                                                != BassConstants
+                                                        .BCAST_RCVR_STATE_BIS_SYNC_NOT_SYNC_TO_BIS);
     }
 
     private void resetBluetoothGatt() {

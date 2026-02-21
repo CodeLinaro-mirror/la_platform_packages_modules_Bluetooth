@@ -33,6 +33,7 @@ import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.Util;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.flags.Flags;
+import com.android.bluetooth.metrics.MetricsLogger;
 
 class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
     private static final String TAG = BluetoothSocketManagerBinder.class.getSimpleName();
@@ -245,6 +246,13 @@ class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
         if (dataPath != BluetoothSocketSettings.DATA_PATH_NO_OFFLOAD) {
             mService.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
             enforceSocketOffloadSupport(type);
+        }
+
+        if ((Flags.fixedPsmForOffloadSocket()
+                && type == BluetoothSocket.TYPE_LE
+                && !Util.checkCallerHasPrivilegedPermission(mService))) {
+            // for non privileged app, ignore the input LE CoC Psm
+            port = BluetoothAdapter.SOCKET_CHANNEL_AUTO_STATIC_NO_SDP;
         }
 
         Log.i(

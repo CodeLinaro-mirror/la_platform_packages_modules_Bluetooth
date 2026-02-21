@@ -74,9 +74,8 @@ public class A2dpSinkStreamHandlerTest {
 
     private static final int DUCK_PERCENT = 75;
 
-    private A2dpSinkStreamHandler mStreamHandler;
-
     private HandlerThread mHandlerThread;
+    private A2dpSinkStreamHandler mStreamHandler;
 
     @Before
     public void setUp() throws Exception {

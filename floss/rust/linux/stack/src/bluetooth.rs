@@ -10,8 +10,8 @@ use bt_topshim::btif::{
 use bt_topshim::profiles::gatt::GattStatus;
 use bt_topshim::profiles::hfp::EscoCodingFormat;
 use bt_topshim::profiles::hid_host::{
-    BthhConnectionState, BthhHidInfo, BthhProtocolMode, BthhReportType, BthhStatus, HHCallbacks,
-    HHCallbacksDispatcher, HidHost,
+    BthhConnectionState, BthhHidInfo, BthhProtocolMode, BthhReconnectPolicy, BthhReportType,
+    BthhStatus, HHCallbacks, HHCallbacksDispatcher, HidHost,
 };
 use bt_topshim::profiles::sdp::{BtSdpRecord, Sdp, SdpCallbacks, SdpCallbacksDispatcher};
 use bt_topshim::profiles::ProfileConnectionState;
@@ -46,6 +46,7 @@ use crate::bluetooth_gatt::{
 use crate::bluetooth_media::{BluetoothMedia, MediaActions, LEA_UNKNOWN_GROUP_ID};
 use crate::callbacks::Callbacks;
 use crate::socket_manager::SocketActions;
+use crate::suspend::SuspendActions;
 use crate::uuid::{Profile, UuidHelper};
 use crate::{make_message_dispatcher, APIMessage, BluetoothAPI, Message, RPCProxy, SuspendMode};
 
@@ -1040,6 +1041,19 @@ impl Bluetooth {
             .collect()
     }
 
+    /// Returns all HoGP devices and the current profile connection status
+    pub fn get_all_hogp_devices(&self) -> HashMap<RawAddress, bool> {
+        let hogp_uuid = UuidHelper::get_profile_uuid(&Profile::Hogp).unwrap();
+        self.remote_devices
+            .values()
+            .filter(|d| match d.properties.get(&BtPropertyType::Uuids) {
+                Some(BluetoothProperty::Uuids(uuids)) => uuids.contains(hogp_uuid),
+                _ => false,
+            })
+            .map(|d| (d.info.address, d.is_initiated_hh_connection))
+            .collect()
+    }
+
     /// Gets the bond state of a single device with its address.
     pub fn get_bond_state_by_addr(&self, addr: &RawAddress) -> BtBondState {
         self.remote_devices.get(addr).map_or(BtBondState::NotBonded, |d| d.bond_state.clone())
@@ -1395,6 +1409,7 @@ impl Bluetooth {
                                 addr,
                                 BtAddrType::Public,
                                 BtTransport::Auto,
+                                /*direct=*/ true,
                             );
                             metrics::profile_connection_state_changed(
                                 addr,
@@ -1477,6 +1492,49 @@ impl Bluetooth {
                     .await;
             });
         }
+    }
+
+    /// Manage the connection state of HoGP devices when entering suspend
+    pub fn hogp_enter_suspend(&self, wake_allowed: bool) -> bool {
+        let devices = self.get_all_hogp_devices();
+        for (address, connected) in devices {
+            if wake_allowed {
+                if connected {
+                    self.hh.as_ref().unwrap().disconnect(
+                        address,
+                        BtAddrType::Public,
+                        BtTransport::Le,
+                        BthhReconnectPolicy::Allowed,
+                    );
+                }
+            } else {
+                self.hh.as_ref().unwrap().disconnect(
+                    address,
+                    BtAddrType::Public,
+                    BtTransport::Le,
+                    BthhReconnectPolicy::NotAllowedTemporary,
+                );
+            }
+        }
+
+        true
+    }
+
+    /// Manage the connection state of HoGP devices when waking up
+    pub fn hogp_exit_suspend(&self) -> bool {
+        let devices = self.get_all_hogp_devices();
+        for (address, connected) in devices {
+            if !connected {
+                self.hh.as_ref().unwrap().connect(
+                    address,
+                    BtAddrType::Public,
+                    BtTransport::Le,
+                    /*direct=*/ false,
+                );
+            }
+        }
+
+        true
     }
 }
 
@@ -2097,7 +2155,7 @@ impl BtifBluetoothCallbacks for Bluetooth {
             link_type,
             BtStatus::Success,
             state.clone(),
-            conn_direction,
+            conn_direction.clone(),
             hci_reason,
         );
 
@@ -2107,6 +2165,11 @@ impl BtifBluetoothCallbacks for Bluetooth {
                 self.connection_callbacks.for_all_callbacks(|callback| {
                     callback.on_device_connected(info.clone());
                 });
+                if conn_direction == BtConnectionDirection::Outgoing
+                    && device.bond_state == BtBondState::Bonded
+                {
+                    device.connect_to_new_profiles = true;
+                }
             }
             BtAclState::Disconnected => {
                 if !device.is_connected() {
@@ -2775,7 +2838,7 @@ impl IBluetooth for Bluetooth {
                                 addr,
                                 BtAddrType::Public,
                                 BtTransport::Auto,
-                                /*reconnect_allowed=*/ true,
+                                BthhReconnectPolicy::Allowed,
                             );
                         }
 
@@ -3003,6 +3066,17 @@ impl BtifHHCallbacks for Bluetooth {
                 state == BthhConnectionState::Connected || state == BthhConnectionState::Connecting;
         });
 
+        if state == BthhConnectionState::Disconnected {
+            let tx = self.tx.clone();
+            tokio::spawn(async move {
+                let _result = tx
+                    .send(Message::SuspendActions(SuspendActions::ProfileDisconnected(
+                        address, profile,
+                    )))
+                    .await;
+            });
+        }
+
         if BtBondState::Bonded != self.get_bond_state_by_addr(&address)
             && (state != BthhConnectionState::Disconnecting
                 && state != BthhConnectionState::Disconnected)
@@ -3017,7 +3091,7 @@ impl BtifHHCallbacks for Bluetooth {
                 address,
                 address_type,
                 transport,
-                /*reconnect_allowed=*/ true,
+                BthhReconnectPolicy::Allowed,
             );
         }
     }

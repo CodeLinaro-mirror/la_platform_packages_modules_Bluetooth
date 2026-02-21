@@ -38,7 +38,6 @@
 #include "audio_hal_interface/hfp_client_interface.h"
 #include "bta/ag/bta_ag_int.h"
 #include "bta/include/bta_ag_swb_aptx.h"
-#include "btm_status.h"
 #include "hci/controller.h"
 #include "internal_include/bt_target.h"
 #include "main/shim/entry.h"
@@ -94,9 +93,9 @@ extern struct bta_ag_create_sco bta_ag_create_sco;
 // Params:
 // Return: const RawAddress&
 struct bta_ag_get_active_device {
-  static const RawAddress& return_value;
-  std::function<const RawAddress&()> body{[]() { return return_value; }};
-  const RawAddress& operator()() { return body(); }
+  static const RawAddress return_value;
+  std::function<const RawAddress()> body{[]() { return return_value; }};
+  const RawAddress operator()() { return body(); }
 };
 extern struct bta_ag_get_active_device bta_ag_get_active_device;
 

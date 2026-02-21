@@ -17,8 +17,13 @@
 
 #include "mock_stack_btm_iso.h"
 
-#include "btm_iso_api.h"
-#include "btm_iso_api_types.h"
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
 
 namespace {
 MockIsoManager* mock_pimpl_;

@@ -27,7 +27,7 @@ import android.bluetooth.le.ScanSettings
 import android.os.BatteryStatsManager
 import android.os.WorkSource
 import com.android.bluetooth.BluetoothStatsLog
-import com.android.bluetooth.btservice.MetricsLogger
+import com.android.bluetooth.metrics.MetricsLogger
 import com.android.bluetooth.util.WorkSourceUtil
 
 /**
@@ -42,6 +42,43 @@ class ScanMetricsReporter(
 ) {
     private val logger: MetricsLogger
         get() = MetricsLogger.getInstance()
+
+    fun reportLeScanResult(
+        isBatch: Boolean,
+        numRecords: Int,
+        isScreenOn: Boolean,
+        attributionTag: String,
+        scan: AppScanStats.LastScan,
+    ) =
+        if (isBatch) {
+            BluetoothStatsLog.write(
+                BluetoothStatsLog.LE_SCAN_RESULT_RECEIVED,
+                workSourceUtil.uids,
+                workSourceUtil.tags,
+                numRecords,
+                BluetoothStatsLog.LE_SCAN_RESULT_RECEIVED__LE_SCAN_TYPE__SCAN_TYPE_BATCH,
+                isScreenOn,
+                attributionTag,
+                scan.isFilterScan,
+                scan.isCallbackScan,
+                convertScanCallbackType(scan.callbackType),
+                convertScanMode(scan.scanMode.value),
+            )
+        } else {
+            BluetoothStatsLog.write(
+                BluetoothStatsLog.LE_SCAN_RESULT_RECEIVED,
+                workSourceUtil.uids,
+                workSourceUtil.tags,
+                1, /* num_results */
+                BluetoothStatsLog.LE_SCAN_RESULT_RECEIVED__LE_SCAN_TYPE__SCAN_TYPE_REGULAR,
+                isScreenOn,
+                attributionTag,
+                scan.isFilterScan,
+                scan.isCallbackScan,
+                convertScanCallbackType(scan.callbackType),
+                convertScanMode(scan.scanMode.value),
+            )
+        }
 
     fun reportScanResults(numberOfNewResults: Int) {
         batteryStatsManager.reportBleScanResults(workSource, numberOfNewResults)

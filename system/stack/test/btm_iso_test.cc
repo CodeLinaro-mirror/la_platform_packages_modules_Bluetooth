@@ -42,6 +42,7 @@ using testing::_;
 using testing::AnyNumber;
 using testing::AtLeast;
 using testing::Eq;
+using testing::KilledBySignal;
 using testing::Matcher;
 using testing::Mock;
 using testing::Return;
@@ -106,10 +107,10 @@ public:
   MOCK_METHOD((void), OnRemoveIsoDataPath, (uint8_t status, uint16_t conn_handle, uint8_t cig_id),
               (override));
   MOCK_METHOD((void), OnIsoLinkQualityRead,
-              (uint8_t conn_handle, uint8_t cig_id, uint32_t txUnackedPackets,
-               uint32_t txFlushedPackets, uint32_t txLastSubeventPackets,
-               uint32_t retransmittedPackets, uint32_t crcErrorPackets,
-               uint32_t rxUnreceivedPackets, uint32_t duplicatePackets),
+              (uint8_t conn_handle, uint8_t cig_id, uint32_t tx_unacked_packets,
+               uint32_t tx_flushed_packets, uint32_t tx_last_subevent_packets,
+               uint32_t retransmitted_packets, uint32_t crc_error_packets,
+               uint32_t rx_unreceived_packets, uint32_t duplicate_packets),
               (override));
 
   MOCK_METHOD((void), OnCisEvent, (uint8_t event, void* data), (override));
@@ -471,12 +472,6 @@ const bluetooth::hci::iso_manager::cig_create_params IsoManagerTest::kDefaultCig
 
 class IsoManagerDeathTest : public IsoManagerTest {};
 
-class IsoManagerDeathTestNoInit : public IsoManagerTest {
-protected:
-  void InitIsoManager() override { /* DO NOTHING */ }
-
-  void CleanupIsoManager() override { /* DO NOTHING */ }
-};
 
 class IsoManagerDeathTestNoCleanup : public IsoManagerTest {
 protected:
@@ -833,7 +828,7 @@ TEST_F(IsoManagerDeathTest, CreateSameCigTwice) {
   // Second call with the same CIG ID should fail
   ASSERT_EXIT(IsoManager::GetInstance()->CreateCig(
                       client_handle_, volatile_test_cig_create_cmpl_evt_.cig_id, kDefaultCigParams),
-              ::testing::KilledBySignal(SIGABRT), "already exists");
+              KilledBySignal(SIGABRT), "already exists");
 }
 
 // Check for handling invalid length response from the faulty controller
@@ -847,7 +842,7 @@ TEST_F(IsoManagerDeathTest, CreateCigCallbackInvalidRspPacket) {
           });
 
   ASSERT_EXIT(IsoManager::GetInstance()->CreateCig(client_handle_, 128, kDefaultCigParams),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+              KilledBySignal(SIGABRT), "Invalid packet length");
 }
 
 // Check for handling invalid length response from the faulty controller
@@ -861,7 +856,7 @@ TEST_F(IsoManagerDeathTest, CreateCigCallbackInvalidRspPacket2) {
           });
 
   ASSERT_EXIT(IsoManager::GetInstance()->CreateCig(client_handle_, 128, kDefaultCigParams),
-              ::testing::KilledBySignal(SIGABRT), "Invalid CIS count");
+              KilledBySignal(SIGABRT), "Invalid CIS count");
 }
 
 // Check if IsoManager properly handles error responses from HCI layer
@@ -957,7 +952,7 @@ TEST_F(IsoManagerTest, ReconfigureCigHciCall) {
 // Verify handlidng invalid call - reconfiguring invalid CIG
 TEST_F(IsoManagerDeathTest, ReconfigureCigWithNoSuchCig) {
   ASSERT_EXIT(IsoManager::GetInstance()->ReconfigureCig(128, kDefaultCigParams),
-              ::testing::KilledBySignal(SIGABRT), "No such cig");
+              KilledBySignal(SIGABRT), "No such cig");
 }
 
 TEST_F(IsoManagerDeathTest, ReconfigureCigInvalidRspPacket) {
@@ -974,7 +969,7 @@ TEST_F(IsoManagerDeathTest, ReconfigureCigInvalidRspPacket) {
           });
   ASSERT_EXIT(IsoManager::GetInstance()->ReconfigureCig(volatile_test_cig_create_cmpl_evt_.cig_id,
                                                         kDefaultCigParams),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+              KilledBySignal(SIGABRT), "Invalid packet length");
 }
 
 TEST_F(IsoManagerDeathTest, ReconfigureCigInvalidRspPacket2) {
@@ -991,7 +986,7 @@ TEST_F(IsoManagerDeathTest, ReconfigureCigInvalidRspPacket2) {
           });
   ASSERT_EXIT(IsoManager::GetInstance()->ReconfigureCig(volatile_test_cig_create_cmpl_evt_.cig_id,
                                                         kDefaultCigParams2),
-              ::testing::KilledBySignal(SIGABRT), "Invalid CIS count");
+              KilledBySignal(SIGABRT), "Invalid CIS count");
 }
 
 TEST_F(IsoManagerTest, ReconfigureCigInvalidStatus) {
@@ -1090,7 +1085,7 @@ TEST_F(IsoManagerTest, RemoveCigHciCall) {
 
 TEST_F(IsoManagerDeathTest, RemoveCigWithNoSuchCig) {
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveCig(volatile_test_cig_create_cmpl_evt_.cig_id),
-              ::testing::KilledBySignal(SIGABRT), "No such cig");
+              KilledBySignal(SIGABRT), "No such cig");
 }
 
 TEST_F(IsoManagerDeathTest, RemoveCigForceNoSuchCig) {
@@ -1181,7 +1176,7 @@ TEST_F(IsoManagerDeathTest, RemoveSameCigTwice) {
   IsoManager::GetInstance()->RemoveCig(volatile_test_cig_create_cmpl_evt_.cig_id);
 
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveCig(volatile_test_cig_create_cmpl_evt_.cig_id),
-              ::testing::KilledBySignal(SIGABRT), "No such cig");
+              KilledBySignal(SIGABRT), "No such cig");
 }
 
 TEST_F(IsoManagerDeathTest, RemoveCigInvalidRspPacket) {
@@ -1196,7 +1191,7 @@ TEST_F(IsoManagerDeathTest, RemoveCigInvalidRspPacket) {
             return 0;
           });
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveCig(volatile_test_cig_create_cmpl_evt_.cig_id),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+              KilledBySignal(SIGABRT), "Invalid packet length");
 }
 
 TEST_F(IsoManagerTest, RemoveCigInvalidStatus) {
@@ -1279,7 +1274,7 @@ TEST_F(IsoManagerDeathTest, EstablishCisWithNoSuchCis) {
   }
 
   ASSERT_EXIT(IsoManager::GetInstance()->IsoManager::GetInstance()->EstablishCis(params),
-              ::testing::KilledBySignal(SIGABRT), "No such cis");
+              KilledBySignal(SIGABRT), "No such cis");
 }
 
 TEST_F(IsoManagerDeathTest, ConnectSameCisTwice) {
@@ -1293,7 +1288,7 @@ TEST_F(IsoManagerDeathTest, ConnectSameCisTwice) {
   IsoManager::GetInstance()->EstablishCis(params);
 
   ASSERT_EXIT(IsoManager::GetInstance()->IsoManager::GetInstance()->EstablishCis(params),
-              ::testing::KilledBySignal(SIGABRT), "already connected/connecting/cancelled");
+              KilledBySignal(SIGABRT), "already connected/connecting/cancelled");
 }
 
 TEST_F(IsoManagerDeathTest, EstablishCisInvalidResponsePacket) {
@@ -1333,7 +1328,7 @@ TEST_F(IsoManagerDeathTest, EstablishCisInvalidResponsePacket) {
   }
 
   ASSERT_EXIT(IsoManager::GetInstance()->IsoManager::GetInstance()->EstablishCis(params),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+              KilledBySignal(SIGABRT), "Invalid packet length");
 }
 
 TEST_F(IsoManagerTest, EstablishCisInvalidCommandStatus) {
@@ -1840,7 +1835,7 @@ TEST_F(IsoManagerTest, DisconnectCisHciCall) {
 TEST_F(IsoManagerDeathTest, DisconnectCisWithNoSuchCis) {
   for (auto& handle : volatile_test_cig_create_cmpl_evt_.conn_handles) {
     ASSERT_EXIT(IsoManager::GetInstance()->IsoManager::GetInstance()->DisconnectCis(handle, 0x16),
-                ::testing::KilledBySignal(SIGABRT), "No such cis");
+                KilledBySignal(SIGABRT), "No such cis");
   }
 }
 
@@ -1861,7 +1856,7 @@ TEST_F(IsoManagerDeathTest, DisconnectSameCisTwice) {
 
   for (auto& handle : volatile_test_cig_create_cmpl_evt_.conn_handles) {
     ASSERT_EXIT(IsoManager::GetInstance()->IsoManager::GetInstance()->DisconnectCis(handle, 0x16),
-                ::testing::KilledBySignal(SIGABRT), "Not connected");
+                KilledBySignal(SIGABRT), "Not connected");
   }
 }
 
@@ -1964,7 +1959,7 @@ TEST_F(IsoManagerDeathTest, CreateBigInvalidResponsePacket) {
                   });
 
   ASSERT_EXIT(IsoManager::GetInstance()->CreateBig(client_handle_, 0x01, kDefaultBigParams),
-              ::testing::KilledBySignal(SIGABRT), "Bis count is 0");
+              KilledBySignal(SIGABRT), "Bis count is 0");
 }
 
 TEST_F(IsoManagerDeathTest, CreateBigInvalidResponsePacket2) {
@@ -1992,7 +1987,7 @@ TEST_F(IsoManagerDeathTest, CreateBigInvalidResponsePacket2) {
                   });
 
   ASSERT_EXIT(IsoManager::GetInstance()->CreateBig(client_handle_, 0x01, kDefaultBigParams),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+              KilledBySignal(SIGABRT), "Invalid packet length");
 }
 
 TEST_F(IsoManagerTest, CreateBigInvalidStatus) {
@@ -2272,8 +2267,8 @@ TEST_F(IsoManagerDeathTest, TerminateSameBigTwice) {
               OnBigSourceEvent(bluetooth::hci::iso_manager::BigSourceEvent::kTerminateCmpl, _));
 
   IsoManager::GetInstance()->TerminateBig(big_handle, reason);
-  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason),
-              ::testing::KilledBySignal(SIGABRT), "No such big");
+  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason), KilledBySignal(SIGABRT),
+              "No such big");
 }
 
 TEST_F(IsoManagerDeathTest, TerminateBigNoSuchBig) {
@@ -2285,7 +2280,7 @@ TEST_F(IsoManagerDeathTest, TerminateBigNoSuchBig) {
   IsoManager::GetInstance()->CreateBig(client_handle_, big_handle, kDefaultBigParams);
 
   ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle + 1, reason),
-              ::testing::KilledBySignal(SIGABRT), "No such big");
+              KilledBySignal(SIGABRT), "No such big");
 }
 
 TEST_F(IsoManagerDeathTest, TerminateBigInvalidResponsePacket) {
@@ -2301,8 +2296,8 @@ TEST_F(IsoManagerDeathTest, TerminateBigInvalidResponsePacket) {
   const uint8_t reason = 0x16;  // Terminated by local host
 
   IsoManager::GetInstance()->CreateBig(client_handle_, big_handle, kDefaultBigParams);
-  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason), KilledBySignal(SIGABRT),
+              "Invalid packet length");
 }
 
 TEST_F(IsoManagerDeathTest, TerminateBigInvalidResponsePacket2) {
@@ -2318,8 +2313,8 @@ TEST_F(IsoManagerDeathTest, TerminateBigInvalidResponsePacket2) {
   });
 
   IsoManager::GetInstance()->CreateBig(client_handle_, big_handle, kDefaultBigParams);
-  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason),
-              ::testing::KilledBySignal(SIGABRT), "Invalid packet length");
+  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason), KilledBySignal(SIGABRT),
+              "Invalid packet length");
 }
 
 TEST_F(IsoManagerTest, TerminateBigInvalidResponseBigId) {
@@ -2336,8 +2331,8 @@ TEST_F(IsoManagerTest, TerminateBigInvalidResponseBigId) {
   });
 
   IsoManager::GetInstance()->CreateBig(client_handle_, big_handle, kDefaultBigParams);
-  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason),
-              ::testing::KilledBySignal(SIGABRT), "No such big");
+  ASSERT_EXIT(IsoManager::GetInstance()->TerminateBig(big_handle, reason), KilledBySignal(SIGABRT),
+              "No such big");
 }
 
 TEST_F(IsoManagerTest, TerminateBigValid) {
@@ -2730,12 +2725,12 @@ TEST_F(IsoManagerDeathTest, RemoveIsoDataPathNoSuchPath) {
   uint16_t conn_handle = volatile_test_cig_create_cmpl_evt_.conn_handles[0];
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveIsoDataPath(
                       conn_handle, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut),
-              ::testing::KilledBySignal(SIGABRT), "path not set");
+              KilledBySignal(SIGABRT), "path not set");
 
   IsoManager::GetInstance()->EstablishCis({.conn_pairs = {{conn_handle, 1}}});
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveIsoDataPath(
                       conn_handle, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut),
-              ::testing::KilledBySignal(SIGABRT), "path not set");
+              KilledBySignal(SIGABRT), "path not set");
 
   // Check on BIS
   conn_handle = volatile_test_big_params_evt_.conn_handles[0];
@@ -2743,7 +2738,7 @@ TEST_F(IsoManagerDeathTest, RemoveIsoDataPathNoSuchPath) {
                                        kDefaultBigParams);
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveIsoDataPath(
                       conn_handle, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut),
-              ::testing::KilledBySignal(SIGABRT), "path not set");
+              KilledBySignal(SIGABRT), "path not set");
 }
 
 TEST_F(IsoManagerDeathTest, RemoveIsoDataPathTwice) {
@@ -2757,7 +2752,7 @@ TEST_F(IsoManagerDeathTest, RemoveIsoDataPathTwice) {
                                                kDefaultIsoDataPathParams.data_path_dir);
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveIsoDataPath(
                       conn_handle, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut),
-              ::testing::KilledBySignal(SIGABRT), "path not set");
+              KilledBySignal(SIGABRT), "path not set");
 
   // Check on BIS
   conn_handle = volatile_test_big_params_evt_.conn_handles[0];
@@ -2768,7 +2763,7 @@ TEST_F(IsoManagerDeathTest, RemoveIsoDataPathTwice) {
                                                kDefaultIsoDataPathParams.data_path_dir);
   ASSERT_EXIT(IsoManager::GetInstance()->RemoveIsoDataPath(
                       conn_handle, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut),
-              ::testing::KilledBySignal(SIGABRT), "path not set");
+              KilledBySignal(SIGABRT), "path not set");
 }
 
 // Check if HCI status other than HCI_SUCCESS is being propagated to the caller
@@ -3267,7 +3262,7 @@ TEST_F(IsoManagerDeathTest, SendIsoDataWithNoDataPath) {
 TEST_F(IsoManagerDeathTest, SendIsoDataWithNoCigBigHandle) {
   std::vector<uint8_t> data_vec(108, 0);
   ASSERT_EXIT(IsoManager::GetInstance()->SendIsoData(134, data_vec.data(), data_vec.size()),
-              ::testing::KilledBySignal(SIGABRT), "No such iso");
+              KilledBySignal(SIGABRT), "No such iso");
 }
 
 TEST_F(IsoManagerTest, HandleDisconnectNoSuchHandle) {
@@ -3817,4 +3812,69 @@ TEST_F(IncomingCisTest, RemoveIncomingCisEventsListenerRejectWhenConnected) {
   ASSERT_DEATH(manager_instance_->RemoveIncomingCisEventsListener(client_handle_, test_address,
                                                                   cig_id, cis_id),
                ".*");
+}
+
+TEST_F(IncomingCisTest, RemoveListenerAfterRemoteDisconnect) {
+  RawAddress test_address;
+  uint16_t acl_conn_handle = 1;
+  uint16_t cis_conn_handle = 2;
+  uint8_t cig_id = 1;
+  uint8_t cis_id = 2;
+
+  BtmDevice mock_btm_device;
+  mock_btm_device.ble.pseudo_addr = test_address;
+  AclHandleToMockBtmDevice = {{acl_conn_handle, mock_btm_device}};
+
+  ASSERT_TRUE(manager_instance_->AddIncomingCisEventsListener(client_handle_, test_address, cig_id,
+                                                              cis_id));
+
+  // Simulate CIS request to associate a handle
+  std::vector<uint8_t> buf(6);
+  uint8_t* p = buf.data();
+  UINT16_TO_STREAM(p, acl_conn_handle);
+  UINT16_TO_STREAM(p, cis_conn_handle);
+  UINT8_TO_STREAM(p, cig_id);
+  UINT8_TO_STREAM(p, cis_id);
+
+  EXPECT_CALL(*cig_callbacks_, OnCisEvent(bluetooth::hci::iso_manager::kIsoEventCisRequest, _))
+          .Times(1);
+  manager_instance_->HandleHciEvent(HCI_BLE_CIS_REQ_EVT, buf.data(), buf.size());
+
+  EXPECT_CALL(hcic_interface_, AcceptCis(cis_conn_handle)).Times(1);
+  manager_instance_->AcceptIncomingCisConnection(cis_conn_handle);
+
+  /* Send CIS establish complete event */
+  std::vector<uint8_t> est_buf(28);
+  p = est_buf.data();
+  UINT8_TO_STREAM(p, HCI_SUCCESS);
+  UINT16_TO_STREAM(p, cis_conn_handle);
+  UINT24_TO_STREAM(p, 0);  // CIG_Sync_Delay
+  UINT24_TO_STREAM(p, 0);  // CIS_Sync_Delay
+  UINT24_TO_STREAM(p, 0);  // Transport_Latency_M_To_S
+  UINT24_TO_STREAM(p, 0);  // Transport_Latency_S_To_M
+  UINT8_TO_STREAM(p, 0);   // PHY_M_To_S
+  UINT8_TO_STREAM(p, 0);   // PHY_S_To_M
+  UINT8_TO_STREAM(p, 0);   // NSE
+  UINT8_TO_STREAM(p, 0);   // BN_M_To_S
+  UINT8_TO_STREAM(p, 0);   // BN_S_To_M
+  UINT8_TO_STREAM(p, 0);   // FT_M_To_S
+  UINT8_TO_STREAM(p, 0);   // FT_S_To_M
+  UINT16_TO_STREAM(p, 0);  // Max_PDU_M_To_S
+  UINT16_TO_STREAM(p, 0);  // Max_PDU_S_To_M
+  UINT16_TO_STREAM(p, 0);  // ISO_Interval
+
+  /* We should get a CIG event now */
+  EXPECT_CALL(*cig_callbacks_,
+              OnCisEvent(bluetooth::hci::iso_manager::kIsoEventCisEstablishCmpl, _));
+  manager_instance_->HandleHciEvent(HCI_BLE_CIS_EST_EVT, est_buf.data(), est_buf.size());
+
+  // Expect that the callback is NOT called.
+  EXPECT_CALL(*cig_callbacks_, OnCisEvent(bluetooth::hci::iso_manager::kIsoEventCisDisconnected, _))
+          .Times(1);
+  // Remote disconnects
+  uint8_t reason = 0x13;  // remote user terminated connection
+  manager_instance_->HandleDisconnect(cis_conn_handle, reason);
+
+  // Unregister the event listener
+  manager_instance_->RemoveIncomingCisEventsListener(client_handle_, test_address, cig_id, cis_id);
 }

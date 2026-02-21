@@ -19,7 +19,6 @@ cc_library_static {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/sys",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     shared_libs: [
         "android.hardware.bluetooth.audio@2.0",
@@ -66,6 +65,7 @@ cc_library_static {
                 "hidl/codec_status_hidl.cc",
                 "hidl/hearing_aid_software_encoding_hidl.cc",
                 "hidl/le_audio_software_hidl.cc",
+                "le_audio_peripheral.cc",
                 "le_audio_software.cc",
             ],
         },
@@ -75,6 +75,7 @@ cc_library_static {
                 "hal_version_manager_host.cc",
                 "hearing_aid_software_encoding_host.cc",
                 "hfp_client_interface_host.cc",
+                "le_audio_peripheral_host.cc",
                 "le_audio_software_host.cc",
                 "le_audio_software_host_transport.cc",
             ],
@@ -108,7 +109,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/audio_hal_interface",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     sanitize: {
         cfi: true,
@@ -232,7 +232,6 @@ cc_defaults {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/btif",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
 }
 
@@ -252,7 +251,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         "aidl/le_audio_utils.cc",
@@ -354,7 +352,7 @@ cc_test {
         "-DBUILDCFG",
     ],
     target: {
-        android: {
+        host: {
             sanitize: {
                 address: true,
             },

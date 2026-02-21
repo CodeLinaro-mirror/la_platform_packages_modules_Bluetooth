@@ -20,12 +20,12 @@
 
 #include <vector>
 
-#include "a2dp_constants.h"
 #include "a2dp_encoding.h"
-#include "a2dp_sbc_constants.h"
 #include "common/message_loop_thread.h"
 #include "hardware/bt_av.h"
 #include "osi/include/properties.h"
+#include "stack/include/a2dp_constants.h"
+#include "stack/include/a2dp_sbc_constants.h"
 
 namespace bluetooth {
 namespace audio {
@@ -81,6 +81,7 @@ void ack_stream_suspended(::bluetooth::audio::a2dp::Status status);
  * Read from the FMQ of BluetoothAudio HAL
  ***/
 size_t read(uint8_t* p_buf, uint32_t len);
+void flush_source();
 
 /***
  * Update A2DP delay report to BluetoothAudio HAL

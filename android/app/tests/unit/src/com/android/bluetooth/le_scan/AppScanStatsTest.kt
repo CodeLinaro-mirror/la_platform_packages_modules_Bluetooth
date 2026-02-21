@@ -87,14 +87,14 @@ class AppScanStatsTest {
             )
 
         val app1 = mock<ScannerApp>()
-        whenever(app1.id).thenReturn(101)
-        whenever(app1.uuid).thenReturn(UUID.randomUUID())
-        whenever(app1.attributionTag).thenReturn("appTag1")
+        doReturn(101).whenever(app1).id
+        doReturn(UUID.randomUUID()).whenever(app1).uuid
+        doReturn("appTag1").whenever(app1).attributionTag
 
         val app2 = mock<ScannerApp>()
-        whenever(app2.id).thenReturn(102)
-        whenever(app2.uuid).thenReturn(UUID.randomUUID())
-        whenever(app2.attributionTag).thenReturn(null)
+        doReturn(102).whenever(app2).id
+        doReturn(UUID.randomUUID()).whenever(app2).uuid
+        doReturn(null).whenever(app2).attributionTag
 
         AppScanStats.setScreenState(true)
         appScanStats.isRegistered = true
@@ -174,10 +174,10 @@ class AppScanStatsTest {
             attributionTag = "tag5",
         )
 
-        appScanStats.addResults(1, 50)
+        appScanStats.addResults(1, 50, true)
         AppScanStats.setScreenState(false)
-        appScanStats.addResults(2, 60)
-        appScanStats.addResults(1, 70)
+        appScanStats.addResults(2, 60, true)
+        appScanStats.addResults(1, 70, true)
         AppScanStats.setScreenState(true)
 
         appScanStats.dump(listOf(app1, app2))

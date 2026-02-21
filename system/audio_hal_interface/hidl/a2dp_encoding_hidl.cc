@@ -22,10 +22,10 @@
 
 #include <vector>
 
-#include "a2dp_sbc_constants.h"
 #include "client_interface_hidl.h"
 #include "codec_status_hidl.h"
 #include "osi/include/properties.h"
+#include "stack/include/a2dp_sbc_constants.h"
 
 typedef enum {
   A2DP_CTRL_CMD_NONE,
@@ -409,6 +409,20 @@ size_t read(uint8_t* p_buf, uint32_t len) {
     return 0;
   }
   return active_hal_interface->ReadAudioData(p_buf, len);
+}
+
+// Read from the FMQ of BluetoothAudio HAL
+void flush_source() {
+  if (!is_hal_2_0_enabled()) {
+    log::error("BluetoothAudio HAL is not enabled");
+    return;
+  }
+  if (is_hal_2_0_offloading()) {
+    log::error("session_type={} is not A2DP_SOFTWARE_ENCODING_DATAPATH",
+               toString(active_hal_interface->GetTransportInstance()->GetSessionType()));
+    return;
+  }
+  return active_hal_interface->FlushAudioData();
 }
 
 // Update A2DP delay report to BluetoothAudio HAL

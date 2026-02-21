@@ -168,18 +168,21 @@ typedef enum : uint8_t {
 typedef struct {
   AclLinkSpec link_spec;
   uint16_t acl_handle;
+  bool locally_initiated;
 } tBTA_DM_LINK_UP;
 
 /* Structure associated with BTA_DM_LINK_UP_FAILED_EVT */
 typedef struct {
   AclLinkSpec link_spec;
   tHCI_STATUS status; /* The HCI error code associated with this event */
+  bool locally_initiated;
 } tBTA_DM_LINK_UP_FAILED;
 
 /* Structure associated with BTA_DM_LINK_DOWN_EVT */
 typedef struct {
   AclLinkSpec link_spec;
   tHCI_STATUS status;
+  bool locally_initiated;
 } tBTA_DM_LINK_DOWN;
 
 typedef union {
@@ -790,6 +793,17 @@ void BTA_DmSetDefaultEventMaskExcept(uint64_t mask, uint64_t le_mask);
  *
  *******************************************************************************/
 void BTA_DmSetEventFilterInquiryResultAllDevices();
+
+/*******************************************************************************
+ *
+ * Function         BTA_DmSetSuspendState
+ *
+ * Description      Set the suspend state
+ *
+ * Parameters       whether we're suspending or not
+ *
+ *******************************************************************************/
+void BTA_DmSetSuspendState(bool suspend);
 
 /*******************************************************************************
  *

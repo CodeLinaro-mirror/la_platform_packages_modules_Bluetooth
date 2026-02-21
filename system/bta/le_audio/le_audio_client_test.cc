@@ -35,7 +35,6 @@
 #include "btif_status.h"
 #include "btif_storage_mock.h"
 #include "btm_api_mock.h"
-#include "btm_iso_api.h"
 #include "common/le_conn_params.h"
 #include "common/message_loop_thread.h"
 #include "fake_osi.h"
@@ -57,6 +56,7 @@
 #include "mock_state_machine.h"
 #include "osi/include/properties.h"
 #include "stack/include/acl_api.h"
+#include "stack/include/btm_iso_api.h"
 #include "stack/include/btm_status.h"
 #include "stack/include/main_thread.h"
 #include "storage_helper.h"
@@ -1695,6 +1695,7 @@ protected:
             true);
     com::android::bluetooth::flags::provider_->leaudio_game_detector(true);
     com::android::bluetooth::flags::provider_->leaudio_fix_clear_cises_in_the_cig(true);
+    com::android::bluetooth::flags::provider_->leaudio_codec_id_support(true);
 
     init_message_loop_thread();
     init_delayed_message_loop_thread();
@@ -3253,6 +3254,8 @@ protected:
     LeAudioClient::Get()->SetCcidInformation(gtbs_ccid,
                                              static_cast<int>(LeAudioContextType::CONVERSATIONAL));
     LeAudioClient::Get()->GroupSetActive(group_id);
+    SyncOnMainLoop();
+    Mock::VerifyAndClearExpectations(&mock_btif_storage_);
   }
 
   void TestSetCodecPreference(
@@ -3445,6 +3448,69 @@ TEST_F(UnicastTest, Initialize) {
   ASSERT_TRUE(LeAudioClient::IsLeAudioClientRunning());
 }
 
+TEST_F(UnicastTestNoInit, Initialize_test_local_capabilities) {
+  btle_audio_codec_config_t vendor_codec_preference = {
+          .codec_type = LE_AUDIO_CODEC_INDEX_SOURCE_VENDOR_SPECIFIC,
+          .sample_rate = LE_AUDIO_SAMPLE_RATE_INDEX_96000HZ,
+          .codec_priority = 1,
+          .codec_id = 0x0001c0deff,
+  };
+
+  btle_audio_codec_config_t opus_codec_preference = {
+          .codec_type = LE_AUDIO_CODEC_INDEX_SOURCE_OPUS,
+          .sample_rate = LE_AUDIO_SAMPLE_RATE_INDEX_48000HZ,
+          .codec_priority = 1,
+          .codec_id = 0x000100e5ff,
+  };
+  btle_audio_codec_config_t lc3_codec_preference = {
+          .codec_type = LE_AUDIO_CODEC_INDEX_SOURCE_OPUS,
+          .sample_rate = LE_AUDIO_SAMPLE_RATE_INDEX_48000HZ,
+          .codec_priority = 1,
+          .codec_id = 0x0001c0deff,
+  };
+
+  std::vector<btle_audio_codec_config_t> output_capa = {
+          vendor_codec_preference, opus_codec_preference, lc3_codec_preference};
+  std::vector<btle_audio_codec_config_t> input_capa = {lc3_codec_preference};
+
+  ON_CALL(*mock_codec_manager_, GetLocalAudioOutputCodecCapa()).WillByDefault([&output_capa]() {
+    return output_capa;
+  });
+
+  ON_CALL(*mock_codec_manager_, GetLocalAudioInputCodecCapa()).WillByDefault([&input_capa]() {
+    return input_capa;
+  });
+
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnAudioLocalCodecCapabilities(input_capa, output_capa));
+
+  // Report False when asked for Audio HAL 2.1 support
+  ON_CALL(mock_hal_2_1_verifier, Call()).WillByDefault([]() -> bool { return true; });
+
+  BtaAppRegisterCallback app_register_callback;
+  ON_CALL(mock_gatt_interface_, AppRegister(_, _, _, _))
+          .WillByDefault(DoAll(SaveArg<1>(&gatt_callback), WithArg<2>([&](auto arg) {
+                                 app_register_callback = std::move(arg);
+                               })));
+
+  std::vector<::bluetooth::le_audio::btle_audio_codec_config_t> framework_encode_preference;
+
+  LeAudioClient::Initialize(
+          &mock_audio_hal_client_callbacks_,
+          base::Bind([](MockFunction<void()>* foo) { foo->Call(); }, &mock_storage_load),
+          base::Bind([](MockFunction<bool()>* foo) { return foo->Call(); }, &mock_hal_2_1_verifier),
+          framework_encode_preference);
+
+  SyncOnMainLoop();
+  if (app_register_callback) {
+    std::move(app_register_callback).Run(gatt_if, GATT_SUCCESS);
+  }
+
+  ASSERT_TRUE(LeAudioClient::IsLeAudioClientRunning());
+  SyncOnMainLoop();
+  Mock::VerifyAndClearExpectations(&mock_audio_hal_client_callbacks_);
+}
+
 TEST_F(UnicastTestNoInit, InitializeNoHal_2_1) {
   ASSERT_FALSE(LeAudioClient::IsLeAudioClientRunning());
 
@@ -3467,6 +3533,65 @@ TEST_F(UnicastTestNoInit, InitializeNoHal_2_1) {
                   framework_encode_preference),
           "LE Audio Client requires Bluetooth Audio HAL V2.1 at least. Either "
           "disable LE Audio Profile, or update your HAL");
+}
+
+TEST_F(UnicastTest, FailedToConnectWhenUserInitiateConnection) {
+  const RawAddress test_address0 = GetTestAddress(0);
+
+  ON_CALL(mock_gatt_interface_, Open(_, _, BTM_BLE_DIRECT_CONNECTION, _)).WillByDefault(Return());
+  ON_CALL(mock_btm_interface_, IsDeviceBonded(test_address0, _)).WillByDefault(DoAll(Return(true)));
+
+  EXPECT_CALL(mock_gatt_interface_, Open(gatt_if, test_address0, BTM_BLE_DIRECT_CONNECTION, _))
+          .Times(1);
+
+  do_in_main_thread(base::BindOnce(&LeAudioClient::Connect, base::Unretained(LeAudioClient::Get()),
+                                   test_address0));
+
+  SyncOnMainLoop();
+
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnConnectionState(ConnectionState::DISCONNECTED, test_address0))
+          .Times(1);
+  InjectConnectedEvent(test_address0, 1, GATT_ERROR);
+  SyncOnMainLoop();
+
+  Mock::VerifyAndClearExpectations(&mock_gatt_interface_);
+  Mock::VerifyAndClearExpectations(&mock_audio_hal_client_callbacks_);
+}
+
+TEST_F(UnicastTest, DisconnectBeforeProfileConnected_WhenUserInitiateConnection) {
+  const RawAddress test_address0 = GetTestAddress(0);
+
+  SetSampleDatabaseEarbudsValid(1, test_address0, codec_spec_conf::kLeAudioLocationStereo,
+                                codec_spec_conf::kLeAudioLocationStereo, default_channel_cnt,
+                                default_src_channel_cnt, 0x0004,
+                                /* source sample freq 16khz */ true, /*add_csis*/
+                                true,                                /*add_cas*/
+                                true,                                /*add_pacs*/
+                                default_ase_cnt /*add_ascs*/);
+
+  ON_CALL(mock_btm_interface_, IsDeviceBonded(test_address0, _)).WillByDefault(DoAll(Return(true)));
+
+  /* Keep device in Getting Ready state */
+  ON_CALL(mock_btm_interface_, BTM_IsEncrypted(test_address0, _))
+          .WillByDefault(DoAll(Return(false)));
+  ON_CALL(mock_btm_interface_, SetEncryption(test_address0, _, _, _, _))
+          .WillByDefault(Return(tBTM_STATUS::BTM_SUCCESS));
+
+  do_in_main_thread(base::BindOnce(&LeAudioClient::Connect, base::Unretained(LeAudioClient::Get()),
+                                   test_address0));
+
+  SyncOnMainLoop();
+
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnConnectionState(ConnectionState::DISCONNECTED, test_address0))
+          .Times(1);
+
+  InjectDisconnectedEvent(1, GATT_CONN_TERMINATE_PEER_USER);
+  SyncOnMainLoop();
+
+  Mock::VerifyAndClearExpectations(&mock_gatt_interface_);
+  Mock::VerifyAndClearExpectations(&mock_audio_hal_client_callbacks_);
 }
 
 TEST_F(UnicastTest, CleanupWhenUserConnecting) {
@@ -4382,6 +4507,13 @@ TEST_F(UnicastTestNoInit, ConnectFailedDueToInvalidParameters) {
 
   EXPECT_CALL(mock_gatt_interface_,
               Open(gatt_if, test_address1, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, _))
+          .Times(0);
+
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnConnectionState(ConnectionState::DISCONNECTED, test_address0))
+          .Times(0);
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnConnectionState(ConnectionState::DISCONNECTED, test_address1))
           .Times(0);
 
   // Devices not found
@@ -18367,6 +18499,62 @@ TEST_F(UnicastTest, testGameSonificationHandling) {
   SyncOnMainLoop();
 
   Mock::VerifyAndClearExpectations(&mock_state_machine_);
+}
+
+TEST_F(UnicastTest, testSetEnableStateFalseDuringStreaming) {
+  /* Scenario
+   * 1. Enter streaming
+   * 2. Disable LeAudio
+   * 3. Make sure GATT Client is not called
+   */
+  int group_id = 1;
+  TestSetupRemoteDevices(group_id);
+
+  auto scenario = types::LeAudioContextType::MEDIA;
+  types::BidirectionalPair<types::AudioContexts> metadata_contexts = {
+          .sink = AudioContexts(types::LeAudioContextType::MEDIA), .source = AudioContexts()};
+
+  EXPECT_CALL(mock_state_machine_, StartStream(_, scenario, metadata_contexts, _)).Times(1);
+  StartStreaming(AUDIO_USAGE_MEDIA, AUDIO_CONTENT_TYPE_MUSIC, group_id);
+  SyncOnMainLoop();
+
+  Mock::VerifyAndClearExpectations(&mock_state_machine_);
+
+  const RawAddress test_address0 = GetTestAddress(0);
+
+  EXPECT_CALL(mock_gatt_interface_, CancelOpen(_, _, _)).Times(0);
+  LeAudioClient::Get()->SetEnableState(test_address0, false);
+  Mock::VerifyAndClearExpectations(&mock_gatt_interface_);
+}
+
+TEST_F(UnicastTest, testSetEnableStateFalseDuringAutoConnect) {
+  /* Scenario
+   * 1. Enter streaming
+   * 2. Disable LeAudio
+   * 3. Make sure GATT Client is not called
+   */
+  int group_id = 1;
+  TestSetupRemoteDevices(group_id);
+
+  /* Remove default action on the direct connect */
+  ON_CALL(mock_gatt_interface_, Open(_, _, _, _)).WillByDefault(Return());
+
+  /* Initiate disconnection with timeout reason, the possible reason why GATT
+   * read attribute operation may be not handled
+   */
+  InjectDisconnectedEvent(1, GATT_CONN_TIMEOUT);
+  InjectDisconnectedEvent(2, GATT_CONN_TIMEOUT);
+  SyncOnMainLoop();
+
+  const RawAddress test_address0 = GetTestAddress(0);
+  const RawAddress test_address1 = GetTestAddress(1);
+
+  EXPECT_CALL(mock_gatt_interface_, CancelOpen(_, test_address0, _)).Times(1);
+  EXPECT_CALL(mock_gatt_interface_, CancelOpen(_, test_address1, _)).Times(1);
+  LeAudioClient::Get()->SetEnableState(test_address0, false);
+  LeAudioClient::Get()->SetEnableState(test_address1, false);
+
+  Mock::VerifyAndClearExpectations(&mock_gatt_interface_);
 }
 
 class UnicastDsaTest : public UnicastTest,
