@@ -38,8 +38,11 @@
 #include "avdt_int.h"
 #include "avdtc_api.h"
 #include "bta/include/bta_sec_api.h"
+#include "bta/include/bta_av_api.h"
+#include "btif/include/btif_av.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/alarm.h"
+#include "osi/include/properties.h"
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/l2cap_interface.h"
@@ -120,10 +123,15 @@ void avdt_init_delay_report_timer_timeout(void* data) {
  *
  ******************************************************************************/
 void AVDT_Register(AvdtpRcb* p_reg, tAVDT_CTRL_CBACK* p_cback) {
+  bool a2dpSinkOffloaded = osi_property_get_bool("bluetooth.profile.a2dp.sink.enabled",
+                           false) &&
+                           btif_av_is_a2dp_sink_offload_enabled();
+
   uint16_t sec = BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT;
   /* register PSM with L2CAP */
   if (!stack::l2cap::get_interface().L2CA_RegisterWithSecurity(
-              AVDT_PSM, avdt_l2c_appl, true /* enable_snoop */, nullptr, kAvdtpMtu, 0, sec)) {
+              AVDT_PSM, avdt_l2c_appl, true /* enable_snoop */, nullptr,
+              a2dpSinkOffloaded ? BTA_AVK_MAX_A2DP_MTU : kAvdtpMtu, 0, sec)) {
     log::error("Unable to register with L2CAP profile AVDT psm:AVDT_PSM[0x0019]");
   }
 

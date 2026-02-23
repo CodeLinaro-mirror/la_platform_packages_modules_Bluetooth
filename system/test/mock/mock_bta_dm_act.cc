@@ -48,6 +48,7 @@ struct BTA_dm_acl_up_failed BTA_dm_acl_up_failed;
 struct BTA_dm_notify_remote_features_complete BTA_dm_notify_remote_features_complete;
 struct BTA_dm_on_hw_off BTA_dm_on_hw_off;
 struct BTA_dm_on_hw_on BTA_dm_on_hw_on;
+struct BTA_dm_remove_on_disconnect BTA_dm_remove_on_disconnect;
 struct BTA_dm_report_role_change BTA_dm_report_role_change;
 struct bta_dm_add_ble_device bta_dm_add_ble_device;
 struct bta_dm_add_blekey bta_dm_add_blekey;
@@ -112,6 +113,10 @@ void BTA_dm_on_hw_off() {
 void BTA_dm_on_hw_on() {
   inc_func_call_count(__func__);
   test::mock::bta_dm_act::BTA_dm_on_hw_on();
+}
+void BTA_dm_remove_on_disconnect(const RawAddress bd_addr, tBT_TRANSPORT transport) {
+  inc_func_call_count(__func__);
+  test::mock::bta_dm_act::BTA_dm_remove_on_disconnect(bd_addr, transport);
 }
 void BTA_dm_report_role_change(const RawAddress bd_addr, tHCI_ROLE new_role,
                                tHCI_STATUS hci_status) {

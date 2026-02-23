@@ -1571,7 +1571,7 @@ void BtifAvSink::Init(btav_sink_callbacks_t* callbacks, int max_connected_audio_
   CleanupAllPeers();
   std::vector<btav_a2dp_codec_config_t> codec_priorities;  // Default priorities
   a2dp_sink_offload_enabled_ =
-    osi_property_get_bool("persist.bluetooth.a2dp_sink_offload.enabled", true);
+    osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", false);
   log::info("a2dp_sink_offload.enable={}", a2dp_sink_offload_enabled_);
 
   max_connected_peers_ = max_connected_audio_devices;
@@ -2126,13 +2126,16 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
                                        peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
           peer_.StateMachine().TransitionTo(BtifAvStateMachine::kStateIdle);
         } else {
-          if (peer_.IsSource() && (p_bta_data->open.status == BTA_AV_SUCCESS)) {
+          /* Report connection state for DUT acting as Source.
+             For DUT acting as Sink, connection state reporting handled in opened state. */
+          if (peer_.IsSink()) {
+            btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_CONNECTED,
+                                         bt_status_t::BT_STATUS_SUCCESS, BTA_AV_SUCCESS,
+                                         A2dpType::kSource);
+          } else if (peer_.IsSource()) {
             // Bring up AVRCP connection as well
             BTA_AvOpenRc(peer_.BtaHandle());
           }
-          btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_CONNECTED,
-                                       bt_status_t::BT_STATUS_SUCCESS, BTA_AV_SUCCESS,
-                                       peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
           peer_.StateMachine().TransitionTo(BtifAvStateMachine::kStateOpened);
         }
       } else {
