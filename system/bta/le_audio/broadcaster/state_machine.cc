@@ -294,7 +294,10 @@ private:
             callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
           },
           /* in DISABLING state */
-          [](const void*) { /* Do nothing */ },
+          [this](const void*) {
+            SetState(State::STOPPING);
+            callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+          },
           /* in STOPPING state */
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */

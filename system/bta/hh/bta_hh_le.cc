@@ -1840,7 +1840,6 @@ void bta_hh_gatt_cancel(tBTA_HH_DEV_CB* p_cb) {
       BtaGattQueue::Clean(p_cb->conn_id);
       BTA_GATTC_Close(p_cb->conn_id);
     }
-    bta_hh_le_remove_dev_bg_conn(p_cb);
   }
 }
 
