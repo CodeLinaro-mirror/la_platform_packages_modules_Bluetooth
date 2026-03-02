@@ -15,6 +15,11 @@
  * limitations under the License.
  */
 
+/*Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *SPDX-License-Identifier: BSD-3-Clause-Clear
+*/
+
 #define LOG_TAG "BTAudioClientLeAudioStub"
 
 #include "le_audio_software.h"
@@ -35,6 +40,7 @@
 #include "osi/include/properties.h"
 #include "bta/le_audio/le_audio_utils.h"
 #include <base/strings/string_number_conversions.h>
+#include "qti_hidl/le_audio_broadcast_encoding.h"
 
 namespace bluetooth {
 namespace audio {
@@ -111,6 +117,13 @@ void LeAudioClientInterface::Sink::Cleanup() {
   log::info("HAL transport: 0x{:02x}, is broadcast: {}",
             static_cast<int>(HalVersionManager::GetHalTransport()), is_broadcaster_);
 
+  /* Check if using QTI HIDL broadcast */
+  if (is_broadcaster_ && bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("Cleaning up QTI HIDL broadcast transport");
+    bluetooth::audio::qti_hidl::le_audio_broadcast::cleanup();
+    return;
+  }
+
   /* Cleanup transport interface and instance according to type and role */
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     if (hidl::le_audio::LeAudioSinkTransport::interface) {
@@ -148,6 +161,20 @@ void LeAudioClientInterface::Sink::Cleanup() {
 }
 
 void LeAudioClientInterface::Sink::SetPcmParameters(const PcmParameters& params) {
+  // QTI HIDL broadcast (Aurachat): configure the LC3 codec for both TX and RX
+  // directions using the PCM parameters supplied by the upper layer.
+  // This MUST be called before StartSession() so that start_session() sends a
+  // valid CodecConfiguration_2_1 (codecType=LC3, rxConfigSet=0x3) to the HAL.
+  // Calling setup_codec() here (rather than only in UpdateBroadcastAudioConfigToHal)
+  // ensures the config is ready before StartSession_2_1() is invoked.
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("QTI HIDL broadcast: configuring LC3 codec via setup_codec (TX/encoder)");
+    bluetooth::audio::qti_hidl::le_audio_broadcast::setup_codec(
+            params.sample_rate, params.bits_per_sample, params.channels_count,
+            params.data_interval_us, true /* is_encoder=true: sink is TX/encoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     return hidl::le_audio::LeAudioSinkTransport::instance->LeAudioSetSelectedHalPcmConfig(
             params.sample_rate, params.bits_per_sample, params.channels_count,
@@ -161,6 +188,11 @@ void LeAudioClientInterface::Sink::SetPcmParameters(const PcmParameters& params)
 // Update Le Audio delay report to BluetoothAudio HAL
 void LeAudioClientInterface::Sink::SetRemoteDelay(uint16_t delay_report_ms) {
   log::info("delay_report_ms={} ms", delay_report_ms);
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::set_remote_delay(delay_report_ms);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     hidl::le_audio::LeAudioSinkTransport::instance->SetRemoteDelay(delay_report_ms);
     return;
@@ -170,6 +202,11 @@ void LeAudioClientInterface::Sink::SetRemoteDelay(uint16_t delay_report_ms) {
 
 void LeAudioClientInterface::Sink::StartSession() {
   log::info("");
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::start_session(true /* is_encoder=true: sink is TX/encoder */);
+    return;
+  }
   if (HalVersionManager::GetHalVersion() == BluetoothAudioHalVersion::VERSION_2_1) {
     AudioConfiguration_2_1 audio_config;
     audio_config.pcmConfig(
@@ -204,6 +241,11 @@ void LeAudioClientInterface::Sink::StartSession() {
 
 void LeAudioClientInterface::Sink::ConfirmSuspendRequest() {
   LOG(INFO) << __func__;
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::confirm_suspend_request(true /* sink is TX/encoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::AIDL) {
     get_aidl_client_interface(is_broadcaster_)
             ->StreamSuspended(aidl::BluetoothAudioCtrlAck::SUCCESS_FINISHED);
@@ -229,6 +271,12 @@ void LeAudioClientInterface::Sink::ConfirmStreamingRequest(bool force) {
         return std::make_pair(currect_start_request_state, false);
     }
   };
+
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::confirm_streaming_request(true /* sink is TX/encoder */);
+    return;
+  }
 
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     auto hidl_instance = hidl::le_audio::LeAudioSinkTransport::instance;
@@ -270,6 +318,12 @@ void LeAudioClientInterface::Sink::CancelStreamingRequest() {
     }
   };
 
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::cancel_streaming_request(true /* sink is TX/encoder */);
+    return;
+  }
+
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     auto hidl_instance = hidl::le_audio::LeAudioSinkTransport::instance;
     if (hidl_instance->IsRequestCompletedAfterUpdate(lambda)) {
@@ -305,6 +359,12 @@ void LeAudioClientInterface::Sink::CancelStreamingRequestWithUnsupported() {
     }
   };
 
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::cancel_streaming_request(true /* sink is TX/encoder */);
+    return;
+  }
+
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     auto hidl_instance = hidl::le_audio::LeAudioSinkTransport::instance;
     if (hidl_instance->IsRequestCompletedAfterUpdate(lambda)) {
@@ -323,6 +383,11 @@ void LeAudioClientInterface::Sink::CancelStreamingRequestWithUnsupported() {
 
 void LeAudioClientInterface::Sink::StopSession() {
   log::info("sink");
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::stop_session(true /* is_encoder=true: sink is TX/encoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     hidl::le_audio::LeAudioSinkTransport::instance->ClearStartRequestState();
     hidl::le_audio::LeAudioSinkTransport::interface->EndSession();
@@ -525,6 +590,22 @@ LeAudioClientInterface::Sink::GetVendorConfigureDataPathPayload(
 
 void LeAudioClientInterface::Sink::UpdateBroadcastAudioConfigToHal(
         const ::bluetooth::le_audio::broadcast_offload_config& offload_config) {
+  // Route to QTI HIDL broadcast transport for Aurachat duplex broadcast
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("Routing broadcast audio config to QTI HIDL (Aurachat)");
+    uint8_t channel_count = static_cast<uint8_t>(offload_config.stream_map.size());
+    // TX (encoder) config
+    bluetooth::audio::qti_hidl::le_audio_broadcast::setup_codec(
+            offload_config.sampling_rate, offload_config.bits_per_sample,
+            channel_count, offload_config.frame_duration, true /* is_encoder */);
+    // RX (decoder) config — symmetric for Aurachat
+    bluetooth::audio::qti_hidl::le_audio_broadcast::setup_codec(
+            offload_config.sampling_rate, offload_config.bits_per_sample,
+            channel_count, offload_config.frame_duration, false /* is_encoder */);
+    return;
+  }
+
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     return;
   }
@@ -540,6 +621,11 @@ void LeAudioClientInterface::Sink::UpdateBroadcastAudioConfigToHal(
 }
 
 void LeAudioClientInterface::Sink::SuspendedForReconfiguration() {
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::confirm_suspend_request(true /* sink is TX/encoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     hidl::le_audio::LeAudioSinkTransport::interface->StreamSuspended(
             hidl::BluetoothAudioCtrlAck::SUCCESS_FINISHED);
@@ -551,6 +637,11 @@ void LeAudioClientInterface::Sink::SuspendedForReconfiguration() {
 }
 
 void LeAudioClientInterface::Sink::ReconfigurationComplete() {
+  // QTI HIDL broadcast: no-op (suspend already acknowledged in SuspendedForReconfiguration)
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    return;
+  }
   // This is needed only for AIDL since SuspendedForReconfiguration()
   // already calls StreamSuspended(SUCCESS_FINISHED) for HIDL
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::AIDL) {
@@ -562,6 +653,10 @@ void LeAudioClientInterface::Sink::ReconfigurationComplete() {
 }
 
 size_t LeAudioClientInterface::Sink::Read(uint8_t* p_buf, uint32_t len) {
+  if (is_broadcaster_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    return bluetooth::audio::qti_hidl::le_audio_broadcast::read(p_buf, len);
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     return hidl::le_audio::LeAudioSinkTransport::interface->ReadAudioData(p_buf, len);
   }
@@ -570,6 +665,11 @@ size_t LeAudioClientInterface::Sink::Read(uint8_t* p_buf, uint32_t len) {
 
 void LeAudioClientInterface::Source::Cleanup() {
   log::info("source");
+  // QTI HIDL broadcast: no-op (cleanup handled by Sink::Cleanup)
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("QTI HIDL broadcast: source cleanup is no-op (handled by sink)");
+    return;
+  }
   if (hidl::le_audio::LeAudioSourceTransport::interface) {
     delete hidl::le_audio::LeAudioSourceTransport::interface;
     hidl::le_audio::LeAudioSourceTransport::interface = nullptr;
@@ -589,6 +689,14 @@ void LeAudioClientInterface::Source::Cleanup() {
 }
 
 void LeAudioClientInterface::Source::SetPcmParameters(const PcmParameters& params) {
+  // QTI HIDL broadcast (Aurachat): configure decoder (RX) direction
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("QTI HIDL broadcast: configuring LC3 codec via setup_codec (RX/decoder)");
+    bluetooth::audio::qti_hidl::le_audio_broadcast::setup_codec(
+            params.sample_rate, params.bits_per_sample, params.channels_count,
+            params.data_interval_us, false /* is_encoder=false: source is RX/decoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     hidl::le_audio::LeAudioSourceTransport::instance->LeAudioSetSelectedHalPcmConfig(
             params.sample_rate, params.bits_per_sample, params.channels_count,
@@ -602,6 +710,10 @@ void LeAudioClientInterface::Source::SetPcmParameters(const PcmParameters& param
 
 void LeAudioClientInterface::Source::SetRemoteDelay(uint16_t delay_report_ms) {
   log::info("delay_report_ms={} ms", delay_report_ms);
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::set_remote_delay(delay_report_ms);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     hidl::le_audio::LeAudioSourceTransport::instance->SetRemoteDelay(delay_report_ms);
     return;
@@ -611,6 +723,10 @@ void LeAudioClientInterface::Source::SetRemoteDelay(uint16_t delay_report_ms) {
 
 void LeAudioClientInterface::Source::StartSession() {
   log::info("");
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::start_session(false /* is_encoder=false: source is RX/decoder */);
+    return;
+  }
   if (HalVersionManager::GetHalVersion() == BluetoothAudioHalVersion::VERSION_2_1) {
     AudioConfiguration_2_1 audio_config;
     audio_config.pcmConfig(
@@ -666,6 +782,10 @@ void LeAudioClientInterface::Source::ReconfigurationComplete() {
 
 void LeAudioClientInterface::Source::ConfirmSuspendRequest() {
   LOG(INFO) << __func__;
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::confirm_suspend_request(false /* source is RX/decoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::AIDL) {
     aidl::le_audio::LeAudioSourceTransport::interface->StreamSuspended(
             aidl::BluetoothAudioCtrlAck::SUCCESS_FINISHED);
@@ -691,6 +811,11 @@ void LeAudioClientInterface::Source::ConfirmStreamingRequest(bool force) {
         return std::make_pair(currect_start_request_state, false);
     }
   };
+
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::confirm_streaming_request(false /* source is RX/decoder */);
+    return;
+  }
 
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     auto hidl_instance = hidl::le_audio::LeAudioSourceTransport::instance;
@@ -729,6 +854,11 @@ void LeAudioClientInterface::Source::CancelStreamingRequest() {
     }
   };
 
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::cancel_streaming_request(false /* source is RX/decoder */);
+    return;
+  }
+
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     auto hidl_instance = hidl::le_audio::LeAudioSourceTransport::instance;
     if (hidl_instance->IsRequestCompletedAfterUpdate(lambda)) {
@@ -765,6 +895,11 @@ void LeAudioClientInterface::Source::CancelStreamingRequestWithUnsupported() {
     }
   };
 
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::cancel_streaming_request(false /* source is RX/decoder */);
+    return;
+  }
+
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     auto hidl_instance = hidl::le_audio::LeAudioSourceTransport::instance;
     if (hidl_instance->IsRequestCompletedAfterUpdate(lambda)) {
@@ -783,6 +918,10 @@ void LeAudioClientInterface::Source::CancelStreamingRequestWithUnsupported() {
 
 void LeAudioClientInterface::Source::StopSession() {
   log::info("source");
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    bluetooth::audio::qti_hidl::le_audio_broadcast::stop_session(false /* is_encoder=false: source is RX/decoder */);
+    return;
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     hidl::le_audio::LeAudioSourceTransport::instance->ClearStartRequestState();
     hidl::le_audio::LeAudioSourceTransport::interface->EndSession();
@@ -845,6 +984,9 @@ void LeAudioClientInterface::Source::SetCodecPriority(
 }
 
 size_t LeAudioClientInterface::Source::Write(const uint8_t* p_buf, uint32_t len) {
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    return bluetooth::audio::qti_hidl::le_audio_broadcast::write(p_buf, len);
+  }
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     return hidl::le_audio::LeAudioSourceTransport::interface->WriteAudioData(p_buf, len);
   }
@@ -854,6 +996,35 @@ size_t LeAudioClientInterface::Source::Write(const uint8_t* p_buf, uint32_t len)
 LeAudioClientInterface::Sink* LeAudioClientInterface::GetSink(
         StreamCallbacks stream_cb, bluetooth::common::MessageLoopThread* message_loop,
         bool is_broadcasting_session_type) {
+  // Check if QTI HIDL broadcast is enabled for broadcast sessions
+  if (is_broadcasting_session_type &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("Using QTI HIDL for LE Audio broadcast (Aurachat)");
+    
+    auto& sink = broadcast_sink_;
+    if (sink == nullptr) {
+      sink = new Sink(is_broadcasting_session_type);
+    } else {
+      log::warn("Sink is already acquired");
+      return nullptr;
+    }
+
+    // Initialize QTI HIDL broadcast transport
+    if (!bluetooth::audio::qti_hidl::le_audio_broadcast::init(message_loop)) {
+      log::error("Failed to initialize QTI HIDL broadcast transport");
+      delete sink;
+      sink = nullptr;
+      return nullptr;
+    }
+
+    // Register source (encoder/TX) callbacks for HAL-initiated requests
+    // NOTE: Sink = TX/encoder direction (audio_source_hal_client.cc uses halSinkInterface_)
+    bluetooth::audio::qti_hidl::le_audio_broadcast::register_source_callbacks(
+            stream_cb.on_resume_, stream_cb.on_suspend_, stream_cb.on_suspend_);
+
+    return sink;
+  }
+
   if (is_broadcasting_session_type &&
       HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
     log::warn("No support for broadcasting Le Audio on HIDL");
@@ -950,12 +1121,16 @@ bool LeAudioClientInterface::ReleaseSink(LeAudioClientInterface::Sink* sink) {
     return false;
   }
 
-  if ((hidl::le_audio::LeAudioSinkTransport::interface &&
-       hidl::le_audio::LeAudioSinkTransport::instance) ||
-      (aidl::le_audio::LeAudioSinkTransport::interface_unicast_ &&
-       aidl::le_audio::LeAudioSinkTransport::instance_unicast_) ||
-      (aidl::le_audio::LeAudioSinkTransport::interface_broadcast_ &&
-       aidl::le_audio::LeAudioSinkTransport::instance_broadcast_)) {
+  // For QTI HIDL broadcast, Cleanup() must always be called (no AIDL/HIDL instances to check)
+  if (sink == broadcast_sink_ &&
+      bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    sink->Cleanup();
+  } else if ((hidl::le_audio::LeAudioSinkTransport::interface &&
+              hidl::le_audio::LeAudioSinkTransport::instance) ||
+             (aidl::le_audio::LeAudioSinkTransport::interface_unicast_ &&
+              aidl::le_audio::LeAudioSinkTransport::instance_unicast_) ||
+             (aidl::le_audio::LeAudioSinkTransport::interface_broadcast_ &&
+              aidl::le_audio::LeAudioSinkTransport::instance_broadcast_)) {
     sink->Cleanup();
   }
 
@@ -972,6 +1147,31 @@ bool LeAudioClientInterface::ReleaseSink(LeAudioClientInterface::Sink* sink) {
 
 LeAudioClientInterface::Source* LeAudioClientInterface::GetSource(
         StreamCallbacks stream_cb, bluetooth::common::MessageLoopThread* message_loop) {
+  // Check if QTI HIDL broadcast is enabled (Aurachat duplex broadcast)
+  if (bluetooth::audio::qti_hidl::le_audio_broadcast::is_duplex_broadcast_enabled()) {
+    log::info("Using QTI HIDL for LE Audio broadcast source (Aurachat)");
+    if (source_ == nullptr) {
+      source_ = new Source();
+    } else {
+      log::warn("Source is already acquired");
+      return nullptr;
+    }
+    // Ensure HAL is initialized (may have been done by GetSink already)
+    if (!bluetooth::audio::qti_hidl::le_audio_broadcast::is_hal_enabled()) {
+      if (!bluetooth::audio::qti_hidl::le_audio_broadcast::init(message_loop)) {
+        log::error("Failed to initialize QTI HIDL broadcast transport");
+        delete source_;
+        source_ = nullptr;
+        return nullptr;
+      }
+    }
+    // Register sink (decoder/RX) callbacks for HAL-initiated requests
+    // NOTE: Source = RX/decoder direction (audio_sink_hal_client.cc uses halSourceInterface_)
+    bluetooth::audio::qti_hidl::le_audio_broadcast::register_sink_callbacks(
+            stream_cb.on_resume_, stream_cb.on_suspend_, stream_cb.on_suspend_);
+    return source_;
+  }
+
   if (source_ == nullptr) {
     source_ = new Source();
   } else {
