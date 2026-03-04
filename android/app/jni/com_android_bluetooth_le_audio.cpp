@@ -1402,6 +1402,56 @@ static void CreateBroadcastNative(JNIEnv* env, jobject /* object */, jboolean is
   }
 }
 
+static void CreateEnhancedBroadcastNative(JNIEnv* env, jobject /* object */,
+                                          jstring broadcastName, jbyteArray broadcast_code,
+                                          jintArray qualityArray,
+                                          jobjectArray metadataArray,
+                                          jfloat iso_interval) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterInterfaceMutex);
+  if (!sLeAudioBroadcasterInterface) {
+    return;
+  }
+
+  std::array<uint8_t, 16> code_array{0};
+  if (broadcast_code) {
+    jsize size = env->GetArrayLength(broadcast_code);
+    if (size > 16) {
+      log::error("broadcast code too long");
+      return;
+    }
+
+    // Padding with zeros on MSB positions if code is shorter than 16 octets
+    env->GetByteArrayRegion(broadcast_code, 0, size, (jbyte*)code_array.data());
+  }
+
+  const char* broadcast_name = nullptr;
+  if (broadcastName) {
+    broadcast_name = env->GetStringUTFChars(broadcastName, nullptr);
+  }
+
+  jint* quality_array = nullptr;
+  if (qualityArray) {
+    quality_array = env->GetIntArrayElements(qualityArray, nullptr);
+  }
+
+  sLeAudioBroadcasterInterface->CreateEnhancedBroadcast(
+          broadcast_name ? broadcast_name : "",
+          broadcast_code ? std::optional<std::array<uint8_t, 16>>(code_array) : std::nullopt,
+          quality_array ? std::vector<uint8_t>(quality_array,
+                                               quality_array + env->GetArrayLength(qualityArray))
+                        : std::vector<uint8_t>(),
+          convertToDataVectors(env, metadataArray),
+          iso_interval);
+
+  if (broadcast_name) {
+    env->ReleaseStringUTFChars(broadcastName, broadcast_name);
+  }
+  if (quality_array) {
+    env->ReleaseIntArrayElements(qualityArray, quality_array, 0);
+  }
+}
+
 static void UpdateMetadataNative(JNIEnv* env, jobject /* object */, jint broadcast_id,
                                  jstring broadcastName, jbyteArray publicMetadata,
                                  jobjectArray metadataArray) {
@@ -1482,6 +1532,8 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
           {"cleanupNative", "()V", (void*)BroadcasterCleanupNative},
           {"createBroadcastNative", "(ZLjava/lang/String;[B[B[I[[B)V",
            (void*)CreateBroadcastNative},
+           {"createEnhancedBroadcastNative", "(Ljava/lang/String;[B[I[[BF)V",
+           (void*)CreateEnhancedBroadcastNative},
           {"updateMetadataNative", "(ILjava/lang/String;[B[[B)V", (void*)UpdateMetadataNative},
           {"startBroadcastNative", "(I)V", (void*)StartBroadcastNative},
           {"stopBroadcastNative", "(I)V", (void*)StopBroadcastNative},

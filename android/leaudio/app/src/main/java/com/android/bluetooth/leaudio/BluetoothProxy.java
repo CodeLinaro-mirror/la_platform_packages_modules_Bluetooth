@@ -1621,6 +1621,12 @@ public class BluetoothProxy {
         return true;
     }
 
+    public boolean startEnhancedBroadcast(BluetoothLeBroadcastSettings settings, float isoInterval) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.startEnhancedBroadcast(settings, isoInterval);
+        return true;
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         if (mBluetoothLeBroadcast == null) return false;
         mBluetoothLeBroadcast.stopBroadcast(broadcastId);

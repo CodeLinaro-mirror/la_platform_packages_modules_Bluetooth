@@ -158,11 +158,26 @@ static const types::DataPathConfiguration lc3_data_path = {
                 },
 };
 
+// Data path configuration for duplex broadcast (AuraChat DBIG)
+static const types::DataPathConfiguration lc3_data_path_duplex = {
+        .dataPathId = bluetooth::hci::iso_manager::kIsoDataPathPlatformDefault,
+        .dataPathConfig = {},
+        .isoDataPathConfig =
+                {
+                        .codecId = kLeAudioCodecIdLc3,
+                        .isTransparent = false,
+                        .controllerDelayUs = 0x00000000,
+                        .configuration = {},
+                },
+};
+
 static const BroadcastQosConfig qos_config_2_10 = BroadcastQosConfig(2, 10);
 static const BroadcastQosConfig qos_config_4_45 = BroadcastQosConfig(4, 45);
 static const BroadcastQosConfig qos_config_4_50 = BroadcastQosConfig(4, 50);
 static const BroadcastQosConfig qos_config_4_60 = BroadcastQosConfig(4, 60);
 static const BroadcastQosConfig qos_config_4_65 = BroadcastQosConfig(4, 65);
+// AuraChat DBIG: rtn=1, max_transport_latency=10ms
+static const BroadcastQosConfig qos_config_1_10 = BroadcastQosConfig(1, 10);
 
 // Standard single subgroup configurations
 static const BroadcastConfiguration lc3_mono_16_2_1 = {
@@ -271,6 +286,50 @@ static const BroadcastConfiguration lc3_stereo_48_4_2 = {
         .phy = 0x02,   // PHY_LE_2M
         .packing = 0,  // Sequential
         .framing = 0   // Unframed,
+};
+
+// AuraChat DBIG duplex subgroup: 4 BISes, 16kHz, 10ms frame duration, 25 bytes/BIS
+// (num_bises=4 for 2M PHY, max_sdu=100 bytes total, codec_specific_2=1 for 10ms frame duration)
+static const BroadcastSubgroupCodecConfig aurachat_duplex_4bis_16_2 =
+        BroadcastSubgroupCodecConfig(
+                kLeAudioCodecIdLc3,
+                {BroadcastSubgroupBisCodecConfig{
+                        // num_bis (4 for duplex 2M PHY: 2 TX + 2 RX)
+                        4,
+                        // bis_channel_cnt_
+                        1,
+                        // codec_specific
+                        types::LeAudioLtvMap({
+                                LTV_ENTRY_SAMPLING_FREQUENCY(
+                                        codec_spec_conf::kLeAudioSamplingFreq16000Hz),
+                                LTV_ENTRY_FRAME_DURATION(
+                                        codec_spec_conf::kLeAudioCodecFrameDur10000us),
+                                LTV_ENTRY_OCTETS_PER_CODEC_FRAME(40),
+                        }),
+                }},
+                // bits_per_sample
+                16);
+
+// AuraChat DBIG duplex BIG configuration (2M PHY)
+// BIG params:
+//   sdu_int=10000us, max_sdu=100 bytes, max_transport_latency=10ms,
+//   rtn=1, phy=2 (LE 2M), packing=0 (Sequential), framing=0 (Unframed)
+// DBIG params:
+//   dbig_feature_set=3, bis_detection_attempts=10, max_payload_dbig_control=16,
+//   bis_control_event_interval=9 (for 10ms MTL), send_exit=2,
+//   pgp_timeout=10, pgo_timeout=10, sgo_timeout=6, tx_power=8dBm
+// Duplex specifics:
+//   num_bises=4 (2M PHY), encryption=enabled, data_path=bidirectional (TX=0, RX=1),
+//   frame_duration=10ms (codec_specific_2=1)
+static const BroadcastConfiguration aurachat_duplex_2m = {
+        .subgroups = {aurachat_duplex_4bis_16_2},
+        .qos = qos_config_1_10,
+        .data_path = lc3_data_path_duplex,
+        .sduIntervalUs = 10000,  // 10ms ISO interval
+        .maxSduOctets = 40,     // 40 bytes (varies with bitrate: 26-155 bytes)
+        .phy = 0x02,             // PHY_LE_2M
+        .packing = 0,            // Sequential (duplex mode)
+        .framing = 0,            // Unframed
 };
 
 // Takes a list of subgroup requirements (audio context, quality index)

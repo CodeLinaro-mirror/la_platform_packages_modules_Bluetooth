@@ -534,6 +534,41 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Start broadcasting to nearby devices using {@link BluetoothLeBroadcastSettings} with
+     * specified ISO interval.
+     *
+     * @param broadcastSettings broadcast settings for this broadcast group
+     * @param isoInterval ISO interval in milliseconds (valid values: 7.5, 10, 20, 30)
+     * @throws IllegalStateException if callback was not registered
+     * @throws NullPointerException if <var>broadcastSettings</var> is null
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void startEnhancedBroadcast(@NonNull BluetoothLeBroadcastSettings broadcastSettings,
+            float isoInterval) {
+        requireNonNull(broadcastSettings);
+        if (mCallbackExecutorMap.isEmpty()) {
+            throw new IllegalStateException("No callback was ever registered");
+        }
+
+        if (DBG) log("startEnhancedBroadcast with ISO interval: " + isoInterval);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.startEnhancedBroadcast(broadcastSettings, isoInterval, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+    }
+
+    /**
      * Update the broadcast with <var>broadcastId</var> with new <var>contentMetadata</var>
      *
      * <p>On success, {@link Callback#onBroadcastUpdated(int, int)} will be invoked with reason code

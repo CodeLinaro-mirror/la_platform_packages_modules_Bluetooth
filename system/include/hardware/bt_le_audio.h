@@ -586,6 +586,12 @@ public:
                                std::vector<uint8_t> public_metadata,
                                std::vector<uint8_t> subgroup_quality,
                                std::vector<std::vector<uint8_t>> subgroup_metadata) = 0;
+  /* Create Enhanced Broadcast instance */
+  virtual void CreateEnhancedBroadcast(std::string broadcast_name,
+                                       std::optional<BroadcastCode> broadcast_code,
+                                       std::vector<uint8_t> subgroup_quality,
+                                       std::vector<std::vector<uint8_t>> subgroup_metadata,
+                                       float iso_interval) = 0;
   /* Update the ongoing Broadcast metadata */
   virtual void UpdateMetadata(uint32_t broadcast_id, std::string broadcast_name,
                               std::vector<uint8_t> public_metadata,

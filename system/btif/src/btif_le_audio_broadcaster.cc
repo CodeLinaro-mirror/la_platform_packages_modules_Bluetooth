@@ -63,6 +63,17 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                            std::move(subgroup_metadata)));
   }
 
+  void CreateEnhancedBroadcast(std::string broadcast_name,
+                       std::optional<bluetooth::le_audio::BroadcastCode> broadcast_code,
+                       std::vector<uint8_t> subgroup_quality,
+                       std::vector<std::vector<uint8_t>> subgroup_metadata,
+                       float iso_interval) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::CreateEnhancedAudioBroadcast,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_name,
+                           broadcast_code, std::move(subgroup_quality),
+                           std::move(subgroup_metadata), iso_interval));
+  }
+
   void UpdateMetadata(uint32_t broadcast_id, std::string broadcast_name,
                       std::vector<uint8_t> public_metadata,
                       std::vector<std::vector<uint8_t>> subgroup_metadata) override {

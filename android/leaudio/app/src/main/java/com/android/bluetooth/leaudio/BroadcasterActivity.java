@@ -86,6 +86,8 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 alertView.findViewById(R.id.broadcast_public_content_input);
                         final Switch high_quality =
                                 alertView.findViewById(R.id.broadcast_high_quality);
+                        final EditText iso_interval_input =
+                                alertView.findViewById(R.id.iso_interval_input);
                         // Add context type selector
                         contextPicker.setMinValue(1);
                         contextPicker.setMaxValue(
@@ -136,6 +138,31 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 .setNeutralButton(
                                         "Start",
                                         (dialog, which) -> {
+                                            // Parse and validate ISO interval
+                                            float isoInterval = 0.0f;
+                                            String isoIntervalStr = iso_interval_input.getText().toString();
+                                            if (!isoIntervalStr.isEmpty()) {
+                                                try {
+                                                    isoInterval = Float.parseFloat(isoIntervalStr);
+                                                    // Validate against allowed values
+                                                    if (isoInterval != 7.5f && isoInterval != 10.0f &&
+                                                        isoInterval != 20.0f && isoInterval != 30.0f) {
+                                                        Toast.makeText(
+                                                            BroadcasterActivity.this,
+                                                            "Invalid ISO interval. Must be one of: 7.5, 10, 20, 30",
+                                                            Toast.LENGTH_LONG).show();
+                                                        return;
+                                                    }
+                                                } catch (NumberFormatException e) {
+                                                    Log.w("BroadcasterActivity", "Invalid ISO interval format: " + e.getMessage());
+                                                    Toast.makeText(
+                                                        BroadcasterActivity.this,
+                                                        "Invalid ISO interval format. Must be one of: 7.5, 10, 20, 30",
+                                                        Toast.LENGTH_LONG).show();
+                                                    return;
+                                                }
+                                            }
+
                                             BluetoothLeBroadcastSettings broadcastSettings =
                                                     createBroadcastSettingsFromUI(
                                                             program_info.getText().toString(),
@@ -148,16 +175,55 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                                     ? BluetoothLeBroadcastSubgroupSettings.QUALITY_HIGH
                                                                     : BluetoothLeBroadcastSubgroupSettings.QUALITY_STANDARD);
 
-                                            if (mViewModel.startBroadcast(broadcastSettings))
+                                            boolean broadcastStarted;
+                                            if (isoInterval > 0) {
+                                                // Use enhanced broadcast with ISO interval
+                                                broadcastStarted = mViewModel.startEnhancedBroadcast(broadcastSettings, isoInterval);
+                                            } else {
+                                                // Use standard broadcast without ISO interval
+                                                broadcastStarted = mViewModel.startBroadcast(broadcastSettings);
+                                            }
+
+                                            if (broadcastStarted) {
+                                                String message = "Broadcast was created";
+                                                if (isoInterval > 0) {
+                                                    message += " with ISO interval: " + isoInterval;
+                                                }
                                                 Toast.makeText(
                                                                 BroadcasterActivity.this,
-                                                                "Broadcast was created.",
+                                                                message,
                                                                 Toast.LENGTH_SHORT)
                                                         .show();
+                                            }
                                         })
                                 .setPositiveButton(
                                         "Start & save",
                                         (dialog, which) -> {
+                                            // Parse and validate ISO interval
+                                            float isoInterval = 0.0f;
+                                            String isoIntervalStr = iso_interval_input.getText().toString();
+                                            if (!isoIntervalStr.isEmpty()) {
+                                                try {
+                                                    isoInterval = Float.parseFloat(isoIntervalStr);
+                                                    // Validate against allowed values
+                                                    if (isoInterval != 7.5f && isoInterval != 10.0f &&
+                                                        isoInterval != 20.0f && isoInterval != 30.0f) {
+                                                        Toast.makeText(
+                                                            BroadcasterActivity.this,
+                                                            "Invalid ISO interval. Must be one of: 7.5, 10, 20, 30",
+                                                            Toast.LENGTH_LONG).show();
+                                                        return;
+                                                    }
+                                                } catch (NumberFormatException e) {
+                                                    Log.w("BroadcasterActivity", "Invalid ISO interval format: " + e.getMessage());
+                                                    Toast.makeText(
+                                                        BroadcasterActivity.this,
+                                                        "Invalid ISO interval format. Must be one of: 7.5, 10, 20, 30",
+                                                        Toast.LENGTH_LONG).show();
+                                                    return;
+                                                }
+                                            }
+
                                             BluetoothLeBroadcastSettings broadcastSettings =
                                                     createBroadcastSettingsFromUI(
                                                             program_info.getText().toString(),
@@ -170,7 +236,16 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                             ? BluetoothLeBroadcastSubgroupSettings.QUALITY_HIGH
                                                             : BluetoothLeBroadcastSubgroupSettings.QUALITY_STANDARD);
 
-                                            if (mViewModel.startBroadcast(broadcastSettings)) {
+                                            boolean broadcastStarted;
+                                            if (isoInterval > 0) {
+                                                // Use enhanced broadcast with ISO interval
+                                                broadcastStarted = mViewModel.startEnhancedBroadcast(broadcastSettings, isoInterval);
+                                            } else {
+                                                // Use standard broadcast without ISO interval
+                                                broadcastStarted = mViewModel.startBroadcast(broadcastSettings);
+                                            }
+
+                                            if (broadcastStarted) {
                                                 // Save only if started successfully
                                                 if (saveBroadcastToSharedPref(
                                                         program_info.getText().toString(),
@@ -179,18 +254,23 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                         publicCheckbox.isChecked(),
                                                         broadcast_name.getText().toString(),
                                                         code_input_text.getText().toString())) {
+                                                    String message = "Broadcast was created and saved";
+                                                    if (isoInterval > 0) {
+                                                        message += " with ISO interval: " + isoInterval;
+                                                    }
                                                     Toast.makeText(
                                                                     BroadcasterActivity.this,
-                                                                    "Broadcast was created and"
-                                                                            + " saved",
+                                                                    message,
                                                                     Toast.LENGTH_SHORT)
                                                             .show();
                                                 } else {
+                                                    String message = "Broadcast was created, but not saved (already exists).";
+                                                    if (isoInterval > 0) {
+                                                        message = "Broadcast was created with ISO interval: " + isoInterval + ", but not saved (already exists).";
+                                                    }
                                                     Toast.makeText(
                                                                     BroadcasterActivity.this,
-                                                                    "Broadcast was created, but not"
-                                                                            + " saved (already"
-                                                                            + " exists).",
+                                                                    message,
                                                                     Toast.LENGTH_SHORT)
                                                             .show();
                                                 }

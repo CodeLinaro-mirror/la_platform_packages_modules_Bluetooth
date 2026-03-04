@@ -53,6 +53,7 @@
 
 using bluetooth::common::ToString;
 using bluetooth::hci::IsoManager;
+using bluetooth::hci::iso_manager::dbig_create_cmpl_evt;
 using bluetooth::hci::iso_manager::big_create_cmpl_evt;
 using bluetooth::hci::iso_manager::big_terminate_cmpl_evt;
 
@@ -147,7 +148,28 @@ public:
           const override {
     return sm_config_.public_announcement;
   }
-
+  void SetStreamingDirection(uint8_t direction) override {
+    if (GetBroadcastMode() != BroadcastMode::DUPLEX) {
+      log::error("SetStreamingDirection called on non-DUPLEX broadcast (mode={}). This is unexpected operation!",
+                 static_cast<uint8_t>(sm_config_.broadcast_mode));
+      return;
+    }
+    log::info("Setting streaming direction to 0x{:02X} for broadcast_id={}",
+              direction, sm_config_.broadcast_id);
+    sm_config_.streaming_direction = direction;
+    streaming_direction_ = direction;
+  }
+  uint8_t GetStreamingDirection() const override {
+    if (GetBroadcastMode() != BroadcastMode::DUPLEX) {
+      log::warn("GetStreamingDirection called on non-DUPLEX broadcast (mode={}). This is unexpected operation! Returning NONE.",
+                static_cast<uint8_t>(sm_config_.broadcast_mode));
+      return kStreamingDirectionNone;
+    }
+    return streaming_direction_;
+  }
+  BroadcastMode GetBroadcastMode() const override {
+    return sm_config_.broadcast_mode;
+  }
   void OnCreateAnnouncement(uint8_t advertising_sid, int8_t tx_power, uint8_t status) {
     log::info("advertising_sid={} tx_power={} status={}", advertising_sid, tx_power, status);
 
@@ -266,7 +288,12 @@ private:
           /* in CONFIGURED state */
           [this](const void*) {
             SetState(State::ENABLING);
-            CreateBig();
+            if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+              CreateDbig();
+            }
+            else{
+              CreateBig();
+            }
           },
           /* in ENABLING state */
           [](const void*) { /* Do nothing */ },
@@ -275,8 +302,15 @@ private:
           /* in STOPPING state */
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
-          [](const void*) { /* Do nothing */ }};
-
+          [this](const void*) {
+             if(GetBroadcastMode() == BroadcastMode::DUPLEX && 
+                IsTxStreaming(GetStreamingDirection()) && 
+                !IsRxStreaming(GetStreamingDirection())){
+                if(active_config_ != std::nullopt){
+                  TriggerIsoDatapathSetup(active_config_->connection_handles[0]);
+                }
+             }
+           }};
   const std::array<msg_handler_t, BroadcastStateMachine::STATE_COUNT> stop_msg_handlers{
           /* in STOPPED state */
           [](const void*) { /* Already stopped */ },
@@ -324,8 +358,14 @@ private:
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
           [this](const void*) {
-            SetState(State::DISABLING);
-            TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+            if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
+              //Only remove RX ISO_Datapath state will remain streaming.
+              TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+            }
+            else{
+              SetState(State::DISABLING);
+              TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+            }
           }};
 
   const std::array<msg_handler_t, BroadcastStateMachine::STATE_COUNT> resume_msg_handlers{
@@ -431,10 +471,32 @@ private:
             .enc_code = sm_config_.broadcast_code ? *sm_config_.broadcast_code
                                                   : std::array<uint8_t, 16>({0}),
     };
-
+    if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+      big_params.packing = 0x00;
+      big_params.num_bis = 4;
+    }
+    log::info("Number of BISES={}", big_params.num_bis);
     IsoManager::GetInstance()->CreateBig(GetAdvertisingSid(), std::move(big_params));
   }
-
+  void CreateDbig(void) {
+    log::info("broadcast_id={}, creating DBIG for duplex mode", GetBroadcastId());
+  
+    /* DBIG parameters for duplex broadcast */
+    struct bluetooth::hci::iso_manager::dbig_create_params dbig_params = {
+        .dbig_handle = GetAdvertisingSid(),  // Use adv_handle as dbig_handle
+        .dbig_feature_set = 3,
+        .bis_detection_attempts = 10,
+        .max_payload_dbig_control = 16,
+        //check this
+        .bis_control_event_interval = 9,
+        .send_exit = 2,
+        .pgp_timeout = 10,
+        .pgo_timeout = 10,
+        .sgo_timeout = 6,
+        .tx_power = 8,
+    };
+    IsoManager::GetInstance()->CreateDbig(std::move(dbig_params));
+  }
   void DisableAnnouncement(void) {
     log::info("broadcast_id={}", GetBroadcastId());
     // Callback is handled by OnAdvertisingEnabled() which returns the status
@@ -477,6 +539,15 @@ private:
       }
       /* It was the last BIS to set up - change state to streaming */
       SetState(State::STREAMING);
+      if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+        uint8_t current_direction = GetStreamingDirection();
+        if(current_direction == kStreamingDirectionNone){
+          SetStreamingDirection(kStreamingDirectionTx);
+        }
+        else if(current_direction == kStreamingDirectionTx){
+          SetStreamingDirection(kStreamingDirectionBidirectional);
+        }
+      }
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), nullptr);
     } else {
       /* Note: We would feed a watchdog here if we had one */
@@ -506,6 +577,13 @@ private:
 
     if (handle_it == active_config_->connection_handles.end()) {
       /* It was the last one to set up - start tearing down the BIG */
+      if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
+        log::info("RX teardown complete for broadcast_id={}, sending ACK", GetBroadcastId());
+        // Remove RX streaming direction (only TX remains active)
+        SetStreamingDirection(GetStreamingDirection() & ~kStreamingDirectionRx);
+        callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), this);
+        return;
+      }
       TerminateBig();
     } else {
       /* Note: We would feed a watchdog here if we had one */
@@ -541,6 +619,9 @@ private:
             .controller_delay = iso_datapath_config.controllerDelayUs,
             .codec_conf = iso_datapath_config.configuration,
     };
+    if(GetBroadcastMode() == BroadcastMode::DUPLEX && GetState() == BroadcastStateMachine::State::STREAMING){
+      param.data_path_dir = bluetooth::hci::iso_manager::kIsoDataPathDirectionOut;
+    }
     IsoManager::GetInstance()->SetupIsoDataPath(conn_handle, std::move(param));
   }
 
@@ -550,6 +631,11 @@ private:
                      "assert failed: active_config_ != std::nullopt");
 
     SetMuted(true);
+    if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
+          IsoManager::GetInstance()->RemoveIsoDataPath(
+            conn_handle, bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput);
+            return;
+      }
     IsoManager::GetInstance()->RemoveIsoDataPath(
             conn_handle, bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput);
   }
@@ -595,6 +681,23 @@ private:
                      ToString(GetState()), event, evt->big_id, evt->status);
         }
       } break;
+      case HCI_VS_LE_DBIG_CREATE_CPL_EVT: {
+          auto* evt = static_cast<dbig_create_cmpl_evt*>(data);
+          if (evt->dbig_handle != GetAdvertisingSid()) {
+            log::error("State={}, Event={}, Unknown dbig, dbig_handle={}", ToString(GetState()), event,
+                      evt->dbig_handle);
+            break;
+          }
+          if (evt->status == 0x00) {
+            log::info("DBIG create complete, big_id={}", evt->dbig_handle);
+            CreateBig();
+          } else {
+            log::error("State={} Event={}. Unable to create dbig, big_id={}, status={}",
+                      ToString(GetState()), event, evt->dbig_handle, evt->status);
+            // Handle DBIG creation failure
+            //callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), evt);
+          }
+      } break;
       case HCI_BLE_TERM_BIG_CPL_EVT: {
         auto* evt = static_cast<big_terminate_cmpl_evt*>(data);
 
@@ -609,7 +712,9 @@ private:
 
         active_config_ = std::nullopt;
         bool disabling = GetState() == BroadcastStateMachine::State::DISABLING;
-
+        if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+          SetStreamingDirection(kStreamingDirectionNone);
+        }
         /* Go back to configured if BIG is inactive (we are still announcing) and state is not
          * stopping*/
         if (GetState() != BroadcastStateMachine::State::STOPPING) {

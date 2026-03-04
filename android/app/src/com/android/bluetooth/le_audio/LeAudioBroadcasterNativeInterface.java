@@ -193,6 +193,28 @@ public class LeAudioBroadcasterNativeInterface {
                 metadataArray);
     }
 
+        /**
+     * Creates LeAudio enhanced Broadcast instance.
+     *
+     * @param broadcastName BIG broadcast name
+     * @param broadcastCode BIG broadcast code
+     * @param isoInterval Isointerval for broadcast.
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void createEnhancedBroadcast(
+            String broadcastName,
+            byte[] broadcastCode,
+            int[] qualityArray,
+            byte[][] metadataArray,
+            float isoInterval) {
+        createEnhancedBroadcastNative(
+                broadcastName,
+                broadcastCode,
+                qualityArray,
+                metadataArray,
+                isoInterval);
+    }
+
     /**
      * Update LeAudio Broadcast instance metadata.
      *
@@ -267,6 +289,13 @@ public class LeAudioBroadcasterNativeInterface {
             byte[] publicMetadata,
             int[] qualityArray,
             byte[][] metadataArray);
+
+    private native void createEnhancedBroadcastNative(
+            String broadcastName,
+            byte[] broadcastCode,
+            int[] qualityArray,
+            byte[][] metadataArray,
+            float  isoInterval);
 
     private native void updateMetadataNative(
             int broadcastId, String broadcastName, byte[] publicMetadata, byte[][] metadataArray);

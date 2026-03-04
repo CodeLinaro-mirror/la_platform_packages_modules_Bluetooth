@@ -43,6 +43,12 @@ public:
           const std::optional<bluetooth::le_audio::BroadcastCode>& broadcast_code,
           const std::vector<uint8_t>& public_metadata, const std::vector<uint8_t>& subgroup_quality,
           const std::vector<std::vector<uint8_t>>& subgroup_metadata) = 0;
+  virtual void CreateEnhancedAudioBroadcast(
+          const std::string& broadcast_name,
+          const std::optional<bluetooth::le_audio::BroadcastCode>& broadcast_code,
+          const std::vector<uint8_t>& subgroup_quality,
+          const std::vector<std::vector<uint8_t>>& subgroup_metadata,
+          float iso_interval) = 0;
   virtual void SuspendAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void StartAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void StopAudioBroadcast(uint32_t broadcast_id) = 0;

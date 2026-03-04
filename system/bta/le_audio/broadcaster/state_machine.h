@@ -102,6 +102,33 @@ struct BigConfig {
   std::vector<uint16_t> connection_handles;
 };
 
+enum class BroadcastMode : uint8_t {
+  STANDARD = 0,
+  DUPLEX = 1,
+};
+
+// Streaming direction bit flags for duplex broadcast
+static constexpr uint8_t kStreamingDirectionNone = 0x00;  // No streaming
+static constexpr uint8_t kStreamingDirectionTx = 0x01;    // TX streaming (bit 0)
+static constexpr uint8_t kStreamingDirectionRx = 0x02;    // RX streaming (bit 1)
+static constexpr uint8_t kStreamingDirectionBidirectional = 0x03;  // Both TX and RX streaming (bits 0 and 1)
+
+inline bool IsTxStreaming(uint8_t direction) {
+  return (direction & kStreamingDirectionTx) != 0;
+}
+
+inline bool IsRxStreaming(uint8_t direction) {
+  return (direction & kStreamingDirectionRx) != 0;
+}
+
+inline bool IsBidirectionalStreaming(uint8_t direction) {
+  return direction == kStreamingDirectionBidirectional;
+}
+
+inline bool IsValidStreamingDirection(uint8_t direction) {
+  return direction <= kStreamingDirectionBidirectional;
+}
+
 struct BroadcastStateMachineConfig {
   bool is_public;
   bluetooth::le_audio::BroadcastId broadcast_id;
@@ -111,6 +138,8 @@ struct BroadcastStateMachineConfig {
   bluetooth::le_audio::PublicBroadcastAnnouncementData public_announcement;
   bluetooth::le_audio::BasicAudioAnnouncementData announcement;
   std::optional<bluetooth::le_audio::BroadcastCode> broadcast_code;
+  BroadcastMode broadcast_mode = BroadcastMode::STANDARD;
+  uint8_t streaming_direction = kStreamingDirectionNone;
 };
 
 class BroadcastStateMachine : public StateMachine<7> {
@@ -184,6 +213,10 @@ public:
   void SetMuted(bool muted) { is_muted_ = muted; }
   bool IsMuted() const { return is_muted_; }
 
+  virtual void SetStreamingDirection(uint8_t direction) = 0;
+  virtual uint8_t GetStreamingDirection() const = 0;
+  virtual BroadcastMode GetBroadcastMode() const = 0;
+
   virtual void HandleHciEvent(uint16_t event, void* data) = 0;
   virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
   virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
@@ -200,6 +233,7 @@ protected:
 
   uint8_t advertising_sid_ = kAdvSidUndefined;
   bool is_muted_ = false;
+  uint8_t streaming_direction_ = kStreamingDirectionNone;
 
   RawAddress addr_ = RawAddress::kEmpty;
   uint8_t addr_type_ = 0;

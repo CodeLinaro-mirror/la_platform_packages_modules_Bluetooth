@@ -443,7 +443,8 @@ void SourceImpl::ConfirmStreamingRequest(bool force) {
   log::info("");
   halSinkInterface_->ConfirmStreamingRequest(force);
 
-  if (CodecManager::GetInstance()->GetCodecLocation() != types::CodecLocation::HOST) {
+  if (CodecManager::GetInstance()->GetCodecLocation() != types::CodecLocation::HOST ||
+      is_broadcaster_) {
     return;
   }
 
