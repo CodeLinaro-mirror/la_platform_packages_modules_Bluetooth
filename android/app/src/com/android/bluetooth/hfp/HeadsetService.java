@@ -295,6 +295,7 @@ public class HeadsetService extends ProfileService {
                 mActiveDevice = null;
                 broadcastActiveDevice(null);
             }
+            mSystemInterface.getAudioManager().setA2dpSuspended(false);
             mInbandRingingRuntimeDisable = false;
             mForceScoAudio = false;
             mAudioRouteAllowed = true;

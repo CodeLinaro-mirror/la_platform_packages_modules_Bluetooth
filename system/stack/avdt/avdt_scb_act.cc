@@ -699,10 +699,13 @@ void avdt_scb_snd_snk_delay_rpt_req(AvdtpScb* p_scb, tAVDT_SCB_EVT* /* p_data */
     return;
   }
 
-  tAVDT_SCB_EVT evt;
-  evt.apidelay.hdr.seid = p_scb->peer_seid;
-  evt.apidelay.delay = AVDT_SINK_DELAY_MS * 10;
-  avdt_scb_event(p_scb, AVDT_SCB_API_DELAY_RPT_REQ_EVT, &evt);
+  // check for delay reporting supported otherwise return.
+  if (p_scb->curr_cfg.psc_mask & AVDT_PSC_DELAY_RPT) {
+    tAVDT_SCB_EVT evt;
+    evt.apidelay.hdr.seid = p_scb->peer_seid;
+    evt.apidelay.delay = AVDT_SINK_DELAY_MS * 10;
+    avdt_scb_event(p_scb, AVDT_SCB_API_DELAY_RPT_REQ_EVT, &evt);
+  }
 }
 
 /*******************************************************************************

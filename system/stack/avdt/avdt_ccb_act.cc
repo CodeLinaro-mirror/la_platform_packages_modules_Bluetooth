@@ -331,14 +331,30 @@ void avdt_ccb_hdl_discover_rsp(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
  *
  ******************************************************************************/
 void avdt_ccb_hdl_getcap_cmd(AvdtpCcb* p_ccb, tAVDT_CCB_EVT* p_data) {
+  uint8_t sig_id = AVDT_SIG_GETCAP;
   /* look up scb for seid sent to us */
   AvdtpScb* p_scb = avdt_scb_by_hdl(p_data->msg.single.seid);
+
+  if (p_data->msg.hdr.sig_id == AVDT_SIG_GET_ALLCAP) {
+    sig_id = AVDT_SIG_GET_ALLCAP;
+  }
 
   if (p_scb == nullptr) {
     /* not ok, send reject */
     p_data->msg.hdr.err_code = AVDT_ERR_BAD_STATE;
     p_data->msg.hdr.err_param = p_data->msg.single.seid;
-    avdt_msg_send_rej(p_ccb, AVDT_SIG_START, &p_data->msg);
+    avdt_msg_send_rej(p_ccb, sig_id, &p_data->msg);
+    return;
+  }
+
+  /* Check if this SCB belongs to the current CCB (was advertised) */
+  if (p_scb->p_ccb != p_ccb) {
+    /* SEID exists but not advertised for this connection, send reject */
+    log::warn("GET_CAPABILITIES for unadvertised SEID {} on CCB {}",
+              p_data->msg.single.seid, avdt_ccb_to_idx(p_ccb));
+    p_data->msg.hdr.err_code = AVDTP_BAD_ACP_SEID;
+    p_data->msg.hdr.err_param = p_data->msg.single.seid;
+    avdt_msg_send_rej(p_ccb, sig_id, &p_data->msg);
     return;
   }
 

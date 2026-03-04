@@ -207,6 +207,10 @@ static bool sdp_copy_raw_data(tCONN_CB* p_ccb, bool offset) {
   uint8_t type;
 
   if (p_ccb->p_db && p_ccb->p_db->raw_data) {
+    if (p_ccb->p_db->raw_used >= p_ccb->p_db->raw_size) {
+      log::error("DB raw buffer overflow or no space left");
+      return false;
+    }
     cpy_len = p_ccb->p_db->raw_size - p_ccb->p_db->raw_used;
     list_len = p_ccb->list_len;
     p = &p_ccb->rsp_list[0];

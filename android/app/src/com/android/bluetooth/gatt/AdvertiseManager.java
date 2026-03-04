@@ -23,6 +23,7 @@ package com.android.bluetooth.gatt;
 import static com.android.bluetooth.gatt.AdvertiseHelper.advertiseDataToBytes;
 
 import android.app.ActivityManager;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertisingSetParameters;
@@ -263,7 +264,28 @@ public class AdvertiseManager {
             int serverIf,
             IAdvertisingSetCallback callback,
             AttributionSource attrSource) {
+
         checkThread();
+        int state = BluetoothAdapter.STATE_OFF;
+
+        if (mService != null) {
+            state = mService.getState();
+        }
+
+        if (state != BluetoothAdapter.STATE_ON && state != BluetoothAdapter.STATE_BLE_ON) {
+            Log.w(TAG, "startAdvertisingSet -  Disallowed in BT state: " + state);
+            try {
+                callback.onAdvertisingSetStarted(
+                        mAdvertiseBinder,
+                        0x00,
+                        0x00,
+                        AdvertiseCallback.ADVERTISE_FAILED_INTERNAL_ERROR);
+            } catch (RemoteException exception) {
+                Log.e(TAG, "Failed to callback:" + Log.getStackTraceString(exception));
+            }
+            return;
+        }
+
         // If we are using an isolated server, force usage of an NRPA
         if (serverIf != 0
                 && parameters.getOwnAddressType()

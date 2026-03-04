@@ -26,7 +26,9 @@ namespace avrcp {
 using TestSetBrowsedPlayerPacket = TestPacketType<SetBrowsedPlayerRequest>;
 
 TEST(SetBrowsedPlayerResponseBuilder, builderTest) {
-  auto builder = SetBrowsedPlayerResponseBuilder::MakeBuilder(Status::NO_ERROR, 0x0000, 4, 0, "");
+  std::stack<std::string> folder_list;
+  auto builder = SetBrowsedPlayerResponseBuilder::MakeBuilder(
+          Status::NO_ERROR, 0x0000, 4, 0, folder_list, 200);
   ASSERT_EQ(builder->size(), set_browsed_player_response.size());
 
   auto test_packet = TestSetBrowsedPlayerPacket::Make();
@@ -36,8 +38,10 @@ TEST(SetBrowsedPlayerResponseBuilder, builderTest) {
 
 TEST(SetBrowsedPlayerResponseBuilder, errorStatusTest) {
   std::vector<uint8_t> player_not_browsable_status = {0x70, 0x00, 0x01, 0x12};
-  auto builder = SetBrowsedPlayerResponseBuilder::MakeBuilder(Status::PLAYER_NOT_BROWSABLE, 0x1234,
-                                                              5, 6, "Field Not Used");
+  std::stack<std::string> folder_list;
+  folder_list.push("Field Not Used");
+  auto builder = SetBrowsedPlayerResponseBuilder::MakeBuilder(Status::PLAYER_NOT_BROWSABLE,
+                                                              0x1234, 5, 6, folder_list, 0);
   ASSERT_EQ(builder->size(), player_not_browsable_status.size());
 
   auto test_packet = TestSetBrowsedPlayerPacket::Make();

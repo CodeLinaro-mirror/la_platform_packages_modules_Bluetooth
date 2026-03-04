@@ -201,6 +201,11 @@ static Descriptor* FindDescriptorByHandle(std::list<Service>& services, uint16_t
     return nullptr;
   }
 
+  if (service->characteristics.empty()) {
+    log::error("Illegal action to access to non-existing characteristic!");
+    return nullptr;
+  }
+
   Characteristic* char_node = &service->characteristics.front();
   for (auto it = service->characteristics.begin(); it != service->characteristics.end(); it++) {
     if (it->declaration_handle > handle) {

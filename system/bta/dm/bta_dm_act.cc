@@ -835,6 +835,10 @@ void BTA_dm_acl_down(const RawAddress bd_addr, tBT_TRANSPORT transport) {
   do_in_main_thread(base::BindOnce(bta_dm_acl_down, bd_addr, transport));
 }
 
+void BTA_dm_remove_on_disconnect(const RawAddress bd_addr, tBT_TRANSPORT transport) {
+  do_in_main_thread(base::BindOnce(bta_dm_remove_on_disconnect, bd_addr, transport));
+}
+
 /*******************************************************************************
  *
  * Function         bta_dm_check_av

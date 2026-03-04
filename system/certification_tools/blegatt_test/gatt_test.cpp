@@ -3564,6 +3564,11 @@ static void le_l2cap_listen(char* p) {
   printf("g_SecLevel = %d \n", le_coc_seclevel);
 
   tL2CAP_LE_CFG_INFO cfg;
+
+  cfg.mtu = le_conn_info->loc_conn_info.le_mtu;
+  cfg.mps = le_conn_info->loc_conn_info.le_mps;
+  cfg.credits = le_conn_info->loc_conn_info.init_credits;
+
   sL2capInterface->RegisterLePsm(le_conn_info->loc_conn_info.le_psm, FALSE,
                                  le_coc_seclevel, g_BleEncKeySize,
                                  l2test_l2c_appl, cfg);

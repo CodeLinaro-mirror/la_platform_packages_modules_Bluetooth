@@ -539,6 +539,7 @@ public:
         track_call_end_update_(0),
         defer_reconfig_complete_update_(false),
         defer_call_reconfig_(false),
+        defer_media_reconfig_(false),
         le_audio_source_hal_client_(nullptr),
         le_audio_sink_hal_client_(nullptr),
         close_vbc_timeout_(alarm_new("LeAudioCloseVbcTimeout")),
@@ -1468,6 +1469,7 @@ public:
         }
       } else {
         log::debug("Clear cached call end updates during group In-Active");
+        defer_media_reconfig_ = false;
         track_call_end_update_ = 0;
         defer_reconfig_complete_update_ = false;
       }
@@ -1655,6 +1657,8 @@ public:
       track_call_start_update_ = 0;
       defer_call_reconfig_ = false;
       defer_reconfig_complete_update_ = false;
+    } else {
+      defer_media_reconfig_ = false;
     }
 
     if (in_call == in_call_) {
@@ -1730,6 +1734,12 @@ public:
     } else {
       if (configuration_context_type_ == LeAudioContextType::CONVERSATIONAL) {
         log::info("Call is ended, speed up reconfiguration for media");
+        if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+            group->GetTargetState() == AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
+          log::info("stack is pending for CONVERSATIONAL streaming, defer media reconfiguration");
+          defer_media_reconfig_ = true;
+          return;
+        }
         if (in_call_metadata_context_types_.sink.none() &&
             in_call_metadata_context_types_.source.none()) {
           log::debug("No metadata, set default Media");
@@ -2035,6 +2045,7 @@ public:
         }
       } else {
         log::debug("Clear cached call end updates during group In-Active");
+        defer_media_reconfig_ = false;
         track_call_end_update_ = 0;
         defer_reconfig_complete_update_ = false;
       }
@@ -5323,6 +5334,21 @@ public:
       return;
     }
 
+    /* Some remote device will update the available context in broadcast,
+     * Should reject the unsupported context.
+     */
+    if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+        LeAudioBroadcaster::Get()->IsLeAudioBroadcastActive() &&
+        !group->GetAvailableContexts(bluetooth::le_audio::types::kLeAudioDirectionSink)
+                 .test(configuration_context_type_)) {
+      log::warn(
+              "Context conflicts with remote available context: {}",
+              ToString(group->GetAvailableContexts(
+              bluetooth::le_audio::types::kLeAudioDirectionSink)));
+      CancelLocalAudioSourceStreamingRequestWithUnsupported();
+      return;
+    }
+
     // Without updatemetadata bt stack getting start from MM
     /*
      * In Bcacst -> Unicast switch, When either MT/MO call comes
@@ -5643,7 +5669,8 @@ public:
       //update on decoding session. This ensures to be stay in VBC path.
       if (( is_local_sink_metadata_available_ == false) &&
           (audio_sender_state_ == AudioState::IDLE) &&
-          (configuration_context_type_ == LeAudioContextType::GAME)) {
+          (configuration_context_type_ == LeAudioContextType::GAME) &&
+          (local_metadata_context_types_.sink.test(LeAudioContextType::GAME))) {
         ReconfigureOrUpdateRemote(group, bluetooth::le_audio::types::kLeAudioDirectionSink);
       } else {
         ReconfigureOrUpdateRemote(group, bluetooth::le_audio::types::kLeAudioDirectionSource);
@@ -7253,6 +7280,13 @@ public:
           return;
         }
 
+        if (!IsInCall() && defer_media_reconfig_) {
+          reconfigurationComplete();
+          in_call_ = true;
+          defer_media_reconfig_ = false;
+          SetInCall(false);
+        }
+
         if (audio_sender_state_ == AudioState::READY_TO_START) {
           StartSendingAudio(group_id);
         } else if (audio_sender_state_ == AudioState::STARTED) {
@@ -7612,6 +7646,8 @@ private:
   bool defer_reconfig_complete_update_;
   /*To track call reconfig when call comes during other reconfiguration*/
   bool defer_call_reconfig_;
+  /*To track media reconfig when call is pending for streaming */
+  bool defer_media_reconfig_;
 
   /* Reconnection mode */
   tBTM_BLE_CONN_TYPE reconnection_mode_;

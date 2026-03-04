@@ -863,7 +863,7 @@ static bt_status_t connect_int(RawAddress* bd_addr, uint16_t /*uuid*/) {
     // control block should be in connecting state
     // Crash here to prevent future code changes from breaking this mechanism
     if (btif_hf_cb[i].state == BTHF_CONNECTION_STATE_CONNECTING) {
-      log::fatal("{}, handle {}, is still in connecting state {}", btif_hf_cb[i].connected_bda,
+      log::error("{}, handle {}, is still in connecting state {}", btif_hf_cb[i].connected_bda,
                  btif_hf_cb[i].handle, btif_hf_cb[i].state);
     }
   }
