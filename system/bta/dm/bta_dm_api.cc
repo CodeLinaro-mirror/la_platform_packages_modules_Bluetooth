@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -373,6 +377,77 @@ void BTA_DmSetEventFilterInquiryResultAllDevices() {
   log::verbose("BTA_DmSetEventFilterInquiryResultAllDevices");
   do_in_main_thread(base::BindOnce(bta_dm_set_event_filter_inquiry_result_all_devices));
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleSetHostChannelClassification
+ *
+ * Description      This function allows the application to configure the host channel
+ *                  classification for BLE channels. It helps the controller to avoid
+ *                  using channels that are congested or experiencing interference.
+ *                  The channel_map parameter contains classification information for
+ *                  the 40 BLE data channels.
+ *
+ * Parameters:      channel_map - Vector containing the channel classification
+ *                                where each bit represents a channel state
+ *                                (0=bad, 1=unknown)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleSetHostChannelClassification(const std::vector<uint8_t>& channel_map) {
+  log::verbose("BTA_DmBleSetHostChannelClassification");
+  do_in_main_thread(base::BindOnce(bta_dm_ble_set_host_channel_classification, channel_map));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleWriteSuggestedDefaultDataLength
+ *
+ * Description      This function allows the application to configure the default
+ *                  LE data packet length and transmission time used for all
+ *                  subsequent connections. These values can affect throughput
+ *                  and power consumption of BLE communications.
+ *
+ * Parameters:      tx_octets - Suggested value for the transmitter packet size (in octets)
+ *                  tx_time_us - Suggested value for the transmitter packet transmission
+ *                               time (in microseconds)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleWriteSuggestedDefaultDataLength(uint16_t tx_octets, uint16_t tx_time_us) {
+  log::verbose("BTA_DmBleWriteSuggestedDefaultDataLength");
+  do_in_main_thread(base::BindOnce(bta_dm_ble_write_suggested_defualt_data_length, tx_octets, tx_time_us));
+}
+
+/*******************************************************************************
+ *
+ * Function         BTA_DmBleSetDefaultPhy
+ *
+ * Description      This function allows the application to configure the default
+ *                  PHY preferences for future LE connections. The controller can
+ *                  use these preferences for all subsequent connections unless
+ *                  overridden by specific PHY parameters.
+ *
+ * Parameters:      all_phys - PHY preference flags:
+ *                             - Bit 0: no preference for transmitter PHY
+ *                             - Bit 1: no preference for receiver PHY
+ *                  tx_phys  - Preferred transmitter PHY (1=1M, 2=2M, 3=LE Coded)
+ *                  rx_phys  - Preferred receiver PHY (1=1M, 2=2M, 3=LE Coded)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTA_DmBleSetDefaultPhy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys) {
+  log::verbose("BTA_DmBleSetDefaultPhy: all=%u tx=%u rx=%u",
+               all_phys, tx_phys, rx_phys);
+  do_in_main_thread(
+      base::BindOnce(bta_dm_ble_set_default_phy,
+                     all_phys, tx_phys, rx_phys));
+}
+#endif
 
 /*******************************************************************************
  *

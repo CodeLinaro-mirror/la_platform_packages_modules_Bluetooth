@@ -228,6 +228,16 @@ public:
 
 #ifdef TARGET_QCOM_IOT_BT_EXT
   virtual bool SupportsPeriodicAdvertisingwithResponsesAdvertiser() const override;
+
+  virtual void LeSetHostChannelClassification(uint8_t channel_map[5], common::OnceCallback<void(uint8_t)> on_complete) override;
+
+  virtual void LeWriteSuggestedDefaultDataLength(uint16_t suggested_max_tx_octets,
+                                                 uint16_t suggested_max_tx_time,
+                                                 common::OnceCallback<void(uint8_t)> on_complete) override;
+  virtual void LeSetDefaultPhy(uint8_t all_phys,
+                               uint8_t tx_phys,
+                               uint8_t rx_phys,
+                               common::OnceCallback<void(uint8_t)> on_complete) override;
 #endif
 protected:
   void ListDependencies(ModuleList* list) const override;

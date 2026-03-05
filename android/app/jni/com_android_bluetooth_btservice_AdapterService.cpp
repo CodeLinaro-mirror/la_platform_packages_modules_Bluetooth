@@ -114,7 +114,11 @@ static jmethodID method_releaseWakeLock;
 static jmethodID method_energyInfo;
 static jmethodID method_keyMissingCallback;
 static jmethodID method_encryptionChangeCallback;
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static jmethodID method_channelClassificationCallback;
+static jmethodID method_writeSuggestedDefaultDataLengthCallback;
+static jmethodID method_setDefaultPhyCallback;
+#endif
 static struct {
   jclass clazz;
   jmethodID constructor;
@@ -819,6 +823,92 @@ static void encryption_change_callback(const bt_encryption_change_evt encryption
                                encryption_change.key_size);
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static void set_channel_classification_callback(uint8_t status) {
+  std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
+  if (!sJniCallbacksObj) {
+    log::error("JNI obj is null. Failed to call channel classification callback");
+    return;
+  }
+
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) {
+    return;
+  }
+  JNIEnv* env = sCallbackEnv.get();
+
+  if (!method_channelClassificationCallback) {
+      log::error("Callback method not ready");
+      return;
+  }
+
+  env->CallVoidMethod(sJniCallbacksObj, method_channelClassificationCallback,
+                       static_cast<jint>(status));
+
+  if (env->ExceptionCheck()) {
+    env->ExceptionDescribe();
+    env->ExceptionClear();
+    log::error("Java exception occurred during channel classification callback");
+  }
+}
+
+static void write_suggested_default_data_length_callback(uint8_t status) {
+  std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
+  if (!sJniCallbacksObj) {
+    log::error("JNI obj is null. Failed to call write default data length callback");
+    return;
+  }
+
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) {
+    return;
+  }
+  JNIEnv* env = sCallbackEnv.get();
+
+  if (!method_writeSuggestedDefaultDataLengthCallback) {
+      log::error("Callback method not ready");
+      return;
+  }
+
+  env->CallVoidMethod(sJniCallbacksObj, method_writeSuggestedDefaultDataLengthCallback,
+                       static_cast<jint>(status));
+
+  if (env->ExceptionCheck()) {
+    env->ExceptionDescribe();
+    env->ExceptionClear();
+    log::error("Java exception occurred during channel classification callback");
+  }
+}
+
+static void set_default_phy_callback(uint8_t status) {
+  std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
+  if (!sJniCallbacksObj) {
+    log::error("JNI obj is null. Failed to call set default phy callback");
+    return;
+  }
+
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid()) {
+    return;
+  }
+  JNIEnv* env = sCallbackEnv.get();
+
+  if (!method_setDefaultPhyCallback) {
+    log::error("setDefaultPhy callback method not ready");
+    return;
+  }
+
+  env->CallVoidMethod(sJniCallbacksObj, method_setDefaultPhyCallback,
+                      static_cast<jint>(status));
+
+  if (env->ExceptionCheck()) {
+    env->ExceptionDescribe();
+    env->ExceptionClear();
+    log::error("Java exception occurred during set default phy callback");
+  }
+}
+#endif
+
 static void callback_thread_event(bt_cb_thread_evt event) {
   if (event == ASSOCIATE_JVM) {
     JavaVMAttachArgs args;
@@ -908,6 +998,11 @@ static bt_callbacks_t sBluetoothCallbacks = {
         le_rand_callback,
         key_missing_callback,
         encryption_change_callback,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        set_channel_classification_callback,
+        write_suggested_default_data_length_callback,
+        set_default_phy_callback,
+#endif
 };
 
 class JNIThreadAttacher {
@@ -2231,6 +2326,82 @@ static jboolean clearFilterAcceptListNative(JNIEnv* /* env */, jobject /* obj */
   return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static jboolean setHostChannelClassificationNative(JNIEnv* env, jobject /*obj*/, jbyteArray channel_map_array) {
+  log::verbose("");
+    if (channel_map_array == nullptr) {
+        log::verbose("channel_map is null");
+        return JNI_FALSE;
+    }
+
+    jsize len = env->GetArrayLength(channel_map_array);
+    if (len != 5) {
+        log::verbose("channel_map length=%d, expected=5", static_cast<int>(len));
+        return JNI_FALSE;
+    }
+
+    jboolean isCopy = JNI_FALSE;
+    jbyte* elems = env->GetByteArrayElements(channel_map_array, &isCopy);
+    if (elems == nullptr) {
+        log::verbose("GetByteArrayElements failed");
+        return JNI_FALSE;
+    }
+
+    std::vector<uint8_t> map(5);
+    for (int i = 0; i < 5; ++i) {
+        map[i] = static_cast<uint8_t>(elems[i]);
+    }
+
+    int ret = sBluetoothInterface->set_host_channel_classification(map);
+    env->ReleaseByteArrayElements(channel_map_array, elems, 0);
+    if (ret != 0) {
+        log::verbose("set host channel classification failed, ret=%d", ret);
+        return JNI_FALSE;
+    }
+    return JNI_TRUE;
+}
+
+static jboolean writeLeSuggestedDefaultDataLengthNative(JNIEnv* env, jobject /*obj*/,
+                                                        jint octets, jint time_us) {
+    log::verbose("");
+
+    if (!sBluetoothInterface) {
+      return JNI_FALSE;
+    }
+
+    int ret = sBluetoothInterface->le_write_suggested_default_data_length(
+        static_cast<uint16_t>(octets), static_cast<uint16_t>(time_us));
+
+    if (ret != 0) {
+        log::verbose("SDDL write failed, ret=%d", ret);
+        return JNI_FALSE;
+    }
+    log::verbose("SDDL write accepted");
+    return JNI_TRUE;
+}
+
+static jboolean setLeDefaultPhyNative(JNIEnv* env, jobject /*obj*/,
+                                      jint all_phys, jint tx_phys, jint rx_phys) {
+    log::verbose("");
+
+    if (!sBluetoothInterface) {
+        log::error("setLeDefaultPhyNative: sBluetoothInterface is null");
+        return JNI_FALSE;
+    }
+
+    int ret = sBluetoothInterface->le_set_default_phy(
+        static_cast<uint8_t>(all_phys),
+        static_cast<uint8_t>(tx_phys),
+        static_cast<uint8_t>(rx_phys));
+
+    if (ret != 0) {
+        log::verbose("default phy failed, ret=%d", ret);
+        return JNI_FALSE;
+    }
+    return JNI_TRUE;
+}
+#endif
+
 static jboolean disconnectAllAclsNative(JNIEnv* /* env */, jobject /* obj */) {
   log::verbose("");
 
@@ -2349,6 +2520,10 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
            reinterpret_cast<void*>(getSocketL2capRemoteChannelIdNative)},
           {"setDefaultEventMaskExceptNative", "(JJ)Z",
            reinterpret_cast<void*>(setDefaultEventMaskExceptNative)},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"setHostChannelClassificationNative", "([B)Z",
+           reinterpret_cast<void*>(setHostChannelClassificationNative)},
+#endif
           {"clearEventFilterNative", "()Z", reinterpret_cast<void*>(clearEventFilterNative)},
 #ifdef TARGET_QCOM_IOT_BT_EXT
           {"getLeAcceptListSizeNative", "()I", reinterpret_cast<void*>(getLeAcceptListSizeNative)},
@@ -2360,6 +2535,12 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
           {"allowWakeByHidNative", "()Z", reinterpret_cast<void*>(allowWakeByHidNative)},
           {"restoreFilterAcceptListNative", "()Z",
            reinterpret_cast<void*>(restoreFilterAcceptListNative)},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"writeLeSuggestedDefaultDataLengthNative", "(II)Z",
+           reinterpret_cast<void*>(writeLeSuggestedDefaultDataLengthNative)},
+          {"setLeDefaultPhyNative", "(III)Z",
+           reinterpret_cast<void*>(setLeDefaultPhyNative)},
+#endif
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/btservice/AdapterNativeInterface", methods);
@@ -2395,6 +2576,11 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
           {"energyInfoCallback", "(IIJJJJ[Landroid/bluetooth/UidTraffic;)V", &method_energyInfo},
           {"keyMissingCallback", "([B)V", &method_keyMissingCallback},
           {"encryptionChangeCallback", "([BIZIZI)V", &method_encryptionChangeCallback},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"onHostChannelClassificationCallback", "(I)V", &method_channelClassificationCallback},
+          {"onLeSuggestedDefaultDataLengthCallback", "(I)V", &method_writeSuggestedDefaultDataLengthCallback},
+          {"onLeSetDefaultPhyCallback", "(I)V", &method_setDefaultPhyCallback},
+#endif
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/btservice/JniCallbacks", javaMethods);
 

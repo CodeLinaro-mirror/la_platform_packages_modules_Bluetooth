@@ -201,6 +201,9 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import com.android.qcomfeatureconfig.QcomBtExtConfig;
+import android.bluetooth.IBluetoothHostChannelClassificationCallback;
+import android.bluetooth.IBluetoothLeWriteSuggestedDefaultDataLengthCallback;
+import android.bluetooth.IBluetoothLeSetDefaultPhyCallback;
 
 public class AdapterService extends Service {
     private static final String TAG =
@@ -357,6 +360,25 @@ public class AdapterService extends Service {
     private AdapterServiceBinder mBinder;
 
     private volatile int mScanMode;
+
+    /** Handlers for HCC (Host Channel Classification) */
+    private final Object mHccLock = new Object();
+    private IBluetoothHostChannelClassificationCallback mHccPendingCb = null;
+    private boolean mHccInFlight = false;
+
+    /* Handlers for SDDL (Suggested Default Data Length) */
+    private final Object mSddlLock = new Object();
+    private IBluetoothLeWriteSuggestedDefaultDataLengthCallback mSddlPendingCb = null;
+    private boolean mSddlInFlight = false;
+    private static final int DLE_MIN_OCTETS = 27;
+    private static final int DLE_MAX_OCTETS = 251;
+    private static final int DLE_MIN_TIME_US = 328;
+    private static final int DLE_MAX_TIME_US = 2120;
+
+    /** Handlers for LE Set Default PHY */
+    private final Object mLeSetDefaultPhyLock = new Object();
+    private IBluetoothLeSetDefaultPhyCallback mLeSetDefaultPhyPendingCb = null;
+    private boolean mLeSetDefaultPhyInFlight = false;
 
     // Report ID definition
     public enum BqrQualityReportId {
@@ -3245,7 +3267,6 @@ public class AdapterService extends Service {
         return info.callerPackageName;
     }
 
-
     /**
      * Returns the size (capacity) of the LE Filter Accept List as reported by the
      * Bluetooth controller.
@@ -3262,6 +3283,241 @@ public class AdapterService extends Service {
             return size;
         } else {
             return -1;
+        }
+    }
+
+    /**
+     * Set host channel classification.
+     */
+    public boolean setHostChannelClassification(byte[] channelMap,
+            IBluetoothHostChannelClassificationCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (channelMap == null || channelMap.length != 5) {
+                safeComplete(cb, /*Invalid HCI Command Parameters*/ 0x12);
+                return false;
+            }
+
+            synchronized (mHccLock) {
+                if (mHccInFlight) {
+                    safeComplete(cb, /*Command Disallowed*/ 0x0C);
+                    return false;
+                }
+                mHccInFlight = true;
+                mHccPendingCb = cb;
+            }
+
+            boolean accepted = mNativeInterface.setHostChannelClassification(channelMap);
+            if (!accepted) {
+                Log.d(TAG, "btservice sets Host Channel Classification failed");
+            }
+
+            mHandler.postDelayed(mHccTimeout, 2000);
+            return accepted;
+        } else {
+            return false;
+        }
+    }
+
+   private final Runnable mHccTimeout = new Runnable() {
+        @Override
+        public void run() {
+            if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                IBluetoothHostChannelClassificationCallback cb;
+                synchronized (mHccLock) {
+                    if (!mHccInFlight) return;
+                    cb = mHccPendingCb;
+                    mHccPendingCb = null;
+                    mHccInFlight = false;
+                }
+                safeComplete(cb, /*Unspecified Error*/ 0x1F);
+            }
+        }
+    };
+
+    private static void safeComplete(IBluetoothHostChannelClassificationCallback cb, int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (cb == null) return;
+            try {
+                cb.onCommandComplete(status);
+            } catch (RemoteException e) {
+                Log.w(TAG, "Callback failed", e);
+            }
+        }
+    }
+
+    void onHostChannelClassificationCommandComplete(int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG, "onHostChannelClassificationCommandComplete: status=0x"
+                    + Integer.toHexString(status));
+
+            mHandler.removeCallbacks(mHccTimeout);
+            IBluetoothHostChannelClassificationCallback cb = null;
+            synchronized (mHccLock) {
+                if (!mHccInFlight) {
+                    Log.w(TAG, "HCC complete received but no in-flight command. Ignoring.");
+                    return;
+                }
+                cb = mHccPendingCb;
+                mHccPendingCb = null;
+                mHccInFlight = false;
+            }
+
+            safeComplete(cb, status);
+        }
+    }
+
+    /**
+     * Write LE Suggested Default Data Length.
+     */
+    public boolean writeLeSuggestedDefaultDataLength(
+            int octets, int timeUs, IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (octets < DLE_MIN_OCTETS || octets > DLE_MAX_OCTETS
+                    || timeUs < DLE_MIN_TIME_US || timeUs > DLE_MAX_TIME_US) {
+                safeComplete(cb, /*Invalid HCI Command Parameters*/ 0x12);
+                return false;
+            }
+
+            synchronized (mSddlLock) {
+                if (mSddlInFlight) {
+                    safeComplete(cb, /*Command Disallowed*/ 0x0C);
+                    return false;
+                }
+                mSddlInFlight = true;
+                mSddlPendingCb = cb;
+            }
+
+            boolean accepted = mNativeInterface.writeLeSuggestedDefaultDataLength(octets, timeUs);
+            if (!accepted) {
+                Log.d(TAG, "btservice writeLeSuggestedDefaultDataLength: send failed parameters");
+            }
+
+            mHandler.postDelayed(mSddlTimeout, 2000);
+            return accepted;
+        } else {
+            return false;
+        }
+    }
+
+    private final Runnable mSddlTimeout = new Runnable() {
+        @Override
+        public void run() {
+            if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb;
+                synchronized (mSddlLock) {
+                    if (!mSddlInFlight) return;
+                    cb = mSddlPendingCb;
+                    mSddlPendingCb = null;
+                    mSddlInFlight = false;
+                }
+                safeComplete(cb, /*Unspecified Error*/ 0x1F);
+            }
+        }
+    };
+
+    /**
+     * Called from JNI when Command Complete arrives for
+     * HCI LE Write Suggested Default Data Length.
+     */
+    void onLeSuggestedDefaultDataLengthCommandComplete(int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG, "SDDL onLeSuggestedDefaultDataLengthCommandComplete: status=0x"
+                    + Integer.toHexString(status));
+
+            mHandler.removeCallbacks(mSddlTimeout);
+
+            IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb = null;
+
+            synchronized (mSddlLock) {
+                if (!mSddlInFlight) {
+                    Log.w(TAG, "SDDL complete received but no in-flight command. Ignoring.");
+                    return;
+                }
+                cb = mSddlPendingCb;
+                mSddlPendingCb = null;
+                mSddlInFlight = false;
+            }
+
+            safeComplete(cb, status);
+        }
+    }
+
+    private static void safeComplete(IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb, int status) {
+        if (cb == null) return;
+        try {
+            cb.onCommandComplete(status);
+        } catch (RemoteException e) {
+            Log.w(TAG, "SDDL callback failed", e);
+        }
+    }
+
+    public boolean setLeDefaultPhy(int allPhys, int txPhys, int rxPhys,
+            IBluetoothLeSetDefaultPhyCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (allPhys < 0 || txPhys < 0 || rxPhys < 0) {
+                safeCompleteLeSetDefaultPhy(cb, /*Invalid HCI Command Parameters*/ 0x12);
+                return false;
+            }
+
+            synchronized (mLeSetDefaultPhyLock) {
+                if (mLeSetDefaultPhyInFlight) {
+                    safeCompleteLeSetDefaultPhy(cb, /*Command Disallowed*/ 0x0C);
+                    return false;
+                }
+                mLeSetDefaultPhyInFlight = true;
+                mLeSetDefaultPhyPendingCb = cb;
+            }
+
+            boolean accepted = mNativeInterface.setLeDefaultPhy(allPhys, txPhys, rxPhys);
+            if (!accepted) {
+                Log.w(TAG, "setLeDefaultPhy: native rejected parameters/allocation");
+            }
+
+            mHandler.postDelayed(mLeSetDefaultPhyTimeout, 2000);
+            return accepted;
+        } else {
+            return false;
+        }
+    }
+
+    private final Runnable mLeSetDefaultPhyTimeout = new Runnable() {
+        @Override
+        public void run() {
+            if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                IBluetoothLeSetDefaultPhyCallback cb;
+                synchronized (mLeSetDefaultPhyLock) {
+                    if (!mLeSetDefaultPhyInFlight) return;
+                    cb = mLeSetDefaultPhyPendingCb;
+                    mLeSetDefaultPhyPendingCb = null;
+                    mLeSetDefaultPhyInFlight = false;
+                }
+                safeCompleteLeSetDefaultPhy(cb, /*Unspecified Error*/ 0x1F);
+            }
+        }
+    };
+
+    private static void safeCompleteLeSetDefaultPhy(
+            IBluetoothLeSetDefaultPhyCallback cb, int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (cb == null) return;
+            try {
+                cb.onCommandComplete(status);
+            } catch (RemoteException e) {
+                Log.w(TAG, "LeSetDefaultPhy callback failed", e);
+            }
+        }
+    }
+
+    public void onLeSetDefaultPhyCommandComplete(int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            IBluetoothLeSetDefaultPhyCallback cb;
+            synchronized (mLeSetDefaultPhyLock) {
+                if (!mLeSetDefaultPhyInFlight) return;
+                cb = mLeSetDefaultPhyPendingCb;
+                mLeSetDefaultPhyPendingCb = null;
+                mLeSetDefaultPhyInFlight = false;
+            }
+            safeCompleteLeSetDefaultPhy(cb, status);
         }
     }
 

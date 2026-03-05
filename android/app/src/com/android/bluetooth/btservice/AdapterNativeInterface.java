@@ -306,6 +306,14 @@ public class AdapterNativeInterface {
         return setDefaultEventMaskExceptNative(mask, leMask);
     }
 
+    boolean setHostChannelClassification(byte[] channelMap) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return setHostChannelClassificationNative(channelMap);
+        } else {
+            return false;
+        }
+    }
+
     boolean clearEventFilter() {
         return clearEventFilterNative();
     }
@@ -320,6 +328,14 @@ public class AdapterNativeInterface {
 
     boolean clearFilterAcceptList() {
         return clearFilterAcceptListNative();
+    }
+
+    boolean writeLeSuggestedDefaultDataLength(int octets, int timeUs) {
+        return writeLeSuggestedDefaultDataLengthNative(octets, timeUs);
+    }
+
+    boolean setLeDefaultPhy(int allPhys, int txPhys, int rxPhys) {
+        return setLeDefaultPhyNative(allPhys, txPhys, rxPhys);
     }
 
     boolean disconnectAllAcls() {
@@ -473,6 +489,8 @@ public class AdapterNativeInterface {
 
     private native boolean setDefaultEventMaskExceptNative(long mask, long leMask);
 
+    private native boolean setHostChannelClassificationNative(byte[] channelMap);
+
     private native boolean clearEventFilterNative();
 
     private native int getLeAcceptListSizeNative();
@@ -486,4 +504,8 @@ public class AdapterNativeInterface {
     private native boolean allowWakeByHidNative();
 
     private native boolean restoreFilterAcceptListNative();
+
+    private native boolean writeLeSuggestedDefaultDataLengthNative(int octets, int timeUs);
+
+    private native boolean setLeDefaultPhyNative(int allPhys, int txPhys, int rxPhys);
 }

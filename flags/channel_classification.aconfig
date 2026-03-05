@@ -1,0 +1,10 @@
+package: "com.android.bluetooth.flags"
+container: "com.android.bt"
+
+flag {
+    name: "host_channel_classification"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "Set Host Channel Classification."
+    bug: "<none>"
+}

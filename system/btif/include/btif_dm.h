@@ -116,6 +116,13 @@ void btif_dm_allow_wake_by_hid(std::vector<RawAddress> classic_addrs,
                                std::vector<std::pair<RawAddress, uint8_t>> le_addrs);
 void btif_dm_restore_filter_accept_list(std::vector<std::pair<RawAddress, uint8_t>> le_devices);
 void btif_dm_set_default_event_mask_except(uint64_t mask, uint64_t le_mask);
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void btif_dm_set_host_channel_classification(std::vector< uint8_t> channel_map);
+void btif_dm_write_suggested_default_data_length(uint16_t tx_octets, uint16_t tx_time_us);
+void btif_dm_le_set_default_phy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys);
+#endif
+
 void btif_dm_set_event_filter_inquiry_result_all_devices();
 void btif_dm_metadata_changed(const RawAddress& remote_bd_addr, int key,
                               std::vector<uint8_t> value);
@@ -126,6 +133,18 @@ bool btif_dm_is_pairing(const RawAddress& bdaddr);
 #ifdef TARGET_QCOM_IOT_BT_EXT
 uint8_t btif_ble_get_acceptlist_size();
 #endif
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void btif_dm_host_channel_classification_complete(uint8_t status);
+void set_host_channel_classification_cb(uint8_t status);
+
+void btif_dm_write_suggested_default_data_length_complete(uint8_t status);
+void le_write_suggested_default_data_length_cb(uint8_t status);
+
+void btif_dm_le_set_default_phy_complete(uint8_t status);
+void le_set_default_phy_cb(uint8_t status);
+#endif
+
 /*callout for reading SMP properties from Text file*/
 bool btif_dm_get_smp_config(tBTE_APPL_CFG* p_cfg);
 

@@ -18,6 +18,7 @@
  *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -4241,6 +4242,34 @@ void btif_dm_set_event_filter_inquiry_result_all_devices() {
 #ifdef TARGET_QCOM_IOT_BT_EXT
 uint8_t btif_ble_get_acceptlist_size(){
   return bluetooth::shim::GetController()->GetLeFilterAcceptListSize();
+}
+#endif
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void btif_dm_set_host_channel_classification(std::vector< uint8_t> channel_map) {
+  // Autoplumbed
+  BTA_DmBleSetHostChannelClassification(channel_map);
+}
+
+void btif_dm_host_channel_classification_complete(uint8_t status){
+  set_host_channel_classification_cb(status);
+}
+
+void btif_dm_write_suggested_default_data_length(uint16_t tx_octets, uint16_t tx_time_us) {
+  // Autoplumbed
+  BTA_DmBleWriteSuggestedDefaultDataLength(tx_octets, tx_time_us);
+}
+
+void btif_dm_write_suggested_default_data_length_complete(uint8_t status){
+  le_write_suggested_default_data_length_cb(status);
+}
+
+void btif_dm_le_set_default_phy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys) {
+  BTA_DmBleSetDefaultPhy(all_phys, tx_phys, rx_phys);
+}
+
+void btif_dm_le_set_default_phy_complete(uint8_t status){
+  le_set_default_phy_cb(status);
 }
 #endif
 
