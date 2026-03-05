@@ -13,40 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following
- * disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- * contributors may be used to endorse or promote products derived
- * from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
- *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "BtGatt.JNI"
@@ -950,6 +919,17 @@ public:
                                  status);
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  void OnPeriodicAdvertisingParametersV2Updated(uint8_t advertiser_id, uint8_t status) {
+    std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || mAdvertiseCallbacksObj == NULL) {
+      return;
+    }
+    //TBD
+  }
+#endif
+
   void OnPeriodicAdvertisingDataSet(uint8_t advertiser_id, uint8_t status) {
     std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
     CallbackEnv sCallbackEnv(__func__);
@@ -959,6 +939,17 @@ public:
     sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onPeriodicAdvertisingDataSet,
                                  advertiser_id, status);
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  void OnPeriodicAdvertisingSubeventDataSet(uint8_t advertiser_id, uint8_t status) {
+    std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || mAdvertiseCallbacksObj == NULL) {
+      return;
+    }
+    //TBD
+  }
+#endif
 
   void OnPeriodicAdvertisingEnabled(uint8_t advertiser_id, bool enable, uint8_t status) {
     std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
@@ -981,6 +972,30 @@ public:
     sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onOwnAddressRead, advertiser_id,
                                  address_type, addr.get());
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  void OnPeriodicAdvertisingSubeventRequest(uint8_t advertiser_id, uint8_t subevent_start,
+                                            uint8_t subevent_count) {
+    std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || mAdvertiseCallbacksObj == NULL) {
+      return;
+    }
+
+    //TBD
+  }
+
+  void OnPeriodicAdvertisingSubeventResponse(uint8_t advertiser_id, uint8_t subevent, uint8_t tx_status,
+                                              uint8_t num_responses, std::vector<uint8_t> payload) {
+    std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || mAdvertiseCallbacksObj == NULL) {
+      return;
+    }
+
+    //TBD
+  }
+#endif
 };
 
 class JniScanningCallbacks : ScanningCallbacks {

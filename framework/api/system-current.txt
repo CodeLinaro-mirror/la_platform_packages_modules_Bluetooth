@@ -1388,6 +1388,11 @@ package android.bluetooth.le {
 
   public final class AdvertisingSet {
     method public int getAdvertiserId();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN) public void transferSetInfo(@NonNull android.bluetooth.BluetoothDevice, int);
+  }
+
+  public abstract class AdvertisingSetCallback {
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public void onTransferSetInfo(@NonNull android.bluetooth.le.AdvertisingSet, @NonNull android.bluetooth.BluetoothDevice, int);
   }
 
   public final class AdvertisingSetParameters implements android.os.Parcelable {

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -240,6 +240,16 @@ public:
     bluetooth::shim::GetAdvertising()->SetPeriodicParameters(advertiser_id, parameters);
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+   // ::BleAdvertiserInterface
+  void SetPeriodicAdvertisingParametersV2(
+      int advertiser_id, PeriodicAdvertisingParametersV2 periodic_params,
+      StatusCallback /* cb */) override {
+    log::info("in shim layer");
+    //TBD
+  }
+#endif
+
   // ::BleAdvertiserInterface
   void SetPeriodicAdvertisingData(int advertiser_id, std::vector<uint8_t> data,
                                   std::vector<uint8_t> data_encrypt,
@@ -257,6 +267,16 @@ public:
                                                          advertising_data_encrypt);
     }
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+   // ::BleAdvertiserInterface
+  void SetPeriodicAdvertisingSubeventData(int advertiser_id, uint8_t num_subevents,
+                                          std::vector<uint8_t> data, StatusCallback /* cb */) override {
+    log::info("in shim layer");
+    //TBD
+  }
+
+#endif
 
   // ::BleAdvertiserInterface
   void SetPeriodicAdvertisingEnable(int advertiser_id, bool enable, bool include_adi,
@@ -388,6 +408,11 @@ public:
                                     status));
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  // bluetooth::hci::AdvertisingCallback
+  //TBD: OnPeriodicAdvertisingParametersV2Updated and OnPeriodicAdvertisingSubeventDataSet
+#endif
+
   // bluetooth::hci::AdvertisingCallback
   void OnPeriodicAdvertisingEnabled(uint8_t advertiser_id, bool enable,
                                     AdvertisingCallback::AdvertisingStatus status) override {
@@ -408,6 +433,11 @@ public:
                                     base::Unretained(advertising_callbacks_), advertiser_id,
                                     address_type, raw_address));
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  // bluetooth::hci::AdvertisingCallback
+  // TBD: OnPeriodicAdvertisingSubeventRequest and OnPeriodicAdvertisingSubeventResponse
+#endif
 
   void CreateBIG(int advertiser_id, CreateBIGParameters create_big_params, CreateBIGCallback cb) {}
 
