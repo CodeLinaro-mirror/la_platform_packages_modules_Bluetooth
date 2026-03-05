@@ -280,3 +280,11 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "le_connect_v2_support"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "Support BLE V2 connection"
+    bug: "<none>"
+}

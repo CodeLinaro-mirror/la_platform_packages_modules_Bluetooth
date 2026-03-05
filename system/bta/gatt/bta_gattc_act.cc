@@ -383,6 +383,18 @@ void bta_gattc_open_fail(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data)
 void bta_gattc_open(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   tBTA_GATTC_DATA gattc_data;
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  /* open/hold a connection */
+  if (!GATT_Connect(p_clcb->p_rcb->client_if, p_data->api_conn.remote_bda,
+                    p_data->api_conn.remote_addr_type, BTM_BLE_DIRECT_CONNECTION,
+                    p_data->api_conn.transport, p_data->api_conn.opportunistic,
+                    p_data->api_conn.initiating_phys, p_data->api_conn.preferred_mtu,
+                    p_data->api_conn.pa_handle, p_data->api_conn.subevent, p_data->api_conn.filter_policy)) {
+    log::error("Connection open failure");
+    bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_OPEN_FAIL_EVT, p_data);
+    return;
+  }
+#else
   /* open/hold a connection */
   if (!GATT_Connect(p_clcb->p_rcb->client_if, p_data->api_conn.remote_bda,
                     p_data->api_conn.remote_addr_type, BTM_BLE_DIRECT_CONNECTION,
@@ -392,6 +404,7 @@ void bta_gattc_open(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
     bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_OPEN_FAIL_EVT, p_data);
     return;
   }
+#endif
 
   tBTA_GATTC_RCB* p_clreg = p_clcb->p_rcb;
   /* Re-enable notification registration for closed connection */

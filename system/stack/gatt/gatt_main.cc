@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -217,8 +221,14 @@ void gatt_free(void) {
  * Returns          true if connection is started, otherwise return false.
  *
  ******************************************************************************/
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tGATT_TCB* p_tcb,
+                         tBT_TRANSPORT transport, uint8_t /* initiating_phys */, tGATT_IF gatt_if,
+                         uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+#else
 static bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tGATT_TCB* p_tcb,
                          tBT_TRANSPORT transport, uint8_t /* initiating_phys */, tGATT_IF gatt_if) {
+#endif
   if (gatt_get_ch_state(p_tcb) != GATT_CH_OPEN) {
     gatt_set_ch_state(p_tcb, GATT_CH_CONN);
   }
@@ -236,7 +246,11 @@ static bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tG
   }
 
   p_tcb->att_lcid = L2CAP_ATT_CID;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  return connection_manager::direct_connect_add(gatt_if, rem_bda, addr_type, pa_handle, subevent, filter_policy);
+#else
   return connection_manager::direct_connect_add(gatt_if, rem_bda, addr_type);
+#endif
 }
 
 /*******************************************************************************
@@ -420,15 +434,24 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_a
 }
 
 /** GATT connection initiation */
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
+                      tBT_TRANSPORT transport, int8_t initiating_phys, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+#else
 bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                       tBT_TRANSPORT transport, int8_t initiating_phys) {
+#endif
   log::verbose("address:{}, transport:{}", bd_addr, bt_transport_text(transport));
   tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(bd_addr, transport);
   if (p_tcb != NULL) {
     /* before link down, another app try to open a GATT connection */
     uint8_t st = gatt_get_ch_state(p_tcb);
     if (st == GATT_CH_OPEN && p_tcb->app_hold_link.empty() && transport == BT_TRANSPORT_LE) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      if (!gatt_connect(bd_addr, addr_type, p_tcb, transport, initiating_phys, p_reg->gatt_if, pa_handle, subevent, filter_policy)) {
+#else
       if (!gatt_connect(bd_addr, addr_type, p_tcb, transport, initiating_phys, p_reg->gatt_if)) {
+#endif
         return false;
       }
     } else if (st == GATT_CH_CLOSING) {
@@ -446,7 +469,11 @@ bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYP
     return false;
   }
 
-  if (!gatt_connect(bd_addr, addr_type, p_tcb, transport, initiating_phys, p_reg->gatt_if)) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (!gatt_connect(bd_addr, addr_type, p_tcb, transport, initiating_phys, p_reg->gatt_if, pa_handle, subevent, filter_policy)) {
+#else
+    if (!gatt_connect(bd_addr, addr_type, p_tcb, transport, initiating_phys, p_reg->gatt_if)) {
+#endif
     log::error("gatt_connect failed");
     fixed_queue_free(p_tcb->pending_ind_q, NULL);
     *p_tcb = tGATT_TCB();
@@ -460,6 +487,12 @@ bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBT_TRANSPORT
                       int8_t initiating_phys) {
   return gatt_act_connect(p_reg, bd_addr, BLE_ADDR_PUBLIC, transport, initiating_phys);
 }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
+                      tBT_TRANSPORT transport, int8_t initiating_phys) {
+  return gatt_act_connect(p_reg, bd_addr, addr_type, transport, initiating_phys, 0x01, 0xFF, 0x01);
+}
+#endif
 
 namespace connection_manager {
 void on_connection_timed_out(uint8_t /* app_id */, const RawAddress& address) {

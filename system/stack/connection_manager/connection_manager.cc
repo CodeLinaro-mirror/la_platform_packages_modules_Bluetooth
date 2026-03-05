@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #include "connection_manager.h"
@@ -290,7 +294,11 @@ bool background_connect_targeted_announcement_add(tAPP_ID app_id, const RawAddre
 
 /** Add a device from the background connection list.  Returns true if device
  * added to the list, or already in list, false otherwise */
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool background_connect_add(uint8_t app_id, const RawAddress& address, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+#else
 bool background_connect_add(uint8_t app_id, const RawAddress& address) {
+#endif
   log::debug("app_id={}, address={}", static_cast<int>(app_id), address);
   auto it = bgconn_dev.find(address);
   bool in_acceptlist = false;
@@ -323,9 +331,19 @@ bool background_connect_add(uint8_t app_id, const RawAddress& address) {
                   shim::GetController()->GetLeFilterAcceptListSize(), address);
         return false;
       }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      tBLE_BD_ADDR address_with_type{
+          .type = BLE_ADDR_PUBLIC,
+          .bda = address,
+          .pa_handle = pa_handle,
+          .subevent = subevent,
+          .filter_policy = filter_policy,
+      };
 
+      ACL_AcceptLeConnectionFrom(address_with_type, false);
+#else
       ACL_AcceptLeConnectionFrom(BTM_Sec_GetAddressWithType(address), false);
-
+#endif
       bgconn_dev[address].is_in_accept_list = true;
     }
   }
@@ -495,14 +513,22 @@ static void find_in_device_record(const RawAddress& bd_addr, tBLE_BD_ADDR* addre
   return;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool direct_connect_add(uint8_t app_id, const RawAddress& address, tBLE_ADDR_TYPE addr_type, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+#else
 bool direct_connect_add(uint8_t app_id, const RawAddress& address, tBLE_ADDR_TYPE addr_type) {
+#endif
   tBLE_BD_ADDR address_with_type{
           .type = addr_type,
           .bda = address,
   };
 
   find_in_device_record(address, &address_with_type);
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  address_with_type.pa_handle = pa_handle;
+  address_with_type.subevent = subevent;
+  address_with_type.filter_policy = filter_policy;
+#endif
   if (address_with_type.type == BLE_ADDR_ANONYMOUS) {
     log::warn("Can't use anonymous address for connection: {}", address_with_type);
     return false;

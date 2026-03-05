@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -89,6 +93,11 @@ constexpr uint8_t kResolvableAddressMsb = 0x40;
 struct tBLE_BD_ADDR {
   tBLE_ADDR_TYPE type;
   RawAddress bda;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  uint8_t pa_handle;
+  uint8_t subevent;
+  uint8_t filter_policy;
+#endif
   bool AddressEquals(const RawAddress& other) const { return other == bda; }
   bool IsPublicDeviceType() const { return type == kBleAddressPublicDevice; }
   bool IsRandomDeviceType() const { return type == kBleAddressRandomDevice; }

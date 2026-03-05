@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -501,7 +505,11 @@ void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda,
 void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
                     tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
                     uint8_t initiating_phys, uint16_t preferred_mtu);
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
+                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
+                    uint8_t initiating_phys, uint16_t preferred_mtu, uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy);
+#endif
 /*******************************************************************************
  *
  * Function         BTA_GATTC_CancelOpen

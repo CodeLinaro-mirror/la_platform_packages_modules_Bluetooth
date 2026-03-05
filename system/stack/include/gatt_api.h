@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 #ifndef GATT_API_H
 #define GATT_API_H
@@ -1176,10 +1180,17 @@ void GATT_StartIf(tGATT_IF gatt_if);
 [[nodiscard]] bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr,
                                 tBLE_ADDR_TYPE addr_type, tBTM_BLE_CONN_TYPE connection_type,
                                 tBT_TRANSPORT transport, bool opportunistic,
-                                uint8_t initiating_phys, uint16_t preferred_transport);
+                                uint8_t initiating_phys, uint16_t preferred_mtu);
 [[nodiscard]] bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr,
                                 tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport,
                                 bool opportunistic);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+[[nodiscard]] bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr,
+                                tBLE_ADDR_TYPE addr_type, tBTM_BLE_CONN_TYPE connection_type,
+                                tBT_TRANSPORT transport, bool opportunistic,
+                                uint8_t initiating_phys, uint16_t preferred_mtu,
+                                uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy);
+#endif
 
 /*******************************************************************************
  *

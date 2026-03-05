@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.gatt;
@@ -37,6 +41,8 @@ import com.android.bluetooth.btservice.ProfileService.IProfileServiceBinder;
 
 import java.util.Collections;
 import java.util.List;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Handlers for incoming service calls */
 class GattServiceBinder extends IBluetoothGatt.Stub implements IProfileServiceBinder {
@@ -138,6 +144,29 @@ class GattServiceBinder extends IBluetoothGatt.Stub implements IProfileServiceBi
         }
         service.clientConnect(
                 clientIf, address, addressType, isDirect, transport, opportunistic, phy, source);
+    }
+
+    @Override
+    public void clientConnectV2(
+            int clientIf,
+            String address,
+            int addressType,
+            boolean isDirect,
+            int transport,
+            boolean opportunistic,
+            int phy,
+            AttributionSource source,
+            int advHandle,
+            int subEvent,
+            int filterPolicy) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            GattService service = getService();
+            if (service == null) {
+                return;
+            }
+            service.clientConnectV2(
+                    clientIf, address, addressType, isDirect, transport, opportunistic, phy, source, advHandle, subEvent, filterPolicy);
+        }
     }
 
     @Override

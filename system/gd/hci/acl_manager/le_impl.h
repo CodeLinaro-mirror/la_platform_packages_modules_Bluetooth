@@ -77,6 +77,11 @@ constexpr uint8_t PHY_LE_2M = 0x02;
 constexpr uint8_t PHY_LE_CODED = 0x04;
 constexpr bool kEnableBlePrivacy = true;
 constexpr bool kEnableBleOnlyInit1mPhy = false;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+constexpr uint8_t PAWR_INVALID_SUBEVENT = 0xFF;
+constexpr uint8_t PAWR_INVALID_PA_HANDLE = 0xFF;
+constexpr uint8_t CONNECTION_DEFAULT_FILTER_POLICY = 0x01;
+#endif
 
 static const std::string kPropertyMinConnInterval = "bluetooth.core.le.min_connection_interval";
 static const std::string kPropertyMaxConnInterval = "bluetooth.core.le.max_connection_interval";
@@ -172,6 +177,9 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
     switch (code) {
       case SubeventCode::CONNECTION_COMPLETE:
       case SubeventCode::ENHANCED_CONNECTION_COMPLETE:
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      case SubeventCode::ENHANCED_CONNECTION_COMPLETE_V2:
+#endif
         on_le_connection_complete(event_packet);
         break;
       case SubeventCode::CONNECTION_UPDATE_COMPLETE:
@@ -389,6 +397,10 @@ public:
     Role role;
     AddressWithType remote_address;
     uint16_t handle, conn_interval, conn_latency, supervision_timeout;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    uint8_t adv_handle;
+    uint16_t sync_handle;
+#endif
 
     if (packet.GetSubeventCode() == SubeventCode::CONNECTION_COMPLETE) {
       LeConnectionCompleteView connection_complete = LeConnectionCompleteView::Create(packet);
@@ -428,6 +440,35 @@ public:
           break;
       }
       remote_address = AddressWithType(address, remote_address_type);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      } else if (packet.GetSubeventCode() == SubeventCode::ENHANCED_CONNECTION_COMPLETE_V2) {
+      LeEnhancedConnectionCompleteV2View connection_complete =
+      LeEnhancedConnectionCompleteV2View::Create(packet);
+      log::assert_that(
+          connection_complete.IsValid(), "assert failed: connection_complete.IsValid()");
+      status = connection_complete.GetStatus();
+      address = connection_complete.GetPeerAddress();
+      peer_address_type = connection_complete.GetPeerAddressType();
+      role = connection_complete.GetRole();
+      handle = connection_complete.GetConnectionHandle();
+      conn_interval = connection_complete.GetConnInterval();
+      conn_latency = connection_complete.GetConnLatency();
+      supervision_timeout = connection_complete.GetSupervisionTimeout();
+      adv_handle = connection_complete.GetAdvertisingHandle();
+      sync_handle = connection_complete.GetSyncHandle();
+      AddressType remote_address_type;
+      switch (peer_address_type) {
+        case AddressType::PUBLIC_DEVICE_ADDRESS:
+        case AddressType::PUBLIC_IDENTITY_ADDRESS:
+          remote_address_type = AddressType::PUBLIC_DEVICE_ADDRESS;
+          break;
+        case AddressType::RANDOM_DEVICE_ADDRESS:
+        case AddressType::RANDOM_IDENTITY_ADDRESS:
+          remote_address_type = AddressType::RANDOM_DEVICE_ADDRESS;
+          break;
+      }
+      remote_address = AddressWithType(address, remote_address_type);
+#endif
     } else {
       log::fatal("Bad subevent code:{:02x}", packet.GetSubeventCode());
       return;
@@ -530,12 +571,24 @@ public:
               LeEnhancedConnectionCompleteView::Create(packet);
       log::assert_that(connection_complete.IsValid(),
                        "assert failed: connection_complete.IsValid()");
+      connection->local_resolvable_private_address_ =
+              connection_complete.GetLocalResolvablePrivateAddress();
+      connection->peer_resolvable_private_address_ =
+              connection_complete.GetPeerResolvablePrivateAddress();
+    }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (packet.GetSubeventCode() == SubeventCode::ENHANCED_CONNECTION_COMPLETE_V2) {
+      LeEnhancedConnectionCompleteV2View connection_complete =
+              LeEnhancedConnectionCompleteV2View::Create(packet);
+      log::assert_that(connection_complete.IsValid(),
+                       "assert failed: connection_complete.IsValid()");
 
       connection->local_resolvable_private_address_ =
               connection_complete.GetLocalResolvablePrivateAddress();
       connection->peer_resolvable_private_address_ =
               connection_complete.GetPeerResolvablePrivateAddress();
     }
+#endif
 
     auto connection_callbacks = connection->GetEventCallbacks(
             [this](uint16_t handle) { this->connections.invalidate(handle); });
@@ -760,8 +813,21 @@ public:
       return;
     }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    log::debug("Adding device to accept list {} {} {}", address_with_type, address_with_type.GetSubevent(), accept_list.size());
+#else
     log::debug("Adding device to accept list {}", address_with_type);
+#endif
+
     accept_list.insert(address_with_type);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (address_with_type.GetSubevent() != PAWR_INVALID_SUBEVENT) {
+        create_connection_v2_cnt_++;
+        pa_handle_ = address_with_type.GetPaHandle();
+    }
+    if (create_connection_v2_cnt_)
+        pa_handle_ = get_pa_handle_from_accept_list();//update pa_handle_ for create connection v2
+#endif
     register_with_address_manager();
     le_address_manager_->AddDeviceToFilterAcceptList(
             address_with_type.ToFilterAcceptListAddressType(), address_with_type.GetAddress());
@@ -770,7 +836,40 @@ public:
   bool is_device_in_accept_list(AddressWithType address_with_type) {
     return accept_list.find(address_with_type) != accept_list.end();
   }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  uint8_t get_subevent_from_accept_list(AddressWithType address_with_type) {
+    std::unordered_set<AddressWithType>::iterator it = accept_list.begin();
+    while (it != accept_list.end()) {
+        if ((it->GetAddress() == address_with_type.GetAddress()) && (it->GetAddressType() == address_with_type.GetAddressType())) {
+            return it->GetSubevent();
+        }
+        it++;
+    }
+    return PAWR_INVALID_SUBEVENT;
+  }
 
+  uint8_t get_pa_handle_from_accept_list() {
+    std::unordered_set<AddressWithType>::iterator it = accept_list.begin();
+    while (it != accept_list.end()) {
+        if (it->GetSubevent() != PAWR_INVALID_SUBEVENT) {
+            return it->GetPaHandle();
+        }
+        it++;
+    }
+    return PAWR_INVALID_PA_HANDLE;
+  }
+
+    uint8_t get_filter_policy_from_accept_list() {
+    std::unordered_set<AddressWithType>::iterator it = accept_list.begin();
+    while (it != accept_list.end()) {
+        if (it->GetSubevent() != PAWR_INVALID_SUBEVENT) {
+            return it->GetFilterPolicy();
+        }
+        it++;
+    }
+    return CONNECTION_DEFAULT_FILTER_POLICY;
+  }
+#endif
   void remove_device_from_accept_list(AddressWithType address_with_type) {
     bluetooth::shim::LogMetricLeDeviceInAcceptList(address_with_type.GetAddress(),
                                                    false /* is_add */);
@@ -778,15 +877,32 @@ public:
       log::warn("Device not in acceptlist and cannot be removed: {}", address_with_type);
       return;
     }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    uint8_t subevent = get_subevent_from_accept_list(address_with_type);
+    if (subevent != PAWR_INVALID_SUBEVENT) {
+        if (create_connection_v2_cnt_ > 0) create_connection_v2_cnt_--;
+    }
+#endif
     accept_list.erase(address_with_type);
     connecting_le_.erase(address_with_type);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (subevent == PAWR_INVALID_SUBEVENT) {
+        register_with_address_manager();
+        le_address_manager_->RemoveDeviceFromFilterAcceptList(
+            address_with_type.ToFilterAcceptListAddressType(), address_with_type.GetAddress());
+    }
+#else
     register_with_address_manager();
     le_address_manager_->RemoveDeviceFromFilterAcceptList(
             address_with_type.ToFilterAcceptListAddressType(), address_with_type.GetAddress());
+#endif
   }
 
   void clear_filter_accept_list() {
     accept_list.clear();
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    create_connection_v2_cnt_ == 0;
+#endif
     register_with_address_manager();
     le_address_manager_->ClearFilterAcceptList();
   }
@@ -848,9 +964,15 @@ public:
 
   void on_extended_create_connection(CommandStatusView status) {
     log::assert_that(status.IsValid(), "assert failed: status.IsValid()");
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    log::assert_that(
+            status.GetCommandOpCode() == OpCode::LE_EXTENDED_CREATE_CONNECTION || status.GetCommandOpCode() == OpCode::LE_EXTENDED_CREATE_CONNECTION_V2,
+            "assert failed: status.GetCommandOpCode() == OpCode::LE_EXTENDED_CREATE_CONNECTION || status.GetCommandOpCode() == OpCode::LE_EXTENDED_CREATE_CONNECTION_V2");
+#else
     log::assert_that(
             status.GetCommandOpCode() == OpCode::LE_EXTENDED_CREATE_CONNECTION,
             "assert failed: status.GetCommandOpCode() == OpCode::LE_EXTENDED_CREATE_CONNECTION");
+#endif
     update_connectability_state_after_armed(status.GetStatus());
   }
 
@@ -918,6 +1040,15 @@ public:
       le_scan_window_coded = le_scan_window;
     }
     InitiatorFilterPolicy initiator_filter_policy = InitiatorFilterPolicy::USE_FILTER_ACCEPT_LIST;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (create_connection_v2_cnt_) {
+      uint8_t filter_policy = get_filter_policy_from_accept_list();
+      if (filter_policy == 0x00)
+        initiator_filter_policy = InitiatorFilterPolicy::USE_PEER_ADDRESS;
+      else if (filter_policy == 0x01)
+        initiator_filter_policy = InitiatorFilterPolicy::USE_FILTER_ACCEPT_LIST;
+    }
+#endif
     OwnAddressType own_address_type = static_cast<OwnAddressType>(
             le_address_manager_->GetInitiatorAddress().GetAddressType());
 
@@ -1022,13 +1153,30 @@ public:
         parameters.push_back(scan_parameters_coded);
         initiating_phys |= PHY_LE_CODED;
       }
-
-      le_acl_connection_interface_->EnqueueCommand(
-              LeExtendedCreateConnectionBuilder::Create(
-                      initiator_filter_policy, own_address_type, address_with_type.GetAddressType(),
-                      address_with_type.GetAddress(), initiating_phys, parameters),
-              handler_->BindOnce(&le_impl::on_extended_create_connection,
-                                 common::Unretained(this)));
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      if (!create_connection_v2_cnt_) {
+        le_acl_connection_interface_->EnqueueCommand(
+                LeExtendedCreateConnectionBuilder::Create(
+                        initiator_filter_policy, own_address_type, address_with_type.GetAddressType(),
+                        address_with_type.GetAddress(), initiating_phys, parameters),
+                handler_->BindOnce(&le_impl::on_extended_create_connection,
+                                  common::Unretained(this)));
+      } else {
+        le_acl_connection_interface_->EnqueueCommand(
+                LeExtendedCreateConnectionV2Builder::Create(
+                        pa_handle_, 0x00,
+                        initiator_filter_policy, own_address_type, address_with_type.GetAddressType(),
+                        address_with_type.GetAddress(), initiating_phys, parameters),
+                handler_->BindOnce(&le_impl::on_extended_create_connection, common::Unretained(this)));
+      }
+#else
+        le_acl_connection_interface_->EnqueueCommand(
+                LeExtendedCreateConnectionBuilder::Create(
+                        initiator_filter_policy, own_address_type, address_with_type.GetAddressType(),
+                        address_with_type.GetAddress(), initiating_phys, parameters),
+                handler_->BindOnce(&le_impl::on_extended_create_connection,
+                                  common::Unretained(this)));
+#endif
     } else {
       le_acl_connection_interface_->EnqueueCommand(
               LeCreateConnectionBuilder::Create(
@@ -1161,7 +1309,11 @@ public:
       default:
         // If we added to filter accept list then the arming of the le state machine
         // must wait until the filter accept list command as completed
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        if ((add_to_accept_list) && (address_with_type.GetSubevent() == PAWR_INVALID_SUBEVENT)) {
+#else
         if (add_to_accept_list) {
+#endif
           arm_on_resume_ = true;
           log::debug("Deferred until filter accept list has completed");
         } else {
@@ -1382,6 +1534,8 @@ public:
 #ifdef TARGET_QCOM_IOT_BT_EXT
   uint8_t concurrent_link_num_ = 0;
   bool need_re_trigger_ = false;
+  uint8_t create_connection_v2_cnt_ = 0;
+  uint8_t pa_handle_ = 0;
 #endif
 };
 

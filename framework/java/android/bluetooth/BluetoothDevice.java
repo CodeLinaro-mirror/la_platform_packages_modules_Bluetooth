@@ -47,6 +47,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth;
@@ -98,6 +102,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /**
  * Represents a remote Bluetooth device. A {@link BluetoothDevice} lets you create a connection with
@@ -3514,6 +3520,303 @@ public final class BluetoothDevice implements Parcelable, Attributable {
                 new BluetoothGatt(iGatt, this, transport, opportunistic, phy, mAttributionSource);
         gatt.connect(autoConnect, callback, handler);
         return gatt;
+    }
+
+    /**
+     * Connect to GATT Server hosted by this device. Caller acts as GATT client. The callback is
+     * used to deliver results to Caller, such as connection status as well as any further GATT
+     * client operations. The method returns a BluetoothGatt instance. You can use BluetoothGatt to
+     * conduct GATT client operations.
+     *
+     * @param callback GATT callback handler that will receive asynchronous callbacks.
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param advHandle The advertising handle of the periodic advertising train from which
+     *  this connection is initiated.
+     * @param subEvent The subevent index within the periodic advertising with reponse train at which
+     * thw controller should send the connection request.
+     * @param filterPolicy The filtering policy used when creating the LE connection. This controls
+     * whether the controller accepts responses from any advertiser or only from devices present in
+     * the controller’s filter accept list / resolving list. The exact behavior follows the Bluetooth
+     * Core Specification for LE connection filter policies.
+     * @return A BluetoothGatt instance. You can use BluetoothGatt to conduct GATT client operations.
+     *
+     * @throws IllegalArgumentException if callback is null
+     */
+    @FlaggedApi(Flags.FLAG_LE_CONNECT_V2_SUPPORT)
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public @NonNull BluetoothGatt connectGattV2(
+            @NonNull Context context, boolean autoConnect, int advHandle, int subEvent, int filterPolicy, @NonNull BluetoothGattCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return (connectGattV2(context, autoConnect, advHandle, subEvent, filterPolicy, TRANSPORT_AUTO, callback));
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return null;
+        }
+    }
+
+    /**
+     * Connect to GATT Server hosted by this device. Caller acts as GATT client. The callback is
+     * used to deliver results to Caller, such as connection status as well as any further GATT
+     * client operations. The method returns a BluetoothGatt instance. You can use BluetoothGatt to
+     * conduct GATT client operations.
+     *
+     * @param callback GATT callback handler that will receive asynchronous callbacks.
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param advHandle The advertising handle of the periodic advertising train from which
+     * this connection is initiated.
+     * @param subEvent The subevent index within the periodic advertising with reponse train at which
+     * thw controller should send the connection request.
+     * @param filterPolicy The filtering policy used when creating the LE connection. This controls
+     * whether the controller accepts responses from any advertiser or only from devices present in
+     * the controller’s filter accept list / resolving list. The exact behavior follows the Bluetooth
+     * Core Specification for LE connection filter policies.
+     * @param transport preferred transport for GATT connections to remote dual-mode devices {@link
+     * BluetoothDevice#TRANSPORT_AUTO} or {@link BluetoothDevice#TRANSPORT_BREDR} or {@link
+     * BluetoothDevice#TRANSPORT_LE}
+     * @return A BluetoothGatt instance. You can use BluetoothGatt to conduct GATT client operations.
+     *
+     * @throws IllegalArgumentException if callback is null
+     */
+    @FlaggedApi(Flags.FLAG_LE_CONNECT_V2_SUPPORT)
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public @NonNull BluetoothGatt connectGattV2(
+            @NonNull Context context, boolean autoConnect, int advHandle, int subEvent, int filterPolicy, int transport, @NonNull BluetoothGattCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return (connectGattV2(context, autoConnect, advHandle, subEvent, filterPolicy, transport, PHY_LE_1M_MASK, callback));
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return null;
+        }
+    }
+
+    /**
+     * Connect to GATT Server hosted by this device. Caller acts as GATT client. The callback is
+     * used to deliver results to Caller, such as connection status as well as any further GATT
+     * client operations. The method returns a BluetoothGatt instance. You can use BluetoothGatt to
+     * conduct GATT client operations.
+     *
+     * @param callback GATT callback handler that will receive asynchronous callbacks.
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param advHandle The advertising handle of the periodic advertising train from which
+     * this connection is initiated.
+     * @param subEvent The subevent index within the periodic advertising with reponse train at which
+     * thw controller should send the connection request.
+     * @param filterPolicy The filtering policy used when creating the LE connection. This controls
+     * whether the controller accepts responses from any advertiser or only from devices present in
+     * the controller’s filter accept list / resolving list. The exact behavior follows the Bluetooth
+     * Core Specification for LE connection filter policies.
+     * @param transport preferred transport for GATT connections to remote dual-mode devices {@link
+     * BluetoothDevice#TRANSPORT_AUTO} or {@link BluetoothDevice#TRANSPORT_BREDR} or {@link
+     * BluetoothDevice#TRANSPORT_LE}
+     * @param phy preferred PHY for connections to remote LE device. Bitwise OR of any of {@link
+     * BluetoothDevice#PHY_LE_1M_MASK}, {@link BluetoothDevice#PHY_LE_2M_MASK}, and {@link
+     * BluetoothDevice#PHY_LE_CODED_MASK}. This option does not take effect if {@code
+     * autoConnect} is set to true。
+     *
+     * @throws NullPointerException if callback is null
+     */
+    @FlaggedApi(Flags.FLAG_LE_CONNECT_V2_SUPPORT)
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public @NonNull BluetoothGatt connectGattV2(
+            @NonNull Context context,
+            boolean autoConnect,
+            int advHandle,
+            int subEvent,
+            int filterPolicy,
+            int transport,
+            int phy,
+            @NonNull BluetoothGattCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return connectGattV2(context, autoConnect, advHandle, subEvent, filterPolicy, transport, phy, null, callback);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return null;
+        }
+    }
+
+    /**
+     * Connect to GATT Server hosted by this device. Caller acts as GATT client. The callback is
+     * used to deliver results to Caller, such as connection status as well as any further GATT
+     * client operations. The method returns a BluetoothGatt instance. You can use BluetoothGatt to
+     * conduct GATT client operations.
+     *
+     * @param callback GATT callback handler that will receive asynchronous callbacks.
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param advHandle The advertising handle of the periodic advertising train from which
+     * this connection is initiated.
+     * @param subEvent The subevent index within the periodic advertising with reponse train at which
+     * thw controller should send the connection request.
+     * @param filterPolicy The filtering policy used when creating the LE connection. This controls
+     * whether the controller accepts responses from any advertiser or only from devices present in
+     * the controller’s filter accept list / resolving list. The exact behavior follows the Bluetooth
+     * Core Specification for LE connection filter policies.
+     * @param transport preferred transport for GATT connections to remote dual-mode devices {@link
+     * BluetoothDevice#TRANSPORT_AUTO} or {@link BluetoothDevice#TRANSPORT_BREDR} or {@link
+     * BluetoothDevice#TRANSPORT_LE}
+     * @param phy preferred PHY for connections to remote LE device. Bitwise OR of any of {@link
+     * BluetoothDevice#PHY_LE_1M_MASK}, {@link BluetoothDevice#PHY_LE_2M_MASK}, an d{@link
+     * BluetoothDevice#PHY_LE_CODED_MASK}. This option does not take effect if {@code
+     * autoConnect} is set to true.
+     * @param handler The handler to use for the callback. If {@code null}, callbacks will happen on
+     * an un-specified background thread.
+     *
+     * @throws NullPointerException if callback is null
+     */
+    @FlaggedApi(Flags.FLAG_LE_CONNECT_V2_SUPPORT)
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public @NonNull BluetoothGatt connectGattV2(
+            @NonNull Context context,
+            boolean autoConnect,
+            int advHandle,
+            int subEvent,
+            int filterPolicy,
+            int transport,
+            int phy,
+            @Nullable Handler handler,
+            @NonNull BluetoothGattCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return connectGattV2(context, autoConnect, advHandle, subEvent, filterPolicy, transport, false, phy, handler, callback);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return null;
+        }
+    }
+
+    /**
+     * Connect to GATT Server hosted by this device. Caller acts as GATT client. The callback is
+     * used to deliver results to Caller, such as connection status as well as any further GATT
+     * client operations. The method returns a BluetoothGatt instance. You can use BluetoothGatt to
+     * conduct GATT client operations.
+     *
+     * @param callback GATT callback handler that will receive asynchronous callbacks.
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param advHandle The advertising handle of the periodic advertising train from which
+     * this connection is initiated.
+     * @param subEvent The subevent index within the periodic advertising with reponse train at which
+     * thw controller should send the connection request.
+     * @param filterPolicy The filtering policy used when creating the LE connection. This controls
+     * whether the controller accepts responses from any advertiser or only from devices present in
+     * the controller’s filter accept list / resolving list. The exact behavior follows the Bluetooth
+     * Core Specification for LE connection filter policies.
+     * @param transport preferred transport for GATT connections to remote dual-mode devices {@link
+     * BluetoothDevice#TRANSPORT_AUTO} or {@link BluetoothDevice#TRANSPORT_BREDR} or {@link
+     * BluetoothDevice#TRANSPORT_LE}
+     * @param opportunistic Whether this GATT client is opportunistic. An opportunistic GATT client
+     * does not hold a GATT connection. It automatically disconnects when no other GATT
+     * connections are active for the remote device.
+     * @param phy preferred PHY for connections to remote LE device. Bitwise OR of any of {@link
+     * BluetoothDevice#PHY_LE_1M_MASK}, {@link BluetoothDevice#PHY_LE_2M_MASK}, an d{@link
+     * BluetoothDevice#PHY_LE_CODED_MASK}. This option does not take effect if {@code
+     * autoConnect} is set to true.
+     * @param handler The handler to use for the callback. If {@code null}, callbacks will happen on
+     *     an un-specified background thread.
+     * @return A BluetoothGatt instance. You can use BluetoothGatt to conduct GATT client
+     *     operations.
+     *
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public @NonNull BluetoothGatt connectGattV2(
+            @NonNull Context context,
+            boolean autoConnect,
+            int advHandle,
+            int subEvent,
+            int filterPolicy,
+            int transport,
+            boolean opportunistic,
+            int phy,
+            @Nullable Handler handler,
+            @NonNull BluetoothGattCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return connectGattV2(context, autoConnect, advHandle, subEvent, filterPolicy, transport, opportunistic,
+                phy, handler, false, callback);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return null;
+        }
+    }
+
+    /**
+     * Connect to GATT Server hosted by this device. Caller acts as GATT client.
+     * The callback is used to deliver results to Caller, such as connection status as well
+     * as any further GATT client operations.
+     * The method returns a BluetoothGatt instance. You can use BluetoothGatt to conduct
+     * GATT client operations.
+     *
+     * @param callback GATT callback handler that will receive asynchronous callbacks.
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param advHandle The advertising handle of the periodic advertising train from which
+     * this connection is initiated.
+     * @param subEvent The subevent index within the periodic advertising with reponse train at which
+     * thw controller should send the connection request.
+     * @param filterPolicy The filtering policy used when creating the LE connection. This controls
+     * whether the controller accepts responses from any advertiser or only from devices present in
+     * the controller’s filter accept list / resolving list. The exact behavior follows the Bluetooth
+     * Core Specification for LE connection filter policies.
+     * @param transport preferred transport for GATT connections to remote dual-mode devices {@link
+     * BluetoothDevice#TRANSPORT_AUTO} or {@link BluetoothDevice#TRANSPORT_BREDR} or {@link
+     * BluetoothDevice#TRANSPORT_LE}
+     * @param opportunistic Whether this GATT client is opportunistic. An opportunistic GATT client
+     * does not hold a GATT connection. It automatically disconnects when no other GATT connections
+     * are active for the remote device.
+     * @param phy preferred PHY for connections to remote LE device. Bitwise OR of any of {@link
+     * BluetoothDevice#PHY_LE_1M_MASK}, {@link BluetoothDevice#PHY_LE_2M_MASK}, an d{@link
+     * BluetoothDevice#PHY_LE_CODED_MASK}. This option does not take effect if {@code autoConnect}
+     * is set to true.
+     * @param handler The handler to use for the callback. If {@code null}, callbacks will happen on
+     * an un-specified background thread.
+     * @param eattSupport specifies whether client app needs EATT channel for client operations.
+     * If both local and remote devices support EATT and local app asks for EATT, GATT client
+     * operations will be performed using EATT channel.
+     * If either local or remote device doesn't support EATT but local App asks for EATT, GATT
+     * client operations will be performed using unenhanced ATT channel.
+     *
+     * @return A BluetoothGatt instance. You can use BluetoothGatt to conduct GATT client
+     * operations.
+     *
+     * @throws NullPointerException if callback is null
+     *
+     * @hide
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public @NonNull BluetoothGatt connectGattV2(@NonNull Context context, boolean autoConnect, int advHandle, int subEvent,
+            int filterPolicy, int transport, boolean opportunistic, int phy, @Nullable Handler handler, boolean eattSupport,
+            @NonNull BluetoothGattCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (callback == null) {
+                throw new NullPointerException("callback is null");
+            }
+
+            // TODO(Bluetooth) check whether platform support BLE
+            //     Do the check here or in GattServer?
+            IBluetoothGatt iGatt = BluetoothAdapter.getDefaultAdapter().getBluetoothGatt();
+            if (iGatt == null) {
+                // BLE is not supported
+                return null;
+            } else if (NULL_MAC_ADDRESS.equals(mAddress)) {
+                Log.e(TAG, "Unable to connect gatt, invalid address " + mAddress);
+                return null;
+            }
+            BluetoothGatt gatt =
+                    new BluetoothGatt(iGatt, this, transport, opportunistic, phy, mAttributionSource, advHandle, subEvent, filterPolicy);
+            gatt.connectV2(autoConnect, callback, handler);
+            return gatt;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return null;
+        }
     }
 
     /**
