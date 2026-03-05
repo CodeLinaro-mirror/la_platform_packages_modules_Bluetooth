@@ -288,3 +288,27 @@ flag {
     description: "Support BLE V2 connection"
     bug: "<none>"
 }
+
+flag {
+    name: "get_filter_accept_list_size"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "get the filter accept list size"
+    bug: "None"
+}
+
+flag {
+    name: "bluetooth_adv_event_type"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "Get the event type of extended adv"
+    bug: "<none>"
+}
+
+flag {
+    name: "bluetooth_gatt_execute"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "Support new interface for GATT execute"
+    bug: "<none>"
+}

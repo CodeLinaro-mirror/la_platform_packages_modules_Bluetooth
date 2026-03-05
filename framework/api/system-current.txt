@@ -118,6 +118,7 @@ package android.bluetooth {
     method public int getConnectionState();
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public long getDiscoveryEndMillis();
     method @Nullable @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public android.bluetooth.le.DistanceMeasurementManager getDistanceMeasurementManager();
+    method @FlaggedApi("com.android.bluetooth.flags.get_filter_accept_list_size") @RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED) public int getLeFilterAcceptListSize();
     method @NonNull @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public java.util.List<android.bluetooth.BluetoothDevice> getMostRecentlyConnectedDevices();
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public int getOffloadedTransportDiscoveryDataScanSupported();
     method @NonNull @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public android.os.Bundle getPreferredAudioProfiles(@NonNull android.bluetooth.BluetoothDevice);

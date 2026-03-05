@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 /*
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -199,6 +199,8 @@ import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 public class AdapterService extends Service {
     private static final String TAG =
@@ -3241,6 +3243,26 @@ public class AdapterService extends Service {
             return null;
         }
         return info.callerPackageName;
+    }
+
+
+    /**
+     * Returns the size (capacity) of the LE Filter Accept List as reported by the
+     * Bluetooth controller.
+     * @return the reported size of the LE Filter Accept List (>= 1), or a value
+     * <= 0 if the controller failed to return a valid size.
+     */
+    int getLeAcceptlistSize() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            int size = mNativeInterface.getLeAcceptlistSize();
+            Log.d(TAG, "getLeAcceptlistSize: native call returned size = " + size);
+            if (size <= 0) {
+                Log.d(TAG, "getLeAcceptlistSize: btservice read filter accept size failed, size = " + size);
+            }
+            return size;
+        } else {
+            return -1;
+        }
     }
 
     /**

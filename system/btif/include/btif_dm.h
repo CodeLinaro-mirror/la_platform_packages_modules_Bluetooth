@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #pragma once
@@ -119,7 +123,9 @@ void btif_dm_metadata_changed(const RawAddress& remote_bd_addr, int key,
 void btif_dm_hh_open_failed(RawAddress* bdaddr);
 
 bool btif_dm_is_pairing(const RawAddress& bdaddr);
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+uint8_t btif_ble_get_acceptlist_size();
+#endif
 /*callout for reading SMP properties from Text file*/
 bool btif_dm_get_smp_config(tBTE_APPL_CFG* p_cfg);
 
