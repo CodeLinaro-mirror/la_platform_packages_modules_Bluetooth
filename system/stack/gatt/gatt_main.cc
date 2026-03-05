@@ -404,7 +404,12 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_a
   } else {
     if (p_tcb->app_hold_link.empty()) {
       // acl link is connected but no application needs to use the link
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      bool force_disconnect = osi_property_get_bool("persist.vendor.bt.force_acl_disconnect_on_gatt_close", false);
+      if (p_tcb->att_lcid == L2CAP_ATT_CID && is_valid_handle && (!force_disconnect)) {
+#else
       if (p_tcb->att_lcid == L2CAP_ATT_CID && is_valid_handle) {
+#endif
         /* Drop EATT before closing ATT */
         EattExtension::GetInstance()->Disconnect(p_tcb->peer_bda);
 
