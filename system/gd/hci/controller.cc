@@ -100,11 +100,31 @@ struct Controller::impl {
     features_future.wait();
 
     if (com::android::bluetooth::flags::channel_sounding_in_stack() && module_.SupportsBleChannelSounding()) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if(module_.SupportsPeriodicAdvertisingwithResponsesAdvertiser()){
+      le_set_event_mask(MaskLeEventMask(
+          local_version_information_.hci_version_, kDefaultLeEventMask | kLeCSEventMask | kLePAwREventMask));
+    } else {
+        le_set_event_mask(
+            MaskLeEventMask(local_version_information_.hci_version_, kDefaultLeEventMask));
+    }
+#else
       le_set_event_mask(MaskLeEventMask(
           local_version_information_.hci_version_, kDefaultLeEventMask | kLeCSEventMask));
+#endif
     } else {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if(module_.SupportsPeriodicAdvertisingwithResponsesAdvertiser()) {
+        le_set_event_mask(
+              MaskLeEventMask(local_version_information_.hci_version_, kDefaultLeEventMask | kLePAwREventMask));
+    } else {
+        le_set_event_mask(
+            MaskLeEventMask(local_version_information_.hci_version_, kDefaultLeEventMask));
+    }
+#else
       le_set_event_mask(
               MaskLeEventMask(local_version_information_.hci_version_, kDefaultLeEventMask));
+#endif
     }
 
     hci_->EnqueueCommand(
@@ -1176,6 +1196,8 @@ struct Controller::impl {
       OP_CODE_MAPPING(LE_SET_DEFAULT_SUBRATE)
       OP_CODE_MAPPING(LE_SUBRATE_REQUEST)
       OP_CODE_MAPPING(LE_EXTENDED_CREATE_CONNECTION_V2)
+      OP_CODE_MAPPING(LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2)
+      OP_CODE_MAPPING(LE_SET_PERIODIC_ADVERTISING_SUBEVENT_DATA)
 
       // deprecated
       case OpCode::ADD_SCO_CONNECTION:
@@ -1384,6 +1406,9 @@ LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePathLossMonitoring, 35)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBlePeriodicAdvertisingAdi, 36)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionSubrating, 37)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionSubratingHost, 38)
+#ifdef TARGET_QCOM_IOT_BT_EXT
+LOCAL_LE_FEATURE_ACCESSOR(SupportsPeriodicAdvertisingwithResponsesAdvertiser, 43)
+#endif
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleChannelSounding, 46)
 
 uint64_t Controller::GetLocalFeatures(uint8_t page_number) const {

@@ -51,10 +51,9 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Changes from Qualcomm Innovation Center are provided under the following
- * license:
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
@@ -174,6 +173,50 @@ static void set_Power_back_off_state(bool status) {
   get_btm_client_interface().vendor.BTM_SetPowerBackOffState(status);
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static int add_ble_key(RawAddress* remote_addr, int key_len, uint8_t* p_le_key, int key_type, bool add) {
+  log::info("add_ble_key {} add {}", *remote_addr, add);
+  if (add) {
+    tBTA_LE_KEY_VALUE le_key;
+    switch (key_type) {
+      case BTM_LE_KEY_PENC: {
+        if (key_len != sizeof(tBTM_LE_PENC_KEYS)) {
+          log::info("add_ble_key key_len {}, size {}", key_len, sizeof(tBTM_LE_PENC_KEYS));
+          return BT_STATUS_PARM_INVALID;
+        }
+
+        memcpy(le_key.penc_key.ltk.data(), p_le_key, 16);
+        memcpy(le_key.penc_key.rand, p_le_key+16, 8);
+        memcpy(&le_key.penc_key.ediv, p_le_key+24, 2);
+        memcpy(&le_key.penc_key.sec_level, p_le_key+26, 1);
+        memcpy(&le_key.penc_key.key_size, p_le_key+27, 1);
+        log::info("add_ble_key sec_level {}, key_size {}", le_key.penc_key.sec_level, le_key.penc_key.key_size);
+        break;
+      }
+      default: {
+        log::info("key_type unsupported ");
+        return BT_STATUS_PARM_INVALID;
+      }
+    }
+    BTA_DmAddBleKey(*remote_addr, &le_key, key_type);
+  } else {
+    // Call BTA_DmRemoveDevice to remove key since there is no BTA_DmRemoveBleKey
+    BTA_DmRemoveDevice(*remote_addr);
+  }
+
+  return BT_STATUS_SUCCESS;
+}
+
+void dummy_encryption_cb(const RawAddress& bd_addr, tBT_TRANSPORT transport, tBTA_STATUS result) {
+  log::info("dummy_encryption_cb result {} ", result);
+}
+
+static void set_encryption(const RawAddress& bd_addr, tBT_TRANSPORT transport, int sec_act) {
+  log::info("set_encryption ");
+  BTA_DmSetEncryption(bd_addr, transport, dummy_encryption_cb, (tBTM_BLE_SEC_ACT)sec_act);
+}
+#endif
+
 static void cleanup(void) {
   log::info("cleanup");
   if (bt_vendor_callbacks) {
@@ -220,6 +263,10 @@ static const btvendor_interface_t btvendorInterface = {
     set_wifi_state,
     set_Power_back_off_state,
     cleanup,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    add_ble_key,
+    set_encryption,
+#endif
 };
 
 /*******************************************************************************

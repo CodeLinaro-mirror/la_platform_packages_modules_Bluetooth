@@ -58,6 +58,23 @@ public:
   enum AdvertisingProperty { INCLUDE_TX_POWER = 0x06 };
 };
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+class PeriodicAdvertisingParametersV2 {
+public:
+  bool enable;
+  bool include_adi;
+  uint16_t min_interval;
+  uint16_t max_interval;
+  uint16_t properties;
+  uint8_t num_subevents;
+  uint8_t subevent_interval;
+  uint8_t response_slot_delay;
+  uint8_t response_slot_spacing;
+  uint8_t num_response_slots;
+  enum AdvertisingProperty { INCLUDE_TX_POWER = 0x06 };
+};
+#endif
+
 enum class AdvertiserAddressType {
   PUBLIC,
   RESOLVABLE_RANDOM,
@@ -130,6 +147,16 @@ public:
   virtual void OnPeriodicAdvertisingEnabled(uint8_t advertiser_id, bool enable,
                                             AdvertisingStatus status) = 0;
   virtual void OnOwnAddressRead(uint8_t advertiser_id, uint8_t address_type, Address address) = 0;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  virtual void OnPeriodicAdvertisingParametersV2Updated(uint8_t advertiser_id,
+                                                        AdvertisingStatus status) = 0;
+  virtual void OnPeriodicAdvertisingSubeventDataSet(uint8_t advertiser_id,
+                                                    AdvertisingStatus status) = 0;
+  virtual void OnPeriodicAdvertisingSubeventRequest(uint8_t advertiser_id, uint8_t subevent_start,
+                                                    uint8_t subevent_count) = 0;
+  virtual void OnPeriodicAdvertisingSubeventResponse(uint8_t sync_handle, uint8_t sub_frame, uint8_t tx_status,
+                                                     uint8_t num_responses, std::vector<uint8_t> payload) = 0;
+#endif
 };
 
 class LeAdvertisingManager : public bluetooth::Module {
@@ -186,6 +213,13 @@ public:
 
   void SetPeriodicParameters(AdvertiserId advertiser_id,
                              PeriodicAdvertisingParameters periodic_advertising_parameters);
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  void SetPeriodicParametersV2(AdvertiserId advertiser_id,
+                             PeriodicAdvertisingParametersV2 periodic_advertising_parameters);
+
+  void SetPeriodicSubeventData(AdvertiserId advertiser_id, uint8_t num_subevents, std::vector<uint8_t> data);
+#endif
 
   void SetPeriodicData(AdvertiserId advertiser_id, std::vector<GapData> data);
 

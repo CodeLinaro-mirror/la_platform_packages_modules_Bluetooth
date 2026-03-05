@@ -195,6 +195,12 @@ static jmethodID method_onAdvertisingParametersUpdated;
 static jmethodID method_onPeriodicAdvertisingParametersUpdated;
 static jmethodID method_onPeriodicAdvertisingDataSet;
 static jmethodID method_onPeriodicAdvertisingEnabled;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static jmethodID method_onPeriodicAdvertisingParametersV2Updated;
+static jmethodID method_onPeriodicAdvertisingSubeventDataSet;
+static jmethodID method_onPeriodicAdvertisingSubeventRequest;
+static jmethodID method_onPeriodicAdvertisingSubeventResponse;
+#endif
 
 /**
  * Scanner callback methods
@@ -926,7 +932,9 @@ public:
     if (!sCallbackEnv.valid() || mAdvertiseCallbacksObj == NULL) {
       return;
     }
-    //TBD
+    sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj,
+                                 method_onPeriodicAdvertisingParametersV2Updated, advertiser_id,
+                                 status);
   }
 #endif
 
@@ -947,7 +955,8 @@ public:
     if (!sCallbackEnv.valid() || mAdvertiseCallbacksObj == NULL) {
       return;
     }
-    //TBD
+    sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onPeriodicAdvertisingSubeventDataSet,
+                                 advertiser_id, status);
   }
 #endif
 
@@ -982,7 +991,7 @@ public:
       return;
     }
 
-    //TBD
+    sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onPeriodicAdvertisingSubeventRequest, advertiser_id, subevent_start, subevent_count);
   }
 
   void OnPeriodicAdvertisingSubeventResponse(uint8_t advertiser_id, uint8_t subevent, uint8_t tx_status,
@@ -993,7 +1002,10 @@ public:
       return;
     }
 
-    //TBD
+    ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(payload.size()));
+    sCallbackEnv->SetByteArrayRegion(jb.get(), 0, payload.size(), (jbyte*)payload.data());
+
+    sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onPeriodicAdvertisingSubeventResponse, advertiser_id, subevent, tx_status, num_responses, jb.get());
   }
 #endif
 };
@@ -2471,6 +2483,47 @@ static PeriodicAdvertisingParameters parsePeriodicParams(JNIEnv* env, jobject i)
   return p;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static PeriodicAdvertisingParametersV2 parsePeriodicParamsV2(JNIEnv* env,
+                                                         jobject i) {
+  PeriodicAdvertisingParametersV2 p;
+
+  if (i == NULL) {
+    p.enable = false;
+    return p;
+  }
+
+  jclass clazz = env->GetObjectClass(i);
+  jmethodID methodId;
+
+  methodId = env->GetMethodID(clazz, "isIncludeTxPower", "()Z");
+  jboolean includeTxPower = env->CallBooleanMethod(i, methodId);
+
+  p.enable = true;
+  p.include_adi = true;
+  methodId = env->GetMethodID(clazz, "getIntervalMin", "()I");
+  p.min_interval = env->CallIntMethod(i, methodId);
+  methodId = env->GetMethodID(clazz, "getIntervalMax", "()I");
+  p.max_interval = env->CallIntMethod(i, methodId);
+  uint16_t props = 0;
+  if (includeTxPower) props |= 0x40;
+  p.periodic_advertising_properties = props;
+
+  methodId = env->GetMethodID(clazz, "getNumSubevents", "()I");
+  p.num_subevents = env->CallIntMethod(i, methodId);
+  methodId = env->GetMethodID(clazz, "getSubeventInterval", "()I");
+  p.subevent_interval = env->CallIntMethod(i, methodId);
+  methodId = env->GetMethodID(clazz, "getResponseSlotDelay", "()I");
+  p.response_slot_delay = env->CallIntMethod(i, methodId);
+  methodId = env->GetMethodID(clazz, "getResponseSlotSpacing", "()I");
+  p.response_slot_spacing = env->CallIntMethod(i, methodId);
+  methodId = env->GetMethodID(clazz, "getNumResponseSlots", "()I");
+  p.num_response_slots = env->CallIntMethod(i, methodId);
+
+  return p;
+}
+#endif
+
 static void ble_advertising_set_started_cb(int reg_id, int server_if, uint8_t advertiser_id,
                                            int8_t tx_power, uint8_t status) {
   std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
@@ -2676,6 +2729,21 @@ static void setPeriodicAdvertisingParametersNative(JNIEnv* env, jobject /* objec
                      advertiser_id));
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static void setPeriodicAdvertisingParametersV2Native(
+    JNIEnv* env, jobject /* object */, jint advertiser_id,
+    jobject periodic_parameters) {
+  if (!sGattIf) return;
+
+  PeriodicAdvertisingParametersV2 periodicParams =
+      parsePeriodicParamsV2(env, periodic_parameters);
+  sGattIf->advertiser->SetPeriodicAdvertisingParametersV2(
+      advertiser_id, periodicParams,
+      base::Bind(&callJniCallback,
+                 method_onPeriodicAdvertisingParametersV2Updated, advertiser_id));
+}
+#endif
+
 static void setPeriodicAdvertisingDataNative(JNIEnv* env, jobject /* object */, jint advertiser_id,
                                              jbyteArray data, jbyteArray data_encrypt) {
   if (!sGattIf) {
@@ -2687,6 +2755,19 @@ static void setPeriodicAdvertisingDataNative(JNIEnv* env, jobject /* object */, 
           advertiser_id, toVector(env, data), toVector(env, data_encrypt),
           base::Bind(&callJniCallback, method_onPeriodicAdvertisingDataSet, advertiser_id));
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static void setPeriodicAdvertisingSubeventDataNative(JNIEnv* env, jobject /* object */, jint advertiser_id,
+                                                     jint num_subevents, jbyteArray data) {
+  if (!sGattIf) {
+    return;
+  }
+
+  sGattIf->advertiser->SetPeriodicAdvertisingSubeventData(
+          advertiser_id, num_subevents, toVector(env, data),
+          base::Bind(&callJniCallback, method_onPeriodicAdvertisingSubeventDataSet, advertiser_id));
+}
+#endif
 
 static void enablePeriodicSetCb(uint8_t advertiser_id, bool enable, uint8_t status) {
   std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
@@ -2952,7 +3033,16 @@ static int register_com_android_bluetooth_gatt_advertise_manager(JNIEnv* env) {
           {"setPeriodicAdvertisingParametersNative",
            "(ILandroid/bluetooth/le/PeriodicAdvertisingParameters;)V",
            (void*)setPeriodicAdvertisingParametersNative},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"setPeriodicAdvertisingParametersV2Native",
+           "(ILandroid/bluetooth/le/PeriodicAdvertisingParametersV2;)V",
+           (void*)setPeriodicAdvertisingParametersV2Native},
+#endif
           {"setPeriodicAdvertisingDataNative", "(I[B[B)V", (void*)setPeriodicAdvertisingDataNative},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"setPeriodicAdvertisingSubeventDataNative", "(II[B)V",
+           (void*)setPeriodicAdvertisingSubeventDataNative},
+#endif
           {"setPeriodicAdvertisingEnableNative", "(IZ)V",
            (void*)setPeriodicAdvertisingEnableNative},
   };
@@ -2971,8 +3061,20 @@ static int register_com_android_bluetooth_gatt_advertise_manager(JNIEnv* env) {
           {"onAdvertisingParametersUpdated", "(III)V", &method_onAdvertisingParametersUpdated},
           {"onPeriodicAdvertisingParametersUpdated", "(II)V",
            &method_onPeriodicAdvertisingParametersUpdated},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"onPeriodicAdvertisingParametersV2Updated", "(II)V",
+           &method_onPeriodicAdvertisingParametersV2Updated},
+#endif
           {"onPeriodicAdvertisingDataSet", "(II)V", &method_onPeriodicAdvertisingDataSet},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"onPeriodicAdvertisingSubeventDataSet", "(II)V",
+           &method_onPeriodicAdvertisingSubeventDataSet},
+#endif
           {"onPeriodicAdvertisingEnabled", "(IZI)V", &method_onPeriodicAdvertisingEnabled},
+#ifdef TARGET_QCOM_IOT_BT_EXT
+          {"onPeriodicAdvertisingSubeventRequest", "(III)V", &method_onPeriodicAdvertisingSubeventRequest},
+          {"onPeriodicAdvertisingSubeventResponse", "(IIII[B)V", &method_onPeriodicAdvertisingSubeventResponse},
+#endif
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/gatt/AdvertiseManagerNativeInterface", javaMethods);
   return 0;
