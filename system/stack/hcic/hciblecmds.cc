@@ -48,6 +48,8 @@
 #define HCIC_BLE_RAND_DI_SIZE 8
 #define HCIC_BLE_IRK_SIZE 16
 
+#define MAX_BIS_COUNT 4
+
 #define HCIC_PARAM_SIZE_SET_USED_FEAT_CMD 8
 #define HCIC_PARAM_SIZE_WRITE_RANDOM_ADDR_CMD 6
 #define HCIC_PARAM_SIZE_BLE_WRITE_ADV_PARAMS 15
@@ -750,4 +752,74 @@ void btsnd_hcic_ble_set_default_periodic_advertising_sync_transfer_params(
   btu_hcif_send_cmd_with_cb(HCI_LE_SET_DEFAULT_PERIODIC_ADVERTISING_SYNC_TRANSFER_PARAM, param,
                             HCIC_PARAM_SIZE_SET_DEFAULT_PERIODIC_ADVERTISING_SYNC_TRANSFER_PARAMS,
                             std::move(cb));
+}
+
+void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
+                                uint8_t dbig_feature_set,
+                                uint8_t bis_detection_attempts,
+                                uint8_t max_payload_dbig_control,
+                                uint8_t bis_control_event_interval,
+                                uint8_t send_exit,
+                                uint8_t pgp_timeout,
+                                uint8_t pgo_timeout,
+                                uint8_t sgo_timeout,
+                                uint8_t tx_power,
+                                base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // Full parameter set for HCI_VS_LE_SET_DBIG_PARAMETERS
+  uint16_t param_len = 11; // 1 (subopcode) + 10 parameters
+  uint8_t param[11];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, 0x04); // Subopcode
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, dbig_feature_set);
+  UINT8_TO_STREAM(p, bis_detection_attempts);
+  UINT8_TO_STREAM(p, max_payload_dbig_control);
+  UINT8_TO_STREAM(p, bis_control_event_interval);
+  UINT8_TO_STREAM(p, send_exit);
+  UINT8_TO_STREAM(p, pgp_timeout);
+  UINT8_TO_STREAM(p, pgo_timeout);
+  UINT8_TO_STREAM(p, sgo_timeout);
+  UINT8_TO_STREAM(p, tx_power);
+
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_SET_DBIG_PARAMETERS, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,
+                                    uint16_t sync_handle,
+                                    uint8_t encryption,
+                                    uint8_t* broadcast_code,
+                                    uint8_t mse,
+                                    uint16_t bis_sync_timeout,
+                                    uint8_t num_bis,
+                                    uint8_t* bis,
+                                   base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // Fixed part is 24, plus num_bis bytes of BIS indices.
+  uint16_t param_len = HCI_PARAM_SIZE_CREATE_BIG_SYNC + (num_bis * sizeof(uint8_t));
+  uint8_t param[HCI_PARAM_SIZE_CREATE_BIG_SYNC + MAX_BIS_COUNT];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, big_handle);
+  UINT16_TO_STREAM(p, sync_handle);
+  UINT8_TO_STREAM(p, encryption);
+  ARRAY_TO_STREAM(p, broadcast_code, 16);
+  UINT8_TO_STREAM(p, mse);
+  UINT16_TO_STREAM(p, bis_sync_timeout);
+  UINT8_TO_STREAM(p, num_bis);
+  ARRAY_TO_STREAM(p, bis, num_bis);
+
+  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_CREATE_SYNC, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_terminate_big_sync(uint8_t big_handle,
+                                  base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_TERMINATE_BIG_SYNC;
+  uint8_t param[HCI_PARAM_SIZE_TERMINATE_BIG_SYNC];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, big_handle);
+  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_TERM_SYNC, param,
+                            param_len, std::move(cb));
 }

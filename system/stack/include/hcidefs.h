@@ -398,6 +398,7 @@
 #define HCI_LE_TERM_BIG (0x006A | HCI_GRP_BLE_CMDS)
 #define HCI_LE_BIG_CREATE_SYNC (0x006B | HCI_GRP_BLE_CMDS)
 #define HCI_LE_BIG_TERM_SYNC (0x006C | HCI_GRP_BLE_CMDS)
+#define HCI_LE_TERMINATE_BIG_SYNC (0x006C | HCI_GRP_BLE_CMDS)
 #define HCI_LE_REQ_PEER_SCA (0x006D | HCI_GRP_BLE_CMDS)
 #define HCI_LE_SETUP_ISO_DATA_PATH (0x006E | HCI_GRP_BLE_CMDS)
 #define HCI_LE_REMOVE_ISO_DATA_PATH (0x006F | HCI_GRP_BLE_CMDS)
@@ -424,6 +425,17 @@
 #define HCI_CONTROLLER_A2DP (0x015D | HCI_GRP_VENDOR_SPECIFIC)
 
 #define HCI_QTI_CONTROLLER_A2DP_OPCODE (0x000A | HCI_GRP_VENDOR_SPECIFIC)
+
+/* DBIG parameters opcode */
+#define HCI_VS_LE_SET_DBIG_PARAMETERS (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+
+/*
+ * Host-defined (non-controller) event IDs used only for internal delivery into
+ * higher modules (e.g. broadcaster state machine). These are NOT real HCI event
+ * codes from the controller.
+ */
+#define HCI_VS_LE_DBIG_CREATE_CPL_EVT 0xFD01
+#define HCI_VS_LE_DBIG_UPDATE_EVT 0xFD02
 
 /* Bluetooth Quality Report opcode */
 #define HCI_CONTROLLER_BQR (0x015E | HCI_GRP_VENDOR_SPECIFIC)
@@ -464,6 +476,8 @@
 
 /* Bluetooth Quality Report sub event */
 #define HCI_VSE_SUBCODE_BQR_SUB_EVT 0x58
+
+#define HCI_VS_META 0x0C1
 
 #define HCI_VSE_SUBCODE_QBCE 0x51
 
@@ -594,6 +608,8 @@ constexpr uint8_t HCI_LE_STATES_INIT_CENTRAL_PERIPHERAL_BIT = 41;
 #define HCI_BLE_TERM_BIG_CPL_EVT 0x1c
 #define HCI_BLE_BIG_SYNC_EST_EVT 0x1d
 #define HCI_BLE_BIG_SYNC_LOST_EVT 0x1e
+#define HCI_LE_BIG_SYNC_ESTABLISHED_EVT 0x1D
+#define HCI_LE_BIG_SYNC_LOST 0x1E
 #define HCI_BLE_REQ_PEER_SCA_CPL_EVT 0x1f
 #define HCI_VSE_SUBCODE_PARAMS_REPORT 0x12
 

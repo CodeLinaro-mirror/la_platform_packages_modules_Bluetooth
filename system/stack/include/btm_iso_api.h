@@ -77,6 +77,15 @@ public:
   virtual void RegisterVscCallback(iso_manager::VscCallback* callback) const;
 
   /**
+   * Set DBIG related callbacks
+   *
+   * <p> Shall be set by the DBIG implementation
+   *
+   * @param callbacks DbigCallbacks implementation
+   */
+  virtual void RegisterDbigCallbacks(iso_manager::DbigCallbacks* callbacks) const;
+
+  /**
    * Set BIG related callbacks
    *
    * <p> Shall be set by the Le Audio Broadcaster implementation
@@ -224,6 +233,29 @@ public:
 
   virtual void HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
                                            uint64_t bdAddr);
+
+  /**
+   * Handle DBIG related events
+   *
+   * @param params raw packet buffer for the event. The ownership of params is
+   * not being transferred
+   * @param length event packet buffer length
+   */
+  virtual void HandleDbigUpdateEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Set DBIG parameters
+   *
+   * @param dbig_params DBIG parameters
+   */
+  virtual void SetDbigParameters(struct iso_manager::dbig_create_params dbig_params) const;
+
+  /**
+   * Creates the Duplex Broadcast Isochronous Group
+   *
+   * @param dbig_params DBIG parameters
+   */
+  virtual void CreateDbig(struct iso_manager::dbig_create_params dbig_params);
 
   /**
    * Return the current number of ISO channels

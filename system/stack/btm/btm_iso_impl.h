@@ -34,6 +34,7 @@
 #include "main/shim/entry.h"
 #include "main/shim/hci_layer.h"
 #include "osi/include/allocator.h"
+#include "osi/include/properties.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_log_history.h"
@@ -109,6 +110,11 @@ struct iso_impl {
   void handle_register_big_callbacks(BigCallbacks* callbacks) {
     log::assert_that(callbacks != nullptr, "Invalid BIG callbacks");
     big_callbacks_ = callbacks;
+  }
+
+  void handle_register_dbig_callbacks(DbigCallbacks* callbacks) {
+    log::assert_that(callbacks != nullptr, "Invalid DBIG callbacks");
+    dbig_callbacks_ = callbacks;
   }
 
   void handle_register_vsc_callback(VscCallback* callback) {
@@ -737,7 +743,11 @@ struct iso_impl {
       }
     }
 
-    big_callbacks_->OnBigEvent(kIsoEventBigOnCreateCmpl, &evt);
+    if (evt.status == HCI_SUCCESS) {
+      big_callbacks_->OnBigEvent(kIsoEventBigOnCreateCmpl, &evt);
+    } else {
+      big_callbacks_->OnBigEvent(kIsoEventBigOnCreateFail, &evt);
+    }
 
     {
       const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
@@ -768,7 +778,7 @@ struct iso_impl {
     }
 
     log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
-    big_callbacks_->OnBigEvent(kIsoEventBigOnTerminateCmpl, &evt);
+    big_callbacks_->OnBigEvent(kIsoEventBigTerminated, &evt);
 
     {
       const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
@@ -776,6 +786,79 @@ struct iso_impl {
         callbacks(false);
       }
     }
+  }
+
+  void process_big_sync_established_evt(uint8_t len, uint8_t* data) {
+    iso_manager::big_sync_established_evt evt;
+
+    // Minimum without any BIS handles: 1(status) + 1(big_handle) + 2(sync_handle) + 3(lat) +
+    // 1(nse) + 1(bn) + 1(pto) + 1(irc) + 2(max_pdu) + 2(iso_interval) + 1(num_bis) = 16
+    log::assert_that(len >= 16, "Invalid BIG Sync Established packet length: {}", len);
+    log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
+
+    STREAM_TO_UINT8(evt.status, data);
+    STREAM_TO_UINT8(evt.big_handle, data);
+    STREAM_TO_UINT16(evt.sync_handle, data);
+
+    // 24-bit value on the wire
+    STREAM_TO_UINT24(evt.transport_latency_big, data);
+
+    STREAM_TO_UINT8(evt.nse, data);
+    STREAM_TO_UINT8(evt.bn, data);
+    STREAM_TO_UINT8(evt.pto, data);
+    STREAM_TO_UINT8(evt.irc, data);
+    STREAM_TO_UINT16(evt.max_pdu, data);
+    STREAM_TO_UINT16(evt.iso_interval, data);
+    STREAM_TO_UINT8(evt.num_bis, data);
+
+    const uint16_t expected_len = 16 + (evt.num_bis * sizeof(uint16_t));
+    log::assert_that(len == expected_len, "Invalid BIG Sync Established packet length: {} (num_bis {})",
+                     len, evt.num_bis);
+
+    evt.bis_handles.reserve(evt.num_bis);
+    for (uint8_t i = 0; i < evt.num_bis; i++) {
+      uint16_t h;
+      STREAM_TO_UINT16(h, data);
+      evt.bis_handles.push_back(h);
+      // Track BIS handles as broadcast ISO connections
+      if (evt.status == HCI_SUCCESS) {
+        auto bis = std::unique_ptr<iso_bis>(new iso_bis());
+        bis->big_handle = evt.big_handle;
+        bis->sdu_itv = 0;  // unknown here; data path may still be set later
+        bis->sync_info = {.tx_seq_nb = 0, .rx_seq_nb = 0};
+        bis->used_credits = 0;
+        bis->state_flags = kStateFlagIsBroadcast;
+        conn_hdl_to_bis_map_[h] = std::move(bis);
+      }
+    }
+
+    if (evt.status == HCI_SUCCESS) {
+      big_callbacks_->OnBigEvent(iso_manager::kIsoEventBigSyncEstablished, &evt);
+    } else {
+      big_callbacks_->OnBigEvent(iso_manager::kIsoEventBigSyncFail, &evt);
+    }
+  }
+
+  void process_big_sync_lost_evt(uint8_t len, uint8_t* data) {
+    iso_manager::big_sync_lost_evt evt;
+
+    log::assert_that(len == 2, "Invalid BIG Sync Lost packet length: {}", len);
+    log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
+
+    STREAM_TO_UINT8(evt.big_handle, data);
+    STREAM_TO_UINT8(evt.reason, data);
+
+    // Remove BIS handles for this BIG from map
+    auto bis_it = conn_hdl_to_bis_map_.cbegin();
+    while (bis_it != conn_hdl_to_bis_map_.cend()) {
+      if (bis_it->second->big_handle == evt.big_handle) {
+        bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+      } else {
+        ++bis_it;
+      }
+    }
+
+    big_callbacks_->OnBigEvent(iso_manager::kIsoEventBigSyncLost, &evt);
   }
 
   void create_big(uint8_t big_id, struct big_create_params big_params) {
@@ -787,11 +870,40 @@ struct iso_impl {
       big_params.enc_code = {0};
     }
 
+    // Apply default values from tBAP_BA_BIG_PARAMS if not set
+    if (big_params.sdu_itv == 0) {
+      big_params.sdu_itv = 10000;  // Default SDU interval
+    }
+    if (big_params.max_sdu_size == 0) {
+      big_params.max_sdu_size = 100;  // Default max SDU size
+    }
+    if (big_params.max_transport_latency == 0) {
+      big_params.max_transport_latency = 10;  // Default max transport latency
+    }
+    if (big_params.rtn == 0) {
+      big_params.rtn = 2;  // Default RTN
+    }
+    if (big_params.phy == 0) {
+      big_params.phy = 2;  // Default PHY (LE 2M)
+    }
+    if (big_params.packing == 0xFF) {  // Use 0xFF as uninitialized value
+      big_params.packing = 1;  // Default packing (Interleaved)
+    }
+    if (big_params.framing == 0xFF) {  // Use 0xFF as uninitialized value
+      big_params.framing = 0;  // Default framing (Unframed)
+    }
+
     last_big_create_req_sdu_itv_ = big_params.sdu_itv;
     btsnd_hcic_create_big(big_id, big_params.adv_handle, big_params.num_bis, big_params.sdu_itv,
                           big_params.max_sdu_size, big_params.max_transport_latency, big_params.rtn,
                           big_params.phy, big_params.packing, big_params.framing, big_params.enc,
                           big_params.enc_code);
+    
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "BIG Create",
+                   std::format("big_id:0x{:02x}, sdu_itv:{}, max_sdu:{}, latency:{}, rtn:{}, phy:{}, packing:{}, framing:{}",
+                               big_id, big_params.sdu_itv, big_params.max_sdu_size, 
+                               big_params.max_transport_latency, big_params.rtn, big_params.phy,
+                               big_params.packing, big_params.framing));
   }
 
   void terminate_big(uint8_t big_id, uint8_t reason) {
@@ -815,10 +927,10 @@ struct iso_impl {
         /* Not supported */
         break;
       case HCI_BLE_BIG_SYNC_EST_EVT:
-        /* Not supported */
+        process_big_sync_established_evt(packet_len, packet);
         break;
       case HCI_BLE_BIG_SYNC_LOST_EVT:
-        /* Not supported */
+        process_big_sync_lost_evt(packet_len, packet);
         break;
       default:
         log::error("Unhandled event code {}", code);
@@ -829,6 +941,87 @@ struct iso_impl {
       uint16_t delay, uint64_t bdAddr) {
     if (vsc_callback_ == nullptr) return;
     vsc_callback_->OnVscEvent(delay, mode, bdAddr);
+  }
+
+  void on_set_dbig_parameters_cmd_complete(uint8_t* stream, uint16_t len) {
+    // Some implementations return (status, sub_opcode, dbig_handle). Keep it flexible.
+    log::assert_that(len >= 2, "Invalid DBIG cmd complete length: {}", len);
+
+    uint8_t status = 0xFF;
+    uint8_t sub_opcode = 0xFF;
+    uint8_t dbig_handle = 0xFF;
+
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(sub_opcode, stream);
+    if (len >= 3) {
+      STREAM_TO_UINT8(dbig_handle, stream);
+    }
+
+    BTM_LogHistory(
+            kBtmLogTag, RawAddress::kEmpty, "DBIG Params complete",
+            std::format("status:{}, sub_opcode:0x{:02x}, dbig_handle:0x{:02x}",
+                        hci_status_code_text((tHCI_STATUS)(status)), sub_opcode, dbig_handle));
+
+    // Forward cmd-complete as an ISO Manager DBIG event (similar in spirit to BIG create cmpl)
+    if (dbig_callbacks_ != nullptr) {
+      dbig_create_cmpl_evt evt = {
+              .status = status,
+              .sub_opcode = sub_opcode,
+              .dbig_handle = dbig_handle,
+      };
+      dbig_callbacks_->OnDbigEvent(kIsoEventDbigCreateCmpl, &evt);
+    }
+  }
+
+  void set_dbig_parameters(struct dbig_create_params dbig_params) {
+    // Gate DBIG HCI command based on duplex property.
+    // If duplex is disabled, we treat it as "DBIG configured" and immediately continue.
+    const bool is_duplex =
+            osi_property_get_bool("persist.vendor.service.bt.dbig.duplex", false);
+    if (!is_duplex) {
+      log::info("DBIG duplex disabled; skipping SetDbigParameters. dbig_handle=0x{:02x}",
+                dbig_params.dbig_handle);
+      return;
+    }
+
+    // HCI VS cmd: HCI_VS_LE_SET_DBIG_PARAMETERS
+    // NOTE: btsnd_hcic_ble_create_dbig takes a Repeating Callback signature.
+    btsnd_hcic_ble_create_dbig(
+            dbig_params.dbig_handle, dbig_params.dbig_feature_set, 
+            dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
+            dbig_params.bis_control_event_interval, dbig_params.send_exit,
+            dbig_params.pgp_timeout, dbig_params.pgo_timeout, 
+            dbig_params.sgo_timeout, dbig_params.tx_power,
+            base::BindRepeating(&iso_impl::on_set_dbig_parameters_cmd_complete,
+                                weak_factory_.GetWeakPtr()));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Params set",
+                   std::format("dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
+                               "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, tx_power:{}",
+                               dbig_params.dbig_handle, dbig_params.dbig_feature_set, 
+                               dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
+                               dbig_params.bis_control_event_interval, dbig_params.send_exit,
+                               dbig_params.pgp_timeout, dbig_params.pgo_timeout, 
+                               dbig_params.sgo_timeout, dbig_params.tx_power));
+  }
+
+  void on_dbig_update_event(uint8_t* stream, uint16_t len) {
+    dbig_update_evt evt;
+
+    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    log::assert_that(len >= 5, "Invalid DBIG packet length: {}", len);
+
+    STREAM_TO_UINT8(evt.status, stream);
+    STREAM_TO_UINT8(evt.big_handle, stream);
+    STREAM_TO_UINT8(evt.bis_state, stream);
+    STREAM_TO_UINT8(evt.timing_source, stream);
+    STREAM_TO_UINT8(evt.local_bis_id, stream);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Update event",
+                   std::format("big_handle:0x{:02x}, status:{}, bis_state:{}, timing_source:{}, local_bis_id:{}",
+                               evt.big_handle, evt.status, evt.bis_state, evt.timing_source, evt.local_bis_id));
+
+    dbig_callbacks_->OnDbigEvent(kIsoEventDbigUpdate, &evt);
   }
 
   void handle_iso_data(BT_HDR* p_msg) {
@@ -973,6 +1166,8 @@ struct iso_impl {
   CigCallbacks* cig_callbacks_ = nullptr;
   VscCallback* vsc_callback_ = nullptr;
   BigCallbacks* big_callbacks_ = nullptr;
+  DbigCallbacks* dbig_callbacks_ = nullptr;
+
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
   base::WeakPtrFactory<iso_impl> weak_factory_{this};

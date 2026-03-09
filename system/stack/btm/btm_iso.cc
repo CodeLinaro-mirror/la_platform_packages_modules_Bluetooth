@@ -23,6 +23,7 @@
 
 using bluetooth::hci::iso_manager::BigCallbacks;
 using bluetooth::hci::iso_manager::CigCallbacks;
+using bluetooth::hci::iso_manager::DbigCallbacks;
 using bluetooth::hci::iso_manager::iso_impl;
 using bluetooth::hci::iso_manager::VscCallback;
 
@@ -70,6 +71,12 @@ void IsoManager::RegisterBigCallbacks(BigCallbacks* callbacks) const {
 
 void IsoManager::RegisterVscCallback(VscCallback* callback) const {
   pimpl_->iso_impl_->handle_register_vsc_callback(callback);
+}
+
+void IsoManager::RegisterDbigCallbacks(iso_manager::DbigCallbacks* callbacks) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->handle_register_dbig_callbacks(callbacks);
+  }
 }
 
 void IsoManager::RegisterOnIsoTrafficActiveCallback(void callback(bool)) const {
@@ -152,6 +159,12 @@ void IsoManager::TerminateBig(uint8_t big_id, uint8_t reason) {
   }
 }
 
+void IsoManager::CreateDbig(struct iso_manager::dbig_create_params dbig_params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->set_dbig_parameters(dbig_params);
+  }
+}
+
 void IsoManager::HandleIsoData(void* p_msg) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->handle_iso_data(static_cast<BT_HDR*>(p_msg));
@@ -177,9 +190,21 @@ void IsoManager::HandleHciEvent(uint8_t sub_code, uint8_t* params, uint16_t leng
 }
 
 void IsoManager::HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
-                                            uint64_t bdAddr) {
+                                           uint64_t bdAddr) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->on_vs_codec_settings_event(mode, delay, bdAddr);
+  }
+}
+
+void IsoManager::HandleDbigUpdateEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_dbig_update_event(params, length);
+  }
+}
+
+void IsoManager::SetDbigParameters(struct iso_manager::dbig_create_params dbig_params) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->set_dbig_parameters(dbig_params);
   }
 }
 

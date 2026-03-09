@@ -747,6 +747,9 @@ void btm_vendor_vse_cback(uint8_t vse_subcode, uint8_t evt_len, uint8_t* p) {
           break;
         case MSG_QBCE_QLE_CIG_LATENCY_CHANGED:
           break;
+        case MSG_QBCE_DBIG_UPDATE:
+          bluetooth::hci::IsoManager::GetInstance()->HandleDbigUpdateEvent(pp, evt_len - 1);
+          break;
         default:
           log::info(":: unknown msg type: {}", vse_msg_type);
           break;

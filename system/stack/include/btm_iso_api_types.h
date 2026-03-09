@@ -75,6 +75,17 @@ constexpr uint8_t kIsoEventCigOnRemoveCmpl = 0x02;
 
 constexpr uint8_t kIsoEventBigOnCreateCmpl = 0x00;
 constexpr uint8_t kIsoEventBigOnTerminateCmpl = 0x01;
+constexpr uint8_t kIsoEventBigSyncEstablished = 0x02;
+constexpr uint8_t kIsoEventBigSyncLost = 0x03;
+
+/* BIG Error/Failure events */
+constexpr uint8_t kIsoEventBigOnCreateFail = 0x04;
+constexpr uint8_t kIsoEventBigSyncFail = 0x05;
+constexpr uint8_t kIsoEventBigTerminated = 0x06;
+
+/* DBIG (Duplex Broadcast Information Group) event types */
+constexpr uint8_t kIsoEventDbigUpdate = 0x10;
+constexpr uint8_t kIsoEventDbigCreateCmpl = 0x11;
 
 struct cig_create_params {
   uint32_t sdu_itv_mtos;
@@ -151,6 +162,19 @@ struct big_create_params {
   std::array<uint8_t, 16> enc_code;
 };
 
+struct dbig_create_params {
+  uint8_t dbig_handle;
+  uint8_t dbig_feature_set;
+  uint8_t bis_detection_attempts;
+  uint8_t max_payload_dbig_control;
+  uint8_t bis_control_event_interval;
+  uint8_t send_exit;
+  uint8_t pgp_timeout;
+  uint8_t pgo_timeout;
+  uint8_t sgo_timeout;
+  uint8_t tx_power;
+};
+
 struct big_create_cmpl_evt {
   uint8_t status;
   uint8_t big_id;
@@ -171,6 +195,27 @@ struct big_terminate_cmpl_evt {
   uint8_t reason;
 };
 
+/* HCI LE BIG Sync Established meta event payload (Core v5.2+) */
+struct big_sync_established_evt {
+  uint8_t status;
+  uint8_t big_handle;
+  uint16_t sync_handle;
+  uint32_t transport_latency_big;  // 24-bit value from controller
+  uint8_t nse;
+  uint8_t bn;
+  uint8_t pto;
+  uint8_t irc;
+  uint16_t max_pdu;
+  uint16_t iso_interval;
+  uint8_t num_bis;
+  std::vector<uint16_t> bis_handles;
+};
+
+struct big_sync_lost_evt {
+  uint8_t big_handle;
+  uint8_t reason;
+};
+
 struct iso_data_path_params {
   uint8_t data_path_dir;
   uint8_t data_path_id;
@@ -179,6 +224,28 @@ struct iso_data_path_params {
   uint16_t codec_id_vendor;
   uint32_t controller_delay;
   std::vector<uint8_t> codec_conf;
+};
+
+/* DBIG (Duplex Broadcast Information Group) create complete event */
+struct dbig_create_cmpl_evt {
+  uint8_t status;
+  uint8_t sub_opcode;
+  uint8_t dbig_handle;
+};
+
+/* DBIG (Duplex Broadcast Information Group) update event */
+struct dbig_update_evt {
+  uint8_t status;
+  uint8_t big_handle;
+  uint8_t bis_state;
+  uint8_t timing_source;
+  uint8_t local_bis_id;
+};
+
+/* DBIG callbacks interface */
+struct DbigCallbacks {
+  virtual ~DbigCallbacks() = default;
+  virtual void OnDbigEvent(uint8_t event, void* data) = 0;
 };
 
 }  // namespace iso_manager
