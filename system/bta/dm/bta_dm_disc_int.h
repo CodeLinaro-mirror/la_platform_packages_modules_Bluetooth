@@ -115,6 +115,9 @@ typedef struct {
   tCONN_ID conn_id;
   alarm_t* gatt_close_timer;    /* GATT channel close delay timer */
   RawAddress pending_close_bda; /* pending GATT channel remote device address */
+    /* Fields to handle GATT client registration race condition */
+  bool gatt_registration_pending;
+  std::queue<RawAddress> pending_gatt_discoveries;    
 } tBTA_DM_SERVICE_DISCOVERY_CB;
 
 extern const uint32_t bta_service_id_to_btm_srv_id_lkup_tbl[];
