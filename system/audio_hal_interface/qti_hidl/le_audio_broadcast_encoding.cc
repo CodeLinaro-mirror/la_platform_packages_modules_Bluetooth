@@ -172,7 +172,7 @@ class LeAudioBroadcastTransport_2_1 : public IBluetoothTransportInstance_2_1 {
     BroadcastCallbacks& cb = (dir == DuplexDirection::TX) ? source_callbacks_ : sink_callbacks_;
     if (cb.on_suspend_) {
       if (cb.on_suspend_()) {
-        return BluetoothAudioCtrlAck::SUCCESS_FINISHED;
+        return BluetoothAudioCtrlAck::PENDING;
       }
     }
     return BluetoothAudioCtrlAck::PENDING;

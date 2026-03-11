@@ -60,6 +60,10 @@ public class BroadcasterViewModel extends AndroidViewModel {
         return mBluetooth.stopBroadcast(broadcastId);
     }
 
+    public boolean stopEnhancedBroadcast(int broadcastId) {
+        return mBluetooth.stopEnhancedBroadcast(broadcastId);
+    }
+
     public boolean updateBroadcast(int broadcastId, BluetoothLeBroadcastSettings settings) {
         return mBluetooth.updateBroadcast(broadcastId, settings);
     }

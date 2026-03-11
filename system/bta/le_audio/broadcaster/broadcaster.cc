@@ -1386,7 +1386,7 @@ private:
         case BroadcastStateMachine::State::STREAMING:
           if (data != nullptr && instance->is_suspended_by_audio_) {
             log::info("RX teardown complete, sending ACK");
-            instance->le_audio_source_hal_client_->ConfirmSuspendRequest();
+            instance->le_audio_sink_hal_client_->ConfirmSuspendRequest();
             instance->is_suspended_by_audio_ = false;
             return;
           }
@@ -1776,7 +1776,13 @@ private:
         return;
       }
 
-      instance->le_audio_sink_hal_client_->ConfirmSuspendRequest();
+      if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
+        instance->is_suspended_by_audio_ = true;
+        instance->UpdateAudioActiveStateInPublicAnnouncement();
+        instance->setBroadcastTimers();
+      } else {
+        instance->le_audio_sink_hal_client_->ConfirmSuspendRequest();
+      }
     }
 
     virtual void OnAudioResume(void) override {

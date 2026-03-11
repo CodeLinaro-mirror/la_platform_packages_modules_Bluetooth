@@ -51,13 +51,8 @@ static constexpr uint8_t kIsoHeaderWithoutTsLen = 8;
 static constexpr uint8_t kStateFlagsNone = 0x00;
 static constexpr uint8_t kStateFlagIsConnecting = 0x01;
 static constexpr uint8_t kStateFlagIsConnected = 0x02;
-static constexpr uint8_t kStateFlagHasDataPathSet = 0x04;
-/* Tracks TX (input) data path independently from kStateFlagHasDataPathSet.
- * Used for enhanced broadcast sink where TX and RX data paths are set up
- * independently on the same BIS connection handle.  kStateFlagHasDataPathSet
- * is cleared when ANY direction's path is removed; this flag ensures TX path
- * removal can still proceed after RX path removal has cleared the shared flag. */
-static constexpr uint8_t kStateFlagHasTxDataPathSet = 0x08;
+static constexpr uint8_t kStateFlagHasDataPathSet       = 0x04;  // INPUT data path set
+static constexpr uint8_t kStateFlagHasOutputDataPathSet = 0x08;  // OUTPUT data path set (duplex RX)
 static constexpr uint8_t kStateFlagIsBroadcast = 0x10;
 static constexpr uint8_t kStateFlagIsCancelled = 0x20;
 static constexpr uint8_t kStateFlagIsBroadcastSync = 0x40;
@@ -383,15 +378,12 @@ struct iso_impl {
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
     if (status == HCI_SUCCESS) {
-      iso->state_flags |= kStateFlagHasDataPathSet;
-      /* For enhanced broadcast sink (kStateFlagIsBroadcastSync), TX and RX
-       * data paths are set up independently on the same BIS connection handle.
-       * Track the TX path with a separate flag so that RX path removal does
-       * not prevent subsequent TX path removal.  This guard ensures no impact
-       * on CIS, BIG source, or standard broadcast sink use cases. */
-      if ((iso->state_flags & kStateFlagIsBroadcastSync) &&
-          (data_path_dir == kIsoDataPathDirectionIn)) {
-        iso->state_flags |= kStateFlagHasTxDataPathSet;
+      // Track INPUT and OUTPUT data paths with separate flags so that
+      // removing one does not incorrectly clear the other (duplex use-case).
+      if (data_path_dir == kIsoDataPathDirectionOut) {
+        iso->state_flags |= kStateFlagHasOutputDataPathSet;
+      } else {
+        iso->state_flags |= kStateFlagHasDataPathSet;
       }
     }
     if (iso->state_flags & kStateFlagIsBroadcastSync) {
@@ -429,7 +421,8 @@ struct iso_impl {
                                path_params.codec_id_format));
   }
 
-  void on_remove_iso_data_path(uint8_t* stream, uint16_t len) {
+  // data_path_dir is bound at call site so we know which flag to clear.
+  void on_remove_iso_data_path(uint8_t data_path_dir, uint8_t* stream, uint16_t len) {
     uint8_t status;
     uint16_t conn_handle;
 
@@ -455,15 +448,13 @@ struct iso_impl {
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
     if (status == HCI_SUCCESS) {
-      iso->state_flags &= ~kStateFlagHasDataPathSet;
-      /* Enhanced broadcast sink only: if TX path is still active
-       * (kStateFlagHasTxDataPathSet), re-set the shared kStateFlagHasDataPathSet
-       * flag so that subsequent TX path removal does not hit the
-       * "Data path not set" assertion.  Guarded by kStateFlagIsBroadcastSync
-       * to avoid any impact on CIS, BIG source, or standard broadcast sink. */
-      if ((iso->state_flags & kStateFlagIsBroadcastSync) &&
-          (iso->state_flags & kStateFlagHasTxDataPathSet)) {
-        iso->state_flags |= kStateFlagHasDataPathSet;
+      // Clear only the flag that corresponds to the direction being removed.
+      // Clearing kStateFlagHasDataPathSet (INPUT) when only the OUTPUT path
+      // was removed caused a crash when the INPUT path was later torn down.
+      if (data_path_dir == kIsoDataPathDirectionOut) {
+        iso->state_flags &= ~kStateFlagHasOutputDataPathSet;
+      } else {
+        iso->state_flags &= ~kStateFlagHasDataPathSet;
       }
     }
 
@@ -482,31 +473,19 @@ struct iso_impl {
   void remove_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir) {
     iso_base* iso = GetIsoIfKnown(iso_handle);
     log::assert_that(iso != nullptr, "No such iso connection: 0x{:x}", iso_handle);
-    /* For enhanced broadcast sink (kStateFlagIsBroadcastSync), TX path removal
-     * may arrive after RX path removal has cleared kStateFlagHasDataPathSet.
-     * In that case, accept kStateFlagHasTxDataPathSet as evidence that the TX
-     * data path was set up and re-set the shared flag so the HCI command
-     * proceeds correctly.  Guarded by kStateFlagIsBroadcastSync to avoid any
-     * impact on CIS, BIG source, or standard broadcast sink use cases. */
-    bool has_path = (iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet;
-    if (!has_path &&
-        (iso->state_flags & kStateFlagIsBroadcastSync) &&
-        (data_path_dir == kIsoDataPathDirectionIn)) {
-      has_path = (iso->state_flags & kStateFlagHasTxDataPathSet) == kStateFlagHasTxDataPathSet;
-      if (has_path) {
-        iso->state_flags |= kStateFlagHasDataPathSet;
-      }
-    }
-    log::assert_that(has_path, "Data path not set");
-    /* Clear TX-specific flag when TX path is being removed (enhanced sink only). */
-    if ((iso->state_flags & kStateFlagIsBroadcastSync) &&
-        (data_path_dir == kIsoDataPathDirectionIn)) {
-      iso->state_flags &= ~kStateFlagHasTxDataPathSet;
-    }
+    // Check the flag that corresponds to the direction being removed.
+    // For OUTPUT (RX duplex teardown) check kStateFlagHasOutputDataPathSet;
+    // for INPUT (TX teardown) check kStateFlagHasDataPathSet.
+    uint8_t required_flag = (data_path_dir == kIsoDataPathDirectionOut)
+                                    ? kStateFlagHasOutputDataPathSet
+                                    : kStateFlagHasDataPathSet;
+    log::assert_that((iso->state_flags & required_flag) == required_flag,
+                     "Data path not set");
 
     btsnd_hcic_remove_iso_data_path(
             iso_handle, data_path_dir,
-            base::BindOnce(&iso_impl::on_remove_iso_data_path, weak_factory_.GetWeakPtr()));
+            base::BindOnce(&iso_impl::on_remove_iso_data_path, weak_factory_.GetWeakPtr(),
+                           data_path_dir));
 
     BTM_LogHistory(kBtmLogTag, cis_hdl_to_addr[iso_handle], "Remove data path",
                    std::format("handle:0x{:04x}, dir:0x{:02x}", iso_handle, data_path_dir));
@@ -836,7 +815,12 @@ struct iso_impl {
     }
 
     log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
-    big_callbacks_->OnBigEvent(kIsoEventBigTerminated, &evt);
+    // Use kIsoEventBigOnTerminateCmpl (0x01) so broadcaster.cc::OnBigEvent
+    // routes this to HandleHciEvent(HCI_BLE_TERM_BIG_CPL_EVT) → state machine
+    // transitions DISABLING→CONFIGURED → ConfirmSuspendRequest() (TX ACK).
+    // kIsoEventBigTerminated (0x06) was not handled by broadcaster.cc and
+    // caused the TX suspend ACK to never be sent.
+    big_callbacks_->OnBigEvent(kIsoEventBigOnTerminateCmpl, &evt);
 
     {
       const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);

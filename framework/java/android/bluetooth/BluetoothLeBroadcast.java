@@ -680,6 +680,44 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Stop enhanced broadcasting.
+     *
+     * <p>This method provides the same functionality as {@link #stopBroadcast(int)} but is named
+     * for consistency with {@link #startEnhancedBroadcast(BluetoothLeBroadcastSettings, float)}.
+     * The stop operation is identical regardless of whether the broadcast was started as regular
+     * or enhanced.
+     *
+     * <p>On success, {@link Callback#onBroadcastStopped(int, int)} will be invoked with reason code
+     * {@link BluetoothStatusCodes#REASON_LOCAL_APP_REQUEST} and the <var>broadcastId</var> On
+     * failure, {@link Callback#onBroadcastStopFailed(int)} will be invoked with reason code
+     *
+     * @param broadcastId as defined by the Basic Audio Profile
+     * @throws IllegalStateException if callback was not registered
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void stopEnhancedBroadcast(int broadcastId) {
+        if (mCallbackExecutorMap.isEmpty()) {
+            throw new IllegalStateException("No callback was ever registered");
+        }
+        if (DBG) log("disableEnhancedBroadcast");
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.stopEnhancedBroadcast(broadcastId, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+    }
+
+    /**
      * Return true if audio is being broadcasted on the Broadcast Source as identified by the
      * <var>broadcastId</var>
      *

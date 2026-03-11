@@ -1651,6 +1651,12 @@ public class BluetoothProxy {
         return true;
     }
 
+    public boolean stopEnhancedBroadcast(int broadcastId) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.stopEnhancedBroadcast(broadcastId);
+        return true;
+    }
+
     public List<BluetoothLeBroadcastMetadata> getAllLocalBroadcasts() {
         if (mBluetoothLeBroadcast == null) return Collections.emptyList();
         return mBluetoothLeBroadcast.getAllBroadcastMetadata();

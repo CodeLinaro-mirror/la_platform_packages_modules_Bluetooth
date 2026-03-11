@@ -427,9 +427,15 @@ private:
       adv_params.scan_request_notification_enable = 0;
       adv_params.own_address_type = kBroadcastAdvertisingType;
 
-      periodic_params.max_interval = BroadcastStateMachine::kPaIntervalMax;
-      periodic_params.min_interval = BroadcastStateMachine::kPaIntervalMin;
-      periodic_params.periodic_advertising_properties = 0;
+      if (sm_config_.broadcast_mode == BroadcastMode::DUPLEX) {
+        periodic_params.max_interval = BroadcastStateMachine::kPaIntervalDuplex;
+        periodic_params.min_interval = BroadcastStateMachine::kPaIntervalDuplex;
+        periodic_params.periodic_advertising_properties = 0x40;  // Bit 6: Include TxPower
+      } else {
+        periodic_params.max_interval = BroadcastStateMachine::kPaIntervalMax;
+        periodic_params.min_interval = BroadcastStateMachine::kPaIntervalMin;
+        periodic_params.periodic_advertising_properties = 0;
+      }
       periodic_params.enable = true;
 
       /* Status and timeout callbacks are handled by OnAdvertisingSetStarted()

@@ -244,6 +244,7 @@ public class LeAudioService extends ProfileService {
     boolean mIsSinkStreamMonitorModeEnabled = false;
     boolean mIsBroadcastPausedFromOutside = false;
     boolean mHasFallback = false;
+    boolean mPendingEnhancedBroadcast = false;
     private byte[] mCachedArgs = null;
     private int mCachedOpcode = -1;
 
@@ -534,11 +535,13 @@ public class LeAudioService extends ProfileService {
             mState = LeAudioStackEvent.BROADCAST_STATE_STOPPED;
             mMetadata = null;
             mRequestedForDetails = false;
+            mIsEnhanced = false;
         }
 
         public Integer mState;
         public BluetoothLeBroadcastMetadata mMetadata;
         public Boolean mRequestedForDetails;
+        public Boolean mIsEnhanced;
     }
 
     private static class LeAudioBroadcastSessionStats {
@@ -776,6 +779,7 @@ public class LeAudioService extends ProfileService {
         clearCreateBroadcastTimeoutCallback();
 
         mHasFallback = false;
+        mPendingEnhancedBroadcast = false;
         removeActiveDevice(false);
 
         if (mTmapGattServer == null) {
@@ -1404,6 +1408,7 @@ public class LeAudioService extends ProfileService {
             }
         }
 
+        mPendingEnhancedBroadcast = false;
         mLeAudioBroadcasterNativeInterface
                 .get()
                 .createBroadcast(
@@ -1497,6 +1502,7 @@ public class LeAudioService extends ProfileService {
         int[] preferredQualityArray =
                 broadcastSettings.getSubgroupSettings().stream().mapToInt(
                                                    s -> s.getPreferredQuality()).toArray();
+        mPendingEnhancedBroadcast = true;
         mLeAudioBroadcasterNativeInterface
                 .get()
                 .createEnhancedBroadcast(
@@ -1680,7 +1686,15 @@ public class LeAudioService extends ProfileService {
             Log.e(TAG, "stopBroadcast: No valid descriptor for broadcastId: " + broadcastId);
             return;
         }
-        
+
+        // If duplex broadcast (Aurachat) is enabled, delegate to stopEnhancedBroadcast
+        // which additionally disables the achat_rx/tx audio parameters.
+        if (SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false)) {
+            Log.d(TAG, "stopBroadcast: Aurachat enabled, delegating to stopEnhancedBroadcast");
+            stopEnhancedBroadcast(broadcastId);
+            return;
+        }
+
         if (getLeadDeviceForTheGroup(mUnicastGroupIdDeactivatedForBroadcastTransition) == null) {
             Log.w(TAG, "stopBroadcast: No valid unicast device for group ID "
                     + mUnicastGroupIdDeactivatedForBroadcastTransition);
@@ -2660,9 +2674,12 @@ public class LeAudioService extends ProfileService {
             }
 
             for (AudioDeviceInfo deviceInfo : addedDevices) {
-                if(deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP){
-                      Log.d(TAG, "OnAudioDevicesadded received for A2DP device");
-                      handleA2dpAudioDeviceForAurachat(deviceInfo);
+                if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+                    Log.d(TAG, "OnAudioDevicesadded received for A2DP device");
+                    if (SystemProperties.getBoolean(
+                            "persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
+                        handleA2dpAudioDeviceForAurachat(deviceInfo);
+                    }
                 }
                 
                 if ((deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_HEADSET)
@@ -2759,8 +2776,27 @@ public class LeAudioService extends ProfileService {
                     getActiveGroupId() : mUnicastGroupIdDeactivatedForBroadcastTransition;
             volume = getAudioDeviceGroupVolume(groupId);
         }
-        mAudioManager.handleBluetoothActiveDeviceChanged(
-                newDevice, previousDevice, BluetoothProfileConnectionInfo.createA2dpInfo(suppressNoisyIntent, volume));
+
+        boolean isEnhanced = false;
+        Optional<Integer> activeBroadcastId = getFirstNotStoppedBroadcastId();
+        if (activeBroadcastId.isPresent()) {
+            LeAudioBroadcastDescriptor desc = mBroadcastDescriptors.get(activeBroadcastId.get());
+            if (desc != null) {
+                isEnhanced = desc.mIsEnhanced;
+            }
+        }
+
+        if (isEnhanced || mPendingEnhancedBroadcast) {
+            Log.d(TAG, "updateBroadcastActiveDevice: isEnhanced: " + isEnhanced
+                    + ", mPendingEnhancedBroadcast: " + mPendingEnhancedBroadcast);
+            mAudioManager.handleBluetoothActiveDeviceChanged(
+                    newDevice, previousDevice,
+                    BluetoothProfileConnectionInfo.createA2dpInfo(suppressNoisyIntent, volume));
+        } else {
+            mAudioManager.handleBluetoothActiveDeviceChanged(
+                    newDevice, previousDevice,
+                    getBroadcastProfile(suppressNoisyIntent, volume));
+        }
     }
 
     /**
@@ -4447,6 +4483,17 @@ public class LeAudioService extends ProfileService {
             if (success) {
                 Log.d(TAG, "Broadcast broadcastId: " + broadcastId + " created.");
                 mBroadcastDescriptors.put(broadcastId, new LeAudioBroadcastDescriptor());
+                if (SystemProperties.getBoolean(
+                        "persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
+                    if(mPendingEnhancedBroadcast){
+                        Log.d(TAG, "Enhanced Broadcast is created with broadcastId: " + broadcastId);
+                    }
+                    else{
+                        Log.d(TAG, "Normal Broadcast is created with broadcastId: " + broadcastId);
+                    }
+                    mBroadcastDescriptors.get(broadcastId).mIsEnhanced = mPendingEnhancedBroadcast;
+                }
+                mPendingEnhancedBroadcast = false;
                 mHandler.post(
                         () ->
                                 notifyBroadcastStarted(
@@ -4489,6 +4536,7 @@ public class LeAudioService extends ProfileService {
                     updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, false);
                 }
 
+                mPendingEnhancedBroadcast = false;
                 mHandler.post(() -> notifyBroadcastStartFailed(BluetoothStatusCodes.ERROR_UNKNOWN));
                 logBroadcastSessionStatsWithStatus(
                         INVALID_BROADCAST_ID,
@@ -4691,7 +4739,7 @@ public class LeAudioService extends ProfileService {
                     mAwaitingBroadcastCreateResponse = false;
                     mCreateBroadcastQueue.clear();
                 }
-
+                mPendingEnhancedBroadcast = false;
                 return;
             }
 
@@ -6551,11 +6599,13 @@ public class LeAudioService extends ProfileService {
                     return;
                 }
 
+                mPendingEnhancedBroadcast = false;
                 mHandler.post(() -> notifyBroadcastStartFailed(BluetoothStatusCodes.ERROR_TIMEOUT));
             } else {
                 Log.w(TAG, "Failed to start Broadcast in time: " + mBroadcastId);
 
                 mCreateBroadcastTimeoutEvent = null;
+                mPendingEnhancedBroadcast = false;
 
                 if (getLeAudioService() == null) {
                     Log.e(TAG, "CreateBroadcastTimeoutEvent: No LE Audio service");
