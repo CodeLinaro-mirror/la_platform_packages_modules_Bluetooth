@@ -30,6 +30,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
+import java.util.Arrays;
+import java.util.List;
+import java.util.ArrayList;
 import android.annotation.SuppressLint;
 
 /**
@@ -120,6 +123,15 @@ public final class BluetoothQualityReport implements Parcelable {
     @SystemApi
     @SuppressLint("UnflaggedApi")
     public static final int QUALITY_REPORT_ID_VS_MISC_MONITOR   = 0x02;
+    /**
+     * Quality report ID: Vendor Specific DBIG Monitor.
+     *
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int QUALITY_REPORT_ID_VS_DBIG_MONITOR = 0x04;
+
 
 
     /** @hide */
@@ -134,7 +146,8 @@ public final class BluetoothQualityReport implements Parcelable {
                 QUALITY_REPORT_ID_CONN_FAIL,
                 QUALITY_REPORT_ID_VENDOR_SPECIFIC,
                 QUALITY_REPORT_ID_VS_DISC_MONITOR,
-                QUALITY_REPORT_ID_VS_MISC_MONITOR
+                QUALITY_REPORT_ID_VS_MISC_MONITOR,
+                QUALITY_REPORT_ID_VS_DBIG_MONITOR
             })
     public @interface QualityReportId {}
 
@@ -154,6 +167,7 @@ public final class BluetoothQualityReport implements Parcelable {
     private BqrConnectFail mBqrConnectFail;
     private BqrVsDiscoveryMonitoring mBqrVsDiscMonitoring;
     private BqrVsMiscMonitoring mBqrVsMiscMonitoring;
+    private BqrVsDbigMonitoring mBqrVsDbigMonitoring;
 
     enum PacketType {
         INVALID,
@@ -347,6 +361,8 @@ public final class BluetoothQualityReport implements Parcelable {
                 mBqrVsDiscMonitoring = new BqrVsDiscoveryMonitoring(rawData, 2);
             } else if (vsId == QUALITY_REPORT_ID_VS_MISC_MONITOR) {
                 mBqrVsMiscMonitoring = new BqrVsMiscMonitoring(rawData, 2);
+            } else if (vsId == QUALITY_REPORT_ID_VS_DBIG_MONITOR) {
+                mBqrVsDbigMonitoring = new BqrVsDbigMonitoring(rawData, 2);
             }
         } else {
             throw new IllegalArgumentException(TAG + ": unkown quality report id:" + id);
@@ -384,6 +400,8 @@ public final class BluetoothQualityReport implements Parcelable {
                 mBqrVsDiscMonitoring = new BqrVsDiscoveryMonitoring(in);
             } else if (vsId == QUALITY_REPORT_ID_VS_MISC_MONITOR) {
                 mBqrVsMiscMonitoring = new BqrVsMiscMonitoring(in);
+            } else if (vsId == QUALITY_REPORT_ID_VS_DBIG_MONITOR) {
+                mBqrVsDbigMonitoring = new BqrVsDbigMonitoring(in);
             }
         }
     }
@@ -554,6 +572,8 @@ public final class BluetoothQualityReport implements Parcelable {
                     return mBqrVsDiscMonitoring;
                 } else if (vsId == QUALITY_REPORT_ID_VS_MISC_MONITOR) {
                     return mBqrVsMiscMonitoring;
+                }  else if (vsId == QUALITY_REPORT_ID_VS_DBIG_MONITOR) { // ADD THIS BLOCK
+                    return mBqrVsDbigMonitoring;
                 } else {
                     return null;
                 }
@@ -623,6 +643,8 @@ public final class BluetoothQualityReport implements Parcelable {
                 mBqrVsDiscMonitoring.writeToParcel(out, flags);
             } else if (vsId == QUALITY_REPORT_ID_VS_MISC_MONITOR) {
                 mBqrVsMiscMonitoring.writeToParcel(out, flags);
+            } else if (vsId == QUALITY_REPORT_ID_VS_DBIG_MONITOR) {
+                mBqrVsDbigMonitoring.writeToParcel(out, flags);
             }
         }
     }
@@ -674,6 +696,8 @@ public final class BluetoothQualityReport implements Parcelable {
                 str += mBqrVsDiscMonitoring + "\n}";
             } else if (vsId == QUALITY_REPORT_ID_VS_MISC_MONITOR) {
                 str += mBqrVsMiscMonitoring + "\n}";
+            } else if (vsId == QUALITY_REPORT_ID_VS_DBIG_MONITOR) {
+                str += mBqrVsDbigMonitoring + "\n}";
             }
         }
 
@@ -1034,6 +1058,8 @@ public final class BluetoothQualityReport implements Parcelable {
                     return "Discovery Monitor";
                 case QUALITY_REPORT_ID_VS_MISC_MONITOR:
                     return "Misc Monitor";
+                 case QUALITY_REPORT_ID_VS_DBIG_MONITOR:
+                    return "DBIG Monitor";
                 default:
                     return "INVALID";
             }
@@ -3054,6 +3080,557 @@ public final class BluetoothQualityReport implements Parcelable {
             return str;
         }
 
+    }
+
+    /**
+     * This class provides the System APIs to access the vendor specific part of DBIG monitor event.
+     *
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final class BqrVsDbigMonitoring implements Parcelable {
+        private static final String TAG = BluetoothQualityReport.TAG + ".BqrVsDbigMonitoring";
+
+        private int mRole;
+        private int mStreamNum;
+        private int mCurrEventCount;
+
+        private int mTxStreamNum;
+        private int mTxConnHandle;
+        private int mTxPowerLevel;
+
+        private int mRxStreamNum;
+        private ArrayList<RxStreamInfo> mRxStreams;
+
+        private int mPgoDirection;
+        @Nullable private PgoOtaControl mPgoOtaControl;
+        private int mPgoTxPowerLevel;
+
+        // SGO Parameters
+        private int mSgoDirection;
+        @Nullable private SgoOtaControl mSgoOtaControl;
+        private int mSgoRssi;
+        private int mSgoLastRxCtrlEventCount;
+
+        public static final class RxStreamInfo implements Parcelable {
+            private int mRxConnHandle;
+            private int mRssi;
+            private int mMicFailureCount;
+            private int mUnreceivedRxCount;
+
+            public RxStreamInfo(int connHandle, int rssi, int micFailure, int unreceivedRx) {
+                mRxConnHandle = connHandle;
+                mRssi = rssi;
+                mMicFailureCount = micFailure;
+                mUnreceivedRxCount = unreceivedRx;
+            }
+
+            private RxStreamInfo(Parcel in) {
+                mRxConnHandle = in.readInt();
+                mRssi = in.readInt();
+                mMicFailureCount = in.readInt();
+                mUnreceivedRxCount = in.readInt();
+            }
+
+            public int getRxConnHandle() { return mRxConnHandle; }
+            public int getRssi() { return mRssi; }
+            public int getMicFailureCount() { return mMicFailureCount; }
+            public int getUnreceivedRxCount() { return mUnreceivedRxCount; }
+
+            @Override
+            public void writeToParcel(@NonNull Parcel dest, int flags) {
+                dest.writeInt(mRxConnHandle);
+                dest.writeInt(mRssi);
+                dest.writeInt(mMicFailureCount);
+                dest.writeInt(mUnreceivedRxCount);
+            }
+
+            @Override
+            public int describeContents() {
+                return 0;
+            }
+
+            public static final @NonNull Parcelable.Creator<RxStreamInfo> CREATOR =
+                    new Parcelable.Creator<RxStreamInfo>() {
+                        public RxStreamInfo createFromParcel(Parcel in) {
+                            return new RxStreamInfo(in);
+                        }
+
+                        public RxStreamInfo[] newArray(int size) {
+                            return new RxStreamInfo[size];
+                        }
+                    };
+
+            @Override
+            public String toString() {
+                return "      RxStreamInfo: {\n"
+                        + "        mRxConnHandle: " + String.format("0x%04X", mRxConnHandle)
+                        + ", mRssi: " + mRssi
+                        + ", mMicFailureCount: " + mMicFailureCount
+                        + ", mUnreceivedRxCount: " + mUnreceivedRxCount
+                        + "\n      }";
+            }
+        }
+
+        public static final class PgoOtaControl implements Parcelable {
+            private int mDbigId;
+            private int mSgoId;
+            private int mStreamNum;
+            private int[] mStatusBis;
+
+            public PgoOtaControl(@NonNull ByteBuffer bqrBuf, int streamNum) {
+                mStreamNum = streamNum;
+                mStatusBis = new int[streamNum];
+                mDbigId = bqrBuf.getShort() & 0xFFFF;
+                mSgoId = bqrBuf.getShort() & 0xFFFF;
+
+                for (int i = 0; i < streamNum; i++) {
+                    mStatusBis[i] = bqrBuf.getShort() & 0xFFFF;
+                }
+            }
+
+            private PgoOtaControl(Parcel in) {
+                mDbigId = in.readInt();
+                mSgoId = in.readInt();
+                in.readIntArray(mStatusBis);
+            }
+
+            public int getDbigId() { return mDbigId; }
+            public boolean isDbigIndActive() { return (mDbigId & 0x01) == 0x01; }
+            public boolean isDbigNormalMode() { return ((mDbigId >> 1) & 0x01) == 0x01; }
+            public int getSgoId() { return mSgoId; }
+            public boolean isSgoDefined() { return (mSgoId & 0x01) == 0x01; }
+            public @NonNull int[] getStatusBis() { return Arrays.copyOf(mStatusBis, mStatusBis.length); }
+
+            @Override
+            public void writeToParcel(@NonNull Parcel dest, int flags) {
+                dest.writeInt(mDbigId);
+                dest.writeInt(mSgoId);
+                dest.writeIntArray(mStatusBis);
+            }
+
+            @Override
+            public int describeContents() { return 0; }
+
+            public static final @NonNull Parcelable.Creator<PgoOtaControl> CREATOR =
+                    new Parcelable.Creator<PgoOtaControl>() {
+                        public PgoOtaControl createFromParcel(Parcel in) {
+                            return new PgoOtaControl(in);
+                        }
+                        public PgoOtaControl[] newArray(int size) {
+                            return new PgoOtaControl[size];
+                        }
+                    };
+
+            @Override
+            public String toString() {
+                return "    PgoOtaControl: {\n"
+                        + "      mDbigId: " + String.format("0x%04X", mDbigId)
+                        + ", DBIG_IND bit0 (Active): " + isDbigIndActive()
+                        + ", DBIG_IND bit1 (DBIG normal mode): " + isDbigNormalMode()
+                        + ", mSgoId: " + String.format("0x%04X", mSgoId)
+                        + ", SGO_IND bit0 (SGO defined): " + isSgoDefined()
+                        + ", mStatusBis: " + Arrays.toString(mStatusBis)
+                        + "\n    }";
+            }
+        }
+
+        public static final class SgoOtaControl implements Parcelable {
+            private int mDbigId;
+            private int mSgoId;
+            private int mStreamNum;
+            private int[] mStatusBis;
+
+            public SgoOtaControl(@NonNull ByteBuffer bqrBuf, int streamNum) {
+                mStreamNum = streamNum;
+                mStatusBis = new int[streamNum];
+                mDbigId = bqrBuf.getShort() & 0xFFFF;
+                mSgoId = bqrBuf.getShort() & 0xFFFF;
+
+                for (int i = 0; i < streamNum; i++) {
+                    mStatusBis[i] = bqrBuf.getShort() & 0xFFFF;
+                }
+            }
+
+            private SgoOtaControl(Parcel in) {
+                mDbigId = in.readInt();
+                mSgoId = in.readInt();
+                in.readIntArray(mStatusBis);
+            }
+
+            public int getDbigId() { return mDbigId; }
+            public boolean isDbigIndActive() { return (mDbigId & 0x01) == 0x01; }
+            public boolean isDbigNormalMode() { return ((mDbigId >> 1) & 0x01) == 0x01; }
+            public int getSgoId() { return mSgoId; }
+            public boolean isSgoDefined() { return (mSgoId & 0x01) == 0x01; }
+            public @NonNull int[] getStatusBis() { return Arrays.copyOf(mStatusBis, mStatusBis.length); }
+
+            @Override
+            public void writeToParcel(@NonNull Parcel dest, int flags) {
+                dest.writeInt(mDbigId);
+                dest.writeInt(mSgoId);
+                dest.writeIntArray(mStatusBis);
+            }
+
+            @Override
+            public int describeContents() { return 0; }
+
+            public static final @NonNull Parcelable.Creator<SgoOtaControl> CREATOR =
+                    new Parcelable.Creator<SgoOtaControl>() {
+                        public SgoOtaControl createFromParcel(Parcel in) {
+                            return new SgoOtaControl(in);
+                        }
+                        public SgoOtaControl[] newArray(int size) {
+                            return new SgoOtaControl[size];
+                        }
+                    };
+
+            @Override
+            public String toString() {
+                return "    SgoOtaControl: {\n"
+                        + "      mDbigId: " + String.format("0x%04X", mDbigId)
+                        + ", DBIG_IND bit0 (Active): " + isDbigIndActive()
+                        + ", DBIG_IND bit1 (DBIG normal mode): " + isDbigNormalMode()
+                        + ", mSgoId: " + String.format("0x%04X", mSgoId)
+                        + ", SGO_IND bit0 (SGO defined): " + isSgoDefined()
+                        + ", mStatusBis: " + Arrays.toString(mStatusBis)
+                        + "\n    }";
+            }
+        }
+
+        private BqrVsDbigMonitoring(byte[] rawData, int offset) {
+            ByteBuffer bqrBuf = ByteBuffer.wrap(rawData, offset, rawData.length - offset).asReadOnlyBuffer();
+            bqrBuf.order(ByteOrder.LITTLE_ENDIAN);
+            Log.w(TAG, "Rdata" + (rawData.length - offset));
+            mRole = bqrBuf.get() & 0xFF;
+            mStreamNum = bqrBuf.get() & 0xFF;
+            mCurrEventCount = bqrBuf.getShort() & 0xFFFF;
+
+            mTxStreamNum = bqrBuf.get() & 0xFF;
+            if(mTxStreamNum > 0){
+                mTxConnHandle = bqrBuf.getShort() & 0xFFFF;
+                mTxPowerLevel = bqrBuf.get() & 0xFF;
+            } else {
+                mTxConnHandle = 0;
+                mTxPowerLevel = 0;
+            }
+
+            mRxStreamNum = bqrBuf.get() & 0xFF;
+            Log.w(TAG, "PGO Direction" + mRxStreamNum);
+
+            mRxStreams = new ArrayList<>(mRxStreamNum);
+            for (int i = 0; i < mRxStreamNum; i++) {
+                int rxConnHandle = bqrBuf.getShort() & 0xFFFF;
+                int rssi = bqrBuf.get();
+                int micFailure = bqrBuf.get();
+                int unreceivedRx = bqrBuf.getShort() & 0xFFFF;
+                mRxStreams.add(new RxStreamInfo(rxConnHandle, rssi, micFailure, unreceivedRx));
+            }
+
+            final int PGO_MIN_BLOCK_SIZE = 9;
+            if (bqrBuf.remaining() >= 1) {
+                mPgoDirection = bqrBuf.get() & 0xFF;
+                if (mPgoDirection != 0) {
+                    if (bqrBuf.remaining() >= PGO_MIN_BLOCK_SIZE) {
+                        mPgoOtaControl = new PgoOtaControl(bqrBuf, mStreamNum) ;
+                        if(mPgoDirection == 1) {
+                            mPgoTxPowerLevel = bqrBuf.get() & 0xFF;
+                        } else {
+                            mSgoRssi = bqrBuf.get();
+                            mSgoLastRxCtrlEventCount = bqrBuf.getShort() & 0xFFFF;
+                        }
+                    } else {
+                        Log.w(TAG, "PGO Direction non-zero, but insufficient bytes for PgoOtaControl/TxStat. Remaining: " + bqrBuf.remaining());
+                        mPgoOtaControl = null;
+                        mPgoTxPowerLevel = 0;
+                    }
+                } else {
+                    mPgoOtaControl = null;
+                    mPgoTxPowerLevel = 0;
+                }
+            } else {
+                mPgoDirection = 0;
+                mPgoOtaControl = null;
+                mPgoTxPowerLevel = 0;
+            }
+
+            final int SGO_MIN_BLOCK_SIZE = 11;
+            if (bqrBuf.remaining() >= 1) {
+                mSgoDirection = bqrBuf.get() & 0xFF;
+                if (mSgoDirection != 0) {
+                    if (bqrBuf.remaining() >= SGO_MIN_BLOCK_SIZE) {
+                        mSgoOtaControl = new SgoOtaControl(bqrBuf, mStreamNum);
+                        if(mSgoDirection == 1) {
+                            mPgoTxPowerLevel = bqrBuf.get() & 0xFF;
+                        } else {
+                            mSgoRssi = bqrBuf.get();
+                            mSgoLastRxCtrlEventCount = bqrBuf.getShort() & 0xFFFF;
+                        }
+                    } else {
+                        Log.w(TAG, "SGO Direction non-zero, but insufficient bytes for SgoOtaControl/RxStat. Remaining: " + bqrBuf.remaining());
+                        mSgoOtaControl = null;
+                        mSgoRssi = 0;
+                        mSgoLastRxCtrlEventCount = 0;
+                    }
+                } else {
+                    mSgoOtaControl = null;
+                    mSgoRssi = 0;
+                    mSgoLastRxCtrlEventCount = 0;
+                }
+            } else {
+                mSgoDirection = 0;
+                mSgoOtaControl = null;
+                mSgoRssi = 0;
+                mSgoLastRxCtrlEventCount = 0;
+            }
+        }
+
+        private BqrVsDbigMonitoring(Parcel in) {
+            mRole = in.readInt();
+            mStreamNum = in.readInt();
+            mCurrEventCount = in.readInt();
+
+            mTxStreamNum = in.readInt();
+            if(mTxStreamNum > 0) {
+                mTxConnHandle = in.readInt();
+                mTxPowerLevel = in.readInt();
+            } else {
+                mTxConnHandle = 0;
+                mTxPowerLevel = 0;
+            }
+
+            mRxStreamNum = in.readInt();
+            if(mRxStreamNum > 0){
+                mRxStreams = new ArrayList<>(mRxStreamNum);
+                in.readTypedList(mRxStreams, RxStreamInfo.CREATOR);
+            } else {
+                mRxStreams = new ArrayList<>();
+            }
+
+            mPgoDirection = in.readInt();
+            if (mPgoDirection != 0) {
+                mPgoOtaControl = in.readParcelable(PgoOtaControl.class.getClassLoader(), PgoOtaControl.class);
+                if(mPgoDirection == 1) {
+                    mPgoTxPowerLevel = in.readInt();
+                } else {
+                    mSgoRssi = in.readInt();
+                    mSgoLastRxCtrlEventCount = in.readInt();
+                }
+            } else {
+                mPgoOtaControl = null;
+                mPgoTxPowerLevel = 0;
+            }
+
+            mSgoDirection = in.readInt();
+            if (mSgoDirection != 0) {
+                mSgoOtaControl = in.readParcelable(SgoOtaControl.class.getClassLoader(), SgoOtaControl.class);
+                if(mSgoDirection == 1) {
+                    mPgoTxPowerLevel = in.readInt();
+                } else {
+                    mSgoRssi = in.readInt();
+                    mSgoLastRxCtrlEventCount = in.readInt();
+                }
+            } else {
+                mSgoOtaControl = null;
+                mSgoRssi = 0;
+                mSgoLastRxCtrlEventCount = 0;
+            }
+        }
+
+        public int getRole() {
+            return mRole;
+        }
+
+        public int getStreamNum() {
+            return mStreamNum;
+        }
+
+        public int getCurrEventCount() {
+            return mCurrEventCount;
+        }
+
+        public int getTxStreamNum() {
+            return mTxStreamNum;
+        }
+
+        public int getTxConnHandle() {
+            return mTxConnHandle;
+        }
+
+        public int getTxPowerLevel() {
+            return mTxPowerLevel;
+        }
+
+        public int getRxStreamNum() {
+            return mRxStreamNum;
+        }
+
+        public @NonNull List<RxStreamInfo> getRxStreams() {
+            return new ArrayList<>(mRxStreams);
+        }
+
+        public int getPgoDirection() {
+            return mPgoDirection;
+        }
+
+        public @Nullable PgoOtaControl getPgoOtaControl() {
+            return mPgoOtaControl;
+        }
+
+        public int getPgoTxPowerLevel() {
+            return mPgoTxPowerLevel;
+        }
+
+        public int getSgoDirection() {
+            return mSgoDirection;
+        }
+
+        public @Nullable SgoOtaControl getSgoOtaControl() {
+            return mSgoOtaControl;
+        }
+
+        public int getSgoRssi() {
+            return mSgoRssi;
+        }
+
+        public int getSgoLastRxCtrlEventCount() {
+            return mSgoLastRxCtrlEventCount;
+        }
+
+        @Override
+        public int describeContents() {
+            return 0;
+        }
+
+        @Override
+        public void writeToParcel(@NonNull Parcel dest, int flags) {
+            dest.writeInt(mRole);
+            dest.writeInt(mStreamNum);
+            dest.writeInt(mCurrEventCount);
+
+            dest.writeInt(mTxStreamNum);
+            if(mTxStreamNum > 0){
+                dest.writeInt(mTxConnHandle);
+                dest.writeInt(mTxPowerLevel);
+            }
+
+            dest.writeInt(mRxStreamNum);
+            if(mRxStreamNum > 0) {
+                dest.writeTypedList(mRxStreams);
+            }
+
+            dest.writeInt(mPgoDirection);
+            if (mPgoDirection != 0 && mPgoOtaControl != null) {
+                dest.writeParcelable(mPgoOtaControl, flags);
+                if(mPgoDirection == 1){
+                    dest.writeInt(mPgoTxPowerLevel);
+                } else {
+                    dest.writeInt(mSgoRssi);
+                    dest.writeInt(mSgoLastRxCtrlEventCount);
+                }
+            }
+
+            dest.writeInt(mSgoDirection);
+            if (mSgoDirection != 0 && mSgoOtaControl != null) {
+                dest.writeParcelable(mSgoOtaControl, flags);
+                if(mSgoDirection == 1){
+                    dest.writeInt(mPgoTxPowerLevel);
+                } else {
+                    dest.writeInt(mSgoRssi);
+                    dest.writeInt(mSgoLastRxCtrlEventCount);
+                }
+            }
+        }
+
+        public static final @NonNull Parcelable.Creator<BqrVsDbigMonitoring> CREATOR =
+                new Parcelable.Creator<BqrVsDbigMonitoring>() {
+                    public BqrVsDbigMonitoring createFromParcel(Parcel in) {
+                        return new BqrVsDbigMonitoring(in);
+                    }
+
+                    public BqrVsDbigMonitoring[] newArray(int size) {
+                        return new BqrVsDbigMonitoring[size];
+                    }
+                };
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("  BqrVsDbigMonitoring: {\n");
+            sb.append("    mRole: ").append(mRole).append("\n");
+            sb.append("    mStreamNum: ").append(mStreamNum).append("\n");
+            sb.append("    mCurrEventCount: ").append(String.format("0x%04X", mCurrEventCount)).append("\n");
+
+            sb.append("    mTxStreamNum: ").append(mTxStreamNum).append("\n");
+            if (mTxStreamNum > 0) {
+                sb.append("    TX Stream:\n");
+                sb.append("      mTxConnHandle: ").append(String.format("0x%04X", mTxConnHandle)).append("\n");
+                sb.append("      mTxPowerLevel: ").append(String.format("0x%02X", mTxPowerLevel)).append("\n");
+            }
+            sb.append("    mRxStreamNum: ").append(mRxStreamNum).append("\n");
+            if (mRxStreamNum > 0 && mRxStreams != null) {
+                sb.append("    RX Streams: [\n");
+                for (RxStreamInfo info : mRxStreams) {
+                    sb.append(info.toString().replaceAll("(?m)^", "  ")).append("\n");
+                }
+                sb.append("    ]\n");
+            } else if (mRxStreamNum == 0) {
+                sb.append("    RX Streams: []\n");
+            }
+
+            sb.append("    PGO Parameters: {\n");
+            sb.append("      mPgoDirection: ").append(mPgoDirection);
+            if (mPgoDirection != 0) {
+                    sb.append(" (").append(mPgoDirection == 0x01 ? "TX" : mPgoDirection == 0x02 ? "RX" :
+                    String.format("UNKNOWN_DIR_0x%02X", mPgoDirection)).append(")");
+                if (mPgoOtaControl != null) {
+                    sb.append("\n").append(mPgoOtaControl.toString().replaceAll("(?m)^", "  "));
+                } else {
+                    sb.append("\n      PgoOtaControl: {null} (Error: Direction non-zero but otaControl null)");
+                }
+                if(mPgoDirection == 1){
+                    sb.append("\n      TxStat: {\n");
+                    sb.append("        TxPowerLevel: ").append(String.format("0x%02X", mPgoTxPowerLevel));
+                    sb.append("\n      }");
+                } else {
+                    sb.append("\n      RxStat: {\n");
+                    sb.append("        Rssi: ").append(mSgoRssi);
+                    sb.append("\n       LastRxCtrlEventCount: ").append(String.format("0x%04X", mSgoLastRxCtrlEventCount));
+                }
+            } else {
+                sb.append(" (Not Active or Absent)");
+            }
+            sb.append("\n    }\n");
+
+            sb.append("    SGO Parameters: {\n");
+            sb.append("      mSgoDirection: ").append(mSgoDirection);
+            if (mSgoDirection != 0) {
+                    sb.append(" (").append(mSgoDirection == 0x01 ? "TX" : mSgoDirection == 0x02 ? "RX" :
+                    String.format("UNKNOWN_DIR_0x%02X", mSgoDirection)).append(")");
+                if (mSgoOtaControl != null) {
+                    sb.append("\n").append(mSgoOtaControl.toString().replaceAll("(?m)^", "  "));
+                } else {
+                    sb.append("\n      SgoOtaControl: {null} (Error: Direction non-zero but otaControl null)");
+                }
+                if(mSgoDirection == 1) {
+                    sb.append("\n      TxStat: {\n");
+                    sb.append("        TxPowerLevel: ").append(String.format("0x%02X", mPgoTxPowerLevel));
+                    sb.append("\n      }");
+                } else {
+                    sb.append("\n      RxStat: {\n");
+                    sb.append("        Rssi: ").append(mSgoRssi);
+                    sb.append("\n       LastRxCtrlEventCount: ").append(String.format("0x%04X", mSgoLastRxCtrlEventCount));
+                    sb.append("\n      }");
+                }
+            } else {
+                sb.append(" (Not Active or Absent)");
+            }
+            sb.append("\n    }\n");
+
+            sb.append("  }");
+            return sb.toString();
+        }
     }
 
     /**

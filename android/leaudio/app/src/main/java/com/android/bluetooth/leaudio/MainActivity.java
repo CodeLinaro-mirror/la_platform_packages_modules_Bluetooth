@@ -137,9 +137,18 @@ public class MainActivity extends AppCompatActivity {
 
         switch (item.getItemId()) {
             case R.id.action_scan:
-                // Clicking this gives no device or receiver context - no extras for this intent.
-                intent = new Intent(MainActivity.this, BroadcastScanActivity.class);
-                startActivity(intent);
+                // Check if Bluetooth is enabled before launching scan activity
+                if (leAudioViewModel.getBluetoothEnabledLive().getValue() == null
+                        || !leAudioViewModel.getBluetoothEnabledLive().getValue()) {
+                    Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                    startActivityForResult(enableBtIntent, 2); // Use request code 2 for scan
+                    Toast.makeText(MainActivity.this, "Bluetooth is required for broadcast scanning", 
+                                  Toast.LENGTH_SHORT).show();
+                } else {
+                    // Bluetooth is enabled, launch scan activity
+                    intent = new Intent(MainActivity.this, BroadcastScanActivity.class);
+                    startActivity(intent);
+                }
                 return true;
 
             case R.id.action_broadcast:
@@ -147,13 +156,19 @@ public class MainActivity extends AppCompatActivity {
                         || !leAudioViewModel.getBluetoothEnabledLive().getValue()) {
                     Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                     startActivityForResult(enableBtIntent, 1);
-                } else if (leAudioViewModel.isLeAudioBroadcastSourceSupported()) {
+                } else if (leAudioViewModel.getBroadcastReady().getValue() != null
+                           && leAudioViewModel.getBroadcastReady().getValue()) {
+                    // Check broadcast readiness, not just support
                     intent = new Intent(MainActivity.this, BroadcasterActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                     startActivityForResult(intent, 0);
-                } else {
+                } else if (!leAudioViewModel.isLeAudioBroadcastSourceSupported()) {
                     Toast.makeText(MainActivity.this, "Broadcast Source is not supported.",
                             Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this,
+                                  "LE Audio Broadcast is initializing, please wait...",
+                                  Toast.LENGTH_SHORT).show();
                 }
                 return true;
             default:
@@ -167,8 +182,27 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
 
-        // check if the request code is same as what was passed in request
-        if (requestCode == 0xc0de) {
+        // Handle Bluetooth enable requests
+        if (requestCode == 1) { // Bluetooth enable for broadcast
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(MainActivity.this, "Bluetooth enabled. Broadcast functionality is now available.", 
+                              Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(MainActivity.this, "Bluetooth is required for broadcast functionality.", 
+                              Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == 2) { // Bluetooth enable for scan
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(MainActivity.this, "Bluetooth enabled. You can now scan for broadcasts.", 
+                              Toast.LENGTH_SHORT).show();
+                // Automatically launch scan activity after Bluetooth is enabled
+                Intent scanIntent = new Intent(MainActivity.this, BroadcastScanActivity.class);
+                startActivity(scanIntent);
+            } else {
+                Toast.makeText(MainActivity.this, "Bluetooth is required for broadcast scanning.", 
+                              Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == 0xc0de) {
             if (intent != null) {
                 String message = intent.getStringExtra("MESSAGE");
                 Toast.makeText(MainActivity.this, message + "(" + resultCode + ")",
@@ -204,6 +238,14 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(MainActivity.this,
                     "Bluetooth is " + (is_enabled ? "enabled" : "disabled"), Toast.LENGTH_SHORT)
                     .show();
+        });
+
+        // Monitor broadcast readiness
+        leAudioViewModel.getBroadcastReady().observe(this, isReady -> {
+            if (isReady) {
+                Toast.makeText(MainActivity.this,
+                              "LE Audio Broadcast is ready", Toast.LENGTH_SHORT).show();
+            }
         });
     }
 
