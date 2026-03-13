@@ -178,6 +178,10 @@ public class HeadsetClientStateMachine extends StateMachine {
     // queue of send actions (pair action, action_data)
     @VisibleForTesting ArrayDeque<Pair<Integer, Object>> mQueuedActions;
 
+    // Keep track of pending volume updates to ignore the echo.
+    private final List<Pair<Integer, Long>> mPendingVolumeUpdates = new ArrayList<>();
+    private static final long VOLUME_CHANGE_TIMEOUT_MS = 2000;
+
     @VisibleForTesting int mAudioState;
     // Indicates whether audio can be routed to the device
     private boolean mAudioRouteAllowed;
@@ -1013,6 +1017,7 @@ public class HeadsetClientStateMachine extends StateMachine {
 
             mCalls.clear();
             mCallsUpdate.clear();
+            mPendingVolumeUpdates.clear();
 
             mPeerFeatures = 0;
             mChldFeatures = 0;
@@ -1402,13 +1407,35 @@ public class HeadsetClientStateMachine extends StateMachine {
                     // This message should always contain the volume in AudioManager max normalized.
                     int amVol = message.arg1;
                     int hfVol = mService.amToHfVol(amVol);
+
+                    // Cleanup old pending updates
+                    long currentTime = SystemClock.elapsedRealtime();
+                    mPendingVolumeUpdates.removeIf(
+                            p -> currentTime - p.second > VOLUME_CHANGE_TIMEOUT_MS);
+
                     if (amVol != mCommandedSpeakerVolume) {
-                        debug("Volume" + amVol + ":" + mCommandedSpeakerVolume);
-                        // Volume was changed by a 3rd party
-                        mCommandedSpeakerVolume = -1;
-                        if (mNativeInterface.setVolume(
-                                mDevice, HeadsetClientHalConstants.VOLUME_TYPE_SPK, hfVol)) {
-                            addQueuedAction(SET_SPEAKER_VOLUME);
+                        debug("Volume was changed by a 3rd party");
+                        // Check if this is a pending echo
+                        boolean isEcho = false;
+                        for (int i = 0; i < mPendingVolumeUpdates.size(); i++) {
+                            if (mPendingVolumeUpdates.get(i).first == amVol) {
+                                mPendingVolumeUpdates.remove(i);
+                                isEcho = true;
+                                debug("Ignoring volume echo: " + amVol);
+                                break;
+                            }
+                        }
+
+                        if (!isEcho) {
+                            debug("Volume" + amVol + ":" + mCommandedSpeakerVolume);
+                            // Volume was changed by a 3rd party
+                            mCommandedSpeakerVolume = -1;
+                            if (mNativeInterface.setVolume(
+                                    mDevice,
+                                    HeadsetClientHalConstants.VOLUME_TYPE_SPK,
+                                    hfVol)) {
+                                addQueuedAction(SET_SPEAKER_VOLUME);
+                            }
                         }
                     }
                 }
@@ -1578,6 +1605,10 @@ public class HeadsetClientStateMachine extends StateMachine {
                             if (event.valueInt == HeadsetClientHalConstants.VOLUME_TYPE_SPK) {
                                 mCommandedSpeakerVolume = mService.hfToAmVol(event.valueInt2);
                                 debug("AM volume set to " + mCommandedSpeakerVolume);
+                                mPendingVolumeUpdates.add(
+                                        new Pair<>(
+                                                mCommandedSpeakerVolume,
+                                                SystemClock.elapsedRealtime()));
                                 boolean show_volume = SystemProperties.getBoolean(
                                         "bluetooth.hfp_volume_control.enabled", true);
                                 if (Util.isAutomotive(mService.getApplicationContext())) {
