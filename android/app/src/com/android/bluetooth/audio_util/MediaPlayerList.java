@@ -130,7 +130,7 @@ public class MediaPlayerList {
 
         void run(boolean availablePlayers, boolean addressedPlayers, boolean uids);
         void run(BluetoothDevice device, MediaData data);
-        void sendVolumeChanged(BluetoothDevice device, int volume, int maxVolume);
+        void sendVolumeChanged(BluetoothDevice device, int volume);
     }
 
     public interface SetBrowsedPlayerCallback {
@@ -1144,7 +1144,7 @@ public class MediaPlayerList {
 
     public int getMaxVolume(BluetoothDevice device) {
         int volumeGroupId = -1;
-        int volume = -1;
+        int volume = -mCarAudioManager.getGroupMaxVolume(0);
         // To check a media player has bonded with bt device
         if (!getPlayerPackageName(device).equals("")) {
             volumeGroupId = mCarAudioManager.getVolumeGroupIdForUsage(
@@ -1654,10 +1654,8 @@ public class MediaPlayerList {
 
                         Log.d(TAG, "onGroupVolumeChanged: volumeGroupId: " + volumeGroupId);
                         int streamValue = 0;
-                        int maxVolume = 0;
                         try {
                             streamValue = mCarAudioManager.getGroupVolume(zoneId, groupId);
-                            maxVolume = mCarAudioManager.getGroupMaxVolume(zoneId, groupId);
                         } catch (CarNotConnectedException e) {
                             Log.e(TAG, "Car is not connected", e);
                         } catch (NullPointerException e) {
@@ -1667,7 +1665,7 @@ public class MediaPlayerList {
                         // headset and need not send back volume changed to headset.
                         if ((flags & AudioManager.FLAG_BLUETOOTH_ABS_VOLUME) == 0) {
                             Log.d(TAG, "onGroupVolumeChanged: sendVolumeChanged: " + streamValue);
-                            mCallback.sendVolumeChanged(device, streamValue, maxVolume);
+                            mCallback.sendVolumeChanged(device, streamValue);
                         }
                     }
                 }
