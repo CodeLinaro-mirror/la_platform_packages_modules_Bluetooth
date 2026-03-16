@@ -338,7 +338,8 @@ static void bta_av_rc_msg_cback(uint8_t handle, uint8_t label, uint8_t opcode, t
  *
  ******************************************************************************/
 uint8_t bta_av_rc_create(tBTA_AV_CB* p_cb, tAVCT_ROLE role, uint8_t shdl, uint8_t lidx) {
-  if ((!btif_av_src_sink_coexist_enabled() ||
+  if (!btif_av_is_a2dp_sink_offload_enabled() &&
+       (!btif_av_src_sink_coexist_enabled() ||
        (btif_av_src_sink_coexist_enabled() && !btif_av_is_sink_enabled() &&
         btif_av_is_source_enabled())) &&
       is_new_avrcp_enabled()) {
@@ -346,6 +347,7 @@ uint8_t bta_av_rc_create(tBTA_AV_CB* p_cb, tAVCT_ROLE role, uint8_t shdl, uint8_
     return BTA_AV_RC_HANDLE_NONE;
   }
 
+  log::debug("Creating RC for the AVRCP profile");
   RawAddress bda = RawAddress::kAny;
   uint8_t status = BTA_AV_RC_ROLE_ACP;
   int i;

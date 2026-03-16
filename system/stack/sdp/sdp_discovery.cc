@@ -207,6 +207,10 @@ static bool sdp_copy_raw_data(tCONN_CB* p_ccb, bool offset) {
   uint8_t type;
 
   if (p_ccb->p_db && p_ccb->p_db->raw_data) {
+    if (p_ccb->p_db->raw_used >= p_ccb->p_db->raw_size) {
+      log::error("DB raw buffer overflow or no space left");
+      return false;
+    }
     cpy_len = p_ccb->p_db->raw_size - p_ccb->p_db->raw_used;
     list_len = p_ccb->list_len;
     p = &p_ccb->rsp_list[0];
@@ -643,8 +647,7 @@ static void process_service_search_attr_rsp(tCONN_CB* p_ccb, uint8_t* p_reply,
     uint16_t bytes_left = SDP_DATA_BUF_SIZE;
 
     /* If we don't have a valid discovery database, we can't do anything. */
-    if (com::android::bluetooth::flags::btsec_check_valid_discovery_database() &&
-        p_ccb->p_db == NULL) {
+    if (p_ccb->p_db == NULL) {
       log::warn(
               "Attempted continuation or first time request with invalid discovery "
               "database");

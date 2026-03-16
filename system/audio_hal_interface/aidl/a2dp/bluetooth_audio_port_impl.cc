@@ -224,7 +224,14 @@ ndk::ScopedAStatus BluetoothAudioPortImpl::updateSourceMetadata(
 }
 
 ndk::ScopedAStatus BluetoothAudioPortImpl::updateSinkMetadata(
-        const SinkMetadata& /*sink_metadata*/) {
+        const SinkMetadata& sink_metadata) {
+  if(sink_metadata.tracks.size() == 0) {
+    log::error("Tracks received is NULL.");
+  }
+  //In a2dp sink usecase tracks vector is dummy and it contains only one entry.
+  uint16_t sink_latency =  static_cast<uint16_t>(sink_metadata.tracks[0].gain);
+  transport_instance_->SinkMetadataChanged(sink_latency);
+
   return ndk::ScopedAStatus::ok();
 }
 

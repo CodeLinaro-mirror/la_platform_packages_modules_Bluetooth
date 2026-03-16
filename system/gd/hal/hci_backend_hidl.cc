@@ -77,6 +77,7 @@ private:
 };
 
 class HidlHci : public HciBackend {
+  std::atomic<bool> active_{true};
   class DeathRecipient : public ::android::hardware::hidl_death_recipient {
   public:
     virtual void serviceDied(uint64_t /*cookie*/,
@@ -146,6 +147,7 @@ public:
   }
 
   ~HidlHci() {
+    active_ = false;
     if (hci_ == nullptr) {
       log::warn( "assert failed: hci_ != nullptr");
       kill(getpid(), SIGKILL);
@@ -172,14 +174,34 @@ public:
   }
 
   void sendHciCommand(const std::vector<uint8_t>& command) override {
+    if (!active_) {
+      log::error("HidlHci::sendHciCommand called after destruction");
+      return;
+    }
     hci_->sendHciCommand(command);
   }
 
-  void sendAclData(const std::vector<uint8_t>& packet) override { hci_->sendAclData(packet); }
+  void sendAclData(const std::vector<uint8_t>& packet) override {
+    if (!active_) {
+      log::error("HidlHci::sendAclData called after destruction");
+      return;
+    }
+    hci_->sendAclData(packet);
+  }
 
-  void sendScoData(const std::vector<uint8_t>& packet) override { hci_->sendScoData(packet); }
+  void sendScoData(const std::vector<uint8_t>& packet) override {
+    if (!active_) {
+      log::error("HidlHci::sendScoData called after destruction");
+      return;
+    }
+    hci_->sendScoData(packet);
+  }
 
   void sendIsoData(const std::vector<uint8_t>& packet) override {
+    if (!active_) {
+      log::error("HidlHci::sendIsoData called after destruction");
+      return;
+    }
     if (hci_1_1_ == nullptr) {
       log::error("ISO is not supported in HAL v1.0");
       return;

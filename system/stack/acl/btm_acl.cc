@@ -175,6 +175,9 @@ void NotifyAclLinkDown(tACL_CONN& p_acl) {
   if (p_acl.link_up_issued) {
     p_acl.link_up_issued = false;
     BTA_dm_acl_down(p_acl.remote_addr, p_acl.transport);
+  } else {
+    log::debug("Remove the device: {}", p_acl.remote_addr);
+    BTA_dm_remove_on_disconnect(p_acl.remote_addr, p_acl.transport);
   }
 }
 
@@ -206,7 +209,10 @@ static void disconnect_acl(tACL_CONN& p_acl, tHCI_STATUS reason, std::string com
 
 void StackAclBtmAcl::hci_start_role_switch_to_central(tACL_CONN& p_acl) {
   GetInterface().StartRoleSwitch(p_acl.remote_addr, static_cast<uint8_t>(HCI_ROLE_CENTRAL));
-  p_acl.set_switch_role_in_progress();
+  /* Legacy devices follow encry off, role switch and encry on */
+  if (!p_acl.is_encryption_switching()) {
+    p_acl.set_switch_role_in_progress();
+  }
   p_acl.rs_disc_pending = BTM_SEC_RS_PENDING;
 }
 

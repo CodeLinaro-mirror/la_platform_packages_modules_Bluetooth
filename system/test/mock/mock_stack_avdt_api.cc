@@ -114,3 +114,12 @@ void avdt_ccb_ret_ccb_timer_timeout(void* /* data */) { inc_func_call_count(__fu
 void avdt_ccb_rsp_ccb_timer_timeout(void* /* data */) { inc_func_call_count(__func__); }
 void avdt_scb_transport_channel_timer_timeout(void* /* data */) { inc_func_call_count(__func__); }
 void stack_debug_avdtp_api_dump(int /* fd */) { inc_func_call_count(__func__); }
+void AVDT_SndPendingSigStart_Rsp(uint8_t /* handle */, bool /* accepted */) {
+  inc_func_call_count(__func__);
+}
+void AVDT_SndPendingSigSuspend_Rsp(uint8_t /* handle */, bool /* accepted */) {
+  inc_func_call_count(__func__);
+}
+void AVDT_UpdateDelayReport(uint8_t /* handle */, uint16_t  /* sink_latency */) {
+  inc_func_call_count(__func__);
+}

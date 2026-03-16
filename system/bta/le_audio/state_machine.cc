@@ -1620,7 +1620,12 @@ public:
       return;
     }
 
-    IsoManager::GetInstance()->RemoveIsoDataPath(cis_conn_hdl, value);
+    if (cis_conn_hdl != bluetooth::le_audio::kInvalidCisConnHandle) {
+      IsoManager::GetInstance()->RemoveIsoDataPath(cis_conn_hdl, value);
+    } else {
+      log::error("Invalid cis handle");
+      return;
+    }
 
     LeAudioLogHistory::Get()->AddLogHistory(
             kLogStateMachineTag, leAudioDevice->group_id_, leAudioDevice->address_,
@@ -1977,31 +1982,58 @@ private:
           auto& cis_cfgs = param.cis_cfgs;
           auto it = cis_cfgs.begin();
 
-          for (auto dsa_modes : group->GetAllowedDsaModesList()) {
-            if (!dsa_modes.empty() && it != cis_cfgs.end()) {
-              if (std::find(dsa_modes.begin(), dsa_modes.end(), group->dsa_.mode) !=
-                  dsa_modes.end()) {
-                log::info("Device found with support for selected DsaMode");
+          int budget = 0;
+          size_t allowed_idx = 0;
+          const bool is_stereo_two_cis =
+            (group->GetGroupSinkStrategy() ==
+              bluetooth::le_audio::types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE);
+          const auto& allowed_lists = group->GetAllowedDsaModesList();
+          if (is_stereo_two_cis) {
+            log::info("Strategy is stereo_two_cis, apply params to both CISes");
+            budget = 2;  // try to configure two CIS entries
+          } else {
+            budget = allowed_lists.size();
+          }
 
-                group->dsa_.active = true;
+          while (it != cis_cfgs.end() && budget-- > 0) {
+            bool should_apply = false;
+            if (is_stereo_two_cis) {
+              should_apply = true;
 
-                param.sdu_itv_stom = bluetooth::le_audio::types::kLeAudioHeadtrackerSduItv;
-                param.max_trans_lat_stom =
-                        bluetooth::le_audio::types::kLeAudioHeadtrackerMaxTransLat;
-                it->max_sdu_size_stom = bluetooth::le_audio::types::kLeAudioHeadtrackerMaxSduSize;
+           } else {
+             if (allowed_idx < allowed_lists.size()) {
+               const auto& candidate_modes = allowed_lists[allowed_idx++];
+               if (!candidate_modes.empty() &&
+                   std::find(candidate_modes.begin(), candidate_modes.end(), group->dsa_.mode) !=
+                       candidate_modes.end()) {
+                 should_apply = true;
+               }
+             } else {
+               break;
+             }
+           }
 
-                // Early draft of DSA 2.0 spec mentioned allocating 15 bytes for headtracker data
-                if (!group->DsaReducedSduSizeSupported()) {
-                  log::verbose("Device does not support reduced headtracker SDU");
-                  it->max_sdu_size_stom = 15;
-                }
-
-                it->rtn_stom = bluetooth::le_audio::types::kLeAudioHeadtrackerRtn;
-
-                it++;
+            if (should_apply) {
+              log::info("Device found with support for selected DsaMode");
+              group->dsa_.active = true;
+              param.sdu_itv_stom =
+                  bluetooth::le_audio::types::kLeAudioHeadtrackerSduItv;
+              param.max_trans_lat_stom =
+                  bluetooth::le_audio::types::kLeAudioHeadtrackerMaxTransLat;
+              it->max_sdu_size_stom =
+                  bluetooth::le_audio::types::kLeAudioHeadtrackerMaxSduSize;
+              // Early draft of DSA 2.0 spec mentioned allocating 15 bytes for headtracker data
+              if (!group->DsaReducedSduSizeSupported()) {
+                log::verbose("Device does not support reduced headtracker SDU");
+                it->max_sdu_size_stom = 15;
               }
+
+              it->rtn_stom =
+                  bluetooth::le_audio::types::kLeAudioHeadtrackerRtn;
+              ++it;
             }
           }
+
         } break;
 
         case DsaMode::ACL:
@@ -3697,7 +3729,6 @@ private:
           uint8_t* data, uint16_t len, LeAudioDeviceGroup* group, LeAudioDevice* leAudioDevice) {
     if (!group) {
       log::error("leAudioDevice doesn't belong to any group");
-
       return;
     }
 
@@ -3732,6 +3763,14 @@ private:
         SetAseState(leAudioDevice, ase, AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING);
         if (streaming_audio_context) {
           group->SetStreamingMetadataContexts(streaming_audio_context.value(), ase->direction);
+        }
+
+        if (CodecManager::GetInstance()->IsUsingCodecExtensibility()) {
+          state_machine_callbacks_->UpdateMetadataCb(ase->state, rsp.cig_id, rsp.cis_id,
+            rsp.metadata);
+        } else {
+          parseVSMetadata(rsp.metadata.size(), rsp.metadata, rsp.cig_id,
+             rsp.cis_id, ase);
         }
 
         if (!group->HaveAllActiveDevicesAsesTheSameState(
@@ -3789,6 +3828,7 @@ private:
           parseVSMetadata(rsp.metadata.size(), rsp.metadata, rsp.cig_id,
              rsp.cis_id, ase);
         }
+
         /* Cache current as streaming metadata */
         if (streaming_audio_context) {
           group->SetStreamingMetadataContexts(streaming_audio_context.value(), ase->direction);

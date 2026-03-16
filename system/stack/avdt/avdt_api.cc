@@ -38,8 +38,11 @@
 #include "avdt_int.h"
 #include "avdtc_api.h"
 #include "bta/include/bta_sec_api.h"
+#include "bta/include/bta_av_api.h"
+#include "btif/include/btif_av.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/alarm.h"
+#include "osi/include/properties.h"
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/l2cap_interface.h"
@@ -120,10 +123,15 @@ void avdt_init_delay_report_timer_timeout(void* data) {
  *
  ******************************************************************************/
 void AVDT_Register(AvdtpRcb* p_reg, tAVDT_CTRL_CBACK* p_cback) {
+  bool a2dpSinkOffloaded = osi_property_get_bool("bluetooth.profile.a2dp.sink.enabled",
+                           false) &&
+                           btif_av_is_a2dp_sink_offload_enabled();
+
   uint16_t sec = BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT;
   /* register PSM with L2CAP */
   if (!stack::l2cap::get_interface().L2CA_RegisterWithSecurity(
-              AVDT_PSM, avdt_l2c_appl, true /* enable_snoop */, nullptr, kAvdtpMtu, 0, sec)) {
+              AVDT_PSM, avdt_l2c_appl, true /* enable_snoop */, nullptr,
+              a2dpSinkOffloaded ? BTA_AVK_MAX_A2DP_MTU : kAvdtpMtu, 0, sec)) {
     log::error("Unable to register with L2CAP profile AVDT psm:AVDT_PSM[0x0019]");
   }
 
@@ -488,6 +496,7 @@ uint16_t AVDT_OpenReq(uint8_t handle, const RawAddress& bd_addr, uint8_t channel
     evt.msg.config_cmd.hdr.ccb_idx = avdt_ccb_to_idx(p_ccb);
     evt.msg.config_cmd.int_seid = handle;
     evt.msg.config_cmd.p_cfg = p_cfg;
+    log::debug("p_scb = {} p_ccb = {}", std::format_ptr(p_scb), std::format_ptr(p_ccb));
     avdt_scb_event(p_scb, AVDT_SCB_API_SETCONFIG_REQ_EVT, &evt);
   } else {
     log::error("result={} address={} avdt_handle={}", result, bd_addr, handle);
@@ -1036,5 +1045,88 @@ void stack_debug_avdtp_api_dump(int fd) {
       dprintf(fd, "      Congested: %s\n", scb.cong ? "true" : "false");
       dprintf(fd, "      Close response code: %d\n", scb.close_code);
     }
+  }
+}
+
+/*******************************************************************************
+ *
+ * Function         AVDT_SndPendingSigStart_Rsp
+ *
+ * Description      Send pending Start Response to remote
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+
+void AVDT_SndPendingSigStart_Rsp(uint8_t handle, bool accepted )
+{
+    log::debug("");
+    AvdtpScb *p_scb = avdt_scb_by_hdl(handle);
+    tAVDT_SCB_EVT evt;
+    if (p_scb != NULL)
+    {
+        log::debug("accepted = {} ", accepted);
+        if (accepted) {
+          evt.msg.hdr.err_code = AVDT_SUCCESS;
+          avdt_scb_event(p_scb, AVDT_SCB_API_PENDING_START_RSP_EVT, &evt);
+        } else {
+          evt.msg.hdr.err_code = AVDT_BAD_PARAMS;
+          avdt_scb_event(p_scb, AVDT_SCB_API_PENDING_START_REJ_EVT, &evt);
+        }
+    } else {
+        log::debug("Improper SCB, can not send SIG START");
+    }
+}
+
+/*******************************************************************************
+ *
+ * Function         AVDT_SndPendingSigSuspend_Rsp
+ *
+ * Description      Send pending Start Response to remote
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+
+void AVDT_SndPendingSigSuspend_Rsp(uint8_t handle, bool accepted )
+{
+    log::debug("");
+    AvdtpScb *p_scb = avdt_scb_by_hdl(handle);
+    tAVDT_SCB_EVT evt;
+    if (p_scb != NULL)
+    {
+        log::debug("accepted = {} ", accepted);
+        if (accepted) {
+          evt.msg.hdr.err_code = AVDT_SUCCESS;
+        } else {
+          evt.msg.hdr.err_code = AVDT_BAD_PARAMS;
+        }
+        avdt_scb_event(p_scb, AVDT_SCB_API_PENDING_SUSPEND_RSP_EVT, &evt);
+    } else {
+        log::debug("Improper SCB, can not send SIG SUSPEND");
+    }
+}
+
+/*******************************************************************************
+ *
+ * Function         AVDT_UpdateDelayReport
+ *
+ * Description      Send pending Start Response to remote
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+
+void AVDT_UpdateDelayReport(uint8_t handle, uint16_t sink_latency) {
+  AvdtpScb* p_scb;
+  log::debug("handle={}", handle);
+
+  /* map handle to scb */
+  p_scb = avdt_scb_by_hdl(handle);
+  if (p_scb->stream_config.is_split_enabled &&
+      (p_scb->stream_config.tsep == AVDT_TSEP_SNK) &&
+       (p_scb->curr_cfg.psc_mask & AVDT_PSC_DELAY_RPT)) {
+    log::debug("update delay report to {}  ", sink_latency);
+    AVDT_DelayReport(handle, p_scb->peer_seid, sink_latency);
   }
 }

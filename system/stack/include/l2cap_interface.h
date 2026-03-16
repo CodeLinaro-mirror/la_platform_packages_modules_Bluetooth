@@ -870,6 +870,20 @@ public:
    ******************************************************************************/
   virtual void L2CA_SetEcosystemBaseInterval(uint32_t base_interval) = 0;
 
+/*******************************************************************************
+ **
+ ** Function         L2CA_FlowControl
+ **
+ ** Description      Enables or disables data flow for a given L2CAP channel.
+ **
+ ** Parameters:      cid           - L2CAP channel identifier
+ **                  data_enabled  - TRUE to enable data flow, FALSE to disable
+ **
+ ** Return value:    bool          - TRUE if operation succeeded, FALSE otherwise
+ **
+ ******************************************************************************/
+   virtual bool L2CA_FlowControl(uint16_t cid, bool data_enabled) = 0;
+
   /*******************************************************************************
    **
    ** Function         L2CA_SetMediaStreamChannel

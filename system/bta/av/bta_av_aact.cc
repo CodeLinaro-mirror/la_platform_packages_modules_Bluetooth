@@ -70,6 +70,7 @@
 #include "sdpdefs.h"
 #include "stack/include/a2dp_ext.h"
 #include "stack/include/a2dp_sbc.h"
+#include "stack/include/a2dp_aac.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
@@ -127,6 +128,24 @@ static void bta_av_accept_open_timer_cback(void* data);
 static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p_a2dp_offload);
 
 void enc_mode_change_callback(tBTM_VSC_CMPL* param);
+// for split a2dp sink
+
+#define VS_QCHCI_A2DP_SINK_START              0x20
+#define AVDT_HEADER_SBC                       0x0D
+#define AVDT_HEADER_NON_SBC                   0x0C
+#define VS_QCHCI_A2DP_SINK_STOP               0x21
+
+typedef struct {
+    uint8_t stream_handle;
+    uint16_t connection_handle;
+    uint16_t lcid;
+    uint8_t codec_id;
+    uint32_t peak_bit_rate;// 3 octets
+    uint16_t l2cap_mtu;
+    uint8_t packet_header_size;
+    uint8_t cp_enable;//content protection enable
+} A2DP_SINK_OFFLOAD_PARAM;
+A2DP_SINK_OFFLOAD_PARAM offload_sink_start;
 
 /* state machine states */
 enum {
@@ -195,6 +214,8 @@ static const uint16_t bta_av_stream_evt_fail[] = {
         BTA_AV_AVDT_DELAY_RPT_EVT,     /* AVDT_DELAY_REPORT_EVT */
         BTA_AV_AVDT_DELAY_RPT_CFM_EVT, /* AVDT_DELAY_REPORT_CFM_EVT */
 };
+
+void sink_offload_vendor_callback(tBTM_VSC_CMPL *param);
 
 static bool check_controller_support_offload_v2() {
   tBTM_BLE_VSC_CB vsc_cb = {};
@@ -503,10 +524,16 @@ void bta_av_sink_data_cback(uint8_t handle, BT_HDR* p_pkt, uint32_t /*time_stamp
     osi_free(p_pkt);
     return;
   }
-  p_pkt->event = BTA_AV_SINK_MEDIA_DATA_EVT;
-  p_scb->seps[p_scb->sep_idx].p_app_sink_data_cback(p_scb->PeerAddress(),
-                                                    BTA_AV_SINK_MEDIA_DATA_EVT,
-                                                    reinterpret_cast<tBTA_AV_MEDIA*>(p_pkt));
+
+  /* Below check is added to avoid data processing for sink offload usecase,
+     when remote/SOC is sending data even after suspend, so we need to drop the data. */
+  if (!btif_av_is_a2dp_sink_offload_enabled()) {
+    p_pkt->event = BTA_AV_SINK_MEDIA_DATA_EVT;
+    p_scb->seps[p_scb->sep_idx].p_app_sink_data_cback(p_scb->PeerAddress(),
+                                      BTA_AV_SINK_MEDIA_DATA_EVT,
+                                      reinterpret_cast<tBTA_AV_MEDIA*>(p_pkt));
+  }
+
   /* Free the buffer: a copy of the packet has been delivered */
   osi_free(p_pkt);
 }
@@ -1530,7 +1557,7 @@ void bta_av_disc_res_as_acp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
     }
   }
   p_scb->p_cos->disc_res(p_scb->hndl, p_scb->PeerAddress(), p_scb->num_seps, num_snks, 0,
-                         UUID_SERVCLASS_AUDIO_SOURCE);
+                         p_scb->uuid_int);
   p_scb->num_disc_snks = num_snks;
   p_scb->num_disc_srcs = 0;
 
@@ -2100,6 +2127,184 @@ void bta_av_str_stopped(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       (*bta_av_cb.p_cback)(BTA_AV_STOP_EVT, &bta_av_data);
     }
   }
+}
+
+/*******************************************************************************
+**
+** Function         bta_av_sink_offload_start_req
+**
+** Description      Send VSC start offload cmd.
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_av_sink_offload_start_req(tBTA_AV_SCB *p_scb, tBTA_AV_DATA *p_data)
+{
+    uint8_t param[20];
+    uint16_t acl_hdl;
+    uint8_t param_len;
+    uint32_t bitrate = 0;
+    tA2DP_CODEC_TYPE codec_type = A2DP_GetCodecType(p_scb->cfg.codec_info);
+    A2dpCodecConfig* CodecConfig =
+               bta_av_co_get_codec_config_a2dp_sink(p_scb->PeerAddress(),
+                                                    p_scb->cfg.codec_info);
+    log::debug("");
+    /* Check if stream has already been started. */
+    /* Support offload if only one audio source stream is open. */
+    acl_hdl = get_btm_client_interface().peer.BTM_GetHCIConnHandle(
+                                                          p_scb->PeerAddress(),
+                                                          BT_TRANSPORT_BR_EDR);
+    param_len = 14;
+    offload_sink_start.stream_handle = 0;//stream handle is 0 always
+    offload_sink_start.connection_handle = acl_hdl;
+    offload_sink_start.l2cap_mtu = BTA_AVK_MAX_A2DP_MTU;
+    offload_sink_start.lcid = p_scb->l2c_cid;
+    offload_sink_start.codec_id = codec_type;
+    offload_sink_start.cp_enable = 0x0;
+    log::verbose("codec_type = {:4x}", codec_type);
+    switch(codec_type) {
+      case A2DP_MEDIA_CT_SBC:
+        bitrate = A2DP_SinkGetBitrateSbc();
+        log::info("SBC offload bitrate: {}", bitrate);
+        offload_sink_start.peak_bit_rate = bitrate;
+        offload_sink_start.packet_header_size = AVDT_HEADER_SBC;
+        break;
+      case A2DP_MEDIA_CT_AAC:
+        offload_sink_start.peak_bit_rate =
+                                     CodecConfig->getTrackBitRate();
+        offload_sink_start.packet_header_size = AVDT_HEADER_NON_SBC;
+        break;
+      default:
+        log::error("Unsupported Codec_type");
+        return;
+        break;
+    }
+    uint8_t *p_param = param;
+    *p_param++ = VS_QCHCI_A2DP_SINK_START;
+    UINT8_TO_STREAM(p_param,offload_sink_start.stream_handle);
+    UINT16_TO_STREAM(p_param,offload_sink_start.connection_handle);
+    UINT16_TO_STREAM(p_param,offload_sink_start.lcid);
+    UINT8_TO_STREAM(p_param,offload_sink_start.codec_id);
+    UINT24_TO_STREAM(p_param,offload_sink_start.peak_bit_rate);
+    UINT16_TO_STREAM(p_param,offload_sink_start.l2cap_mtu);
+    UINT8_TO_STREAM(p_param,offload_sink_start.packet_header_size);
+    UINT8_TO_STREAM(p_param,offload_sink_start.cp_enable);
+    p_scb->sink_split_vsc_rsp_waiting = TRUE;
+    get_btm_client_interface().vendor.BTM_VendorSpecificCommand(
+                                     HCI_VSQC_CONTROLLER_A2DP_OPCODE,param_len,
+                                     param, sink_offload_vendor_callback);
+    log::info("Stream Handle = {}", offload_sink_start.stream_handle);
+    log::info("Connection Handle = {}", offload_sink_start.connection_handle);
+    log::info("LCID = {}", offload_sink_start.lcid);
+    log::info("Codec_ID = {}", offload_sink_start.codec_id);
+    log::info("Peak Bit Rate = {}", offload_sink_start.peak_bit_rate);
+    log::info("L2CAP Mtu = {}", offload_sink_start.l2cap_mtu);
+    log::info("Packet Header Size = {}", offload_sink_start.packet_header_size);
+    log::info("CP enable = {}", offload_sink_start.cp_enable);
+}
+
+/*******************************************************************************
+**
+** Function         bta_av_sink_offload_stop_req
+**
+** Description      send VSC stop(split) req
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_av_sink_offload_stop_req (tBTA_AV_SCB *p_scb, tBTA_AV_DATA *p_data)
+{
+    uint8_t param[2];
+    uint8_t param_len = 2;
+    uint8_t *p_param = param;
+    *p_param++ = VS_QCHCI_A2DP_SINK_STOP;
+    UINT8_TO_STREAM(p_param,0);//stream handle is 0
+    get_btm_client_interface().vendor.BTM_VendorSpecificCommand(
+                                     HCI_VSQC_CONTROLLER_A2DP_OPCODE,param_len,
+                                     param, sink_offload_vendor_callback);
+    p_scb->sink_split_vsc_rsp_waiting = TRUE;
+    log::debug("vsc command sent");
+}
+
+/*******************************************************************************
+**
+** Function         bta_av_sink_send_pending_start_cnf
+**
+** Description      send start cnf for pending request
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_av_sink_send_pending_start_cnf (tBTA_AV_SCB *p_scb,
+                                         tBTA_AV_DATA *p_data)
+{
+    log::debug("handle {}", p_scb->avdt_handle);
+    AVDT_SndPendingSigStart_Rsp(p_scb->avdt_handle, TRUE);
+}
+
+/*******************************************************************************
+**
+** Function         bta_av_sink_send_pending_start_rej
+**
+** Description      send start cnf for pending request
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_av_sink_send_pending_start_rej (tBTA_AV_SCB *p_scb,
+                                         tBTA_AV_DATA *p_data)
+{
+    log::debug("");
+    AVDT_SndPendingSigStart_Rsp(p_scb->avdt_handle, FALSE);
+}
+
+/*******************************************************************************
+**
+** Function         bta_av_sink_send_pending_suspend_cnf
+**
+** Description      send start cnf for pending request
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_av_sink_send_pending_suspend_cnf (tBTA_AV_SCB *p_scb,
+                                           tBTA_AV_DATA *p_data)
+{
+    log::debug("");
+    AVDT_SndPendingSigSuspend_Rsp(p_scb->avdt_handle, TRUE);
+}
+
+/*******************************************************************************
+**
+** Function         bta_av_sink_send_pending_suspend_rej
+**
+** Description      send start cnf for pending request
+**
+** Returns          void
+**
+*******************************************************************************/
+void bta_av_sink_send_pending_suspend_rej (tBTA_AV_SCB *p_scb,
+                                           tBTA_AV_DATA *p_data)
+{
+    log::debug("");
+    AVDT_SndPendingSigSuspend_Rsp(p_scb->avdt_handle, FALSE);
+}
+
+/*******************************************************************************
+**
+** Function         bta_avk_update_delay_report
+**
+** Description      send sink latency for pending request
+**
+** Returns          void
+**
+*******************************************************************************/
+
+void bta_avk_update_delay_report (tBTA_AV_SCB *p_scb, tBTA_AV_DATA *p_data)
+{
+    tBTA_AV_API_SINK_LATENCY* p_latency = &p_data->api_sink_latency;
+    log::debug("");
+    AVDT_UpdateDelayReport(p_scb->avdt_handle, p_latency->sink_latency);
 }
 
 /*******************************************************************************
@@ -3690,4 +3895,44 @@ static void bta_av_accept_open_timer_cback(void* data) {
   tBTA_AV_API_OPEN* p_buf = (tBTA_AV_API_OPEN*)osi_malloc(sizeof(tBTA_AV_API_OPEN));
   memcpy(p_buf, &(p_scb->open_api), sizeof(tBTA_AV_API_OPEN));
   bta_sys_sendmsg(p_buf);
+}
+
+void sink_offload_vendor_callback(tBTM_VSC_CMPL *param)
+{
+    unsigned char sub_opcode = 0;
+    uint8_t index = 0;
+    tBTA_AV_SINK_OFFLOAD_RSP snk_offload_rsp;
+    tBTA_AV_STATUS status = BTA_AV_FAIL_STREAM;
+    log::debug("offload_vendor_callback: param_len = {} subopcode = {}\
+                status = {}", param->param_len, param->p_param_buf[1],
+        param->p_param_buf[0]);
+    for (index = 0; index < BTA_AV_NUM_STRS; index++) {
+        log::debug("VSC Resposnse pending {}",
+                         bta_av_cb.p_scb[index]->sink_split_vsc_rsp_waiting);
+        if (bta_av_cb.p_scb[index]->sink_split_vsc_rsp_waiting) {
+            break;
+        }
+    }
+    if (index == BTA_AV_NUM_STRS) {
+        log::error("no matching scb found");
+        return;
+    }
+    // we have received response, now we make this variable as false.
+    bta_av_cb.p_scb[index]->sink_split_vsc_rsp_waiting = FALSE;
+    if (param->param_len) {
+        status = param->p_param_buf[0];
+    }
+    sub_opcode =  param->p_param_buf[1];
+    log::debug("sub_opcode = {}  status = {}", sub_opcode, status);
+    snk_offload_rsp.status = status;
+    snk_offload_rsp.hndl = bta_av_cb.p_scb[index]->hndl;
+    if(sub_opcode == VS_QCHCI_A2DP_SINK_START) {
+        (*bta_av_cb.p_cback)(BTA_AV_SINK_OFFLOAD_START_RSP_EVT,
+                                                  (tBTA_AV *)&snk_offload_rsp);
+    }else if(sub_opcode == VS_QCHCI_A2DP_SINK_STOP) {
+        (*bta_av_cb.p_cback)(BTA_AV_SINK_OFFLOAD_STOP_RSP_EVT,
+                                                  (tBTA_AV *)&snk_offload_rsp);
+    }else {
+        log::info("subopcode doesn't match");
+    }
 }

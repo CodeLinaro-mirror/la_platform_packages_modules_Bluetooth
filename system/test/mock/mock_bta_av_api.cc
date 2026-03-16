@@ -63,6 +63,13 @@ struct BTA_AvVendorRsp BTA_AvVendorRsp;
 struct BTA_AvSetCodecMode BTA_AvSetCodecMode;
 struct BTA_AvUpdateAptxData BTA_AvUpdateAptxData;
 struct modify_sniff_policy modify_sniff_policy;
+struct BTA_AvkOffloadStart BTA_AvkOffloadStart;
+struct BTA_AvkOffloadStop BTA_AvkOffloadStop;
+struct BTA_AvkSendPendingStartCnf BTA_AvkSendPendingStartCnf;
+struct BTA_AvkSendPendingStartRej BTA_AvkSendPendingStartRej;
+struct BTA_AvkSendPendingSuspendCnf BTA_AvkSendPendingSuspendCnf;
+struct BTA_AvkSendPendingSuspendRej BTA_AvkSendPendingSuspendRej;
+struct BTA_AvkUpdateDelayReport BTA_AvkUpdateDelayReport;
 
 }  // namespace bta_av_api
 }  // namespace mock
@@ -193,6 +200,41 @@ void BTA_AvUpdateAptxData(uint32_t data) {
 void modify_sniff_policy(bool policy_enable, const RawAddress& peer_addr) {
   inc_func_call_count(__func__);
   test::mock::bta_av_api::modify_sniff_policy(policy_enable, peer_addr);
+}
+
+void BTA_AvkOffloadStart(tBTA_AV_HNDL  hndl) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkOffloadStart(hndl);
+}
+
+void BTA_AvkOffloadStop(tBTA_AV_HNDL  hndl) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkOffloadStop(hndl);
+}
+
+void BTA_AvkSendPendingStartCnf(tBTA_AV_HNDL  hndl) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkSendPendingStartCnf(hndl);
+}
+
+void BTA_AvkSendPendingStartRej(tBTA_AV_HNDL  hndl) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkSendPendingStartRej(hndl);
+}
+
+void BTA_AvkSendPendingSuspendCnf(tBTA_AV_HNDL  hndl) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkSendPendingSuspendCnf(hndl);
+}
+
+void BTA_AvkSendPendingSuspendRej(tBTA_AV_HNDL  hndl) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkSendPendingSuspendRej(hndl);
+}
+
+void BTA_AvkUpdateDelayReport(tBTA_AV_HNDL hndl, uint16_t sink_latency) {
+  inc_func_call_count(__func__);
+  test::mock::bta_av_api::BTA_AvkUpdateDelayReport(hndl, sink_latency);
 }
 
 // Mocked functions complete

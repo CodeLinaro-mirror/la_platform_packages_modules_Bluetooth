@@ -133,6 +133,7 @@ public:
                                                         const RawAddress& bd_addr,
                                                         BT_HDR* p_buf) override;
   [[nodiscard]] bool L2CA_RemoveFixedChnl(uint16_t fixed_cid, const RawAddress& bd_addr) override;
+  [[nodiscard]] bool L2CA_FlowControl(uint16_t cid, bool data_enabled) override;
 
   // Media methods
   void L2CA_SetMediaStreamChannel(uint16_t local_media_cid, bool status) override;

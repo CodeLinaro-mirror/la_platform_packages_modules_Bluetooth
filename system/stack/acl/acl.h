@@ -228,6 +228,9 @@ public:
 
   void set_encryption_switching() { encrypt_state_ = BTM_ACL_ENCRYPT_STATE_TEMP_FUNC; }
 
+  bool is_encryption_switching() const { return encrypt_state_ == BTM_ACL_ENCRYPT_STATE_TEMP_FUNC;}
+
+
 public:
   bool is_encrypted = false;
   tHCI_ROLE link_role;

@@ -15,6 +15,12 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #define LOG_TAG "BluetoothServiceJni"
 
 #include <android/log.h>
@@ -2555,6 +2561,12 @@ jint JNI_OnLoad(JavaVM* jvm, void* /* reserved */) {
   status = android::register_com_android_bluetooth_btservice_BluetoothHciVendorSpecific(e);
   if (status < 0) {
     log::error("jni bluetooth hci vendor-specific registration failure: {}", status);
+    return JNI_ERR;
+  }
+
+  status = android::register_com_android_bluetooth_a2dp_sink_vendor_service(e);
+  if (status < 0) {
+    log::error("jni vendor a2dp sink service registration failure, status: {}", status);
     return JNI_ERR;
   }
 

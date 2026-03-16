@@ -866,6 +866,33 @@ public class DatabaseManager {
     }
 
     /**
+     * Gets the last connected HFP client device
+     *
+     * @return the most recently connected HFP client device
+     *         or null if the last HFP client device was null
+     */
+    public BluetoothDevice getMostRecentlyConnectedHfpClientDevice() {
+        synchronized (mMetadataCache) {
+            List<Metadata> sortedMetadata = new ArrayList<>(mMetadataCache.values());
+            sortedMetadata.sort((o1, o2) -> Long.compare(o2.last_active_time, o1.last_active_time));
+            for (Metadata metadata : sortedMetadata) {
+                if (metadata.getProfileConnectionPolicy(
+                       BluetoothProfile.HEADSET_CLIENT) == CONNECTION_POLICY_ALLOWED) {
+                    try {
+                        return mAdapter.getRemoteDevice(metadata.getAddress());
+                    } catch (IllegalArgumentException ex) {
+                        Log.d(
+                              TAG,
+                              "getMostRecentlyConnectedHfpClientDevice: Invalid address for device "
+                                        + metadata.getAnonymizedAddress());
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * @param metadataList is the list of metadata
      */
     @SuppressWarnings("LockOnNonEnclosingClassLiteral")

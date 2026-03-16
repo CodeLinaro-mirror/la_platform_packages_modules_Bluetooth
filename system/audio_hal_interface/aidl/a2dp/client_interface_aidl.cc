@@ -256,7 +256,10 @@ bool BluetoothAudioClientInterface::UpdateAudioConfig(const AudioConfiguration& 
             (transport_->GetSessionType() == SessionType::HFP_SOFTWARE_ENCODING_DATAPATH ||
              transport_->GetSessionType() == SessionType::HFP_SOFTWARE_DECODING_DATAPATH)));
   bool is_a2dp_offload_session =
-          (transport_->GetSessionType() == SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH);
+          (transport_->GetSessionType() ==
+                   SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH) ||
+          (transport_->GetSessionType() ==
+                   SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH);
   bool is_leaudio_unicast_offload_session =
           (transport_->GetSessionType() ==
                    SessionType::LE_AUDIO_HARDWARE_OFFLOAD_ENCODING_DATAPATH ||
@@ -383,6 +386,7 @@ int BluetoothAudioClientInterface::StartSession() {
   if (data_mq && data_mq->isValid()) {
     data_mq_ = std::move(data_mq);
   } else if (transport_->GetSessionType() == SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH ||
+             transport_->GetSessionType() == SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH ||
              transport_->GetSessionType() ==
                      SessionType::LE_AUDIO_HARDWARE_OFFLOAD_DECODING_DATAPATH ||
              transport_->GetSessionType() ==
@@ -531,6 +535,12 @@ void BluetoothAudioClientInterface::RenewAudioProviderAndSession() {
     session_started_ = false;
 
     StartSession();
+  }
+
+  if (transport_->GetSessionType() ==
+                   SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH) {
+    log::info("BluetoothAudioHal notify HAL restart to stack");
+    transport_->NotifyHalRestart();
   }
 }
 

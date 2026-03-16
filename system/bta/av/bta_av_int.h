@@ -100,6 +100,13 @@ enum {
   BTA_AV_ACP_CONNECT_EVT,
   BTA_AV_API_OFFLOAD_START_EVT,
   BTA_AV_API_OFFLOAD_START_RSP_EVT,
+  BTA_AV_SINK_API_OFFLOAD_START_EVT,
+  BTA_AV_SINK_API_OFFLOAD_STOP_EVT,
+  BTA_AV_SINK_API_PENDING_START_CNF_EVT,
+  BTA_AV_SINK_API_PENDING_START_REJECT_EVT,
+  BTA_AV_SINK_API_PENDING_SUSPEND_CNF_EVT,
+  BTA_AV_SINK_API_PENDING_SUSPEND_REJECT_EVT,
+  BTA_AV_SINK_API_UPDATE_DELAY_REPORT_EVT,
 
   /* these events are handled outside of the state machine */
   BTA_AV_API_ENABLE_EVT,
@@ -431,6 +438,11 @@ typedef struct {
   tBTA_AV_SINK_DATA_CBACK* p_app_sink_data_cback; /* Sink application callback for media packets */
 } tBTA_AV_SEP;
 
+typedef struct {
+  BT_HDR_RIGID hdr;
+  uint16_t sink_latency;
+} tBTA_AV_API_SINK_LATENCY;
+
 enum : uint8_t {
   /* initiator/acceptor role for adaptation */
   BTA_AV_ROLE_AD_INT = 0x00, /* initiator */
@@ -479,6 +491,7 @@ union tBTA_AV_DATA {
   tBTA_AV_API_STATUS_RSP api_status_rsp;
   tBTA_AV_API_PEER_SEP peer_sep;
   tBTA_AV_API_CANCEL_AVRC_ALARM cancel_avrc_alarm;
+  tBTA_AV_API_SINK_LATENCY api_sink_latency;
 };
 
 typedef union {
@@ -568,6 +581,8 @@ public:
   uint8_t q_tag;                  /* identify the associated q_info union member */
   bool no_rtp_header;             /* true if add no RTP header */
   uint16_t uuid_int;              /*intended UUID of Initiator to connect to */
+  bool sink_split_vsc_rsp_waiting; /* TRUE if we have sent VSC command and
+                                      waiting for response */
 
   /**
    * Called to setup the state when connected to a peer.
@@ -868,6 +883,17 @@ void bta_av_offload_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 void bta_av_vendor_offload_stop(void);
 void bta_av_st_rc_timer(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 void bta_av_api_set_peer_sep(tBTA_AV_DATA* p_data);
+void bta_av_sink_offload_start_req(tBTA_AV_SCB *p_scb, tBTA_AV_DATA *p_data);
+void bta_av_sink_offload_stop_req(tBTA_AV_SCB *p_scb, tBTA_AV_DATA *p_data);
+void bta_av_sink_send_pending_start_cnf(tBTA_AV_SCB *p_scb,
+                                        tBTA_AV_DATA *p_data);
+void bta_av_sink_send_pending_start_rej(tBTA_AV_SCB *p_scb,
+                                        tBTA_AV_DATA *p_data);
+void bta_av_sink_send_pending_suspend_cnf(tBTA_AV_SCB *p_scb,
+                                          tBTA_AV_DATA *p_data);
+void bta_av_sink_send_pending_suspend_rej(tBTA_AV_SCB *p_scb,
+                                          tBTA_AV_DATA *p_data);
+void bta_avk_update_delay_report (tBTA_AV_SCB *p_scb, tBTA_AV_DATA *p_data);
 
 namespace std {
 template <>

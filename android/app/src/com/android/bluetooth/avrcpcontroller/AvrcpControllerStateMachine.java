@@ -32,6 +32,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.SystemProperties;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -133,6 +134,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     private boolean mShouldSendPlayOnFocusRecovery = false;
     private boolean mRemoteControlConnected = false;
     private boolean mBrowsingConnected = false;
+    private boolean mIsSplitSink = false;
 
     private AvrcpPlayer mAddressedPlayer;
     private int mAddressedPlayerId;
@@ -188,6 +190,10 @@ class AvrcpControllerStateMachine extends StateMachine {
         mAudioManager = mAdapterService.getSystemService(AudioManager.class);
         mIsVolumeFixed = mAudioManager.isVolumeFixed() || isControllerAbsoluteVolumeEnabled;
 
+        if (A2dpSinkService.isEnabled()) {
+            mIsSplitSink = SystemProperties.
+                    getBoolean("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", false);
+        }
         setInitialState(mDisconnected);
 
         debug("State machine created");
@@ -1245,6 +1251,12 @@ class AvrcpControllerStateMachine extends StateMachine {
         if (reqLocalVolume != curLocalVolume) {
             mAudioManager.setStreamVolume(
                     AudioManager.STREAM_MUSIC, reqLocalVolume, AudioManager.FLAG_SHOW_UI);
+        }
+
+        if (mIsSplitSink) {
+            String volume_param = "btsink_volume="+reqLocalVolume;
+            Log.d(TAG,"setAbsVolume : "+volume_param);
+            mAudioManager.setParameters(volume_param);
         }
     }
 

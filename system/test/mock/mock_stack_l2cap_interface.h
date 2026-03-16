@@ -67,7 +67,7 @@ public:
   MOCK_METHOD(void, L2CA_AdjustConnectionIntervals,
               (uint16_t* min_interval, uint16_t* max_interval, uint16_t floor_interval));
   MOCK_METHOD(void, L2CA_SetEcosystemBaseInterval, (uint32_t base_interval));
-
+  MOCK_METHOD(bool, L2CA_FlowControl, (uint16_t cid, bool data_enabled));
   MOCK_METHOD(bool, L2CA_SubrateRequest,
               (const RawAddress& bd_addr, uint16_t subrate_min, uint16_t subrate_max,
                uint16_t max_latency, uint16_t cont_num, uint16_t timeout));

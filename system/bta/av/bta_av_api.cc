@@ -702,6 +702,58 @@ void BTA_AvUpdateAptxData(uint32_t data) {
   return;
 }
 
+void BTA_AvkOffloadStart(tBTA_AV_HNDL  hndl) {
+    BT_HDR *p_buf = (BT_HDR *)osi_malloc(sizeof(BT_HDR));
+    p_buf->event = BTA_AV_SINK_API_OFFLOAD_START_EVT;
+    p_buf->layer_specific = hndl;
+    bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvkOffloadStop(tBTA_AV_HNDL  hndl) {
+    BT_HDR *p_buf = (BT_HDR *)osi_malloc(sizeof(BT_HDR));
+    p_buf->event = BTA_AV_SINK_API_OFFLOAD_STOP_EVT;
+    p_buf->layer_specific = hndl;
+    bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvkSendPendingStartCnf(tBTA_AV_HNDL  hndl) {
+    BT_HDR *p_buf = (BT_HDR *)osi_malloc(sizeof(BT_HDR));
+    p_buf->event = BTA_AV_SINK_API_PENDING_START_CNF_EVT;
+    p_buf->layer_specific = hndl;
+    bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvkSendPendingStartRej(tBTA_AV_HNDL  hndl) {
+    BT_HDR *p_buf = (BT_HDR *)osi_malloc(sizeof(BT_HDR));
+    p_buf->event = BTA_AV_SINK_API_PENDING_START_REJECT_EVT;
+    p_buf->layer_specific = hndl;
+    bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvkSendPendingSuspendCnf(tBTA_AV_HNDL  hndl) {
+    BT_HDR *p_buf = (BT_HDR *)osi_malloc(sizeof(BT_HDR));
+    p_buf->event = BTA_AV_SINK_API_PENDING_SUSPEND_CNF_EVT;
+    p_buf->layer_specific = hndl;
+    bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvkSendPendingSuspendRej(tBTA_AV_HNDL  hndl) {
+    BT_HDR *p_buf = (BT_HDR *)osi_malloc(sizeof(BT_HDR));
+    p_buf->event = BTA_AV_SINK_API_PENDING_SUSPEND_REJECT_EVT;
+    p_buf->layer_specific = hndl;
+    bta_sys_sendmsg(p_buf);
+}
+
+void BTA_AvkUpdateDelayReport(tBTA_AV_HNDL hndl, uint16_t sink_latency) {
+    tBTA_AV_API_SINK_LATENCY* p_buf =
+       (tBTA_AV_API_SINK_LATENCY*)osi_malloc(sizeof(tBTA_AV_API_SINK_LATENCY));
+    p_buf->hdr.layer_specific = hndl;
+    // report delay is in 1/10 milliseconds
+    p_buf->sink_latency = sink_latency * 10;
+    p_buf->hdr.event = BTA_AV_SINK_API_UPDATE_DELAY_REPORT_EVT;
+    bta_sys_sendmsg(p_buf);
+}
+
 void modify_sniff_policy(bool policy_enable, const RawAddress& peer_addr){
   log::info("policy_enable:{}, peer_addr:{}", policy_enable, peer_addr);
   if (policy_enable){

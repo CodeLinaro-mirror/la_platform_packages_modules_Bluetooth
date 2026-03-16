@@ -116,8 +116,8 @@ public class HeadsetPhoneState {
     public void cleanup() {
         synchronized (mDeviceEventMap) {
             mDeviceEventMap.clear();
-            stopListenForPhoneState();
         }
+        stopListenForPhoneState();
         mSubscriptionManager.removeOnSubscriptionsChangedListener(mOnSubscriptionsChangedListener);
     }
 

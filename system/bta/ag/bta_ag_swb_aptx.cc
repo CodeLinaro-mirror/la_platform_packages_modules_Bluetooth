@@ -60,6 +60,11 @@ static bool aptx_swb_codec_status;
 static bool get_lc3_swb_codec_status(RawAddress* bd_addr) {
   uint16_t p_scb_idx = bta_ag_idx_by_bdaddr(bd_addr);
   tBTA_AG_SCB* p_scb = bta_ag_scb_by_idx(p_scb_idx);
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+  if (is_hf_client_enabled) {
+     log::error("hf client role is also enabled. Not enabling Lc3");
+     return false;
+  }
   if (p_scb != NULL) {
     return hfp_hal_interface::get_swb_supported() && (p_scb->peer_codecs & BTM_SCO_CODEC_LC3) &&
            !(p_scb->disabled_codecs & BTM_SCO_CODEC_LC3);

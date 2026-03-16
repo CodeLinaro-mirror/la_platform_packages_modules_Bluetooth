@@ -769,7 +769,7 @@ static bool IsCodecConfigSupported(
       uint8_t pac_codec_version = pac_vendor_metadata.value()[5];
       uint8_t req_codec_version = req_metadata[1];
       if (pac_codec_version < req_codec_version) {
-        log::debug("Codec version unspported pac_codec_version {} < req_codec_version {}",
+        log::debug("Codec version unsupported pac_codec_version {} < req_codec_version {}",
                    pac_codec_version, req_codec_version);
         return false;
       }

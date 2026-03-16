@@ -2907,6 +2907,13 @@ public class LeAudioService extends ProfileService {
         try {
             LeAudioGroupDescriptor descriptor = mGroupDescriptorsView.get(groupId);
             if (descriptor != null) {
+                if(descriptor.isGettingActive()){
+                    Log.w(TAG, "group is already in process of getting active: device="
+                                + device
+                                + ", groupId = "
+                                + groupId);
+                    return true;
+                }
                 descriptor.setActiveState(ACTIVE_STATE_GETTING_ACTIVE);
             }
         } finally {
@@ -3466,7 +3473,7 @@ public class LeAudioService extends ProfileService {
                     updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
                 }
             }
-        } else if (context_type == BluetoothLeAudio.CONTEXT_TYPE_MEDIA) {
+        } else {
             if (isBroadcastActive()) {
                 BluetoothDevice device =
                     mAdapterService.getDeviceFromByte(

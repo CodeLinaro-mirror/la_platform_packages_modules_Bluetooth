@@ -134,6 +134,7 @@
 #include "types/ble_address_with_type.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
+#include "hardware/bt_av_vendor.h"
 
 using bluetooth::csis::CsisClientInterface;
 using bluetooth::has::HasClientInterface;
@@ -197,6 +198,8 @@ extern CsisClientInterface* btif_csis_client_get_interface();
 extern VolumeControlInterface* btif_volume_control_get_interface();
 /* vendor  */
 extern btvendor_interface_t* btif_vendor_get_interface();
+/* vendor sink */
+extern btav_sink_vendor_interface_t *btif_vendor_av_sink_get_interface();
 
 bt_status_t btif_av_sink_execute_service(bool b_enable);
 
@@ -1020,6 +1023,10 @@ static const void* get_profile_interface(const char* profile_id) {
 
   if (is_profile(profile_id, BT_PROFILE_VENDOR_ID)) {
     return btif_vendor_get_interface();
+  }
+
+  if (is_profile(profile_id, BT_PROFILE_A2DP_SINK_VENDOR_ID)) {
+    return btif_vendor_av_sink_get_interface();
   }
 
   if (is_profile(profile_id, BT_BQR_ID)) {

@@ -568,7 +568,8 @@ static void alarm_ready_generic(alarm_t* alarm, std::unique_lock<std::mutex>& lo
   // alarms and active ones.
   //
   if (!alarm->callback) {
-    log::fatal("timer callback is NULL! Name={}", alarm->stats.name);
+    log::error("timer callback is NULL! Name={}", alarm->stats.name);
+    return;
   }
   alarm_callback_t callback = alarm->callback;
   void* data = alarm->data;

@@ -44,6 +44,7 @@
 #define QHS_SUPPORT_MASK 0x00000C00
 #define QHS_SUPPORT_NOT_AVAILABLE 0x00000400
 #define QHS_SUPPORT_AVAILABLE 0x00000800
+
 /** Callback for connection state change.
  *  state will have one of the values from btav_connection_state_t
  */
@@ -153,6 +154,30 @@ RawAddress btif_av_sink_active_peer(void);
  * Check whether A2DP Sink is enabled.
  */
 bool btif_av_is_sink_enabled(void);
+
+/**
+*  check A2DP Sink offload support enabled
+*  @param  none
+*/
+bool btif_av_is_a2dp_sink_offload_enabled(void);
+
+/**
+ *  Start streaming.
+ *  @param  none
+ */
+void btif_av_sink_stream_start(void);
+
+/**
+ *  Stop streaming.
+ *  @param  none
+ */
+void btif_av_sink_stream_stop(void);
+
+/**
+ *  Hal Restart Notification.
+ *  @param  none
+ */
+void btif_av_sink_notify_hal_restart(void);
 
 /**
  * Check whether A2DP Source is enabled.
@@ -379,6 +404,13 @@ void btif_av_update_codec_mode();
  */
 void btif_av_update_source_metadata(bool is_Gaming_Enabled);
 
+/**
+ * Update Sink Metadata
+ *
+ * @param sink_metadata to set
+ */
+void btif_av_update_sink_metadata(uint16_t sink_latency);
+
 /*
  * Dual Mode Enabled check
  */
@@ -405,6 +437,9 @@ void btif_av_update_aptx_mode_info();
  * @param peer_addr peer address
  */
 void btif_av_connect_sink_delayed(uint8_t handle, const RawAddress& peer_address);
+
+/* used to pass events to AV statemachine from other tasks */
+void btif_dispatch_sm_event(int event, void *p_data, int len);
 
 /**
  * Check whether A2DP Source is enabled.

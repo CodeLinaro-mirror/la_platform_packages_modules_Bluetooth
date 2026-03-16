@@ -814,6 +814,20 @@ extern bool L2CA_Echo(const RawAddress& p_bd_addr, BT_HDR* p_data,
 
 /*******************************************************************************
  **
+ ** Function         L2CA_FlowControl
+ **
+ ** Description      Enables or disables data flow for a given L2CAP channel.
+ **
+ ** Parameters:      cid           - L2CAP channel identifier
+ **                  data_enabled  - TRUE to enable data flow, FALSE to disable
+ **
+ ** Return value:    bool          - TRUE if operation succeeded, FALSE otherwise
+ **
+ ******************************************************************************/
+[[nodiscard]] bool L2CA_FlowControl(uint16_t cid, bool data_enabled);
+
+/*******************************************************************************
+ **
  ** Function         L2CA_GetLocalMtu
  **
  ** Description      Given a local channel identifier, |lcid|, this function

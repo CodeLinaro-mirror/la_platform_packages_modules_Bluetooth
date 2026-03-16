@@ -36,8 +36,12 @@
 
 #include "a2dp_api.h"
 #include "a2dp_codec_api.h"
+#include "audio_hal_interface/a2dp_encoding.h"
 #include "avdt_api.h"
 #include "bta_av_api.h"
+#include "btif_av.h"
+#include "btif_hf.h"
+#include "btm_iso_api.h"
 #include "btif/include/btif_av.h"
 #include "btif/include/btif_av_co.h"
 #include "btif/include/btif_avrcp_audio_track.h"
@@ -47,9 +51,11 @@
 #include "osi/include/allocator.h"
 #include "osi/include/fixed_queue.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/main_thread.h"
 #include "types/raw_address.h"
 
 using bluetooth::common::MessageLoopThread;
+using bluetooth::audio::a2dp::Status;
 using LockGuard = std::lock_guard<std::mutex>;
 using namespace bluetooth;
 
@@ -62,6 +68,8 @@ using namespace bluetooth;
 
 /* In case of A2DP Sink, we will delay start by 5 AVDTP Packets */
 #define MAX_A2DP_DELAYED_START_FRAME_COUNT 5
+
+#define MAX_MTU_SIZE 1024
 
 enum {
   BTIF_A2DP_SINK_STATE_OFF,
@@ -211,6 +219,56 @@ bool btif_a2dp_sink_init() {
   return true;
 }
 
+class A2dpSinkCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
+  Status StartStream(bool low_latency) const override {
+    log::info("StartStream Callback received from BT-HAL");
+    // Check if a phone call is currently active.
+    if (!bluetooth::headset::IsCallIdle()) {
+      log::error("unable to start stream: call is active");
+      return Status::FAILURE;
+    }
+
+    // Check if LE Audio is currently active.
+    if (hci::IsoManager::GetInstance()->GetNumberOfActiveIso() > 0) {
+      log::error("unable to start stream: LEA is active");
+      return Status::FAILURE;
+    }
+
+    // Post start event. The start request is pending, completion will be
+    // notified to bluetooth::audio::a2dp::ack_stream_started.
+    btif_av_sink_stream_start();
+    return Status::PENDING;
+  }
+
+  Status SuspendStream() const override {
+    log::info("SuspendStream Callback received from BT-HAL");
+    return StopStream();
+  }
+
+  Status StopStream() const override {
+    log::info("StopStream Callback received from BT-HAL");
+
+    // Post stop event. The stop request is pending, but completion is not
+    // notified to the HAL.
+    btif_av_sink_stream_stop();
+    return Status::PENDING;
+  }
+
+  Status UpdateSinkMetadata(uint16_t sink_latency) const override {
+    log::info("UpdateSinkMetadata Callback received from BT-HAL");
+    btif_av_update_sink_metadata(sink_latency);
+    return Status::SUCCESS;
+  }
+
+  Status NotifyHalRestart() const override {
+    log::info("NotifyHalRestart Callback received from BT-HAL");
+    btif_av_sink_notify_hal_restart();
+    return Status::SUCCESS;
+  }
+};
+
+static const A2dpSinkCallbacks a2dp_sink_callbacks;
+
 static void btif_a2dp_sink_init_delayed() {
   log::info("");
   btif_a2dp_sink_state = BTIF_A2DP_SINK_STATE_RUNNING;
@@ -225,7 +283,12 @@ bool btif_a2dp_sink_startup() {
 static void btif_a2dp_sink_startup_delayed() {
   log::info("");
   LockGuard lock(g_mutex);
-  // Nothing to do
+  if (btif_av_is_a2dp_sink_offload_enabled()) {
+    if (!bluetooth::audio::a2dp::init(&btif_a2dp_sink_cb.worker_thread, &a2dp_sink_callbacks,
+                                    false)) {
+      log::warn("Failed to setup the bluetooth audio HAL");
+    }
+  }
 }
 
 static void btif_a2dp_sink_on_decode_complete([[maybe_unused]] uint8_t* data,
@@ -245,6 +308,7 @@ static bool btif_a2dp_sink_initialize_a2dp_control_block(const RawAddress& peer_
   log::verbose("p_codec_info[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]", codec_config[1], codec_config[2],
                codec_config[3], codec_config[4], codec_config[5], codec_config[6]);
 
+  A2dpCodecConfig* a2dp_codec_config = bta_av_co_get_codec_config_a2dp_sink(peer_address, codec_config);
   btif_a2dp_sink_cb.decoder_interface = A2DP_GetDecoderInterface(codec_config);
 
   if (btif_a2dp_sink_cb.decoder_interface == nullptr) {
@@ -259,6 +323,15 @@ static bool btif_a2dp_sink_initialize_a2dp_control_block(const RawAddress& peer_
 
   if (btif_a2dp_sink_cb.decoder_interface->decoder_configure != nullptr) {
     btif_a2dp_sink_cb.decoder_interface->decoder_configure(codec_config);
+  }
+
+  if (btif_av_is_a2dp_sink_offload_enabled()) {
+    uint16_t peer_mtu = bta_av_co_get_peer_mtu_sink(peer_address);
+    log::debug("peer_mtu: {}", peer_mtu);
+    bluetooth::audio::a2dp::setup_codec(a2dp_codec_config,
+                                       (peer_mtu == 0) ? MAX_MTU_SIZE : peer_mtu, 0);
+    log::info("Sink offload enabled, track not required.");
+    return true;
   }
 
   log::info("codec = {}", A2DP_CodecInfoString(codec_config));
@@ -320,8 +393,13 @@ static void btif_a2dp_sink_start_session_delayed(const RawAddress& peer_address,
   if (com::android::bluetooth::flags::bta_av_use_peer_codec()) {
     btif_a2dp_sink_initialize_a2dp_control_block(peer_address);
   }
+
+  //Checks if active hal interface is offload decoding
+  if (btif_av_is_a2dp_offload_running()) {
+    bluetooth::audio::a2dp::start_session();
+  }
+
   peer_ready_promise.set_value();
-  // Nothing to do
 }
 
 bool btif_a2dp_sink_restart_session(const RawAddress& old_peer_address,
@@ -357,7 +435,10 @@ bool btif_a2dp_sink_end_session(const RawAddress& peer_address) {
 static void btif_a2dp_sink_end_session_delayed() {
   log::info("");
   LockGuard lock(g_mutex);
-  // Nothing to do
+  //Checks if active hal interface is offload decoding
+  if(btif_av_is_a2dp_offload_running()) {
+    bluetooth::audio::a2dp::end_session();
+  }
 }
 
 void btif_a2dp_sink_shutdown() {
@@ -394,6 +475,8 @@ void btif_a2dp_sink_cleanup() {
 
   // Stop the timer
   alarm_free(decode_alarm);
+
+  bluetooth::audio::a2dp::cleanup();
 
   // Exit the thread
   btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(btif_a2dp_sink_cleanup_delayed));
@@ -444,6 +527,8 @@ static void btif_a2dp_sink_command_ready(BT_HDR_RIGID* p_msg) {
 
 void btif_a2dp_sink_update_decoder(const RawAddress& peer_address, const uint8_t* p_codec_info) {
   log::info("peer_address {}", peer_address);
+  if (btif_av_is_a2dp_sink_offload_enabled()) return;
+
   tBTIF_MEDIA_SINK_DECODER_UPDATE* p_buf = reinterpret_cast<tBTIF_MEDIA_SINK_DECODER_UPDATE*>(
           osi_malloc(sizeof(tBTIF_MEDIA_SINK_DECODER_UPDATE)));
 
@@ -472,6 +557,10 @@ void btif_a2dp_sink_on_idle() {
 
 void btif_a2dp_sink_on_stopped(tBTA_AV_SUSPEND* /* p_av_suspend */) {
   log::info("");
+  if (btif_av_is_a2dp_sink_offload_enabled()) {
+    return;
+  }
+
   BT_HDR_RIGID* p_buf = reinterpret_cast<BT_HDR_RIGID*>(osi_malloc(sizeof(BT_HDR_RIGID)));
   p_buf->event = BTIF_MEDIA_SINK_SUSPEND;
   btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(btif_a2dp_sink_command_ready, p_buf));
@@ -484,6 +573,10 @@ void btif_a2dp_sink_on_stopped(tBTA_AV_SUSPEND* /* p_av_suspend */) {
 
 void btif_a2dp_sink_on_suspended(tBTA_AV_SUSPEND* /* p_av_suspend */) {
   log::info("");
+  if (btif_av_is_a2dp_sink_offload_enabled()) {
+    return;
+  }
+
   BT_HDR_RIGID* p_buf = reinterpret_cast<BT_HDR_RIGID*>(osi_malloc(sizeof(BT_HDR_RIGID)));
   p_buf->event = BTIF_MEDIA_SINK_SUSPEND;
   btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(btif_a2dp_sink_command_ready, p_buf));
@@ -749,6 +842,8 @@ uint8_t btif_a2dp_sink_enqueue_buf(BT_HDR* p_pkt) {
 
 void btif_a2dp_sink_audio_rx_flush_req() {
   log::info("");
+  if (btif_av_is_a2dp_sink_offload_enabled()) return;
+
   if (fixed_queue_is_empty(btif_a2dp_sink_cb.rx_audio_queue)) {
     /* Queue is already empty */
     return;
@@ -765,6 +860,8 @@ void btif_a2dp_sink_debug_dump(int /* fd */) {
 
 void btif_a2dp_sink_set_focus_state_req(btif_a2dp_sink_focus_state_t state) {
   log::info("");
+  if (btif_av_is_a2dp_sink_offload_enabled()) return;
+
   tBTIF_MEDIA_SINK_FOCUS_UPDATE* p_buf = reinterpret_cast<tBTIF_MEDIA_SINK_FOCUS_UPDATE*>(
           osi_malloc(sizeof(tBTIF_MEDIA_SINK_FOCUS_UPDATE)));
   p_buf->focus_state = state;
@@ -800,6 +897,7 @@ void* btif_a2dp_sink_get_audio_track(void) { return btif_a2dp_sink_cb.audio_trac
 
 static void btif_a2dp_sink_clear_track_event_req() {
   log::info("");
+  if (btif_av_is_a2dp_sink_offload_enabled()) return;
   BT_HDR_RIGID* p_buf = reinterpret_cast<BT_HDR_RIGID*>(osi_malloc(sizeof(BT_HDR_RIGID)));
 
   p_buf->event = BTIF_MEDIA_SINK_CLEAR_TRACK;

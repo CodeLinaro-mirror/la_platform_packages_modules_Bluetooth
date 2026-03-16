@@ -110,6 +110,11 @@ typedef enum {
 } btav_a2dp_codec_priority_t;
 
 typedef enum {
+  BTAV_A2DP_CODEC_PRIORITY_SINK_SBC = 9001,
+  BTAV_A2DP_CODEC_PRIORITY_SINK_AAC = 10001,
+}btav_a2dp_sink_codec_priority_t;
+
+typedef enum {
   BTAV_A2DP_CODEC_SAMPLE_RATE_NONE = 0x0,
   BTAV_A2DP_CODEC_SAMPLE_RATE_44100 = 0x1 << 0,
   BTAV_A2DP_CODEC_SAMPLE_RATE_48000 = 0x1 << 1,

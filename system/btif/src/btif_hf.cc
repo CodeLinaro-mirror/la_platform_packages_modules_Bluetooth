@@ -1465,6 +1465,12 @@ bt_status_t HeadsetInterface::PhoneStateChange(int num_active, int num_held,
         } else {
           res = BTA_AG_IN_CALL_RES;
           if (is_active_device(*bd_addr)) {
+            // send BSIR:1 only if BSIR:0 was sent earlier
+            tBTA_AG_SCB* p_scb = bta_ag_scb_by_idx(control_block.handle);
+            if(p_scb && bta_ag_inband_enabled(p_scb)) {
+              log::info("send BSIR:1 as BSIR:0 was sent earlier");
+              SendBsir(1, bd_addr);
+            }
             ag_res.audio_handle = control_block.handle;
           }
         }

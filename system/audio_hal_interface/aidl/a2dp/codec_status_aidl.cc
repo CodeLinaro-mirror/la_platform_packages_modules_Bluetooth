@@ -596,15 +596,23 @@ bool A2dpOpusToHalConfig(CodecConfiguration* codec_config, A2dpCodecConfig* a2dp
 
 bool UpdateOffloadingCapabilities(
         const std::vector<btav_a2dp_codec_config_t>& framework_preference) {
-  audio_hal_capabilities = BluetoothAudioClientInterface::GetAudioCapabilities(
-          SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH);
+  if (btif_av_is_a2dp_sink_offload_enabled()) {
+    audio_hal_capabilities = BluetoothAudioClientInterface::GetAudioCapabilities(
+            SessionType::A2DP_HARDWARE_OFFLOAD_DECODING_DATAPATH);
+  } else {
+    audio_hal_capabilities = BluetoothAudioClientInterface::GetAudioCapabilities(
+            SessionType::A2DP_HARDWARE_OFFLOAD_ENCODING_DATAPATH);
+  }
+
   std::unordered_set<CodecType> codec_type_set;
   for (auto preference : framework_preference) {
     switch (preference.codec_type) {
       case BTAV_A2DP_CODEC_INDEX_SOURCE_SBC:
+      case BTAV_A2DP_CODEC_INDEX_SINK_SBC:
         codec_type_set.insert(CodecType::SBC);
         break;
       case BTAV_A2DP_CODEC_INDEX_SOURCE_AAC:
+      case BTAV_A2DP_CODEC_INDEX_SINK_AAC:
         codec_type_set.insert(CodecType::AAC);
         break;
       case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX:
@@ -625,8 +633,6 @@ bool UpdateOffloadingCapabilities(
       case BTAV_A2DP_CODEC_INDEX_SOURCE_OPUS:
         codec_type_set.insert(CodecType::OPUS);
         break;
-      case BTAV_A2DP_CODEC_INDEX_SINK_SBC:
-      case BTAV_A2DP_CODEC_INDEX_SINK_AAC:
       case BTAV_A2DP_CODEC_INDEX_SINK_OPUS:
         log::warn("Ignore sink codec_type={}", preference.codec_type);
         break;

@@ -34,4 +34,11 @@ void a2dp_sbc_decoder_cleanup(void);
 // if decoded frames are available.
 bool a2dp_sbc_decoder_decode_packet(BT_HDR* p_buf);
 
+// Configure the A2DP SBC decoder.
+// |p_codec_info| is codec config
+// Calculate sbc bitrate for offload mode
+void a2dp_sbc_decoder_configure(const uint8_t* p_codec_info);
+
+// Returns sbc bitrate for offload mode
+uint32_t a2dp_sbc_sink_get_bitrate();
 #endif  // A2DP_SBC_DECODER_H

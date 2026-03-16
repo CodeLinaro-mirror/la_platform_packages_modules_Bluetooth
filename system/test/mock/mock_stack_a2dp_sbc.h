@@ -157,6 +157,16 @@ struct A2DP_GetBitrateSbc {
 };
 extern struct A2DP_GetBitrateSbc A2DP_GetBitrateSbc;
 
+// Name: A2DP_SinkGetBitrateSbc
+// Params:
+// Return: uint32_t
+struct A2DP_SinkGetBitrateSbc {
+  static uint32_t return_value;
+  std::function<uint32_t()> body{[]() { return return_value; }};
+  uint32_t operator()() { return body(); }
+};
+extern struct A2DP_SinkGetBitrateSbc A2DP_SinkGetBitrateSbc;
+
 // Name: A2DP_GetChannelModeCodeSbc
 // Params: const uint8_t* p_codec_info
 // Return: int

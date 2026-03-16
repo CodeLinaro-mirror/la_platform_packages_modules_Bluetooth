@@ -48,6 +48,7 @@
 #include "stack/include/btm_client_interface.h"
 #include "stack/l2cap/l2c_int.h"
 #include <cutils/properties.h>
+#include "stack/include/main_thread.h"
 
 using namespace bluetooth;
 
@@ -63,7 +64,7 @@ using namespace bluetooth;
 
 bool btif_get_address_type(const RawAddress& bda, tBLE_ADDR_TYPE* p_addr_type);
 bool btif_get_device_type(const RawAddress& bda, int* p_device_type);
-
+static bool l2cap_flow_control_enabled = false;
 static tL2CAP_APPL_INFO* pl2test_l2c_appl = NULL;
 static bt_status_t L2cap_Init(tL2CAP_APPL_INFO* p);
 static bt_status_t L2cap_Register(uint16_t psm, bool conn_type,
@@ -205,6 +206,14 @@ static void set_pts_properties() {
   char l2c_send_s_frame_rr_opt[PROPERTY_VALUE_MAX];
   property_get("persist.vendor.qcom.bluetooth.l2c_send_s_frame_rr", l2c_send_s_frame_rr_opt, "0");
   pts_send_rr_s_frame = (strcmp(l2c_send_s_frame_rr_opt, "true") == 0);
+
+  char sending_flow_control_for_pts[PROPERTY_VALUE_MAX];
+  property_get("persist.vendor.qcom.bluetooth.l2c_enable_flow_control", sending_flow_control_for_pts, "0");
+  l2cap_flow_control_enabled = (strcmp(sending_flow_control_for_pts, "true") == 0);
+
+  char l2c_send_conn_rsp_sec_block[PROPERTY_VALUE_MAX];
+  property_get("persist.vendor.qcom.bluetooth.l2c_conn_sec_block", l2c_send_conn_rsp_sec_block, "0");
+  send_l2ca_conn_rsp_with_sec_block = (strcmp(l2c_send_conn_rsp_sec_block, "true") == 0);
 }
 
 static bt_status_t L2cap_Init(tL2CAP_APPL_INFO* p) {
@@ -466,7 +475,10 @@ static uint8_t L2cap_DataWrite(uint16_t cid, char* p_data, uint32_t len) {
   p_msg->len =
       len;  // Sends len bytes, irrespective of what you copy to the buffer
   memcpy(ptr, p_data, len);
-  return (uint8_t)L2CA_DataWrite(cid, p_msg);
+  return static_cast<uint8_t>(do_in_main_thread(base::BindOnce([](uint16_t cid, BT_HDR* p_msg){
+    L2CA_DataWrite(cid, p_msg);
+  },
+  cid, p_msg)));
 }
 
 static bool L2cap_Ping(RawAddress p_bd_addr, tL2CA_ECHO_RSP_CB* p_cb) {
@@ -520,6 +532,9 @@ static bool L2cap_SetAclPriority(RawAddress bd_addr, uint8_t priority) {
 static bool L2cap_FlowControl(uint16_t cid, bool data_enabled) {
   log::debug("L2cap_FlowControl:: Invoked with LocalBusy={}\n",
              (data_enabled) ? "FALSE" : "TRUE");
+  if(l2cap_flow_control_enabled) {
+    return L2CA_FlowControl(cid, data_enabled);
+  }
   return false;
 }
 

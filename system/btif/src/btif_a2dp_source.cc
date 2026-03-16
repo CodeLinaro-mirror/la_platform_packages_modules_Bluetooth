@@ -260,7 +260,6 @@ static void btif_a2dp_source_audio_tx_flush_event(void);
 // Set up the A2DP Source codec, and prepare the encoder.
 // The peer address is |peer_addr|.
 // This function should be called prior to starting A2DP streaming.
-static bool btif_a2dp_source_setup_codec(const RawAddress& peer_addr);
 static void btif_a2dp_source_cleanup_codec_delayed();
 static void btif_a2dp_source_encoder_user_config_update_event(
         const RawAddress& peer_address,
@@ -625,7 +624,7 @@ static uint16_t btif_a2dp_get_peer_mtu(A2dpCodecConfig* a2dp_config) {
   return peer_mtu;
 }
 
-static bool btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
+bool btif_a2dp_source_setup_codec(const RawAddress& peer_address) {
   bool retvalue = false;
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
 
