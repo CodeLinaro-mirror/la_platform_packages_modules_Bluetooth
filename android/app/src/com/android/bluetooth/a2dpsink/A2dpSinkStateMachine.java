@@ -47,11 +47,13 @@ class A2dpSinkStateMachine extends StateMachine {
     // 100->199 Internal Events
     @VisibleForTesting static final int CLEANUP = 100;
     @VisibleForTesting static final int CONNECT_TIMEOUT = 101;
+    @VisibleForTesting static final int DISCONNECT_TIMEOUT = 102;
 
     // 200->299 Events from Native
     @VisibleForTesting static final int STACK_EVENT = 200;
 
     static final int CONNECT_TIMEOUT_MS = 10000;
+    static final int DISCONNECT_TIMEOUT_MS = 4000;
 
     protected final BluetoothDevice mDevice;
     protected final byte[] mDeviceAddress;
@@ -181,6 +183,7 @@ class A2dpSinkStateMachine extends StateMachine {
         void processStackEvent(StackEvent event) {
             switch (event.mType) {
                 case StackEvent.EVENT_TYPE_CONNECTION_STATE_CHANGED:
+                    Log.d(TAG, "[" + mDevice + "] Connection state changed: " + event.mState);
                     switch (event.mState) {
                         case StackEvent.CONNECTION_STATE_CONNECTING:
                             if (mService.getConnectionPolicy(mDevice)
@@ -198,7 +201,19 @@ class A2dpSinkStateMachine extends StateMachine {
                             }
                             break;
                         case StackEvent.CONNECTION_STATE_CONNECTED:
-                            transitionTo(mConnected);
+                            if (mService.getConnectionPolicy(mDevice)
+                                    == BluetoothProfile.CONNECTION_POLICY_FORBIDDEN) {
+                                Log.w(
+                                        TAG,
+                                        "["
+                                                + mDevice
+                                                + "] Ignore incoming connection, profile"
+                                                + " is turned off");
+                                mNativeInterface.disconnectA2dpSink(mDevice);
+                            } else {
+                                onConnectionStateChanged(BluetoothProfile.STATE_CONNECTING);
+                                transitionTo(mConnected);
+                            }
                             break;
                         case StackEvent.CONNECTION_STATE_DISCONNECTED:
                             sendMessage(CLEANUP);
@@ -296,6 +311,7 @@ class A2dpSinkStateMachine extends StateMachine {
                             transitionTo(mDisconnecting);
                             break;
                         case StackEvent.CONNECTION_STATE_DISCONNECTED:
+                            onConnectionStateChanged(BluetoothProfile.STATE_DISCONNECTING);
                             transitionTo(mDisconnected);
                             break;
                     }
@@ -316,7 +332,38 @@ class A2dpSinkStateMachine extends StateMachine {
         public void enter() {
             Log.d(TAG, "[" + mDevice + "] Enter Disconnecting");
             onConnectionStateChanged(BluetoothProfile.STATE_DISCONNECTING);
-            transitionTo(mDisconnected);
+            sendMessageDelayed(DISCONNECT_TIMEOUT, DISCONNECT_TIMEOUT_MS);
+        }
+
+        @Override
+        public boolean processMessage(Message msg) {
+            switch (msg.what) {
+                case STACK_EVENT:
+                    processStackEvent((StackEvent) msg.obj);
+                    break;
+                case DISCONNECT_TIMEOUT:
+                    transitionTo(mDisconnected);
+                    break;
+                case CONNECT:
+                    deferMessage(msg);
+                    break;
+                case DISCONNECT:
+                    deferMessage(msg);
+                    break;
+            }
+            return true;
+        }
+
+        void processStackEvent(StackEvent event) {
+            if (event.mType == StackEvent.EVENT_TYPE_CONNECTION_STATE_CHANGED &&
+                    event.mState == StackEvent.CONNECTION_STATE_DISCONNECTED) {
+                transitionTo(mDisconnected);
+            }
+        }
+
+        @Override
+        public void exit() {
+            removeMessages(DISCONNECT_TIMEOUT);
         }
     }
 

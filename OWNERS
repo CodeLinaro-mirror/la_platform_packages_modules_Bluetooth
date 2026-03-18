@@ -5,6 +5,9 @@ girardier@google.com #{LAST_RESORT_SUGGESTION}
 muhammadfalam@google.com #{LAST_RESORT_SUGGESTION}
 siyuanh@google.com #{LAST_RESORT_SUGGESTION}
 
+# Owners for Automotive stability branch
+salsavage@google.com
+
 # Per-file ownership
 
 # Build files / test_config / presubmit / preupload
