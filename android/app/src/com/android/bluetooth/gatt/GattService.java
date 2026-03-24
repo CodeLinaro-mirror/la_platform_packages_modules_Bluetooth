@@ -17,6 +17,9 @@
 package com.android.bluetooth.gatt;
 
 import static android.bluetooth.BluetoothDevice.TRANSPORT_BREDR;
+import static android.bluetooth.BluetoothGatt.GATT_CONNECTION_TIMEOUT;
+import static android.bluetooth.BluetoothGatt.GATT_FAILURE;
+import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
@@ -74,6 +77,7 @@ import com.android.bluetooth.profile.ProfileService;
 import com.android.bluetooth.util.Text;
 import com.android.bluetooth.util.TimeProvider;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.build.SdkLevel;
 
 import com.google.protobuf.ByteString;
 
@@ -497,17 +501,31 @@ public class GattService extends ProfileService {
         if (app == null) {
             return;
         }
-        final int disconnectStatus;
-        if (status == 0x16 // HCI_ERR_CONN_CAUSE_LOCAL_HOST
-                && getAdapterService().getKeyMissingCount(device) > 0) {
-            // Native stack disconnects the link on detecting the bond loss. Native GATT would
-            // return HCI_ERR_CONN_CAUSE_LOCAL_HOST in such case, but the apps should see
-            // HCI_ERR_AUTH_FAILURE.
-            Log.d(TAG, "onDisconnected(): disconnected due to bond loss for device=" + device);
-            disconnectStatus = 0x05 /* HCI_ERR_AUTH_FAILURE */;
-        } else {
-            disconnectStatus = status;
+        switch (status) {
+            case 0x00 -> { // HCI_SUCCESS
+                status = GATT_SUCCESS;
+            }
+            case 0x08 -> { // HCI_ERR_CONNECTION_TOUT
+                if (Flags.correctGattErrorCode()) {
+                    status = GATT_CONNECTION_TIMEOUT;
+                }
+            }
+            case 0x16 -> { // HCI_ERR_CONN_CAUSE_LOCAL_HOST
+                if (getAdapterService().getKeyMissingCount(device) > 0) {
+                    Log.d(
+                            TAG,
+                            "onDisconnected(): disconnected due to bond loss for device=" + device);
+                    status = 0x05 /* HCI_ERR_AUTH_FAILURE */;
+                }
+            }
+            default -> {
+                if (Flags.correctGattErrorCode()) {
+                    Log.w(TAG, "GATT disconnected reason=" + status);
+                    status = GATT_FAILURE;
+                }
+            }
         }
+        final int disconnectStatus = status;
         callbackToApp(
                 () -> app.getCallback().onClientConnectionState(disconnectStatus, false, device));
         mMetricsReporter.logDisconnectSuccess(device, app.getUid());
@@ -1122,13 +1140,15 @@ public class GattService extends ProfileService {
                 if (Flags.gattThread()) {
                     disableLeAudio =
                             CompatChanges.isChangeEnabled(
-                                    DONOT_STEAL_AUDIO_ON_GATT_CONN, source.getUid());
+                                            DONOT_STEAL_AUDIO_ON_GATT_CONN, source.getUid())
+                                    && SdkLevel.isAtLeastC();
                 } else {
                     final long token = Binder.clearCallingIdentity();
                     try {
                         disableLeAudio =
                                 CompatChanges.isChangeEnabled(
-                                        DONOT_STEAL_AUDIO_ON_GATT_CONN, source.getUid());
+                                                DONOT_STEAL_AUDIO_ON_GATT_CONN, source.getUid())
+                                        && SdkLevel.isAtLeastC();
                     } finally {
                         Binder.restoreCallingIdentity(token);
                     }
@@ -1625,7 +1645,6 @@ public class GattService extends ProfileService {
     }
 
     private boolean shouldBlockMessaging(BluetoothDevice device) {
-        // This flag implies reverting the change made by Flags.gattMessagingPermissions
         if (Flags.checkMapclientConnectionPolicyForAncs()) {
             return getAdapterService()
                     .getMapClientService()
@@ -1634,11 +1653,9 @@ public class GattService extends ProfileService {
                                     mapClientService.getConnectionPolicy(device)
                                             != CONNECTION_POLICY_ALLOWED)
                     .orElse(false);
-        } else if (Flags.gattMessagingPermissions()) {
+        } else {
             return getAdapterService().getMessageAccessPermission(device)
                     != BluetoothDevice.ACCESS_ALLOWED;
-        } else {
-            return false;
         }
     }
 

@@ -30,7 +30,6 @@
 #include "osi/include/allocator.h"
 #include "osi/include/fixed_queue.h"
 #include "osi/include/mutex.h"
-#include "stack/btm/btm_sec.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/l2cap_interface.h"
@@ -267,7 +266,7 @@ uint16_t GAP_ConnOpen(const char* /* p_serv_name */, uint8_t service_id, bool is
   }
 
   if (transport == BT_TRANSPORT_LE) {
-    if (com::android::bluetooth::flags::lecoc_with_fixed_psm()) {
+    if (com_android_bluetooth_flags_lecoc_with_fixed_psm()) {
       p_ccb->local_coc_cfg.lecoc_fixed_psm_slots = p_cfg->lecoc_fixed_psm_slots;
       p_ccb->local_coc_cfg.lecoc_assigned_psm = p_cfg->lecoc_assigned_psm;
     } else {
@@ -880,11 +879,7 @@ static void gap_config_ind(uint16_t l2cap_cid, tL2CAP_CFG_INFO* p_cfg) {
     p_ccb->rem_mtu_size = L2CAP_DEFAULT_MTU;
   } else {
     if (p_ccb->cfg.fcr.mode == L2CAP_FCR_ERTM_MODE) {
-      if (com_android_bluetooth_flags_l2cap_improve_segmented_sdu()) {
-        local_mtu_size = BT_ERTM_BUFFER_SIZE - sizeof(BT_HDR) - L2CAP_MIN_OFFSET;
-      } else {
-        local_mtu_size = BT_DEFAULT_BUFFER_SIZE - sizeof(BT_HDR) - L2CAP_MIN_OFFSET;
-      }
+      local_mtu_size = BT_ERTM_BUFFER_SIZE - sizeof(BT_HDR) - L2CAP_MIN_OFFSET;
     } else {
       local_mtu_size = L2CAP_MTU_SIZE;
     }
@@ -1117,7 +1112,7 @@ static void gap_release_ccb(tGAP_CCB* p_ccb) {
   }
 
   /* Free the security record for this PSM */
-  get_btm_client_interface().security.BTM_SecClrServiceByPsm(p_ccb->psm);
+  get_security_client_interface().BTM_SecClrServiceByPsm(p_ccb->psm);
   if (p_ccb->transport == BT_TRANSPORT_BR_EDR) {
     stack::l2cap::get_interface().L2CA_Deregister(p_ccb->psm);
   }

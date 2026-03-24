@@ -46,7 +46,6 @@
 #include "internal_include/bt_target.h"
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
-#include "main/shim/shim.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
 #include "osi/include/stack_power_telemetry.h"
@@ -646,7 +645,7 @@ static tBTM_STATUS BTM_StartLeScan() {
  *                  tBTM_STATUS::BTM_WRONG_MODE if the device is not up.
  *
  ******************************************************************************/
-tBTM_STATUS BTM_StartInquiry(tBTM_INQ_RESULTS_CB* p_results_cb, tBTM_CMPL_CB* p_cmpl_cb) {
+tBTM_STATUS BTM_StartInquiry(tBTM_INQ_RESULTS_CB* p_results_cb, tBTM_INQUIRY_CMPL_CB* p_cmpl_cb) {
   /* Only one active inquiry is allowed in this implementation.
      Also do not allow an inquiry if the inquiry filter is being updated */
   if (btm_cb.btm_inq_vars.inq_active) {
@@ -902,7 +901,6 @@ static void btm_clear_all_pending_le_entry(void) {
  ******************************************************************************/
 void btm_inq_db_reset(void) {
   tBTM_REMOTE_DEV_NAME rem_name = {};
-  uint8_t num_responses;
   uint8_t temp_inq_active;
 
   log::debug("Resetting inquiry database");
@@ -917,8 +915,10 @@ void btm_inq_db_reset(void) {
      * caller */
     if (temp_inq_active == BTM_GENERAL_INQUIRY) {
       if (btm_cb.btm_inq_vars.p_inq_cmpl_cb) {
-        num_responses = 0;
-        (*btm_cb.btm_inq_vars.p_inq_cmpl_cb)(&num_responses);
+        tBTM_INQUIRY_CMPL cmpl_data = {};
+        cmpl_data.status = tBTM_INQUIRY_CMPL::CANCELED;
+        cmpl_data.num_resp = 0;
+        (*btm_cb.btm_inq_vars.p_inq_cmpl_cb)(&cmpl_data);
       }
     }
   }
@@ -1210,15 +1210,20 @@ static void btm_process_inq_results_standard(EventView event) {
 
     p_i->inq_info.results.rssi = BTM_INQ_RES_IGNORE_RSSI;
 
+    p_cur = &p_i->inq_info.results;
+
+    // Always use the valid CoD from inquiry response in case it was previously derived from LE
+    // Appearance value
+    if (dc != kDevClassUnclassified && dc != kDevClassEmpty) {
+      p_cur->dev_class = dc;
+    }
+
     if (is_new) {
       /* Save the info */
-      p_cur = &p_i->inq_info.results;
       p_cur->page_scan_rep_mode = page_scan_rep_mode;
       p_cur->page_scan_per_mode = page_scan_per_mode;
       p_cur->page_scan_mode = page_scan_mode;
-      p_cur->dev_class[0] = dc[0];
-      p_cur->dev_class[1] = dc[1];
-      p_cur->dev_class[2] = dc[2];
+
       p_cur->clock_offset = clock_offset | BTM_CLOCK_OFFSET_VALID;
 
       p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();
@@ -1354,15 +1359,19 @@ static void btm_process_inq_results_rssi(EventView event) {
     /* keep updating RSSI to have latest value */
     p_i->inq_info.results.rssi = (int8_t)rssi;
 
+    p_cur = &p_i->inq_info.results;
+
+    // Always use the valid CoD from inquiry response in case it was previously derived from LE
+    // Appearance value
+    if (dc != kDevClassUnclassified && dc != kDevClassEmpty) {
+      p_cur->dev_class = dc;
+    }
+
     if (is_new) {
       /* Save the info */
-      p_cur = &p_i->inq_info.results;
       p_cur->page_scan_rep_mode = page_scan_rep_mode;
       p_cur->page_scan_per_mode = page_scan_per_mode;
       p_cur->page_scan_mode = page_scan_mode;
-      p_cur->dev_class[0] = dc[0];
-      p_cur->dev_class[1] = dc[1];
-      p_cur->dev_class[2] = dc[2];
       p_cur->clock_offset = clock_offset | BTM_CLOCK_OFFSET_VALID;
 
       p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();
@@ -1504,15 +1513,19 @@ static void btm_process_inq_results_extended(EventView event) {
     /* keep updating RSSI to have latest value */
     p_i->inq_info.results.rssi = (int8_t)rssi;
 
+    p_cur = &p_i->inq_info.results;
+
+    // Always use the valid CoD from inquiry response in case it was previously derived from LE
+    // Appearance value
+    if (dc != kDevClassUnclassified && dc != kDevClassEmpty) {
+      p_cur->dev_class = dc;
+    }
+
     if (is_new) {
       /* Save the info */
-      p_cur = &p_i->inq_info.results;
       p_cur->page_scan_rep_mode = page_scan_rep_mode;
       p_cur->page_scan_per_mode = page_scan_per_mode;
       p_cur->page_scan_mode = page_scan_mode;
-      p_cur->dev_class[0] = dc[0];
-      p_cur->dev_class[1] = dc[1];
-      p_cur->dev_class[2] = dc[2];
       p_cur->clock_offset = clock_offset | BTM_CLOCK_OFFSET_VALID;
 
       p_i->time_of_resp = bluetooth::common::time_get_os_boottime_ms();

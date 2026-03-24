@@ -38,9 +38,9 @@
 #endif
 
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 
-#include "common/strings.h"
 #include "devices.h"
 #include "le_audio_log_history.h"
 #include "le_audio_types.h"
@@ -78,7 +78,10 @@ public:
     LeAudioDeviceGroup* group_;
     types::CigState state_;
 
-    /* Life time of cises is from GenerateCisIds() up to when CIG is removed.*/
+    /* Life time of cises is from GenerateCisIds() up to when CIG is removed.
+     * Note in case of stream being reconfigured before CIG is created, cises might be
+     * regenerated (i.e. cleared and generated)
+     */
     std::vector<struct types::cis> cises;
   } cig;
 
@@ -118,8 +121,8 @@ public:
         dsa_({DsaMode::DISABLED, false}),
         asymmetric_phy_for_unidirectional_cis_supported(true),
         is_enabled_(true),
-        transport_latency_mtos_us_(0),
-        transport_latency_stom_us_(0),
+        transport_latency_c_to_p_us_(0),
+        transport_latency_p_to_c_us_(0),
         configuration_context_type_(types::LeAudioContextType::UNINITIALIZED),
         metadata_context_type_(
                 {.sink = types::AudioContexts(types::LeAudioContextType::UNINITIALIZED),
@@ -208,13 +211,12 @@ public:
   uint8_t GetSCA(void) const;
   uint8_t GetPacking(void) const;
   uint8_t GetFraming(void) const;
-  uint16_t GetMaxTransportLatencyStom(void) const;
-  uint16_t GetMaxTransportLatencyMtos(void) const;
+  uint16_t GetMaxTransportLatencyPToC(void) const;
+  uint16_t GetMaxTransportLatencyCToP(void) const;
   void SetTransportLatency(uint8_t direction, uint32_t transport_latency_us);
   uint8_t GetRtn(uint8_t direction, uint8_t cis_id) const;
   uint16_t GetMaxSduSize(uint8_t direction, uint8_t cis_id) const;
   uint8_t GetPhyBitmask(uint8_t direction) const;
-  uint8_t GetTargetPhy(uint8_t direction) const;
   bool GetPresentationDelay(uint32_t* delay, uint8_t direction) const;
   uint16_t GetRemoteDelay(uint8_t direction) const;
   bool UpdateAudioSetConfigurationCache(types::LeAudioContextType ctx_type,
@@ -482,8 +484,8 @@ public:
 private:
   bool is_enabled_;
 
-  uint32_t transport_latency_mtos_us_;
-  uint32_t transport_latency_stom_us_;
+  uint32_t transport_latency_c_to_p_us_;
+  uint32_t transport_latency_p_to_c_us_;
 
   bool ConfigureAses(const types::AudioSetConfiguration* audio_set_conf,
                      types::LeAudioContextType context_type,

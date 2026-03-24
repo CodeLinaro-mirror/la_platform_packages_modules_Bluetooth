@@ -41,8 +41,6 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.le.IPeriodicAdvertisingCallback;
-import android.bluetooth.le.PeriodicAdvertisingCallback;
-import android.bluetooth.le.PeriodicAdvertisingManager;
 import android.bluetooth.le.PeriodicAdvertisingReport;
 import android.content.AttributionSource;
 import android.content.Intent;
@@ -133,8 +131,6 @@ class BassClientStateMachine extends StateMachine {
     private final AdapterService mAdapterService;
     private final BluetoothAdapter mAdapter;
     private final ScanController mScanController;
-    // TODO Delete it on leaudioBroadcastImproveSourceOperations flag cleanup
-    private final PeriodicAdvertisingManager mPeriodicAdvertisingManager;
 
     @VisibleForTesting
     final List<BluetoothGattCharacteristic> mBroadcastCharacteristics = new ArrayList<>();
@@ -161,8 +157,6 @@ class BassClientStateMachine extends StateMachine {
     private boolean mAllowReconnect = false;
     @VisibleForTesting BluetoothGattTestableWrapper mBluetoothGatt = null;
     BluetoothGattCallback mGattCallback = null;
-    // TODO Delete it on leaudioBroadcastImproveSourceOperations flag cleanup
-    PeriodicAdvertisingCallback mLocalPeriodicAdvCallbackObsolete = new PACallbackObsolete();
     IPeriodicAdvertisingCallback mLocalPeriodicAdvCallback = new PACallback();
     int mMaxSingleAttributeWriteValueLen = 0;
     @VisibleForTesting BluetoothLeBroadcastMetadata mPendingSourceToSwitch = null;
@@ -173,7 +167,6 @@ class BassClientStateMachine extends StateMachine {
             BassClientService svc,
             AdapterService adapterService,
             ScanController scanController,
-            PeriodicAdvertisingManager periodicAdvertisingManager,
             Looper looper) {
         super(TAG + "(" + device + ")", looper);
         mDevice = device;
@@ -181,7 +174,6 @@ class BassClientStateMachine extends StateMachine {
         mAdapterService = adapterService;
         mAdapter = mAdapterService.getSystemService(BluetoothManager.class).getAdapter();
         mScanController = scanController;
-        mPeriodicAdvertisingManager = periodicAdvertisingManager;
         addState(mDisconnected);
         addState(mConnected);
         addState(mConnecting);
@@ -484,16 +476,11 @@ class BassClientStateMachine extends StateMachine {
                                 + advHandle
                                 + ", serviceData: "
                                 + serviceData);
-                if (Flags.leaudioBroadcastImproveSourceOperations()) {
-                    final int sd = serviceData;
-                    mScanController.doOnScanThread(
-                            () ->
-                                    mScanController.transferSetInfo(
-                                            mDevice, sd, advHandle, mLocalPeriodicAdvCallback));
-                } else {
-                    mPeriodicAdvertisingManager.transferSetInfo(
-                            mDevice, serviceData, advHandle, mLocalPeriodicAdvCallbackObsolete);
-                }
+                final int sd = serviceData;
+                mScanController.doOnScanThread(
+                        () ->
+                                mScanController.transferSetInfo(
+                                        mDevice, sd, advHandle, mLocalPeriodicAdvCallback));
             } else {
                 int broadcastId = recvState.getBroadcastId();
                 PeriodicAdvertisementResult result =
@@ -530,13 +517,9 @@ class BassClientStateMachine extends StateMachine {
                             + syncHandle
                             + ", serviceData: "
                             + serviceData);
-            if (Flags.leaudioBroadcastImproveSourceOperations()) {
-                final int sd = serviceData;
-                mScanController.doOnScanThread(
-                        () -> mScanController.transferSync(mDevice, sd, syncHandle));
-            } else {
-                mPeriodicAdvertisingManager.transferSync(mDevice, serviceData, syncHandle);
-            }
+            final int sd = serviceData;
+            mScanController.doOnScanThread(
+                    () -> mScanController.transferSync(mDevice, sd, syncHandle));
         } else {
             Log.e(
                     TAG,
@@ -664,7 +647,7 @@ class BassClientStateMachine extends StateMachine {
 
         BluetoothLeBroadcastReceiveState recvState = null;
         if (receiverState.length == 0) {
-            byte[] emptyBluetoothDeviceAddress = Utils.getBytesFromAddress("00:00:00:00:00:00");
+            byte[] emptyBluetoothDeviceAddress = Util.getBytesFromAddress("00:00:00:00:00:00");
             if (previousSourceId != BassConstants.INVALID_SOURCE_ID) {
                 recvState =
                         new BluetoothLeBroadcastReceiveState(
@@ -1099,15 +1082,6 @@ class BassClientStateMachine extends StateMachine {
         }
     }
 
-    // TODO Delete it on leaudioBroadcastImproveSourceOperations flag cleanup
-    /** Internal periodic Advertising manager callback */
-    private static final class PACallbackObsolete extends PeriodicAdvertisingCallback {
-        @Override
-        public void onSyncTransferred(BluetoothDevice device, int status) {
-            Log.i(TAG, "onSyncTransferred: device=" + device + ", status =" + status);
-        }
-    }
-
     /** Internal periodic Advertising manager callback */
     private static final class PACallback extends IPeriodicAdvertisingCallback.Stub {
         @Override
@@ -1430,7 +1404,7 @@ class BassClientStateMachine extends StateMachine {
         stream.write(metaData.getSourceAddressType());
 
         // Advertiser_Address
-        byte[] bcastSourceAddr = Utils.getBytesFromAddress(advSource.getAddress());
+        byte[] bcastSourceAddr = Util.getBytesFromAddress(advSource.getAddress());
         Utils.reverse(bcastSourceAddr);
         stream.write(bcastSourceAddr, 0, 6);
 
@@ -1473,7 +1447,7 @@ class BassClientStateMachine extends StateMachine {
         }
 
         byte[] res = stream.toByteArray();
-        BassUtils.printByteArray(res);
+        Log.d(TAG, "BASS bytes dump, ADD_BCAST_SOURCE: " + BassUtils.byteArrayToHexString(res));
         return res;
     }
 
@@ -1558,8 +1532,7 @@ class BassClientStateMachine extends StateMachine {
             res[offset++] = 0;
         }
 
-        Log.d(TAG, "UPDATE_BCAST_SOURCE in Bytes");
-        BassUtils.printByteArray(res);
+        Log.d(TAG, "BASS bytes dump, UPDATE_BCAST_SOURCE: " + BassUtils.byteArrayToHexString(res));
         return res;
     }
 
@@ -1592,8 +1565,7 @@ class BassClientStateMachine extends StateMachine {
             // This effectively adds padding zeros to MSB positions when the broadcast code
             // is shorter than 16 octets, skip the first 2 bytes for opcode and source_id.
             System.arraycopy(actualPIN, 0, res, 2, actualPIN.length);
-            Log.d(TAG, "SET_BCAST_PIN in Bytes");
-            BassUtils.printByteArray(res);
+            Log.d(TAG, "BASS bytes dump, SET_BCAST_PIN: " + BassUtils.byteArrayToHexString(res));
         }
         return res;
     }

@@ -45,14 +45,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.ParcelUuid;
-import android.os.UserHandle;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
 import androidx.annotation.VisibleForTesting;
 
 import com.android.bluetooth.Util;
-import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.metrics.MetricsLogger;
@@ -211,7 +209,7 @@ public class HidHostService extends ConnectableProfile {
 
         if (transport == TRANSPORT_LE) {
             // Use pseudo address when HOGP is to be used
-            return Utils.getByteAddress(device);
+            return Util.getByteAddress(device);
         } else if (transport == TRANSPORT_BREDR) {
             // Use BR/EDR address if HID is to be used
             return getAdapterService().getByteBrEdrAddress(device);
@@ -223,7 +221,7 @@ public class HidHostService extends ConnectableProfile {
                 return getAdapterService().getByteBrEdrAddress(device);
             } else {
                 // Otherwise use pseudo address
-                return Utils.getByteAddress(device);
+                return Util.getByteAddress(device);
             }
         }
     }
@@ -635,9 +633,7 @@ public class HidHostService extends ConnectableProfile {
             }
         }
 
-        if (Flags.hidDontReconnectOnUhidTimeout()
-                && state == STATE_DISCONNECTED
-                && status == BTHH_ERR_TOD_UNSPT) {
+        if (state == STATE_DISCONNECTED && status == BTHH_ERR_TOD_UNSPT) {
             Log.w(
                     TAG,
                     "handleMessageConnectStateChanged: Disabling HID connection for unsupported"
@@ -915,10 +911,7 @@ public class HidHostService extends ConnectableProfile {
     public boolean setConnectionPolicy(BluetoothDevice device, int connectionPolicy) {
         Log.d(TAG, "setConnectionPolicy: device=" + device);
 
-        if (!getAdapterService()
-                .setProfileConnectionPolicy(device, getProfileId(), connectionPolicy)) {
-            return false;
-        }
+        getAdapterService().setProfileConnectionPolicy(device, getProfileId(), connectionPolicy);
         Log.d(TAG, "Saved connectionPolicy=" + connectionPolicy + " for device=" + device);
         if (connectionPolicy == CONNECTION_POLICY_ALLOWED) {
             connect(device);
@@ -1205,12 +1198,7 @@ public class HidHostService extends ConnectableProfile {
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
         intent.putExtra(BluetoothDevice.EXTRA_TRANSPORT, transport);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-        if (Flags.onlyBroadcastToLocalUser()) {
-            sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-        } else {
-            sendBroadcastAsUser(
-                    intent, UserHandle.ALL, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-        }
+        sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
     }
 
     private void broadcastHandshake(BluetoothDevice device, int status) {

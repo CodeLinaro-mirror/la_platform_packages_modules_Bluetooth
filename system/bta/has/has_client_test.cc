@@ -44,9 +44,9 @@
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/btm_status.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_security_client_interface.h"
 #include "test/common/mock_functions.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_security_client_interface.h"
 
 bool gatt_profile_get_eatt_support(const RawAddress& /*addr*/) { return true; }
 
@@ -631,7 +631,6 @@ protected:
     gatt::SetMockBtaGattQueue(&gatt_queue);
 
     set_security_client_interface(mock_btm_security_);
-    set_mock_btm_client_interface_security(mock_btm_security_);
 
     encryption_result = true;
 
@@ -708,9 +707,9 @@ protected:
             }));
 
     /* by default connect only direct connection requests */
-    ON_CALL(gatt_interface, Open(_, _, _, _))
+    ON_CALL(gatt_interface, Open(_, _, _))
             .WillByDefault(Invoke([&](tGATT_IF /*client_if*/, const RawAddress& remote_bda,
-                                      tBTM_BLE_CONN_TYPE connection_type, bool /*opportunistic*/) {
+                                      tBTM_BLE_CONN_TYPE connection_type) {
               if (connection_type == BTM_BLE_DIRECT_CONNECTION) {
                 InjectConnectedEvent(remote_bda, GetTestConnId(remote_bda));
               }
@@ -757,7 +756,7 @@ protected:
     ON_CALL(mock_btm_security_, BTM_IsEncrypted(address, _))
             .WillByDefault(DoAll(Return(encryption_result)));
 
-    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, _));
+    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION));
     HasClient::Get()->Connect(address);
 
     Mock::VerifyAndClearExpectations(&callbacks);
@@ -789,13 +788,13 @@ protected:
 
   void TestAddFromStorage(const RawAddress& address, uint8_t features, bool auto_connect) {
     if (auto_connect) {
-      EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST, _));
+      EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST));
       HasClient::Get()->AddFromStorage(address, features, auto_connect);
 
       /* Inject connected event for autoconnect/background connection */
       InjectConnectedEvent(address, GetTestConnId(address));
     } else {
-      EXPECT_CALL(gatt_interface, Open(gatt_if, address, _, _)).Times(0);
+      EXPECT_CALL(gatt_interface, Open(gatt_if, address, _)).Times(0);
       HasClient::Get()->AddFromStorage(address, features, auto_connect);
     }
 
@@ -1196,7 +1195,7 @@ TEST_F(HasClientTestBase, test_app_registration) {
 
 class HasClientTest : public HasClientTestBase {
   void SetUp(void) override {
-    com::android::bluetooth::flags::provider_->reset_flags();
+    com_android_bluetooth_flags_reset_flags();
     HasClientTestBase::SetUp();
     TestAppRegister();
   }
@@ -1217,7 +1216,7 @@ TEST_F(HasClientTest, test_connect_after_remove) {
   const RawAddress test_address = GetTestAddress(1);
 
   /* Override the default action to prevent us sendind the connected event */
-  EXPECT_CALL(gatt_interface, Open(gatt_if, test_address, BTM_BLE_DIRECT_CONNECTION, _))
+  EXPECT_CALL(gatt_interface, Open(gatt_if, test_address, BTM_BLE_DIRECT_CONNECTION))
           .WillOnce(Return());
   HasClient::Get()->Connect(test_address);
   TestDisconnect(test_address, GATT_INVALID_CONN_ID);
@@ -1235,7 +1234,7 @@ TEST_F(HasClientTest, test_disconnect_non_connected) {
   const RawAddress test_address = GetTestAddress(1);
 
   /* Override the default action to prevent us sendind the connected event */
-  EXPECT_CALL(gatt_interface, Open(gatt_if, test_address, BTM_BLE_DIRECT_CONNECTION, _))
+  EXPECT_CALL(gatt_interface, Open(gatt_if, test_address, BTM_BLE_DIRECT_CONNECTION))
           .WillOnce(Return());
   HasClient::Get()->Connect(test_address);
   TestDisconnect(test_address, GATT_INVALID_CONN_ID);
@@ -1268,7 +1267,7 @@ TEST_F(HasClientTest, test_disconnect_connected) {
 }
 
 TEST_F(HasClientTest, test_disconnect_connected_keep_bonded_dev_in_ram) {
-  com::android::bluetooth::flags::provider_->hap_keep_bonded_dev_in_ram(true);
+  set_com_android_bluetooth_flags_hap_keep_bonded_dev_in_ram(true);
   const RawAddress test_address = GetTestAddress(1);
   /* Minimal possible HA device (only feature flags) */
   SetSampleDatabaseHasNoPresetChange(test_address,
@@ -1286,7 +1285,7 @@ TEST_F(HasClientTest, test_disconnect_connected_keep_bonded_dev_in_ram) {
 }
 
 TEST_F(HasClientTest, test_remove_connected) {
-  com::android::bluetooth::flags::provider_->hap_keep_bonded_dev_in_ram(true);
+  set_com_android_bluetooth_flags_hap_keep_bonded_dev_in_ram(true);
   const RawAddress test_address = GetTestAddress(1);
   /* Minimal possible HA device (only feature flags) */
   SetSampleDatabaseHasNoPresetChange(test_address,

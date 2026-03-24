@@ -26,23 +26,21 @@
 #include <bluetooth/types/address.h>
 #include <com_android_bluetooth_flags.h>
 
+#include "btif/include/btif_debug_conn.h"
 #include "btif/include/btif_storage.h"
 #include "device/include/interop.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/properties.h"
 #include "stack/btm/btm_dev.h"
-#include "stack/btm/btm_sec.h"
 #include "stack/connection_manager/connection_manager.h"
 #include "stack/eatt/eatt.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_hdr.h"
-#include "stack/include/bt_psm_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/gatt_api.h"
 #include "stack/include/hci_error_code.h"
-#include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
 
@@ -98,13 +96,13 @@ void gatt_init(void) {
   gatt_cb.srv_list_info = std::make_shared<std::list<tGATT_SRV_LIST_ELEM>>();
   gatt_profile_db_init();
 
-  if (com::android::bluetooth::flags::le_subrate_manager()) {
+  if (com_android_bluetooth_flags_le_subrate_manager()) {
     gatt_init_subrate_mode_config();
   }
 
   EattExtension::GetInstance()->Start();
 
-  if (com::android::bluetooth::flags::gatt_offload_api() && !gatt_offload_init()) {
+  if (com_android_bluetooth_flags_gatt_offload_api() && !gatt_offload_init()) {
     log::warn("error initializing gatt offload");
   }
 }
@@ -358,7 +356,7 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_a
           return;
         }
       }
-      if (com::android::bluetooth::flags::gatt_offload_api()) {
+      if (com_android_bluetooth_flags_gatt_offload_api()) {
         gatt_offload_clear_sessions_by_conn_id(gatt_create_conn_id(p_tcb->tcb_idx, gatt_if));
       }
       // acl link is connected but no application needs to use the link
@@ -388,59 +386,6 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_a
                                .holders_info = holders});
     }
   }
-}
-
-static bool gatt_connect(const RawAddress& rem_bda, tBLE_ADDR_TYPE addr_type, tGATT_TCB* p_tcb,
-                         tBT_TRANSPORT transport, tGATT_IF gatt_if) {
-  if (transport != BT_TRANSPORT_LE) {
-    p_tcb->att_lcid = stack::l2cap::get_interface().L2CA_ConnectReqWithSecurity(BT_PSM_ATT, rem_bda,
-                                                                                BTM_SEC_NONE);
-    return p_tcb->att_lcid != 0;
-  } else {
-    p_tcb->att_lcid = L2CAP_ATT_CID;
-    return connection_manager::direct_connect_add(gatt_if, rem_bda, addr_type, false);
-  }
-}
-
-/** GATT connection initiation */
-bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                      tBT_TRANSPORT transport) {
-  log::verbose("address:{}, transport:{}", bd_addr, bt_transport_text(transport));
-  tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(bd_addr, transport);
-  if (p_tcb != NULL) {
-    /* before link down, another app try to open a GATT connection */
-    uint8_t st = gatt_get_ch_state(p_tcb);
-    if (st == GATT_CH_OPEN && p_tcb->app_hold_link.empty() && transport == BT_TRANSPORT_LE) {
-      gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
-    } else if (st == GATT_CH_CLOSING) {
-      log::info("Must finish disconnection before new connection");
-      /* need to complete the closing first */
-      return false;
-    }
-
-    return true;
-  }
-
-  p_tcb = gatt_allocate_tcb_by_bdaddr(bd_addr, transport);
-  if (!p_tcb) {
-    log::error("Max TCB for gatt_if [ {}] reached.", p_reg->gatt_if);
-    return false;
-  }
-
-  if (gatt_get_ch_state(p_tcb) != GATT_CH_OPEN) {
-    gatt_set_ch_state(p_tcb, GATT_CH_CONN);
-  }
-
-  if (!gatt_connect(bd_addr, addr_type, p_tcb, transport, p_reg->gatt_if)) {
-    log::error("gatt_connect failed");
-    fixed_queue_free(p_tcb->pending_ind_q, NULL);
-    alarm_free(p_tcb->conf_timer);
-    alarm_free(p_tcb->ind_ack_timer);
-    *p_tcb = tGATT_TCB();
-    return false;
-  }
-
-  return true;
 }
 
 /** This function is called to process the congestion callback from lcb */
@@ -491,7 +436,7 @@ void gatt_notify_conn_update(const RawAddress& remote, uint16_t interval, uint16
     return;
   }
 
-  if (com::android::bluetooth::flags::le_subrate_manager()) {
+  if (com_android_bluetooth_flags_le_subrate_manager()) {
     if (status == HCI_SUCCESS) {
       // call subrate function to adjust subrate parameter
       gatt_handle_conn_parameter_cback_status(remote, interval);
@@ -520,7 +465,7 @@ void gatt_notify_subrate_change(uint16_t handle, uint16_t subrate_factor, uint16
     return;
   }
 
-  if (com::android::bluetooth::flags::le_subrate_manager()) {
+  if (com_android_bluetooth_flags_le_subrate_manager()) {
     if (gatt_handle_subrate_cback_status(p_device->ble.pseudo_addr, subrate_factor, latency,
                                     cont_num, timeout, status)) {
       tGATT_SUBRATE_MODE mode
@@ -549,39 +494,38 @@ void gatt_notify_subrate_change(uint16_t handle, uint16_t subrate_factor, uint16
 
 /** Callback used to notify layer above about a connection */
 void gatt_send_conn_cback(tGATT_TCB* p_tcb) {
-  tCONN_ID conn_id;
+  if (p_tcb->att_lcid == L2CAP_ATT_CID) {
+    std::set<tGATT_IF> apps = connection_manager::get_apps_connecting_to(p_tcb->peer_bda);
+    for (auto& [i, p_reg] : gatt_cb.cl_rcb_map) {
+      if (!p_reg->in_use || !apps.contains(p_reg->gatt_if)) {
+        continue;
+      }
 
-  std::set<tGATT_IF> apps = connection_manager::get_apps_connecting_to(p_tcb->peer_bda);
-
-  /* notifying all applications for the connection up event */
-
-  for (auto& [i, p_reg] : gatt_cb.cl_rcb_map) {
-    if (!p_reg->in_use) {
-      continue;
-    }
-
-    if (apps.find(p_reg->gatt_if) != apps.end()) {
       gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
     }
 
-    if (p_reg->app_cb.p_conn_cb) {
-      conn_id = gatt_create_conn_id(p_tcb->tcb_idx, p_reg->gatt_if);
-      (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, p_tcb->peer_bda, conn_id, kGattConnected,
-                                 GATT_CONN_OK, p_tcb->transport);
+    if (!com_android_bluetooth_flags_move_conn_mgr_callbacks()) {
+      /* Remove the direct connection */
+      connection_manager::on_connection_complete(p_tcb->peer_bda);
     }
+
+    bool is_active = !p_tcb->app_hold_link.empty();
+    gatt_set_idle_timeout(p_tcb->peer_bda, is_active);
   }
 
-  /* Remove the direct connection */
-  connection_manager::on_connection_complete(p_tcb->peer_bda);
+  if (gatt_cb.debug_conn_state) {
+    gatt_cb.debug_conn_state(p_tcb->peer_bda, true, GATT_CONN_OK);
+  }
 
-  if (p_tcb->att_lcid == L2CAP_ATT_CID) {
-    if (!p_tcb->app_hold_link.empty()) {
-      /* disable idle timeout if one or more clients are holding the link
-       * disable the idle timer */
-      gatt_set_idle_timeout(p_tcb->peer_bda, true /* is_active */);
-    } else {
-      gatt_set_idle_timeout(p_tcb->peer_bda, false /* is_active */);
+  /* notifying all applications for the connection up event */
+  for (auto& [i, p_reg] : gatt_cb.cl_rcb_map) {
+    if (!p_reg->in_use || !p_reg->app_cb.p_conn_cb) {
+      continue;
     }
+
+    tCONN_ID conn_id = gatt_create_conn_id(p_tcb->tcb_idx, p_reg->gatt_if);
+    (*p_reg->app_cb.p_conn_cb)(p_reg->gatt_if, p_tcb->peer_bda, conn_id, kGattConnected,
+                               GATT_CONN_OK, p_tcb->transport);
   }
 }
 
@@ -710,8 +654,7 @@ void gatt_chk_srv_chg(tGATTS_SRV_CHG* p_srv_chg_clt) {
   log::verbose("srv_changed={}, start_handle: {:#x}", p_srv_chg_clt->srv_changed,
                p_srv_chg_clt->start_handle);
 
-  if (com_android_bluetooth_flags_gatt_not_send_service_change_indication_iop() &&
-      p_srv_chg_clt->srv_changed) {
+  if (p_srv_chg_clt->srv_changed) {
     char remote_name[BD_NAME_LEN] = "";
 
     if (btif_storage_get_stored_remote_name(p_srv_chg_clt->bda, remote_name)) {

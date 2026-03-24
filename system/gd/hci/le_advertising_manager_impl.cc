@@ -16,13 +16,14 @@
 #include "hci/le_advertising_manager_impl.h"
 
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 
+#include <atomic>
 #include <iterator>
 #include <memory>
 #include <mutex>
 
-#include "common/strings.h"
 #include "hardware/ble_advertiser.h"
 #include "hci/controller.h"
 #include "hci/event_checkers.h"
@@ -163,7 +164,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
     } else if (controller_->IsSupported(hci::OpCode::LE_MULTI_ADVT)) {
       advertising_api_type_ = AdvertisingApiType::ANDROID_HCI;
       num_instances_ = controller_->GetVendorCapabilities().max_advt_instances_;
-      if (!com::android::bluetooth::flags::multi_adv_index()) {
+      if (!com_android_bluetooth_flags_multi_adv_index()) {
         // number of LE_MULTI_ADVT start from 1
         num_instances_ += 1;
       }
@@ -187,6 +188,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
       le_address_manager_->UnregisterSync(this);
     }
     advertising_sets_.clear();
+    num_advertisers_in_use_.store(0);
   }
 
   int8_t get_tx_path_loss_compensation() {
@@ -221,8 +223,6 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
     log::info("tx_power: {}, calibrated_tx_power: {}", tx_power, calibrated_tx_power);
     return calibrated_tx_power;
   }
-
-  size_t GetNumberOfAdvertisingInstances() const { return num_instances_; }
 
   size_t GetNumberOfAdvertisingInstancesInUse() const {
     return std::count_if(advertising_sets_.begin(), advertising_sets_.end(),
@@ -304,8 +304,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
     if (!advertising_sets_.contains(advertiser_id)) {
       log::warn("Unknown advertiser id {}", advertiser_id);
 
-      if (com::android::bluetooth::flags::ensure_acl_connection_is_removed_from_pending_list() &&
-          removed_advertising_sets_.contains(advertiser_id)) {
+      if (removed_advertising_sets_.contains(advertiser_id)) {
         log::info("Found advertiser id {} in removed advertisers.", advertiser_id);
         AddressWithType advertiser_address =
                 removed_advertising_sets_[advertiser_id].current_address;
@@ -401,7 +400,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
 
   AdvertiserId allocate_advertiser() {
     AdvertiserId id;
-    if (com::android::bluetooth::flags::multi_adv_index()) {
+    if (com_android_bluetooth_flags_multi_adv_index()) {
       id = 0;
     } else {
       // number of LE_MULTI_ADVT start from 1
@@ -416,9 +415,9 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
     }
     advertising_sets_[id] = Advertiser();
     advertising_sets_[id].in_use = true;
+    num_advertisers_in_use_++;
 
-    if (com::android::bluetooth::flags::ensure_acl_connection_is_removed_from_pending_list() &&
-        removed_advertising_sets_.contains(id)) {
+    if (removed_advertising_sets_.contains(id)) {
       log::info("Removing advertiser id {} from removed advertisers.", id);
       removed_advertising_sets_.erase(id);
     }
@@ -459,13 +458,12 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
       }
     }
 
-    if (com::android::bluetooth::flags::ensure_acl_connection_is_removed_from_pending_list()) {
-      removed_advertising_sets_[advertiser_id] =
-              RemovedAdvertiser(advertising_sets_[advertiser_id].current_address,
-                                advertising_sets_[advertiser_id].discoverable);
-    }
+    removed_advertising_sets_[advertiser_id] =
+            RemovedAdvertiser(advertising_sets_[advertiser_id].current_address,
+                              advertising_sets_[advertiser_id].discoverable);
 
     advertising_sets_.erase(advertiser_id);
+    num_advertisers_in_use_--;
     if (advertising_sets_.empty() && address_manager_registered) {
       le_address_manager_->Unregister(this);
       address_manager_registered = false;
@@ -1544,6 +1542,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
   bool paused = false;
 
   size_t num_instances_;
+  std::atomic<size_t> num_advertisers_in_use_{0};
   std::vector<hci::EnabledSet> enabled_sets_;
   // map to mapping the id from java layer and advertiser id
   std::map<uint8_t, int> id_map_;
@@ -1860,10 +1859,6 @@ LeAdvertisingManagerImpl::LeAdvertisingManagerImpl(
 LeAdvertisingManagerImpl::~LeAdvertisingManagerImpl() {
   log::verbose("LeAdvertisingManager module stopped !!");
 };
-
-size_t LeAdvertisingManagerImpl::GetNumberOfAdvertisingInstances() const {
-  return pimpl_->GetNumberOfAdvertisingInstances();
-}
 
 size_t LeAdvertisingManagerImpl::GetNumberOfAdvertisingInstancesInUse() const {
   return pimpl_->GetNumberOfAdvertisingInstancesInUse();

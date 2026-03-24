@@ -20,7 +20,6 @@
 #include <fuzzer/FuzzedDataProvider.h>
 
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 #include "bt_status.h"
@@ -28,12 +27,11 @@
 #include "stack/include/avct_api.h"
 #include "stack/include/avrc_api.h"
 #include "stack/include/bt_psm_types.h"
+#include "stack/mock/mock_stack_acl.h"
+#include "stack/mock/mock_stack_btm_dev.h"
+#include "stack/mock/mock_stack_l2cap_interface.h"
 #include "test/fake/fake_osi.h"
 #include "test/mock/mock_btif_config.h"
-#include "test/mock/mock_stack_acl.h"
-#include "test/mock/mock_stack_btm_dev.h"
-#include "test/mock/mock_stack_l2cap_api.h"
-#include "test/mock/mock_stack_l2cap_interface.h"
 
 using bluetooth::Uuid;
 using namespace bluetooth;
@@ -116,7 +114,9 @@ namespace android {
 namespace sysprop {
 namespace bluetooth {
 namespace Avrcp {
-std::optional<bool> absolute_volume() { return true; }
+bool absolute_volume() { return true; }
+bool isAvrcpControllerCoverArtEnabled() { return true; }
+bool isAvrcpControllerBrowsingEnabled() { return true; }
 }  // namespace Avrcp
 
 namespace Bta {

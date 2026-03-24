@@ -229,7 +229,7 @@ BT_HDR* l2c_fcr_clone_buf(BT_HDR* p_buf, uint16_t new_offset, uint16_t no_of_byt
    * NOTE: We allocate extra L2CAP_FCS_LEN octets, in case we need to put
    * the FCS (Frame Check Sequence) at the end of the buffer.
    */
-  uint16_t buf_size = no_of_bytes + sizeof(BT_HDR) + new_offset + L2CAP_FCS_LEN;
+  uint32_t buf_size = no_of_bytes + sizeof(BT_HDR) + new_offset + L2CAP_FCS_LEN;
   BT_HDR* p_buf2 = (BT_HDR*)osi_malloc(buf_size);
 
   p_buf2->offset = new_offset;
@@ -897,8 +897,14 @@ static bool process_reqseq(tL2C_CCB* p_ccb, uint16_t ctrl_word) {
     }
 
     /* If we are still in a wait_ack state, do not mess with the timer */
-    if (!p_ccb->fcrb.wait_ack) {
-      l2c_fcr_stop_timer(p_ccb);
+    if (!com::android::bluetooth::flags::donot_release_wakelock_if_tx_queue_is_not_empty()) {
+      if (!p_ccb->fcrb.wait_ack) {
+        l2c_fcr_stop_timer(p_ccb);
+      }
+    } else {
+      if (!p_ccb->fcrb.wait_ack && fixed_queue_is_empty(p_fcrb->waiting_for_ack_q)) {
+        l2c_fcr_stop_timer(p_ccb);
+      }
     }
 
     /* Check if we need to call the "packet_sent" callback */
@@ -1835,8 +1841,7 @@ uint8_t l2c_fcr_process_peer_cfg_req(tL2C_CCB* p_ccb, tL2CAP_CFG_INFO* p_cfg) {
         p_ccb->peer_cfg.fcs = p_cfg->fcs;
       }
 
-      if (com_android_bluetooth_flags_l2cap_improve_segmented_sdu() &&
-          p_cfg->fcr.mode == L2CAP_FCR_ERTM_MODE) {
+      if (p_cfg->fcr.mode == L2CAP_FCR_ERTM_MODE) {
         max_retrans_size = BT_ERTM_BUFFER_SIZE - sizeof(BT_HDR) - L2CAP_MIN_OFFSET -
                            L2CAP_SDU_LEN_OFFSET - fcs_len;
       } else {

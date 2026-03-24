@@ -570,8 +570,8 @@ protected:
       ASSERT_TRUE(LeAudioClientInterface::Get()->IsUnicastSourceAcquired());
       ASSERT_TRUE(LeAudioClientInterface::Get()->IsUnicastSinkAcquired());
     }
-    com::android::bluetooth::flags::provider_->reset_flags();
-    com::android::bluetooth::flags::provider_->leaudio_software_bt_request_lock_fix(true);
+    com_android_bluetooth_flags_reset_flags();
+    set_com_android_bluetooth_flags_leaudio_software_bt_request_lock_fix(true);
   }
 
   virtual void TearDown() override {
@@ -797,6 +797,30 @@ TEST_F(LeAudioSoftwareBroadcastTestAidl, GetBroadcastConfig) {
   ASSERT_NE(nullptr, source_);
   ASSERT_NE(sink_->GetBroadcastConfig({}, std::nullopt), std::nullopt);
   ASSERT_NE(source_->GetBroadcastConfig({}, std::nullopt), std::nullopt);
+}
+
+// Test scenario: Verify that a broadcast source can be acquired for software
+// decoding.
+TEST_F(LeAudioSoftwareBroadcastTestAidl, GetSourceSoftwareDecoding) {
+  // Release the source created in SetUp with ADSP location
+  ASSERT_NE(nullptr, source_);
+  LeAudioClientInterface::Get()->ReleaseSource(source_);
+  source_ = nullptr;
+  ASSERT_FALSE(LeAudioClientInterface::Get()->IsBroadcastSourceAcquired());
+
+  // Set codec location to Host for software decoding
+  ON_CALL(*mock_codec_manager_, GetCodecLocation())
+          .WillByDefault(Return(::bluetooth::le_audio::types::CodecLocation::HOST));
+
+  // Get source for broadcast software decoding
+  source_ = LeAudioClientInterface::Get()->GetSource(*unicast_source_stream_cb_,
+                                                     &message_loop_thread, is_broadcast_);
+  ASSERT_NE(nullptr, source_);
+  ASSERT_TRUE(LeAudioClientInterface::Get()->IsBroadcastSourceAcquired());
+  ASSERT_NE(::bluetooth::audio::aidl::le_audio::LeAudioSourceTransport::interface_broadcast_,
+            nullptr);
+  ASSERT_EQ(::bluetooth::audio::aidl::le_audio::LeAudioSourceTransport::interface_unicast_,
+            nullptr);
 }
 
 // Test scenario: Test the retrieval of a unicast configuration with valid

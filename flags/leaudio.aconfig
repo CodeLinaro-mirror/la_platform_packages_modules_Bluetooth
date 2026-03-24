@@ -32,6 +32,16 @@ flag {
 }
 
 flag {
+    name: "leaudio_fix_qos_reconfiguration"
+    namespace: "bluetooth"
+    description: "Fix reconfiguration when one device is in QoS Configured state"
+    bug: "487260881"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
     name: "leaudio_fix_reporting_csis_members"
     namespace: "bluetooth"
     description: "Fix reporting available set members to Application"
@@ -162,6 +172,16 @@ flag {
 }
 
 flag {
+    name: "leaudio_peripheral_vcp_link_abstraction_layer"
+    namespace: "bluetooth"
+    description: "Integration of VCP renderer with abstraction layer"
+    bug: "485435442"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
     name: "leaudio_use_game_sonification_as_regular_sonification"
     namespace: "bluetooth"
     description: "GAME sonifications will not impact on the main use case i.e. will not force context type change."
@@ -182,16 +202,6 @@ flag {
 }
 
 flag {
-    name: "leaudio_vaps_improvements"
-    namespace: "bluetooth"
-    description: "LE Audio VAPS improvements"
-    bug: "444029563"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "leaudio_always_use_group_size_to_check_audio_config"
     namespace: "bluetooth"
     description: "When checking support for audio configuration, take into account all the devices"
@@ -206,46 +216,6 @@ flag {
     namespace: "bluetooth"
     description: "Broadcast connection changed intent when state machine is cleaned up"
     bug: "441564325"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_broadcast_creation_timeout_fix"
-    namespace: "bluetooth"
-    description: "Properly clean up state after a broadcast creation timeout"
-    bug: "443811487"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_broadcast_sync_handle_to_device_fix"
-    namespace: "bluetooth"
-    description: "Fix updating sync handle to device map for the same device"
-    bug: "444365749"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_broadcast_improve_source_operations"
-    namespace: "bluetooth"
-    description: "Improve broadcast source operations"
-    bug: "444010402"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_reactivate_autonomously_inactivated_group_by_broadcast"
-    namespace: "bluetooth"
-    description: "Reactivate group autonomously deactivated due to broadcast sync"
-    bug: "439502201"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -276,16 +246,6 @@ flag {
     namespace: "bluetooth"
     description: "Always use the scanner when trying to sync to a broadcaster"
     bug: "467625545"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_improve_unicast_monitor"
-    namespace: "bluetooth"
-    description: "Improve unicast monitor mode robustness"
-    bug: "440506873"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -332,10 +292,20 @@ flag {
 }
 
 flag {
-    name: "leaudio_cancel_stream_request_when_invalid_group"
+    name: "leaudio_broadcast_always_clear_notified_flags"
     namespace: "bluetooth"
-    description: "Cancel stream request when active group is invalid"
-    bug: "447083886"
+    description: "Clear notified flags on each start searching for sources"
+    bug: "484860097"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_broadcast_auto_switch_announcement"
+    namespace: "bluetooth"
+    description: "Automatic switching to broadcast audio upon announcement detection"
+    bug: "486932415"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -366,16 +336,6 @@ flag {
 }
 
 flag {
-    name: "coordinated_remove_bond"
-    namespace: "bluetooth"
-    description: "Remove all coordinated set members when any member is requested to be removed"
-    bug: "454419225"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "leaudio_broadcast_sw_config_quality_logic"
     namespace: "bluetooth"
     description: "Improve broadcast config selection by using quality-based logic instead of context type"
@@ -390,6 +350,16 @@ flag {
     namespace: "bluetooth"
     description: "Read Bass characteristics after encryption is established"
     bug: "459915166"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_improve_configuration_caching"
+    namespace: "bluetooth"
+    description: "Improve configuration caching"
+    bug: "488302272"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -455,6 +425,26 @@ flag {
     namespace: "bluetooth"
     description: "Refactor LE Audio allowlist to increase device capacity"
     bug: "477447231"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_broadcast_source_channel_map_classification_improvement"
+    namespace: "bluetooth"
+    description: "Improve broadcast channel classification"
+    bug: "487242521"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_auracast_credential_extension"
+    namespace: "bluetooth"
+    description: "Extending Auracast credential sharing"
+    bug: "490092067"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

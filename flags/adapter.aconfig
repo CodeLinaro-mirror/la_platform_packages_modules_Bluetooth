@@ -2,30 +2,10 @@ package: "com.android.bluetooth.flags"
 container: "com.android.bt"
 
 flag {
-    name: "mainline_beta_storage"
-    namespace: "bluetooth"
-    description: "Implement a robust storage to handle rollback"
-    bug: "430166215"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "storage_prevent_custom_metadata_on_unbonded_device"
     namespace: "bluetooth"
     description: "If the device is unbonded and unknown, do not write custom metadata in the database"
     bug: "476474347"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "unify_timeout_property"
-    namespace: "bluetooth"
-    description: "Unify the various timeout in the stack to allow slower hardware to still boot"
-    bug: "441576259"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -39,50 +19,10 @@ flag {
 }
 
 flag {
-    name: "adapter_suspend_advertisement"
-    namespace: "bluetooth"
-    description: "Disable advertisement on adapter suspend and re-enable on resume"
-    bug: "433136730"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "adapter_suspend_discoverability"
-    namespace: "bluetooth"
-    description: "Set discoverability to none on adapter suspend and restore on resume"
-    bug: "435053102"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "dont_mask_disconnection_complete_on_suspend"
     namespace: "bluetooth"
     description: "Wait for disconnect complete events when suspending, instead of masking them out"
     bug: "463276426"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "get_profile_oneway"
-    namespace: "bluetooth"
-    description: "do not block calling thread when fetching profiles"
-    bug: "438829357"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "consistent_battery_level"
-    namespace: "bluetooth"
-    description: "Do not reset battey level from BAS to prevent battey level fluctuation"
-    bug: "442696675"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

@@ -88,6 +88,7 @@ cc_library_shared {
         "libbluetooth_metrics",
         "libbluetooth_private_gatt_rs",
         "libbluetooth_private_gatt_rs_bridge",
+        "libbluetooth_rs",
         "libbluetooth_types",
         "libbt-audio-asrc",
         "libbt-audio-hal-interface",
@@ -171,6 +172,7 @@ android_library {
         "framework-location.stubs.module_lib",
         "framework-media.stubs.module_lib",
         "framework-mediaprovider.stubs.module_lib",
+        "framework-nfc.stubs.module_lib",
         "framework-statsd.stubs.module_lib",
         "framework-telecom.stubs.module_lib",
         "framework-tethering.stubs.module_lib",
@@ -206,6 +208,7 @@ android_library {
         "net-utils-services-common",
         "networkstack-client",
         "sap-api-java-static",
+        "telephony_flags_core_java_exported_lib",
     ],
 
     plugins: [

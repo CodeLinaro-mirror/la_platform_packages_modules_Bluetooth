@@ -22,6 +22,7 @@
 #include <bluetooth/metrics/bluetooth_event.h>
 #include <bluetooth/types/address.h>
 #include <bluetooth/types/ble_address_with_type.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 #include <time.h>
 
@@ -40,7 +41,6 @@
 #include <vector>
 
 #include "common/bind.h"
-#include "common/strings.h"
 #include "common/sync_map_count.h"
 #include "hci/acl_manager/acl_connection.h"
 #include "hci/acl_manager/acl_manager_le.h"
@@ -819,7 +819,7 @@ struct shim::Acl::impl {
     }
 
 #ifndef TARGET_FLOSS
-    if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+    if (!com_android_bluetooth_flags_le_hid_connection_policy_suspend()) {
       // Since this is a suspend disconnect, we immediately also call
       // |OnClassicSuspendInitiatedDisconnect| without waiting for it to happen.
       // We want the stack to clean up ahead of the link layer (since we will mask
@@ -855,7 +855,7 @@ struct shim::Acl::impl {
     }
 
 #ifndef TARGET_FLOSS
-    if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+    if (!com_android_bluetooth_flags_le_hid_connection_policy_suspend()) {
       // Since this is a suspend disconnect, we immediately also call
       // |OnLeSuspendInitiatedDisconnect| without waiting for it to happen. We
       // want the stack to clean up ahead of the link layer (since we will mask
@@ -1131,8 +1131,7 @@ void DumpsysAcl(int fd) {
                     common::ToString(link.peer_lmp_feature_valid[j]).c_str(),
                     bd_features_text(link.peer_lmp_feature_pages[j]).c_str());
       }
-      LOG_DUMPSYS(fd, "    [classic] link_policy:%s",
-                  link_policy_text(static_cast<tLINK_POLICY>(link.link_policy)).c_str());
+      LOG_DUMPSYS(fd, "    [classic] link_policy:%s", link_policy_text(link.link_policy).c_str());
       LOG_DUMPSYS(fd, "    [classic] sniff_subrating:%s",
                   common::ToString(HCI_SNIFF_SUB_RATE_SUPPORTED(link.peer_lmp_feature_pages[0]))
                           .c_str());

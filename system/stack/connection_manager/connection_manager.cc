@@ -33,7 +33,6 @@
 
 #include "gd/hci/acl_manager/acl_manager_le.h"
 #include "gd/hci/controller.h"
-#include "main/shim/acl_api.h"
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
 #include "main/shim/le_scanning_manager.h"
@@ -517,9 +516,13 @@ void on_connection_maybe(const RawAddress& address) {
   }
 }
 
-void on_connection_timed_out_from_shim(const RawAddress& address) {
+void on_connection_failed(const RawAddress& address) {
   log::info("Connection failed {}", address);
   on_connection_timed_out(0x00, address);
+
+  if (com_android_bluetooth_flags_move_conn_mgr_callbacks()) {
+    remove_all_clients_with_pending_connections(address);
+  }
 }
 
 /** Reset bg device list. If called after controller reset, set |after_reset|
@@ -542,7 +545,7 @@ static void wl_direct_connect_timeout_cb(uint8_t app_id, const RawAddress& addre
   // Notify others about timeout
   on_connection_timed_out(app_id, address);
 
-  if (com::android::bluetooth::flags::gd_conn_mgr_one_timeout()) {
+  if (com_android_bluetooth_flags_gd_conn_mgr_one_timeout()) {
     // Temporary mapping the error code to PAGE_TIMEOUT
     bluetooth::metrics::LogLeAclCompletionEvent(address, bluetooth::hci::ErrorCode::PAGE_TIMEOUT,
                                                 true /* is locally initiated */);
@@ -595,11 +598,19 @@ bool direct_connect_add(uint8_t app_id, const RawAddress& address, tBLE_ADDR_TYP
       return true;
     }
 
-    // This is to match existing GD connection manager behavior - if multiple apps try direct
-    // connect at same time, only 1st request is fully processed
     if (!info.doing_direct_conn.empty()) {
-      log::info("app_id=0x{:x}: attempt from other app already in progress, will merge {}", app_id,
-                address_with_type);
+      log::info("app_id=0x{:x}: attempt from other app in progress {}", app_id, address_with_type);
+      if (com_android_bluetooth_flags_cancel_pending_le_conn_on_socket_close()) {
+        // Add it to direct connection queue so that device is not removed from direct connection
+        // list until all clients triggers cancel
+        uint32_t connection_timeout =
+                os::GetSystemPropertyUint32(kPropertyDirectConnTimeout, kCreateConnectionTimeoutMs);
+        alarm_t* timeout = alarm_new("direct_connect_tout_30s");
+        alarm_set_closure(timeout, connection_timeout,
+                          base::BindOnce(&wl_direct_connect_timeout_cb, app_id, address));
+        bgconn_dev[address].doing_direct_conn.emplace(app_id,
+                                                      unique_alarm_ptr(timeout, &alarm_free));
+      }
       return true;
     }
 
@@ -663,10 +674,16 @@ bool direct_connect_remove(uint8_t app_id, const RawAddress& address, bool conne
   // this will free the alarm
   it->second.doing_direct_conn.erase(app_it);
 
+  if (com_android_bluetooth_flags_cancel_pending_le_conn_on_socket_close() &&
+      !it->second.doing_direct_conn.empty()) {
+    log::verbose("some app is still interested in direct connection ");
+    return true;
+  }
+
   if (is_anyone_interested_to_use_accept_list(it)) {
     log::debug("There is somebody interested in accept list for {}", address);
     if (connection_timeout) {
-      if (com::android::bluetooth::flags::gd_conn_mgr_one_timeout()) {
+      if (com_android_bluetooth_flags_gd_conn_mgr_one_timeout()) {
         /* Cancel direct connect. Any pending background connect will be preserved. */
         ACL_CancelDirectConnect(BTM_Sec_GetAddressWithType(address));
       } else {

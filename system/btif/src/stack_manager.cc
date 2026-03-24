@@ -26,6 +26,7 @@
 #include <cstring>
 
 #include "bta/dm/bta_dm_int.h"
+#include "bta/include/bta_gatt_api.h"
 #include "bta/include/bta_ras_api.h"
 #include "bta/sys/bta_sys.h"
 #include "btcore/include/module.h"
@@ -33,6 +34,7 @@
 #include "btif/include/btif_api.h"
 #include "btif/include/btif_common.h"
 #include "btif/include/btif_config.h"
+#include "btif/include/btif_debug_conn.h"
 #include "btif/include/btif_profile_queue.h"
 #include "btif/include/core_callbacks.h"
 #include "btif/include/stack_manager_t.h"
@@ -179,7 +181,7 @@ void stack_enable(ProfileStartCallback startProfiles, const std::string local_na
   l2c_init();
   sdp_init();
   gatt_init();
-  SMP_Init(get_btm_client_interface().security.BTM_GetSecurityMode());
+  SMP_Init(get_security_client_interface().BTM_GetSecurityMode());
   get_btm_client_interface().lifecycle.btm_ble_init();
 
   RFCOMM_Init();
@@ -189,6 +191,8 @@ void stack_enable(ProfileStartCallback startProfiles, const std::string local_na
   startProfiles();
 
   bta_sys_init();
+  BTA_GATT_Init_gatt_pm_callbacks();
+  gatt_set_debug_conn_state_cb(btif_debug_conn_state);
 
   btif_init_ok();
   BTA_dm_init();
@@ -238,18 +242,11 @@ void stack_disable(ProfileStopCallback stopProfiles) {
   // btm_free() is called in main thread, and is a blocking call.
   get_btm_client_interface().lifecycle.btm_free();
 
-  std::promise<void> off_promise;
-  std::future<void> off_future = off_promise.get_future();
+  log::info("Native disable done. Notifying the java now");
 
-  do_in_jni_thread(base::BindOnce(
-          [](std::promise<void> off_promise) {
-            GetInterfaceToProfiles()->events->invoke_adapter_state_changed_cb(BT_STATE_OFF);
-            off_promise.set_value();
-          },
-          std::move(off_promise)));
-  off_future.wait();  // TODO: remove this future entirely
+  GetInterfaceToProfiles()->events->invoke_adapter_state_changed_cb(BT_STATE_OFF);
 
-  log::info("finished");
+  log::info("Finished");
 }
 
 // Synchronous function to clean up the stack

@@ -25,6 +25,7 @@ import android.os.BatteryStatsManager
 import android.os.UserHandle
 import android.os.WorkSource
 import android.util.Log
+import com.android.bluetooth.Util.appNameOrUnknown
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.util.Column
 import com.android.bluetooth.util.TimeProvider
@@ -33,130 +34,74 @@ import com.android.bluetooth.util.getLastAttributionTag
 import com.android.bluetooth.util.indent
 import com.android.bluetooth.util.toTable
 import java.util.UUID
-import java.util.concurrent.ConcurrentLinkedQueue
 
 private const val TAG = ScanUtil.TAG_PREFIX + "ScannerMap"
 
 /** List of our registered scanners. */
-class ScannerMap {
+class ScannerMap(
+    private val adapterService: AdapterService,
+    private val batteryStatsManager: BatteryStatsManager,
+) {
 
     /** Internal map to keep track of logging information by app uid */
     private val appScanStatsMap = mutableMapOf<Int, AppScanStats>()
-    private val apps = ConcurrentLinkedQueue<ScannerApp>()
+    private val apps = ArrayDeque<ScannerApp>()
 
-    // TODO(b/455057044) Remove on flag cleanup as only the below `addWithCallback` will be used
     fun addWithCallback(
-        appUid: Int,
-        appPid: Int,
-        appName: String,
-        uuid: UUID,
         source: AttributionSource,
         workSource: WorkSource?,
         callback: IScannerCallback,
-        adapterService: AdapterService,
-        batteryStatsManager: BatteryStatsManager,
-        isInternal: Boolean,
-    ): ScannerApp =
-        add(
-            appUid = appUid,
-            appPid = appPid,
-            appName = appName,
-            uuid = uuid,
-            userHandle = null,
-            source = source,
-            workSource = workSource,
-            callback = callback,
-            settings = null,
-            filters = null,
-            piInfo = null,
-            adapterService = adapterService,
-            batteryStatsManager = batteryStatsManager,
-            isInternal = isInternal,
-        )
-
-    fun addWithCallback(
-        appUid: Int,
-        appPid: Int,
-        appName: String,
-        uuid: UUID,
-        source: AttributionSource,
-        workSource: WorkSource?,
-        callback: IScannerCallback,
-        settings: ScanSettings? = null, // TODO(b/455057044) Remove nullable on cleanup
-        filters: List<ScanFilter>? = null, // TODO(b/455057044) Remove not nullable on cleanup
-        adapterService: AdapterService,
-        batteryStatsManager: BatteryStatsManager,
+        settings: ScanSettings,
+        filters: List<ScanFilter>,
         isInternal: Boolean = false,
-    ): ScannerApp =
+    ) =
         add(
-            appUid = appUid,
-            appPid = appPid,
-            appName = appName,
-            uuid = uuid,
             userHandle = null,
             source = source,
             workSource = workSource,
             callback = callback,
             settings = settings,
             filters = filters,
-            piInfo = null,
-            adapterService = adapterService,
-            batteryStatsManager = batteryStatsManager,
+            pendingIntent = null,
             isInternal = isInternal,
         )
 
     fun addWithPendingIntent(
-        appName: String,
-        uuid: UUID,
-        userHandle: UserHandle,
         source: AttributionSource,
-        piInfo: ScanController.PendingIntentInfo,
-        settings: ScanSettings? = null,
-        filters: List<ScanFilter>? = null,
-        adapterService: AdapterService,
-        batteryStatsManager: BatteryStatsManager,
-    ): ScannerApp =
+        pendingIntent: PendingIntent,
+        settings: ScanSettings,
+        filters: List<ScanFilter>,
+    ) =
         add(
-            appUid = piInfo.callingUid(),
-            appPid = piInfo.callingPid(),
-            appName = appName,
-            uuid = uuid,
-            userHandle = userHandle,
+            userHandle = UserHandle.getUserHandleForUid(source.uid),
             source = source,
             workSource = null,
             callback = null,
             settings = settings,
             filters = filters,
-            piInfo = piInfo,
-            adapterService = adapterService,
-            batteryStatsManager = batteryStatsManager,
+            pendingIntent = pendingIntent,
             isInternal = false,
         )
 
     private fun add(
-        appUid: Int,
-        appPid: Int,
-        appName: String,
-        uuid: UUID,
         userHandle: UserHandle?,
         source: AttributionSource,
         workSource: WorkSource?,
         callback: IScannerCallback?,
-        settings: ScanSettings?, // TODO(b/455057044) Remove nullable on cleanup
-        filters: List<ScanFilter>?, // TODO(b/455057044) Remove nullable on cleanup
-        piInfo: ScanController.PendingIntentInfo?,
-        adapterService: AdapterService,
-        batteryStatsManager: BatteryStatsManager,
+        settings: ScanSettings,
+        filters: List<ScanFilter>,
+        pendingIntent: PendingIntent?,
         isInternal: Boolean,
     ): ScannerApp {
         val appScanStats =
-            appScanStatsMap.getOrPut(appUid) {
+            appScanStatsMap.getOrPut(source.uid) {
+                val appName = adapterService.appNameOrUnknown(source.uid)
                 // Bill the caller uid if the work source isn't passed through
-                val workSource = workSource ?: WorkSource(appUid, appName)
+                val workSource = workSource ?: WorkSource(source.uid, appName)
                 val workSourceUtil = WorkSourceUtil(workSource)
                 AppScanStats(
-                    appUid,
-                    appPid,
+                    source.uid,
+                    source.pid,
                     appName,
                     workSourceUtil,
                     adapterService,
@@ -167,14 +112,14 @@ class ScannerMap {
         val app =
             ScannerApp(
                 appScanStats,
-                uuid,
+                UUID.randomUUID(),
                 userHandle,
                 source.getLastAttributionTag(),
                 callback,
                 settings,
                 filters,
                 source,
-                piInfo,
+                pendingIntent,
                 isInternal,
             )
         apps.add(app)
@@ -182,7 +127,7 @@ class ScannerMap {
         return app
     }
 
-    fun remove(id: Int) = removeBy("id=$id") { it.id == id }
+    fun remove(id: Int) = removeBy("id=$id") { it.scannerId == id }
 
     fun remove(uuid: UUID) = removeBy("UUID=$uuid") { it.uuid == uuid }
 
@@ -208,12 +153,12 @@ class ScannerMap {
 
     fun getAppScanStatsById(id: Int): AppScanStats? = getById(id)?.appScanStats
 
-    fun getById(id: Int) = findBy("ID=$id") { it.id == id }
+    fun getById(id: Int) = findBy("ID=$id") { it.scannerId == id }
 
     fun getByUuid(uuid: UUID) = findBy("UUID=$uuid") { it.uuid == uuid }
 
-    fun getByPendingIntentInfo(intent: PendingIntent) =
-        findBy("intent=$intent") { it.info?.intent() == intent }
+    fun getByPendingIntent(pendingIntent: PendingIntent) =
+        findBy("pendingIntent=$pendingIntent") { it.pendingIntent == pendingIntent }
 
     private fun findBy(criteria: String, predicate: (ScannerApp) -> Boolean): ScannerApp? {
         val app = apps.find(predicate)
@@ -223,28 +168,19 @@ class ScannerMap {
         return app
     }
 
-    fun dump(sb: StringBuilder, settingsMap: Map<Int, ScanSettings>) {
+    fun dump(sb: StringBuilder) {
         sb.appendLine("LE Scanner:")
         if (apps.isNotEmpty()) {
             val columns =
                 mutableListOf<Column<ScannerApp>>(
                     Column("UID", width = 5) { it.uid },
                     Column("PID", width = 5) { it.pid },
-                    Column("ID", width = 2) { it.id },
+                    Column("ID", width = 2) { it.scannerId },
                     Column("PACKAGE") { it.name },
                 )
 
             if (apps.any { !it.attributionTag.isNullOrEmpty() }) {
                 columns.add(Column("TAG") { it.attributionTag ?: "" })
-            }
-
-            if (settingsMap.values.any { it.reportDelayMillis > 0 }) {
-                columns.add(
-                    Column("REPORT_DELAY_MS", width = 15) { app ->
-                        val delay = settingsMap[app.id]?.reportDelayMillis ?: 0
-                        if (delay > 0) delay.toString() else ""
-                    }
-                )
             }
 
             sb.appendLine(apps.toTable(columns).indent("  "))

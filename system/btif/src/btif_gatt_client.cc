@@ -54,7 +54,9 @@
 #include "stack/include/acl_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/gatt_api.h"
+#include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
+#include "stack/include/stack_le_connection.h"
 #include "storage/config_keys.h"
 
 using base::BindOnce;
@@ -192,7 +194,7 @@ static void btif_gattc_upstreams_evt(uint16_t event, char* p_param) {
                 p_data->open.status, p_data->open.client_if,
                 to_java_transport(p_data->open.transport), p_data->open.remote_bda);
 
-      if (!com::android::bluetooth::flags::gatt_conn_settings()) {
+      if (!com_android_bluetooth_flags_gatt_conn_settings()) {
         if (GATT_DEF_BLE_MTU_SIZE != p_data->open.mtu && p_data->open.mtu) {
           HAL_CBACK(callbacks, client->configure_mtu_cb, static_cast<int>(p_data->open.conn_id),
                     p_data->open.status, p_data->open.mtu);
@@ -271,15 +273,12 @@ static void bta_gattc_cback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
   ASSERTC(status, "Context transfer failed!", status);
 }
 
-void btm_read_rssi_cb(void* p_void) {
-  tBTM_RSSI_RESULT* p_result = (tBTM_RSSI_RESULT*)p_void;
-
-  if (!p_result) {
-    return;
+void btm_read_rssi_cb(tBTM_STATUS status, uint8_t rssi, RawAddress address) {
+  if (status != tBTM_STATUS::BTM_SUCCESS) {
+    log::error("Read RSSI failed with status {}", status);
   }
-
-  CLI_CBACK_IN_JNI(read_remote_rssi_cb, rssi_request_client_if, p_result->rem_bda, p_result->rssi,
-                   static_cast<uint8_t>(p_result->status));
+  CLI_CBACK_IN_JNI(read_remote_rssi_cb, rssi_request_client_if, address, rssi,
+                   static_cast<uint8_t>(tBTM_STATUS::BTM_SUCCESS));
 }
 
 /*******************************************************************************
@@ -361,15 +360,21 @@ void btif_gattc_open_impl(int client_if, RawAddress address, tBLE_ADDR_TYPE addr
   log::info("Transport={}, device type={}, address={}, address type={}, auto_mtu_enabled={}",
             bt_transport_text(transport), DeviceTypeText(device_type), address, addr_type,
             auto_mtu_enabled);
-  tBTM_BLE_CONN_TYPE type = is_direct ? BTM_BLE_DIRECT_CONNECTION : BTM_BLE_BKG_CONNECT_ALLOW_LIST;
-  BTA_GATTC_Open(client_if, address, addr_type, type, transport, opportunistic, preferred_mtu,
-                 prefer_relax_mode, auto_mtu_enabled);
+
+  tBTM_BLE_CONN_TYPE type;
+  if (is_direct) {
+    type = opportunistic ? BTM_BLE_OPPORTUNISTIC : BTM_BLE_DIRECT_CONNECTION;
+  } else {
+    type = BTM_BLE_BKG_CONNECT_ALLOW_LIST;
+  }
+
+  BTA_GATTC_Open(client_if, address, addr_type, type, transport, preferred_mtu, prefer_relax_mode,
+                 auto_mtu_enabled);
 }
 
 static BtStatus btif_gattc_open(int client_if, const RawAddress& bd_addr, uint8_t addr_type,
                                 bool is_direct, int transport, bool opportunistic,
-                                int preferred_mtu, bool prefer_relax_mode,
-                                   bool auto_mtu_enabled) {
+                                int preferred_mtu, bool prefer_relax_mode, bool auto_mtu_enabled) {
   CHECK_BTGATT_INIT();
   // Closure will own this value and free it.
   return do_in_jni_thread(BindOnce(&btif_gattc_open_impl, client_if, bd_addr, addr_type, is_direct,
@@ -552,14 +557,14 @@ static void btif_gattc_reg_for_notification_impl(tGATT_IF client_if, const RawAd
                                                  uint16_t handle) {
   tGATT_STATUS status = BTA_GATTC_RegisterForNotifications(client_if, bda, handle);
   // TODO: conn_id is currently unused
-  if (com::android::bluetooth::flags::gatt_reg_notification_on_jni_thread()) {
+  if (com_android_bluetooth_flags_gatt_reg_notification_on_jni_thread()) {
     do_in_jni_thread(BindOnce(
-        [](tGATT_STATUS status, uint16_t handle) {
-          auto callbacks = bt_gatt_callbacks;
-          HAL_CBACK(callbacks, client->register_for_notification_cb,
-                    /* conn_id */ 0, 1, status, handle);
-        },
-        status, handle));
+            [](tGATT_STATUS status, uint16_t handle) {
+              auto callbacks = bt_gatt_callbacks;
+              HAL_CBACK(callbacks, client->register_for_notification_cb,
+                        /* conn_id */ 0, 1, status, handle);
+            },
+            status, handle));
   } else {
     auto callbacks = bt_gatt_callbacks;
     HAL_CBACK(callbacks, client->register_for_notification_cb,
@@ -579,14 +584,14 @@ static void btif_gattc_dereg_for_notification_impl(tGATT_IF client_if, const Raw
                                                    uint16_t handle) {
   tGATT_STATUS status = BTA_GATTC_DeregisterForNotifications(client_if, bda, handle);
   // TODO: conn_id is currently unused
-  if (com::android::bluetooth::flags::gatt_reg_notification_on_jni_thread()) {
+  if (com_android_bluetooth_flags_gatt_reg_notification_on_jni_thread()) {
     do_in_jni_thread(BindOnce(
-        [](tGATT_STATUS status, uint16_t handle) {
-          auto callbacks = bt_gatt_callbacks;
-          HAL_CBACK(callbacks, client->register_for_notification_cb,
-                    /* conn_id */ 0, 0, status, handle);
-        },
-        status, handle));
+            [](tGATT_STATUS status, uint16_t handle) {
+              auto callbacks = bt_gatt_callbacks;
+              HAL_CBACK(callbacks, client->register_for_notification_cb,
+                        /* conn_id */ 0, 0, status, handle);
+            },
+            status, handle));
   } else {
     auto callbacks = bt_gatt_callbacks;
     HAL_CBACK(callbacks, client->register_for_notification_cb,
@@ -623,34 +628,20 @@ static BtStatus btif_gattc_configure_mtu(int conn_id, int mtu) {
           static_cast<tCONN_ID>(conn_id), mtu));
 }
 
-static void btif_gattc_conn_parameter_update_impl(RawAddress addr, int min_interval,
-                                                  int max_interval, int latency, int timeout,
-                                                  uint16_t min_ce_len, uint16_t max_ce_len) {
-  if (BTA_DmGetConnectionState(addr)) {
-    BTA_DmBleUpdateConnectionParams(addr, min_interval, max_interval, latency, timeout, min_ce_len,
-                                    max_ce_len);
-  } else {
-    BTA_DmSetBlePrefConnParams(addr, min_interval, max_interval, latency, timeout);
-  }
-}
-
 BtStatus btif_gattc_conn_parameter_update(const RawAddress& bd_addr, int min_interval,
                                           int max_interval, int latency, int timeout,
                                           uint16_t min_ce_len, uint16_t max_ce_len) {
   CHECK_BTGATT_INIT();
-  return do_in_jni_thread(BindOnce(base::IgnoreResult(&btif_gattc_conn_parameter_update_impl),
-                                   bd_addr, min_interval, max_interval, latency, timeout,
-                                   min_ce_len, max_ce_len));
+  do_in_main_thread(BindOnce(&stack::leConnectionUpdate, bd_addr, (uint16_t)min_interval,
+                             (uint16_t)max_interval, (uint16_t)latency, (uint16_t)timeout,
+                             min_ce_len, max_ce_len));
+  return BtifStatus();
 }
 
 static BtStatus btif_gattc_set_preferred_phy(const RawAddress& bd_addr, uint8_t tx_phy,
                                              uint8_t rx_phy, uint16_t phy_options) {
   CHECK_BTGATT_INIT();
-  do_in_main_thread(BindOnce(
-          [](const RawAddress& bd_addr, uint8_t tx_phy, uint8_t rx_phy, uint16_t phy_options) {
-            get_btm_client_interface().ble.BTM_BleSetPhy(bd_addr, tx_phy, rx_phy, phy_options);
-          },
-          bd_addr, tx_phy, rx_phy, phy_options));
+  do_in_main_thread(BindOnce(&stack::leConnectionSetPhy, bd_addr, tx_phy, rx_phy, phy_options));
   return BtifStatus();
 }
 
@@ -658,7 +649,8 @@ static BtStatus btif_gattc_read_phy(
         const RawAddress& bd_addr,
         base::OnceCallback<void(uint8_t tx_phy, uint8_t rx_phy, uint8_t status)> cb) {
   CHECK_BTGATT_INIT();
-  do_in_main_thread(BindOnce(&BTM_BleReadPhy, bd_addr, jni_thread_wrapper(std::move(cb))));
+  do_in_main_thread(
+          BindOnce(&stack::leConnectionReadPhy, bd_addr, jni_thread_wrapper(std::move(cb))));
   return BtifStatus();
 }
 
@@ -671,34 +663,20 @@ static int btif_gattc_get_device_type(const RawAddress& bd_addr) {
   return 0;
 }
 
-static void btif_gattc_subrate_request_impl(RawAddress addr, int subrate_min, int subrate_max,
-                                            int max_latency, int cont_num, int sup_timeout) {
-  if (BTA_DmGetConnectionState(addr)) {
-    BTA_DmBleSubrateRequest(addr, subrate_min, subrate_max, max_latency, cont_num, sup_timeout);
-  }
-}
-
 static BtStatus btif_gattc_subrate_request(const RawAddress& bd_addr, int subrate_min,
                                            int subrate_max, int max_latency, int cont_num,
                                            int sup_timeout) {
   CHECK_BTGATT_INIT();
-  if (com::android::bluetooth::flags::gatt_return_unsupported_when_not_support_subrating()) {
+  if (com_android_bluetooth_flags_gatt_return_unsupported_when_not_support_subrating()) {
     if (!bluetooth::shim::GetController()->SupportsBleConnectionSubrating() ||
         !acl_peer_supports_ble_connection_subrating(bd_addr) ||
         !acl_peer_supports_ble_connection_subrating_host(bd_addr)) {
-        return BtifStatus(UNSUPPORTED);;
+      return BtifStatus(UNSUPPORTED);
+      ;
     }
   }
-  return do_in_jni_thread(BindOnce(base::IgnoreResult(&btif_gattc_subrate_request_impl), bd_addr,
-                                   subrate_min, subrate_max, max_latency, cont_num, sup_timeout));
-}
-
-static void btif_gattc_subrate_mode_request_impl(int client_if, const RawAddress& addr,
-                                                 tGATT_SUBRATE_MODE subrate_mode) {
-  if (BTA_DmGetConnectionState(addr)) {
-    log::info("client_if={}, bd_addr={}, subrate_mode={}", client_if, addr, subrate_mode);
-    BTA_GATTC_SubrateModeRequest(client_if, addr, subrate_mode);
-  }
+  return do_in_main_thread(BindOnce(base::IgnoreResult(&stack::leConnectionSubrateRequest), bd_addr,
+                                    subrate_min, subrate_max, max_latency, cont_num, sup_timeout));
 }
 
 static BtStatus btif_gattc_subrate_mode_request(int client_if, const RawAddress& bd_addr,
@@ -707,11 +685,10 @@ static BtStatus btif_gattc_subrate_mode_request(int client_if, const RawAddress&
   if (!bluetooth::shim::GetController()->SupportsBleConnectionSubrating() ||
       !acl_peer_supports_ble_connection_subrating(bd_addr) ||
       !acl_peer_supports_ble_connection_subrating_host(bd_addr)) {
-      return BtifStatus(UNSUPPORTED);
+    return BtifStatus(UNSUPPORTED);
   }
-  tGATT_SUBRATE_MODE mode = (tGATT_SUBRATE_MODE) subrate_mode;
-  return do_in_jni_thread(BindOnce(base::IgnoreResult(&btif_gattc_subrate_mode_request_impl),
-                                   client_if, bd_addr, mode));
+  return do_in_main_thread(BindOnce(base::IgnoreResult(&stack::leConnectionUpdateSubrateConfig),
+                                    client_if, bd_addr, (tGATT_SUBRATE_MODE)subrate_mode, 0, 0, 0));
 }
 
 static BtStatus btif_gattc_offload_characteristics(int conn_id, btgatt_db_element_t* service,

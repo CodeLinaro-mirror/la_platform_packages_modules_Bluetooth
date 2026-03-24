@@ -30,9 +30,9 @@
 #include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/btm_iso_api_types.h"
+#include "stack/mock/mock_stack_btm_iso.h"
 #include "test/common/mock_functions.h"
 #include "test/mock/mock_main_shim_le_advertising_manager.h"
-#include "test/mock/mock_stack_btm_iso.h"
 
 #define TEST_BT com::android::bluetooth::flags
 
@@ -321,7 +321,7 @@ protected:
   }
 
   void TearDown() override {
-    com::android::bluetooth::flags::provider_->reset_flags();
+    com_android_bluetooth_flags_reset_flags();
     iso_manager_->Stop();
     mock_iso_manager_ = nullptr;
     Mock::VerifyAndClearExpectations(sm_callbacks_.get());

@@ -22,6 +22,7 @@
 #include <bluetooth/types/address.h>
 #include <bluetooth/types/bt_transport.h>
 #include <bluetooth/types/hci_role.h>
+#include <bluetooth/types/string_helpers.h>
 #include <bluetooth/types/uuid.h>
 #include <com_android_bluetooth_flags.h>
 #include <stdio.h>
@@ -61,7 +62,6 @@
 #include "codec_interface.h"
 #include "codec_manager.h"
 #include "common/le_conn_params.h"
-#include "common/strings.h"
 #include "common/time_util.h"
 #include "content_control_id_keeper.h"
 #include "devices.h"
@@ -100,6 +100,7 @@
 #include "stack/include/hci_error_code.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
+#include "stack/include/stack_le_connection.h"
 #include "state_machine.h"
 #include "storage_helper.h"
 
@@ -1190,15 +1191,6 @@ public:
       speed_start_setup(group->group_id_, configuration_context_type, group->NumOfConnected());
     }
 
-    if (!com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      /* If assistant have some connected delegators that needs to be informed
-       * when there would be request to stream unicast.
-       */
-      if (!sink_monitor_mode_ && source_monitor_mode_ && !group_is_streaming) {
-        notifyAudioLocalSource(UnicastMonitorModeStatus::STREAMING_REQUESTED);
-      }
-    }
-
     bool result = groupStateMachine_->StartStream(group, configuration_context_type,
                                                   remote_contexts, ccids);
     setConfigurationContextType(configuration_context_type);
@@ -1490,41 +1482,7 @@ public:
            audio_receiver_state_ == AudioState::STARTED;
   }
 
-  void SetUnicastMonitorModeLegacy(uint8_t local_directions, bool enable) {
-    if (local_directions == bluetooth::le_audio::types::kLeAudioDirectionSink) {
-      log::debug("enable: {}", enable);
-      sink_monitor_mode_ = enable;
-    } else if (local_directions == bluetooth::le_audio::types::kLeAudioDirectionSource) {
-      log::debug("enable: {}", enable);
-      source_monitor_mode_ = enable;
-
-      if (!enable) {
-        return;
-      }
-
-      LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-      if (!group) {
-        notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
-
-        return;
-      }
-
-      if (group->IsStreaming()) {
-        notifyAudioLocalSource(UnicastMonitorModeStatus::STREAMING);
-      } else {
-        notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
-      }
-    } else {
-      log::error("invalid direction: 0x{:02x} monitor mode set", local_directions);
-    }
-  }
-
   void SetUnicastMonitorMode(uint8_t local_directions, bool enable) override {
-    if (!com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      SetUnicastMonitorModeLegacy(local_directions, enable);
-      return;
-    }
-
     if ((local_directions & bluetooth::le_audio::types::kLeAudioDirectionBoth) == 0) {
       log::error("invalid direction: 0x{:02x} monitor mode set", local_directions);
       return;
@@ -1758,13 +1716,8 @@ public:
       group->SetActiveConfirmed(false);
     }
 
-    if (!com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      sink_monitor_notified_status_ = std::nullopt;
-      source_monitor_notified_status_ = std::nullopt;
-    } else {
-      notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
-      notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
-    }
+    notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
+    notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
 
     log::info("Group id: {}, autonomous_inactive: {}", active_group_id_, autonomous_inactive);
 
@@ -1990,12 +1943,6 @@ public:
       }
     }
 
-    if (!com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      /* Reset sink and source listener notified status */
-      sink_monitor_notified_status_ = std::nullopt;
-      source_monitor_notified_status_ = std::nullopt;
-    }
-
     auto const& group_config_preference = group->GetPreferredAudioSetConfiguration();
     UpdateCodecConfigPreferenceToHal(group_config_preference.source.get(),
                                      group_config_preference.sink.get());
@@ -2087,7 +2034,7 @@ public:
 
     LeAudioDevice* leAudioDevice = leAudioDevices_.FindByAddress(address);
     if (!leAudioDevice) {
-      if (!get_btm_client_interface().security.BTM_IsBonded(address, BT_TRANSPORT_LE)) {
+      if (!get_security_client_interface().BTM_IsBonded(address, BT_TRANSPORT_LE)) {
         log::error("Connecting  {} when not bonded", address);
         callbacks_->OnConnectionState(ConnectionState::DISCONNECTED, address);
         bluetooth::le_audio::MetricsCollector::Get()->OnConnectionStateChanged(
@@ -2126,7 +2073,7 @@ public:
               bluetooth::le_audio::ConnectionStatus::SUCCESS);
     }
 
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, false);
+    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION);
   }
 
   std::vector<RawAddress> GetGroupDevices(const int group_id) override {
@@ -2692,10 +2639,10 @@ public:
     if (group->IsAnyDeviceConnected()) {
       log::info("Group {} in connected state. Adding {} to allow list", leAudioDevice->group_id_,
                 address);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST);
     } else {
       log::info("Adding {} to background connect", address);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
     }
   }
 
@@ -2821,7 +2768,8 @@ public:
 
     /* To be a Unicast Source device, this device shall be a Central device. */
     tHCI_ROLE role;
-    auto role_status = BTM_GetRole(address, BT_TRANSPORT_LE, &role);
+    auto role_status =
+            get_btm_client_interface().link_policy.BTM_GetRole(address, BT_TRANSPORT_LE, &role);
     if (role_status != tBTM_STATUS::BTM_SUCCESS || role != HCI_ROLE_CENTRAL) {
       log::warn("Unicast client is not available for this connection. {}, status: {}, AclRole: {}",
                 address, btm_status_text(role_status), hci_role_text(role));
@@ -2852,11 +2800,11 @@ public:
      * for other applications which are using background connect.
      */
     BTA_GATTC_CancelOpen(gatt_if_, address, false);
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, false);
+    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
 
     if (bluetooth::shim::GetController()->SupportsBle2mPhy()) {
       log::info("{} set preferred PHY to 2M", address);
-      get_btm_client_interface().ble.BTM_BleSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
+      stack::leConnectionSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
     }
 
     get_btm_client_interface().peer.BTM_RequestPeerSCA(leAudioDevice->address_, transport);
@@ -2873,20 +2821,20 @@ public:
       /* Check if the device is in allow list and update the flag */
       leAudioDevice->UpdateDeviceAllowlistFlag();
     }
-    if (get_btm_client_interface().security.BTM_SecIsLeSecurityPending(address)) {
+    if (get_security_client_interface().BTM_SecIsLeSecurityPending(address)) {
       /* if security collision happened, wait for encryption done
        * (BTA_GATTC_ENC_CMPL_CB_EVT) */
       return;
     }
 
     /* verify bond */
-    if (get_btm_client_interface().security.BTM_IsEncrypted(address, BT_TRANSPORT_LE)) {
+    if (get_security_client_interface().BTM_IsEncrypted(address, BT_TRANSPORT_LE)) {
       /* if link has been encrypted */
       OnEncryptionComplete(address, tBTM_STATUS::BTM_SUCCESS);
       return;
     }
 
-    tBTM_STATUS result = get_btm_client_interface().security.BTM_SetEncryption(
+    tBTM_STATUS result = get_security_client_interface().BTM_SetEncryption(
             address, BT_TRANSPORT_LE, nullptr, nullptr, BTM_BLE_SEC_ENCRYPT);
 
     log::info("Encryption required for {}. Request result: 0x{:02x}", address, result);
@@ -3029,7 +2977,7 @@ public:
     if (!leAudioDevice->acl_phy_update_done_ &&
         bluetooth::shim::GetController()->SupportsBle2mPhy()) {
       log::info("{} set preferred PHY to 2M", leAudioDevice->address_);
-      get_btm_client_interface().ble.BTM_BleSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
+      stack::leConnectionSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
     }
 
     changeMtuIfPossible(leAudioDevice);
@@ -3126,7 +3074,7 @@ public:
 
     if (group != nullptr) {
       leAudioDevice->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION);
     } else {
       leAudioDevice->SetConnectionState(DeviceConnectState::DISCONNECTED);
     }
@@ -3262,7 +3210,7 @@ public:
       leAudioDevice->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
 
       /* If timeout try to reconnect for 30 sec.*/
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION);
       return;
     }
 
@@ -4545,10 +4493,7 @@ public:
     }
 
     ConfirmLocalAudioSourceStartRequestAndUpdateConfig(group);
-
-    if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      notifyAudioLocalSource(UnicastMonitorModeStatus::STREAMING);
-    }
+    notifyAudioLocalSource(UnicastMonitorModeStatus::STREAMING);
   }
 
   const struct bluetooth::le_audio::stream_configuration* GetStreamSourceConfiguration(
@@ -4634,9 +4579,7 @@ public:
     }
 
     ConfirmLocalAudioSinkStartRequestAndUpdateConfig(group);
-    if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      notifyAudioLocalSink(UnicastMonitorModeStatus::STREAMING);
-    }
+    notifyAudioLocalSink(UnicastMonitorModeStatus::STREAMING);
   }
 
   void SuspendAudio(void) {
@@ -4765,20 +4708,11 @@ public:
     if (active_group_id_ != bluetooth::groups::kGroupUnknown) {
       /* Bluetooth turned off while streaming */
       StopAudio();
-      if (!com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-        SetUnicastMonitorMode(bluetooth::le_audio::types::kLeAudioDirectionSink, false);
-      }
       ClientAudioInterfaceRelease();
-    } else {
-      /* There may be not stopped Sink HAL client due to set Listening mode */
-      if (sink_monitor_mode_ && !com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-        SetUnicastMonitorMode(bluetooth::le_audio::types::kLeAudioDirectionSink, false);
-      }
     }
 
-    if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-      SetUnicastMonitorMode(bluetooth::le_audio::types::kLeAudioDirectionBoth, false);
-    }
+    SetUnicastMonitorMode(bluetooth::le_audio::types::kLeAudioDirectionBoth, false);
+
     groupStateMachine_->Cleanup();
     aseGroups_.Cleanup();
     lastNotifiedGroupStreamStatusMap_.clear();
@@ -5055,8 +4989,7 @@ public:
     auto group = aseGroups_.FindById(active_group_id_);
     if (!group) {
       log::error("Invalid group: {}", static_cast<int>(active_group_id_));
-      if (com_android_bluetooth_flags_leaudio_cancel_stream_request_when_invalid_group() &&
-          (active_group_id_ != bluetooth::groups::kGroupUnknown)) {
+      if (active_group_id_ != bluetooth::groups::kGroupUnknown) {
         CancelLocalAudioSourceStreamingRequest();
       }
       return;
@@ -5230,11 +5163,9 @@ public:
                                      bluetooth::le_audio::types::kLeAudioDirectionSource);
         }
 
-        if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-          /* If audio_sender_state changed and monitor is enabled, send notification */
-          if (audio_sender_state_ == AudioState::READY_TO_START) {
-            notifyAudioLocalSource(UnicastMonitorModeStatus::STREAMING_REQUESTED);
-          }
+        /* If audio_sender_state changed and monitor is enabled, send notification */
+        if (audio_sender_state_ == AudioState::READY_TO_START) {
+          notifyAudioLocalSource(UnicastMonitorModeStatus::STREAMING_REQUESTED);
         }
         break;
       }
@@ -5400,8 +5331,7 @@ public:
     auto group = aseGroups_.FindById(active_group_id_);
     if (!group) {
       log::error("Invalid group: {}", static_cast<int>(active_group_id_));
-      if (com_android_bluetooth_flags_leaudio_cancel_stream_request_when_invalid_group() &&
-          (active_group_id_ != bluetooth::groups::kGroupUnknown)) {
+      if (active_group_id_ != bluetooth::groups::kGroupUnknown) {
         CancelLocalAudioSinkStreamingRequest();
       }
       return;
@@ -5575,11 +5505,9 @@ public:
                                      bluetooth::le_audio::types::kLeAudioDirectionSink);
         }
 
-        if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-          /* If audio_receiver_state changed and monitor is enabled, send notification */
-          if (audio_receiver_state_ == AudioState::READY_TO_START) {
-            notifyAudioLocalSink(UnicastMonitorModeStatus::STREAMING_REQUESTED);
-          }
+        /* If audio_receiver_state changed and monitor is enabled, send notification */
+        if (audio_receiver_state_ == AudioState::READY_TO_START) {
+          notifyAudioLocalSink(UnicastMonitorModeStatus::STREAMING_REQUESTED);
         }
         break;
       }
@@ -6235,13 +6163,13 @@ public:
         }
         LeAudioDeviceGroup* group = aseGroups_.FindById(leAudioDevice->group_id_);
 
-        if (event->max_pdu_mtos > 0) {
+        if (event->max_pdu_c_to_p > 0) {
           group->SetTransportLatency(bluetooth::le_audio::types::kLeAudioDirectionSink,
-                                     event->trans_lat_mtos);
+                                     event->trans_lat_c_to_p);
         }
-        if (event->max_pdu_stom > 0) {
+        if (event->max_pdu_p_to_c > 0) {
           group->SetTransportLatency(bluetooth::le_audio::types::kLeAudioDirectionSource,
-                                     event->trans_lat_stom);
+                                     event->trans_lat_p_to_c);
         }
 
         if (leAudioHealthStatus_ && (event->status != HCI_SUCCESS)) {
@@ -6735,19 +6663,15 @@ public:
         if (is_active_group_operation) {
           /** Stop Audio but don't release all the Audio resources */
           SuspendAudio();
-          if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-            notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
-            notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
-          }
+          notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
+          notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
         }
         break;
       case GroupStreamStatus::CONFIGURED_BY_USER:
         if (is_active_group_operation) {
           reconfigurationComplete();
-          if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-            notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
-            notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
-          }
+          notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
+          notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
         }
         break;
       case GroupStreamStatus::CONFIGURED_AUTONOMOUS:
@@ -6778,11 +6702,8 @@ public:
           UpdateLocationsAndContextsAvailability(group);
 
           if (is_active_group_operation) {
-            if (com_android_bluetooth_flags_leaudio_improve_unicast_monitor() ||
-                !group->IsPendingConfiguration()) {
-              notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
-              notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
-            }
+            notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
+            notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
           }
 
           if (group->IsPendingConfiguration()) {
@@ -6800,13 +6721,6 @@ public:
                       kLeAudioContextAllRemoteSource.test(configuration_context_type_)
                               ? bluetooth::le_audio::types::kLeAudioDirectionSource
                               : bluetooth::le_audio::types::kLeAudioDirectionSink;
-
-              if (!com_android_bluetooth_flags_leaudio_improve_unicast_monitor()) {
-                /* Reconfiguration to non requiring source scenario */
-                if (remote_direction == bluetooth::le_audio::types::kLeAudioDirectionSink) {
-                  notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
-                }
-              }
 
               auto config = audioContextTypeManager_->GetAudioContextsForTheGroup(
                       group, get_remote_directions_for_context_type_manager(remote_direction));
@@ -6840,21 +6754,10 @@ public:
           HandlePendingDeviceDisconnection(group);
         }
 
-        if (com_android_bluetooth_flags_leaudio_vaps_improvements()) {
-          log::info(" Status Idle: NotifyVaSessionStopped");
-          if (group) {
-            bluetooth::vap::GetVapServer()->NotifyVaSessionStopped(
-                    GetGroupDevices(group->group_id_), true);
-          }
-        } else {
-          auto metadata_contexts = get_bidirectional(local_metadata_context_types_);
-          if (metadata_contexts.test(LeAudioContextType::VOICEASSISTANTS)) {
-            log::info(" Status Idle: NotifyVaSessionStopped");
-            if (group) {
-              bluetooth::vap::GetVapServer()->NotifyVaSessionStopped(
-                      GetGroupDevices(group->group_id_), true);
-            }
-          }
+        log::info(" Status Idle: NotifyVaSessionStopped");
+        if (group) {
+          bluetooth::vap::GetVapServer()->NotifyVaSessionStopped(
+                  GetGroupDevices(group->group_id_), true);
         }
 
         break;
@@ -7137,8 +7040,8 @@ private:
       }
 
       log::info("SetAsymmetricBlePhy: {} for {}", asymmetric, tmpDevice->address_);
-      get_btm_client_interface().ble.BTM_BleSetPhy(tmpDevice->address_, PHY_LE_2M,
-                                                   asymmetric ? PHY_LE_1M : PHY_LE_2M, 0);
+      stack::leConnectionSetPhy(tmpDevice->address_, PHY_LE_2M, asymmetric ? PHY_LE_1M : PHY_LE_2M,
+                                0);
       tmpDevice->acl_asymmetric_ = asymmetric;
     }
   }
@@ -7183,7 +7086,7 @@ void le_audio_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
 
     case BTA_GATTC_ENC_CMPL_CB_EVT: {
       tBTM_STATUS encryption_status;
-      if (get_btm_client_interface().security.BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
+      if (get_security_client_interface().BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
                                                               BT_TRANSPORT_LE)) {
         encryption_status = tBTM_STATUS::BTM_SUCCESS;
       } else {

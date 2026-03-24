@@ -38,15 +38,15 @@
 #include "hci/controller_mock.h"
 #include "hci/le_rand_callback.h"
 #include "stack/include/btm_status.h"
+#include "stack/mock/mock_stack_acl.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_l2cap_interface.h"
 #include "test/common/mock_functions.h"
 #include "test/common/sync_main_handler.h"
 #include "test/mock/mock_main_shim_entry.h"
 #include "test/mock/mock_osi_alarm.h"
 #include "test/mock/mock_osi_allocator.h"
 #include "test/mock/mock_osi_properties.h"
-#include "test/mock/mock_stack_acl.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_l2cap_interface.h"
 
 #define TEST_BT com::android::bluetooth::flags
 
@@ -55,6 +55,7 @@ using ::testing::NiceMock;
 using namespace std::chrono_literals;
 using namespace bluetooth;
 using ::testing::_;
+using ::testing::Return;
 
 namespace {
 constexpr uint8_t kUnusedTimer = BTA_ID_MAX;
@@ -212,7 +213,6 @@ TEST_F(BtaDmTest, bta_dm_set_encryption) {
   // Fake indication that the encryption is in progress with non-null callback
   p_link->p_encrypt_cback = BTA_DM_ENCRYPT_CBACK;
   bta_dm_set_encryption(kRawAddress, transport, BTA_DM_ENCRYPT_CBACK, sec_act);
-  ASSERT_EQ(0, get_func_call_count("BTM_SetEncryption"));
   ASSERT_EQ(1UL, BTA_DM_ENCRYPT_CBACK_queue.size());
   auto params = BTA_DM_ENCRYPT_CBACK_queue.front();
   BTA_DM_ENCRYPT_CBACK_queue.pop();
@@ -220,30 +220,18 @@ TEST_F(BtaDmTest, bta_dm_set_encryption) {
   p_link->p_encrypt_cback = nullptr;
 
   // Setup a device that fails encryption
-  mock_btm_client_interface.security.BTM_SetEncryption =
-          [](const RawAddress& /*bd_addr*/, tBT_TRANSPORT /*transport*/,
-             tBTM_SEC_CALLBACK* /*p_callback*/, void* /*p_ref_data*/,
-             tBTM_BLE_SEC_ACT /*sec_act*/) -> tBTM_STATUS {
-    inc_func_call_count("BTM_SetEncryption");
-    return tBTM_STATUS::BTM_MODE_UNSUPPORTED;
-  };
+  EXPECT_CALL(mock_security_client_interface_, BTM_SetEncryption(_, _, _, _, _))
+    .WillOnce(::testing::Return(tBTM_STATUS::BTM_MODE_UNSUPPORTED));
 
   bta_dm_set_encryption(kRawAddress, transport, BTA_DM_ENCRYPT_CBACK, sec_act);
-  ASSERT_EQ(1, get_func_call_count("BTM_SetEncryption"));
   ASSERT_EQ(0UL, BTA_DM_ENCRYPT_CBACK_queue.size());
   p_link->p_encrypt_cback = nullptr;
 
   // Setup a device that successfully starts encryption
-  mock_btm_client_interface.security.BTM_SetEncryption =
-          [](const RawAddress& /*bd_addr*/, tBT_TRANSPORT /*transport*/,
-             tBTM_SEC_CALLBACK* /*p_callback*/, void* /*p_ref_data*/,
-             tBTM_BLE_SEC_ACT /*sec_act*/) -> tBTM_STATUS {
-    inc_func_call_count("BTM_SetEncryption");
-    return tBTM_STATUS::BTM_CMD_STARTED;
-  };
+  EXPECT_CALL(mock_security_client_interface_, BTM_SetEncryption(_, _, _, _, _))
+    .WillOnce(::testing::Return(tBTM_STATUS::BTM_CMD_STARTED));
 
   bta_dm_set_encryption(kRawAddress, transport, BTA_DM_ENCRYPT_CBACK, sec_act);
-  ASSERT_EQ(2, get_func_call_count("BTM_SetEncryption"));
   ASSERT_EQ(0UL, BTA_DM_ENCRYPT_CBACK_queue.size());
   ASSERT_NE(nullptr, p_link->p_encrypt_cback);
 
@@ -353,30 +341,36 @@ TEST_F(BtaDmTest, bta_dm_remname_cback__HCI_ERR_CONNECTION_EXISTS) {
 }
 
 TEST_F(BtaDmTest, bta_dm_determine_discovery_transport__BR_EDR) {
-  mock_btm_client_interface.peer.BTM_ReadDevInfo = [](const RawAddress& remote_bda) -> DevInfo {
-    return DevInfo{
-            .addr = remote_bda, .addr_type = BLE_ADDR_PUBLIC, .device_type = BT_DEVICE_TYPE_BREDR};
-  };
+  EXPECT_CALL(mock_btm_client_interface_, BTM_ReadDevInfo)
+          .WillOnce([](const RawAddress& remote_bda) {
+            return DevInfo{.addr = remote_bda,
+                           .addr_type = BLE_ADDR_PUBLIC,
+                           .device_type = BT_DEVICE_TYPE_BREDR};
+          });
 
   ASSERT_EQ(BT_TRANSPORT_BR_EDR,
             bluetooth::legacy::testing::bta_dm_determine_discovery_transport(kRawAddress));
 }
 
 TEST_F(BtaDmTest, bta_dm_determine_discovery_transport__BLE__PUBLIC) {
-  mock_btm_client_interface.peer.BTM_ReadDevInfo = [](const RawAddress& remote_bda) -> DevInfo {
-    return DevInfo{
-            .addr = remote_bda, .addr_type = BLE_ADDR_PUBLIC, .device_type = BT_DEVICE_TYPE_BLE};
-  };
+  EXPECT_CALL(mock_btm_client_interface_, BTM_ReadDevInfo)
+          .WillOnce([](const RawAddress& remote_bda) {
+            return DevInfo{.addr = remote_bda,
+                           .addr_type = BLE_ADDR_PUBLIC,
+                           .device_type = BT_DEVICE_TYPE_BLE};
+          });
 
   ASSERT_EQ(BT_TRANSPORT_LE,
             bluetooth::legacy::testing::bta_dm_determine_discovery_transport(kRawAddress));
 }
 
 TEST_F(BtaDmTest, bta_dm_determine_discovery_transport__DUMO) {
-  mock_btm_client_interface.peer.BTM_ReadDevInfo = [](const RawAddress& remote_bda) -> DevInfo {
-    return DevInfo{
-            .addr = remote_bda, .addr_type = BLE_ADDR_PUBLIC, .device_type = BT_DEVICE_TYPE_DUMO};
-  };
+  EXPECT_CALL(mock_btm_client_interface_, BTM_ReadDevInfo)
+          .WillOnce([](const RawAddress& remote_bda) {
+            return DevInfo{.addr = remote_bda,
+                           .addr_type = BLE_ADDR_PUBLIC,
+                           .device_type = BT_DEVICE_TYPE_DUMO};
+          });
 
   ASSERT_EQ(BT_TRANSPORT_BR_EDR,
             bluetooth::legacy::testing::bta_dm_determine_discovery_transport(kRawAddress));
@@ -400,11 +394,8 @@ TEST_F(BtaDmTest, bta_dm_search_evt_text) {
 }
 
 TEST_F(BtaDmTest, bta_dm_remote_name_cmpl) {
-  reset_mock_btm_client_interface();
-  mock_btm_client_interface.db.BTM_InqDbRead = [](const RawAddress& /*bd_addr*/) -> tBTM_INQ_INFO* {
-    inc_func_call_count("BTM_InqDbRead");
-    return nullptr;
-  };
+  EXPECT_CALL(mock_btm_client_interface_, BTM_InqDbRead).WillOnce(Return(nullptr));
+
   tBTA_DM_REMOTE_NAME remote_name_msg{
           // tBTA_DM_REMOTE_NAME
           .bd_addr = kRawAddress,
@@ -412,7 +403,6 @@ TEST_F(BtaDmTest, bta_dm_remote_name_cmpl) {
           .hci_status = HCI_SUCCESS,
   };
   bluetooth::legacy::testing::bta_dm_remote_name_cmpl(remote_name_msg);
-  ASSERT_EQ(1, get_func_call_count("BTM_InqDbRead"));
 }
 
 TEST_F(BtaDmTest, bta_dm_disc_start__true) { bta_dm_disc_start(true); }

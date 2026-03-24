@@ -29,11 +29,13 @@ import android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_POWER
 import android.bluetooth.le.ScanSettings.SCAN_MODE_OPPORTUNISTIC
 import android.bluetooth.le.ScanSettings.SCAN_MODE_SCREEN_OFF
 import android.bluetooth.le.ScanSettings.SCAN_MODE_SCREEN_OFF_BALANCED
+import android.os.SystemProperties
 import android.provider.Settings
 import android.util.Log
 import com.android.bluetooth.Util.blockedByLocationOff
 import com.android.bluetooth.Utils.millsToUnit
 import com.android.bluetooth.btservice.AdapterService
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -50,6 +52,8 @@ object ScanUtil {
     @JvmField val DEFAULT_SCAN_TIMEOUT = 10.minutes.toJavaDuration()
     @JvmField val DEFAULT_SCAN_UPGRADE_DURATION = 6.seconds.toJavaDuration()
     @JvmField val DEFAULT_SCAN_DOWNGRADE_DURATION_BT_CONNECTING = 6.seconds.toJavaDuration()
+    // TODO(b/478349128): tune the value of DEFAULT_SCAN_THROTTLE_DELAY
+    val DEFAULT_SCAN_THROTTLE_DELAY = 2.seconds
 
     // Scan params corresponding to regular scan setting
     const val SCAN_MODE_LOW_POWER_WINDOW_MS = 140
@@ -94,6 +98,13 @@ object ScanUtil {
 
     const val MIN_OFFLOADED_FILTERS = 10
     const val MIN_OFFLOADED_SCAN_STORAGE_BYTES = 1024
+
+    const val SCAN_ALLOWANCE_SECONDS_PROPERTY = "bluetooth.ble.scan.scan_allowance_seconds.config"
+    private val DEFAULT_SCAN_ALLOWANCE_SECONDS = 6.minutes.inWholeSeconds.toInt()
+
+    fun getScanAllowance() =
+        SystemProperties.getInt(SCAN_ALLOWANCE_SECONDS_PROPERTY, DEFAULT_SCAN_ALLOWANCE_SECONDS)
+            .seconds
 
     @JvmStatic
     fun isOffloadedFilteringSupported(adapterService: AdapterService) =
@@ -353,15 +364,15 @@ object ScanUtil {
         isTimeoutScanClient(client) || isDowngradedScanClient(client)
 
     private fun isTimeoutScanClient(client: ScanClient) =
-        client.appScanStats?.isScanTimeout(client.scannerId) ?: false
+        client.appScanStats.isScanTimeout(client.scannerId)
 
     @JvmStatic
     fun isDowngradedScanClient(client: ScanClient) =
-        client.appScanStats?.isScanDowngraded(client.scannerId) ?: false
+        client.appScanStats.isScanDowngraded(client.scannerId)
 
     @JvmStatic
     fun isAutoBatchScanClientEnabled(client: ScanClient) =
-        client.appScanStats?.isAutoBatchScan(client.scannerId) ?: false
+        client.appScanStats.isAutoBatchScan(client.scannerId)
 
     @JvmStatic
     fun getAggressiveClient(
@@ -421,7 +432,7 @@ object ScanUtil {
         val scanMode = ScanMode(SCAN_MODE_SCREEN_OFF)
         Log.d(TAG, "setAutoBatchScanClient($client): Update scan mode to $scanMode")
         client.updateScanMode(SCAN_MODE_SCREEN_OFF)
-        client.appScanStats?.setAutoBatchScan(client.scannerId, true)
+        client.appScanStats.setAutoBatchScan(client.scannerId, true)
     }
 
     @JvmStatic
@@ -432,7 +443,7 @@ object ScanUtil {
         val scanMode = ScanMode(client.scanModeApp)
         Log.d(TAG, "clearAutoBatchScanClient($client): Update scan mode to $scanMode")
         client.updateScanMode(client.scanModeApp)
-        client.appScanStats?.setAutoBatchScan(client.scannerId, false)
+        client.appScanStats.setAutoBatchScan(client.scannerId, false)
     }
 
     // EN format defined here:
@@ -485,6 +496,10 @@ object ScanUtil {
 
         return ScanResult(null, 0, 0, 0, 0, 0, rssi, 0, record, 0)
     }
+
+    @JvmStatic
+    fun convertAllowanceToRemainingTime(allowance: Duration, scanMode: Int) =
+        allowance * WEIGHT_LOW_LATENCY / weightForScanMode(scanMode)
 
     private fun ByteArray.startsWith(prefix: ByteArray): Boolean {
         if (this.size < prefix.size) {

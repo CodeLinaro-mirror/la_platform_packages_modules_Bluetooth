@@ -22,6 +22,7 @@
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
 #include <bluetooth/types/bt_transport.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 #include <stdio.h>
 
@@ -42,7 +43,6 @@
 #include "bta_gatt_queue.h"
 #include "btif/include/btif_storage.h"
 #include "common/le_conn_params.h"
-#include "common/strings.h"
 #include "hardware/bluetooth.h"
 #include "hci/controller.h"
 #include "internal_include/bt_trace.h"
@@ -62,6 +62,7 @@
 #include "stack/include/hci_error_code.h"
 #include "stack/include/hcidefs.h"
 #include "stack/include/l2cap_interface.h"
+#include "stack/include/stack_le_connection.h"
 
 using bluetooth::hci::kIsoCigPhy1M;
 using bluetooth::hci::kIsoCigPhy2M;
@@ -454,7 +455,9 @@ bool LeAudioDevice::ConfigureAses(const types::AudioSetConfiguration* audio_set_
      * Nothing more to do is needed here.
      */
     if (ase->state != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
-      if (ase->state == AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED) {
+      if (ase->state == AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED ||
+          (com_android_bluetooth_flags_leaudio_fix_qos_reconfiguration() &&
+           ase->state == AseState::BTA_LE_AUDIO_ASE_STATE_QOS_CONFIGURED)) {
         ase->reconfigure = true;
       }
 
@@ -911,7 +914,10 @@ bool LeAudioDevice::HaveAnyUnconfiguredAses(void) {
     }
 
     if (ase.state == AseState::BTA_LE_AUDIO_ASE_STATE_IDLE ||
-        ((ase.state == AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED) && ase.reconfigure)) {
+        ((ase.state == AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED ||
+          (com_android_bluetooth_flags_leaudio_fix_qos_reconfiguration() &&
+           ase.state == AseState::BTA_LE_AUDIO_ASE_STATE_QOS_CONFIGURED)) &&
+         ase.reconfigure)) {
       return true;
     }
 
@@ -1532,20 +1538,20 @@ void LeAudioDevice::StartConnSubrate() {
     return;
   }
 
-  if (com::android::bluetooth::flags::le_subrate_manager()) {
-      stack::l2cap::get_interface().L2CA_LockBleConnParamsForLeAudioSubrate(address_, true);
-      tGATT_STATUS status =
-          BTA_GATTC_SubrateModeRequest(client_if_, address_, GATT_SUBRATE_MODE_LEA);
+  if (com_android_bluetooth_flags_le_subrate_manager()) {
+    stack::l2cap::get_interface().L2CA_LockBleConnParamsForLeAudioSubrate(address_, true);
+    tGATT_STATUS status =
+            stack::leConnectionUpdateSubrateConfig(client_if_, address_, GATT_SUBRATE_MODE_LEA);
 
-      if (status != GATT_SUCCESS) {
-        stack::l2cap::get_interface().L2CA_LockBleConnParamsForLeAudioSubrate(address_, false);
-        SetSubrateState(SubrateState::DISABLED);
-        log::error("Fail to request subrate mode.");
-      } else {
-        SetSubrateState(SubrateState::PENDING_ENABLING_SUBRATE_UPDATE);
-      }
+    if (status != GATT_SUCCESS) {
+      stack::l2cap::get_interface().L2CA_LockBleConnParamsForLeAudioSubrate(address_, false);
+      SetSubrateState(SubrateState::DISABLED);
+      log::error("Fail to request subrate mode.");
+    } else {
+      SetSubrateState(SubrateState::PENDING_ENABLING_SUBRATE_UPDATE);
+    }
 
-      return;
+    return;
   }
 
   stack::l2cap::get_interface().L2CA_LockBleConnParamsForLeAudioSubrate(address_, true);
@@ -1562,8 +1568,8 @@ void LeAudioDevice::StopConnSubrate() {
 
   stack::l2cap::get_interface().L2CA_LockBleConnParamsForLeAudioSubrate(address_, false);
 
-  if (com::android::bluetooth::flags::le_subrate_manager()) {
-    BTA_GATTC_SubrateModeRequest(client_if_, address_, GATT_SUBRATE_MODE_OFF);
+  if (com_android_bluetooth_flags_le_subrate_manager()) {
+    stack::leConnectionUpdateSubrateConfig(client_if_, address_, GATT_SUBRATE_MODE_OFF);
   }
 
   SetSubrateState(SubrateState::DISABLED);
@@ -1711,7 +1717,7 @@ void LeAudioDevices::SetInitialGroupAutoconnectState(int group_id, int gatt_if,
       dev->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
       dev->autoconnect_flag_ = true;
       btif_storage_set_leaudio_autoconnect(dev->address_, true);
-      BTA_GATTC_Open(gatt_if, dev->address_, BTM_BLE_DIRECT_CONNECTION, false);
+      BTA_GATTC_Open(gatt_if, dev->address_, BTM_BLE_DIRECT_CONNECTION);
     }
   }
 }

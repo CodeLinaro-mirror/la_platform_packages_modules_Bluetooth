@@ -40,6 +40,7 @@ import android.bluetooth.BluetoothUtils
 import android.content.AttributionSource
 import android.content.Context
 import android.content.pm.PackageInfo
+import android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED
 import android.content.pm.PackageManager
 import android.content.pm.PackageManager.GET_PERMISSIONS
 import android.location.LocationManager
@@ -58,6 +59,7 @@ import android.provider.DeviceConfig
 import android.util.Log
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.profile.ProfileService
+import com.android.modules.utils.build.SdkLevel
 
 private const val TAG = Util.BT_PREFIX + "Util"
 
@@ -143,6 +145,21 @@ object Util {
             else -> "Unknown transport ($transport)"
         }
 
+    @JvmStatic
+    fun getRedactedAddressStringFromByte(address: ByteArray?): String? {
+        if (address == null || address.size != Utils.BD_ADDR_LEN) {
+            return null
+        }
+
+        return String.format("XX:XX:XX:XX:%02X:%02X", address[4], address[5])
+    }
+
+    @JvmStatic fun BluetoothDevice.getByteAddress() = getBytesFromAddress(address)
+
+    @JvmStatic
+    fun getBytesFromAddress(address: String) =
+        address.split(":").map { it.toInt(16).toByte() }.toByteArray()
+
     /**
      * Converts HCI disconnect reasons to Android disconnect reasons.
      *
@@ -224,35 +241,29 @@ object Util {
      * @return `true` if BLE is supported, `false` otherwise
      */
     @JvmStatic
-    fun isBleSupported(context: Context) =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
+    fun Context.isBleSupported() =
+        packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
 
     /** @return `true` if this Android device is an automotive device, `false` otherwise */
     @JvmStatic
-    fun isAutomotive(context: Context) =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
+    fun Context.isAutomotive() = packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)
 
     /** @return `true` if this Android device is an IoT device, `false` otherwise */
     @JvmStatic
-    fun isIotDevice(context: Context) =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_EMBEDDED)
+    fun Context.isIotDevice() = packageManager.hasSystemFeature(PackageManager.FEATURE_EMBEDDED)
 
     /** @return `true` if this Android device is a TV device, `false` otherwise */
     @Suppress("DEPRECATION") // Checking deprecated PackageManager.FEATURE_TELEVISION
     @JvmStatic
-    fun isTv(context: Context) =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION) ||
-            context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    fun Context.isTv() =
+        packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION) ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 
     /** @return `true` if this Android device is a watch device, `false` otherwise */
-    @JvmStatic
-    fun isWatch(context: Context) =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH)
+    @JvmStatic fun Context.isWatch() = packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH)
 
     /** @return `true` if this Android device is an XR device, `false` otherwise */
-    @JvmStatic
-    fun isXrDevice(context: Context) =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_XR_PERIPHERAL)
+    fun Context.isXrDevice() = packageManager.hasSystemFeature(PackageManager.FEATURE_XR_PERIPHERAL)
 
     /**
      * Returns true if the specified package has disavowed the use of bluetooth scans for location,
@@ -473,6 +484,40 @@ object Util {
     @JvmStatic
     fun checkCallerHasPrivilegedPermission(context: Context) =
         context.checkCallerHasPermission(BLUETOOTH_PRIVILEGED)
+
+    /** Returns `true` if the uid / packageName pair holds [BLUETOOTH_PRIVILEGED] */
+    @JvmStatic
+    fun checkPrivilegedPermission(context: Context, packageName: String, uid: Int): Boolean {
+        val app = getPackageInfoAsUser(context, packageName, uid)
+
+        val permissions = app?.requestedPermissions ?: return false
+        val flags = app.requestedPermissionsFlags ?: return false
+
+        for (i in permissions.indices) {
+            if (
+                permissions[i] == BLUETOOTH_PRIVILEGED &&
+                    (flags[i] and REQUESTED_PERMISSION_GRANTED) != 0
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun getPackageInfoAsUser(
+        context: Context,
+        packageName: String,
+        uid: Int,
+    ): PackageInfo? {
+        return try {
+            val user = UserHandle.getUserHandleForUid(uid)
+            val pm = context.createContextAsUser(user, 0).packageManager
+            pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+        } catch (e: PackageManager.NameNotFoundException) {
+            Log.e(TAG, "NameNotFoundException $packageName")
+            null
+        }
+    }
 
     /** Returns `true` if the caller holds [WRITE_SMS] */
     @JvmStatic
@@ -727,6 +772,31 @@ object Util {
         } else {
             Log.w(TAG, msg)
             return false
+        }
+    }
+
+    /**
+     * Checks if the calling UID is a Private Compute Core (PCC) UID.
+     *
+     * PCC UIDs are restricted from performing certain egress operations to maintain data privacy
+     * boundaries.
+     *
+     * @param methodName the name of the method being checked, used for the exception message
+     * @throws SecurityException if the caller is a PCC UID
+     */
+    @JvmStatic
+    fun enforceCallingUidIsNotPcc(methodName: String) {
+        if (
+            SdkLevel.isAtLeastC() &&
+                com.android.bluetooth.jarjar.android.app.privatecompute.flags.Flags
+                    .enablePccFrameworkSupport()
+        ) {
+            val callingUid = Binder.getCallingUid()
+            if (Process.isPrivateComputeCoreUid(callingUid)) {
+                throw SecurityException(
+                    "PCC UIDs are not allowed to perform Bluetooth egress operation: $methodName"
+                )
+            }
         }
     }
 

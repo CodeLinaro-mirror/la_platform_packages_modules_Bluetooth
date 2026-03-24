@@ -30,7 +30,6 @@ import com.android.bluetooth.avrcpcontroller.AvrcpControllerService;
 import com.android.bluetooth.bas.BatteryService;
 import com.android.bluetooth.bass_client.BassClientService;
 import com.android.bluetooth.csip.CsipSetCoordinatorService;
-import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.gatt.GattService;
 import com.android.bluetooth.hap.HapClientService;
 import com.android.bluetooth.hearingaid.HearingAidService;
@@ -41,8 +40,10 @@ import com.android.bluetooth.hid.HidHostService;
 import com.android.bluetooth.le_audio.LeAudioBroadcast;
 import com.android.bluetooth.le_audio.LeAudioPeripheralService;
 import com.android.bluetooth.le_audio.LeAudioService;
+import com.android.bluetooth.le_audio.LeAudioTmapService;
 import com.android.bluetooth.map.BluetoothMapService;
 import com.android.bluetooth.mapclient.MapClientService;
+import com.android.bluetooth.mcp.McpClientService;
 import com.android.bluetooth.mcp.McpService;
 import com.android.bluetooth.opp.BluetoothOppService;
 import com.android.bluetooth.pan.PanService;
@@ -52,6 +53,7 @@ import com.android.bluetooth.sap.SapService;
 import com.android.bluetooth.tbs.TbsService;
 import com.android.bluetooth.vap.VapServerService;
 import com.android.bluetooth.vc.VolumeControlService;
+import com.android.bluetooth.vcp.VcpRendererService;
 
 import java.util.Arrays;
 
@@ -88,6 +90,13 @@ public class Config {
         BluetoothProfile.LE_CALL_CONTROL,
     };
 
+    /** List of profile services related to LE audio peripheral role */
+    private static final int[] LE_AUDIO_UNICAST_PERIPHERAL_PROFILES = {
+        BluetoothProfile.LE_AUDIO_PERIPHERAL,
+        BluetoothProfile.MCP_CLIENT,
+        BluetoothProfile.VCP_RENDERER
+    };
+
     /**
      * List of profile services with the profile-supported resource flag and bit mask.
      *
@@ -102,7 +111,7 @@ public class Config {
      *
      * @see com.android.bluetooth.btservice.AdapterService#startProfileServices()
      */
-    private static final ProfileConfig[] PROFILE_SERVICES_AND_FLAGS_BASE =
+    private static final ProfileConfig[] PROFILE_SERVICES_AND_FLAGS =
             new ProfileConfig[] {
                 // Prioritize GattService startup by making it the first Profile to
                 // boot. This resolves dependency issues for some Profiles.
@@ -141,25 +150,12 @@ public class Config {
                 new ProfileConfig(
                         LeAudioBroadcast.isEnabled(), BluetoothProfile.LE_AUDIO_BROADCAST),
                 new ProfileConfig(VapServerService.isEnabled(), BluetoothProfile.VAP_SERVER),
+                new ProfileConfig(
+                        LeAudioPeripheralService.isEnabled(), BluetoothProfile.LE_AUDIO_PERIPHERAL),
+                new ProfileConfig(LeAudioTmapService.isEnabled(), BluetoothProfile.TMAP_SERVER),
+                new ProfileConfig(McpClientService.isEnabled(), BluetoothProfile.MCP_CLIENT),
+                new ProfileConfig(VcpRendererService.isEnabled(), BluetoothProfile.VCP_RENDERER),
             };
-
-    private static final ProfileConfig[] PROFILE_SERVICES_AND_FLAGS;
-
-    static {
-        if (!Flags.leaudioPeripheralFeature()) {
-            PROFILE_SERVICES_AND_FLAGS = PROFILE_SERVICES_AND_FLAGS_BASE;
-        } else {
-            ProfileConfig[] baseWithLeAudioPeripheral =
-                    Arrays.copyOf(
-                            PROFILE_SERVICES_AND_FLAGS_BASE,
-                            PROFILE_SERVICES_AND_FLAGS_BASE.length + 1);
-            baseWithLeAudioPeripheral[PROFILE_SERVICES_AND_FLAGS_BASE.length] =
-                    new ProfileConfig(
-                            LeAudioPeripheralService.isEnabled(),
-                            BluetoothProfile.LE_AUDIO_PERIPHERAL);
-            PROFILE_SERVICES_AND_FLAGS = baseWithLeAudioPeripheral;
-        }
-    }
 
     private Config() {}
 
@@ -265,10 +261,7 @@ public class Config {
      * @return a list of profile services related to LE audio peripheral role.
      */
     static int[] getLeAudioUnicastPeripheralProfiles() {
-        if (Flags.leaudioPeripheralFeature()) {
-            return new int[] {BluetoothProfile.LE_AUDIO_PERIPHERAL};
-        }
-        return new int[] {};
+        return LE_AUDIO_UNICAST_PERIPHERAL_PROFILES;
     }
 
     static int[] getSupportedProfiles() {

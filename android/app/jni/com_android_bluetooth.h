@@ -18,6 +18,7 @@
 #pragma once
 
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <optional>
 #include <string>
@@ -31,27 +32,31 @@ namespace log = bluetooth::log;
 
 namespace android {
 
-/// Convert a bluetooth address encoded as jbyte array to the address type used in the native stack.
-/// This function will panic if the input object is null or invalid.
-RawAddress addressFromJByteArray(JNIEnv* env, jbyteArray object);
-
-/// Convert a bluetooth address to a scoped jbyte array object.
-ScopedLocalRef<jbyteArray> addressToJByteArray(JNIEnv* env, RawAddress address);
-
-/// Convert a bluetooth address to a scoped jstring object.
-ScopedLocalRef<jstring> addressToJString(JNIEnv* env, RawAddress address);
-
-/// Convert a jstring to a native string. This function will panic if the input object is null.
-std::string stringFromJstring(JNIEnv* env, const jstring object);
-
 JNIEnv* getCallbackEnv();
 bool isCallbackThread();
 
 class CallbackEnv {
 public:
-  CallbackEnv(const char* methodName) : mName(methodName) { mCallbackEnv = getCallbackEnv(); }
+  CallbackEnv(const char* methodName) : mName(methodName) {
+    mCallbackEnv = getCallbackEnv();
+    if (!com_android_bluetooth_flags_jni_batch_memory_management()) {
+      return;
+    }
+    log::assert_that(mCallbackEnv != nullptr, "CallbackEnv must not be null");
+    log::assert_that(isCallbackThread(), "CallbackEnv must be run on callback thread");
+    log::assert_that(mCallbackEnv->PushLocalFrame(128) >= 0, "Failed to push local frame");
+  }
 
   ~CallbackEnv() {
+    if (com_android_bluetooth_flags_jni_batch_memory_management()) {
+      if (mCallbackEnv->ExceptionCheck()) {
+        log::error("An exception was thrown by callback '{}'.", mName);
+        jniLogException(mCallbackEnv, ANDROID_LOG_ERROR, LOG_TAG);
+        mCallbackEnv->ExceptionClear();
+      }
+      mCallbackEnv->PopLocalFrame(nullptr);
+      return;
+    }
     if (mCallbackEnv && mCallbackEnv->ExceptionCheck()) {
       log::error("An exception was thrown by callback '{}'.", mName);
       jniLogException(mCallbackEnv, ANDROID_LOG_ERROR, LOG_TAG);
@@ -59,7 +64,11 @@ public:
     }
   }
 
+  // Remove method and all usage when removing jni_batch_memory_management
   bool valid() const {
+    if (com_android_bluetooth_flags_jni_batch_memory_management()) {
+      return true;
+    }
     if (!mCallbackEnv || !isCallbackThread()) {
       log::error("{}: Callback env fail", mName);
       return false;
@@ -138,6 +147,19 @@ private:
   void operator=(const CallbackEnv&) = delete;
 };
 
+// Convert a bluetooth address encoded as jbyte array to the address type used in the native stack.
+// This function will panic if the input object is null or invalid.
+RawAddress addressFromJByteArray(JNIEnv* env, jbyteArray object);
+
+// Convert a bluetooth address to a scoped jbyte array object.
+ScopedLocalRef<jbyteArray> addressToJByteArray(const CallbackEnv& env, RawAddress address);
+
+// Convert a bluetooth address to a scoped jstring object.
+ScopedLocalRef<jstring> addressToJString(const CallbackEnv& env, RawAddress address);
+
+// Convert a jstring to a native string. This function will panic if the input object is null.
+std::string stringFromJstring(JNIEnv* env, const jstring object);
+
 const bt_interface_t* getBluetoothInterface();
 
 int register_com_android_bluetooth_scan(JNIEnv* env);
@@ -181,6 +203,8 @@ int register_com_android_bluetooth_le_audio_peripheral(JNIEnv* env);
 int register_com_android_bluetooth_mcp_client(JNIEnv* env);
 
 int register_com_android_bluetooth_vc(JNIEnv* env);
+
+int register_com_android_bluetooth_vcp_renderer(JNIEnv* env);
 
 int register_com_android_bluetooth_csip_set_coordinator(JNIEnv* env);
 

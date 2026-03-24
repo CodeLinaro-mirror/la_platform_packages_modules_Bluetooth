@@ -498,6 +498,18 @@ bool bta_gattc_is_data_queued(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_
   auto it = std::find(p_clcb->p_q_cmd_queue.begin(), p_clcb->p_q_cmd_queue.end(), p_data);
   return it != p_clcb->p_q_cmd_queue.end();
 }
+
+void bta_gattc_set_state(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_STATE state) {
+  if (!p_clcb || p_clcb->state == state) {
+    return;
+  }
+  auto in_state = p_clcb->state;
+  p_clcb->state = state;
+
+  log::verbose("{}: GATTC State Change: [{} ({:#x})] -> [{} ({:#x})]", p_clcb->bda,
+               bta_clcb_state_text(in_state), in_state, bta_clcb_state_text(p_clcb->state),
+               p_clcb->state);
+}
 /*******************************************************************************
  *
  * Function         bta_gattc_enqueue
@@ -689,7 +701,7 @@ void bta_gattc_send_open_cback(tBTA_GATTC_RCB* p_clreg, tGATT_STATUS status,
 
     (*p_clreg->p_cback)(BTA_GATTC_OPEN_EVT, &cb_data);
 
-    if (com::android::bluetooth::flags::gatt_conn_settings()) {
+    if (com_android_bluetooth_flags_gatt_conn_settings()) {
       if (GATT_DEF_BLE_MTU_SIZE != cb_data.open.mtu && cb_data.open.mtu) {
         tBTA_GATTC mtu_cb_data;
         mtu_cb_data.cfg_mtu.conn_id = conn_id;
@@ -947,7 +959,7 @@ void bta_gatt_client_dump(int fd) {
            << "  num_clcb: " << +p_known_server->num_clcb
            << "  state: " << bta_server_state_text(p_known_server->state)
            << "  connected: " << p_known_server->connected
-           << "  srvc_disc_count: " << p_known_server->srvc_disc_count
+           << "  srvc_disc_count: " << static_cast<int>(p_known_server->srvc_disc_count)
            << "  disc_blocked_waiting_on_version: "
            << p_known_server->disc_blocked_waiting_on_version
            << "  srvc_hdl_chg: " << +p_known_server->srvc_hdl_chg

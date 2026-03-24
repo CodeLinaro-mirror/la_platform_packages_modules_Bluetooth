@@ -24,6 +24,7 @@
 
 #include <base/strings/string_number_conversions.h>
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -42,7 +43,6 @@
 #include <vector>
 
 #include "audio_hal_client/audio_hal_client.h"
-#include "common/strings.h"
 #include "hardware/bt_le_audio.h"
 #include "internal_include/bt_trace.h"
 #include "le_audio_utils.h"
@@ -519,7 +519,7 @@ LeAudioLtvMap LeAudioLtvMap::GetIntersection(const LeAudioLtvMap& other) const {
   LeAudioLtvMap result;
   for (auto const& [key, value] : values) {
     auto entry = other.Find(key);
-    if (entry->size() != value.size()) {
+    if (!entry || entry->size() != value.size()) {
       continue;
     }
     if (memcmp(entry->data(), value.data(), value.size()) == 0) {

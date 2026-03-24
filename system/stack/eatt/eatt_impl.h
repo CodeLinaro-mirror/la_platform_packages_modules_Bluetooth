@@ -26,17 +26,14 @@
 #include <vector>
 
 #include "hci/controller.h"
-#include "include/bind_helpers.h"
 #include "internal_include/stack_config.h"
 #include "main/shim/entry.h"
 #include "osi/include/alarm.h"
 #include "osi/include/allocator.h"
-#include "stack/btm/btm_sec.h"
 #include "stack/eatt/eatt.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_psm_types.h"
-#include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_sec_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
@@ -265,7 +262,7 @@ struct eatt_impl {
     /* This is just for L2CAP PTS test cases*/
     auto min_key_size = stack_config_get_interface()->get_pts_l2cap_ecoc_min_key_size();
     if (min_key_size > 0 && (min_key_size >= 7 && min_key_size <= 16)) {
-      auto key_size = get_btm_client_interface().security.BTM_BleReadSecKeySize(bda);
+      auto key_size = get_security_client_interface().BTM_BleReadSecKeySize(bda);
       if (key_size < min_key_size) {
         std::vector<uint16_t> empty;
         log::error("Insufficient key size ({}<{}) for device {}", key_size, min_key_size, bda);
@@ -307,12 +304,12 @@ struct eatt_impl {
               static_cast<int>(lcids.size()), psm, peer_mtu);
 
     if (!stack_config_get_interface()->get_pts_connect_eatt_before_encryption() &&
-        !get_btm_client_interface().security.BTM_IsEncrypted(bda, BT_TRANSPORT_LE)) {
+        !get_security_client_interface().BTM_IsEncrypted(bda, BT_TRANSPORT_LE)) {
       /* If Link is not encrypted, we shall not accept EATT channel creation. */
       std::vector<uint16_t> empty;
       tL2CAP_LE_RESULT_CODE result =
               tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_INSUFFICIENT_AUTHENTICATION;
-      if (get_btm_client_interface().security.BTM_IsBonded(bda, BT_TRANSPORT_LE)) {
+      if (get_security_client_interface().BTM_IsBonded(bda, BT_TRANSPORT_LE)) {
         result = tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP;
       }
       log::error("ACL to device {} is unencrypted.", bda);

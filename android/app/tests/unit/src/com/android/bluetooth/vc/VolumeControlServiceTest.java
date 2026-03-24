@@ -607,7 +607,6 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_VCP_STORE_VOLUME_PER_STREAM_TYPE)
     public void volumeCache_multipleDevicesAndStreamTypes() {
         int group1_mediaVolume = 5;
         int group1_callVolume = 10;
@@ -864,7 +863,6 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_VCP_STORE_VOLUME_PER_STREAM_TYPE)
     public void muteCache_multipleDevicesAndStreamTypes() {
         BluetoothDevice device1_g2 = getRealDevice(101);
         BluetoothDevice device2_g2 = getRealDevice(102);
@@ -1196,7 +1194,6 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_VCP_SKIP_IGNORING_VOLUME_DURING_BROADCAST)
     public void connectedDeviceWithUserPersistFlagSet_whileBroadcastActive() {
         int volumeDevice = 56;
         int volumeFromAf = 123;
@@ -1550,7 +1547,6 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_VOLUME_CONTROL_FOR_CONNECTED_DEVICES)
     public void testServiceSetDeviceVolumeNoGroupId() throws Exception {
         int deviceVolume = 42;
 
@@ -1664,7 +1660,6 @@ public class VolumeControlServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_VOLUME_CONTROL_FOR_CONNECTED_DEVICES)
     public void registerVolumeChangedCallbackWhenDeviceAlreadyConnected() throws Exception {
         int deviceOneVolume = 46;
         int deviceTwoVolume = 36;

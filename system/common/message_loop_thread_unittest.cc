@@ -83,7 +83,7 @@ protected:
 };
 
 TEST_F(MessageLoopThreadTest, get_weak_ptr) {
-  if (com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     GTEST_SKIP()
             << "Skipping this test, flag replace_message_loop_thread_with_gd_handler is enabled.";
   }
@@ -99,7 +99,7 @@ TEST_F(MessageLoopThreadTest, get_weak_ptr) {
 TEST_F(MessageLoopThreadTest, test_running_thread) {
   MessageLoopThread message_loop_thread("test_thread");
   message_loop_thread.StartUp();
-  if (!com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (!com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     ASSERT_GE(message_loop_thread.GetThreadId(), 0);
     ASSERT_TRUE(message_loop_thread.IsRunning());
     message_loop_thread.ShutDown();
@@ -114,7 +114,7 @@ TEST_F(MessageLoopThreadTest, test_running_thread) {
 }
 
 TEST_F(MessageLoopThreadTest, test_not_self) {
-  if (com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     GTEST_SKIP()
             << "Skipping this test, flag replace_message_loop_thread_with_gd_handler is enabled.";
   }
@@ -126,7 +126,7 @@ TEST_F(MessageLoopThreadTest, test_not_self) {
 }
 
 TEST_F(MessageLoopThreadTest, test_shutdown_without_start) {
-  if (com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     GTEST_SKIP()
             << "Skipping this test, flag replace_message_loop_thread_with_gd_handler is enabled.";
   }
@@ -156,7 +156,7 @@ TEST_F(MessageLoopThreadTest, test_name) {
   std::string name = "test_thread";
   MessageLoopThread message_loop_thread(name);
   message_loop_thread.StartUp();
-  if (!com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (!com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     ASSERT_GE(message_loop_thread.GetThreadId(), 0);
   }
   std::promise<std::string> name_promise;
@@ -169,7 +169,7 @@ TEST_F(MessageLoopThreadTest, test_name) {
 }
 
 TEST_F(MessageLoopThreadTest, test_thread_id) {
-  if (com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     GTEST_SKIP()
             << "Skipping this test, flag replace_message_loop_thread_with_gd_handler is enabled.";
   }
@@ -310,7 +310,7 @@ TEST_F(MessageLoopThreadTest, shut_down_while_in_callback) {
 
 // Verify the message loop thread will shutdown after callback finishes
 TEST_F(MessageLoopThreadTest, shut_down_while_in_callback_check_lock) {
-  if (com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
     GTEST_SKIP()
             << "Skipping this test, flag replace_message_loop_thread_with_gd_handler is enabled.";
   }
@@ -521,4 +521,51 @@ TEST_F(MessageLoopThreadTest, test_linux_tid_success) {
   ASSERT_EQ(thread1_tid, thread1_tid_from_t2);
   // Verify that the callback is executed synchronously
   message_loop_thread1.ShutDown();
+}
+
+TEST_F(MessageLoopThreadTest, test_do_in_thread_else_return_with_move_only_argument) {
+  std::string name = "test_thread";
+  MessageLoopThread message_loop_thread(name);
+  // Note: We are not starting the thread, so DoInThreadElseReturn will return the task.
+
+  std::promise<int> p;
+  std::future<int> f = p.get_future();
+  int value_set = 42;
+
+  auto task = base::BindOnce(
+          [](std::promise<int> promise, int value_set) { promise.set_value(value_set); },
+          std::move(p), value_set);
+
+  auto returned_task = message_loop_thread.DoInThreadElseReturn(std::move(task));
+
+  // The task should be returned since the thread is not running
+  ASSERT_TRUE(returned_task.has_value());
+
+  // Now, run the returned task and check the future
+  std::move(returned_task.value()).Run();
+  ASSERT_EQ(f.get(), value_set);
+}
+
+TEST_F(MessageLoopThreadTest, test_do_in_thread_delayed_else_return_with_move_only_argument) {
+  std::string name = "test_thread";
+  MessageLoopThread message_loop_thread(name);
+  // Note: We are not starting the thread, so DoInThreadDelayedElseReturn will return the task.
+
+  std::promise<int> p;
+  std::future<int> f = p.get_future();
+  int value_set = 42;
+
+  auto task = base::BindOnce(
+          [](std::promise<int> promise, int value_set) { promise.set_value(value_set); },
+          std::move(p), value_set);
+
+  auto returned_task = message_loop_thread.DoInThreadDelayedElseReturn(
+          std::move(task), std::chrono::milliseconds(1));
+
+  // The task should be returned since the thread is not running
+  ASSERT_TRUE(returned_task.has_value());
+
+  // Now, run the returned task and check the future
+  std::move(returned_task.value()).Run();
+  ASSERT_EQ(f.get(), value_set);
 }

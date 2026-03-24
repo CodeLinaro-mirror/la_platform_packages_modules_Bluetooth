@@ -80,7 +80,6 @@
 #include "btif/include/btif_hf.h"
 #include "btif/include/btif_hf_client.h"
 #include "btif/include/btif_hh.h"
-#include "btif/include/btif_keystore.h"
 #include "btif/include/btif_le_audio.h"
 #include "btif/include/btif_le_audio_peripheral.h"
 #include "btif/include/btif_pan.h"
@@ -453,8 +452,6 @@ void bluetooth_init(bt_callbacks_t* callbacks, bool start_restricted, bool is_co
 
   restricted_mode = start_restricted;
 
-  bluetooth::os::ParameterProvider::SetBtKeystoreInterface(
-          bluetooth::bluetooth_keystore::getBluetoothKeystoreInterface());
   bluetooth::os::ParameterProvider::SetCommonCriteriaMode(is_common_criteria_mode);
   if (is_bluetooth_uid() && is_common_criteria_mode) {
     bluetooth::os::ParameterProvider::SetCommonCriteriaConfigCompareResult(config_compare_result);
@@ -524,15 +521,6 @@ int get_common_criteria_config_compare_result() {
 }
 
 bool is_atv_device() { return is_local_device_atv; }
-
-static int get_adapter_properties(void) {
-  if (!stack_is_running()) {
-    return BT_STATUS_NOT_READY;
-  }
-
-  do_in_main_thread(base::BindOnce(btif_get_adapter_properties));
-  return BT_STATUS_SUCCESS;
-}
 
 static int get_adapter_property(bt_property_type_t type) {
   /* Allow get_adapter_property only for BDADDR and BDNAME if BT is disabled */
@@ -709,6 +697,7 @@ static bool pairing_is_busy() {
   return false;
 }
 
+#ifdef TARGET_FLOSS
 static int get_connection_state(const RawAddress bd_addr) {
   if (!interface_ready()) {
     return 0;
@@ -716,6 +705,7 @@ static int get_connection_state(const RawAddress bd_addr) {
 
   return btif_dm_get_connection_state(bd_addr);
 }
+#endif
 
 static int pin_reply(const RawAddress bd_addr, uint8_t accept, uint8_t pin_len,
                      bt_pin_code_t* pin_code) {
@@ -870,7 +860,7 @@ static int restore_filter_accept_list() {
   // connections that have `is_direct=False`. Currently, we only restore LE hid
   // devices.
   std::vector<std::pair<RawAddress, uint8_t>> le_hid_addrs;
-  if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+  if (!com_android_bluetooth_flags_le_hid_connection_policy_suspend()) {
     le_hid_addrs = btif_storage_get_le_hid_devices();
   }
   if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
@@ -886,7 +876,7 @@ static int allow_wake_by_hid() {
     return BT_STATUS_NOT_READY;
   }
   std::vector<std::pair<RawAddress, uint8_t>> le_hid_addrs;
-  if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+  if (!com_android_bluetooth_flags_le_hid_connection_policy_suspend()) {
     le_hid_addrs = btif_storage_get_le_hid_devices();
   }
   auto classic_hid_addrs = btif_storage_get_wake_capable_classic_hid_devices();
@@ -942,7 +932,7 @@ static void dump(int fd, const char** /*arguments*/) {
   btif_sock_dump(fd);
   bluetooth::avrcp::AvrcpService::DebugDump(fd);
   gatt_tcb_dump(fd);
-  if (com::android::bluetooth::flags::gatt_offload_api()) {
+  if (com_android_bluetooth_flags_gatt_offload_api()) {
     gatt_offload_sessions_dump(fd);
   }
   bta_gatt_client_dump(fd);
@@ -1042,10 +1032,6 @@ static const void* get_profile_interface(const char* profile_id) {
 
   if (is_profile(profile_id, BT_PROFILE_HAP_CLIENT_ID)) {
     return btif_has_client_get_interface();
-  }
-
-  if (is_profile(profile_id, BT_KEYSTORE_ID)) {
-    return bluetooth::bluetooth_keystore::getBluetoothKeystoreInterface();
   }
 
   if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_ID)) {
@@ -1241,7 +1227,6 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
 #ifdef TARGET_FLOSS
         .set_adapter_index = set_adapter_index,
 #endif
-        .get_adapter_properties = get_adapter_properties,
         .get_adapter_property = get_adapter_property,
         .set_scan_mode = set_scan_mode,
         .set_adapter_property = set_adapter_property,
@@ -1257,7 +1242,9 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .remove_bond = remove_bond,
         .cancel_bond = cancel_bond,
         .pairing_is_busy = pairing_is_busy,
+#ifdef TARGET_FLOSS
         .get_connection_state = get_connection_state,
+#endif
         .pin_reply = pin_reply,
         .ssp_reply = ssp_reply,
         .get_profile_interface = get_profile_interface,
@@ -1546,7 +1533,7 @@ void invoke_switch_buffer_size_cb(bool is_low_latency_buffer_size) {
 }
 
 void invoke_switch_codec_cb(bool is_low_latency_buffer_size) {
-  log::assert_that(!com::android::bluetooth::flags::a2dp_handle_sa_reconfig_in_native(),
+  log::assert_that(!com_android_bluetooth_flags_a2dp_handle_sa_reconfig_in_native(),
                    "Reconfig is in native");
   do_in_jni_thread(base::BindOnce(
           [](bool is_low_latency_buffer_size) {

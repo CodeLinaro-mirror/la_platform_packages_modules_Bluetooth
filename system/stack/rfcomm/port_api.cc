@@ -32,7 +32,6 @@
 
 #include <cstdint>
 
-#include "internal_include/bt_trace.h"
 #include "osi/include/allocator.h"
 #include "osi/include/mutex.h"
 #include "stack/include/bt_hdr.h"
@@ -898,7 +897,8 @@ int PORT_WriteDataCO(uint8_t handle, int* p_len) {
   }
   int available = 0;
   // if(ioctl(fd, FIONREAD, &available) < 0)
-  if (!p_port->p_data_co_callback(handle, (uint8_t*)&available, sizeof(available),
+  if (!p_port->p_data_co_callback ||
+      !p_port->p_data_co_callback(handle, (uint8_t*)&available, sizeof(available),
                                   DATA_CO_CALLBACK_TYPE_OUTGOING_SIZE)) {
     log::error("p_data_co_callback DATA_CO_CALLBACK_TYPE_INCOMING_SIZE failed, available:{}",
                available);
@@ -918,7 +918,8 @@ int PORT_WriteDataCO(uint8_t handle, int* p_len) {
   p_buf = (BT_HDR*)fixed_queue_try_peek_last(p_port->tx.queue);
   if ((p_buf != NULL) && (((int)p_buf->len + available) <= (int)p_port->peer_mtu) &&
       (((int)p_buf->len + available) <= (int)length)) {
-    if (!p_port->p_data_co_callback(handle, (uint8_t*)(p_buf + 1) + p_buf->offset + p_buf->len,
+    if (!p_port->p_data_co_callback ||
+        !p_port->p_data_co_callback(handle, (uint8_t*)(p_buf + 1) + p_buf->offset + p_buf->len,
                                     available, DATA_CO_CALLBACK_TYPE_OUTGOING)) {
       log::error("p_data_co_callback DATA_CO_CALLBACK_TYPE_OUTGOING failed, available:{}",
                  available);
@@ -962,7 +963,8 @@ int PORT_WriteDataCO(uint8_t handle, int* p_len) {
     p_buf->len = length;
     p_buf->event = BT_EVT_TO_BTU_SP_DATA;
 
-    if (!p_port->p_data_co_callback(handle, (uint8_t*)(p_buf + 1) + p_buf->offset, length,
+    if (!p_port->p_data_co_callback ||
+        !p_port->p_data_co_callback(handle, (uint8_t*)(p_buf + 1) + p_buf->offset, length,
                                     DATA_CO_CALLBACK_TYPE_OUTGOING)) {
       log::error("p_data_co_callback DATA_CO_CALLBACK_TYPE_OUTGOING failed, length:{}", length);
       return PORT_UNKNOWN_ERROR;

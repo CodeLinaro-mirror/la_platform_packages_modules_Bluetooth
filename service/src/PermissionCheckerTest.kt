@@ -45,7 +45,6 @@ import libcore.junit.util.compat.CoreCompatChangeRule.EnableCompatChanges
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
@@ -63,8 +62,8 @@ import org.robolectric.shadows.ShadowProcess
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @kotlinx.coroutines.ExperimentalCoroutinesApi
 class PermissionCheckerTest(private val flags: FlagsWrapper) {
-    @get:Rule val mSetFlagsRule = SetFlagsRule(flags.flags)
-    @get:Rule val compatChangeRule: TestRule = PlatformCompatChangeRule()
+    @get:Rule val setFlagsRule = SetFlagsRule(flags.flags)
+    @get:Rule val compatChangeRule = PlatformCompatChangeRule()
 
     private val application: Application = ApplicationProvider.getApplicationContext()
     private val context: Context = application
@@ -151,11 +150,14 @@ class PermissionCheckerTest(private val flags: FlagsWrapper) {
         val foregroundUserId = 0
         val backgroundUserId = 10
         ShadowProcess.setUid(
-            UserHandle.getUid(foregroundUserId, UserHandle.getAppId(Process.myUid()))
+            UserHandle.of(foregroundUserId).getUid(UserHandle.getAppId(Process.myUid()))
         )
-        val backgroundUid = UserHandle.getUid(backgroundUserId, UserHandle.getAppId(TEST_APP_UID))
+
+        val backgroundUid =
+            UserHandle.of(backgroundUserId).getUid(UserHandle.getAppId(TEST_APP_UID))
         ShadowBinder.setCallingUid(backgroundUid)
-        val backgroundSource = AttributionSource(backgroundUid, TEST_APP_PACKAGE_NAME, null)
+        val backgroundSource =
+            AttributionSource.Builder(backgroundUid).setPackageName(TEST_APP_PACKAGE_NAME).build()
         grantBluetoothConnect(permissionManager)
 
         val exception =
@@ -170,12 +172,14 @@ class PermissionCheckerTest(private val flags: FlagsWrapper) {
         val foregroundUserId = 0
         val backgroundUserId = 10
         ShadowProcess.setUid(
-            UserHandle.getUid(foregroundUserId, UserHandle.getAppId(Process.myUid()))
+            UserHandle.of(foregroundUserId).getUid(UserHandle.getAppId(Process.myUid()))
         )
 
-        val backgroundUid = UserHandle.getUid(backgroundUserId, UserHandle.getAppId(TEST_APP_UID))
+        val backgroundUid =
+            UserHandle.of(backgroundUserId).getUid(UserHandle.getAppId(TEST_APP_UID))
         ShadowBinder.setCallingUid(backgroundUid)
-        val backgroundSource = AttributionSource(backgroundUid, TEST_APP_PACKAGE_NAME, null)
+        val backgroundSource =
+            AttributionSource.Builder(backgroundUid).setPackageName(TEST_APP_PACKAGE_NAME).build()
         grantBluetoothConnect(permissionManager)
 
         permissionChecker.enableAllowed(backgroundSource, false) // no throw
