@@ -350,6 +350,16 @@ uint8_t BTM_GetSecurityMode();
 
 /*******************************************************************************
  *
+ * Function         BTM_SecIsPairingBusyFor
+ *
+ * Description      Busy predicate: true if we are in a real pairing exchange
+ *                  either incoming or outgoing) for the same device.
+ *
+ ******************************************************************************/
+bool BTM_SecIsPairingBusyFor(const RawAddress& bd_addr);
+
+/*******************************************************************************
+ *
  * Function         btm_sec_l2cap_access_req
  *
  * Description      This function is called by the L2CAP to grant permission to

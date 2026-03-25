@@ -147,6 +147,8 @@ typedef struct {
   // other misc APIs
   uint8_t (*BTM_GetSecurityMode)();
 
+  bool (*BTM_SecIsPairingBusyFor)(const RawAddress& bd_addr);
+
   // remote name request related APIs
   // TODO: remove them from this structure
   const char* (*BTM_SecReadDevName)(const RawAddress& bd_addr);
