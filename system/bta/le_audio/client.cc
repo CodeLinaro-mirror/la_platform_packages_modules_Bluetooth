@@ -717,11 +717,6 @@ public:
       alarm_cancel(reconfiguration_timeout_);
     }
     reconfiguration_group_ = bluetooth::groups::kGroupUnknown;
-
-    LeAudioDeviceGroup* group = aseGroups_.FindById(group_id);
-    if (group && group->IsSuspendedForReconfiguration()) {
-      reconfigurationComplete();
-    }
   }
 
   void StartSuspendTimeout(void) {
