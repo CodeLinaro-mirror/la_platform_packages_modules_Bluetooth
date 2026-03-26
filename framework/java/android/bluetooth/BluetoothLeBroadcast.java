@@ -75,6 +75,24 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
 
     private final Map<Callback, Executor> mCallbackExecutorMap = new HashMap<>();
 
+    /**
+     * Used as an Intent for DBIG status {@link ACTION_DBIG_STATUS_CHANGED} intent.
+     * It contains the action for DBIG_STATUS.
+     * @hide
+     */
+   @SystemApi
+   @RequiresBluetoothConnectPermission
+    public static final String ACTION_DBIG_STATUS_CHANGED =
+            "android.bluetooth.action.DBIG_STATUS_CHANGED";
+    /**
+     * Used as a int extra field in {@link ACTION_DBIG_STATUS_CHANGED} intent.
+     * It contains the DBIG status.
+     * @hide
+     */
+    @SystemApi
+    public static final String EXTRA_DBIG_STATUS =
+            "android.bluetooth.extra.DBIG_STATUS";
+
     @SuppressLint("AndroidFrameworkBluetoothPermission")
     private final IBluetoothLeBroadcastCallback mCallback =
             new IBluetoothLeBroadcastCallback.Stub() {
