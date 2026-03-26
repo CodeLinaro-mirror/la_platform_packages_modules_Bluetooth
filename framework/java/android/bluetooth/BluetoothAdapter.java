@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth;
@@ -112,6 +116,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /**
  * Represents the local device Bluetooth adapter. The {@link BluetoothAdapter} lets you perform
@@ -6009,6 +6015,312 @@ public final class BluetoothAdapter {
             mServiceLock.readLock().unlock();
         }
     }
+
+    /**
+     * Returns the size of the LE Filter Accept List in the controller.
+     * @return size >= 1, or -1 on error.
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_GET_FILTER_ACCEPT_LIST_SIZE)
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public int getLeFilterAcceptListSize() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (mService == null) {
+                return -1;
+            }
+            int size = 0;
+            try {
+                size= mService.getLeAcceptlistSize();
+            } catch (RemoteException e) {
+                Log.e(TAG, "getLeAcceptlistSize failed", e);
+                size = -1;
+            }
+            return size;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return -1;
+        }
+    }
+
+    /**
+     * Callback interface for LE Host Channel Classification operations.
+     *
+     * <p>This callback is invoked when the HCI command {@code LE_Set_Host_Channel_Classification}
+     * completes. The status corresponds to the HCI status code defined in the Bluetooth Core
+     * Specification Vol 4, Part E, Section 7.7.14.
+     *
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_HOST_CHANNEL_CLASSIFICATION)
+    public interface HostChannelClassificationCallback {
+
+        /**
+         * Called when the HCI Command Complete event (opcode 0x0E) is received for
+         * {@code LE_Set_Host_Channel_Classification}.
+         *
+         * @param status The HCI status code (0x00 indicates success, other values indicate failure).
+         *               Valid range: 0x00–0xFF.
+         */
+        void onCommandComplete(@IntRange(from = 0x00, to = 0xFF) int status);
+    }
+
+    /**
+     *  Sets the LE Host Channel Classification for the controller.
+     *
+     * @param channelMap A 5-byte array representing the LE channel map.
+     * @param executor   The {@link Executor} on which the callback will be executed.
+     * @param callback   The {@link HostChannelClassificationCallback} to receive the result.
+     *
+     * @throws NullPointerException     If {@code channelMap}, {@code executor}, or {@code callback} is null.
+     * @throws IllegalArgumentException If {@code channelMap.length} is not 5
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_HOST_CHANNEL_CLASSIFICATION)
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public void setHostChannelClassification(
+            @NonNull byte[] channelMap,
+            @NonNull Executor executor,
+            @NonNull HostChannelClassificationCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            requireNonNull(channelMap, "channelMap must not be null");
+            requireNonNull(executor, "executor must not be null");
+            requireNonNull(callback, "callback must not be null");
+            if (channelMap.length != 5) {
+                throw new IllegalArgumentException("LE channel map must be 5 bytes");
+            }
+
+            final IBluetoothHostChannelClassificationCallback cb =
+                new IBluetoothHostChannelClassificationCallback.Stub() {
+                        @Override
+                        @RequiresNoPermission
+                        public void onCommandComplete(int status) {
+                            executor.execute(() ->
+                                callback.onCommandComplete(status));
+                        }
+                };
+
+            try {
+                if (mService != null) {
+                    mService.setHostChannelClassification(channelMap, cb);
+                } else {
+                    executor.execute(() -> callback.onCommandComplete(0x1F /* Unspecified Error */));
+                    return;
+                }
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                throw new RuntimeException(e);
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
+    }
+
+    /**
+     * Callback interface for LE Write Suggested Default Data Length operations.
+     *
+     * <p>This callback is invoked when the HCI command {@code LE_Write_Suggested_Default_Data_Length}
+     * completes. The status corresponds to the HCI status code defined in the Bluetooth Core
+     * Specification Vol 4, Part E, Section 7.7.14 (Command Complete / Command Status).
+     *
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH)
+    public interface LeWriteSuggestedDefaultDataLengthCallback {
+
+        /**
+         * Called when the HCI Command Complete event (opcode 0x0E) is received for
+         * {@code LE_Write_Suggested_Default_Data_Length}.
+         *
+         * @param status The HCI status code (0x00 indicates success, other values indicate failure).
+         *               Valid range: 0x00–0xFF.
+         */
+        void onCommandComplete(@IntRange(from = 0x00, to = 0xFF) int status);
+    }
+
+
+    /**
+     * Writes the LE Suggested Default Data Length to the controller.
+     *
+     * <p>This configures the controller's suggested default values used for future LE connections,
+     * including:
+     * <ul>
+     *   <li>{@code Suggested_Max_TX_Octets}: number of payload octets per packet.</li>
+     *   <li>{@code Suggested_Max_TX_Time}: maximum transmission time per packet (microseconds).</li>
+     * </ul>
+     *
+     * <p>Note: The acceptable ranges are controller-dependent. Invalid or unsupported values
+     * should result in a non-zero HCI status (e.g., {@code Invalid HCI Command Parameters}),
+     * but must not crash or leave the controller in an inconsistent state.
+     *
+     * <p>Thread-safety: This method can be invoked from main or background threads. The callback
+     * is always posted on the provided {@link Executor}.
+     *
+     * @param suggestedMaxTxOctets The suggested maximum number of TX octets (non-negative).
+     *                             Valid domain is controller-dependent; callers should not assume
+     *                             a specific upper bound beyond HCI limits.
+     * @param suggestedMaxTxTimeUsec The suggested maximum TX time in microseconds (non-negative).
+     *                               Valid domain is controller-dependent.
+     * @param executor   The {@link Executor} on which the callback will be executed.
+     * @param callback   The {@link LeWriteSuggestedDefaultDataLengthCallback} to receive the result.
+     *
+     * @throws NullPointerException     If {@code executor} or {@code callback} is null.
+     * @throws IllegalArgumentException If {@code suggestedMaxTxOctets} or {@code suggestedMaxTxTimeUsec}
+     *                                  is negative.
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH)
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public void writeSuggestedDefaultDataLength(
+            @IntRange(from = 0) int suggestedMaxTxOctets,
+            @IntRange(from = 0) int suggestedMaxTxTimeUsec,
+            @NonNull Executor executor,
+            @NonNull LeWriteSuggestedDefaultDataLengthCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            requireNonNull(executor, "executor must not be null");
+            requireNonNull(callback, "callback must not be null");
+            if (suggestedMaxTxOctets < 0) {
+                throw new IllegalArgumentException("suggestedMaxTxOctets must be >= 0");
+            }
+            if (suggestedMaxTxTimeUsec < 0) {
+                throw new IllegalArgumentException("suggestedMaxTxTimeUsec must be >= 0");
+            }
+
+            final IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb =
+                    new IBluetoothLeWriteSuggestedDefaultDataLengthCallback.Stub() {
+                        @Override
+                        @RequiresNoPermission
+                        public void onCommandComplete(int status) {
+                            executor.execute(() -> callback.onCommandComplete(status));
+                        }
+                    };
+
+            try {
+                if (mService != null) {
+                    // Binder call to system_server implementation
+                    mService.writeLeSuggestedDefaultDataLength(suggestedMaxTxOctets, suggestedMaxTxTimeUsec, cb);
+                } else {
+                    executor.execute(() -> callback.onCommandComplete(0x1F /* Unspecified Error */));
+                    return;
+                }
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                throw new RuntimeException(e);
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
+    }
+
+
+    /**
+     * Callback interface for LE Set Default PHY operations.
+     *
+     * <p>This callback is invoked when the HCI command {@code LE_Set_Default_PHY} completes.
+     * The status corresponds to the HCI status code defined in the Bluetooth Core Specification
+     * Vol 4, Part E, Section 7.7.14.
+     *
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_LE_SET_DEFAULT_PHY)
+    public interface LeSetDefaultPhyCallback {
+
+        /**
+         * Called when the HCI Command Complete event (opcode 0x0E) is received for
+         * {@code LE_Set_Default_PHY}.
+         *
+         * @param status The HCI status code (0x00 indicates success, other values indicate failure).
+         *               Valid range: 0x00–0xFF.
+         */
+        void onCommandComplete(@IntRange(from = 0x00, to = 0xFF) int status);
+    }
+
+
+    /**
+     * Sets the LE Default PHY preferences for future LE connections.
+     *
+     * <p>The controller will use these defaults as the initial PHY preferences for TX and RX.
+     * The accepted bitmask must be a combination of:
+     * <ul>
+     *   <li>{@link BluetoothDevice#PHY_LE_1M}</li>
+     *   <li>{@link BluetoothDevice#PHY_LE_2M}</li>
+     *   <li>{@link BluetoothDevice#PHY_LE_CODED}</li>
+     * </ul>
+     *
+     * <p>Note:
+     * <ul>
+     *   <li>Providing a zero mask (no PHY selected) is illegal and will be rejected.</li>
+     *   <li>Supplying a mask with unsupported PHY (e.g., 2M/Coded on devices that don't support them)
+     *       must result in a non-zero HCI status, not a crash.</li>
+     *   <li>Permission is enforced server-side; client checks are defensive only.</li>
+     * </ul>
+     *
+     * <p>Thread-safety: This method can be invoked from main or background threads. The callback
+     * is always posted on the provided {@link Executor}.
+     *
+     * @param allPhys Bitfield specifying "no preference" for TX and/or RX PHYs.
+     * @param txPhys The TX PHY preference bitmask.
+     * @param rxPhys The RX PHY preference bitmask.
+     * @param executor The {@link Executor} on which the callback will be executed.
+     * @param callback The {@link LeSetDefaultPhyCallback} to receive the result.
+     *
+     * @throws NullPointerException     If {@code executor} or {@code callback} is null.
+     * @throws IllegalArgumentException If {@code txPhys} or {@code rxPhys} is zero
+     *                                  or contains bits outside of {@link LePhyMask}.
+     * @hide
+     */
+    @SystemApi
+    @FlaggedApi(Flags.FLAG_LE_SET_DEFAULT_PHY)
+    @RequiresPermission(BLUETOOTH_PRIVILEGED)
+    public void setDefaultPhy(
+            @IntRange(from = 0) int allPhys,
+            @IntRange(from = 0) int txPhys,
+            @IntRange(from = 0) int rxPhys,
+            @NonNull Executor executor,
+            @NonNull LeSetDefaultPhyCallback callback) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            requireNonNull(executor, "executor must not be null");
+            requireNonNull(callback, "callback must not be null");
+            if (allPhys < 0) {
+                throw new IllegalArgumentException("allPhys must be >= 0");
+            }
+            if (txPhys < 0) {
+                throw new IllegalArgumentException("txPhys must be >= 0");
+            }
+            if (rxPhys < 0) {
+                throw new IllegalArgumentException("rxPhys must be >= 0");
+            }
+
+            final IBluetoothLeSetDefaultPhyCallback cb =
+                    new IBluetoothLeSetDefaultPhyCallback.Stub() {
+                        @Override
+                        @RequiresNoPermission
+                        public void onCommandComplete(int status) {
+                            executor.execute(() -> callback.onCommandComplete(status));
+                        }
+                    };
+
+            try {
+                if (mService != null) {
+                    mService.setLeDefaultPhy(allPhys, txPhys, rxPhys, cb);
+                } else {
+                    executor.execute(() -> callback.onCommandComplete(0x1F /* Unspecified Error */));
+                    return;
+                }
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+                throw new RuntimeException(e);
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
+    }
+
 
     /**
      * Returns whether LE CoC socket hardware offload is supported.

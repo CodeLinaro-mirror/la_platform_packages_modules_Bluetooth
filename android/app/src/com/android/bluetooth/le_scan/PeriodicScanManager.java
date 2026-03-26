@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.le_scan;
@@ -37,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Manages Bluetooth LE Periodic scans */
 @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
@@ -99,10 +104,21 @@ public class PeriodicScanManager {
     }
 
     private Map.Entry<IBinder, SyncTransferInfo> findSyncTransfer(String address) {
-        return mSyncTransfers.entrySet().stream()
-                .filter(e -> e.getValue().address.equals(address))
-                .findFirst()
-                .orElse(null);
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            synchronized (mSyncTransfers) {
+                for (Map.Entry<IBinder, SyncTransferInfo> e : mSyncTransfers.entrySet()) {
+                    if (address.equals(e.getValue().address)) {
+                        return e;
+                    }
+                }
+            }
+            return null;
+        } else{
+            return mSyncTransfers.entrySet().stream()
+            .filter(e -> e.getValue().address.equals(address))
+            .findFirst()
+            .orElse(null);
+        }
     }
 
     private Map.Entry<IBinder, SyncInfo> findSync(int syncHandle) {
@@ -324,7 +340,12 @@ public class PeriodicScanManager {
     void onSyncTransferredCallback(int paSource, int status, String bda) {
         Map.Entry<IBinder, SyncTransferInfo> entry = findSyncTransfer(bda);
         if (entry != null) {
-            mSyncTransfers.remove(entry);
+            if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                mSyncTransfers.remove(entry.getKey());
+            } else {
+                mSyncTransfers.remove(entry);
+            }
+
             IPeriodicAdvertisingCallback callback = entry.getValue().callback;
             try {
                 callback.onSyncTransferred(mAdapter.getRemoteDevice(bda), status);
@@ -360,7 +381,18 @@ public class PeriodicScanManager {
         } catch (RemoteException e) {
             throw new IllegalArgumentException("Can't link to periodic scanner death");
         }
-        mSyncTransfers.put(binder, new SyncTransferInfo(bda.getAddress(), callback));
+
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            final String addr = bda.getAddress();
+            synchronized (mSyncTransfers) {
+                // Remove previous pending transfer for the same address to avoid ambiguity
+                mSyncTransfers.entrySet().removeIf(e -> addr.equals(e.getValue().address));
+
+                mSyncTransfers.put(binder, new SyncTransferInfo(addr, callback /*, deathRecipient*/));
+            }
+        } else {
+            mSyncTransfers.put(binder, new SyncTransferInfo(bda.getAddress(), callback));
+        }
         mNativeInterface.transferSetInfo(bda, serviceData, advHandle);
     }
 }

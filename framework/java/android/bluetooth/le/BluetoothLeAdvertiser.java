@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -50,6 +50,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /**
  * This class provides a way to perform Bluetooth LE advertise operations, such as starting and
@@ -811,7 +813,9 @@ public final class BluetoothLeAdvertiser {
                                             IBluetoothAdvertise.Stub.asInterface(advertiseBinder),
                                             advertiserId,
                                             mBluetoothAdapter,
-                                            mAttributionSource);
+                                            mAttributionSource,
+                                            callback,
+                                            handler);
                             mAdvertisingSets.put(advertiserId, advertisingSet);
                             callback.onAdvertisingSetStarted(advertisingSet, txPower, status);
                         });
@@ -884,6 +888,17 @@ public final class BluetoothLeAdvertiser {
             }
 
             @Override
+            public void onPeriodicAdvertisingParametersV2Updated(int advertiserId, int status) {
+                if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                    handler.post(
+                            () -> {
+                                AdvertisingSet advertisingSet = mAdvertisingSets.get(advertiserId);
+                                callback.onPeriodicAdvertisingParametersV2Updated(advertisingSet, status);
+                            });
+                }
+            }
+
+            @Override
             public void onPeriodicAdvertisingDataSet(int advertiserId, int status) {
                 handler.post(
                         () -> {
@@ -893,12 +908,46 @@ public final class BluetoothLeAdvertiser {
             }
 
             @Override
+            public void onPeriodicAdvertisingSubeventDataSet(int advertiserId, int status) {
+                if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                    handler.post(
+                            () -> {
+                                AdvertisingSet advertisingSet = mAdvertisingSets.get(advertiserId);
+                                callback.onPeriodicAdvertisingSubeventDataSet(advertisingSet, status);
+                            });
+                }
+            }
+
+            @Override
             public void onPeriodicAdvertisingEnabled(int advertiserId, boolean enable, int status) {
                 handler.post(
                         () -> {
                             AdvertisingSet advertisingSet = mAdvertisingSets.get(advertiserId);
                             callback.onPeriodicAdvertisingEnabled(advertisingSet, enable, status);
                         });
+            }
+
+            @Override
+            public void onPeriodicAdvertisingSubeventRequest(int advertiserId, int subeventStart, int subeventCount) {
+                if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                    handler.post(
+                            () -> {
+                                AdvertisingSet advertisingSet = mAdvertisingSets.get(advertiserId);
+                                callback.onPeriodicAdvertisingSubeventRequest(advertisingSet, subeventStart, subeventCount);
+                            });
+                }
+            }
+
+            @Override
+            public void onPeriodicAdvertisingSubeventResponse(int advertiserId, int subevent, int txStatus,
+                                             int numResponses, byte[] payload) {
+                if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                    handler.post(
+                            () -> {
+                                AdvertisingSet advertisingSet = mAdvertisingSets.get(advertiserId);
+                                callback.onPeriodicAdvertisingSubeventResponse(advertisingSet, subevent, txStatus, numResponses, payload);
+                            });
+                }
             }
         };
     }

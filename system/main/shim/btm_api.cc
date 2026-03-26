@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "bt_shim_btm"
@@ -114,6 +118,44 @@ tBTM_STATUS bluetooth::shim::BTM_SetEventFilterInquiryResultAllDevices() {
   GetController()->SetEventFilterInquiryResultAllDevices();
   return tBTM_STATUS::BTM_SUCCESS;
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+tBTM_STATUS bluetooth::shim::BTM_SetHostChannelClassification(
+    std::vector<uint8_t> channel_map,
+    common::OnceCallback<void(uint8_t)> bta_cb) {
+  auto gd_cb = std::move(bta_cb);
+
+  uint8_t map_array[5] = {0};
+  for (size_t i = 0; i < 5 && i < channel_map.size(); ++i) {
+    map_array[i] = channel_map[i];
+  }
+  GetController()->LeSetHostChannelClassification(map_array, std::move(gd_cb));
+  return tBTM_STATUS::BTM_SUCCESS;
+}
+
+tBTM_STATUS bluetooth::shim::BTM_WriteSuggestedDefaultDataLength(uint16_t suggested_max_tx_octets,
+                                                uint16_t suggested_max_tx_time,
+                                                common::OnceCallback<void(uint8_t)> bta_cb){
+  auto gd_cb = std::move(bta_cb);
+
+  GetController()->LeWriteSuggestedDefaultDataLength(suggested_max_tx_octets,
+                                                     suggested_max_tx_time,
+                                                     std::move(gd_cb));
+  return tBTM_STATUS::BTM_SUCCESS;
+}
+
+tBTM_STATUS bluetooth::shim::BTM_SetDefaultPhy(
+    uint8_t all_phys,
+    uint8_t tx_phys,
+    uint8_t rx_phys,
+    common::OnceCallback<void(uint8_t)> bta_cb) {
+  auto gd_cb = std::move(bta_cb);
+
+  GetController()->LeSetDefaultPhy(all_phys, tx_phys, rx_phys, std::move(gd_cb));
+
+  return tBTM_STATUS::BTM_SUCCESS;
+}
+#endif
 
 tBTM_STATUS bluetooth::shim::BTM_BleResetId() {
   btm_ble_reset_id();

@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.gatt;
@@ -22,6 +26,8 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.List;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** GATT Profile Native Interface to/from JNI. */
 public class GattNativeInterface {
@@ -292,6 +298,19 @@ public class GattNativeInterface {
             int initiatingPhys,
             int preferredMtu);
 
+    private native void gattClientConnectV2Native(
+            int clientIf,
+            String address,
+            int addressType,
+            boolean isDirect,
+            int transport,
+            boolean opportunistic,
+            int initiatingPhys,
+            int preferredMtu,
+            int advHandle,
+            int subEvent,
+            int filterPolicy);
+
     private native void gattClientDisconnectNative(int clientIf, String address, int connId);
 
     private native void gattClientSetPreferredPhyNative(
@@ -454,6 +473,39 @@ public class GattNativeInterface {
                 opportunistic,
                 initiatingPhys,
                 preferredMtu);
+    }
+
+    /**
+     * Connect to the remote Gatt server
+     *
+     * @see BluetoothDevice#connectGatt for parameters.
+     */
+    public void gattClientConnectV2(
+            int clientIf,
+            String address,
+            int addressType,
+            boolean isDirect,
+            int transport,
+            boolean opportunistic,
+            int initiatingPhys,
+            int preferredMtu,
+            int advHandle,
+            int subEvent,
+            int filterPolicy) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            gattClientConnectV2Native(
+                    clientIf,
+                    address,
+                    addressType,
+                    isDirect,
+                    transport,
+                    opportunistic,
+                    initiatingPhys,
+                    preferredMtu,
+                    advHandle,
+                    subEvent,
+                    filterPolicy);
+        }
     }
 
     /** Disconnect from the remote Gatt server */

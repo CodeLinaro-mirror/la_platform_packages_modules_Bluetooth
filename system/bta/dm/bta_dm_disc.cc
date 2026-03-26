@@ -479,6 +479,8 @@ void bta_dm_disc_gattc_register(void) {
     // Already registered
     return;
   }
+  // Mark registration as pending to handle race condition
+  bta_dm_discovery_cb.gatt_registration_pending = true; 
   get_gatt_interface().BTA_GATTC_AppRegister(
           "bta_dm_disc_gatt", bta_dm_gattc_callback,
           base::Bind([](uint8_t client_id, uint8_t status) {
@@ -486,12 +488,25 @@ void bta_dm_disc_gattc_register(void) {
             if (static_cast<tGATT_STATUS>(status) == GATT_SUCCESS) {
               log::info("Registered device discovery search gatt client tGATT_IF:{}", client_id);
               bta_dm_discovery_cb.client_if = client_id;
+              // Registration complete - process any queued discoveries
+              bta_dm_discovery_cb.gatt_registration_pending = false;
+              while (!bta_dm_discovery_cb.pending_gatt_discoveries.empty()) {
+                RawAddress bd_addr = bta_dm_discovery_cb.pending_gatt_discoveries.front();
+                bta_dm_discovery_cb.pending_gatt_discoveries.pop();
+                log::info("Processing queued GATT discovery for {}", bd_addr);
+                btm_dm_start_gatt_discovery(bd_addr);
+              }
             } else {
               log::warn(
                       "Failed to register device discovery search gatt client "
                       "gatt_status:{} previous tGATT_IF:{}",
                       bta_dm_discovery_cb.client_if, status);
               bta_dm_discovery_cb.client_if = BTA_GATTS_INVALID_IF;
+              bta_dm_discovery_cb.gatt_registration_pending = false;
+              // Clear any queued discoveries on registration failure
+              while (!bta_dm_discovery_cb.pending_gatt_discoveries.empty()) {
+                bta_dm_discovery_cb.pending_gatt_discoveries.pop();
+              }              
             }
           }),
           false);
@@ -635,7 +650,18 @@ static void bta_dm_cancel_gatt_discovery(const RawAddress& bd_addr) {
  ******************************************************************************/
 static void btm_dm_start_gatt_discovery(const RawAddress& bd_addr) {
   constexpr bool kUseOpportunistic = true;
-
+  /* Check if client_if is valid before attempting connection */
+  if (bta_dm_discovery_cb.client_if == BTA_GATTS_INVALID_IF) {
+    if (bta_dm_discovery_cb.gatt_registration_pending) {
+      // Registration is in progress - queue this discovery request
+      log::info("GATT registration pending, queuing discovery for peer:{}", bd_addr);
+      bta_dm_discovery_cb.pending_gatt_discoveries.push(bd_addr);
+    } else {
+      // This shouldn't happen - registration should have been initiated
+      log::error("GATT client not registered and registration not pending for peer:{}", bd_addr);
+    }
+    return;
+  }
   /* connection is already open */
   if (bta_dm_discovery_cb.pending_close_bda == bd_addr &&
       bta_dm_discovery_cb.conn_id != GATT_INVALID_CONN_ID) {

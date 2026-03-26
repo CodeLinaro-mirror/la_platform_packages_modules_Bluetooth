@@ -62,6 +62,7 @@ java_sdk_library {
         "framework-bluetooth-defaults",
         "framework-module-defaults",
     ],
+    impl_only_libs: ["qcomFeatureConfigLib"],
 
     jarjar_rules: ":bluetooth-jarjar-rules",
     installable: true,

@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <base/functional/bind.h>
@@ -1277,6 +1281,22 @@ private:
               advertiser_id);
     }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    void OnPeriodicAdvertisingParametersV2Updated(uint8_t advertiser_id, uint8_t /*status*/) {
+      log::warn(
+              "Not being used, ignored OnPeriodicAdvertisingParametersV2Updated "
+              "callback advertiser_id:{}",
+              advertiser_id);
+    }
+
+    void OnPeriodicAdvertisingSubeventDataSet(uint8_t advertiser_id, uint8_t /*status*/) {
+      log::warn(
+              "Not being used, ignored OnPeriodicAdvertisingSubeventDataSet "
+              "callback advertiser_id:{}",
+              advertiser_id);
+    }
+#endif
+
     void OnPeriodicAdvertisingDataSet(uint8_t advertiser_id, uint8_t status) {
       if (!instance) {
         return;
@@ -1302,6 +1322,19 @@ private:
       log::warn("Not being used, ignored OnOwnAddressRead callback advertiser_id:{}",
                 advertiser_id);
     }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    void OnPeriodicAdvertisingSubeventRequest(uint8_t advertiser_id, uint8_t /*subevent_start*/,
+                                              uint8_t /*subevent_count*/) {
+      log::warn("Not being used, ignored OnPeriodicAdvertisingSubeventRequest callback adv_handle:{}",
+                advertiser_id);
+    }
+
+    void OnPeriodicAdvertisingSubeventResponse(uint8_t advertiser_id, uint8_t /*subevent*/,
+        uint8_t /*tx_status*/, uint8_t /*num_responses*/, std::vector<uint8_t> /*payload*/) {
+      log::warn("Not being used, ignored OnPeriodicAdvertisingSubeventResponse callback adv_handle:{}",
+                advertiser_id);
+    }
+#endif
   } state_machine_adv_callbacks_;
 
   static class LeAudioSourceCallbacksImpl : public LeAudioSourceAudioHalClient::Callbacks {

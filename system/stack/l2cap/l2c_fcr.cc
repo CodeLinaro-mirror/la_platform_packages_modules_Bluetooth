@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -1519,7 +1522,11 @@ BT_HDR* l2c_fcr_get_next_xmit_sdu_seg(tL2C_CCB * p_ccb, uint16_t max_packet_leng
  * pointer to buffer with PDU. |last_piece_of_sdu| will be set to true, if
  * returned PDU is last piece from this SDU.*/
 BT_HDR* l2c_lcc_get_next_xmit_sdu_seg(tL2C_CCB* p_ccb, bool* last_piece_of_sdu) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  uint16_t max_pdu = p_ccb->peer_conn_cfg.mps;
+#else
   uint16_t max_pdu = p_ccb->peer_conn_cfg.mps - 4 /* Length and CID */;
+#endif
 
   BT_HDR* p_buf = (BT_HDR*)fixed_queue_try_peek_first(p_ccb->xmit_hold_q);
   bool first_pdu = (p_buf->event == 0) ? true : false;

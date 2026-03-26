@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -240,6 +240,27 @@ public:
     bluetooth::shim::GetAdvertising()->SetPeriodicParameters(advertiser_id, parameters);
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+   // ::BleAdvertiserInterface
+  void SetPeriodicAdvertisingParametersV2(
+      int advertiser_id, PeriodicAdvertisingParametersV2 periodic_params,
+      StatusCallback /* cb */) override {
+    log::info("in shim layer");
+    log::debug("in shim layer");
+    bluetooth::hci::PeriodicAdvertisingParametersV2 parameters;
+    parameters.min_interval = periodic_params.min_interval;
+    parameters.max_interval = periodic_params.max_interval;
+    parameters.properties = periodic_params.periodic_advertising_properties;
+    parameters.num_subevents = periodic_params.num_subevents;
+    parameters.subevent_interval = periodic_params.subevent_interval;
+    parameters.response_slot_delay = periodic_params.response_slot_delay;
+    parameters.response_slot_spacing = periodic_params.response_slot_spacing;
+    parameters.num_response_slots = periodic_params.num_response_slots;
+    bluetooth::shim::GetAdvertising()->SetPeriodicParametersV2(advertiser_id,
+                                                             parameters);
+  }
+#endif
+
   // ::BleAdvertiserInterface
   void SetPeriodicAdvertisingData(int advertiser_id, std::vector<uint8_t> data,
                                   std::vector<uint8_t> data_encrypt,
@@ -257,6 +278,18 @@ public:
                                                          advertising_data_encrypt);
     }
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+   // ::BleAdvertiserInterface
+  void SetPeriodicAdvertisingSubeventData(int advertiser_id, uint8_t num_subevents,
+                                          std::vector<uint8_t> data, StatusCallback /* cb */) override {
+    log::info("in shim layer");
+    bluetooth::shim::GetAdvertising()->SetPeriodicSubeventData(advertiser_id,
+                                                               num_subevents,
+                                                               data);
+  }
+
+#endif
 
   // ::BleAdvertiserInterface
   void SetPeriodicAdvertisingEnable(int advertiser_id, bool enable, bool include_adi,
@@ -388,6 +421,24 @@ public:
                                     status));
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  // bluetooth::hci::AdvertisingCallback
+  void OnPeriodicAdvertisingParametersV2Updated(uint8_t advertiser_id,
+                                              AdvertisingStatus status) override {
+    do_in_jni_thread(base::BindOnce(
+        &AdvertisingCallbacks::OnPeriodicAdvertisingParametersV2Updated,
+        base::Unretained(advertising_callbacks_), advertiser_id, status));
+  }
+
+  // bluetooth::hci::AdvertisingCallback
+  void OnPeriodicAdvertisingSubeventDataSet(uint8_t advertiser_id,
+                                              AdvertisingStatus status) override {
+    do_in_jni_thread(base::BindOnce(
+        &AdvertisingCallbacks::OnPeriodicAdvertisingSubeventDataSet,
+        base::Unretained(advertising_callbacks_), advertiser_id, status));
+  }
+#endif
+
   // bluetooth::hci::AdvertisingCallback
   void OnPeriodicAdvertisingEnabled(uint8_t advertiser_id, bool enable,
                                     AdvertisingCallback::AdvertisingStatus status) override {
@@ -408,6 +459,41 @@ public:
                                     base::Unretained(advertising_callbacks_), advertiser_id,
                                     address_type, raw_address));
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  // bluetooth::hci::AdvertisingCallback
+  void OnPeriodicAdvertisingSubeventRequest(uint8_t advertiser_id, uint8_t subevent_start, uint8_t subevent_count) override {
+    int reg_id = bluetooth::shim::GetAdvertising()->GetAdvertiserRegId(advertiser_id);
+    uint8_t client_id = is_native_advertiser(reg_id);
+    if (client_id != kAdvertiserClientIdJni) {
+      // Invoke callback for native client
+      do_in_main_thread(base::Bind(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventRequest,
+                                   base::Unretained(native_adv_callbacks_map_[client_id]),
+                                   advertiser_id, subevent_start, subevent_count));
+      return;
+    }
+    do_in_jni_thread(base::BindOnce(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventRequest,
+                                    base::Unretained(advertising_callbacks_),
+                                    advertiser_id, subevent_start, subevent_count));
+  }
+
+  // bluetooth::hci::AdvertisingCallback
+  void OnPeriodicAdvertisingSubeventResponse(uint8_t advertiser_id, uint8_t subevent, uint8_t tx_status,
+                                             uint8_t num_responses, std::vector<uint8_t> payload) override {
+    int reg_id = bluetooth::shim::GetAdvertising()->GetAdvertiserRegId(advertiser_id);
+    uint8_t client_id = is_native_advertiser(reg_id);
+    if (client_id != kAdvertiserClientIdJni) {
+      // Invoke callback for native client
+      do_in_main_thread(base::Bind(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventResponse,
+                                   base::Unretained(native_adv_callbacks_map_[client_id]),
+                                   advertiser_id, subevent, tx_status, num_responses, payload));
+      return;
+    }
+    do_in_jni_thread(base::BindOnce(&::AdvertisingCallbacks::OnPeriodicAdvertisingSubeventResponse,
+                                    base::Unretained(advertising_callbacks_),
+                                    advertiser_id, subevent, tx_status, num_responses, payload));
+  }
+#endif
 
   void CreateBIG(int advertiser_id, CreateBIGParameters create_big_params, CreateBIGCallback cb) {}
 

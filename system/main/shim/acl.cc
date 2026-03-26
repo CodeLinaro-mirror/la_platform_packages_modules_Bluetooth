@@ -1333,6 +1333,10 @@ bool shim::Acl::CheckForOrphanedAclConnections() const {
   if (!pimpl_->handle_to_le_connection_map_.empty()) {
     log::error("About to destroy le active ACL");
     for (const auto& connection : pimpl_->handle_to_le_connection_map_) {
+      if (connection.second == nullptr) {
+        log::error("Orphaned le ACL has a null connection pointer");
+        continue;
+      }
       log::error("Orphaned le ACL handle:0x{:04x} bd_addr:{} created:{}",
                  connection.second->Handle(), connection.second->GetRemoteAddressWithType(),
                  common::StringFormatTimeWithMilliseconds(kConnectionDescriptorTimeFormat,
@@ -1425,14 +1429,18 @@ void shim::Acl::GetAdvertisingSetConnectedTo(const RawAddress& remote_bda,
 }
 
 void shim::Acl::OnLeLinkDisconnected(HciHandle handle, hci::ErrorCode reason) {
-  hci::AddressWithType remote_address_with_type =
-          pimpl_->handle_to_le_connection_map_[handle]->GetRemoteAddressWithType();
-  CreationTime creation_time = pimpl_->handle_to_le_connection_map_[handle]->GetCreationTime();
-  bool is_locally_initiated = pimpl_->handle_to_le_connection_map_[handle]->IsLocallyInitiated();
+  auto it = pimpl_->handle_to_le_connection_map_.find(handle);
+  if (it == pimpl_->handle_to_le_connection_map_.end() || it->second == nullptr) {
+    return;
+  }
+
+  hci::AddressWithType remote_address_with_type = it->second->GetRemoteAddressWithType();
+  CreationTime creation_time = it->second->GetCreationTime();
+  bool is_locally_initiated = it->second->IsLocallyInitiated();
 
   TeardownTime teardown_time = std::chrono::system_clock::now();
 
-  pimpl_->handle_to_le_connection_map_.erase(handle);
+  pimpl_->handle_to_le_connection_map_.erase(it);
   TRY_POSTING_ON_MAIN(acl_interface_.connection.le.on_disconnected,
                       ToLegacyHciErrorCode(hci::ErrorCode::SUCCESS), handle,
                       ToLegacyHciErrorCode(reason));

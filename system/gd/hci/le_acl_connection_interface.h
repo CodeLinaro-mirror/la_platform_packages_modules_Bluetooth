@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -27,6 +31,9 @@ constexpr SubeventCode LeConnectionManagementEvents[] = {
         SubeventCode::CONNECTION_UPDATE_COMPLETE, SubeventCode::PHY_UPDATE_COMPLETE,
         SubeventCode::DATA_LENGTH_CHANGE,         SubeventCode::REMOTE_CONNECTION_PARAMETER_REQUEST,
         SubeventCode::LE_SUBRATE_CHANGE,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        SubeventCode::ENHANCED_CONNECTION_COMPLETE_V2,
+#endif
         // TODO implement callback for READ_REMOTE_FEATURES_COMPLETE
         // SubeventCode::READ_REMOTE_FEATURES_COMPLETE
 };

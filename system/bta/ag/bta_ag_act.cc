@@ -631,6 +631,7 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data) {
   int status = PORT_CheckConnection(data.rfc.port_handle, &dev_addr, &lcid);
   if (status != PORT_SUCCESS) {
     log::error("PORT_CheckConnection returned {}", status);
+    bta_ag_rfc_fail(p_scb, tBTA_AG_DATA::kEmpty);
     return;
   }
 

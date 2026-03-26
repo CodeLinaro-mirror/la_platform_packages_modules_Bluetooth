@@ -14,39 +14,13 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Changes from Qualcomm Innovation Center are provided under the following license:
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
- *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted (subject to the limitations in the
- *  disclaimer below) provided that the following conditions are met:
- *
- *  Redistributions of source code must retain the above copyright
- *  notice, this list of conditions and the following disclaimer.
- *
- *  Redistributions in binary form must reproduce the above
- *  copyright notice, this list of conditions and the following
- *  disclaimer in the documentation and/or other materials provided
- *  with the distribution.
- *
- *  Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *  contributors may be used to endorse or promote products derived
- *  from this software without specific prior written permission.
- *
- *  NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- *  GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- *  HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- *  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- *  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- *  IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- *  IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  ******************************************************************************/
 
@@ -340,9 +314,15 @@ static bt_status_t btif_gattc_unregister_app(int client_if) {
   return do_in_jni_thread(Bind(&btif_gattc_unregister_app_impl, client_if));
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void btif_gattc_open_impl(int client_if, RawAddress address, tBLE_ADDR_TYPE addr_type, bool is_direct,
+                          tBT_TRANSPORT transport, bool opportunistic, int initiating_phys, int preferred_mtu,
+                          uint8_t pa_handle, uint8_t sub_event, uint8_t filter_policy) {
+#else
 void btif_gattc_open_impl(int client_if, RawAddress address, tBLE_ADDR_TYPE addr_type,
                           bool is_direct, tBT_TRANSPORT transport, bool opportunistic,
                           int initiating_phys, int preferred_mtu) {
+#endif
   int device_type = BT_DEVICE_TYPE_UNKNOWN;
 
   if (addr_type == BLE_ADDR_RANDOM) {
@@ -402,7 +382,15 @@ void btif_gattc_open_impl(int client_if, RawAddress address, tBLE_ADDR_TYPE addr
       }
     }
   }
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  // Connect!
+  log::info("Transport={}, device type={}, address={}, address type={}, phy={}, pa_handle={}, sub_event={}, filter_policy={}",
+            bt_transport_text(transport), DeviceTypeText(device_type),
+            address, addr_type, initiating_phys, pa_handle, sub_event, filter_policy);
+  tBTM_BLE_CONN_TYPE type = is_direct ? BTM_BLE_DIRECT_CONNECTION : BTM_BLE_BKG_CONNECT_ALLOW_LIST;
+  BTA_GATTC_Open(client_if, address, addr_type, type, transport, opportunistic, initiating_phys,
+                 preferred_mtu, pa_handle, sub_event, filter_policy);
+#else
   // Connect!
   log::info("Transport={}, device type={}, address={}, address type={}, phy={}",
             bt_transport_text(transport), DeviceTypeText(device_type),
@@ -410,6 +398,7 @@ void btif_gattc_open_impl(int client_if, RawAddress address, tBLE_ADDR_TYPE addr
   tBTM_BLE_CONN_TYPE type = is_direct ? BTM_BLE_DIRECT_CONNECTION : BTM_BLE_BKG_CONNECT_ALLOW_LIST;
   BTA_GATTC_Open(client_if, address, addr_type, type, transport, opportunistic, initiating_phys,
                  preferred_mtu);
+#endif
 }
 
 static bt_status_t btif_gattc_open(int client_if, const RawAddress& bd_addr, uint8_t addr_type,
@@ -417,10 +406,28 @@ static bt_status_t btif_gattc_open(int client_if, const RawAddress& bd_addr, uin
                                    int initiating_phys, int preferred_mtu) {
   CHECK_BTGATT_INIT();
   // Closure will own this value and free it.
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  return do_in_jni_thread(Bind(&btif_gattc_open_impl, client_if, bd_addr, addr_type, is_direct,
+                               to_bt_transport(transport), opportunistic, initiating_phys,
+                               preferred_mtu, 0xFF, 0xFF, 0x01));
+#else
   return do_in_jni_thread(Bind(&btif_gattc_open_impl, client_if, bd_addr, addr_type, is_direct,
                                to_bt_transport(transport), opportunistic, initiating_phys,
                                preferred_mtu));
+#endif
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static bt_status_t btif_gattc_open_v2(int client_if, const RawAddress& bd_addr, uint8_t addr_type, bool is_direct,
+                              int transport, bool opportunistic, int initiating_phys, int preferred_mtu,
+                              uint8_t pa_handle, uint8_t sub_event, uint8_t filter_policy) {
+  CHECK_BTGATT_INIT();
+  // Closure will own this value and free it.
+  return do_in_jni_thread(Bind(&btif_gattc_open_impl, client_if, bd_addr, addr_type, is_direct,
+                               to_bt_transport(transport), opportunistic, initiating_phys,
+                               preferred_mtu, pa_handle, sub_event, filter_policy));
+}
+#endif
 
 void btif_gattc_close_impl(int client_if, RawAddress address, int conn_id) {
   log::info("client_if={}, conn_id={}, address={}", client_if, conn_id, address);
@@ -916,4 +923,7 @@ const btgatt_client_interface_t btgattClientInterface = {
         btif_gattc_read_phy,
         btif_gattc_test_command,
         btif_gattc_subrate_request,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        btif_gattc_open_v2,
+#endif
 };

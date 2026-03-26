@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -217,6 +220,9 @@ void bta_gattc_clcb_dealloc(tBTA_GATTC_CLCB* p_clcb) {
 
   /* if the srcb is no longer needed, reset the state */
   if (p_srcb->num_clcb == 0) {
+  #ifdef TARGET_QCOM_IOT_BT_EXT
+    p_srcb->in_use = false;
+  #endif
     p_srcb->connected = false;
     p_srcb->state = BTA_GATTC_SERV_IDLE;
     p_srcb->mtu = 0;

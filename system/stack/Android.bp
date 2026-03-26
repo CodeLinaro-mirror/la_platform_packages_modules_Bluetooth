@@ -35,6 +35,7 @@ cc_library_static {
     defaults: [
         "fluoride_defaults",
         "hfp_hal_defaults",
+        "bt_ext_defaults",
     ],
     local_include_dirs: [
         "ais",

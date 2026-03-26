@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
@@ -59,6 +63,10 @@ import android.bluetooth.IBluetoothPreferredAudioProfilesCallback;
 import android.bluetooth.IBluetoothQualityReportReadyCallback;
 import android.bluetooth.IBluetoothSocketManager;
 import android.bluetooth.IncomingRfcommSocketInfo;
+import android.bluetooth.IBluetoothHostChannelClassificationCallback;
+import android.bluetooth.IBluetoothLeWriteSuggestedDefaultDataLengthCallback;
+import android.bluetooth.IBluetoothLeSetDefaultPhyCallback;
+
 import android.bluetooth.OobData;
 import android.content.AttributionSource;
 import android.os.Binder;
@@ -89,6 +97,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /**
  * There is no leak of this binder since it is never re-used and the process is systematically
@@ -2068,6 +2078,80 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    public int getLeAcceptlistSize() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder getLeAcceptlistSize");
+            if (service == null) {
+                return -1;
+            }
+
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.getLeAcceptlistSize();
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return -1;
+        }
+    }
+
+    @Override
+    public boolean setHostChannelClassification(byte[] channelMap, IBluetoothHostChannelClassificationCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder setHostChannelClassification");
+            if (service == null) {
+                return false;
+            }
+
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.setHostChannelClassification(channelMap, cb);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean writeLeSuggestedDefaultDataLength(int octets, int timeUs,
+            IBluetoothLeWriteSuggestedDefaultDataLengthCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder writeLeSuggestedDefaultDataLength: octets=" + octets
+                    + ", timeUs=" + timeUs);
+            if (service == null) {
+                Log.w(TAG, "AdapterService is null");
+                return false;
+            }
+
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.writeLeSuggestedDefaultDataLength(octets, timeUs, cb);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean setLeDefaultPhy(int allPhys, int txPhys, int rxPhys,
+            IBluetoothLeSetDefaultPhyCallback cb) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            Log.d(TAG, "btservice binder setLeDefaultPhy: allPhys=" + allPhys
+                    + ", txPhys=" + txPhys + ", rxPhys=" + rxPhys);
+
+            if (service == null) {
+                Log.w(TAG, "AdapterService is null");
+                return false;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.setLeDefaultPhy(allPhys, txPhys, rxPhys, cb);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    @Override
     public int getOffloadedTransportDiscoveryDataScanSupported(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -2268,6 +2352,57 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         return service.getDatabaseManager().getKeyMissingCount(device);
+    }
+
+    @Override
+    public boolean addBleKey(BluetoothDevice device, byte[] key, int keyType, boolean add, AttributionSource source) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AdapterService service = getService();
+            if (service == null) {
+                return false;
+            }
+            if (!callerIsSystemOrActiveOrManagedUser(service, TAG, "addBleKey")) {
+                throw new IllegalStateException(
+                    "Caller is not the system or part of the active/managed user");
+            }
+            if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
+                throw new IllegalArgumentException("device cannot have an invalid address");
+            }
+            if (!checkConnectPermissionForDataDelivery(service, source, TAG, "addBleKey")) {
+                return false;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.getVendorIntf().addBleKey(device, key, keyType, add);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean setEncryption(BluetoothDevice device, int transport, int sec_act, AttributionSource source) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            Log.d(TAG, "setEncryption adapter service binder");
+            AdapterService service = getService();
+            if (service == null) {
+                return false;
+            }
+            if (!callerIsSystemOrActiveOrManagedUser(service, TAG, "setEncryption")) {
+                throw new IllegalStateException(
+                    "Caller is not the system or part of the active/managed user");
+            }
+            if (!BluetoothAdapter.checkBluetoothAddress(device.getAddress())) {
+                throw new IllegalArgumentException("device cannot have an invalid address");
+            }
+            if (!checkConnectPermissionForDataDelivery(service, source, TAG, "setEncryption")) {
+                return false;
+            }
+            service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+            return service.getVendorIntf().setEncryption(device, transport, sec_act);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
     }
 
     // Either implement these custom methods, or remove them from IBluetooth.

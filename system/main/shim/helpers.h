@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 #pragma once
 
@@ -56,8 +60,14 @@ inline hci::Address ToGdAddress(const RawAddress& address) {
   return ret;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+inline hci::AddressWithType ToAddressWithType(const RawAddress& legacy_address,
+                                              const tBLE_ADDR_TYPE& legacy_type,
+                                              uint8_t pa_handle, uint8_t subevent, uint8_t filter_policy) {
+#else
 inline hci::AddressWithType ToAddressWithType(const RawAddress& legacy_address,
                                               const tBLE_ADDR_TYPE& legacy_type) {
+#endif
   hci::Address address = ToGdAddress(legacy_address);
 
   hci::AddressType type;
@@ -71,16 +81,35 @@ inline hci::AddressWithType ToAddressWithType(const RawAddress& legacy_address,
     type = hci::AddressType::RANDOM_IDENTITY_ADDRESS;
   } else {
     log::fatal("Bad address type {:02x}", legacy_type);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    return hci::AddressWithType{address, hci::AddressType::PUBLIC_DEVICE_ADDRESS, pa_handle, subevent, filter_policy};
+#else
     return hci::AddressWithType{address, hci::AddressType::PUBLIC_DEVICE_ADDRESS};
+#endif
   }
-
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    return hci::AddressWithType{address, type, pa_handle, subevent, filter_policy};
+#else
   return hci::AddressWithType{address, type};
+#endif
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+inline hci::AddressWithType ToAddressWithType(
+    const RawAddress& legacy_address, const tBLE_ADDR_TYPE& legacy_type) {
+  return ToAddressWithType(legacy_address, legacy_type, 0x01, 0xFF, 0x01);
+}
+inline hci::AddressWithType ToAddressWithTypeFromLegacy(
+        const tBLE_BD_ADDR& legacy_address_with_type) {
+  return ToAddressWithType(legacy_address_with_type.bda, legacy_address_with_type.type,
+                           legacy_address_with_type.pa_handle, legacy_address_with_type.subevent, legacy_address_with_type.filter_policy);
+}
+#else
 inline hci::AddressWithType ToAddressWithTypeFromLegacy(
         const tBLE_BD_ADDR& legacy_address_with_type) {
   return ToAddressWithType(legacy_address_with_type.bda, legacy_address_with_type.type);
 }
+#endif
 
 inline tBLE_BD_ADDR ToLegacyAddressWithType(const hci::AddressWithType& address_with_type) {
   tBLE_BD_ADDR legacy_address_with_type;

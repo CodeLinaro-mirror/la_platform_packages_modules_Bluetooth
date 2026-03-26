@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 package com.android.bluetooth.gatt;
 
@@ -27,6 +31,7 @@ import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertisingSetCallback;
 import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.PeriodicAdvertisingParameters;
+import android.bluetooth.le.PeriodicAdvertisingParametersV2;
 import android.content.AttributionSource;
 import android.os.ParcelUuid;
 import android.util.SparseArray;
@@ -43,6 +48,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** AdvStats class helps keep track of information about advertising on a per application basis. */
 class AppAdvertiseStats {
@@ -109,6 +116,11 @@ class AppAdvertiseStats {
     private int mPeriodicInterval = 0;
     private int mAppImportance = IMPORTANCE_CACHED;
     public ArrayList<AppAdvertiserRecord> mAdvertiserRecords = new ArrayList<AppAdvertiserRecord>();
+    private int mPeriodicIntervalMin = 0;
+    private int mPeriodicIntervalMax = 0;
+    private int mNumSubevent = 0;
+    private @Nullable byte[] mSubeventData;
+    private @Nullable PeriodicAdvertisingParametersV2 mPeriodicAdvertisingParametersV2 = null;
 
     AppAdvertiseStats(int appUid, int id, String name, AttributionSource attrSource) {
         this.mAppUid = appUid;
@@ -323,6 +335,34 @@ class AppAdvertiseStats {
         }
     }
 
+    void setPeriodicAdvertisingParametersV2(PeriodicAdvertisingParametersV2 parameters) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (parameters != null) {
+                mPeriodicIncludeTxPower = parameters.isIncludeTxPower();
+                mPeriodicIntervalMin = parameters.getIntervalMin();
+                mPeriodicIntervalMax = parameters.getIntervalMax();
+                int numSubevents = parameters.getPawrParams().getNumSubevents();
+                int subeventInterval = parameters.getPawrParams().getSubeventInterval();
+                int responseSlotDelay = parameters.getPawrParams().getResponseSlotDelay();
+                int responseSlotSpacing = parameters.getPawrParams().getResponseSlotSpacing();
+                int numResponseSlots = parameters.getPawrParams().getNumResponseSlots();
+                mPeriodicAdvertisingParametersV2 =
+                        new PeriodicAdvertisingParametersV2.Builder()
+                                .setIncludeTxPower(mPeriodicIncludeTxPower)
+                                .setIntervalMin(mPeriodicIntervalMin)
+                                .setIntervalMax(mPeriodicIntervalMax)
+                                .setPawrParams(numSubevents,
+                                               subeventInterval,
+                                               responseSlotDelay,
+                                               responseSlotSpacing,
+                                               numResponseSlots)
+                                .build();
+            } else {
+                throw new IllegalArgumentException("parameters is null");
+            }
+        }
+    }
+
     void setPeriodicAdvertisingData(AdvertiseData data) {
         if (mPeriodicAdvertisingData == null) {
             mPeriodicAdvertisingData =
@@ -338,6 +378,13 @@ class AppAdvertiseStats {
             mPeriodicAdvertisingData.manufacturerData = data.getManufacturerSpecificData();
             mPeriodicAdvertisingData.serviceData = data.getServiceData();
             mPeriodicAdvertisingData.serviceUuids = data.getServiceUuids();
+        }
+    }
+
+    void setPeriodicAdvertisingSubeventData(int numSubevents, byte[] data) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mNumSubevent = numSubevents;
+            mSubeventData = data;
         }
     }
 
@@ -557,6 +604,32 @@ class AppAdvertiseStats {
                     .append(stats.mPeriodicIncludeTxPower);
             sb.append("\n        └Periodic Interval(1.25ms)                      : ")
                     .append(stats.mPeriodicInterval);
+        }
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (stats.mPeriodicAdvertisingParametersV2 != null) {
+                sb.append("\n        └PeriodicAdvertisingParametersV2:");
+                sb.append("\n        └Periodic Include TxPower                       : ")
+                        .append(stats.mPeriodicIncludeTxPower);
+                sb.append("\n        └Periodic IntervalMin(1.25ms)                      : ")
+                        .append(stats.mPeriodicIntervalMin);
+                sb.append("\n        └Periodic IntervalMax(1.25ms)                      : ")
+                        .append(stats.mPeriodicIntervalMax);
+
+                sb.append("\n        └numSubevents                       : ")
+                        .append(stats.mPeriodicAdvertisingParametersV2.getPawrParams().getNumSubevents());
+                sb.append("\n        └subeventInterval                      : ")
+                        .append(stats.mPeriodicAdvertisingParametersV2.getPawrParams().getSubeventInterval());
+                sb.append("\n        └ResponseSlotDelay                      : ")
+                        .append(stats.mPeriodicAdvertisingParametersV2.getPawrParams().getResponseSlotDelay());
+                sb.append("\n        └ResponseSlotSpacing                       : ")
+                        .append(stats.mPeriodicAdvertisingParametersV2.getPawrParams().getResponseSlotSpacing());
+                sb.append("\n        └numResponseSlots                      : ")
+                        .append(stats.mPeriodicAdvertisingParametersV2.getPawrParams().getNumResponseSlots());
+            }
+            sb.append("\n        └numSubevent                      : ")
+                     .append(stats.mNumSubevent);
+            sb.append("\n        └subeventData                      : ")
+                     .append(stats.mSubeventData == null ? "null" : Arrays.toString(stats.mSubeventData));
         }
 
         if (stats.mPeriodicAdvertisingData != null) {

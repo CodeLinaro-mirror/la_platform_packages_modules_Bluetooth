@@ -538,6 +538,10 @@ package android.bluetooth {
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback, int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback, int, int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback, int, int, android.os.Handler);
+    method @FlaggedApi("com.android.bluetooth.flags.le_connect_v2_support") @NonNull @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGattV2(@NonNull android.content.Context, boolean, int, int, int, @NonNull android.bluetooth.BluetoothGattCallback);
+    method @FlaggedApi("com.android.bluetooth.flags.le_connect_v2_support") @NonNull @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGattV2(@NonNull android.content.Context, boolean, int, int, int, int, @NonNull android.bluetooth.BluetoothGattCallback);
+    method @FlaggedApi("com.android.bluetooth.flags.le_connect_v2_support") @NonNull @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGattV2(@NonNull android.content.Context, boolean, int, int, int, int, int, @NonNull android.bluetooth.BluetoothGattCallback);
+    method @FlaggedApi("com.android.bluetooth.flags.le_connect_v2_support") @NonNull @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public android.bluetooth.BluetoothGatt connectGattV2(@NonNull android.content.Context, boolean, int, int, int, int, int, @Nullable android.os.Handler, @NonNull android.bluetooth.BluetoothGattCallback);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean createBond();
     method @NonNull public android.bluetooth.BluetoothSocket createInsecureL2capChannel(int) throws java.io.IOException;
     method public android.bluetooth.BluetoothSocket createInsecureRfcommSocketToServiceRecord(java.util.UUID) throws java.io.IOException;
@@ -646,6 +650,7 @@ package android.bluetooth {
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean readDescriptor(android.bluetooth.BluetoothGattDescriptor);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public void readPhy();
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean readRemoteRssi();
+    method @FlaggedApi("com.android.bluetooth.flags.bluetooth_gatt_execute") @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean readUsingCharacteristicUuid(@NonNull java.util.UUID, int, int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean requestConnectionPriority(int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean requestMtu(int);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean setCharacteristicNotification(android.bluetooth.BluetoothGattCharacteristic, boolean);
@@ -749,6 +754,7 @@ package android.bluetooth {
     ctor public BluetoothGattDescriptor(java.util.UUID, int);
     method public int describeContents();
     method public android.bluetooth.BluetoothGattCharacteristic getCharacteristic();
+    method @FlaggedApi("com.android.bluetooth.flags.bluetooth_gatt_execute") public int getInstanceId();
     method public int getPermissions();
     method public java.util.UUID getUuid();
     method @Deprecated public byte[] getValue();
@@ -1257,6 +1263,8 @@ package android.bluetooth.le {
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public void setPeriodicAdvertisingData(android.bluetooth.le.AdvertiseData);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public void setPeriodicAdvertisingEnabled(boolean);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public void setPeriodicAdvertisingParameters(android.bluetooth.le.PeriodicAdvertisingParameters);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public void setPeriodicAdvertisingParametersV2(@NonNull android.bluetooth.le.PeriodicAdvertisingParametersV2);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public void setPeriodicAdvertisingSubeventData(int, @NonNull byte[]);
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_ADVERTISE) public void setScanResponseData(android.bluetooth.le.AdvertiseData);
   }
 
@@ -1270,6 +1278,10 @@ package android.bluetooth.le {
     method public void onPeriodicAdvertisingDataSet(android.bluetooth.le.AdvertisingSet, int);
     method public void onPeriodicAdvertisingEnabled(android.bluetooth.le.AdvertisingSet, boolean, int);
     method public void onPeriodicAdvertisingParametersUpdated(android.bluetooth.le.AdvertisingSet, int);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public void onPeriodicAdvertisingParametersV2Updated(@NonNull android.bluetooth.le.AdvertisingSet, int);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public void onPeriodicAdvertisingSubeventDataSet(@NonNull android.bluetooth.le.AdvertisingSet, int);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public void onPeriodicAdvertisingSubeventRequest(@NonNull android.bluetooth.le.AdvertisingSet, int, int);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public void onPeriodicAdvertisingSubeventResponse(@NonNull android.bluetooth.le.AdvertisingSet, int, int, int, @NonNull byte[]);
     method public void onScanResponseDataSet(android.bluetooth.le.AdvertisingSet, int);
     field public static final int ADVERTISE_FAILED_ALREADY_STARTED = 3; // 0x3
     field public static final int ADVERTISE_FAILED_DATA_TOO_LARGE = 1; // 0x1
@@ -1357,6 +1369,38 @@ package android.bluetooth.le {
     method public android.bluetooth.le.PeriodicAdvertisingParameters build();
     method public android.bluetooth.le.PeriodicAdvertisingParameters.Builder setIncludeTxPower(boolean);
     method public android.bluetooth.le.PeriodicAdvertisingParameters.Builder setInterval(int);
+  }
+
+  @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public final class PeriodicAdvertisingParametersV2 implements android.os.Parcelable {
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int describeContents();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getIntervalMax();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getIntervalMin();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getNumResponseSlots();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getNumSubevents();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public android.bluetooth.le.PeriodicAdvertisingParametersV2.PawrParams getPawrParams();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getResponseSlotDelay();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getResponseSlotSpacing();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getSubeventInterval();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public boolean isIncludeTxPower();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public void writeToParcel(@NonNull android.os.Parcel, int);
+    field @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.le.PeriodicAdvertisingParametersV2> CREATOR;
+  }
+
+  @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public static final class PeriodicAdvertisingParametersV2.Builder {
+    ctor @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public PeriodicAdvertisingParametersV2.Builder();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public android.bluetooth.le.PeriodicAdvertisingParametersV2 build();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public android.bluetooth.le.PeriodicAdvertisingParametersV2.Builder setIncludeTxPower(boolean);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public android.bluetooth.le.PeriodicAdvertisingParametersV2.Builder setIntervalMax(int);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public android.bluetooth.le.PeriodicAdvertisingParametersV2.Builder setIntervalMin(int);
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") @NonNull public android.bluetooth.le.PeriodicAdvertisingParametersV2.Builder setPawrParams(int, int, int, int, int);
+  }
+
+  @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public static final class PeriodicAdvertisingParametersV2.PawrParams {
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getNumResponseSlots();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getNumSubevents();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getResponseSlotDelay();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getResponseSlotSpacing();
+    method @FlaggedApi("com.android.bluetooth.flags.pawr_advertiser_extension") public int getSubeventInterval();
   }
 
   public abstract class ScanCallback {
@@ -1479,6 +1523,7 @@ package android.bluetooth.le {
     method public int getAdvertisingSid();
     method public int getDataStatus();
     method public android.bluetooth.BluetoothDevice getDevice();
+    method @FlaggedApi("com.android.bluetooth.flags.bluetooth_adv_event_type") public int getEventType();
     method public int getPeriodicAdvertisingInterval();
     method public int getPrimaryPhy();
     method public int getRssi();

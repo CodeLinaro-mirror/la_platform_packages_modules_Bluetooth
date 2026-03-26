@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef ANDROID_INCLUDE_BLUETOOTH_H
@@ -625,6 +629,14 @@ typedef void (*key_missing_callback)(const RawAddress bd_addr);
 
 typedef void (*encryption_change_callback)(const bt_encryption_change_evt encryption_change);
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+typedef void (*set_host_channel_classification_callback)(uint8_t status);
+
+typedef void (*le_write_suggested_default_data_length_callback)(uint8_t status);
+
+typedef void (*le_set_default_phy_callback)(uint8_t status);
+#endif
+
 /** TODO: Add callbacks for Link Up/Down and other generic
  *  notifications/callbacks */
 
@@ -654,6 +666,11 @@ typedef struct {
   le_rand_callback le_rand_cb;
   key_missing_callback key_missing_cb;
   encryption_change_callback encryption_change_cb;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  set_host_channel_classification_callback host_channel_classification_cb;
+  le_write_suggested_default_data_length_callback write_suggested_default_data_length_cb;
+  le_set_default_phy_callback set_default_phy_cb;
+#endif
 } bt_callbacks_t;
 
 typedef int (*acquire_wake_lock_callout)(const char* lock_name);
@@ -938,6 +955,46 @@ typedef struct {
    */
   int (*set_default_event_mask_except)(uint64_t mask, uint64_t le_mask);
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  /**
+   *
+   * Floss: Set the host channel classification to the given
+   *        values. This is used to enable/disable specific channels
+   *        for advertising and scanning. The channel map is a vector
+   *        of 5 bytes, each byte represents 8 channels (0-7, 8-15,
+   *        16-23, 24-31, 32-39). The bits are set to 1 to enable the
+   *        channel, 0 to disable it. The first byte is the least
+   *        significant byte of the channel map.
+   *
+   */
+  int (*set_host_channel_classification)(std::vector< uint8_t> channel_map);
+
+  /**
+   * Floss: Write the LE Suggested Default Data Length.
+   *
+   * This sets the host-suggested values that the Controller should use
+   * for *new connections* when negotiating Data Length Extension (DLE).
+   *
+   * Parameters:
+   *   suggested_max_tx_octets - Largest number of payload octets the Controller
+   *                             should use for TX on new connections.
+   *                             Typical valid range: 27..251.
+   *   suggested_max_tx_time_us - Maximum packet transmission time (microseconds)
+   *                              for TX on new connections.
+   *                              Typical valid range: 328..2120 (depends on PHY).
+   *
+   */
+  int (*le_write_suggested_default_data_length)(uint16_t suggested_max_tx_octets,
+                                                uint16_t suggested_max_tx_time_us);
+
+  /**
+   *
+   * Floss: set the default phy
+   *
+   */
+  int (*le_set_default_phy)(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys);
+#endif
+
   /**
    *
    * Floss: Restore the state of the for the filter accept list
@@ -1010,6 +1067,13 @@ typedef struct {
 
   /** check if pbap pse dynamic version upgrade is enable */
   bool (*pbap_pse_dynamic_version_upgrade_is_enabled)();
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  /**
+   * Get the filter accept list size
+   */
+  int (*get_filter_accept_list_size)();
+#endif
 } bt_interface_t;
 
 #define BLUETOOTH_INTERFACE_STRING "bluetoothInterface"

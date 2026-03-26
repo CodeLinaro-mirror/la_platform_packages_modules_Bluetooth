@@ -18,10 +18,10 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Changes from Qualcomm Innovation Center are provided under the following
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following
  * license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
@@ -242,7 +242,11 @@
 
 /* The number of security records for peer devices. */
 #ifndef BTM_SEC_MAX_DEVICE_RECORDS
+#ifdef TARGET_QCOM_IOT_BT_EXT
+#define BTM_SEC_MAX_DEVICE_RECORDS 1000
+#else
 #define BTM_SEC_MAX_DEVICE_RECORDS 100
+#endif
 #endif
 
 /* The number of security records for services. */

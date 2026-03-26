@@ -23,10 +23,13 @@ package com.android.bluetooth.gatt;
 
 import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.PeriodicAdvertisingParameters;
+import android.bluetooth.le.PeriodicAdvertisingParametersV2;
 
 import androidx.annotation.VisibleForTesting;
 
 import com.android.internal.annotations.GuardedBy;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Native interface for AdvertiseManager */
 @VisibleForTesting(otherwise = VisibleForTesting.PACKAGE_PRIVATE)
@@ -129,9 +132,23 @@ public class AdvertiseManagerNativeInterface {
         setPeriodicAdvertisingParametersNative(advertiserId, parameters);
     }
 
+    void setPeriodicAdvertisingParametersV2(
+            int advertiserId, PeriodicAdvertisingParametersV2 parameters) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            setPeriodicAdvertisingParametersV2Native(advertiserId, parameters);
+        }
+    }
+
     void setPeriodicAdvertisingData(
             int advertiserId, byte[] advertiseDataBytes, byte[] advertiseDataEncBytes) {
         setPeriodicAdvertisingDataNative(advertiserId, advertiseDataBytes, advertiseDataEncBytes);
+    }
+
+    void setPeriodicAdvertisingSubeventData(
+            int advertiserId, int num_subevents, byte[] dataBytes) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            setPeriodicAdvertisingSubeventDataNative(advertiserId, num_subevents, dataBytes);
+        }
     }
 
     void setPeriodicAdvertisingEnable(int advertiserId, boolean enable) {
@@ -171,14 +188,42 @@ public class AdvertiseManagerNativeInterface {
                 () -> mManager.onPeriodicAdvertisingParametersUpdated(advertiserId, status));
     }
 
+    void onPeriodicAdvertisingParametersV2Updated(int advertiserId, int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+             mManager.doOnAdvertiseThread(
+                     () -> mManager.onPeriodicAdvertisingParametersV2Updated(advertiserId, status));
+        }
+    }
+
     void onPeriodicAdvertisingDataSet(int advertiserId, int status) {
         mManager.doOnAdvertiseThread(
                 () -> mManager.onPeriodicAdvertisingDataSet(advertiserId, status));
     }
 
+    void onPeriodicAdvertisingSubeventDataSet(int advertiserId, int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mManager.doOnAdvertiseThread(
+                    () -> mManager.onPeriodicAdvertisingSubeventDataSet(advertiserId, status));
+        }
+    }
+
     void onPeriodicAdvertisingEnabled(int advertiserId, boolean enable, int status) {
         mManager.doOnAdvertiseThread(
                 () -> mManager.onPeriodicAdvertisingEnabled(advertiserId, enable, status));
+    }
+
+    void onPeriodicAdvertisingSubeventRequest(int advertiserId, int subeventStart, int subeventCount) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mManager.doOnAdvertiseThread(
+                    () -> mManager.onPeriodicAdvertisingSubeventRequest(advertiserId, subeventStart, subeventCount));
+        }
+    }
+
+    void onPeriodicAdvertisingSubeventResponse(int advertiserId, int subevent, int txStatus, int numResponses, byte[] payload) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            mManager.doOnAdvertiseThread(
+                    () -> mManager.onPeriodicAdvertisingSubeventResponse(advertiserId, subevent, txStatus, numResponses, payload));
+        }
     }
 
     private native void initializeNative();
@@ -217,8 +262,14 @@ public class AdvertiseManagerNativeInterface {
     private native void setPeriodicAdvertisingParametersNative(
             int advertiserId, PeriodicAdvertisingParameters parameters);
 
+    private native void setPeriodicAdvertisingParametersV2Native(
+            int advertiserId, PeriodicAdvertisingParametersV2 parameters);
+
     private native void setPeriodicAdvertisingDataNative(
             int advertiserId, byte[] data, byte[] dataEnc);
+
+    private native void setPeriodicAdvertisingSubeventDataNative(
+            int advertiserId, int num_subevents, byte[] data);
 
     private native void setPeriodicAdvertisingEnableNative(int advertiserId, boolean enable);
 }
