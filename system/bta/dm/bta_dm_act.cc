@@ -320,9 +320,7 @@ void BTA_dm_on_hw_on() {
   /* if sniff is offload, no need to handle it in the stack */
   if (osi_property_get_bool(kPropertySniffOffloadEnabled, false)) {
     log::info("Sniff offloaded. Skip bta_dm_init_pm.");
-    if(com::android::bluetooth::flags::sniff_offload_with_vsc_based_control()) {
-      bta_dm_init_pm_offload();
-    }
+    bta_dm_init_pm_offload();
   } else {
     /* initialize bluetooth low power manager */
     bta_dm_init_pm();
