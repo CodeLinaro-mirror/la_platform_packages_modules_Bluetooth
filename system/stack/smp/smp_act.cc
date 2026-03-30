@@ -697,6 +697,17 @@ void smp_proc_rand(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
     return;
   }
 
+  if (!((p_cb->loc_auth_req & SMP_SC_SUPPORT_BIT) &&
+        (p_cb->peer_auth_req & SMP_SC_SUPPORT_BIT)) &&
+      !(p_cb->flags & SMP_PAIR_FLAGS_CMD_CONFIRM_SENT)) {
+    // in legacy pairing, the peer should send its rand after
+    // we send our confirm
+    tSMP_INT_DATA smp_int_data{};
+    smp_int_data.status = SMP_INVALID_PARAMETERS;
+    smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, &smp_int_data);
+    return;
+  }
+
   /* save the SRand for comparison */
   STREAM_TO_ARRAY(p_cb->rrand.data(), p, OCTET16_LEN);
 }
@@ -1934,6 +1945,16 @@ void smp_process_secure_connection_oob_data(tSMP_CB* p_cb,
   } else {
     SMP_TRACE_EVENT("%s: local OOB randomizer is absent", __func__);
     p_cb->local_random = {0};
+  }
+
+  if (p_cb->peer_oob_flag == SMP_OOB_PRESENT && !p_sc_oob_data->loc_oob_data.present) {
+    SMP_TRACE_WARNING(
+        "local OOB data is not present but peer claims to have received it; dropping "
+        "connection", __func__);
+    tSMP_INT_DATA smp_int_data{};
+    smp_int_data.status = SMP_OOB_FAIL;
+    smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, &smp_int_data);
+    return;
   }
 
   if (!p_sc_oob_data->peer_oob_data.present) {
