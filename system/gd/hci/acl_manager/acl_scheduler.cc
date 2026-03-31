@@ -122,6 +122,10 @@ struct AclScheduler::impl {
   void EnqueueRemoteNameRequest(Address address,
                                 common::ContextualOnceCallback<void()> start_request,
                                 common::ContextualOnceCallback<void()> cancel_request_completed) {
+    if (stopped_) {
+      log::warn("Scheduler stopped, not enqueuing RemoteNameRequest.");
+      return;
+    }
     if ((incoming_connecting_address_set_.find(address) !=
          incoming_connecting_address_set_.end()) &&
         !outgoing_entry_.has_value()) {
@@ -183,6 +187,10 @@ struct AclScheduler::impl {
 
   void Stop() {
     stopped_ = true;
+    pending_outgoing_operations_.clear();
+    outgoing_entry_.reset();
+    incoming_connecting_address_set_.clear();
+    log::info("AclScheduler stopped: state cleared.");
   }
 
 private:
@@ -257,12 +265,16 @@ private:
 
   void try_dequeue_next_operation() {
     log::info("Enter, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
+    if (stopped_) {
+      log::warn("Scheduler stopped, skipping callback invocation.");
+      return;
+    }
     if (ready_to_send_next_operation()) {
       log::info("Pending connections is not empty; so sending next connection");
       auto entry = std::move(pending_outgoing_operations_.front());
       pending_outgoing_operations_.pop_front();
-      std::visit([](auto&& variant) { variant.callback(); }, entry);
       outgoing_entry_ = std::move(entry);
+      std::visit([](auto&& variant) { variant.callback(); }, outgoing_entry_.value());
      } else if (!pending_outgoing_operations_.empty()){
       if (const RemoteNameRequestQueueEntry* peek =
                   std::get_if<RemoteNameRequestQueueEntry>(&pending_outgoing_operations_.front())) {
@@ -271,8 +283,8 @@ private:
             log::info("Pending connections is RNR;so sending RNR");
             auto entry = std::move(pending_outgoing_operations_.front());
             pending_outgoing_operations_.pop_front();
-            std::visit([](auto&& variant) { variant.callback(); }, entry);
             outgoing_entry_ = std::move(entry);
+            std::visit([](auto&& variant) { variant.callback(); }, outgoing_entry_.value());
         }
       }
     } else {

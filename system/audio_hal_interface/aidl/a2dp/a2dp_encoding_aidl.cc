@@ -31,11 +31,11 @@
 #include "client_interface_aidl.h"
 #include "codec_status_aidl.h"
 #include "hardware/audio.h"
-#include "a2dp_aac.h"
-#include "a2dp_sbc.h"
-#include "a2dp_vendor_aptx_adaptive_constants.h"
-#include "a2dp_vendor_ldac_constants.h"
-#include <a2dp_vendor.h>
+#include "stack/include/a2dp_aac.h"
+#include "stack/include/a2dp_sbc.h"
+#include "stack/include/a2dp_vendor_aptx_adaptive_constants.h"
+#include "stack/include/a2dp_vendor_ldac_constants.h"
+#include "stack/include/a2dp_vendor.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_vendor_types.h"
 #define AAC_SAMPLE_SIZE  1024
@@ -209,7 +209,7 @@ void cleanup() {
     offloading_hal_interface = nullptr;
   }
 
-  if (com::android::bluetooth::flags::a2dp_sink_offload() &&
+  if (com_android_bluetooth_flags_a2dp_sink_offload() &&
       decoder_offloading_hal_interface != nullptr) {
     delete decoder_offloading_hal_interface;
     decoder_offloading_hal_interface = nullptr;
@@ -331,7 +331,7 @@ void ack_stream_started(Status ack) {
     return;
   }
 
-  if (com::android::bluetooth::flags::a2dp_clear_pending_status_before_binder_call()) {
+  if (com_android_bluetooth_flags_a2dp_clear_pending_status_before_binder_call()) {
     if (ack == Status::PENDING) {
       log::warn("ignoring PENDING status");
       return;
@@ -379,7 +379,7 @@ void ack_stream_suspended(Status ack) {
     return;
   }
 
-  if (com::android::bluetooth::flags::a2dp_clear_pending_status_before_binder_call()) {
+  if (com_android_bluetooth_flags_a2dp_clear_pending_status_before_binder_call()) {
     log::info("result={}", ack);
 
     // The pending cmd state is set from one of the binder threads.
@@ -546,7 +546,7 @@ provider::get_a2dp_configuration(
        return std::nullopt;
      }
   }
-  if (com::android::bluetooth::flags::a2dp_sink_offload()) {
+  if (com_android_bluetooth_flags_a2dp_sink_offload()) {
     if (is_source) {
       hal_interface_to_use = offloading_hal_interface;
       if (hal_interface_to_use == nullptr) {
@@ -732,7 +732,7 @@ provider::get_a2dp_configuration(
   // Invoke the HAL GetAdpCapabilities method with the
   // remote capabilities.
   std::optional<A2dpConfiguration> result = std::nullopt;
-  if (com::android::bluetooth::flags::a2dp_sink_offload()) {
+  if (com_android_bluetooth_flags_a2dp_sink_offload()) {
     result = hal_interface_to_use->GetA2dpConfiguration(a2dp_remote_capabilities, hint);
   } else {
     result = offloading_hal_interface->GetA2dpConfiguration(a2dp_remote_capabilities, hint);

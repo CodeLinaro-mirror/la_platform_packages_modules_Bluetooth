@@ -100,6 +100,12 @@ tL2C_LCB* l2cu_allocate_lcb(const RawAddress& p_bd_addr, bool is_bonding, tBT_TR
       p_lcb->InvalidateHandle();
       p_lcb->l2c_lcb_timer = alarm_new("l2c_lcb.l2c_lcb_timer");
       p_lcb->info_resp_timer = alarm_new("l2c_lcb.info_resp_timer");
+      if (!p_lcb->l2c_lcb_timer || !p_lcb->info_resp_timer) {
+        log::error("Failed to allocate timers for LCB");
+        p_lcb->in_use = false;
+        return NULL;
+      }
+
       p_lcb->idle_timeout = l2cb.idle_timeout;
       p_lcb->signal_id = 1; /* spec does not allow '0' */
       if (is_bonding) {
@@ -110,6 +116,11 @@ tL2C_LCB* l2cu_allocate_lcb(const RawAddress& p_bd_addr, bool is_bonding, tBT_TR
       p_lcb->transport = transport;
       p_lcb->tx_data_len = bluetooth::shim::GetController()->GetLeSuggestedDefaultDataLength();
       p_lcb->le_sec_pending_q = fixed_queue_new(SIZE_MAX);
+      if (!p_lcb->le_sec_pending_q) {
+        log::error("Failed to allocate LE security pending queue");
+        p_lcb->in_use = false;
+        return NULL;
+      }
 
       if (transport == BT_TRANSPORT_LE) {
         l2cb.num_ble_links_active++;
@@ -125,6 +136,7 @@ tL2C_LCB* l2cu_allocate_lcb(const RawAddress& p_bd_addr, bool is_bonding, tBT_TR
   }
 
   /* If here, no free LCB found */
+  log::error("No free LCB available for address {}", p_bd_addr);
   return NULL;
 }
 
@@ -1634,7 +1646,7 @@ void l2cu_release_ccb(tL2C_CCB* p_ccb) {
   }
 
   if (p_rcb && (p_rcb->psm != p_rcb->real_psm)) {
-    get_btm_client_interface().security.BTM_SecClrServiceByPsm(p_rcb->psm);
+    get_security_client_interface().BTM_SecClrServiceByPsm(p_rcb->psm);
   }
 
   /* Free the timer */

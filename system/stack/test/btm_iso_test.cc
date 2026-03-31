@@ -26,7 +26,6 @@
 #include "hci/controller_mock.h"
 #include "hci/hci_packets.h"
 #include "hci/include/hci_layer.h"
-#include "mock_hcic_layer.h"
 #include "osi/include/allocator.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/include/bt_hdr.h"
@@ -34,6 +33,7 @@
 #include "stack/include/btm_log_history.h"
 #include "stack/include/hci_error_code.h"
 #include "stack/include/hcidefs.h"
+#include "stack/mock/mock_stack_hcic_layer.h"
 #include "test/mock/mock_main_shim_entry.h"
 #include "test/mock/mock_main_shim_hci_layer.h"
 
@@ -147,9 +147,9 @@ protected:
     bluetooth::hci::testing::mock_controller_ =
             std::make_unique<bluetooth::hci::testing::MockController>();
 
-    com::android::bluetooth::flags::provider_->reset_flags();
-    com::android::bluetooth::flags::provider_->btm_iso_improve_canceling_iso(true);
-    com::android::bluetooth::flags::provider_->btm_multi_client_support(true);
+    com_android_bluetooth_flags_reset_flags();
+    set_com_android_bluetooth_flags_btm_iso_improve_canceling_iso(true);
+    set_com_android_bluetooth_flags_btm_multi_client_support(true);
 
     big_callbacks_.reset(new MockBigCallbacks());
     cig_callbacks_.reset(new MockCigCallbacks());
@@ -522,7 +522,7 @@ class BigSyncRaceTest : public IsoManagerTest,
 protected:
   void SetUp() override {
     IsoManagerTest::SetUp();
-    com::android::bluetooth::flags::provider_->btm_broadcast_sink_support(true);
+    set_com_android_bluetooth_flags_btm_broadcast_sink_support(true);
   }
 };
 
@@ -2069,8 +2069,8 @@ TEST_F(IsoManagerTest, AddMultipleIncomingCisEventsListeners) {
   uint8_t cig_id = 1;
   uint8_t cis_id = 2;
 
-  com::android::bluetooth::flags::provider_->btm_multi_client_support(true);
-  com::android::bluetooth::flags::provider_->leaudio_peripheral_feature(true);
+  set_com_android_bluetooth_flags_btm_multi_client_support(true);
+  set_com_android_bluetooth_flags_leaudio_peripheral_feature(true);
 
   // Register an alternative client
   auto second_cig_callbacks = std::make_unique<MockCigCallbacks>();
@@ -2126,8 +2126,8 @@ TEST_F(IsoManagerTest, RemoveIncomingCisEventsListener) {
   uint8_t cig_id = 1;
   uint8_t cis_id = 2;
 
-  com::android::bluetooth::flags::provider_->btm_multi_client_support(true);
-  com::android::bluetooth::flags::provider_->leaudio_peripheral_feature(true);
+  set_com_android_bluetooth_flags_btm_multi_client_support(true);
+  set_com_android_bluetooth_flags_leaudio_peripheral_feature(true);
 
   IsoManager::GetInstance()->AddIncomingCisEventsListener(client_handle_, test_address, cig_id,
                                                           cis_id);
@@ -2160,8 +2160,8 @@ TEST_F(IsoManagerTest, AcceptIncomingCisConnectionHciCall) {
   uint8_t cig_id = 1;
   uint8_t cis_id = 2;
 
-  com::android::bluetooth::flags::provider_->btm_multi_client_support(true);
-  com::android::bluetooth::flags::provider_->leaudio_peripheral_feature(true);
+  set_com_android_bluetooth_flags_btm_multi_client_support(true);
+  set_com_android_bluetooth_flags_leaudio_peripheral_feature(true);
 
   IsoManager::GetInstance()->AddIncomingCisEventsListener(client_handle_, test_address, cig_id,
                                                           cis_id);
@@ -2203,8 +2203,8 @@ TEST_F(IsoManagerTest, RejectIncomingCisConnectionHciCall) {
   uint8_t cig_id = 1;
   uint8_t cis_id = 2;
 
-  com::android::bluetooth::flags::provider_->btm_multi_client_support(true);
-  com::android::bluetooth::flags::provider_->leaudio_peripheral_feature(true);
+  set_com_android_bluetooth_flags_btm_multi_client_support(true);
+  set_com_android_bluetooth_flags_leaudio_peripheral_feature(true);
 
   IsoManager::GetInstance()->AddIncomingCisEventsListener(client_handle_, test_address, cig_id,
                                                           cis_id);
@@ -2358,7 +2358,7 @@ TEST_F(IsoManagerTest, TerminateBigValid) {
 }
 
 TEST_F(IsoManagerTest, BigSyncAndTerminate) {
-  com::android::bluetooth::flags::provider_->btm_broadcast_sink_support(true);
+  set_com_android_bluetooth_flags_btm_broadcast_sink_support(true);
 
   constexpr uint8_t big_handle = 0x23;
   constexpr uint16_t sync_handle = 0x1234;
@@ -3683,8 +3683,8 @@ class IncomingCisTest : public IsoManagerTest {
 protected:
   void SetUp() override {
     IsoManagerTest::SetUp();
-    com::android::bluetooth::flags::provider_->reset_flags();
-    com::android::bluetooth::flags::provider_->leaudio_peripheral_feature(true);
+    com_android_bluetooth_flags_reset_flags();
+    set_com_android_bluetooth_flags_leaudio_peripheral_feature(true);
 
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
   }

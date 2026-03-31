@@ -41,7 +41,6 @@ namespace bluetooth {
 namespace hci {
 
 constexpr int kMinEncryptionKeySize = 7;
-constexpr int kMinEncryptionKeySizeDefault = kMinEncryptionKeySize;
 constexpr int kMaxEncryptionKeySize = 16;
 
 constexpr bool kDefaultVendorCapabilitiesEnabled = true;
@@ -78,7 +77,7 @@ struct ControllerImpl::impl {
     if (hdt_enabled) {
       event_mask_page_2 |= kHdtEventMaskPage2;
     }
-    if (!com::android::bluetooth::flags::check_set_event_mask_p2_support_before_writing()) {
+    if (!com_android_bluetooth_flags_check_set_event_mask_p2_support_before_writing()) {
       set_event_mask_page_2(event_mask_page_2);
     }
 
@@ -126,11 +125,9 @@ struct ControllerImpl::impl {
             handler_->BindOnceOn(this, &ControllerImpl::impl::read_buffer_size_complete_handler));
 
     if (is_supported(OpCode::SET_MIN_ENCRYPTION_KEY_SIZE)) {
-      uint8_t min_key_size =
-              (uint8_t)std::min(std::max(android::sysprop::bluetooth::Gap::min_key_size().value_or(
-                                                 kMinEncryptionKeySizeDefault),
-                                         kMinEncryptionKeySize),
-                                kMaxEncryptionKeySize);
+      uint8_t min_key_size = (uint8_t)std::min(
+              std::max(android::sysprop::bluetooth::Gap::min_key_size(), kMinEncryptionKeySize),
+              kMaxEncryptionKeySize);
       hci_->EnqueueCommand(
               SetMinEncryptionKeySizeBuilder::Create(min_key_size),
               handler_->BindOnceOn(this,
@@ -405,7 +402,7 @@ struct ControllerImpl::impl {
     log::assert_that(status == ErrorCode::SUCCESS, "Status {}", ErrorCodeText(status));
     local_supported_commands_ = complete_view.GetSupportedCommands();
 
-    if (com::android::bluetooth::flags::check_set_event_mask_p2_support_before_writing()) {
+    if (com_android_bluetooth_flags_check_set_event_mask_p2_support_before_writing()) {
       if (is_supported(OpCode::SET_EVENT_MASK_PAGE_2)) {
         set_event_mask_page_2(kDefaultEventMaskPage2);
       }
@@ -788,7 +785,7 @@ struct ControllerImpl::impl {
     }
 
     // v1.06
-    if (com::android::bluetooth::flags::report_vendor_events_from_acl()) {
+    if (com_android_bluetooth_flags_report_vendor_events_from_acl()) {
       auto v106 = LeGetVendorCapabilitiesComplete106View::Create(v105);
       if (!v106.IsValid()) {
         log::info("invalid data for hci requirements v1.06");

@@ -91,7 +91,7 @@ static void gatt_le_connect_cback(uint16_t /* chan */, const RawAddress& bd_addr
   p_srv_chg_clt = gatt_is_bda_in_the_srv_chg_clt_list(bd_addr);
   if (p_srv_chg_clt != NULL) {
     check_srv_chg = true;
-  } else if (get_btm_client_interface().security.BTM_IsBonded(bd_addr, BT_TRANSPORT_AUTO)) {
+  } else if (get_security_client_interface().BTM_IsBonded(bd_addr, BT_TRANSPORT_AUTO)) {
     gatt_add_a_bonded_dev_for_srv_chg(bd_addr);
     if (com_android_bluetooth_flags_send_service_changed_indication_upon_reconnection()) {
       p_srv_chg_clt = gatt_is_bda_in_the_srv_chg_clt_list(bd_addr);
@@ -103,10 +103,12 @@ static void gatt_le_connect_cback(uint16_t /* chan */, const RawAddress& bd_addr
     if (p_tcb != nullptr) {
       bluetooth::shim::arbiter::GetArbiter().OnLeDisconnect(p_tcb->tcb_idx);
     }
-    connection_manager::on_connection_complete(bd_addr);
+    if (!com_android_bluetooth_flags_move_conn_mgr_callbacks()) {
+      connection_manager::on_connection_complete(bd_addr);
+    }
     gatt_cleanup_upon_disc(bd_addr, static_cast<tGATT_DISCONN_REASON>(reason), transport);
 
-    if (com::android::bluetooth::flags::le_subrate_manager()) {
+    if (com_android_bluetooth_flags_le_subrate_manager()) {
       // release when acl disconnected
       gatt_release_subrate_cb(bd_addr);
     }
@@ -131,7 +133,7 @@ static void gatt_le_connect_cback(uint16_t /* chan */, const RawAddress& bd_addr
    * is pushed to application layers so that MTU exchange
    * is the very first GATT exchange
    */
-  if (com::android::bluetooth::flags::gatt_conn_settings()) {
+  if (com_android_bluetooth_flags_gatt_conn_settings()) {
     p_tcb->payload_size = GATT_DEF_BLE_MTU_SIZE;
     // Set the default based on the APP's preference
     GATTC_SetDefaultMtu(p_tcb->peer_bda);
@@ -141,7 +143,7 @@ static void gatt_le_connect_cback(uint16_t /* chan */, const RawAddress& bd_addr
   if (gatt_get_ch_state(p_tcb) == GATT_CH_CONN) {
     /* send callback */
     gatt_set_ch_state(p_tcb, GATT_CH_OPEN);
-    if (!com::android::bluetooth::flags::gatt_conn_settings()) {
+    if (!com_android_bluetooth_flags_gatt_conn_settings()) {
       p_tcb->payload_size = GATT_DEF_BLE_MTU_SIZE;
     }
 

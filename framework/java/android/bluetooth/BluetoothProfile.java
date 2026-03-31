@@ -182,54 +182,6 @@ public interface BluetoothProfile {
     /** Battery Service (BAS) */
     @Hide int BATTERY = 30;
 
-   /**
-     * CS_PROFILE
-     * @hide
-     */
-    int CS_PROFILE = 31;
-    /**
-     * DUN
-     * @hide
-     */
-    public int DUN = 31;
-
-    /**
-     * Group Operation Profile (Client Role)
-     * @hide
-     */
-    public int GROUP_CLIENT = 32;
-
-    /**
-     * Broadcast
-     * @hide
-     */
-    public int BROADCAST = 33;
-
-    /**
-     * VCP
-     * @hide
-     */
-    public static final int VCP = 34;
-
-    /**
-     * BC_PROFILE
-     * @hide
-     */
-    public static final int BC_PROFILE = 35;
-
-    /**
-     * PC_PROFILE
-     * @hide
-     */
-    public static final int PC_PROFILE = 36;
-
-   /**
-     * CC_SERVER
-     * @hide
-     */
-    public static final int CC_SERVER = 37;
-
-
     /** Gaming Audio Profile (GMAP) */
     @Hide int GMAP = 31;
 
@@ -242,6 +194,62 @@ public interface BluetoothProfile {
     @SystemApi
     int LE_AUDIO_PERIPHERAL = 33;
 
+    /** Telephony and Media Audio Profile Service */
+    @Hide int TMAP_SERVER = 34;
+
+    /** Media Control Profile (MCP) Client */
+    @Hide int MCP_CLIENT = 35;
+
+    /** Volume Control Profile (VCP) Renderer */
+    @Hide int VCP_RENDERER = 36;
+
+     /**
+     * CS_PROFILE
+     * @hide
+     */
+    int CS_PROFILE = 100;
+    /**
+     * DUN
+     * @hide
+     */
+    public int DUN = 101;
+
+    /**
+     * Group Operation Profile (Client Role)
+     * @hide
+     */
+    public int GROUP_CLIENT = 102;
+
+    /**
+     * Broadcast
+     * @hide
+     */
+    public int BROADCAST = 103;
+
+    /**
+     * VCP
+     * @hide
+     */
+    public static final int VCP = 104;
+
+    /**
+     * BC_PROFILE
+     * @hide
+     */
+    public static final int BC_PROFILE = 105;
+
+    /**
+     * PC_PROFILE
+     * @hide
+     */
+    public static final int PC_PROFILE = 106;
+
+   /**
+     * CC_SERVER
+     * @hide
+     */
+    public static final int CC_SERVER = 107;
+
     /**
      * Gets the maximum profile ID.
      *
@@ -252,6 +260,18 @@ public interface BluetoothProfile {
     @Hide
     static int getMaxProfileId() {
         /* Return value dependent on feature flags */
+        if (Flags.leaudioPeripheralVcpLinkAbstractionLayer()) {
+            return VCP_RENDERER;
+        }
+
+        if (Flags.leaudioPeripheralMcpLinkAbstractionLayer()) {
+            return MCP_CLIENT;
+        }
+
+        if (Flags.leaudioCentralizeTmap()) {
+            return TMAP_SERVER;
+        }
+
         if (Flags.leaudioPeripheralFeature()) {
             return LE_AUDIO_PERIPHERAL;
         }
@@ -451,6 +471,10 @@ public interface BluetoothProfile {
             case HAP_CLIENT -> "HAP_CLIENT";
             case LE_AUDIO_BROADCAST_ASSISTANT -> "LE_AUDIO_BROADCAST_ASSISTANT";
             case BATTERY -> "BATTERY";
+            case VAP_SERVER -> "VAP_SERVER";
+            case TMAP_SERVER -> "TMAP_SERVER";
+            case MCP_CLIENT -> "MCP_CLIENT";
+            case VCP_RENDERER -> "VCP_RENDERER";
             case BROADCAST -> "BROADCAST";
             case VCP -> "VCP";
             case GROUP_CLIENT -> "GROUP_CLIENT";
@@ -458,7 +482,6 @@ public interface BluetoothProfile {
             case BC_PROFILE -> "BC_PROFILE";
             case PC_PROFILE -> "PC_PROFILE";
             case CC_SERVER -> "CC_SERVER";
-            case VAP_SERVER -> "VAP_SERVER";
             default -> "UNKNOWN_PROFILE (" + profile + ")";
         };
     }

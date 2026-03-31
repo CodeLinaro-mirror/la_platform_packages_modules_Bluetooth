@@ -23,6 +23,9 @@ import static android.hardware.devicestate.DeviceState.PROPERTY_LAPTOP_HARDWARE_
 import static android.hardware.devicestate.DeviceState.PROPERTY_LAPTOP_HARDWARE_CONFIGURATION_LID_OPEN;
 import static android.hardware.devicestate.DeviceState.PROPERTY_LAPTOP_HARDWARE_CONFIGURATION_SLATE;
 
+import static com.android.bluetooth.btservice.AdapterSuspendStateMachine.MSG_SCREEN_OFF;
+import static com.android.bluetooth.btservice.AdapterSuspendStateMachine.MSG_SCREEN_ON;
+
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toCollection;
 
@@ -32,13 +35,9 @@ import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothStatusCodes;
 import android.hardware.devicestate.DeviceState;
 import android.hardware.devicestate.DeviceStateManager;
-import android.hardware.display.DisplayManager;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
-import android.os.SystemProperties;
 import android.util.Log;
-import android.view.Display;
 
 import com.android.bluetooth.Util;
 import com.android.bluetooth.flags.Flags;
@@ -47,7 +46,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -83,18 +81,15 @@ public class AdapterSuspend {
         ACL_DISCONNECTION,
     }
 
-    @VisibleForTesting
     static final String BLUETOOTH_SUSPEND_DISCONNECT_ACL =
             "bluetooth.power.suspend.disconnect_acl.enabled";
 
-    @VisibleForTesting
     static final String BLUETOOTH_SUSPEND_SCAN_MODE_NONE =
             "bluetooth.power.suspend.scan_mode_none.enabled";
 
     static final String BLUETOOTH_SUSPEND_STOP_LE_SCAN =
             "bluetooth.power.suspend.stop_le_scan.enabled";
 
-    @VisibleForTesting
     static final String BLUETOOTH_SUSPEND_PAUSE_ADVERTISEMENT =
             "bluetooth.power.suspend.pause_advertisement.enabled";
 
@@ -108,9 +103,7 @@ public class AdapterSuspend {
     private final AdapterService mAdapterService;
     private final AdapterNativeInterface mAdapterNativeInterface;
     private final DeviceStateManager mDeviceStateManager;
-    private final PowerManager mPowerManager;
     private final AdapterSuspendStateMachine mSuspendStateMachine;
-    private final DisplayManager mDisplayManager;
     private final Handler mHandler;
 
     private final boolean mDisconnectAclOnSuspend;
@@ -152,8 +145,7 @@ public class AdapterSuspend {
                         case DEVICE_STATE_LID_OPEN -> {
                             Log.d(TAG, "Lid open, screen on");
                             mSuspendStateMachine.setTabletMode(false);
-                            mSuspendStateMachine.sendMessage(
-                                    AdapterSuspendStateMachine.MSG_SCREEN_ON);
+                            mSuspendStateMachine.sendMessage(MSG_SCREEN_ON);
                         }
                         case DEVICE_STATE_DOCKED -> mSuspendStateMachine.setTabletMode(false);
                         case DEVICE_STATE_TABLET -> mSuspendStateMachine.setTabletMode(true);
@@ -166,77 +158,33 @@ public class AdapterSuspend {
                 }
             };
 
-    private boolean isScreenOn() {
-        Display[] displays = mDisplayManager.getDisplays();
-
-        if (displays == null) {
-            return false;
-        }
-
-        return Arrays.stream(displays).anyMatch(display -> display.getState() == Display.STATE_ON);
-    }
-
-    private final DisplayManager.DisplayListener mDisplayListener =
-            new DisplayManager.DisplayListener() {
-                @Override
-                public void onDisplayAdded(int displayId) {}
-
-                @Override
-                public void onDisplayRemoved(int displayId) {}
-
-                @Override
-                public void onDisplayChanged(int displayId) {
-                    boolean interactive = mPowerManager.isInteractive();
-                    boolean screenOn = isScreenOn();
-                    Log.d(
-                            TAG,
-                            ("Display:" + displayId)
-                                    + (" Screen=" + screenOn)
-                                    + (" Interactive=" + interactive));
-
-                    if (Flags.stopLeScanSystemSuspend()) {
-                        final var scanController = mAdapterService.getBluetoothScanController();
-                        if (scanController != null) {
-                            scanController.doOnScanThread(
-                                    () -> scanController.onDisplayChanged(screenOn));
-                        }
-                    }
-                    if (interactive != screenOn) {
-                        return;
-                    }
-                    if (screenOn) {
-                        mSuspendStateMachine.sendMessage(AdapterSuspendStateMachine.MSG_SCREEN_ON);
-                    } else {
-                        mSuspendStateMachine.sendMessage(AdapterSuspendStateMachine.MSG_SCREEN_OFF);
-                    }
-                }
-            };
-
     AdapterSuspend(
             AdapterService adapterService,
             Looper looper,
             DeviceStateManager deviceStateManager,
-            PowerManager powerManager,
-            DisplayManager displayManager) {
+            boolean disconnectAcl,
+            boolean scanModeNone,
+            boolean stopLeScan,
+            boolean pauseAdvertisement) {
         mAdapterService = requireNonNull(adapterService);
         mAdapterNativeInterface = requireNonNull(adapterService.getNative());
-        mPowerManager = requireNonNull(powerManager);
+        mDisconnectAclOnSuspend = disconnectAcl;
+        mScanModeNoneOnSuspend = scanModeNone;
+        mStopLeScanOnSuspend = stopLeScan;
+        mPauseAdvertisementOnSuspend = pauseAdvertisement;
 
-        mSuspendStateMachine =
-                new AdapterSuspendStateMachine(adapterService, this, requireNonNull(looper));
-        mDisplayManager = requireNonNull(displayManager);
-        mHandler = new Handler(looper);
-        mDisplayManager.registerDisplayListener(mDisplayListener, mHandler);
+        mHandler = new Handler(requireNonNull(looper));
+        mSuspendStateMachine = new AdapterSuspendStateMachine(adapterService, this, looper);
         mDeviceStateManager = requireNonNull(deviceStateManager);
         mDeviceStateManager.registerCallback(mHandler::post, mDeviceStateCallback);
+    }
 
-        mDisconnectAclOnSuspend =
-                SystemProperties.getBoolean(BLUETOOTH_SUSPEND_DISCONNECT_ACL, false);
-        mScanModeNoneOnSuspend =
-                SystemProperties.getBoolean(BLUETOOTH_SUSPEND_SCAN_MODE_NONE, false);
-        mStopLeScanOnSuspend = SystemProperties.getBoolean(BLUETOOTH_SUSPEND_STOP_LE_SCAN, false);
-        mPauseAdvertisementOnSuspend =
-                SystemProperties.getBoolean(BLUETOOTH_SUSPEND_PAUSE_ADVERTISEMENT, false);
+    void onDisplayChanged(boolean isScreenOn) {
+        mSuspendStateMachine.dispatchMessage(isScreenOn ? MSG_SCREEN_ON : MSG_SCREEN_OFF);
+    }
+
+    public boolean isPauseAdvertisementEnabled() {
+        return mPauseAdvertisementOnSuspend;
     }
 
     void aclDisconnected(BluetoothDevice device, int transport) {
@@ -280,7 +228,6 @@ public class AdapterSuspend {
     }
 
     void cleanup() {
-        mDisplayManager.unregisterDisplayListener(mDisplayListener);
         mDeviceStateManager.unregisterCallback(mDeviceStateCallback);
     }
 
@@ -299,7 +246,7 @@ public class AdapterSuspend {
             }
         }
 
-        if (Flags.stopLeScanSystemSuspend() && mStopLeScanOnSuspend) {
+        if (mStopLeScanOnSuspend) {
             final var scanController = mAdapterService.getBluetoothScanController();
             if (scanController != null) {
                 scanController.doOnScanThread(
@@ -331,7 +278,7 @@ public class AdapterSuspend {
             }
         }
 
-        if (mPauseAdvertisementOnSuspend && Flags.adapterSuspendAdvertisement()) {
+        if (mPauseAdvertisementOnSuspend) {
             mAdapterService
                     .getGattService()
                     .ifPresent(
@@ -372,7 +319,7 @@ public class AdapterSuspend {
             }
         }
 
-        if (Flags.stopLeScanSystemSuspend() && mStopLeScanOnSuspend) {
+        if (mStopLeScanOnSuspend) {
             final var scanController = mAdapterService.getBluetoothScanController();
             if (scanController != null) {
                 scanController.doOnScanThread(
@@ -388,7 +335,7 @@ public class AdapterSuspend {
             }
         }
 
-        if (mPauseAdvertisementOnSuspend && Flags.adapterSuspendAdvertisement()) {
+        if (mPauseAdvertisementOnSuspend) {
             mAdapterService
                     .getGattService()
                     .ifPresent(gatt -> gatt.getAdvertiseManager().exitSuspend());
@@ -568,6 +515,8 @@ public class AdapterSuspend {
         writer.println(TAG);
         writer.println("  Disconnect ACL on suspend=" + mDisconnectAclOnSuspend);
         writer.println("  Set scan mode to none on suspend=" + mScanModeNoneOnSuspend);
+        writer.println("  Stop Le scan on suspend=" + mStopLeScanOnSuspend);
+        writer.println("  Pause advertisement on suspend=" + mPauseAdvertisementOnSuspend);
         writer.println();
         mSuspendStateMachine.dump(fd, writer, args);
     }

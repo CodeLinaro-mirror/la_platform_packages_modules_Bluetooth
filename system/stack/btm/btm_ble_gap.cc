@@ -203,11 +203,6 @@ AdvertisingCache cache;
 
 }  // namespace
 
-static bool ble_vnd_is_included() {
-  // replace build time config BLE_VND_INCLUDED with runtime
-  return android::sysprop::bluetooth::Ble::vnd_included().value_or(true);
-}
-
 /**********PAST & PS *******************/
 using StartSyncCb = base::RepeatingCallback<void(
         uint8_t /*status*/, uint16_t /*sync_handle*/, uint8_t /*advertising_sid*/,
@@ -488,7 +483,7 @@ void BTM_BleGetDynamicAudioBuffer(tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB p_dynamic_audi
  *
  ******************************************************************************/
 void BTM_BleReadControllerFeatures(tBTM_BLE_CTRL_FEATURES_CBACK* p_vsc_cback) {
-  if (!ble_vnd_is_included()) {
+  if (!android::sysprop::bluetooth::Ble::vnd_included()) {
     return;
   }
 
@@ -1109,7 +1104,11 @@ static void btm_ble_update_inq_result(tINQ_DB_ENT* p_i, uint8_t addr_type,
       local_flag = *p_flag;
     }
 
-    p_cur->dev_class = btm_ble_get_appearance_as_cod(data);
+    // CoD received from inquiry response should not be overwritten by the appearance value. So
+    // update it only if it is not known.
+    if (p_cur->dev_class == kDevClassUnclassified || p_cur->dev_class == kDevClassEmpty) {
+      p_cur->dev_class = btm_ble_get_appearance_as_cod(data);
+    }
 
     const uint8_t* p_rsi = AdvertiseDataParser::GetFieldByType(data, BTM_BLE_AD_TYPE_RSI, &len);
     if (p_rsi != nullptr && len == 6) {
@@ -1531,7 +1530,7 @@ void btm_ble_process_adv_pkt_cont_for_inquiry(uint16_t evt_type, tBLE_ADDR_TYPE 
   const uint8_t* p_flag =
           AdvertiseDataParser::GetFieldByType(advertising_data, BTM_BLE_AD_TYPE_FLAG, &len);
 
-  if (len != 1) {
+  if (len > 1) {
     log::warn("Dropping bad advertising packet from {}: len={}", bda, len);
     return;
   }
@@ -1841,7 +1840,7 @@ void btm_ble_read_remote_features_complete(uint8_t* p, uint8_t length) {
       return;
     }
 
-    if (com::android::bluetooth::flags::le_subrate_manager()) {
+    if (com_android_bluetooth_flags_le_subrate_manager()) {
       const BtmDevice* p_device = btm_find_dev_by_handle(handle);
       if (p_device) {
           // init when acl connected & remote_feature received
@@ -1899,7 +1898,7 @@ void btm_ble_init(void) {
           alarm_new("btm_ble_addr.refresh_raddr_timer");
   btm_ble_pa_sync_cb = {};
   sync_timeout_alarm = alarm_new("btm.sync_start_task");
-  if (!ble_vnd_is_included()) {
+  if (!android::sysprop::bluetooth::Ble::vnd_included()) {
     btm_ble_adv_filter_init();
   }
 }

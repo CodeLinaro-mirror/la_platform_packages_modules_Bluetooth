@@ -39,7 +39,6 @@
 #include "broadcaster/broadcast_configuration_provider.h"
 #include "broadcaster/broadcaster_types.h"
 #include "bta_le_audio_api.h"
-#include "btm_iso_api_types.h"
 #include "common/strings.h"
 #include "gmap_client.h"
 #include "gmap_server.h"
@@ -54,6 +53,7 @@
 #include "osi/include/properties.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_vendor_types.h"
+#include "stack/include/btm_iso_api_types.h"
 #include "stack/include/hcimsgs.h"
 
 using namespace bluetooth;

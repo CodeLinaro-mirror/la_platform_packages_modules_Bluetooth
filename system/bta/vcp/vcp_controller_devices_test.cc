@@ -31,8 +31,8 @@
 #include "bta/test/common/bta_gatt_queue_mock.h"
 #include "gatt/database_builder.h"
 #include "stack/include/bt_uuid16.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_security_client_interface.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_security_client_interface.h"
 
 namespace bluetooth {
 namespace vcp {
@@ -58,7 +58,7 @@ class VolumeControllerDevicesTest : public ::testing::Test {
 protected:
   void SetUp() override {
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
-    com::android::bluetooth::flags::provider_->reset_flags();
+    com_android_bluetooth_flags_reset_flags();
 
     devices_ = new VolumeControllerDevices();
     gatt::SetMockBtaGattInterface(&gatt_interface);
@@ -220,13 +220,12 @@ class VolumeControllerDeviceTest : public ::testing::Test {
 protected:
   void SetUp() override {
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
-    com::android::bluetooth::flags::provider_->reset_flags();
+    com_android_bluetooth_flags_reset_flags();
 
     device = new VolumeControllerDevice(GetTestAddress(1), true);
     gatt::SetMockBtaGattInterface(&gatt_interface);
     gatt::SetMockBtaGattQueue(&gatt_queue);
     set_security_client_interface(mock_btm_security_);
-    set_mock_btm_client_interface_security(mock_btm_security_);
 
     ON_CALL(gatt_interface, GetCharacteristic(_, _))
             .WillByDefault(Invoke(

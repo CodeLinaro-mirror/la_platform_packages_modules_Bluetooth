@@ -54,15 +54,15 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 #include "a2dp_encoding.h"
 
-#include <a2dp_vendor.h>
+#include "stack/include/a2dp_vendor.h"
 #include <bluetooth/types/address.h>
 
-#include "a2dp_aac.h"
+#include "stack/include/a2dp_aac.h"
 #include "a2dp_encoding_qti.h"
-#include "a2dp_sbc.h"
-#include "a2dp_sbc_constants.h"
-#include "a2dp_vendor_aptx_adaptive.h"
-#include "a2dp_vendor_ldac_constants.h"
+#include "stack/include/a2dp_sbc.h"
+#include "stack/include/a2dp_sbc_constants.h"
+#include "stack/include/a2dp_vendor_aptx_adaptive.h"
+#include "stack/include/a2dp_vendor_ldac_constants.h"
 #include "bta/av/bta_av_int.h"
 #include "btif/include/btif_a2dp_source.h"
 #include "btif/include/btif_av.h"

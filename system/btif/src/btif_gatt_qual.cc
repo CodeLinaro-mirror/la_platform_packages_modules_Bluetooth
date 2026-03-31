@@ -42,8 +42,10 @@
 
 #include "bta_api.h"
 #include "btif_api.h"
-#include "gatt_api.h"
+#include "stack/include/gatt_api.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/stack_app.h"
+#include "stack/include/stack_le_connection.h"
 
 using namespace bluetooth;
 
@@ -54,13 +56,13 @@ using bluetooth::Uuid;
 uint16_t g_conn_id = 0;
 
 #define BTM_SEC_PROTO_L2CAP 0
-tGATT_IF Gatt_Register(Uuid& p_app_uuid128, tGATT_CBACK* p_cb_info,
+tGATT_IF Gatt_Register(Uuid& p_app_uuid128, stack::tGATT_CBACK* p_cb_info,
                        bool eatt_support) {
   tGATT_IF Gatt_if = 0;
-  Gatt_if = GATT_Register(p_app_uuid128, "gatt_qual_service", p_cb_info,
+  Gatt_if = stack::appRegister(p_app_uuid128, "gatt_qual_service", p_cb_info,
                           eatt_support);
   printf("%s:: Gatt_if=%d\n", __FUNCTION__, Gatt_if);
-  if (!get_btm_client_interface().security.BTM_SetSecurityLevel(
+  if (!get_security_client_interface().BTM_SetSecurityLevel(
           TRUE, "gatt_tool", BTM_SEC_PROTO_L2CAP, 0, 0x1f, 0, 0)) {
     log::info("Error:: BTM_SetSecurityLevel failed");
     return FALSE;
@@ -68,22 +70,21 @@ tGATT_IF Gatt_Register(Uuid& p_app_uuid128, tGATT_CBACK* p_cb_info,
   return Gatt_if;
 }
 void Gatt_Deregister(tGATT_IF gatt_if) {
-  GATT_Deregister(gatt_if);
+  stack::appDeregister(gatt_if);
   printf("%s:: \n", __FUNCTION__);
 }
 
 void Gatt_StartIf(tGATT_IF gatt_if) {
-  GATT_StartIf(gatt_if);
+  stack::appStartIf(gatt_if);
   printf("%s::\n", __FUNCTION__);
 }
 
 bool Gatt_Connect(tGATT_IF gatt_if, RawAddress bd_addr, bool is_direct,
                   tBT_TRANSPORT transport) {
   bool Ret = 0;
-  Ret = GATT_Connect(
+  Ret = stack::leConnectionConnect(
       gatt_if, bd_addr,
-      is_direct ? BTM_BLE_DIRECT_CONNECTION : BTM_BLE_BKG_CONNECT_ALLOW_LIST,
-      BT_TRANSPORT_LE, false);
+      is_direct ? BTM_BLE_DIRECT_CONNECTION : BTM_BLE_BKG_CONNECT_ALLOW_LIST);
   printf("%s::Ret=%d,gatt_if=%d, is_direct=%d \n", __FUNCTION__, Ret, gatt_if,
          is_direct);
   return Ret;
@@ -148,10 +149,6 @@ tGATT_STATUS Gatt_SendHandleValueConfirm(uint16_t conn_id, uint16_t handle) {
   return Ret;
 }
 
-void Gatt_SetIdleTimeout(RawAddress bd_addr, uint16_t idle_tout) {
-  GATT_SetIdleTimeout(bd_addr, idle_tout, BT_TRANSPORT_LE, L2CAP_ATT_CID);
-  printf("%s::\n", __FUNCTION__);
-}
 
 void Gatt_SetLeAdvMode(tBTA_DM_DISC disc_mode, tBTA_DM_CONN conn_mode) {
   printf("%s::call set Visibility\n", __FUNCTION__);
@@ -180,7 +177,6 @@ static const btgatt_test_interface_t btgatt_testInterface = {
     Gatt_Write,
     Gatt_ExecuteWrite,
     Gatt_SendHandleValueConfirm,
-    Gatt_SetIdleTimeout,
     Gatt_SetLeAdvMode,
     Gatt_SendMultiNotification};
 

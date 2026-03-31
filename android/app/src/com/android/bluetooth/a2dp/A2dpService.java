@@ -180,7 +180,9 @@ public class A2dpService extends ConnectableProfile {
         mA2dpOffloadEnabled = getAdapterService().isA2dpOffloadEnabled();
         Log.d(TAG, "A2DP offload flag set to " + mA2dpOffloadEnabled);
 
-        mAudioManager.registerAudioDeviceCallback(mAudioManagerAudioDeviceCallback, mHandler);
+        if (!true) {
+            mAudioManager.registerAudioDeviceCallback(mAudioManagerAudioDeviceCallback, mHandler);
+        }
     }
 
     public static boolean isEnabled() {
@@ -200,7 +202,9 @@ public class A2dpService extends ConnectableProfile {
         removeActiveDevice(true);
 
         // Step 7: Unregister Audio Device Callback
-        mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
+        if (!true) {
+            mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
+        }
 
         // Step 6: Cleanup native interface
         mNativeInterface.cleanup();
@@ -676,10 +680,8 @@ public class A2dpService extends ConnectableProfile {
     public boolean setConnectionPolicy(BluetoothDevice device, int connectionPolicy) {
         Log.d(TAG, "Saved connectionPolicy " + device + " = " + connectionPolicy);
 
-        if (!getAdapterService()
-                .setProfileConnectionPolicy(device, getProfileId(), connectionPolicy)) {
-            return false;
-        }
+        getAdapterService().setProfileConnectionPolicy(device, getProfileId(), connectionPolicy);
+
         if (connectionPolicy == CONNECTION_POLICY_ALLOWED) {
             connect(device);
         } else if (connectionPolicy == CONNECTION_POLICY_FORBIDDEN) {
@@ -892,10 +894,7 @@ public class A2dpService extends ConnectableProfile {
      *     OptionalCodecsSupportStatus#OPTIONAL_CODECS_SUPPORT_UNKNOWN}.
      */
     public @OptionalCodecsSupportStatus int getSupportsOptionalCodecs(BluetoothDevice device) {
-        if (Flags.mainlineBetaStorage()) {
-            return getStorage().getA2dpOptionalCodecsSupported(device);
-        }
-        return getDatabaseManager().getA2dpSupportsOptionalCodecs(device); // Migrating
+        return getStorage().getA2dpOptionalCodecsSupported(device);
     }
 
     public void setSupportsOptionalCodecs(BluetoothDevice device, boolean doesSupport) {
@@ -903,11 +902,7 @@ public class A2dpService extends ConnectableProfile {
                 doesSupport
                         ? BluetoothA2dp.OPTIONAL_CODECS_SUPPORTED
                         : BluetoothA2dp.OPTIONAL_CODECS_NOT_SUPPORTED;
-        if (Flags.mainlineBetaStorage()) {
-            getStorage().setA2dpOptionalCodecsSupported(device, value);
-            return;
-        }
-        getDatabaseManager().setA2dpSupportsOptionalCodecs(device, value); // Migrating
+        getStorage().setA2dpOptionalCodecsSupported(device, value);
     }
 
     /**
@@ -917,10 +912,7 @@ public class A2dpService extends ConnectableProfile {
      * @return whether the optional codecs are enabled.
      */
     public @OptionalCodecsPreferenceStatus int getOptionalCodecsEnabled(BluetoothDevice device) {
-        if (Flags.mainlineBetaStorage()) {
-            return getStorage().getA2dpOptionalCodecsEnabled(device);
-        }
-        return getDatabaseManager().getA2dpOptionalCodecsEnabled(device); // Migrating
+        return getStorage().getA2dpOptionalCodecsEnabled(device);
     }
 
     /**
@@ -931,17 +923,7 @@ public class A2dpService extends ConnectableProfile {
      */
     public void setOptionalCodecsEnabled(
             BluetoothDevice device, @OptionalCodecsPreferenceStatus int value) {
-        if (Flags.mainlineBetaStorage()) {
-            getStorage().setA2dpOptionalCodecsEnabled(device, value);
-            return;
-        }
-        if (value != BluetoothA2dp.OPTIONAL_CODECS_PREF_UNKNOWN
-                && value != BluetoothA2dp.OPTIONAL_CODECS_PREF_DISABLED
-                && value != BluetoothA2dp.OPTIONAL_CODECS_PREF_ENABLED) {
-            Log.w(TAG, "Unexpected value passed to setOptionalCodecsEnabled:" + value);
-            return;
-        }
-        getDatabaseManager().setA2dpOptionalCodecsEnabled(device, value); // Migrating
+        getStorage().setA2dpOptionalCodecsEnabled(device, value);
     }
 
     /**
@@ -1142,6 +1124,9 @@ public class A2dpService extends ConnectableProfile {
     private class AudioManagerAudioDeviceCallback extends AudioDeviceCallback {
         @Override
         public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+            if (true) {
+                throw new IllegalStateException("admCentralizeActiveDeviceHandling");
+            }
             synchronized (mStateMachines) {
                 for (AudioDeviceInfo deviceInfo : addedDevices) {
                     if (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
@@ -1191,6 +1176,9 @@ public class A2dpService extends ConnectableProfile {
 
         @Override
         public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+            if (true) {
+                throw new IllegalStateException("admCentralizeActiveDeviceHandling");
+            }
             synchronized (mStateMachines) {
                 for (AudioDeviceInfo deviceInfo : removedDevices) {
                     if (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
@@ -1214,6 +1202,50 @@ public class A2dpService extends ConnectableProfile {
                                     + mActiveDevice);
                 }
             }
+        }
+    }
+
+    /**
+     * Handle when AudioManager add audio device.
+     *
+     * @param device added audio device
+     * @return true if the exposed active device changed, otherwise false
+     */
+    public boolean handleAudioDeviceAdded(BluetoothDevice device) {
+        if (!true) {
+            return false;
+        }
+        synchronized (mStateMachines) {
+            /* Don't expose already exposed active device */
+            if (device.equals(mExposedActiveDevice)) {
+                Log.d(TAG, " onAudioDevicesAdded: " + device + " is already exposed");
+                return false;
+            }
+
+            if (!device.equals(mActiveDevice)) {
+                Log.e(
+                        TAG,
+                        "Added device does not match to the one activated here. ("
+                                + device
+                                + " != "
+                                + mActiveDevice
+                                + ")");
+                return false;
+            }
+
+            mExposedActiveDevice = device;
+            updateAndBroadcastActiveDevice(device);
+        }
+        return true;
+    }
+
+    /** Handle when AudioManager remove audio device. */
+    public void handleAudioDeviceRemoved() {
+        if (!true) {
+            return;
+        }
+        synchronized (mStateMachines) {
+            mExposedActiveDevice = null;
         }
     }
 
@@ -1278,17 +1310,6 @@ public class A2dpService extends ConnectableProfile {
         // Remove state machine if the bonding for a device is removed
         if (bondState != BluetoothDevice.BOND_NONE) {
             return;
-        }
-        if (!Flags.mainlineBetaStorage()) {
-            getAdapterService()
-                    .getAvrcpTargetService()
-                    .ifPresent(
-                            avrcpTarget -> {
-                                Log.d(
-                                        TAG,
-                                        "bondStateChanged: going for removeStoredVolumeForDevice");
-                                avrcpTarget.removeStoredVolumeForDevice(device);
-                            });
         }
         synchronized (mStateMachines) {
             A2dpStateMachine sm = mStateMachines.get(device);
@@ -1424,12 +1445,6 @@ public class A2dpService extends ConnectableProfile {
         // Check if the device is disconnected - if unbond, remove the state machine
         if (toState == STATE_DISCONNECTED) {
             if (getAdapterService().getBondState(device) == BluetoothDevice.BOND_NONE) {
-                if (!Flags.mainlineBetaStorage()) {
-                    getAdapterService()
-                            .getAvrcpTargetService()
-                            .ifPresent(
-                                    avrcpTarget -> avrcpTarget.removeStoredVolumeForDevice(device));
-                }
                 removeStateMachine(device);
             }
         }
@@ -1460,11 +1475,7 @@ public class A2dpService extends ConnectableProfile {
             A2dpConnectedDevice.remove(getActiveDevice());
         }
 
-        if (Flags.mainlineBetaStorage()) {
-            return getStorage().getMostRecentlyConnectedDeviceInList(A2dpConnectedDevice);
-        }
-        return getDatabaseManager() // Migrating
-                .getMostRecentlyConnectedDevicesInList(A2dpConnectedDevice);
+        return getStorage().getMostRecentlyConnectedDeviceInList(A2dpConnectedDevice);
     }
 
     @Override

@@ -42,23 +42,23 @@
 #include "bta_api.h"
 #include "bta_gatt_api.h"
 #include "bta_hh_api.h"
-#include "btm_ble_api_types.h"
-#include "btm_sec_api_types.h"
 #include "device/include/interop.h"
 #include "gatt/database.h"
-#include "gatt_api.h"
-#include "gattdefs.h"
 #include "hardware/bt_gatt_types.h"
-#include "hiddefs.h"
 #include "osi/include/allocator.h"
 #include "osi/include/osi.h"    // ARRAY_SIZE
 #include "stack/btm/btm_sec.h"  // BTM_
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_log_history.h"
+#include "stack/include/btm_sec_api_types.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/gatt_api.h"
+#include "stack/include/gattdefs.h"
+#include "stack/include/hiddefs.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
 #include "stack/include/srvc_api.h"  // tDIS_VALUE
@@ -298,7 +298,7 @@ void bta_hh_le_open_conn(tBTA_HH_DEV_CB* p_cb, bool direct) {
   bta_hh_cb.le_cb_index[BTA_HH_GET_LE_CB_IDX(p_cb->hid_handle)] = p_cb->index;  // Update index map
   if (!direct) {
     // don't reconnect unbonded device
-    if (!get_btm_client_interface().security.BTM_IsBonded(p_cb->link_spec.addrt.bda,
+    if (!get_security_client_interface().BTM_IsBonded(p_cb->link_spec.addrt.bda,
                                                           BT_TRANSPORT_LE)) {
       return;
     }
@@ -307,7 +307,7 @@ void bta_hh_le_open_conn(tBTA_HH_DEV_CB* p_cb, bool direct) {
     return;
   }
 
-  BTA_GATTC_Open(bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, BTM_BLE_DIRECT_CONNECTION, false);
+  BTA_GATTC_Open(bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, BTM_BLE_DIRECT_CONNECTION);
 }
 
 /*******************************************************************************
@@ -1137,27 +1137,27 @@ static void bta_hh_clear_service_cache(tBTA_HH_DEV_CB* p_cb) {
  *
  ******************************************************************************/
 void bta_hh_start_security(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* /* p_buf */) {
-  if (get_btm_client_interface().security.BTM_IsEncrypted(p_cb->link_spec.addrt.bda,
+  if (get_security_client_interface().BTM_IsEncrypted(p_cb->link_spec.addrt.bda,
                                                           BT_TRANSPORT_LE)) {
     log::debug("{} is already encrypted", p_cb->link_spec);
     p_cb->status = BTHH_OK;
     bta_hh_sm_execute(p_cb, BTA_HH_ENC_CMPL_EVT, NULL);
-  } else if (get_btm_client_interface().security.BTM_SecIsLeSecurityPending(
+  } else if (get_security_client_interface().BTM_SecIsLeSecurityPending(
                      p_cb->link_spec.addrt.bda)) {
     log::warn("Some security procedure already pending for {}", p_cb->link_spec);
     p_cb->security_pending = true;  // Wait for encryption to complete
-  } else if (get_btm_client_interface().security.BTM_IsBonded(p_cb->link_spec.addrt.bda,
+  } else if (get_security_client_interface().BTM_IsBonded(p_cb->link_spec.addrt.bda,
                                                               BT_TRANSPORT_LE)) {
     log::info("{} is bonded, but not encrypted", p_cb->link_spec);
     p_cb->status = BTHH_ERR_AUTH_FAILED;
-    get_btm_client_interface().security.BTM_SetEncryption(p_cb->link_spec.addrt.bda,
+    get_security_client_interface().BTM_SetEncryption(p_cb->link_spec.addrt.bda,
                                                           BT_TRANSPORT_LE, bta_hh_le_encrypt_cback,
                                                           NULL, BTM_BLE_SEC_ENCRYPT);
   } else {
     log::error("{} is not bonded", p_cb->link_spec);
     p_cb->status = BTHH_ERR_AUTH_FAILED;
     bta_hh_clear_service_cache(p_cb);
-    get_btm_client_interface().security.BTM_SetEncryption(p_cb->link_spec.addrt.bda,
+    get_security_client_interface().BTM_SetEncryption(p_cb->link_spec.addrt.bda,
                                                           BT_TRANSPORT_LE, bta_hh_le_encrypt_cback,
                                                           NULL, BTM_BLE_SEC_ENCRYPT_NO_MITM);
   }
@@ -2189,8 +2189,7 @@ static void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB* p_cb) {
   }
 
   /* Add device into BG connection to accept remote initiated connection */
-  BTA_GATTC_Open(bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, BTM_BLE_BKG_CONNECT_ALLOW_LIST,
-                 false);
+  BTA_GATTC_Open(bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, BTM_BLE_BKG_CONNECT_ALLOW_LIST);
   p_cb->in_bg_conn = true;
 }
 

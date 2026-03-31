@@ -41,11 +41,11 @@ import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.rule.ServiceTestRule;
 
+import com.android.bluetooth.R;
 import com.android.bluetooth.TestUtils;
 import com.android.bluetooth.avrcpcontroller.AvrcpControllerNativeInterface;
 import com.android.bluetooth.avrcpcontroller.AvrcpControllerService;
 import com.android.bluetooth.btservice.AdapterService;
-import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.tests.bluetooth.MockitoRule;
 
 import org.junit.Before;
@@ -69,7 +69,6 @@ public class A2dpSinkStreamHandlerTest {
     @Mock private AudioManager mAudioManager;
     @Mock private Resources mResources;
     @Mock private AdapterService mAdapterService;
-    @Mock private DatabaseManager mDatabaseManager;
     @Mock private PackageManager mPackageManager;
 
     private static final int DUCK_PERCENT = 75;
@@ -90,7 +89,6 @@ public class A2dpSinkStreamHandlerTest {
 
         final var context = InstrumentationRegistry.getInstrumentation().getContext();
         doReturn(context.getPackageName()).when(mAdapterService).getPackageName();
-        doReturn(mDatabaseManager).when(mAdapterService).getDatabaseManager();
         doReturn(mPackageManager).when(mAdapterService).getPackageManager();
         doReturn(mResources).when(mAdapterService).getResources();
         mockGetSystemService(mAdapterService, AudioManager.class, mAudioManager);
@@ -182,8 +180,46 @@ public class A2dpSinkStreamHandlerTest {
     @Test
     public void testSrcPlayIot() {
         // Play was pressed remotely for an iot device, expect streaming to start.
-        doReturn(true).when(mPackageManager).hasSystemFeature(any());
+        doReturn(true).when(mPackageManager).hasSystemFeature(PackageManager.FEATURE_EMBEDDED);
+        // Ensure other conditions for requesting focus are false
+        doReturn(false).when(mPackageManager).hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        doReturn(false).when(mResources).getBoolean(anyInt());
         mStreamHandler.handleMessage(mStreamHandler.obtainMessage(A2dpSinkStreamHandler.SRC_PLAY));
+
+        verify(mAudioManager).requestAudioFocus(any());
+        TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
+        assertThat(mStreamHandler.isPlaying()).isTrue();
+    }
+
+    @Test
+    public void testSrcPlay_onTvDevice_requestsFocus() {
+        // A remote PLAY command on a TV device should request audio focus and start streaming.
+        doReturn(true).when(mPackageManager).hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        // Ensure other conditions for requesting focus are false
+        doReturn(false).when(mPackageManager).hasSystemFeature(PackageManager.FEATURE_EMBEDDED);
+        doReturn(false).when(mResources).getBoolean(anyInt());
+
+        mStreamHandler.handleMessage(mStreamHandler.obtainMessage(A2dpSinkStreamHandler.SRC_PLAY));
+
+        // Verify that audio focus is requested.
+        verify(mAudioManager).requestAudioFocus(any());
+        TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
+        assertThat(mStreamHandler.isPlaying()).isTrue();
+    }
+
+    @Test
+    public void testSrcPlay_withFocusRequestEnabled_requestsFocus() {
+        // A remote PLAY command should request focus when the auto-request config is enabled.
+        doReturn(true)
+                .when(mResources)
+                .getBoolean(R.bool.a2dp_sink_automatically_request_audio_focus);
+        // Ensure other conditions for requesting focus are false
+        doReturn(false).when(mPackageManager).hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+        doReturn(false).when(mPackageManager).hasSystemFeature(PackageManager.FEATURE_EMBEDDED);
+
+        mStreamHandler.handleMessage(mStreamHandler.obtainMessage(A2dpSinkStreamHandler.SRC_PLAY));
+
+        // Verify that audio focus is requested.
         verify(mAudioManager).requestAudioFocus(any());
         TestUtils.waitForLooperToFinishScheduledTask(mHandlerThread.getLooper());
         assertThat(mStreamHandler.isPlaying()).isTrue();

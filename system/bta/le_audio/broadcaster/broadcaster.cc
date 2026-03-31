@@ -42,15 +42,12 @@
 #include "bta/le_audio/le_audio_utils.h"
 #include "bta/le_audio/metrics_collector.h"
 #include "bta_le_audio_api.h"
-#include "btm_iso_api_types.h"
 #include "common/strings.h"
 #include "gd/common/utils.h"
 #include "hardware/ble_advertiser.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/controller.h"
 #include "hci/hci_packets.h"
-#include "hcidefs.h"
-#include "hcimsgs.h"
 #include "internal_include/stack_config.h"
 #include "le_audio/audio_hal_client/audio_hal_client.h"
 #include "le_audio/broadcaster/broadcaster_types.h"
@@ -61,6 +58,9 @@
 #include "stack/include/btm_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
+#include "stack/include/hcidefs.h"
+#include "stack/include/hcimsgs.h"
 #include "stack/include/main_thread.h"
 
 #ifdef TARGET_FLOSS
@@ -397,7 +397,7 @@ public:
         return false;
       };
 
-      if (com::android::bluetooth::flags::leaudio_broadcast_extend_audio_active_state()) {
+      if (com_android_bluetooth_flags_leaudio_broadcast_extend_audio_active_state()) {
         auto announcement = broadcast->GetBroadcastAnnouncement();
         bool broadcast_update = false;
         for (auto& subgroup : announcement.subgroup_configs) {
@@ -489,7 +489,7 @@ public:
       }
 
       // Append the Audio Active State
-      if (com::android::bluetooth::flags::leaudio_broadcast_extend_audio_active_state()) {
+      if (com_android_bluetooth_flags_leaudio_broadcast_extend_audio_active_state()) {
         ltv.Add(bluetooth::le_audio::types::kLeAudioMetadataTypeAudioActiveState,
                 audio_active_state);
       }
@@ -683,7 +683,7 @@ public:
       }
 
       // Append the Audio Active State
-      if (com::android::bluetooth::flags::leaudio_broadcast_extend_audio_active_state()) {
+      if (com_android_bluetooth_flags_leaudio_broadcast_extend_audio_active_state()) {
         ltv.Add(bluetooth::le_audio::types::kLeAudioMetadataTypeAudioActiveState, false);
       }
 
@@ -998,7 +998,7 @@ public:
 
   void SetBigChannelMapClassification(uint8_t action, const RawAddress& sink_addr,
                                       uint32_t broadcast_id) override {
-    if (!com::android::bluetooth::flags::leaudio_broadcast_source_channel_map_classification()) {
+    if (!com_android_bluetooth_flags_leaudio_broadcast_source_channel_map_classification()) {
       return;
     }
 

@@ -34,6 +34,7 @@
 #include <bluetooth/types/bt_transport.h>
 #include <bluetooth/types/remote_version.h>
 #include <com_android_bluetooth_flags.h>
+#include <frameworks/proto_logging/stats/enums/bluetooth/enums.pb.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -94,6 +95,7 @@ using namespace bluetooth;
 
 #define BTM_SEC_MAX_COLLISION_DELAY (5000)
 #define BTM_SEC_START_AUTH_DELAY (200)
+#define BTM_SEC_LK_REQ_TIMEOUT_MS 1000 /* 1 second */
 
 #define BTM_SEC_IS_SM4(sm) ((bool)(BTM_SM4_TRUE == ((sm) & BTM_SM4_TRUE)))
 #define BTM_SEC_IS_SM4_LEGACY(sm) ((bool)(BTM_SM4_KNOWN == ((sm) & BTM_SM4_TRUE)))
@@ -111,6 +113,7 @@ static void btm_sec_collision_timeout(void* data);
 static void btm_restore_mode(void);
 static void btm_sec_pairing_timeout(void* data);
 static tBTM_STATUS btm_sec_dd_create_conn(BtmDevice* p_device);
+static void btm_sec_link_key_request_reply(const RawAddress& bda, const LinkKey& link_key);
 
 static void btm_sec_check_pending_reqs(void);
 static bool btm_sec_queue_service_access_request(const RawAddress& bd_addr, uint16_t psm,
@@ -179,10 +182,7 @@ static BtIoCap btm_sec_get_local_iocaps() {
 }
 
 static void NotifyBondingChange(BtmDevice& p_device, tHCI_STATUS status) {
-  if (BtmSecurity::Get().api_.p_auth_complete_callback != nullptr) {
-    (*BtmSecurity::Get().api_.p_auth_complete_callback)(p_device.bd_addr, p_device.dev_class,
-                                                        p_device.sec_bd_name, status);
-  }
+  (BtmSecurity::Get().app_->auth_complete_callback)(p_device.bd_addr, p_device.sec_bd_name, status);
 }
 void btm_conn_proc_timer_timeout(void* /*  data */) { log::warn("btm_conn_proc_timer expired"); }
 
@@ -208,7 +208,7 @@ static bool is_sec_state_equal(void* data, void* context) {
  *
  ******************************************************************************/
 static BtmDevice* btm_sec_find_dev_by_sec_state(tSECURITY_STATE state) {
-  if (!com::android::bluetooth::flags::use_array_instead_list_in_sec_dev_rec()) {
+  if (!com_android_bluetooth_flags_use_array_instead_list_in_sec_dev_rec()) {
     list_node_t* n = list_foreach(BtmSecurity::Get().sec_dev_rec_, is_sec_state_equal, &state);
     if (n) {
       return static_cast<BtmDevice*>(list_node(n));
@@ -276,24 +276,17 @@ static tBTM_STATUS btm_sec_report_bond_loss(BtmDevice* p_device, tBT_TRANSPORT t
  * Returns          true if registered OK, else false
  *
  ******************************************************************************/
-bool btm_sec_register(const tBTM_APPL_INFO* p_cb_info) {
-  log::info("p_cb_info->p_le_callback == 0x{}", std::format_ptr(p_cb_info->p_le_callback));
-  if (p_cb_info->p_le_callback) {
-    log::verbose("SMP_Register( btm_proc_smp_cback )");
-    SMP_Register(btm_proc_smp_cback);
-    Octet16 zero{0};
-    /* if no IR is loaded, need to regenerate all the keys */
-    if (BtmSecurity::Get().devcb_.id_keys.ir == zero) {
-      btm_ble_reset_id();
-    }
-  } else {
-    log::warn("p_cb_info->p_le_callback == NULL");
+bool btm_sec_register(const BtmAppReg& app_reg) {
+  log::verbose("SMP_Register(btm_proc_smp_cback)");
+  SMP_Register(btm_proc_smp_cback);
+
+  BtmSecurity::Get().app_ = &app_reg;
+
+  /* if no IR is loaded, need to regenerate all the keys */
+  if (BtmSecurity::Get().devcb_.id_keys.ir == ZERO_OCTET16) {
+    btm_ble_reset_id();
   }
 
-  BtmSecurity::Get().api_ = *p_cb_info;
-  log::info("BtmSecurity::Get().api_.p_le_callback = 0x{}",
-            std::format_ptr(BtmSecurity::Get().api_.p_le_callback));
-  log::verbose("application registered");
   return true;
 }
 
@@ -601,8 +594,7 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr, tBLE_ADDR_TYPE 
 
   /* Other security process is in progress */
   if (BtmSecurity::Get().pairing_state_ != BTM_PAIR_STATE_IDLE) {
-    if (com_android_bluetooth_flags_pairing_collision_with_same_device() &&
-        BtmSecurity::Get().link_spec_.addrt.bda == bd_addr) {
+    if (BtmSecurity::Get().link_spec_.addrt.bda == bd_addr) {
       log::warn("Already pairing with {}", BtmSecurity::Get().link_spec_);
       return tBTM_STATUS::BTM_CMD_STARTED;
     } else {
@@ -994,7 +986,7 @@ tBTM_STATUS btm_set_encryption(const RawAddress& bd_addr, tBT_TRANSPORT transpor
   tSECURITY_STATE& state = (transport == BT_TRANSPORT_LE) ? p_device->sec_rec.le_link
                                                           : p_device->sec_rec.classic_link;
 
-  if (com::android::bluetooth::flags::force_encryption_post_successful_pairing()) {
+  if (com_android_bluetooth_flags_force_encryption_post_successful_pairing()) {
     // Always push the encryption request, so that .callback and .ref will be used while processing
     // btm_sec_check_pending_enc_req() when encryption is completed.
     btm_sec_queue_encrypt_request(bd_addr, transport, sec_act, p_callback, p_ref_data);
@@ -1055,7 +1047,7 @@ tBTM_STATUS btm_set_encryption(const RawAddress& bd_addr, tBT_TRANSPORT transpor
       if (p_callback) {
         log::debug("Executing encryption callback peer:{} transport:{}", bd_addr,
                    bt_transport_text(transport));
-        if (com::android::bluetooth::flags::force_encryption_post_successful_pairing()) {
+        if (com_android_bluetooth_flags_force_encryption_post_successful_pairing()) {
           do_in_main_thread(base::BindOnce(p_callback, bd_addr, transport, p_ref_data, rc));
           break;
         }
@@ -1919,7 +1911,8 @@ static void btm_sec_bond_cancel_complete(void) {
       (BTM_PAIR_STATE_WAIT_LOCAL_PIN == BtmSecurity::Get().pairing_state_ &&
        BTM_PAIR_FLAGS_WE_STARTED_DD & BtmSecurity::Get().pairing_flags_) ||
       (BtmSecurity::Get().pairing_state_ == BTM_PAIR_STATE_GET_REM_NAME &&
-       BTM_PAIR_FLAGS_WE_CANCEL_DD & BtmSecurity::Get().pairing_flags_)) {
+       BTM_PAIR_FLAGS_WE_CANCEL_DD & BtmSecurity::Get().pairing_flags_) ||
+      (BTM_PAIR_STATE_WAIT_PIN_REQ == BtmSecurity::Get().pairing_state_)) {
     /* for dedicated bonding in legacy mode, authentication happens at "link
      * level"
      * btm_sec_connected is called with failed status.
@@ -1936,9 +1929,7 @@ static void btm_sec_bond_cancel_complete(void) {
     BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_IDLE);
 
     /* Notify application that the cancel succeeded */
-    if (BtmSecurity::Get().api_.p_bond_cancel_cmpl_callback) {
-      BtmSecurity::Get().api_.p_bond_cancel_cmpl_callback(tBTM_STATUS::BTM_SUCCESS);
-    }
+    BtmSecurity::Get().app_->bond_cancel_cmpl_callback(tBTM_STATUS::BTM_SUCCESS);
   }
 }
 
@@ -1953,7 +1944,7 @@ static void btm_sec_bond_cancel_complete(void) {
  * Returns          void
  *
  ******************************************************************************/
-void btm_create_conn_cancel_complete(uint8_t status, const RawAddress bd_addr) {
+void btm_create_conn_cancel_complete(uint8_t status, const RawAddress& bd_addr) {
   log::verbose("btm_create_conn_cancel_complete(): in State: {}  status:{}",
                btm_pair_state_descr(BtmSecurity::Get().pairing_state_), status);
   bluetooth::metrics::LogMetricLinkLayerConnectionEvent(
@@ -1974,9 +1965,7 @@ void btm_create_conn_cancel_complete(uint8_t status, const RawAddress bd_addr) {
     case HCI_ERR_NO_CONNECTION:
     default:
       /* Notify application of the error */
-      if (BtmSecurity::Get().api_.p_bond_cancel_cmpl_callback) {
-        BtmSecurity::Get().api_.p_bond_cancel_cmpl_callback(tBTM_STATUS::BTM_ERR_PROCESSING);
-      }
+      BtmSecurity::Get().app_->bond_cancel_cmpl_callback(tBTM_STATUS::BTM_ERR_PROCESSING);
       break;
   }
 }
@@ -2124,30 +2113,13 @@ static tBTM_STATUS btm_sec_dd_create_conn(BtmDevice* p_device) {
  * Returns          None
  *
  ******************************************************************************/
-static void call_registered_rmt_name_callbacks(const RawAddress* p_bd_addr,
-                                               const DEV_CLASS& dev_class, uint8_t* p_bd_name,
-                                               tHCI_STATUS status) {
-  int i;
-
-  if (p_bd_addr == nullptr) {
-    // TODO Still need to send status back to get SDP state machine
-    // running
-    log::error("Unable to issue callback with unknown address status:{}",
-               hci_status_code_text(status));
+static void call_registered_rmt_name_callbacks(const RawAddress& bd_addr, const BD_NAME& bd_name) {
+  if (btm_cb.rnr.p_rmt_name_callback == nullptr) {
+    log::error("No RNR callback registered!");
     return;
   }
 
-  if (p_bd_name == nullptr) {
-    p_bd_name = (uint8_t*)kBtmBdNameEmpty;
-  }
-
-  /* Notify all clients waiting for name to be resolved even if not found so
-   * clients can continue */
-  for (i = 0; i < BTM_SEC_MAX_RMT_NAME_CALLBACKS; i++) {
-    if (btm_cb.rnr.p_rmt_name_callback[i]) {
-      (*btm_cb.rnr.p_rmt_name_callback[i])(*p_bd_addr, dev_class, p_bd_name);
-    }
-  }
+  (*btm_cb.rnr.p_rmt_name_callback)(bd_addr, bd_name);
 }
 
 /*******************************************************************************
@@ -2190,8 +2162,8 @@ static BtmDevice* btm_rnr_add_name_to_security_record(const RawAddress* p_bd_add
                              reinterpret_cast<char const*>(p_bd_name)));
 
   if (p_device == nullptr) {
-    // We need to send the callbacks to complete the RNR cycle despite failure
-    call_registered_rmt_name_callbacks(p_bd_addr, kDevClassEmpty, nullptr, hci_status);
+    log::warn("Unable to issue callback with unknown address status:{}",
+              hci_status_code_text(hci_status));
     return nullptr;
   }
 
@@ -2223,8 +2195,7 @@ static BtmDevice* btm_rnr_add_name_to_security_record(const RawAddress* p_bd_add
   bluetooth::metrics::LogRemoteNameRequestCompletion(bd_addr, hci_status);
 
   /* Notify all clients waiting for name to be resolved */
-  call_registered_rmt_name_callbacks(&bd_addr, p_device->dev_class, p_device->sec_bd_name,
-                                     hci_status);
+  call_registered_rmt_name_callbacks(bd_addr, p_device->sec_bd_name);
   return p_device;
 }
 
@@ -2272,17 +2243,14 @@ void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr, const uint8_
   /* If we were delaying asking UI for a PIN because name was not resolved, ask now */
   if (BtmSecurity::Get().pairing_state_ == BTM_PAIR_STATE_WAIT_LOCAL_PIN &&
       BtmSecurity::Get().link_spec_.addrt.bda == bd_addr) {
-    log::verbose("delayed pin now being requested flags:0x{:x}, (p_pin_callback=0x{})",
-                 BtmSecurity::Get().pairing_flags_,
-                 std::format_ptr(BtmSecurity::Get().api_.p_pin_callback));
+    log::verbose("delayed pin now being requested flags:0x{:x}", BtmSecurity::Get().pairing_flags_);
 
-    if ((BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_PIN_REQD) == 0 &&
-        BtmSecurity::Get().api_.p_pin_callback) {
+    if ((BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_PIN_REQD) == 0) {
       log::verbose("calling pin_callback");
       BtmSecurity::Get().pairing_flags_ |= BTM_PAIR_FLAGS_PIN_REQD;
-      (*BtmSecurity::Get().api_.p_pin_callback)(
+      (BtmSecurity::Get().app_->pin_callback)(
               p_device->bd_addr, p_device->dev_class, p_device->sec_bd_name,
-              p_device->sec_rec.required_security_flags_for_pairing& BTM_SEC_IN_MIN_16_DIGIT_PIN,
+              p_device->sec_rec.required_security_flags_for_pairing & BTM_SEC_IN_MIN_16_DIGIT_PIN,
               p_device->sec_rec.pairing_algorithm);
     }
 
@@ -2429,28 +2397,20 @@ void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr, const uint8_
  * Returns          void
  *
  ******************************************************************************/
-void btm_sec_rmt_host_support_feat_evt(const RawAddress bd_addr, uint8_t features_0) {
-  BtmDevice* p_device;
-
-  p_device = btm_find_or_alloc_dev(bd_addr);
-
+void btm_sec_rmt_host_support_feat_evt(const RawAddress& bd_addr, uint8_t features_0) {
+  BtmDevice* p_device = btm_find_or_alloc_dev(bd_addr);
   if (p_device == nullptr) {
     log::error("No memory to allocate new p_device");
     return;
   }
 
-  log::info("Got btm_sec_rmt_host_support_feat_evt from {}", bd_addr);
-
-  log::verbose("btm_sec_rmt_host_support_feat_evt  sm4: 0x{:x}  p[0]: 0x{:x}", p_device->sm4,
-               features_0);
+  log::debug("{}: sm4: 0x{:x}  p[0]: 0x{:x}", bd_addr, p_device->sm4, features_0);
 
   if (BTM_SEC_IS_SM4_UNKNOWN(p_device->sm4)) {
     p_device->sm4 = BTM_SM4_KNOWN;
     if (HCI_SSP_HOST_SUPPORTED(&features_0)) {
       p_device->sm4 = BTM_SM4_TRUE;
     }
-    log::verbose("btm_sec_rmt_host_support_feat_evt sm4: 0x{:x} features[0]: 0x{:x}", p_device->sm4,
-                 features_0);
   }
 }
 
@@ -2465,8 +2425,8 @@ void btm_sec_rmt_host_support_feat_evt(const RawAddress bd_addr, uint8_t feature
  * Returns          void
  *
  ******************************************************************************/
-void btm_io_capabilities_req(RawAddress p) {
-  BtmDevice* p_device = btm_find_or_alloc_dev(p);
+void btm_io_capabilities_req(const RawAddress& bda) {
+  BtmDevice* p_device = btm_find_or_alloc_dev(bda);
 
   if (p_device == nullptr) {
     log::error("No memory to allocate new p_device");
@@ -2478,7 +2438,7 @@ void btm_io_capabilities_req(RawAddress p) {
      * security */
     if (!p_device->sec_rec.is_device_encrypted()) {
       if (!is_autonomous_repairing_supported()) {
-        btsnd_hcic_io_cap_req_neg_reply(p, HCI_ERR_PAIRING_NOT_ALLOWED);
+        btsnd_hcic_io_cap_req_neg_reply(bda, HCI_ERR_PAIRING_NOT_ALLOWED);
       }
       btm_sec_report_bond_loss(p_device, BT_TRANSPORT_BR_EDR,
                                BTM_KEY_MISSING_BREDR_INCOMING_PAIRING);
@@ -2488,10 +2448,10 @@ void btm_io_capabilities_req(RawAddress p) {
       }
     }
 
-    log::info("Incoming pairing request for bonded and encrypted device {}", p);
+    log::info("Incoming pairing request for bonded and encrypted device {}", bda);
     if (!is_autonomous_repairing_supported() || !p_device->bond_lost) {
       // Do not remove the device, just proceed with re-pairing.
-      bta_dm_process_remove_device(p);
+      bta_dm_process_remove_device(bda);
     }
   }
 
@@ -2507,7 +2467,7 @@ void btm_io_capabilities_req(RawAddress p) {
   }
 
   tBTM_SP_IO_REQ evt_data;
-  evt_data.bd_addr = p;
+  evt_data.bd_addr = bda;
 
   // TODO(optedoblivion): Inject OOB_DATA_PRESENT Flag
   evt_data.oob_data = BTM_OOB_NONE;
@@ -2611,12 +2571,11 @@ void btm_io_capabilities_req(RawAddress p) {
   if (p_device->sm4 & BTM_SM4_UPGRADE) {
     p_device->sm4 &= ~BTM_SM4_UPGRADE;
 
-    /* link key upgrade: always use SPGB_YES - assuming we want to save the link
-     * key */
+    /* link key upgrade: always use SPGB_YES - assuming we want to save the link key */
     evt_data.auth_req = BTM_AUTH_SPGB_YES;
-  } else if (BtmSecurity::Get().api_.p_sp_callback) {
+  } else {
     /* the callback function implementation may change the IO capability... */
-    (*BtmSecurity::Get().api_.p_sp_callback)(BTM_SP_IO_REQ_EVT, (tBTM_SP_EVT_DATA*)&evt_data);
+    (BtmSecurity::Get().app_->sp_callback)(BTM_SP_IO_REQ_EVT, (tBTM_SP_EVT_DATA*)&evt_data);
   }
 
   if (BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_WE_STARTED_DD) {
@@ -2669,7 +2628,9 @@ void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data) {
    * Do not process this RSP and return, REQ will handle generation of
    * key missing event and disconnect.*/
   if (p_device->sec_rec.is_bonded(BT_TRANSPORT_BR_EDR) &&
-      !p_device->sec_rec.is_device_encrypted()) {
+      !p_device->sec_rec.is_device_encrypted() &&
+      !(com::android::bluetooth::flags::process_iocap_rsp_while_repairing() &&
+        is_autonomous_repairing_supported() && p_device->bond_lost)) {
     log::warn("Incoming bond request, but {} is already bonded (notifying user)", evt_data.bd_addr);
     return;
   }
@@ -2703,9 +2664,7 @@ void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data) {
   p_device->sec_rec.rmt_io_caps = evt_data.io_cap;
   p_device->sec_rec.rmt_auth_req = evt_data.auth_req;
 
-  if (BtmSecurity::Get().api_.p_sp_callback) {
-    (*BtmSecurity::Get().api_.p_sp_callback)(BTM_SP_IO_RSP_EVT, (tBTM_SP_EVT_DATA*)&evt_data);
-  }
+  (BtmSecurity::Get().app_->sp_callback)(BTM_SP_IO_RSP_EVT, (tBTM_SP_EVT_DATA*)&evt_data);
 }
 
 /*******************************************************************************
@@ -2720,20 +2679,17 @@ void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data) {
  * Returns          void
  *
  ******************************************************************************/
-void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, const uint32_t value) {
+void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress& bd_addr, const uint32_t value) {
   tBTM_STATUS status = tBTM_STATUS::BTM_ERR_PROCESSING;
   const BtIoCap local_io_caps = btm_sec_get_local_iocaps();
-  tBTM_SP_EVT_DATA evt_data;
-  RawAddress& p_bda = evt_data.cfm_req.bd_addr;
-  const BtmDevice* p_device;
 
-  p_bda = bda;
-  log::debug("BDA:{}, event:{}, state:{}", p_bda, sp_evt_to_text(event),
+  log::debug("BDA:{}, event:{}, state:{}", bd_addr, sp_evt_to_text(event),
              btm_pair_state_descr(BtmSecurity::Get().pairing_state_));
 
-  p_device = btm_find_dev(p_bda);
+  const BtmDevice* p_device = btm_find_dev(bd_addr);
   if (p_device != NULL && BtmSecurity::Get().pairing_state_ != BTM_PAIR_STATE_IDLE &&
-      BtmSecurity::Get().link_spec_.addrt.bda == p_bda) {
+      BtmSecurity::Get().link_spec_.addrt.bda == bd_addr) {
+    tBTM_SP_EVT_DATA evt_data = {};
     evt_data.cfm_req.bd_addr = p_device->bd_addr;
     evt_data.cfm_req.dev_class = p_device->dev_class;
     log::info("CoD: evt_data.cfm_req.dev_class = {}", dev_class_text(evt_data.cfm_req.dev_class));
@@ -2757,7 +2713,7 @@ void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, const uint32_t
                     "did not receive IO cap response prior to BTM_SP_CFM_REQ_EVT, "
                     "failing pairing request");
             status = tBTM_STATUS::BTM_WRONG_MODE;
-            btm_confirm_req_reply(status, p_bda);
+            btm_confirm_req_reply(status, bd_addr);
             return;
           }
 
@@ -2805,23 +2761,16 @@ void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, const uint32_t
         break;
     }
 
-    if (BtmSecurity::Get().api_.p_sp_callback) {
-      status = (*BtmSecurity::Get().api_.p_sp_callback)(event, &evt_data);
-      if (status != tBTM_STATUS::BTM_NOT_AUTHORIZED) {
-        return;
-      }
-      /* else tBTM_STATUS::BTM_NOT_AUTHORIZED means when the app wants to reject the req
-       * right now */
-    } else if ((event == BTM_SP_CFM_REQ_EVT) && (evt_data.cfm_req.just_works)) {
-      /* automatically reply with just works if no sp_cback */
-      status = tBTM_STATUS::BTM_SUCCESS;
+    if ((BtmSecurity::Get().app_->sp_callback)(event, &evt_data) !=
+        tBTM_STATUS::BTM_NOT_AUTHORIZED) {
+      return;
     }
 
     if (event == BTM_SP_CFM_REQ_EVT) {
       log::verbose("calling btm_confirm_req_reply with status: {}", status);
-      btm_confirm_req_reply(status, p_bda);
+      btm_confirm_req_reply(status, bd_addr);
     } else if (local_io_caps != BtIoCap::NO_INPUT_NO_OUTPUT && event == BTM_SP_KEY_REQ_EVT) {
-      btm_passkey_req_reply(status, p_bda, 0);
+      btm_passkey_req_reply(status, bd_addr, 0);
     }
     return;
   }
@@ -2830,7 +2779,7 @@ void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, const uint32_t
   acl_set_disconnect_reason(HCI_ERR_HOST_REJECT_SECURITY);
 
   if (BTM_SP_CFM_REQ_EVT == event) {
-    btsnd_hcic_user_conf_reply(p_bda, false);
+    btsnd_hcic_user_conf_reply(bd_addr, false);
   } else if (BTM_SP_KEY_NOTIF_EVT == event) {
     /* do nothing -> it very unlikely to happen.
     This event is most likely to be received by a HID host when it first
@@ -2839,13 +2788,13 @@ void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, const uint32_t
     On Mobile platforms, if there's a security process happening,
     the host probably can not initiate another connection.
     BTW (PC) is another story.  */
-    p_device = btm_find_dev(p_bda);
+    p_device = btm_find_dev(bd_addr);
     if (p_device != NULL) {
       btm_sec_disconnect(p_device->hci_handle, HCI_ERR_AUTH_FAILURE,
                          "stack::btm::btm_sec::btm_proc_sp_req_evt Security failure");
     }
   } else if (local_io_caps != BtIoCap::NO_INPUT_NO_OUTPUT) {
-    btsnd_hcic_user_passkey_neg_reply(p_bda);
+    btsnd_hcic_user_passkey_neg_reply(bd_addr);
   }
 }
 
@@ -2859,7 +2808,7 @@ void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, const uint32_t
  * Returns          void
  *
  ******************************************************************************/
-void btm_simple_pair_complete(const RawAddress bd_addr, uint8_t status) {
+void btm_simple_pair_complete(const RawAddress& bd_addr, uint8_t status) {
   BtmDevice* p_device;
   bool disc = false;
 
@@ -2917,34 +2866,31 @@ void btm_simple_pair_complete(const RawAddress bd_addr, uint8_t status) {
  * Returns          void
  *
  ******************************************************************************/
-void btm_rem_oob_req(const RawAddress bd_addr) {
-  tBTM_SP_RMT_OOB evt_data;
-  const BtmDevice* p_device;
-  Octet16 c;
-  Octet16 r;
+void btm_rem_oob_req(const RawAddress& bd_addr) {
+  log::verbose("BDA: {}", bd_addr);
+  const BtmDevice* p_device = btm_find_dev(bd_addr);
 
-  evt_data.bd_addr = bd_addr;
-  RawAddress& p_bda = evt_data.bd_addr;
+  if (p_device != nullptr) {
+    tBTM_SP_RMT_OOB evt_data = {};
 
-  log::verbose("BDA: {}", p_bda);
-  p_device = btm_find_dev(p_bda);
-  if ((p_device != NULL) && BtmSecurity::Get().api_.p_sp_callback) {
+    evt_data.bd_addr = bd_addr;
     evt_data.bd_addr = p_device->bd_addr;
     evt_data.dev_class = p_device->dev_class;
     bd_name_copy(evt_data.bd_name, p_device->sec_bd_name);
 
     BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_WAIT_LOCAL_OOB_RSP);
-    if ((*BtmSecurity::Get().api_.p_sp_callback)(BTM_SP_RMT_OOB_EVT,
-                                                 (tBTM_SP_EVT_DATA*)&evt_data) ==
+    if ((BtmSecurity::Get().app_->sp_callback)(BTM_SP_RMT_OOB_EVT, (tBTM_SP_EVT_DATA*)&evt_data) ==
         tBTM_STATUS::BTM_NOT_AUTHORIZED) {
-      btm_remote_oob_data_reply(static_cast<tBTM_STATUS>(true), p_bda, c, r);
+      Octet16 c;
+      Octet16 r;
+      btm_remote_oob_data_reply(static_cast<tBTM_STATUS>(true), bd_addr, c, r);
     }
     return;
   }
 
   /* something bad. we can only fail this connection */
   acl_set_disconnect_reason(HCI_ERR_HOST_REJECT_SECURITY);
-  btsnd_hcic_rem_oob_neg_reply(p_bda);
+  btsnd_hcic_rem_oob_neg_reply(bd_addr);
 }
 
 /*******************************************************************************
@@ -2959,12 +2905,9 @@ void btm_rem_oob_req(const RawAddress bd_addr) {
  ******************************************************************************/
 void btm_read_local_oob_complete(const tBTM_SP_LOC_OOB evt_data) {
   log::verbose("btm_read_local_oob_complete:{}", evt_data.status);
-
-  if (BtmSecurity::Get().api_.p_sp_callback) {
-    tBTM_SP_EVT_DATA btm_sp_evt_data;
-    btm_sp_evt_data.loc_oob = evt_data;
-    (*BtmSecurity::Get().api_.p_sp_callback)(BTM_SP_LOC_OOB_EVT, &btm_sp_evt_data);
-  }
+  tBTM_SP_EVT_DATA btm_sp_evt_data;
+  btm_sp_evt_data.loc_oob = evt_data;
+  (BtmSecurity::Get().app_->sp_callback)(BTM_SP_LOC_OOB_EVT, &btm_sp_evt_data);
 }
 
 /*******************************************************************************
@@ -3161,14 +3104,12 @@ void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status) {
     return;
   }
 
-  /* Currently we do not notify user if it is a keyboard which connects */
-  /* User probably Disabled the keyboard while it was asleap.  Let them try */
-  if (BtmSecurity::Get().api_.p_auth_complete_callback) {
-    /* report the suthentication status */
-    if ((old_state != BTM_PAIR_STATE_IDLE) || (status != HCI_SUCCESS)) {
-      (*BtmSecurity::Get().api_.p_auth_complete_callback)(p_device->bd_addr, p_device->dev_class,
-                                                          p_device->sec_bd_name, status);
-    }
+  /* Currently we do not notify user if it is a keyboard which connects. */
+  /* User probably disabled the keyboard while it was asleap. Let them try to report the
+   * authentication status */
+  if (old_state != BTM_PAIR_STATE_IDLE || status != HCI_SUCCESS) {
+    (BtmSecurity::Get().app_->auth_complete_callback)(p_device->bd_addr, p_device->sec_bd_name,
+                                                      status);
   }
 
   /* If this is a bonding procedure can disconnect the link now */
@@ -3444,8 +3385,7 @@ void btm_sec_encrypt_change(uint16_t handle, tHCI_STATUS status, uint8_t encr_en
       log::warn("Unable to get link policy role peer:{}", p_device->bd_addr);
     }
 
-    if (com_android_bluetooth_flags_role_switch_after_encryption() &&
-        p_device->role_switch_pending != BtmDevice::RoleSwitchPending::kNone &&
+    if (p_device->role_switch_pending != BtmDevice::RoleSwitchPending::kNone &&
         role == HCI_ROLE_PERIPHERAL) {
       if (btm_sec_use_smp_br_chnl(p_device)) {
         /* Role switch request might prevent remote central device from initiating CTKD */
@@ -3829,8 +3769,7 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle, tHCI_STATUS statu
       NotifyBondingChange(*p_device, status);
     }
 
-    /* p_auth_complete_callback might have freed the p_device, ensure it exists
-     * before accessing */
+    /* auth_complete_callback might have freed the p_device, ensure it exists before accessing */
     p_device = btm_get_dev(bda);
     if (!p_device) {
       /* Don't callback when device security record was removed */
@@ -3979,6 +3918,11 @@ void btm_sec_disconnected(uint16_t handle, tHCI_REASON reason, std::string comme
     }
   }
 
+  // Reset link key request timer currently pairing device disconnected
+  if (BtmSecurity::Get().link_spec_.addrt.bda == p_device->bd_addr) {
+    BtmSecurity::Get().ResetLinkKeyRequestTimer();
+  }
+
   /* If we are in the process of bonding we need to tell client that auth failed
    */
   const uint8_t old_pairing_flags = BtmSecurity::Get().pairing_flags_;
@@ -4005,8 +3949,7 @@ void btm_sec_disconnected(uint16_t handle, tHCI_REASON reason, std::string comme
 
     p_device = btm_get_dev_by_handle(handle);
     if (p_device == nullptr) {
-      // |BtmSecurity::Get().api_.p_auth_complete_callback| may cause |p_device| to be
-      // deallocated.
+      // |BtmSecurity::Get().app_->auth_complete_callback| may cause |p_device| to be deallocated.
       log::warn("Device record was deallocated after user callback");
       return;
     }
@@ -4182,6 +4125,7 @@ void btm_sec_link_key_notification(const RawAddress& bda, const Octet16& link_ke
       (key_type <= BTM_LTK_DERIVED_LKEY_OFFSET + BTM_LKEY_TYPE_AUTH_COMB_P_256)) {
     ctkd = true;
     key_type -= BTM_LTK_DERIVED_LKEY_OFFSET;
+    btm_sec_link_key_request_reply(bda, link_key);
   }
 
   /* If connection was made to do bonding restore link security if changed */
@@ -4219,13 +4163,11 @@ void btm_sec_link_key_notification(const RawAddress& bda, const Octet16& link_ke
 
   /* Always save derived LTK */
   if (ctkd) {
-    if (BtmSecurity::Get().api_.p_link_key_callback) {
-      p_device->sec_rec.pairing_algorithm = PairingAlgorithm::SC;  // for CTKD
-      log::verbose("Save LTK derived LK (key_type = {})", p_device->sec_rec.link_key_type);
-      (*BtmSecurity::Get().api_.p_link_key_callback)(
-              bda, p_device->dev_class, p_device->sec_bd_name, link_key,
-              p_device->sec_rec.link_key_type, true /* ctkd */);
-    }
+    p_device->sec_rec.pairing_algorithm = PairingAlgorithm::SC;  // for CTKD
+    log::verbose("Save LTK derived LK (key_type = {})", p_device->sec_rec.link_key_type);
+    (BtmSecurity::Get().app_->link_key_callback)(bda, p_device->sec_bd_name, link_key,
+                                                 p_device->sec_rec.link_key_type, true /* ctkd */);
+
   } else {
     if ((p_device->sec_rec.link_key_type == BTM_LKEY_TYPE_UNAUTH_COMB_P_256) ||
         (p_device->sec_rec.link_key_type == BTM_LKEY_TYPE_AUTH_COMB_P_256)) {
@@ -4263,20 +4205,54 @@ void btm_sec_link_key_notification(const RawAddress& bda, const Octet16& link_ke
     return;
   }
 
-  if (BtmSecurity::Get().api_.p_link_key_callback) {
-    if (ctkd) {
-      log::verbose(
-              "btm_sec_link_key_notification()  LTK derived LK is saved already "
-              "(key_type = {})",
-              p_device->sec_rec.link_key_type);
+  if (ctkd) {
+    log::verbose(
+            "btm_sec_link_key_notification()  LTK derived LK is saved already "
+            "(key_type = {})",
+            p_device->sec_rec.link_key_type);
 
-      return;
-    }
-
-    (*BtmSecurity::Get().api_.p_link_key_callback)(bda, p_device->dev_class, p_device->sec_bd_name,
-                                                   link_key, p_device->sec_rec.link_key_type,
-                                                   false /* ctkd */);
+    return;
   }
+
+  (BtmSecurity::Get().app_->link_key_callback)(bda, p_device->sec_bd_name, link_key,
+                                               p_device->sec_rec.link_key_type, false /* ctkd */);
+}
+
+/*******************************************************************************
+ *
+ * Function         btm_sec_lk_req_timeout
+ *
+ * Description      This function is called when link key request timer expires
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+static void btm_sec_lk_req_timeout(void* /* data */) {
+  BtmSecurity::Get().ResetLinkKeyRequestTimer();
+
+  const RawAddress& bd_addr = BtmSecurity::Get().link_spec_.addrt.bda;
+  if (bd_addr.IsEmpty() || bd_addr == RawAddress::kAny) {
+    log::error("No ongoing pairing, aborting link key request timer");
+    return;
+  }
+
+  const BtmDevice* p_device = btm_find_dev(bd_addr);
+  if (p_device == nullptr) {
+    log::error("No device found for {}", bd_addr);
+    return;
+  }
+
+  // BtmSecurity::link_spec_ may have the pseudo address. If LE pairing concluded successfully,
+  // BtmDevice.bd_addr should have the identity address which is what we should use with the HCI
+  // commands here.
+  if (p_device->sec_rec.sec_flags & BTM_SEC_LINK_KEY_KNOWN) {
+    log::warn("Sending link key reply for {} due to timeout", p_device->bd_addr);
+    btsnd_hcic_link_key_req_reply(p_device->bd_addr, p_device->sec_rec.link_key);
+    return;
+  }
+
+  log::warn("Sending link key negative reply for {} due to timeout", p_device->bd_addr);
+  btsnd_hcic_link_key_neg_reply(p_device->bd_addr);
 }
 
 /*******************************************************************************
@@ -4285,10 +4261,10 @@ void btm_sec_link_key_notification(const RawAddress& bda, const Octet16& link_ke
  *
  * Description      This function is called when controller requests link key
  *
- * Returns          Pointer to the record or NULL
+ * Returns          void
  *
  ******************************************************************************/
-void btm_sec_link_key_request(const RawAddress bda) {
+void btm_sec_link_key_request(const RawAddress& bda) {
   BtmDevice* p_device = btm_find_or_alloc_dev(bda);
 
   if (p_device == nullptr) {
@@ -4301,16 +4277,16 @@ void btm_sec_link_key_request(const RawAddress bda) {
     p_device->sec_rec.classic_link = tSECURITY_STATE::AUTHENTICATING;
   }
 
-  if ((BtmSecurity::Get().pairing_state_ == BTM_PAIR_STATE_WAIT_PIN_REQ) &&
-      (BtmSecurity::Get().collision_start_time_ != 0) &&
-      (BtmSecurity::Get().p_collided_dev_ && BtmSecurity::Get().p_collided_dev_->bd_addr == bda)) {
-    log::verbose(
-            "btm_sec_link_key_request() rejecting link key req State: {} "
-            "START_TIMEOUT : {}",
-            BtmSecurity::Get().pairing_state_, BtmSecurity::Get().collision_start_time_);
+  BtmSecurity& btm_security = BtmSecurity::Get();
+  if (btm_security.pairing_state_ == BTM_PAIR_STATE_WAIT_PIN_REQ &&
+      btm_security.collision_start_time_ != 0 && btm_security.p_collided_dev_ &&
+      btm_security.p_collided_dev_->bd_addr == bda) {
+    log::verbose("Rejecting link key req State: {} Collision start time: {}",
+                 BtmSecurity::Get().pairing_state_, BtmSecurity::Get().collision_start_time_);
     btsnd_hcic_link_key_neg_reply(bda);
     return;
   }
+
   if (p_device->sec_rec.sec_flags & BTM_SEC_LINK_KEY_KNOWN) {
     btsnd_hcic_link_key_req_reply(bda, p_device->sec_rec.link_key);
     return;
@@ -4319,8 +4295,33 @@ void btm_sec_link_key_request(const RawAddress bda) {
   /* Notify L2CAP to increase timeout */
   l2c_pin_code_request(bda);
 
+  // While pairing with a device over LE, it is possible that the local SMP has not completed
+  // generating the link key yet but the remote device has. This can happen due to delay in
+  // transmission of SMP key distribution packets.
+  // In that case, the remote device may request BR/EDR authentication request before the link key
+  // is available here.
+  if (com_android_bluetooth_flags_link_key_request_timer() &&
+      btm_security.link_spec_.addrt.bda == bda &&
+      btm_security.link_spec_.transport == BT_TRANSPORT_LE &&
+      btm_security.lk_req_timer_ == nullptr) {
+    log::debug("Waiting for CTKD to complete for device: {}", bda);
+    btm_security.lk_req_timer_ = alarm_new("btm_sec_lk_req_timer");
+    alarm_set_on_mloop(btm_security.lk_req_timer_, BTM_SEC_LK_REQ_TIMEOUT_MS,
+                       btm_sec_lk_req_timeout, nullptr);
+  }
+
   /* The link key is not in the database and it is not known to the manager */
   btsnd_hcic_link_key_neg_reply(bda);
+}
+
+static void btm_sec_link_key_request_reply(const RawAddress& bda, const LinkKey& link_key) {
+  if (!BtmSecurity::Get().ResetLinkKeyRequestTimer()) {
+    // No one is waiting for the link key reply, so we can return
+    return;
+  }
+
+  log::verbose("bda: {}", bda);
+  btsnd_hcic_link_key_req_reply(bda, link_key);
 }
 
 /*******************************************************************************
@@ -4330,13 +4331,22 @@ void btm_sec_link_key_request(const RawAddress bda) {
  * Description      This function is called when host does not provide PIN
  *                  within requested time
  *
- * Returns          Pointer to the TLE struct
+ * Returns          void
  *
  ******************************************************************************/
 static void btm_sec_pairing_timeout(void* /* data */) {
   log::warn("State: {} Flags: {} Device: {}",
             btm_pair_state_descr(BtmSecurity::Get().pairing_state_),
             BtmSecurity::Get().pairing_flags_, BtmSecurity::Get().link_spec_);
+
+  bluetooth::metrics::LogBluetoothEvent(BtmSecurity::Get().link_spec_.addrt.bda,
+                                        bluetooth::metrics::EventType::BONDING,
+                                        bluetooth::metrics::State::TIMEOUT);
+
+  if (is_autonomous_repairing_supported() &&
+      btm_is_bond_lost(BtmSecurity::Get().link_spec_.addrt.bda)) {
+    bluetooth::metrics::Counter(bluetooth::metrics::CounterKey::BOND_REPAIR_LOCAL_TIMEOUT);
+  }
 
   const BtIoCap local_io_caps = btm_sec_get_local_iocaps();
   BtmDevice* p_device = btm_get_dev(BtmSecurity::Get().link_spec_.addrt.bda);
@@ -4354,16 +4364,14 @@ static void btm_sec_pairing_timeout(void* /* data */) {
       }
       BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_IDLE);
       /* We need to notify the UI that no longer need the PIN */
-      if (BtmSecurity::Get().api_.p_auth_complete_callback) {
-        if (p_device == nullptr) {
-          BD_NAME name = {};
-          (*BtmSecurity::Get().api_.p_auth_complete_callback)(
-                  BtmSecurity::Get().link_spec_.addrt.bda, kDevClassEmpty, name,
-                  HCI_ERR_CONNECTION_TOUT);
-        } else {
-          NotifyBondingChange(*p_device, HCI_ERR_CONNECTION_TOUT);
-        }
+      if (p_device == nullptr) {
+        BD_NAME name = {};
+        (BtmSecurity::Get().app_->auth_complete_callback)(BtmSecurity::Get().link_spec_.addrt.bda,
+                                                          name, HCI_ERR_CONNECTION_TOUT);
+      } else {
+        NotifyBondingChange(*p_device, HCI_ERR_CONNECTION_TOUT);
       }
+
       break;
 
     case BTM_PAIR_STATE_WAIT_NUMERIC_CONFIRM:
@@ -4409,8 +4417,7 @@ static void btm_sec_pairing_timeout(void* /* data */) {
       break;
 
     case BTM_PAIR_STATE_WAIT_AUTH_COMPLETE:
-      if (com_android_bluetooth_flags_passkey_entry_pairing_approval() &&
-          (BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_LE_ACTIVE)) {
+      if (BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_LE_ACTIVE) {
         SMP_PairCancel(BtmSecurity::Get().link_spec_.addrt.bda);
       }
       ABSL_FALLTHROUGH_INTENDED;
@@ -4418,15 +4425,12 @@ static void btm_sec_pairing_timeout(void* /* data */) {
       /* We need to notify the UI that timeout has happened while waiting for
        * authentication*/
       BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_IDLE);
-      if (BtmSecurity::Get().api_.p_auth_complete_callback) {
-        if (p_device == nullptr) {
-          BD_NAME name = {};
-          (*BtmSecurity::Get().api_.p_auth_complete_callback)(
-                  BtmSecurity::Get().link_spec_.addrt.bda, kDevClassEmpty, name,
-                  HCI_ERR_CONNECTION_TOUT);
-        } else {
-          NotifyBondingChange(*p_device, HCI_ERR_CONNECTION_TOUT);
-        }
+      if (p_device == nullptr) {
+        BD_NAME name = {};
+        (BtmSecurity::Get().app_->auth_complete_callback)(BtmSecurity::Get().link_spec_.addrt.bda,
+                                                          name, HCI_ERR_CONNECTION_TOUT);
+      } else {
+        NotifyBondingChange(*p_device, HCI_ERR_CONNECTION_TOUT);
       }
       break;
 
@@ -4443,53 +4447,50 @@ static void btm_sec_pairing_timeout(void* /* data */) {
  *
  * Description      This function is called when controller requests PIN code
  *
- * Returns          Pointer to the record or NULL
+ * Returns          void
  *
  ******************************************************************************/
-void btm_sec_pin_code_request(const RawAddress p_bda) {
-  BtmDevice* p_device;
-
+void btm_sec_pin_code_request(const RawAddress& bda) {
   /* Tell L2CAP that there was a PIN code request,  */
   /* it may need to stretch timeouts                */
-  l2c_pin_code_request(p_bda);
+  l2c_pin_code_request(bda);
 
-  log::debug("Controller requests PIN code device:{} state:{}", p_bda,
+  log::debug("Controller requests PIN code device:{} state:{}", bda,
              btm_pair_state_descr(BtmSecurity::Get().pairing_state_));
 
   RawAddress local_bd_addr =
           bluetooth::ToRawAddress(bluetooth::shim::GetController()->GetMacAddress());
-  if (p_bda == local_bd_addr) {
-    btsnd_hcic_pin_code_neg_reply(p_bda);
+  if (bda == local_bd_addr) {
+    btsnd_hcic_pin_code_neg_reply(bda);
     return;
   }
 
   if (BtmSecurity::Get().pairing_state_ != BTM_PAIR_STATE_IDLE) {
-    if (p_bda == BtmSecurity::Get().link_spec_.addrt.bda &&
+    if (bda == BtmSecurity::Get().link_spec_.addrt.bda &&
         BtmSecurity::Get().pairing_state_ == BTM_PAIR_STATE_WAIT_AUTH_COMPLETE) {
-      btsnd_hcic_pin_code_neg_reply(p_bda);
+      btsnd_hcic_pin_code_neg_reply(bda);
       return;
     } else if (BtmSecurity::Get().pairing_state_ != BTM_PAIR_STATE_WAIT_PIN_REQ ||
-               p_bda != BtmSecurity::Get().link_spec_.addrt.bda) {
-      log::warn("btm_sec_pin_code_request() rejected - state: {}",
-                btm_pair_state_descr(BtmSecurity::Get().pairing_state_));
-      btsnd_hcic_pin_code_neg_reply(p_bda);
+               bda != BtmSecurity::Get().link_spec_.addrt.bda) {
+      log::warn("Rejected - state: {}", btm_pair_state_descr(BtmSecurity::Get().pairing_state_));
+      btsnd_hcic_pin_code_neg_reply(bda);
       return;
     }
   }
 
-  p_device = btm_find_or_alloc_dev(p_bda);
-
+  BtmDevice* p_device = btm_find_or_alloc_dev(bda);
   if (p_device == nullptr) {
     log::error("No memory to allocate new p_device");
     return;
   }
+
   if (p_device->sec_rec.is_bonded(BT_TRANSPORT_BR_EDR) &&
       !p_device->sec_rec.is_device_encrypted() &&
-      com::android::bluetooth::flags::detect_bondloss_legacy_bredr_pairing()) {
+      com_android_bluetooth_flags_detect_bondloss_legacy_bredr_pairing()) {
     log::warn(
             "Remote device is already bonded but it is initiating legacy pairing, marking bond "
             "as lost");
-    btsnd_hcic_pin_code_neg_reply(p_bda);
+    btsnd_hcic_pin_code_neg_reply(bda);
     btm_sec_report_bond_loss(p_device, BT_TRANSPORT_BR_EDR, BTM_KEY_MISSING_BREDR_INCOMING_PAIRING);
     return;
   }
@@ -4499,7 +4500,7 @@ void btm_sec_pin_code_request(const RawAddress p_bda) {
   p_device->sec_rec.pairing_algorithm = PairingAlgorithm::BREDR_LEGACY;
 
   if (BtmSecurity::Get().pairing_state_ == BTM_PAIR_STATE_IDLE) {
-    BtmSecurity::Get().link_spec_.addrt.bda = p_bda;
+    BtmSecurity::Get().link_spec_.addrt.bda = bda;
     BtmSecurity::Get().link_spec_.transport = BT_TRANSPORT_BR_EDR;
 
     BtmSecurity::Get().pairing_flags_ = BTM_PAIR_FLAGS_PEER_STARTED_DD;
@@ -4507,15 +4508,15 @@ void btm_sec_pin_code_request(const RawAddress p_bda) {
 
   if (!com_android_bluetooth_flags_local_pin_key_type() && !BtmSecurity::Get().pairing_disabled_ &&
       (BtmSecurity::Get().cfg_.pin_type == HCI_PIN_TYPE_FIXED)) {
-    log::verbose("btm_sec_pin_code_request fixed pin replying");
+    log::verbose("Fixed pin replying");
     BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_WAIT_AUTH_COMPLETE);
-    btsnd_hcic_pin_code_req_reply(p_bda, BtmSecurity::Get().cfg_.pin_code_len,
+    btsnd_hcic_pin_code_req_reply(bda, BtmSecurity::Get().cfg_.pin_code_len,
                                   BtmSecurity::Get().cfg_.pin_code);
     return;
   }
 
   /* Use the connecting device's CoD for the connection */
-  if ((p_bda == BtmSecurity::Get().connecting_bda_) &&
+  if ((bda == BtmSecurity::Get().connecting_bda_) &&
       (BtmSecurity::Get().connecting_dc_ != kDevClassEmpty)) {
     log::info("CoD: previous value {}, replaced with {}", dev_class_text(p_device->dev_class),
               dev_class_text(BtmSecurity::Get().connecting_dc_));
@@ -4525,8 +4526,8 @@ void btm_sec_pin_code_request(const RawAddress p_bda) {
   /* We could have started connection after asking user for the PIN code */
   if (!com_android_bluetooth_flags_security_mode_3_pairing() &&
       BtmSecurity::Get().pin_code_len_ != 0) {
-    log::verbose("btm_sec_pin_code_request bonding sending reply");
-    btsnd_hcic_pin_code_req_reply(p_bda, BtmSecurity::Get().pin_code_len_,
+    log::verbose("Sending reply");
+    btsnd_hcic_pin_code_req_reply(bda, BtmSecurity::Get().pin_code_len_,
                                   BtmSecurity::Get().pin_code_);
 
     /* Mark that we forwarded received from the user PIN code */
@@ -4539,7 +4540,6 @@ void btm_sec_pin_code_request(const RawAddress p_bda) {
 
     BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_WAIT_AUTH_COMPLETE);
   } else if (BtmSecurity::Get().pairing_disabled_ ||
-             (BtmSecurity::Get().api_.p_pin_callback == NULL) ||
              (!p_device->IsLocallyInitiated() &&
               ((p_device->dev_class[1] & BTM_COD_MAJOR_CLASS_MASK) == BTM_COD_MAJOR_PERIPHERAL) &&
               (p_device->dev_class[2] & BTM_COD_MINOR_KEYBOARD))) {
@@ -4548,18 +4548,15 @@ void btm_sec_pin_code_request(const RawAddress p_bda) {
      * OR we could not allocate entry in the database reject pairing request
      * OR Microsoft keyboard can for some reason try to establish connection the only thing we can
      *    do here is to shut it up. Normally we will be originator for keyboard bonding */
-    log::warn(
-            "btm_sec_pin_code_request(): Pairing disabled:{}; PIN callback:{}, Dev "
-            "Rec:{}!",
-            BtmSecurity::Get().pairing_disabled_,
-            std::format_ptr(BtmSecurity::Get().api_.p_pin_callback), std::format_ptr(p_device));
+    log::warn("Pairing disabled:{}; Dev Rec:{}!", BtmSecurity::Get().pairing_disabled_,
+              std::format_ptr(p_device));
 
-    btsnd_hcic_pin_code_neg_reply(p_bda);
+    btsnd_hcic_pin_code_neg_reply(bda);
   } else {
     /* Notify upper layer of PIN request and start expiration timer */
     BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_WAIT_LOCAL_PIN);
     /* Pin code request can not come at the same time as connection request */
-    BtmSecurity::Get().connecting_bda_ = p_bda;
+    BtmSecurity::Get().connecting_bda_ = bda;
     BtmSecurity::Get().connecting_dc_ = p_device->dev_class;
 
     /* Check if the name is known */
@@ -4569,17 +4566,16 @@ void btm_sec_pin_code_request(const RawAddress p_bda) {
     /* Also cannot send remote name request while paging, i.e. connection is not
      * completed */
     if (p_device->sec_rec.sec_flags & BTM_SEC_NAME_KNOWN) {
-      log::verbose("btm_sec_pin_code_request going for callback");
+      log::verbose("Going for callback");
 
       BtmSecurity::Get().pairing_flags_ |= BTM_PAIR_FLAGS_PIN_REQD;
-      if (BtmSecurity::Get().api_.p_pin_callback) {
-        (*BtmSecurity::Get().api_.p_pin_callback)(
-                p_bda, p_device->dev_class, p_device->sec_bd_name,
-                p_device->sec_rec.required_security_flags_for_pairing& BTM_SEC_IN_MIN_16_DIGIT_PIN,
-                p_device->sec_rec.pairing_algorithm);
-      }
+      (BtmSecurity::Get().app_->pin_callback)(
+              bda, p_device->dev_class, p_device->sec_bd_name,
+              p_device->sec_rec.required_security_flags_for_pairing & BTM_SEC_IN_MIN_16_DIGIT_PIN,
+              p_device->sec_rec.pairing_algorithm);
+
     } else {
-      log::verbose("btm_sec_pin_code_request going for remote name");
+      log::verbose("Going for remote name");
 
       /* We received PIN code request for the device with unknown name */
       /* it is not user friendly just to ask for the PIN without name */
@@ -4867,7 +4863,7 @@ static void btm_sec_auth_timer_timeout(RawAddress bd_addr) {
  * Description      Encryption could not start because of the collision
  *                  try to do it again
  *
- * Returns          Pointer to the TLE struct
+ * Returns          void
  *
  ******************************************************************************/
 static void btm_sec_collision_timeout(void* /* data */) {
@@ -4893,11 +4889,9 @@ static void btm_sec_collision_timeout(void* /* data */) {
  *
  ******************************************************************************/
 static void btm_send_link_key_notif(BtmDevice* p_device) {
-  if (BtmSecurity::Get().api_.p_link_key_callback) {
-    (*BtmSecurity::Get().api_.p_link_key_callback)(
-            p_device->bd_addr, p_device->dev_class, p_device->sec_bd_name,
-            p_device->sec_rec.link_key, p_device->sec_rec.link_key_type, false);
-  }
+  (BtmSecurity::Get().app_->link_key_callback)(p_device->bd_addr, p_device->sec_bd_name,
+                                               p_device->sec_rec.link_key,
+                                               p_device->sec_rec.link_key_type, false);
 }
 
 /*******************************************************************************
@@ -4955,6 +4949,7 @@ void BtmSecurity::change_pairing_state(tBTM_PAIRING_STATE new_state) {
 
     btm_restore_mode();
     btm_sec_check_pending_reqs();
+    BtmSecurity::Get().ResetLinkKeyRequestTimer();
 
     link_spec_ = {};
     link_spec_.addrt.bda = RawAddress::kAny;
@@ -5079,14 +5074,13 @@ static bool btm_sec_check_prefetch_pin(BtmDevice* p_device) {
   }
 
   /* Pin was not supplied - pre-fetch pin code now */
-  if (BtmSecurity::Get().api_.p_pin_callback != nullptr &&
-      ((BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_PIN_REQD) == 0)) {
+  if ((BtmSecurity::Get().pairing_flags_ & BTM_PAIR_FLAGS_PIN_REQD) == 0) {
     log::verbose("PIN code callback called");
     if (get_btm_client_interface().peer.BTM_IsAclConnectionUp(p_device->bd_addr,
                                                               BT_TRANSPORT_BR_EDR)) {
       BtmSecurity::Get().pairing_flags_ |= BTM_PAIR_FLAGS_PIN_REQD;
     }
-    (BtmSecurity::Get().api_.p_pin_callback)(
+    (BtmSecurity::Get().app_->pin_callback)(
             p_device->bd_addr, p_device->dev_class, p_device->sec_bd_name,
             p_device->sec_rec.required_security_flags_for_pairing & BTM_SEC_IN_MIN_16_DIGIT_PIN,
             p_device->sec_rec.pairing_algorithm);
@@ -5391,8 +5385,6 @@ void btm_update_bond_lost(const RawAddress& bd_addr, bool bond_lost) {
 
 uint8_t btm_sec_get_min_enc_key_size() {
   static uint8_t min_key_size = (uint8_t)std::min(
-          std::max(android::sysprop::bluetooth::Gap::min_key_size().value_or(MIN_KEY_SIZE_DEFAULT),
-                   MIN_KEY_SIZE),
-          MAX_KEY_SIZE);
+          std::max(android::sysprop::bluetooth::Gap::min_key_size(), MIN_KEY_SIZE), MAX_KEY_SIZE);
   return min_key_size;
 }

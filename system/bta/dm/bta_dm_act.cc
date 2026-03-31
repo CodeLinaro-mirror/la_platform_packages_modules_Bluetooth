@@ -73,15 +73,13 @@
 #include "stack/include/gatt_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
+#include "stack/include/stack_le_connection.h"
 #include "osi/include/osi.h"
+#include "device/include/interop.h"
+#include "device/include/interop_config.h"
 
 using bluetooth::Uuid;
 using namespace bluetooth;
-
-static bool ble_vnd_is_included() {
-  // replace build time config BLE_VND_INCLUDED with runtime
-  return android::sysprop::bluetooth::Ble::vnd_included().value_or(true);
-}
 
 static void bta_dm_check_av();
 
@@ -259,11 +257,11 @@ void BTA_dm_on_hw_on(const std::string local_name) {
   btif_dm_get_ble_local_keys(&key_mask, &er, &id_key);
 
   if (key_mask & BTA_BLE_LOCAL_KEY_TYPE_ER) {
-    get_btm_client_interface().security.BTM_BleLoadLocalKeys(BTA_BLE_LOCAL_KEY_TYPE_ER,
+    get_security_client_interface().BTM_BleLoadLocalKeys(BTA_BLE_LOCAL_KEY_TYPE_ER,
                                                              (tBTM_BLE_LOCAL_KEYS*)&er);
   }
   if (key_mask & BTA_BLE_LOCAL_KEY_TYPE_ID) {
-    get_btm_client_interface().security.BTM_BleLoadLocalKeys(BTA_BLE_LOCAL_KEY_TYPE_ID,
+    get_security_client_interface().BTM_BleLoadLocalKeys(BTA_BLE_LOCAL_KEY_TYPE_ID,
                                                              (tBTM_BLE_LOCAL_KEYS*)&id_key);
   }
 
@@ -275,7 +273,7 @@ void BTA_dm_on_hw_on(const std::string local_name) {
 
   get_btm_client_interface().vendor.BTM_ReadVendorAddOnFeatures();
 
-  if (ble_vnd_is_included()) {
+  if (android::sysprop::bluetooth::Ble::vnd_included()) {
     get_btm_client_interface().ble.BTM_BleReadControllerFeatures(
             bta_dm_ctrl_features_rd_cmpl_cback);
   } else {
@@ -363,8 +361,7 @@ void bta_dm_disable() {
   if (BTM_GetNumAclLinks() == 0) {
     // Time to wait after receiving shutdown request to delay the actual
     // shutdown process. This time may be zero which invokes immediate shutdown.
-    const uint64_t disable_delay_ms =
-            android::sysprop::bluetooth::Bta::disable_delay().value_or(200);
+    const uint64_t disable_delay_ms = android::sysprop::bluetooth::Bta::disable_delay_ms();
     switch (disable_delay_ms) {
       case 0:
         log::debug("Immediately disabling device manager");
@@ -477,7 +474,7 @@ void bta_dm_process_remove_device_no_callback(const RawAddress& bd_addr) {
   // need to remove all pending background connection before unpair
   bta_dm_disc_gatt_cancel_open(bd_addr);
 
-  get_btm_client_interface().security.BTM_SecDeleteDevice(bd_addr);
+  get_security_client_interface().BTM_SecDeleteDevice(bd_addr);
 
   // remove all cached GATT information
   bta_dm_disc_gatt_refresh(bd_addr);
@@ -503,16 +500,18 @@ void bta_dm_remove_device(const RawAddress& target) {
     log::warn("{} already getting removed", target);
     return;
   }
-
   conn_info = bta_dm_get_conn_info(target);
   const RawAddress& pseudo_addr = conn_info.pseudo_addr;
   const RawAddress& identity_addr = conn_info.identity_addr;
   bool& le_connected = conn_info.le_connected;
   bool& bredr_connected = conn_info.bredr_connected;
 
+  interop_database_remove_addr(INTEROP_DYNAMIC_ROLE_SWITCH, identity_addr);
+
   // Remove from LE allowlist
-  if (!GATT_CancelConnect(0, pseudo_addr, false)) {
-    if (identity_addr != pseudo_addr && !GATT_CancelConnect(0, identity_addr, false)) {
+  if (!stack::leConnectionCancelConnect(0, pseudo_addr, false)) {
+    if (identity_addr != pseudo_addr &&
+        !stack::leConnectionCancelConnect(0, identity_addr, false)) {
       log::warn("Unable to cancel GATT connect peer:{}", pseudo_addr);
     }
   }
@@ -1049,9 +1048,9 @@ static void bta_dm_adjust_roles() {
       continue;
     }
 
-    // If there is only one connection, switch roles is not needed unless central role is
+    // If there is no connections, switch roles is not needed unless central role is
     // preferred
-    if (link.pref_role != BTA_CENTRAL_ROLE_ONLY && link_db.count <= 1) {
+    if (link.pref_role != BTA_CENTRAL_ROLE_ONLY && link_db.count < 1) {
       continue;
     }
 
@@ -1216,7 +1215,8 @@ static void bta_dm_set_eir(char* local_name) {
       for (custom_uuid_idx = 0; custom_uuid_idx < BTA_EIR_SERVER_NUM_CUSTOM_UUID;
            custom_uuid_idx++) {
         const Uuid& curr = bta_dm_cb.bta_custom_uuid[custom_uuid_idx].custom_uuid;
-        if (curr.GetShortestRepresentationSize() == Uuid::kNumBytes16) {
+        if (bta_dm_cb.bta_custom_uuid[custom_uuid_idx].handle != 0 && curr.IsValid() &&
+            curr.GetShortestRepresentationSize() == Uuid::kNumBytes16) {
           if (num_uuid < max_num_uuid) {
             UINT16_TO_STREAM(p, curr.As16Bit());
             num_uuid++;
@@ -1247,7 +1247,8 @@ static void bta_dm_set_eir(char* local_name) {
 
     for (custom_uuid_idx = 0; custom_uuid_idx < BTA_EIR_SERVER_NUM_CUSTOM_UUID; custom_uuid_idx++) {
       const Uuid& curr = bta_dm_cb.bta_custom_uuid[custom_uuid_idx].custom_uuid;
-      if (curr.GetShortestRepresentationSize() == Uuid::kNumBytes32) {
+      if (bta_dm_cb.bta_custom_uuid[custom_uuid_idx].handle != 0 && curr.IsValid() &&
+          curr.GetShortestRepresentationSize() == Uuid::kNumBytes32) {
         if (num_uuid < max_num_uuid) {
           UINT32_TO_STREAM(p, curr.As32Bit());
           num_uuid++;
@@ -1275,7 +1276,8 @@ static void bta_dm_set_eir(char* local_name) {
 
     for (custom_uuid_idx = 0; custom_uuid_idx < BTA_EIR_SERVER_NUM_CUSTOM_UUID; custom_uuid_idx++) {
       const Uuid& curr = bta_dm_cb.bta_custom_uuid[custom_uuid_idx].custom_uuid;
-      if (curr.GetShortestRepresentationSize() == Uuid::kNumBytes128) {
+      if (bta_dm_cb.bta_custom_uuid[custom_uuid_idx].handle != 0 && curr.IsValid() &&
+          curr.GetShortestRepresentationSize() == Uuid::kNumBytes128) {
         if (num_uuid < max_num_uuid) {
           ARRAY16_TO_STREAM(p, curr.To128BitBE().data());
           num_uuid++;
@@ -1531,30 +1533,6 @@ bool bta_dm_check_if_only_hd_connected(const RawAddress& peer_addr) {
   }
 
   return true;
-}
-
-/** This function set the preferred connection parameters */
-void bta_dm_ble_set_conn_params(const RawAddress& bd_addr, uint16_t conn_int_min,
-                                uint16_t conn_int_max, uint16_t peripheral_latency,
-                                uint16_t supervision_tout) {
-  stack::l2cap::get_interface().L2CA_AdjustConnectionIntervals(&conn_int_min, &conn_int_max,
-                                                               BTM_BLE_CONN_INT_MIN);
-
-  get_btm_client_interface().ble.BTM_BleSetPrefConnParams(bd_addr, conn_int_min, conn_int_max,
-                                                          peripheral_latency, supervision_tout);
-}
-
-/** This function update LE connection parameters */
-void bta_dm_ble_update_conn_params(const RawAddress& bd_addr, uint16_t min_int, uint16_t max_int,
-                                   uint16_t latency, uint16_t timeout, uint16_t min_ce_len,
-                                   uint16_t max_ce_len) {
-  stack::l2cap::get_interface().L2CA_AdjustConnectionIntervals(&min_int, &max_int,
-                                                               BTM_BLE_CONN_INT_MIN);
-
-  if (!stack::l2cap::get_interface().L2CA_UpdateBleConnParams(bd_addr, min_int, max_int, latency,
-                                                              timeout, min_ce_len, max_ce_len)) {
-    log::error("Update connection parameters failed!");
-  }
 }
 
 /** This function set the maximum transmission packet size */
@@ -1862,25 +1840,6 @@ static void bta_dm_ctrl_features_rd_cmpl_cback(tHCI_STATUS result) {
   }
 }
 
-/*******************************************************************************
- *
- * Function         bta_dm_ble_subrate_request
- *
- * Description      This function requests BLE subrate procedure.
- *
- * Parameters:
- *
- ******************************************************************************/
-void bta_dm_ble_subrate_request(const RawAddress& bd_addr, uint16_t subrate_min,
-                                uint16_t subrate_max, uint16_t max_latency, uint16_t cont_num,
-                                uint16_t timeout) {
-  // Logging done in l2c_ble.cc
-  if (!stack::l2cap::get_interface().L2CA_SubrateRequest(bd_addr, subrate_min, subrate_max,
-                                                         max_latency, cont_num, timeout)) {
-    log::warn("Unable to set L2CAP ble subrating peer:{}", bd_addr);
-  }
-}
-
 void bta_dm_disable_timer_cback(void* data) {
   uint8_t i;
   tBT_TRANSPORT transport = BT_TRANSPORT_BR_EDR;
@@ -1921,7 +1880,6 @@ void bta_dm_bredr_startup() {
     }
   }
 }
-
 namespace bluetooth {
 namespace legacy {
 namespace testing {

@@ -27,7 +27,7 @@
 #include <cstdint>
 
 #include "bt_status.h"
-#include "a2dp_constants.h"
+#include "stack/include/a2dp_constants.h"
 #include "stack/include/avdtc_api.h"
 #include "test/common/mock_functions.h"
 

@@ -100,6 +100,7 @@
 #include "hci/hci_layer.h"
 #include "os/handler.h"
 #include "stack/include/btm_ble_api.h"
+#include "stack/include/stack_le_connection.h"
 #include "bluetooth/types/address.h"
 #include "gd/hci/controller.h"
 #include <array>
@@ -256,7 +257,7 @@ static void ble_set_phy_wrapper(RawAddress address, uint16_t handle, uint8_t all
                                 uint8_t rx_phys, uint16_t phy_options) {
 
               
-  BTM_BleSetPhy(address, tx_phys, rx_phys, phy_options);
+  stack::leConnectionSetPhy(address, tx_phys, rx_phys, phy_options);
   log::info("Sent BTM_BleSetPhy to wrapper.");
 }
 

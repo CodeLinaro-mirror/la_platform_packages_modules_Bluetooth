@@ -31,30 +31,8 @@
 
 using namespace bluetooth;
 
-bool BTM_SecAddRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback) {
-  int i;
-
-  for (i = 0; i < BTM_SEC_MAX_RMT_NAME_CALLBACKS; i++) {
-    if (btm_cb.rnr.p_rmt_name_callback[i] == NULL) {
-      btm_cb.rnr.p_rmt_name_callback[i] = p_callback;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool BTM_SecDeleteRmtNameNotifyCallback(tBTM_RMT_NAME_CALLBACK* p_callback) {
-  int i;
-
-  for (i = 0; i < BTM_SEC_MAX_RMT_NAME_CALLBACKS; i++) {
-    if (btm_cb.rnr.p_rmt_name_callback[i] == p_callback) {
-      btm_cb.rnr.p_rmt_name_callback[i] = NULL;
-      return true;
-    }
-  }
-
-  return false;
+void BTM_SecAddRmtNameNotifyCallback(BtmRemoteNameCallback& callback) {
+  btm_cb.rnr.p_rmt_name_callback = &callback;
 }
 
 bool BTM_IsRemoteNameKnown(const RawAddress& bd_addr, tBT_TRANSPORT /* transport */) {
@@ -78,9 +56,10 @@ static void btm_inq_rmt_name_failed_cancelled(void) {
 
   if (btm_cb.rnr.remname_active) {
     btm_process_remote_name(&btm_cb.rnr.remname_bda, NULL, 0, HCI_ERR_UNSPECIFIED);
+    btm_sec_rmt_name_request_complete(&btm_cb.rnr.remname_bda, NULL, HCI_ERR_UNSPECIFIED);
+  } else {
+    btm_sec_rmt_name_request_complete(NULL, NULL, HCI_ERR_UNSPECIFIED);
   }
-
-  btm_sec_rmt_name_request_complete(NULL, NULL, HCI_ERR_UNSPECIFIED);
 }
 
 void btm_inq_remote_name_timer_timeout(void* /* data */) { btm_inq_rmt_name_failed_cancelled(); }
@@ -315,14 +294,8 @@ tBTM_STATUS BTM_CancelRemoteDeviceName(void) {
   return tBTM_STATUS::BTM_CMD_STARTED;
 }
 
-bool bluetooth::stack::rnr::Impl::BTM_SecAddRmtNameNotifyCallback(
-        tBTM_RMT_NAME_CALLBACK* p_callback) {
-  return ::BTM_SecAddRmtNameNotifyCallback(p_callback);
-}
-
-bool bluetooth::stack::rnr::Impl::BTM_SecDeleteRmtNameNotifyCallback(
-        tBTM_RMT_NAME_CALLBACK* p_callback) {
-  return ::BTM_SecDeleteRmtNameNotifyCallback(p_callback);
+void bluetooth::stack::rnr::Impl::BTM_SecAddRmtNameNotifyCallback(BtmRemoteNameCallback& callback) {
+  ::BTM_SecAddRmtNameNotifyCallback(callback);
 }
 
 bool bluetooth::stack::rnr::Impl::BTM_IsRemoteNameKnown(const RawAddress& bd_addr,

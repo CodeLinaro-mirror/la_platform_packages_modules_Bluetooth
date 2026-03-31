@@ -35,6 +35,7 @@
 #include "stack/include/avdt_api.h"
 #include "stack/include/bt_types.h"
 #include "btif/include/btif_config.h"
+#include "gd/storage/config_keys.h"
 
 using namespace bluetooth;
 

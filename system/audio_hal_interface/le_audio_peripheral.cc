@@ -19,6 +19,7 @@
 #include <bluetooth/log.h>
 
 #include "bta/le_audio/le_audio_types.h"
+#include "bta/le_audio/le_audio_utils.h"
 #include "le_audio_software.h"
 
 namespace bluetooth::audio::le_audio {
@@ -38,7 +39,8 @@ static void EndpointConfigResponseLegacyBuilder(const std::vector<endpoint_confi
     ase_configured.codec_spec_conf = request.codec_configuration.codec_spec_conf;
 
     // Use the client's preferred PHY
-    ase_configured.preferred_phy = request.codec_configuration.target_phy;
+    ase_configured.preferred_phy = bluetooth::le_audio::utils::GetPreferredPhyFromTargetPhy(
+            request.codec_configuration.target_phy);
 
     ase_configured.preferred_retrans_nb = 13;
     ase_configured.framing = 0x00;
@@ -109,9 +111,9 @@ public:
       }
       return true;
     };
-    legacy_callbacks_.on_sink_metadata_update_ =
-            [cb_on_meta = callbacks.OnPlaybackMetadataUpdate](
-                    const sink_metadata_v7_t& metadata) -> bool {
+    legacy_callbacks_.on_metadata_update_ = [cb_on_meta = callbacks.OnPlaybackMetadataUpdate](
+                                                    const source_metadata_v7_t& metadata,
+                                                    DsaMode) -> bool {
       if (cb_on_meta) {
         cb_on_meta(metadata);
       }
@@ -205,9 +207,9 @@ public:
       }
       return true;
     };
-    legacy_callbacks_.on_metadata_update_ = [cb_on_meta = callbacks.OnRecordingMetadataUpdate](
-                                                    const source_metadata_v7_t& metadata,
-                                                    DsaMode) -> bool {
+    legacy_callbacks_.on_sink_metadata_update_ =
+            [cb_on_meta = callbacks.OnRecordingMetadataUpdate](
+                    const sink_metadata_v7_t& metadata) -> bool {
       if (cb_on_meta) {
         cb_on_meta(metadata);
       }

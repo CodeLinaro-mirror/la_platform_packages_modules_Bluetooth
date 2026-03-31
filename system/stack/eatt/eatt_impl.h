@@ -165,6 +165,16 @@ struct eatt_impl {
       eatt_dev = add_eatt_device(bda);
     }
 
+    eatt_dev->eatt_tcb_ = gatt_find_tcb_by_addr(eatt_dev->bda_, BT_TRANSPORT_LE);
+  
+    if (!eatt_dev->eatt_tcb_) {
+      // We cannot stand up EATT bearers without a GATT TCB
+      log::warn("EATT connect ind: no GATT TCB for {}", bda);
+      stack::l2cap::get_interface().L2CA_ConnectCreditBasedRsp(
+        bda, identifier, lcids,
+        tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_NO_RESOURCES, nullptr);
+      return false;
+    }
     uint16_t max_mps = shim::GetController()->GetLeBufferSize().le_data_packet_length_;
 
     tL2CAP_LE_CFG_INFO local_coc_cfg = {
@@ -179,12 +189,6 @@ struct eatt_impl {
                 &local_coc_cfg)) {
       log::warn("Unable to respond L2CAP le_coc credit indication peer:{}", bda);
       return false;
-    }
-
-    if (!eatt_dev->eatt_tcb_) {
-      eatt_dev->eatt_tcb_ = gatt_find_tcb_by_addr(eatt_dev->bda_, BT_TRANSPORT_LE);
-      log::assert_that(eatt_dev->eatt_tcb_ != nullptr,
-                       "assert failed: eatt_dev->eatt_tcb_ != nullptr");
     }
 
     for (uint16_t cid : lcids) {
@@ -268,7 +272,7 @@ struct eatt_impl {
     /* This is just for L2CAP PTS test cases*/
     auto min_key_size = stack_config_get_interface()->get_pts_l2cap_ecoc_min_key_size();
     if (min_key_size > 0 && (min_key_size >= 7 && min_key_size <= 16)) {
-      auto key_size = get_btm_client_interface().security.BTM_BleReadSecKeySize(bda);
+      auto key_size = get_security_client_interface().BTM_BleReadSecKeySize(bda);
       if (key_size < min_key_size) {
         std::vector<uint16_t> empty;
         log::error("Insufficient key size ({}<{}) for device {}", key_size, min_key_size, bda);
@@ -310,12 +314,12 @@ struct eatt_impl {
               static_cast<int>(lcids.size()), psm, peer_mtu);
 
     if (!stack_config_get_interface()->get_pts_connect_eatt_before_encryption() &&
-        !get_btm_client_interface().security.BTM_IsEncrypted(bda, BT_TRANSPORT_LE)) {
+        !get_security_client_interface().BTM_IsEncrypted(bda, BT_TRANSPORT_LE)) {
       /* If Link is not encrypted, we shall not accept EATT channel creation. */
       std::vector<uint16_t> empty;
       tL2CAP_LE_RESULT_CODE result =
               tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_INSUFFICIENT_AUTHENTICATION;
-      if (get_btm_client_interface().security.BTM_IsBonded(bda, BT_TRANSPORT_LE)) {
+      if (get_security_client_interface().BTM_IsBonded(bda, BT_TRANSPORT_LE)) {
         result = tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_INSUFFICIENT_ENCRYP;
       }
       log::error("ACL to device {} is unencrypted.", bda);

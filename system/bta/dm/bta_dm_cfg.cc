@@ -142,7 +142,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
   static uint16_t ftc_idle_to_sniff_delay_ms = uint16_t(osi_property_get_int32(
           "bluetooth.bta_ftc_idle_to_sniff_delay_ms.config", BTA_FTC_IDLE_TO_SNIFF_DELAY_MS));
 
-  if (com::android::bluetooth::flags::delay_jv_pm_idle()) {
+  if (com_android_bluetooth_flags_delay_jv_pm_idle()) {
     // Before this triggered, we've waited
     fts_ops_idle_to_sniff_delay_ms =
             std::max(0, fts_ops_idle_to_sniff_delay_ms - BTA_JV_PM_IDLE_TIMEOUT_MS);
@@ -152,8 +152,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
   static tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC bta_dm_pm_spec[BTA_DM_NUM_PM_SPEC] = {
           /* AG : 0 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR2),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, 7000},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open sniff  */
@@ -170,16 +170,16 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* CT, CG : 1 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR2),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
-                   {{BTA_DM_PM_PARK, 5000}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn open  park */
+                   {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* conn open */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* app open */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* app close */
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, 5000},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* sco open sniff */
-                   {{BTA_DM_PM_PARK, 5000}, {BTA_DM_PM_NO_ACTION, 0}},   /* sco close  park */
+                   {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco close */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* idle */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* busy */
                    {{BTA_DM_PM_RETRY, 5000}, {BTA_DM_PM_NO_ACTION, 0}}   /* mode change retry */
@@ -187,7 +187,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* DG, PBC : 2 */
           {(BTA_DM_PM_ACTIVE), /* no power saving mode allowed */
-           (BTA_DM_PM_SSR2),   /* the SSR entry */
+           BTA_DM_PM_SSR2,     /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF, 5000}, {BTA_DM_PM_NO_ACTION, 0}},  /* conn open active */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
@@ -201,8 +201,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* HD : 3 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR3),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR3,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF_HD_ACTIVE_IDX, 5000},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open sniff */
@@ -218,7 +218,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* AV : 4 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, 7000},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open  sniff */
@@ -233,8 +233,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* HH for joysticks and gamepad : 5 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR1),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR1,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF6, BTA_DM_PM_HH_OPEN_DELAY},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open  sniff */
@@ -252,8 +252,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* HH : 6 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR1),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR1,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF_HH_OPEN_IDX, BTA_DM_PM_HH_OPEN_DELAY},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open  sniff */
@@ -272,7 +272,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* FTC, OPC, JV : 7 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},    /* conn open  active */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
@@ -288,7 +288,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* FTS, PBS, OPS, MSE, BTA_JV_PM_ID_1 : 8 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},    /* conn open  active */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
@@ -304,7 +304,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* HL : 9 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, 5000},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open sniff  */
@@ -320,7 +320,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* PANU : 10 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},    /* conn open  active */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
@@ -335,7 +335,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* NAP : 11 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},    /* conn open  active */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
@@ -350,8 +350,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* HS : 12 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR2),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF, hs_sniff_delay},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open sniff  */
@@ -367,7 +367,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
 
           /* AVK : 13 */
           {(BTA_DM_PM_SNIFF), /* allow sniff */
-           (BTA_DM_PM_SSR2),  /* the SSR entry */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF, 3000}, {BTA_DM_PM_NO_ACTION, 0}},  /* conn open  sniff */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
@@ -381,8 +381,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* GATTC : 14 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR2),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, 10000},
                     {BTA_DM_PM_NO_ACTION, 0}},                           /* conn open  active */
@@ -397,8 +397,8 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
            }},
 
           /* GATTS : 15 */
-          {(BTA_DM_PM_SNIFF | BTA_DM_PM_PARK), /* allow park & sniff */
-           (BTA_DM_PM_SSR2),                   /* the SSR entry */
+          {(BTA_DM_PM_SNIFF), /* allow sniff */
+           BTA_DM_PM_SSR2,    /* the SSR entry */
            {
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* conn open  active */
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* conn close  */
@@ -451,9 +451,9 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTM_PM_PWR_MD bta_dm_pm_md[] = {
         /*
          * More sniff parameter entries can be added for
          * BTA_DM_PM_SNIFF3 - BTA_DM_PM_SNIFF7, if needed. When entries are added or
-         * removed, BTA_DM_PM_PARK_IDX needs to be updated to reflect the actual
+         * removed, BTA_DM_PM_NUM_ENTRIES needs to be updated to reflect the actual
          * index
-         * BTA_DM_PM_PARK_IDX is defined in bta_api.h and can be override by the
+         * BTA_DM_PM_NUM_ENTRIES is defined in bta_api.h and can be overridden by the
          * bdroid_buildcfg.h settings.
          * The SNIFF table entries must be in the order from highest latency
          * (biggest
@@ -474,9 +474,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTM_PM_PWR_MD bta_dm_pm_md[] = {
         {BTA_DM_PM_SNIFF5_MAX, BTA_DM_PM_SNIFF5_MIN, BTA_DM_PM_SNIFF5_ATTEMPT,
          BTA_DM_PM_SNIFF5_TIMEOUT, BTM_PM_MD_SNIFF}, /* for BTA_DM_PM_SNIFF5- HD active */
         {BTA_DM_PM_SNIFF6_MAX, BTA_DM_PM_SNIFF6_MIN, BTA_DM_PM_SNIFF6_ATTEMPT,
-         BTA_DM_PM_SNIFF6_TIMEOUT, BTM_PM_MD_SNIFF}, /* for BTA_DM_PM_SNIFF6- HD active */
-        {BTA_DM_PM_PARK_MAX, BTA_DM_PM_PARK_MIN, BTA_DM_PM_PARK_ATTEMPT, BTA_DM_PM_PARK_TIMEOUT,
-         BTM_PM_MD_PARK}
+         BTA_DM_PM_SNIFF6_TIMEOUT, BTM_PM_MD_SNIFF} /* for BTA_DM_PM_SNIFF6- HD active */
 
 #ifdef BTE_SIM_APP /* For Insight builds only */
         /* Entries at the end of the bta_dm_pm_md table are user-defined (runtime

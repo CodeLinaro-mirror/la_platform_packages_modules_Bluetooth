@@ -25,7 +25,7 @@ import android.provider.DeviceConfig;
 import android.util.Log;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -100,8 +100,11 @@ class BassUtils {
         Log.d(TAG, msg);
     }
 
-    static void printByteArray(byte[] array) {
-        log("Entire byte Array as string: " + Arrays.toString(array));
+    static String byteArrayToHexString(byte[] array) {
+        if (array == null) {
+            return "null";
+        }
+        return HexFormat.ofDelimiter(" ").formatHex(array);
     }
 
     static boolean stopBroadcastIfNoReceivers() {

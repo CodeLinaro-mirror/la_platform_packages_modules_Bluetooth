@@ -35,31 +35,31 @@
 #include <vector>
 
 #include "bta_gatt_queue.h"
-#include "btm_iso_api.h"
-#include "btm_iso_api_types.h"
 #include "client_parser.h"
 #include "codec_manager.h"
 #include "common/strings.h"
 #include "device_groups.h"
 #include "devices.h"
-#include "gatt_api.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/hci_packets.h"
-#include "hci_error_code.h"
-#include "hcimsgs.h"
 #include "internal_include/bt_trace.h"
 #include "le_audio_health_status.h"
 #include "le_audio_log_history.h"
 #include "le_audio_types.h"
+#include "le_audio_utils.h"
 #include "osi/include/alarm.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 #include "stack/include/btm_client_interface.h"
-#include "stack/include/hcimsgs.h"
 #include "audio_hal_client/audio_hal_client.h"
 #include "le_audio/le_audio_types.h"
 #include "hci/controller.h"
 #include "main/shim/entry.h"
+#include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
+#include "stack/include/gatt_api.h"
+#include "stack/include/hci_error_code.h"
+#include "stack/include/hcimsgs.h"
 
 #ifdef TARGET_FLOSS
 #include <audio_hal_interface/audio_linux.h>
@@ -135,7 +135,8 @@ constexpr uint8_t LTV_LEN_MAX_FT = 0X01;
 
 constexpr uint8_t ENCODER_LIMITS_SUB_OP = 0x24;
 constexpr uint8_t HCI_VS_SET_CIG_CONTEXT_TYPE = 0x3C;
-
+static constexpr char kPtsCapAudioContextProp[] =
+  "persist.bluetooth.leaudio.pts.set.capAudio.context";
 // Constants for HDT rates
 #define HDT_RATE_2 (1 << 0) // HDT rate 2
 #define HDT_RATE_3 (1 << 1) // HDT rate 3
@@ -2560,9 +2561,9 @@ private:
         if (ases_pair.source) {
           ases_pair.source->cis_state = CisState::CONNECTING;
         }
-        uint16_t acl_handle =
-            BTM_GetHCIConnHandle(leAudioDevice->address_, BT_TRANSPORT_LE);
-        conn_pairs.push_back({.cis_conn_handle = ase->cis_conn_hdl,
+        uint16_t acl_handle = get_btm_client_interface().peer.BTM_GetHCIConnHandle(
+                leAudioDevice->address_, BT_TRANSPORT_LE);
+	conn_pairs.push_back({.cis_conn_handle = ase->cis_conn_hdl,
                               .acl_conn_handle = acl_handle});
         log::debug("cis handle: {} acl handle : 0x{:x}", ase->cis_conn_hdl,
                    acl_handle);
@@ -2999,7 +3000,8 @@ private:
                  ase->id, ase->cis_id, ToString(ase->state));
       conf.ase_id = ase->id;
       conf.target_latency = ase->target_latency;
-      conf.target_phy = group->GetTargetPhy(ase->direction);
+      conf.target_phy =
+              le_audio::utils::GetTargetPhyFromPreferredPhy(group->GetPhyBitmask(ase->direction));
       log::verbose("conf.target_phy:  0x{:02x}", static_cast<int>(conf.target_phy));
       conf.codec_id = ase->codec_config.id;
 
@@ -3244,9 +3246,11 @@ private:
         break;
       }
       case AseState::BTA_LE_AUDIO_ASE_STATE_QOS_CONFIGURED:
-        log::verbose("Reconfiguring from QoS to Codec Configured group_id: {}", group->group_id_);
+        log::verbose("Reconfiguring ase {} from QoS to Codec Configured group_id: {}", ase->id,
+                     group->group_id_);
         SetAseState(leAudioDevice, ase, AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED);
         group->PrintDebugState();
+
         FALLTHROUGH_INTENDED;
       case AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED: {
         /* Received Configured in Configured state. This could be done
@@ -3313,7 +3317,14 @@ private:
              * Also it can happen, when second set member is adding while the other is in
              * Streaming or QoS Configured state.
              */
-            if (!PrepareAndSendConfigQos(group, leAudioDevice)) {
+            bool qos_succeed = false;
+            if (com_android_bluetooth_flags_leaudio_fix_qos_reconfiguration()) {
+              qos_succeed = PrepareAndSendQoSToTheGroup(group);
+            } else {
+              qos_succeed = PrepareAndSendConfigQos(group, leAudioDevice);
+            }
+
+            if (!qos_succeed) {
               log::warn("Could not trigger QoS configured state for group_id: {} device: {}",
                         group->group_id_, leAudioDevice->address_);
               return;
@@ -4022,8 +4033,17 @@ private:
         new_metadata = leAudioDevice->GetMetadata(directional_audio_context,
                                                   ccid_lists.get(ase->direction));
       } else {
-        new_metadata = leAudioDevice->GetMetadata(AudioContexts(LeAudioContextType::UNSPECIFIED),
-                                                  std::vector<uint8_t>());
+        uint64_t requiredCapAudioContext = 1; //UNSPECIFIED
+        requiredCapAudioContext = osi_property_get_int32(kPtsCapAudioContextProp, requiredCapAudioContext);
+        if (osi_property_get_bool("persist.bluetooth.leaudio.cap.pts", false)) {
+           log::debug("PTS execution for cap");
+           log::debug("required audio context is {}", requiredCapAudioContext);
+           new_metadata = leAudioDevice->GetMetadata(AudioContexts(requiredCapAudioContext),
+                                                     std::vector<uint8_t>());
+        } else {
+           new_metadata = leAudioDevice->GetMetadata(AudioContexts(LeAudioContextType::UNSPECIFIED),
+                                                     std::vector<uint8_t>());
+        }
       }
 
       /* Do not update if metadata did not changed. */

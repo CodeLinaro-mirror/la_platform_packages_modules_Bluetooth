@@ -38,7 +38,6 @@
 #include "btm_int_types.h"
 #include "gap_api.h"
 #include "gap_int.h"
-#include "gatt_api.h"
 #include "hardware/bt_gatt_types.h"
 #include "main/shim/dumpsys.h"
 #include "main/shim/le_advertising_manager.h"
@@ -53,6 +52,9 @@
 #define GAP_ENC_KEY_CHARACTERISTIC 2 /* Read for Enc Key Material Characteristic */
 #define GAP_ENC_KEY_CCCD 3           /* Discover CCCD */
 #define GAP_ENC_KEY_CONFIG_CCCD 4    /* Write CCCD */
+#include "stack/include/gatt_api.h"
+#include "stack/include/stack_app.h"
+#include "stack/include/stack_le_connection.h"
 
 using bluetooth::Uuid;
 using namespace bluetooth;
@@ -109,7 +111,7 @@ void client_disc_res_cback(uint16_t, tGATT_DISC_TYPE, tGATT_DISC_RES*);
 void client_disc_cmpl_cback(uint16_t, tGATT_DISC_TYPE, tGATT_STATUS);
 void gap_cl_get_enc_key_info(tGAP_CLCB* p_clcb);
 
-tGATT_CBACK gap_cback = {
+stack::tGATT_CBACK gap_cback = {
         .p_conn_cb = client_connect_cback,
         .p_cmpl_cb = client_cmpl_cback,
         .p_disc_res_cb = client_disc_res_cback,
@@ -487,6 +489,18 @@ static void cl_op_cmpl(tGAP_CLCB& clcb, bool status, uint16_t len, uint8_t* p_na
   }
 }
 
+static void call_pending_gap_name_callback(tGAP_CLCB& clcb, bool status, uint16_t len, uint8_t* p_name) {
+  while (!clcb.requests.empty()) {
+    tGAP_REQUEST req = clcb.requests.front();
+    clcb.requests.pop();
+
+    if (req.uuid == GATT_UUID_GAP_DEVICE_NAME && req.p_cback && req.op) {
+      log::info("bda={}", clcb.bda);
+      (*(req.p_cback))(status, clcb.bda, len, (char*)p_name);
+    }
+  }
+}
+
 /** Client connection callback */
 static void client_connect_cback(tGATT_IF, const RawAddress& bda, tCONN_ID conn_id, bool connected,
                                  tGATT_DISCONN_REASON /* reason */, tBT_TRANSPORT) {
@@ -511,6 +525,7 @@ static void client_connect_cback(tGATT_IF, const RawAddress& bda, tCONN_ID conn_
     log::warn("Disconnected GAP from remote device");
     p_clcb->connected = false;
     cl_op_cmpl(*p_clcb, false, 0, NULL);
+    call_pending_gap_name_callback(*p_clcb, false, 0, NULL);
     /* clean up clcb */
     clcb_dealloc(*p_clcb);
   }
@@ -675,9 +690,8 @@ static bool accept_client_operation(const RawAddress& peer_bda, uint16_t uuid,
     p_clcb->connected = true;
   }
 
-  if (!GATT_Connect(gatt_if, p_clcb->bda, BLE_ADDR_PUBLIC, BTM_BLE_DIRECT_CONNECTION,
-                    BT_TRANSPORT_LE, true, 0, false,
-                    com::android::bluetooth::flags::gatt_conn_settings())) {
+  if (!stack::leConnectionConnect(gatt_if, p_clcb->bda, BLE_ADDR_PUBLIC, BTM_BLE_OPPORTUNISTIC, 0,
+                                  false, com_android_bluetooth_flags_gatt_conn_settings())) {
     return false;
   }
 
@@ -702,7 +716,7 @@ bool accept_client_operation(const RawAddress& peer_bda, uint16_t uuid, uint16_t
     p_clcb->connected = true;
   }
 
-  if (!GATT_Connect(gatt_if, p_clcb->bda, BTM_BLE_DIRECT_CONNECTION, BT_TRANSPORT_LE, true)) {
+  if (!stack::leConnectionConnect(gatt_if, p_clcb->bda, BLE_ADDR_PUBLIC, BTM_BLE_DIRECT_CONNECTION, 0, false, com::android::bluetooth::flags::gatt_conn_settings())) {
     return false;
   }
 
@@ -781,9 +795,9 @@ void gap_attr_db_init(void) {
   Uuid app_uuid = Uuid::From128BitBE(tmp);
   gatt_attr.fill({});
 
-  gatt_if = GATT_Register(app_uuid, "Gap", &gap_cback, false);
+  gatt_if = stack::appRegister(app_uuid, "Gap", &gap_cback, false);
 
-  GATT_StartIf(gatt_if);
+  stack::appStartIf(gatt_if);
 
   Uuid svc_uuid = Uuid::From16Bit(UUID_SERVCLASS_GAP_SERVER);
   Uuid name_uuid = Uuid::From16Bit(GATT_UUID_GAP_DEVICE_NAME);
@@ -1038,7 +1052,7 @@ bool GAP_BleCancelReadPeerDevName(const RawAddress& peer_bda) {
   }
 
   if (!p_clcb->connected) {
-    if (!GATT_CancelConnect(gatt_if, peer_bda, true)) {
+    if (!stack::leConnectionCancelConnect(gatt_if, peer_bda, true)) {
       log::error("Cannot cancel where No connection id");
       return false;
     }

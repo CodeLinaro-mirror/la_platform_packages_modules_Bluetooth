@@ -36,7 +36,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.os.Message;
-import android.os.UserHandle;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothStatsLog;
@@ -248,6 +247,7 @@ public final class BondStateMachine extends StateMachine {
                     && msg.what != MESSAGE_BOND_STATE_CHANGE
                     && msg.what != MESSAGE_PAIRING_REQUEST
                     && msg.what != MESSAGE_PIN_REQUEST) {
+                logD("StateBonding: Deferring message: " + msg.what);
                 deferMessage(msg);
                 return true;
             }
@@ -766,12 +766,7 @@ public final class BondStateMachine extends StateMachine {
                     BluetoothDevice.PAIRING_CONTEXT_REPAIRING);
         }
 
-        if (Flags.onlyBroadcastToLocalUser()) {
-            mAdapterService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-        } else {
-            mAdapterService.sendBroadcastAsUser(
-                    intent, UserHandle.ALL, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-        }
+        mAdapterService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
     }
 
     /** Callback from native indicating a bond state change */

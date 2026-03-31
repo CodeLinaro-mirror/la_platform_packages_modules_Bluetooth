@@ -35,9 +35,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAudioConfig;
 import android.bluetooth.BluetoothDevice;
-import android.media.AudioFormat;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
@@ -73,7 +71,6 @@ public class A2dpSinkStateMachineTest {
                 new A2dpSinkStateMachine(mService, mDevice, mLooper.getLooper(), mNativeInterface);
 
         assertThat(mStateMachine.getDevice()).isEqualTo(mDevice);
-        assertThat(mStateMachine.getAudioConfig()).isNull();
         assertThat(mStateMachine.getState()).isEqualTo(STATE_DISCONNECTED);
     }
 
@@ -123,7 +120,6 @@ public class A2dpSinkStateMachineTest {
     public void testAudioConfigChangedInDisconnected() {
         sendAudioConfigChangedEvent(44, 1);
         assertThat(mStateMachine.getState()).isEqualTo(STATE_DISCONNECTED);
-        assertThat(mStateMachine.getAudioConfig()).isNull();
     }
 
     @Test
@@ -258,7 +254,6 @@ public class A2dpSinkStateMachineTest {
 
         sendAudioConfigChangedEvent(44, 1);
         assertThat(mStateMachine.getState()).isEqualTo(STATE_CONNECTING);
-        assertThat(mStateMachine.getAudioConfig()).isNull();
     }
 
     @Test
@@ -326,10 +321,6 @@ public class A2dpSinkStateMachineTest {
 
         sendAudioConfigChangedEvent(44, 1);
         assertThat(mStateMachine.getState()).isEqualTo(STATE_CONNECTED);
-
-        BluetoothAudioConfig expected =
-                new BluetoothAudioConfig(44, 1, AudioFormat.ENCODING_PCM_16BIT);
-        assertThat(mStateMachine.getAudioConfig()).isEqualTo(expected);
     }
 
     @Test

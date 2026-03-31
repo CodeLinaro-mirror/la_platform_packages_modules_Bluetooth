@@ -39,17 +39,13 @@
 #include <utility>
 #include <vector>
 
-#include "a2dp_api.h"
-#include "a2dp_codec_api.h"
 #include "audio_hal_interface/a2dp_encoding.h"
-#include "avdt_api.h"
 #include "bta_av_api.h"
 #include "bta_av_ci.h"
 #include "btif_av.h"
 #include "btif_av_co.h"
 #include "btif_common.h"
 #include "btif_hf.h"
-#include "btm_iso_api.h"
 #include "common/message_loop_thread.h"
 #include "common/repeating_timer.h"
 #include "common/time_util.h"
@@ -59,11 +55,15 @@
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 #include "osi/include/wakelock.h"
+#include "stack/include/a2dp_api.h"
+#include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_sbc_constants.h"
 #include "stack/include/a2dp_vendor_ldac_constants.h"
 #include "stack/include/acl_api.h"
+#include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/btm_ble_api.h"
+#include "stack/include/btm_iso_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
 
@@ -366,7 +366,7 @@ class A2dpStreamCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
 
     // TODO: Remove the entire invoke_switch_codec_cb code path (Native -> JNI -> Java)
     //  when removing the flag a2dp_handle_sa_reconfig_in_native
-    if (com::android::bluetooth::flags::a2dp_handle_sa_reconfig_in_native()) {
+    if (com_android_bluetooth_flags_a2dp_handle_sa_reconfig_in_native()) {
       btif_av_source_set_low_latency_codec(low_latency);
     } else {
       // Check if codec needs to be switched prior to stream start.
@@ -545,7 +545,7 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
   encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
                                   btif_a2dp_source_enqueue_callback);
 
-  if (com::android::bluetooth::flags::ldac_rate_control()) {
+  if (com_android_bluetooth_flags_ldac_rate_control()) {
     stack::l2cap::get_interface().L2CA_SetRateControlEnabled(
             peer_address, get_rate_control_enabled(a2dp_codec_config));
   }

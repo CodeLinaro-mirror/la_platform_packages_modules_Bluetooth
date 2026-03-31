@@ -29,12 +29,12 @@
 #include <string>
 
 #include "btm_ble_api.h"
-#include "gattdefs.h"
 #include "hardware/bt_gatt_types.h"
 #include "include/hardware/bt_common_types.h"
 #include "internal_include/bt_target.h"
 #include "macros.h"
 #include "stack/include/btm_ble_api_types.h"
+#include "stack/include/gattdefs.h"
 #include "stack/include/hci_error_code.h"
 
 /*****************************************************************************
@@ -714,72 +714,6 @@ typedef enum : uint8_t {
 #define GATT_LINK_NO_IDLE_TIMEOUT 0xFFFF
 
 #define GATT_INVALID_ACL_HANDLE 0xFFFF
-/* discover result callback function */
-typedef void(tGATT_DISC_RES_CB)(tCONN_ID conn_id, tGATT_DISC_TYPE disc_type,
-                                tGATT_DISC_RES* p_data);
-
-/* discover complete callback function */
-typedef void(tGATT_DISC_CMPL_CB)(tCONN_ID conn_id, tGATT_DISC_TYPE disc_type, tGATT_STATUS status);
-
-/* Define a callback function for when read/write/disc/config operation is
- * completed. */
-typedef void(tGATT_CMPL_CBACK)(tCONN_ID conn_id, tGATTC_OPTYPE op, tGATT_STATUS status,
-                               tGATT_CL_COMPLETE* p_data);
-
-/* Define a callback function when an initialized connection is established. */
-typedef void(tGATT_CONN_CBACK)(tGATT_IF gatt_if, const RawAddress& bda, tCONN_ID conn_id,
-                               bool connected, tGATT_DISCONN_REASON reason,
-                               tBT_TRANSPORT transport);
-
-/* attribute request callback for ATT server */
-typedef void(tGATT_REQ_CBACK)(tCONN_ID conn_id, uint32_t trans_id, tGATTS_REQ_TYPE type,
-                              tGATTS_DATA* p_data);
-
-/* channel congestion/uncongestion callback */
-typedef void(tGATT_CONGESTION_CBACK)(tCONN_ID conn_id, bool congested);
-
-/* Define a callback function when encryption is established. */
-typedef void(tGATT_ENC_CMPL_CB)(tGATT_IF gatt_if, const RawAddress& bda);
-
-/* Define a callback function when phy is updated. */
-typedef void(tGATT_PHY_UPDATE_CB)(tGATT_IF gatt_if, tCONN_ID conn_id, uint8_t tx_phy,
-                                  uint8_t rx_phy, tGATT_STATUS status);
-
-/* Define a callback function when connection parameters are updated */
-typedef void(tGATT_CONN_UPDATE_CB)(tGATT_IF gatt_if, tCONN_ID conn_id, uint16_t interval,
-                                   uint16_t latency, uint16_t timeout, tGATT_STATUS status);
-
-/* Define a callback function when subrate change event is received */
-typedef void(tGATT_SUBRATE_CHG_CB)(tGATT_IF gatt_if, tCONN_ID conn_id, uint16_t subrate_factor,
-                                   uint16_t latency, uint16_t cont_num, uint16_t timeout,
-                                   tGATT_SUBRATE_MODE subrate_mode, tGATT_STATUS status);
-
-/* Define a callback function when characteristics unoffloaded event is received
- */
-typedef void(tGATT_CHARACTERISTICS_UNOFFLOADED_CB)(tGATT_IF gatt_if, tCONN_ID conn_id,
-                                                   uint32_t session_id, tGATT_STATUS status);
-
-/* Define a callback function when offloaded service change indication is requested */
-typedef void(tGATT_OFFLOADED_SERVICE_CHG_CB)(tCONN_ID conn_id);
-
-/* Define the structure that applications use to register with
- * GATT. This structure includes callback functions. All functions
- * MUST be provided.
- */
-typedef struct {
-  tGATT_CONN_CBACK* p_conn_cb{nullptr};
-  tGATT_CMPL_CBACK* p_cmpl_cb{nullptr};
-  tGATT_DISC_RES_CB* p_disc_res_cb{nullptr};
-  tGATT_DISC_CMPL_CB* p_disc_cmpl_cb{nullptr};
-  tGATT_REQ_CBACK* p_req_cb{nullptr};
-  tGATT_ENC_CMPL_CB* p_enc_cmpl_cb{nullptr};
-  tGATT_CONGESTION_CBACK* p_congestion_cb{nullptr};
-  tGATT_PHY_UPDATE_CB* p_phy_update_cb{nullptr};
-  tGATT_CONN_UPDATE_CB* p_conn_update_cb{nullptr};
-  tGATT_SUBRATE_CHG_CB* p_subrate_chg_cb{nullptr};
-  tGATT_CHARACTERISTICS_UNOFFLOADED_CB* p_characteristics_unoffloaded_cb{nullptr};
-  tGATT_OFFLOADED_SERVICE_CHG_CB* p_offloaded_service_chg_cb{nullptr};
-} tGATT_CBACK;
 
 /*****************  Start Handle Management Definitions   *********************/
 
@@ -1147,75 +1081,7 @@ void GATTC_UpdateUserAttMtuIfNeeded(const RawAddress& remote_bda, tBT_TRANSPORT 
 
 /*******************************************************************************
  *
- * Function         GATT_SetIdleTimeout
- *
- * Description      This function (common to both client and server) sets the
- *                  idle timeout for a transport connection
- *
- * Parameter        bd_addr:   target device bd address.
- *                  idle_tout: timeout value in seconds.
- *                  transport: transport option.
- *                  is_active: whether we should use this as a signal that an
- *                             active client now exists (which changes link
- *                             timeout logic, see
- *                             t_l2c_linkcb.with_active_local_clients for
- *                             details).
- *
- * Returns          void
- *
- ******************************************************************************/
-void GATT_SetIdleTimeout(const RawAddress& bd_addr, uint16_t idle_tout, tBT_TRANSPORT transport,
-                         bool is_active);
-
-/*******************************************************************************
- *
- * Function         GATT_Register
- *
- * Description      This function is called to register an  application
- *                  with GATT
- *
- * Parameter        p_app_uuid128: Application UUID
- *                  p_cb_info: callback functions.
- *                  eatt_support: set support for eatt
- *
- * Returns          0 for error, otherwise the index of the client registered
- *                  with GATT
- *
- ******************************************************************************/
-[[nodiscard]] tGATT_IF GATT_Register(const bluetooth::Uuid& p_app_uuid128, const std::string& name,
-                                     tGATT_CBACK* p_cb_info, bool eatt_support);
-
-/*******************************************************************************
- *
- * Function         GATT_Deregister
- *
- * Description      This function deregistered the application from GATT.
- *
- * Parameters       gatt_if: application interface.
- *
- * Returns          None.
- *
- ******************************************************************************/
-void GATT_Deregister(tGATT_IF gatt_if);
-
-/*******************************************************************************
- *
- * Function         GATT_StartIf
- *
- * Description      This function is called after registration to start
- *                  receiving callbacks for registered interface.  Function may
- *                  call back with connection status and queued notifications
- *
- * Parameter        gatt_if: application interface.
- *
- * Returns          None
- *
- ******************************************************************************/
-void GATT_StartIf(tGATT_IF gatt_if);
-
-/*******************************************************************************
- *
- * Function         GATT_Connect
+ * Function         GATT_BR_Connect
  *
  * Description      This function initiate a connection to a remote device on
  *                  GATT channel.
@@ -1226,41 +1092,11 @@ void GATT_StartIf(tGATT_IF gatt_if);
  *                  connection_type: connection type
  *                  transport : Physical transport for GATT connection
  *                              (BR/EDR or LE)
- *                  opportunistic: will not keep device connected if other apps
- *                      disconnect, will not update connected apps counter, when
- *                      disconnected won't cause physical disconnection.
  *
  * Returns          true if connection started; else false
  *
  ******************************************************************************/
-[[nodiscard]] bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr,
-                                tBLE_ADDR_TYPE addr_type, tBTM_BLE_CONN_TYPE connection_type,
-                                tBT_TRANSPORT transport, bool opportunistic,
-                                uint16_t preferred_transport, bool prefer_relax_mode,
-                                bool auto_mtu_enabled);
-
-[[nodiscard]] bool GATT_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr,
-                                tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport,
-                                bool opportunistic);
-
-/*******************************************************************************
- *
- * Function         GATT_CancelConnect
- *
- * Description      Terminate the connection initiation to a remote device on a
- *                  GATT channel.
- *
- * Parameters       gatt_if: client interface. If 0 used as unconditionally
- *                           disconnect, typically used for direct connection
- *                           cancellation.
- *                  bd_addr: peer device address.
- *                  is_direct: is a direct connection or a background auto
- *                             connection
- *
- * Returns          true if connection started; else false
- *
- ******************************************************************************/
-[[nodiscard]] bool GATT_CancelConnect(tGATT_IF gatt_if, const RawAddress& bd_addr, bool is_direct);
+[[nodiscard]] bool GATT_BR_Connect(tGATT_IF gatt_if, const RawAddress& bd_addr);
 
 /*******************************************************************************
  *
@@ -1315,15 +1151,14 @@ void GATT_StartIf(tGATT_IF gatt_if);
 
 /*******************************************************************************
  *
- * Function         GATT_ConfigServiceChangeCCC
+ * Function         GATT_LE_ConfigServiceChangeCCC
  *
  * Description      Configure service change indication on remote device
  *
  * Returns          None.
  *
  ******************************************************************************/
-void GATT_ConfigServiceChangeCCC(const RawAddress& remote_bda, bool enable,
-                                 tBT_TRANSPORT transport);
+void GATT_LE_ConfigServiceChangeCCC(const RawAddress& remote_bda, bool enable);
 
 /*******************************************************************************
  *
@@ -1382,34 +1217,6 @@ void GATTC_InformNotificationHandle(const RawAddress& remote_bda, uint16_t handl
  *
  ******************************************************************************/
 void GATTC_InformServiceChangedIndication(const RawAddress& remote_bda);
-
-/*******************************************************************************
- * Function         GATT_SubrateRequest
- *
- * Description      Configure subrate config for each client_if
- *
- * Parameters       gatt_if: application interface
- *                  bd_addr: peer device address
- *                  subrate_mode: subrate_mode
- *
- * Returns          true if config successfully.
- *
- ******************************************************************************/
-bool GATT_SubrateRequest(tGATT_IF client_if, const RawAddress& bd_addr,
-                         tGATT_SUBRATE_MODE subrate_mode);
-
-/*******************************************************************************
- * Function         GATT_UpdateSubrateConfig
- *
- * Description      Update fixed subrate parameters of subrate mode in config.
- *
- * Parameters       subrate_mode: subrate_mode
- *                  Subrate parameters
- *
- ******************************************************************************/
-void GATT_UpdateSubrateConfig(tGATT_SUBRATE_MODE subrate_mode,
-                              uint16_t subrate_max, uint16_t subrate_min,
-                              uint16_t cont_num);
 
 /*******************************************************************************
  * Function         GATTC_SetDefaultMtu

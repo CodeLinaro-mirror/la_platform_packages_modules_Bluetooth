@@ -42,16 +42,11 @@
 #include "bta_csis_api.h"
 #include "bta_groups.h"
 #include "btif/include/btif_profile_storage.h"
-#include "btm_ble_api_types.h"
-#include "btm_iso_api.h"
-#include "btm_iso_api_types.h"
 #include "client_parser.h"
 #include "com_android_bluetooth_flags.h"
 #include "common/strings.h"
-#include "gatt_api.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/controller.h"
-#include "hci_error_code.h"
 #include "internal_include/bt_trace.h"
 #include "le_audio/codec_manager.h"
 #include "le_audio/devices.h"
@@ -60,8 +55,12 @@
 #include "main/shim/entry.h"
 #include "metrics_collector.h"
 #include "osi/include/properties.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
-#include "osi/include/properties.h"
+#include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
+#include "stack/include/gatt_api.h"
+#include "stack/include/hci_error_code.h"
 
 namespace bluetooth::le_audio {
 
@@ -854,23 +853,6 @@ uint8_t LeAudioDeviceGroup::GetPhyBitmask(uint8_t direction) const {
   return phy_bitfield;
 }
 
-uint8_t LeAudioDeviceGroup::GetTargetPhy(uint8_t direction) const {
-  uint8_t phy_bitfield = GetPhyBitmask(direction);
-  log::info("GetTargetPhy phy_bitfield: {}", phy_bitfield);
-
-  // prefer to use HDT if supported, and then 2M
-  bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
-  if (hdt_enabled && (phy_bitfield & bluetooth::hci::kIsoCigPhyHdt)) {
-    return types::kTargetPhyHdt;
-  } else if (phy_bitfield & bluetooth::hci::kIsoCigPhy2M) {
-    return types::kTargetPhy2M;
-  } else if (phy_bitfield & bluetooth::hci::kIsoCigPhy1M) {
-    return types::kTargetPhy1M;
-  } else {
-    return 0;
-  }
-}
-
 bool LeAudioDeviceGroup::GetPresentationDelay(uint32_t* delay, uint8_t direction) const {
   uint32_t common_delay_min = 0;
   uint32_t common_delay_max = 0xFFFFFF; /* 3 Octects  */
@@ -1029,6 +1011,8 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
         continue;
       }
 
+      log::debug(" ASE count: {} for direction: {}",
+                   device->GetAseCount(remote_direction), remote_direction);
       if (device->GetAseCount(remote_direction) == 0) {
         log::warn("Device {} has no ASEs for direction: {}", device->address_,
                   (int)remote_direction);
@@ -1065,8 +1049,13 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
 
       // Pass the audio channel allocation requirement according to TMAP
       auto locations =
+              dev_locations->value.to_ulong() & (codec_spec_conf::kLeAudioLocationFrontLeft);
+      bool pts_gmap = osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap", false);
+      if(!pts_gmap) {
+        locations =
               dev_locations->value.to_ulong() & (codec_spec_conf::kLeAudioLocationFrontLeft |
                                                  codec_spec_conf::kLeAudioLocationFrontRight);
+      }
       CodecManager::UnicastConfigurationRequirements::DeviceDirectionRequirements config_req;
       config_req.params.Add(codec_spec_conf::kLeAudioLtvTypeAudioChannelAllocation,
                             (uint32_t)locations);
@@ -1109,6 +1098,14 @@ LeAudioDeviceGroup::GetAudioSetConfigurationRequirements(types::LeAudioContextTy
       log::verbose(" config_req.target_Phy: 0x{:02x}", config_req.target_Phy);
       log::info("Device {} pushes requirement, location: {}, direction: {}", device->address_,
                 (int)locations, (int)remote_direction);
+      if(pts_gmap) {
+        log::info(" GMAP is enabled, push requirement according to number of ASEs");
+        int num_ases = device->GetAseCount(remote_direction);
+        for(int i = 0; i < num_ases; i++) {
+          direction_req->push_back(std::move(config_req));
+        }
+        continue;
+      }
       direction_req->push_back(std::move(config_req));
     }
 
@@ -1860,8 +1857,17 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
   };
 
   if (cises.size() > 0) {
-    log::info("CIS IDs already generated");
-    return;
+    log::info("CIS IDs already generated, cig state: {}", bluetooth::common::ToString(state_));
+    if (!com_android_bluetooth_flags_leaudio_fix_clear_cises_in_the_cig()) {
+      return;
+    }
+
+    if (state_ != CigState::NONE) {
+      return;
+    }
+
+    log::info("Clear CIS IDs due to reconfiguration befere even CIG was created");
+    ClearCisIds();
   }
 
   cises = generate_expected_cis_ids(context_type);
@@ -2195,7 +2201,8 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
     }
     if (ase_confs.empty()) {
       if (direction == types::kLeAudioDirectionSource &&
-          requirements.source_requirements->size() > 0) {
+          (requirements.source_requirements.has_value() &&
+           requirements.source_requirements->size() > 0)) {
         log::debug("No configurations for Source direction but the requirement was found.");
         return false;
       }
@@ -2204,13 +2211,16 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
     }
 
     // Verify the direction requirements.
-    if (direction == types::kLeAudioDirectionSink && requirements.sink_requirements->size() == 0) {
+    if (direction == types::kLeAudioDirectionSink &&
+        (!requirements.sink_requirements.has_value() ||
+         requirements.sink_requirements->size() == 0)) {
       log::debug("There is no requirement for Sink direction.");
       return false;
     }
 
     if (direction == types::kLeAudioDirectionSource &&
-        requirements.source_requirements->size() == 0) {
+        (!requirements.source_requirements.has_value() ||
+         requirements.source_requirements->size() == 0)) {
       log::debug("There is no requirement for source direction.");
       return false;
     }
@@ -2893,7 +2903,7 @@ void LeAudioDeviceGroup::Enable(int gatt_if) {
               bluetooth::common::ToString(GetState()), address);
 
     if (connection_state == DeviceConnectState::DISCONNECTED) {
-      BTA_GATTC_Open(gatt_if, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, false);
+      BTA_GATTC_Open(gatt_if, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
       dev->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
     }
   }
@@ -2926,7 +2936,7 @@ void LeAudioDeviceGroup::AddToAllowListNotConnectedGroupMembers(int gatt_if) {
      * available members.
      */
     BTA_GATTC_CancelOpen(gatt_if, address, false);
-    BTA_GATTC_Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, false);
+    BTA_GATTC_Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION);
     dev->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
   }
 }
@@ -2939,7 +2949,7 @@ void LeAudioDeviceGroup::ApplyReconnectionMode(int gatt_if) {
     }
     BTA_GATTC_CancelOpen(gatt_if, dev->address_, false);
     BTA_GATTC_Open(gatt_if, dev->address_,
-                   BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, false);
+                   BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
     log::info("Group {} in state {}. Adding {} to default reconnection mode", group_id_,
               bluetooth::common::ToString(GetState()), dev->address_);
     dev->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);

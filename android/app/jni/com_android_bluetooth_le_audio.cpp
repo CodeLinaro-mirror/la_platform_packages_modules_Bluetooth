@@ -67,7 +67,7 @@ static jmethodID method_onSinkAudioLocationAvailable;
 static jmethodID method_onAudioLocalCodecCapabilities;
 static jmethodID method_onAudioGroupCurrentCodecConf;
 static jmethodID method_onAudioGroupSelectableCodecConf;
-static jmethodID method_OnMetadataUpdate;
+static jmethodID method_onMetadataUpdate;
 static jmethodID method_onHealthBasedRecommendationAction;
 static jmethodID method_onHealthBasedGroupRecommendationAction;
 static jmethodID method_onUnicastMonitorModeStatus;
@@ -118,6 +118,7 @@ static jobject prepareCodecConfigObj(JNIEnv* env, btle_audio_codec_config_t code
   jobject codecConfigObj;
 
   if (com_android_bluetooth_flags_leaudio_codec_id_support()) {
+    log::info("codec_id: {}", codecConfig.codec_id);
     codecConfigObj = env->NewObject(
             android_bluetooth_BluetoothLeAudioCodecConfig_with_codec_id.clazz,
             android_bluetooth_BluetoothLeAudioCodecConfig_with_codec_id.constructor_with_codec_id,
@@ -318,7 +319,7 @@ public:
       return;
     }
 
-    return sCallbackEnv->CallVoidMethod(mCallbacksObj, method_OnMetadataUpdate, (jint)context);
+    return sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onMetadataUpdate, (jint)context);
   }
 
   void OnHealthBasedRecommendationAction(
@@ -907,7 +908,7 @@ int register_com_android_bluetooth_le_audio(JNIEnv* env) {
            "(I[Landroid/bluetooth/BluetoothLeAudioCodecConfig;"
            "[Landroid/bluetooth/BluetoothLeAudioCodecConfig;)V",
            &method_onAudioGroupSelectableCodecConf},
-          {"OnMetadataUpdate", "(I)V", &method_OnMetadataUpdate},
+          {"onMetadataUpdate", "(I)V", &method_onMetadataUpdate},
           {"onHealthBasedRecommendationAction", "([BI)V",
            &method_onHealthBasedRecommendationAction},
           {"onHealthBasedGroupRecommendationAction", "(II)V",

@@ -62,7 +62,7 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @kotlinx.coroutines.ExperimentalCoroutinesApi
 class ServerBinderTest(private val flags: FlagsWrapper) {
-    @get:Rule val mSetFlagsRule = SetFlagsRule(flags.flags)
+    @get:Rule val setFlagsRule = SetFlagsRule(flags.flags)
 
     private val callback: IBluetoothManagerCallback.Stub = mock()
     private val tokenBinder: IBinder = mock()
@@ -110,7 +110,9 @@ class ServerBinderTest(private val flags: FlagsWrapper) {
 
     @Test
     fun enableNoAutoConnectAsNfc() {
+        shadowOf(context.packageManager).setPackagesForUid(Process.NFC_UID, "nfc")
         val sourceFromNfc = AttributionSource.Builder(Process.NFC_UID).setPackageName("nfc").build()
+
         grantBluetoothConnect()
         binder.enableNoAutoConnect(sourceFromNfc)
         verify(api).enableNoAutoConnect(eq(sourceFromNfc.packageName!!))
@@ -164,11 +166,6 @@ class ServerBinderTest(private val flags: FlagsWrapper) {
     @Test
     fun disableBle() {
         enforceFalseReturnWhenBluetoothDisallowed { binder.disableBle(source, tokenBinder) }
-    }
-
-    @Test
-    fun isHearingAidProfileSupported() {
-        binder.isHearingAidProfileSupported()
     }
 
     @Test
@@ -239,6 +236,8 @@ class ServerBinderTest(private val flags: FlagsWrapper) {
     )
     @Test
     fun enable_strictConfig() {
+        shadowOf(context.packageManager).setPackagesForUid(Process.SYSTEM_UID, "android")
+
         grantBluetoothConnect()
 
         val sourceNoTag =
@@ -356,6 +355,7 @@ class ServerBinderTest(private val flags: FlagsWrapper) {
             FlagsWrapper.progressionOf(
                 Flags.FLAG_REJECT_ENABLE_FROM_UNKNOWN_REQUESTER,
                 android.bluetooth.platform.flags.Flags.FLAG_STRICT_CONFIGURATION_IN_SYSTEM_SERVER,
+                Flags.FLAG_SYSTEM_SERVER_NO_LONGER_PROVIDE_PROCESS_EXEMPTION,
             )
     }
 }

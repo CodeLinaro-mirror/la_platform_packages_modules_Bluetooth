@@ -25,6 +25,7 @@
 
 #include "common/strings.h"
 #include "le_audio_utils.h"
+#include "osi/include/properties.h"
 
 using bluetooth::common::ToString;
 
@@ -88,7 +89,7 @@ public:
       if (bluetooth::le_audio::types::kLeAudioContextAllBidir.test(context_type)) {
         /* Some of the bidirectional context needs to be allowed also by Audio Framework */
         if (!isBidirectionalControlledByAudioFramework(context_type) ||
-            isMetadataTagPresent(entry.tags, "VX_AOSP_BIDIRECTIONAL")) {
+            isMetadataTagPresent(entry.tags, "VX_AOSP_bidirectional")) {
           local_encoding_contexts_types_.sink.set(context_type);
         }
       }
@@ -114,6 +115,7 @@ public:
     for (const auto& entry : sink_metadata) {
       auto track = entry.base;
       LeAudioContextType track_context;
+      bool pts_gmap = osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap", false);
 
       log::debug(
               "source={}(0x{:02x}), gain={:f}, destination device=0x{:08x}, "
@@ -132,9 +134,17 @@ public:
         case AUDIO_SOURCE_VOICE_RECOGNITION:
           track_context = LeAudioContextType::VOICEASSISTANTS;
           break;
+        case AUDIO_SOURCE_MIC:
+          if(pts_gmap) {
+            log::info(" GMAP prop is enabled, select game context for audio source mic");
+            track_context = LeAudioContextType::GAME;
+          } else {
+            log::info(" GMAP prop is disabled, select LIVE context for audio source mic");
+            track_context = LeAudioContextType::LIVE;
+          }
+          break;
         case AUDIO_SOURCE_REMOTE_SUBMIX:
         case AUDIO_SOURCE_CAMCORDER:
-        case AUDIO_SOURCE_MIC:
         case AUDIO_SOURCE_VOICE_UPLINK:
         case AUDIO_SOURCE_VOICE_DOWNLINK:
         case AUDIO_SOURCE_UNPROCESSED:
@@ -493,8 +503,12 @@ private:
       if (gmap_available || (in_game_ && in_voip_)) {
         context_priority_list.push_front(LeAudioContextType::GAME);
       }
-
+      bool pts_gmap = osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap", false);
       for (auto ct : context_priority_list) {
+        if(pts_gmap) {
+          log::debug(" GMAP is enabled, return GAME context type");
+          return LeAudioContextType::GAME;
+        }
         if (contexts.test(ct)) {
           log::debug("Selecting configuration context type: {}", ToString(ct));
           return ct;

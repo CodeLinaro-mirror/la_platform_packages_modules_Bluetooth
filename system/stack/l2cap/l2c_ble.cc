@@ -126,6 +126,22 @@ uint16_t L2CA_GetBleSupervisionTimeout(const RawAddress& bd_addr) {
   return p_lcb->SupervisionTimeout();
 }
 
+/* We are certainly connected, and we want to move forward with notifying all upper layers that this
+ * LE connection is good
+ *
+ * This function is called when link_state changes to LST_CONNECTED, and must be called only once
+ * for every LE connection.
+ */
+static void l2cble_on_certainly_connected(tL2C_LCB* p_lcb) {
+  /* send callback */
+  l2cu_process_fixed_chnl_resp(p_lcb);
+
+  if (com_android_bluetooth_flags_move_conn_mgr_callbacks()) {
+    /* Remove the direct connection */
+    connection_manager::on_connection_complete(p_lcb->remote_bd_addr);
+  }
+}
+
 /*******************************************************************************
  *
  * Function l2cble_notify_le_connection
@@ -148,8 +164,8 @@ void l2cble_notify_le_connection(const RawAddress& bda) {
     p_lcb->link_state = LST_CONNECTED;
     // TODO Move this back into acl layer
     btm_establish_continue_from_address(bda, BT_TRANSPORT_LE);
-    /* send callback */
-    l2cu_process_fixed_chnl_resp(p_lcb);
+
+    l2cble_on_certainly_connected(p_lcb);
   }
 
   /* For all channels, send the event through their FSMs */
@@ -247,7 +263,7 @@ bool l2cble_conn_comp(uint16_t handle, tHCI_ROLE role, const RawAddress& bda,
   if (role == HCI_ROLE_PERIPHERAL) {
     if (!bluetooth::shim::GetController()->SupportsBlePeripheralInitiatedFeaturesExchange()) {
       p_lcb->link_state = LST_CONNECTED;
-      l2cu_process_fixed_chnl_resp(p_lcb);
+      l2cble_on_certainly_connected(p_lcb);
     }
   }
   return true;
@@ -1472,7 +1488,7 @@ tL2CAP_LE_RESULT_CODE l2ble_sec_access_req(const RawAddress& bd_addr, uint16_t p
   p_buf->p_callback = p_callback;
   p_buf->p_ref_data = p_ref_data;
   fixed_queue_enqueue(p_lcb->le_sec_pending_q, p_buf);
-  tBTM_STATUS result = get_btm_client_interface().security.BTM_BleStartSecCheck(
+  tBTM_STATUS result = get_security_client_interface().BTM_BleStartSecCheck(
           bd_addr, psm, is_originator, &l2cble_sec_comp, p_ref_data);
 
   switch (result) {

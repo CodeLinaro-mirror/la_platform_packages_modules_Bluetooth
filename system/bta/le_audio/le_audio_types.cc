@@ -617,7 +617,7 @@ LeAudioLtvMap LeAudioLtvMap::GetIntersection(const LeAudioLtvMap& other) const {
   LeAudioLtvMap result;
   for (auto const& [key, value] : values) {
     auto entry = other.Find(key);
-    if (entry->size() != value.size()) {
+    if (!entry || entry->size() != value.size()) {
       continue;
     }
     if (memcmp(entry->data(), value.data(), value.size()) == 0) {

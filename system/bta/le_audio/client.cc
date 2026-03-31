@@ -48,7 +48,6 @@
 #include "audio_context_type_manager.h"
 #include "audio_hal_client/audio_hal_client.h"
 #include "audio_hal_interface/le_audio_software.h"
-#include "bt_types.h"
 #include "bta/csis/csis_types.h"
 #include "bta/include/bta_vap_server_api.h"
 #include "bta_csis_api.h"
@@ -58,11 +57,6 @@
 #include "bta_le_audio_api.h"
 #include "bta_le_audio_broadcaster_api.h"
 #include "btif/include/btif_profile_storage.h"
-#include "btm_api_types.h"
-#include "btm_ble_api_types.h"
-#include "btm_iso_api.h"
-#include "btm_iso_api_types.h"
-#include "btm_sec_api_types.h"
 #include "client_parser.h"
 #include "codec_interface.h"
 #include "codec_manager.h"
@@ -72,13 +66,10 @@
 #include "content_control_id_keeper.h"
 #include "devices.h"
 #include "gatt/database.h"
-#include "gatt_api.h"
-#include "gattdefs.h"
 #include "gmap_client.h"
 #include "gmap_server.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/controller.h"
-#include "hci_error_code.h"
 #include "include/hardware/bt_gmap.h"
 #include "internal_include/bt_trace.h"
 #include "internal_include/stack_config.h"
@@ -96,11 +87,20 @@
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_types.h"
+#include "stack/include/btm_api_types.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_iso_api_types.h"
 #include "stack/include/btm_sec_api.h"
+#include "stack/include/btm_sec_api_types.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/gatt_api.h"
+#include "stack/include/gattdefs.h"
+#include "stack/include/hci_error_code.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
+#include "stack/include/stack_le_connection.h"
 #include "state_machine.h"
 #include "storage_helper.h"
 
@@ -109,6 +109,10 @@
 #else
 #include <hardware/audio.h>
 #endif  // TARGET_FLOSS
+
+#ifdef __ANDROID__
+#include "os/system_properties.h"
+#endif
 
 using namespace bluetooth;
 using bluetooth::Uuid;
@@ -1401,6 +1405,17 @@ public:
     SendAudioGroupCurrentCodecConfigChanged(group);
     group->StartConnSubrateIfNeeded();
     callbacks_->OnGroupStatus(active_group_id_, GroupStatus::ACTIVE);
+
+    /* Notify metadata update for dual mode audio profile selection */
+#ifdef __ANDROID__
+    if (bluetooth::os::GetSystemPropertyBool(
+                  bluetooth::os::kIsDualModeAudioEnabledProperty, false)) {
+      uint16_t context_update_ = LeAudioContextToIntContent(configuration_context_type_);
+      log::info("OnMetadataUpdate for context type: {} when device became active",
+                    ToHexString(configuration_context_type_));
+      callbacks_->OnMetadataUpdate(context_update_);
+    }
+#endif
   }
 
   void CheckAndNotifyGroupInactive(const int group_id) {
@@ -1478,16 +1493,16 @@ public:
       log::info("input codec type: {}, input codec priority: {}",
                    input_codec_config->codec_type, input_codec_config->codec_priority);
       le_audio_sink_hal_client_->SetCodecPriority(
-              bluetooth::le_audio::utils::translateCodecTypeToLeAudioCodecId(
-                      input_codec_config->codec_type),
+              bluetooth::le_audio::utils::translateCodecIdToLeAudioCodecId(
+                      input_codec_config->codec_id),
               input_codec_config->codec_priority);
     }
     if (le_audio_source_hal_client_ && output_codec_config) {
       log::info("output codec type: {}, output codec priority: {}",
                    output_codec_config->codec_type, output_codec_config->codec_priority);
       le_audio_source_hal_client_->SetCodecPriority(
-              bluetooth::le_audio::utils::translateCodecTypeToLeAudioCodecId(
-                      output_codec_config->codec_type),
+              bluetooth::le_audio::utils::translateCodecIdToLeAudioCodecId(
+                      output_codec_config->codec_id),
               output_codec_config->codec_priority);
     }
   }
@@ -2501,7 +2516,7 @@ public:
 
     LeAudioDevice* leAudioDevice = leAudioDevices_.FindByAddress(address);
     if (!leAudioDevice) {
-      if (!get_btm_client_interface().security.BTM_IsBonded(address, BT_TRANSPORT_LE)) {
+      if (!get_security_client_interface().BTM_IsBonded(address, BT_TRANSPORT_LE)) {
         log::error("Connecting  {} when not bonded", address);
         callbacks_->OnConnectionState(ConnectionState::DISCONNECTED, address);
         bluetooth::le_audio::MetricsCollector::Get()->OnConnectionStateChanged(
@@ -2540,7 +2555,7 @@ public:
               bluetooth::le_audio::ConnectionStatus::SUCCESS);
     }
 
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, false);
+    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION);
   }
 
   std::vector<RawAddress> GetGroupDevices(const int group_id) override {
@@ -3109,10 +3124,10 @@ public:
     if (group->IsAnyDeviceConnected()) {
       log::info("Group {} in connected state. Adding {} to allow list", leAudioDevice->group_id_,
                 address);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST);
     } else {
       log::info("Adding {} to background connect", address);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
     }
   }
 
@@ -3269,15 +3284,15 @@ public:
      * for other applications which are using background connect.
      */
     BTA_GATTC_CancelOpen(gatt_if_, address, false);
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS, false);
+    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
 
     bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
     if (hdt_enabled && bluetooth::shim::GetController()->SupportsBleHDTPhy()) {
       log::info("{} set preferred PHY to HDT", address);
-      get_btm_client_interface().ble.BTM_BleSetPhy(address, PHY_HDT, PHY_HDT, 0);
+      stack::leConnectionSetPhy(address, PHY_HDT, PHY_HDT, 0);
     } else if (bluetooth::shim::GetController()->SupportsBle2mPhy()) {
       log::info("{} set preferred PHY to 2M", address);
-      get_btm_client_interface().ble.BTM_BleSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
+      stack::leConnectionSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
     }
 
     get_btm_client_interface().peer.BTM_RequestPeerSCA(leAudioDevice->address_, transport);
@@ -3294,7 +3309,7 @@ public:
       /* Check if the device is in allow list and update the flag */
       leAudioDevice->UpdateDeviceAllowlistFlag();
     }
-    if (get_btm_client_interface().security.BTM_SecIsLeSecurityPending(address)) {
+    if (get_security_client_interface().BTM_SecIsLeSecurityPending(address)) {
       /* if security collision happened, wait for encryption done
        * (BTA_GATTC_ENC_CMPL_CB_EVT) */
       log::warn("{} Security Collision. Security is not completed", address);
@@ -3302,13 +3317,13 @@ public:
     }
 
     /* verify bond */
-    if (get_btm_client_interface().security.BTM_IsEncrypted(address, BT_TRANSPORT_LE)) {
+    if (get_security_client_interface().BTM_IsEncrypted(address, BT_TRANSPORT_LE)) {
       /* if link has been encrypted */
       OnEncryptionComplete(address, tBTM_STATUS::BTM_SUCCESS);
       return;
     }
 
-    tBTM_STATUS result = get_btm_client_interface().security.BTM_SetEncryption(
+    tBTM_STATUS result = get_security_client_interface().BTM_SetEncryption(
             address, BT_TRANSPORT_LE, nullptr, nullptr, BTM_BLE_SEC_ENCRYPT);
 
     log::info("Encryption required for {}. Request result: 0x{:02x}", address, result);
@@ -3452,10 +3467,10 @@ public:
       bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
       if (hdt_enabled && bluetooth::shim::GetController()->SupportsBleHDTPhy()) {
         log::info("{} set preferred PHY to HDT", address);
-        get_btm_client_interface().ble.BTM_BleSetPhy(address, PHY_HDT, PHY_HDT, 0);
+        stack::leConnectionSetPhy(address, PHY_HDT, PHY_HDT, 0);
       } else if (bluetooth::shim::GetController()->SupportsBle2mPhy()) {
         log::info("{} set preferred PHY to 2M", address);
-        get_btm_client_interface().ble.BTM_BleSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
+        stack::leConnectionSetPhy(address, PHY_LE_2M, PHY_LE_2M, 0);
       }
     }
 
@@ -3553,7 +3568,7 @@ public:
 
     if (group != nullptr) {
       leAudioDevice->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION);
     } else {
       leAudioDevice->SetConnectionState(DeviceConnectState::DISCONNECTED);
     }
@@ -3694,7 +3709,7 @@ public:
       leAudioDevice->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
 
       /* If timeout try to reconnect for 30 sec.*/
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, false);
+      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION);
       return;
     }
 
@@ -5708,8 +5723,7 @@ public:
     auto group = aseGroups_.FindById(active_group_id_);
     if (!group) {
       log::error("Invalid group: {}", static_cast<int>(active_group_id_));
-      if (com_android_bluetooth_flags_leaudio_cancel_stream_request_when_invalid_group() &&
-          (active_group_id_ != bluetooth::groups::kGroupUnknown)) {
+      if (active_group_id_ != bluetooth::groups::kGroupUnknown) {
         CancelLocalAudioSourceStreamingRequest();
       }
       return;
@@ -6087,8 +6101,7 @@ public:
     if (!group) {
        is_local_sink_metadata_available_ = false;
       log::error("Invalid group: {}", static_cast<int>(active_group_id_));
-      if (com_android_bluetooth_flags_leaudio_cancel_stream_request_when_invalid_group() &&
-          (active_group_id_ != bluetooth::groups::kGroupUnknown)) {
+      if (active_group_id_ != bluetooth::groups::kGroupUnknown) {
         CancelLocalAudioSinkStreamingRequest();
       }
       return;
@@ -7664,9 +7677,12 @@ public:
               ackHalSuspendRequest(false);
             }
 
-            if (configuration_context_type_ == LeAudioContextType::GAME) {
+            if (configuration_context_type_ == LeAudioContextType::GAME ||
+                configuration_context_type_ == LeAudioContextType::LIVE) {
               log::info("clear source local_metadata_context_types_");
               local_metadata_context_types_.source.clear();
+              audioContextTypeManager_->OverrideContextTypes(
+                                          {AudioContexts(), AudioContexts()});
             }
 
             log::info("active_group_id_: {}", active_group_id_);
@@ -8084,10 +8100,10 @@ private:
       bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
       if (hdt_enabled && bluetooth::shim::GetController()->SupportsBleHDTPhy()) {
         log::info("{} set preferred PHY to HDT", tmpDevice->address_);
-        get_btm_client_interface().ble.BTM_BleSetPhy(tmpDevice->address_, PHY_HDT,
+        stack::leConnectionSetPhy(tmpDevice->address_, PHY_HDT,
                                                      asymmetric ? PHY_LE_1M : PHY_HDT, 0);
       } else {
-        get_btm_client_interface().ble.BTM_BleSetPhy(tmpDevice->address_, PHY_LE_2M,
+        stack::leConnectionSetPhy(tmpDevice->address_, PHY_LE_2M,
                                                      asymmetric ? PHY_LE_1M : PHY_LE_2M, 0);
       }
       tmpDevice->acl_asymmetric_ = asymmetric;
@@ -8134,7 +8150,7 @@ void le_audio_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
 
     case BTA_GATTC_ENC_CMPL_CB_EVT: {
       tBTM_STATUS encryption_status;
-      if (get_btm_client_interface().security.BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
+      if (get_security_client_interface().BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
                                                               BT_TRANSPORT_LE)) {
         encryption_status = tBTM_STATUS::BTM_SUCCESS;
       } else {

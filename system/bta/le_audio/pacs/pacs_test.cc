@@ -66,7 +66,7 @@ public:
 
   virtual void SetUp(void) override {
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
-    com::android::bluetooth::flags::provider_->reset_flags();
+    com_android_bluetooth_flags_reset_flags();
 
     // Use peripheral role by default
     get_btm_client_interface().link_policy.BTM_GetRole = [](const RawAddress& /* remote_bd_addr */,
@@ -98,23 +98,21 @@ TEST_F(PacsTestsBase, InstantiateRelease) {
 }
 
 TEST_F(PacsTestsBase, RegisterCallbacks) {
-  tBTA_GATTS_CBACK* p_gatt_event_source_cb = nullptr;
-  tBTA_GATTS p_data;
+  const tBTA_GATTS_CBACK* p_gatt_event_source_cb = nullptr;
+  bluetooth::Uuid uuid;
 
   // Check GATT server app registration
   Pacs::ServiceDescriptor service_descriptor;
   service_descriptor.pac_sets.sink.push_back({});
   EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kPublishedAudioCapabilityServiceUuid, _, _))
-          .WillOnce(DoAll(SaveArg<0>(&p_data.reg_oper.uuid), SaveArg<1>(&p_gatt_event_source_cb)));
+          .WillOnce(DoAll(SaveArg<0>(&uuid), SaveArg<1>(&p_gatt_event_source_cb)));
   pacs_->RegisterGattService(service_descriptor, &pac_callbacks_);
   ASSERT_NE(nullptr, p_gatt_event_source_cb);
-  ASSERT_EQ(uuid::kPublishedAudioCapabilityServiceUuid, p_data.reg_oper.uuid);
+  ASSERT_EQ(uuid::kPublishedAudioCapabilityServiceUuid, uuid);
   Mock::VerifyAndClearExpectations(&gatt_server_interface_);
 
   // Inject the registration success event
-  p_data.reg_oper.status = tGATT_STATUS::GATT_SUCCESS;
-  p_data.reg_oper.server_if = 0xDE;
-  p_gatt_event_source_cb(BTA_GATTS_REG_EVT, &p_data);
+  p_gatt_event_source_cb->p_reg_cb(tGATT_STATUS::GATT_SUCCESS, 0xDE, uuid);
 
   // Ignore second call to register
   EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kPublishedAudioCapabilityServiceUuid, _, _))
@@ -122,7 +120,7 @@ TEST_F(PacsTestsBase, RegisterCallbacks) {
   pacs_->RegisterGattService(service_descriptor, &pac_callbacks_);
 
   // Make sure destructing unregisters the server interface
-  EXPECT_CALL(gatt_server_interface_, AppDeregister(p_data.reg_oper.server_if));
+  EXPECT_CALL(gatt_server_interface_, AppDeregister(0xDE));
   ReleasePacs(std::move(pacs_));
 }
 
@@ -131,10 +129,8 @@ TEST_F(PacsTestsBase, RegisterCallbacksAppRegisterFailsDeathTest) {
   Pacs::ServiceDescriptor service_descriptor;
   service_descriptor.pac_sets.sink.push_back({});
   ON_CALL(gatt_server_interface_, AppRegister(uuid::kPublishedAudioCapabilityServiceUuid, _, _))
-          .WillByDefault([](const bluetooth::Uuid&, tBTA_GATTS_CBACK* p_cback, bool) {
-            tBTA_GATTS p_data;
-            p_data.reg_oper.status = tGATT_STATUS::GATT_ERROR;
-            p_cback(BTA_GATTS_REG_EVT, &p_data);
+          .WillByDefault([](const bluetooth::Uuid& uuid, const tBTA_GATTS_CBACK* p_cback, bool) {
+            p_cback->p_reg_cb(tGATT_STATUS::GATT_ERROR, 0, uuid);
           });
 
   EXPECT_CALL(pac_callbacks_, OnPacsRegistered()).Times(0);
@@ -144,7 +140,7 @@ TEST_F(PacsTestsBase, RegisterCallbacksAppRegisterFailsDeathTest) {
 
 class PacsTests : public PacsTestsBase {
 public:
-  tBTA_GATTS_CBACK* p_gatt_event_source_cb_ = nullptr;
+  const tBTA_GATTS_CBACK* p_gatt_event_source_cb_ = nullptr;
   std::vector<btgatt_db_element_t> service_db_;
   tGATT_IF server_if_;
 
@@ -238,14 +234,11 @@ protected:
     EXPECT_CALL(gatt_server_interface_,
                 AppRegister(uuid::kPublishedAudioCapabilityServiceUuid, _, _))
             .WillRepeatedly(DoAll(SaveArg<1>(&p_gatt_event_source_cb_),
-                                  [](const bluetooth::Uuid& /* app_uuid */,
-                                     tBTA_GATTS_CBACK* p_cback, bool /* eatt_support */) {
-                                    tBTA_GATTS p_data;
-                                    p_data.reg_oper.status = (p_cback == nullptr)
-                                                                     ? tGATT_STATUS::GATT_ERROR
-                                                                     : tGATT_STATUS::GATT_SUCCESS;
-                                    p_data.reg_oper.server_if = 0xDE;
-                                    p_cback(BTA_GATTS_REG_EVT, &p_data);
+                                  [](const bluetooth::Uuid& app_uuid,
+                                     const tBTA_GATTS_CBACK* p_cback, bool /* eatt_support */) {
+                                    if (p_cback) {
+                                      p_cback->p_reg_cb(tGATT_STATUS::GATT_SUCCESS, 0xDE, app_uuid);
+                                    }
                                   }));
 
     // Mock GATT service registration success
@@ -289,12 +282,7 @@ public:
     if (conn_id_by_address_.count(pseudo_addr) == 0) {
       conn_id_by_address_[pseudo_addr] = conn_id;
 
-      tBTA_GATTS p_data;
-      p_data.conn.remote_bda = pseudo_addr;
-      p_data.conn.conn_id = conn_id++;
-      p_data.conn.server_if = server_if_;
-      p_data.conn.transport = BT_TRANSPORT_LE;
-      p_gatt_event_source_cb_(BTA_GATTS_CONNECT_EVT, &p_data);
+      p_gatt_event_source_cb_->p_connect_cb(server_if_, pseudo_addr, conn_id++, BT_TRANSPORT_LE);
     }
   }
 
@@ -307,12 +295,7 @@ public:
     }
 
     if (conn_id != GATT_INVALID_CONN_ID) {
-      tBTA_GATTS p_data;
-      p_data.conn.remote_bda = pseudo_addr;
-      p_data.conn.conn_id = conn_id;
-      p_data.conn.server_if = server_if_;
-      p_data.conn.transport = BT_TRANSPORT_LE;
-      p_gatt_event_source_cb_(BTA_GATTS_DISCONNECT_EVT, &p_data);
+      p_gatt_event_source_cb_->p_disconnect_cb(server_if_, pseudo_addr, conn_id, BT_TRANSPORT_LE);
     }
   }
 
@@ -338,26 +321,14 @@ public:
 
     auto conn_id = conn_id_by_address_.at(pseudo_addr);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      tGATTS_DATA attribute_data;
-
       // Simulate GATT layer permission check from gatt_db.cc
       if (!(permissions & GATT_READ_ALLOWED)) {
         gatt_server_interface_.SendRsp(conn_id, gatt_trans_id_++, GATT_READ_NOT_PERMIT, nullptr);
         return;
       }
 
-      attribute_data.read_req.handle = handle;
-      attribute_data.read_req.offset = 0x0000;
-      attribute_data.read_req.is_long = false;
-      attribute_data.read_req.gatt_type = BTGATT_DB_CHARACTERISTIC;
-
-      tBTA_GATTS gatts_data;
-      gatts_data.req_data.remote_bda = pseudo_addr;
-      gatts_data.req_data.trans_id = gatt_trans_id_++;
-      gatts_data.req_data.conn_id = conn_id;
-      gatts_data.req_data.p_data = &attribute_data;
-
-      p_gatt_event_source_cb_(BTA_GATTS_READ_CHARACTERISTIC_EVT, &gatts_data);
+      p_gatt_event_source_cb_->p_read_characteristic_cb(conn_id, gatt_trans_id_++, pseudo_addr,
+                                                        handle, 0, false);
     }
   }
 
@@ -384,26 +355,14 @@ public:
 
     auto conn_id = conn_id_by_address_.at(pseudo_addr);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      tGATTS_DATA attribute_data;
-
       // Simulate GATT layer permission check from gatt_db.cc
       if (!(permissions & GATT_READ_ALLOWED)) {
         gatt_server_interface_.SendRsp(conn_id, gatt_trans_id_++, GATT_READ_NOT_PERMIT, nullptr);
         return;
       }
 
-      attribute_data.read_req.handle = handle;
-      attribute_data.read_req.offset = offset;
-      attribute_data.read_req.is_long = false;
-      attribute_data.read_req.gatt_type = bt_gatt_db_attribute_type_t::BTGATT_DB_CHARACTERISTIC;
-
-      tBTA_GATTS gatts_data;
-      gatts_data.req_data.remote_bda = pseudo_addr;
-      gatts_data.req_data.trans_id = gatt_trans_id_++;
-      gatts_data.req_data.conn_id = conn_id;
-      gatts_data.req_data.p_data = &attribute_data;
-
-      p_gatt_event_source_cb_(BTA_GATTS_READ_CHARACTERISTIC_EVT, &gatts_data);
+      p_gatt_event_source_cb_->p_read_characteristic_cb(conn_id, gatt_trans_id_++, pseudo_addr,
+                                                        handle, offset, false);
     }
   }
 
@@ -439,23 +398,9 @@ public:
         return;
       }
 
-      tGATTS_DATA attribute_data;
-      attribute_data.write_req.handle = handle;
-      attribute_data.write_req.offset = 0x0000;
-      attribute_data.write_req.need_rsp = with_response;
-      attribute_data.write_req.is_prep = false;
-      attribute_data.write_req.gatt_type = BTGATT_DB_CHARACTERISTIC;
-
-      attribute_data.write_req.len = value.size();
-      std::copy(value.begin(), value.end(), attribute_data.write_req.value);
-
-      tBTA_GATTS gatts_data;
-      gatts_data.req_data.remote_bda = pseudo_addr;
-      gatts_data.req_data.trans_id = gatt_trans_id_++;
-      gatts_data.req_data.conn_id = conn_id;
-      gatts_data.req_data.p_data = &attribute_data;
-
-      p_gatt_event_source_cb_(BTA_GATTS_WRITE_CHARACTERISTIC_EVT, &gatts_data);
+      p_gatt_event_source_cb_->p_write_characteristic_cb(conn_id, gatt_trans_id_++, pseudo_addr,
+                                                         handle, 0, with_response, false,
+                                                         (uint8_t*)value.data(), value.size());
     }
   }
 
@@ -490,26 +435,14 @@ public:
 
     auto conn_id = conn_id_by_address_.at(pseudo_addr);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      tGATTS_DATA attribute_data;
-
       // Simulate GATT layer permission check from gatt_db.cc
       if (!(permissions & GATT_READ_ALLOWED)) {
         gatt_server_interface_.SendRsp(conn_id, gatt_trans_id_++, GATT_READ_NOT_PERMIT, nullptr);
         return;
       }
 
-      attribute_data.read_req.handle = handle;
-      attribute_data.read_req.offset = 0x0000;
-      attribute_data.read_req.is_long = false;
-      attribute_data.read_req.gatt_type = bt_gatt_db_attribute_type_t::BTGATT_DB_DESCRIPTOR;
-
-      tBTA_GATTS gatts_data;
-      gatts_data.req_data.remote_bda = pseudo_addr;
-      gatts_data.req_data.trans_id = gatt_trans_id_++;
-      gatts_data.req_data.conn_id = conn_id;
-      gatts_data.req_data.p_data = &attribute_data;
-
-      p_gatt_event_source_cb_(BTA_GATTS_READ_DESCRIPTOR_EVT, &gatts_data);
+      p_gatt_event_source_cb_->p_read_descriptor_cb(conn_id, gatt_trans_id_++, pseudo_addr, handle,
+                                                    0, false);
     }
   }
 
@@ -551,24 +484,12 @@ public:
         return;
       }
 
-      tGATTS_DATA attribute_data;
-      attribute_data.write_req.handle = handle;
-      attribute_data.write_req.offset = 0x0000;
-      attribute_data.write_req.need_rsp = true;
-      attribute_data.write_req.is_prep = false;
-      attribute_data.write_req.gatt_type = BTGATT_DB_DESCRIPTOR;
-
-      auto* pp = attribute_data.write_req.value;
+      uint8_t value[2];
+      uint8_t* pp = value;
       UINT16_TO_STREAM(pp, cccd_value);
-      attribute_data.write_req.len = sizeof(cccd_value);
 
-      tBTA_GATTS gatts_data;
-      gatts_data.req_data.remote_bda = pseudo_addr;
-      gatts_data.req_data.trans_id = gatt_trans_id_++;
-      gatts_data.req_data.conn_id = conn_id;
-      gatts_data.req_data.p_data = &attribute_data;
-
-      p_gatt_event_source_cb_(BTA_GATTS_WRITE_DESCRIPTOR_EVT, &gatts_data);
+      p_gatt_event_source_cb_->p_write_descriptor_cb(conn_id, gatt_trans_id_++, pseudo_addr, handle,
+                                                     0, true, false, value, sizeof(value));
     }
   }
 };
@@ -583,12 +504,11 @@ public:
     // Mock GATT application registration success
     EXPECT_CALL(gatt_server_interface_,
                 AppRegister(uuid::kPublishedAudioCapabilityServiceUuid, _, _))
-            .WillRepeatedly([this](const bluetooth::Uuid& /* app_uuid */, tBTA_GATTS_CBACK* p_cback,
+            .WillRepeatedly([this](const bluetooth::Uuid& app_uuid, const tBTA_GATTS_CBACK* p_cback,
                                    bool /* eatt_support */) {
-              tBTA_GATTS p_data;
-              p_data.reg_oper.status = tGATT_STATUS::GATT_SUCCESS;
-              p_data.reg_oper.server_if = server_if_;
-              p_cback(BTA_GATTS_REG_EVT, &p_data);
+              if (p_cback) {
+                p_cback->p_reg_cb(tGATT_STATUS::GATT_SUCCESS, server_if_, app_uuid);
+              }
             });
   }
 };
@@ -659,7 +579,7 @@ TEST_F(PacsTests, GetConnectionId) {
 TEST_F(PacsTests, RemoteReadSupportedContexts) {
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([this](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                tGATTS_RSP* p_msg) {
+                                std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             log::info("Verify the response against the service descriptor values");
@@ -692,7 +612,7 @@ TEST_F(PacsTests, RemoteReadSupportedContexts) {
 TEST_F(PacsTests, RemoteReadSinkAudioLocations) {
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([this](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                tGATTS_RSP* p_msg) {
+                                std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             log::info("Verify the response against the service descriptor values");
@@ -723,7 +643,7 @@ TEST_F(PacsTests, RemoteReadSinkAudioLocations) {
 TEST_F(PacsTests, RemoteReadSourceAudioLocations) {
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([this](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                tGATTS_RSP* p_msg) {
+                                std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             log::info("Verify the response against the service descriptor values");
@@ -850,7 +770,7 @@ TEST_F(PacsTests, RemoteReadSinkPacs) {
 
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([&, this](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                   tGATTS_RSP* p_msg) {
+                                   std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             log::info("Verify the response against the service descriptor values");
@@ -927,7 +847,7 @@ TEST_F(PacsTests, RemoteReadSourcePacs) {
 
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([&, this](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                   tGATTS_RSP* p_msg) {
+                                   std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             log::info("Verify the response against the service descriptor values");
@@ -1022,7 +942,7 @@ TEST_F(PacsTests, RemoteReadAvailableContexts) {
           });
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([&, this](uint16_t conn_id, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                   tGATTS_RSP* p_msg) {
+                                   std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             auto value = std::make_shared<std::vector<uint8_t>>(
@@ -1072,8 +992,9 @@ TEST_F(PacsTests, VerifyCccValues) {
   InjectGattConnectedEvent(test_dev2);
 
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
-          .WillByDefault([](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                            tGATTS_RSP* /*p_msg*/) { ASSERT_EQ(GATT_SUCCESS, status); });
+          .WillByDefault(
+                  [](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
+                     std::unique_ptr<tGATTS_RSP> /*p_msg*/) { ASSERT_EQ(GATT_SUCCESS, status); });
 
   // 1) Check dev1 write results
   const uint16_t expected_cccd_idx0 = GATT_CLT_CONFIG_NOTIFICATION;
@@ -1094,7 +1015,7 @@ TEST_F(PacsTests, VerifyCccValues) {
     uint16_t expected_cccd = 0x0F0F;
     EXPECT_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
             .WillRepeatedly([&](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                tGATTS_RSP* p_msg) {
+                                std::unique_ptr<tGATTS_RSP> p_msg) {
               ASSERT_EQ(GATT_SUCCESS, status);
 
               uint16_t cccd = 0x00FF;
@@ -1120,7 +1041,7 @@ TEST_F(PacsTests, VerifyCccValues) {
     uint16_t expected_cccd = 0x0F0F;
     EXPECT_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
             .WillRepeatedly([&](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                tGATTS_RSP* p_msg) {
+                                std::unique_ptr<tGATTS_RSP> p_msg) {
               ASSERT_EQ(GATT_SUCCESS, status);
 
               uint16_t cccd = 0x00FF;
@@ -1168,7 +1089,7 @@ TEST_F(PacsTests, UpdateContextAvailability) {
           });
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([&, this](uint16_t conn_id, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                   tGATTS_RSP* p_msg) {
+                                   std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             auto value = std::make_shared<std::vector<uint8_t>>(
@@ -1219,8 +1140,9 @@ TEST_F(PacsTests, UpdateContextAvailability) {
   // After reading, check the notifications
   {
     ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
-            .WillByDefault([](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                              tGATTS_RSP* /*p_msg*/) { ASSERT_EQ(GATT_SUCCESS, status); });
+            .WillByDefault(
+                    [](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
+                       std::unique_ptr<tGATTS_RSP> /*p_msg*/) { ASSERT_EQ(GATT_SUCCESS, status); });
     InSequence s2;
     // Write the CCC descriptors to receive the notifications
     // Note: test_dev3 is not subscribed to notifications
@@ -1326,7 +1248,7 @@ TEST_F(PacsTests, RemoteReadPacsWithEmptyRecords) {
   // Now, read the characteristic
   EXPECT_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillOnce([](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                       tGATTS_RSP* p_msg) {
+                       std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
             // It should contain a single byte: the number of records, which is 0.
             ASSERT_EQ(p_msg->attr_value.len, 1);
@@ -1350,7 +1272,7 @@ TEST_F(PacsTests, UpdateAudioChannelLocations) {
           };
   ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillByDefault([&, this](uint16_t conn_id, uint32_t /*trans_id*/, tGATT_STATUS status,
-                                   tGATTS_RSP* p_msg) {
+                                   std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
 
             auto value = std::make_shared<std::vector<uint8_t>>(
@@ -1402,8 +1324,9 @@ TEST_F(PacsTests, UpdateAudioChannelLocations) {
   // After reading, check the notifications
   {
     ON_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
-            .WillByDefault([](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                              tGATTS_RSP* /*p_msg*/) { ASSERT_EQ(GATT_SUCCESS, status); });
+            .WillByDefault(
+                    [](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
+                       std::unique_ptr<tGATTS_RSP> /*p_msg*/) { ASSERT_EQ(GATT_SUCCESS, status); });
     InSequence s2;
     // Write the CCC descriptors to receive the notifications
     // Note: test_dev2 is not subscribed to notifications
@@ -1521,7 +1444,7 @@ TEST_F(PacsRegistrationFailureTests, AddServiceFailsDeathTest) {
 
 class PacsCustomDescriptorTests : public PacsTestsBase {
 protected:
-  tBTA_GATTS_CBACK* p_gatt_event_source_cb_ = nullptr;
+  const tBTA_GATTS_CBACK* p_gatt_event_source_cb_ = nullptr;
   tGATT_IF server_if_ = 0xDE;
 
   void SetUp() override {
@@ -1530,13 +1453,11 @@ protected:
     // Mock GATT application registration success
     EXPECT_CALL(gatt_server_interface_,
                 AppRegister(uuid::kPublishedAudioCapabilityServiceUuid, _, _))
-            .WillRepeatedly(DoAll(SaveArg<1>(&p_gatt_event_source_cb_),
-                                  [this](const bluetooth::Uuid&, tBTA_GATTS_CBACK* p_cback, bool) {
-                                    tBTA_GATTS p_data;
-                                    p_data.reg_oper.status = tGATT_STATUS::GATT_SUCCESS;
-                                    p_data.reg_oper.server_if = server_if_;
-                                    p_cback(BTA_GATTS_REG_EVT, &p_data);
-                                  }));
+            .WillRepeatedly(DoAll(
+                    SaveArg<1>(&p_gatt_event_source_cb_),
+                    [this](const bluetooth::Uuid& app_uuid, const tBTA_GATTS_CBACK* p_cback, bool) {
+                      p_cback->p_reg_cb(tGATT_STATUS::GATT_SUCCESS, server_if_, app_uuid);
+                    }));
   }
 };
 
@@ -1655,7 +1576,7 @@ TEST_F(PacsTests, RemoteReadWithValidOffset) {
   // Expect a response with GATT_SUCCESS
   EXPECT_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillOnce([](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                       tGATTS_RSP* p_msg) {
+                       std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
             // The full value is 4 bytes: 0x03, 0x00, 0x00, 0x00
             // With an offset of 1, we expect 3 bytes.
@@ -1679,7 +1600,7 @@ TEST_F(PacsTests, RemoteReadWithOffsetEqualToLength) {
   // Expect a response with GATT_SUCCESS and 0 length
   EXPECT_CALL(gatt_server_interface_, SendRsp(_, _, GATT_SUCCESS, _))
           .WillOnce([](uint16_t /*conn_id*/, uint32_t /*trans_id*/, tGATT_STATUS status,
-                       tGATTS_RSP* p_msg) {
+                       std::unique_ptr<tGATTS_RSP> p_msg) {
             ASSERT_EQ(GATT_SUCCESS, status);
             // The full value is 4 bytes. With an offset of 4, we expect 0 bytes.
             ASSERT_EQ(p_msg->attr_value.len, 0);

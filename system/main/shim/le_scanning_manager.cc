@@ -41,7 +41,6 @@
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
 #include "main/shim/shim.h"
-#include "main_thread.h"
 #include "stack/acl/acl.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/internal/btm_api.h"
@@ -139,7 +138,7 @@ void BleScannerInterfaceImpl::Init() {
 }
 
 /** Registers a scanner with the stack */
-void BleScannerInterfaceImpl::RegisterScanner(const bluetooth::Uuid& app_uuid, RegisterCallback) {
+void BleScannerInterfaceImpl::RegisterScanner(const bluetooth::Uuid& app_uuid) {
   log::info("in shim layer, UUID={}", app_uuid);
   bluetooth::shim::GetScanning()->RegisterScanner(app_uuid);
 }
@@ -517,7 +516,7 @@ void BleScannerInterfaceImpl::on_scan_result(uint16_t event_type, uint8_t addres
   btm_cb.neighbor.le_scan.results++;
 
   // Do not update device properties of already bonded devices.
-  if (!get_btm_client_interface().security.BTM_IsBonded(raw_address, BT_TRANSPORT_AUTO)) {
+  if (!get_security_client_interface().BTM_IsBonded(raw_address, BT_TRANSPORT_AUTO)) {
     // Prevent updating properties without scan response
     if (!(event_type & kScannableMask) || (event_type & kScanResponseMask) ||
         msft_adv_monitor_enabled_) {

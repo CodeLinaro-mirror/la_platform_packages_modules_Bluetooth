@@ -93,7 +93,6 @@ import com.android.bluetooth.bass_client.BassClientService;
 import com.android.bluetooth.btservice.ActiveDeviceManager;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.Config;
-import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.csip.CsipSetCoordinatorService;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hap.HapClientService;
@@ -148,7 +147,6 @@ public class LeAudioServiceTest {
     @Mock private ActiveDeviceManager mActiveDeviceManager;
     @Mock private ScanController mScanController;
     @Mock private AudioManager mAudioManager;
-    @Mock private DatabaseManager mDatabaseManager;
     @Mock private LeAudioNativeInterface mNativeInterface;
     @Mock private ApplicationInfo mMockApplicationInfo;
     @Mock private LeAudioBroadcasterNativeInterface mLeAudioBroadcasterNativeInterface;
@@ -262,7 +260,7 @@ public class LeAudioServiceTest {
 
     @Parameters(name = "{0}")
     public static List<FlagsWrapper> getParams() {
-        return FlagsWrapper.progressionOf(Flags.FLAG_MAINLINE_BETA_STORAGE);
+        return FlagsWrapper.progressionOf();
     }
 
     public LeAudioServiceTest(FlagsWrapper flags) {
@@ -294,7 +292,6 @@ public class LeAudioServiceTest {
         ExtendedMockito.doReturn(true)
                 .when(() -> Config.isProfileSupported(BluetoothProfile.LE_AUDIO));
 
-        doReturn(mDatabaseManager).when(mAdapterService).getDatabaseManager();
         doReturn(Optional.of(mTbsService)).when(mAdapterService).getTbsService();
 
         doAnswer(invocation -> mBondedDevices.toArray(new BluetoothDevice[] {}))
@@ -350,18 +347,8 @@ public class LeAudioServiceTest {
 
         mLooper = new TestLooper();
 
-        if (Flags.mainlineBetaStorage()) {
-            mStorage = Mockito.spy(new BluetoothStorageManager(mAdapterService));
-        } else {
-            mStorage = Mockito.mock(BluetoothStorageManager.class);
-        }
-        mInOrder =
-                inOrder(
-                        mAdapterService,
-                        mAudioManager,
-                        mNativeInterface,
-                        mDatabaseManager,
-                        mStorage);
+        mStorage = Mockito.spy(new BluetoothStorageManager(mAdapterService));
+        mInOrder = inOrder(mAdapterService, mAudioManager, mNativeInterface, mStorage);
 
         mService =
                 new LeAudioService(
@@ -433,29 +420,24 @@ public class LeAudioServiceTest {
 
     private void assertTmapRole(int expectedMasks, int... supportedProfiles) {
         // revert the profile set
-        ExtendedMockito.doReturn(false)
-                .when(() -> Config.isProfileSupported(BluetoothProfile.LE_AUDIO_BROADCAST));
-        ExtendedMockito.doReturn(false)
-                .when(() -> Config.isProfileSupported(BluetoothProfile.LE_AUDIO));
-        ExtendedMockito.doReturn(false)
-                .when(() -> Config.isProfileSupported(BluetoothProfile.LE_CALL_CONTROL));
-        ExtendedMockito.doReturn(false)
-                .when(() -> Config.isProfileSupported(BluetoothProfile.MCP_SERVER));
+        ExtendedMockito.doReturn(false).when(() -> Config.isProfileSupported(anyInt()));
         for (int profile : supportedProfiles) {
             ExtendedMockito.doReturn(true).when(() -> Config.isProfileSupported(profile));
         }
         int mask =
-                new LeAudioService(
-                                mAdapterService,
-                                mStorage,
-                                mNativeInterface,
-                                mLeAudioBroadcasterNativeInterface,
-                                mActiveDeviceManager,
-                                mScanController,
-                                mLooper.getLooper(),
-                                mActivityManager,
-                                mPackageManager)
-                        .getTmapRoleMask();
+                Flags.leaudioCentralizeTmap()
+                        ? LeAudioTmapService.calculateTmapRoleMask()
+                        : new LeAudioService(
+                                        mAdapterService,
+                                        mStorage,
+                                        mNativeInterface,
+                                        mLeAudioBroadcasterNativeInterface,
+                                        mActiveDeviceManager,
+                                        mScanController,
+                                        mLooper.getLooper(),
+                                        mActivityManager,
+                                        mPackageManager)
+                                .getTmapRoleMask();
         assertThat(mask).isEqualTo(expectedMasks);
     }
 
@@ -480,10 +462,6 @@ public class LeAudioServiceTest {
         mInOrder.verify(mNativeInterface).setEnableState(eq(mSingleDevice), eq(true));
 
         // Verify the device is disabled in the service when policy is set to FORBIDDEN
-        doReturn(true)
-                .when(mAdapterService)
-                .setProfileConnectionPolicy(
-                        eq(mSingleDevice), eq(BluetoothProfile.LE_AUDIO), anyInt());
         mService.setConnectionPolicy(mSingleDevice, CONNECTION_POLICY_FORBIDDEN);
         mInOrder.verify(mNativeInterface).setEnableState(eq(mSingleDevice), eq(false));
     }
@@ -1036,7 +1014,6 @@ public class LeAudioServiceTest {
     /** Test setting connection policy */
     @Test
     public void testSetConnectionPolicy() {
-        doReturn(true).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
         doReturn(true).when(mVolumeControlService).setConnectionPolicy(any(), anyInt());
         doReturn(true).when(mCsipSetCoordinatorService).setConnectionPolicy(any(), anyInt());
         doReturn(true).when(mHapClientService).setConnectionPolicy(any(), anyInt());
@@ -1115,7 +1092,6 @@ public class LeAudioServiceTest {
         doReturn(new ParcelUuid[] {BluetoothUuid.LE_AUDIO})
                 .when(mAdapterService)
                 .getRemoteUuids(any(BluetoothDevice.class));
-        doReturn(true).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
         // Make LE Audio related services setConnectionPolicy() method return true.
         // These should NOT be called if not available
         doReturn(true).when(mVolumeControlService).setConnectionPolicy(any(), anyInt());
@@ -2458,19 +2434,14 @@ public class LeAudioServiceTest {
         /* AUDIO_DIRECTION_OUTPUT_BIT = 0x01 */
         int direction = 1;
         int availableContexts = 4;
-        List<BluetoothDevice> devices = new ArrayList<>();
         Set<BluetoothDevice> broadcastReceivers = new HashSet<>();
 
-        doReturn(devices).when(mDatabaseManager).getMostRecentlyConnectedDevices();
         doReturn(mLeftDevice).when(mStorage).getLeastRecentlyConnectedDeviceInList(any());
 
-        devices.add(mLeftDevice);
         connectTestDevice(mLeftDevice, TEST_GROUP_ID);
-        devices.add(0, mRightDevice);
         connectTestDevice(mRightDevice, TEST_GROUP_ID);
         assertThat(mService.setActiveDevice(mLeftDevice)).isFalse();
 
-        devices.add(0, mSingleDevice);
         connectTestDevice(mSingleDevice, TEST_GROUP_ID2);
 
         ArgumentCaptor<BluetoothProfileConnectionInfo> profileInfo =
@@ -2658,7 +2629,6 @@ public class LeAudioServiceTest {
     @Test
     public void testMcsAndTbsAuthorizationWithConnectionPolicy() {
         mService.handleBluetoothEnabled();
-        doReturn(true).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
         doReturn(CONNECTION_POLICY_UNKNOWN)
                 .when(mAdapterService)
                 .getProfileConnectionPolicy(mSingleDevice, BluetoothProfile.LE_AUDIO);
@@ -2693,7 +2663,6 @@ public class LeAudioServiceTest {
     @EnableFlags(Flags.FLAG_HEADTRACKER_CONNECTION_POLICY)
     public void testHidHostAuthorizationWithConnectionPolicy_flagEnabled() {
         mService.handleBluetoothEnabled();
-        doReturn(true).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
         doReturn(CONNECTION_POLICY_UNKNOWN)
                 .when(mAdapterService)
                 .getProfileConnectionPolicy(mSingleDevice, BluetoothProfile.LE_AUDIO);
@@ -2725,7 +2694,6 @@ public class LeAudioServiceTest {
     @DisableFlags(Flags.FLAG_HEADTRACKER_CONNECTION_POLICY)
     public void testHidHostAuthorizationWithConnectionPolicy_flagDisabled() {
         mService.handleBluetoothEnabled();
-        doReturn(true).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
         doReturn(CONNECTION_POLICY_UNKNOWN)
                 .when(mAdapterService)
                 .getProfileConnectionPolicy(mSingleDevice, BluetoothProfile.LE_AUDIO);
@@ -3046,12 +3014,8 @@ public class LeAudioServiceTest {
         injectAndVerifyDeviceConnected(mLeftDevice);
         injectAudioConfChanged(mSingleDevice, TEST_GROUP_ID, availableContexts, direction);
 
-        if (Flags.scanRegisterAndStart()) {
-            verify(mScanController)
-                    .registerAndStartScanInternal(scanCallbacks.capture(), any(), any(), any());
-        } else {
-            verify(mScanController).registerScannerInternal(scanCallbacks.capture(), any(), any());
-        }
+        verify(mScanController)
+                .registerAndStartScanInternal(scanCallbacks.capture(), any(), any(), any());
 
         ScanResult scanResult = new ScanResult(mRightDevice, null, 0, 0);
 
@@ -3358,7 +3322,6 @@ public class LeAudioServiceTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_MAINLINE_BETA_STORAGE)
     public void testSetCodecConfigPreference() {
         assertThat(mService.setActiveDevice(mSingleDevice)).isFalse();
 
@@ -3418,65 +3381,6 @@ public class LeAudioServiceTest {
     }
 
     @Test
-    @DisableFlags(Flags.FLAG_MAINLINE_BETA_STORAGE)
-    public void testSetCodecConfigPreference_old() {
-        // Not connected device
-        assertThat(mService.setActiveDevice(mSingleDevice)).isFalse();
-
-        // Connect device
-        connectTestDevice(mSingleDevice, TEST_GROUP_ID);
-
-        // Add location support
-        injectAudioConfChanged(
-                mSingleDevice,
-                TEST_GROUP_ID,
-                BluetoothLeAudio.CONTEXT_TYPE_RINGTONE,
-                0x01 /*AUDIO_DIRECTION_OUTPUT_BIT*/);
-
-        assertThat(mService.setActiveDevice(mSingleDevice)).isTrue();
-        mInOrder.verify(mNativeInterface).groupSetActive(TEST_GROUP_ID);
-
-        // Set group and device as active
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_ACTIVE);
-
-        // Set the initial group codec status
-        injectGroupSelectableCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_SELECTABLE_CONFIGS, OPUS_SELECTABLE_CONFIGS);
-        injectGroupCurrentCodecConfigChanged(TEST_GROUP_ID, LC3_16KHZ_CONFIG, LC3_48KHZ_CONFIG);
-
-        // Update of codec config preference with LC3_16KHZ_CONFIG
-        mService.setCodecConfigPreference(TEST_GROUP_ID, LC3_16KHZ_CONFIG, LC3_16KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        mSingleDevice, List.of(LC3_16KHZ_CONFIG));
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        mSingleDevice, List.of(LC3_16KHZ_CONFIG));
-
-        // Update of codec config preference with OPUS_48KHZ_CONFIG
-        mService.setCodecConfigPreference(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        mSingleDevice, List.of(LC3_16KHZ_CONFIG, OPUS_48KHZ_CONFIG));
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        mSingleDevice, List.of(LC3_16KHZ_CONFIG, OPUS_48KHZ_CONFIG));
-
-        // Update of codec config preference with OPUS_HI_RES_96KHZ_CONFIG
-        mService.setCodecConfigPreference(
-                TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        mSingleDevice,
-                        List.of(LC3_16KHZ_CONFIG, OPUS_48KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG));
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        mSingleDevice,
-                        List.of(LC3_16KHZ_CONFIG, OPUS_48KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG));
-    }
-
-    @Test
-    @EnableFlags(Flags.FLAG_MAINLINE_BETA_STORAGE)
     public void testCodecConfigPreferenceRestore() {
         assertThat(mService.setActiveDevice(mSingleDevice)).isFalse();
         connectTestDevice(mSingleDevice, TEST_GROUP_ID);
@@ -3525,184 +3429,6 @@ public class LeAudioServiceTest {
                         TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
     }
 
-    @Test
-    @DisableFlags(Flags.FLAG_MAINLINE_BETA_STORAGE)
-    public void testCodecConfigPreferenceRestore_old() {
-        // Not connected device
-        assertThat(mService.setActiveDevice(mSingleDevice)).isFalse();
-
-        // Connect device
-        connectTestDevice(mSingleDevice, TEST_GROUP_ID);
-
-        // Add location support
-        injectAudioConfChanged(
-                mSingleDevice,
-                TEST_GROUP_ID,
-                BluetoothLeAudio.CONTEXT_TYPE_RINGTONE,
-                0x01 /*AUDIO_DIRECTION_OUTPUT_BIT*/);
-
-        assertThat(mService.setActiveDevice(mSingleDevice)).isTrue();
-        mInOrder.verify(mNativeInterface).groupSetActive(TEST_GROUP_ID);
-
-        ArgumentCaptor<List<BluetoothLeAudioCodecConfig>> inputCodecDatabase =
-                ArgumentCaptor.forClass((Class) List.class);
-        ArgumentCaptor<List<BluetoothLeAudioCodecConfig>> outputCodecDatabase =
-                ArgumentCaptor.forClass((Class) List.class);
-
-        // Set group and device as active
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_ACTIVE);
-
-        // Set the initial group codec status
-        injectGroupSelectableCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_SELECTABLE_CONFIGS, OPUS_SELECTABLE_CONFIGS);
-        injectGroupCurrentCodecConfigChanged(TEST_GROUP_ID, LC3_16KHZ_CONFIG, LC3_48KHZ_CONFIG);
-
-        mService.setCodecConfigPreference(TEST_GROUP_ID, LC3_16KHZ_CONFIG, LC3_16KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        eq(mSingleDevice), inputCodecDatabase.capture());
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        eq(mSingleDevice), outputCodecDatabase.capture());
-
-        mService.setCodecConfigPreference(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        eq(mSingleDevice), inputCodecDatabase.capture());
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        eq(mSingleDevice), outputCodecDatabase.capture());
-        mService.setCodecConfigPreference(
-                TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        eq(mSingleDevice), inputCodecDatabase.capture());
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        eq(mSingleDevice), outputCodecDatabase.capture());
-
-        // Mock the persistent storage content for the group reactivation
-        doReturn(outputCodecDatabase.getValue())
-                .when(mDatabaseManager)
-                .getLeAudioUnicastOutputCodecPreferenceList(mSingleDevice);
-        doReturn(inputCodecDatabase.getValue())
-                .when(mDatabaseManager)
-                .getLeAudioUnicastInputCodecPreferenceList(mSingleDevice);
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_INACTIVE);
-
-        // Set group and device as active.
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_ACTIVE);
-        injectGroupSelectableCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_SELECTABLE_CONFIGS, OPUS_SELECTABLE_CONFIGS);
-        injectGroupCurrentCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-
-        // Verify if preferences were retrieved and reapplied to native
-        mInOrder.verify(mDatabaseManager).getLeAudioUnicastOutputCodecPreferenceList(mSingleDevice);
-        mInOrder.verify(mDatabaseManager).getLeAudioUnicastInputCodecPreferenceList(mSingleDevice);
-
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(TEST_GROUP_ID, LC3_16KHZ_CONFIG, LC3_16KHZ_CONFIG);
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(
-                        TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-    }
-
-    @Test
-    @DisableFlags(Flags.FLAG_MAINLINE_BETA_STORAGE)
-    public void testSetGetCodecConfigPreferenceOpus() {
-        // Not connected device
-        assertThat(mService.setActiveDevice(mSingleDevice)).isFalse();
-
-        // Connect device
-        connectTestDevice(mSingleDevice, TEST_GROUP_ID);
-
-        // Add location support
-        injectAudioConfChanged(
-                mSingleDevice,
-                TEST_GROUP_ID,
-                BluetoothLeAudio.CONTEXT_TYPE_RINGTONE,
-                0x01 /*AUDIO_DIRECTION_OUTPUT_BIT*/);
-
-        assertThat(mService.setActiveDevice(mSingleDevice)).isTrue();
-        mInOrder.verify(mNativeInterface).groupSetActive(TEST_GROUP_ID);
-
-        ArgumentCaptor<List<BluetoothLeAudioCodecConfig>> inputCodecDatabase =
-                ArgumentCaptor.forClass((Class) List.class);
-        ArgumentCaptor<List<BluetoothLeAudioCodecConfig>> outputCodecDatabase =
-                ArgumentCaptor.forClass((Class) List.class);
-
-        // Set group and device as active
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_ACTIVE);
-
-        // Set the initial group codec status
-        injectGroupSelectableCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_SELECTABLE_CONFIGS, OPUS_SELECTABLE_CONFIGS);
-        injectGroupCurrentCodecConfigChanged(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-
-        // Note: Opus and Opus Hi-res are a different codecs at the API level, but still the same
-        // codec at the Bluetooth specification level. If we have both flavors of the Opus codec
-        // configuration priorities set by the API, we should call to native only with the higher
-        // codec priority of the two, since the BT Audio HAL receives the same Bluetooth domain
-        // codec identifier when setting the priority for both.
-        // Make sure the lower-priority OPUS will not override the Hi-res priority
-        mService.setCodecConfigPreference(
-                TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        eq(mSingleDevice), inputCodecDatabase.capture());
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        eq(mSingleDevice), outputCodecDatabase.capture());
-
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(
-                        TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-
-        mService.setCodecConfigPreference(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastInputCodecPreferenceList(
-                        eq(mSingleDevice), inputCodecDatabase.capture());
-        mInOrder.verify(mDatabaseManager)
-                .setLeAudioUnicastOutputCodecPreferenceList(
-                        eq(mSingleDevice), outputCodecDatabase.capture());
-
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-
-        assertThat(outputCodecDatabase.getValue().size()).isEqualTo(2);
-        assertThat(inputCodecDatabase.getValue().size()).isEqualTo(2);
-
-        // Mock the persistent storage content for the group reactivation
-        doReturn(outputCodecDatabase.getValue())
-                .when(mDatabaseManager)
-                .getLeAudioUnicastOutputCodecPreferenceList(mSingleDevice);
-        doReturn(inputCodecDatabase.getValue())
-                .when(mDatabaseManager)
-                .getLeAudioUnicastInputCodecPreferenceList(mSingleDevice);
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_INACTIVE);
-
-        // Set group and device as active.
-        injectGroupStatusChange(TEST_GROUP_ID, LeAudioStackEvent.GROUP_STATUS_ACTIVE);
-        injectGroupSelectableCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_SELECTABLE_CONFIGS, OPUS_SELECTABLE_CONFIGS);
-        injectGroupCurrentCodecConfigChanged(
-                TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-
-        // Verify if preferences were retrieved and reapplied to native
-        mInOrder.verify(mDatabaseManager).getLeAudioUnicastOutputCodecPreferenceList(mSingleDevice);
-        mInOrder.verify(mDatabaseManager).getLeAudioUnicastInputCodecPreferenceList(mSingleDevice);
-        // Make sure the regular Opus does override the equal prio Opus Hi-res preference
-
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(
-                        TEST_GROUP_ID, OPUS_HI_RES_96KHZ_CONFIG, OPUS_HI_RES_96KHZ_CONFIG);
-        mInOrder.verify(mNativeInterface)
-                .setCodecConfigPreference(TEST_GROUP_ID, OPUS_48KHZ_CONFIG, OPUS_48KHZ_CONFIG);
-    }
-
     // TODO: Add test with different codec priorities
 
     /** Test managing broadcast to unicast fallback group */
@@ -3711,10 +3437,8 @@ public class LeAudioServiceTest {
         /* AUDIO_DIRECTION_OUTPUT_BIT = 0x01 */
         int direction = 1;
         int availableContexts = 5 + BluetoothLeAudio.CONTEXT_TYPE_RINGTONE;
-        List<BluetoothDevice> devices = new ArrayList<>();
         Set<BluetoothDevice> broadcastReceivers = new HashSet<>();
 
-        doReturn(devices).when(mDatabaseManager).getMostRecentlyConnectedDevices();
         doReturn(mSingleDevice).when(mStorage).getLeastRecentlyConnectedDeviceInList(any());
 
         // Not connected device
@@ -3723,7 +3447,6 @@ public class LeAudioServiceTest {
                 .isEqualTo(BluetoothLeAudio.GROUP_ID_INVALID);
 
         // Connect device
-        devices.add(mSingleDevice);
         connectTestDevice(mSingleDevice, TEST_GROUP_ID);
 
         /* Mock device1 as receiving broadcast device */
@@ -3751,7 +3474,6 @@ public class LeAudioServiceTest {
         mService.setBroadcastToUnicastFallbackGroup(TEST_GROUP_ID2);
 
         // Connect second device
-        devices.add(0, mLeftDevice);
         connectTestDevice(mLeftDevice, TEST_GROUP_ID2);
         mService.deviceConnected(mLeftDevice);
 
@@ -3781,10 +3503,6 @@ public class LeAudioServiceTest {
     @Test
     @EnableFlags(Flags.FLAG_LEAUDIO_FALLBACK_GROUP_SELECTION)
     public void testSelectDefaultBroadcastToUnicastFallbackGroupWhenFlagEnabled() {
-        List<BluetoothDevice> mostRecentDevices = new ArrayList<>();
-        mostRecentDevices.add(mLeftDevice);
-        mostRecentDevices.add(mRightDevice);
-        doReturn(mostRecentDevices).when(mDatabaseManager).getMostRecentlyConnectedDevices();
         doReturn(mRightDevice).when(mStorage).getLeastRecentlyConnectedDeviceInList(any());
 
         // Connect devices to groups and create descriptors.
@@ -4017,13 +3735,7 @@ public class LeAudioServiceTest {
     }
 
     private void verifyNoIntentSent() {
-        if (Flags.onlyBroadcastToLocalUser()) {
-            mInOrder.verify(mAdapterService, never()).sendBroadcast(any(), any(), any());
-            mInOrder.verify(mAdapterService, never())
-                    .sendBroadcastWithMultiplePermissions(any(), any());
-            return;
-        }
-        mInOrder.verify(mAdapterService, never()).sendBroadcastAsUser(any(), any(), any(), any());
+        mInOrder.verify(mAdapterService, never()).sendBroadcast(any(), any(), any());
         mInOrder.verify(mAdapterService, never())
                 .sendBroadcastWithMultiplePermissions(any(), any());
     }
@@ -4056,13 +3768,7 @@ public class LeAudioServiceTest {
 
     @SafeVarargs
     private void verifyIntentSent(Matcher<Intent>... matchers) {
-        if (Flags.onlyBroadcastToLocalUser()) {
-            mInOrder.verify(mAdapterService)
-                    .sendBroadcast(MockitoHamcrest.argThat(AllOf.allOf(matchers)), any(), any());
-            return;
-        }
         mInOrder.verify(mAdapterService)
-                .sendBroadcastAsUser(
-                        MockitoHamcrest.argThat(AllOf.allOf(matchers)), any(), any(), any());
+                .sendBroadcast(MockitoHamcrest.argThat(AllOf.allOf(matchers)), any(), any());
     }
 }

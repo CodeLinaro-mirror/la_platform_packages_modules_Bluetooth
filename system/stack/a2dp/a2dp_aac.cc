@@ -23,7 +23,7 @@
 
 #define LOG_TAG "bluetooth-a2dp"
 
-#include "a2dp_aac.h"
+#include "stack/include/a2dp_aac.h"
 
 #include <bluetooth/log.h>
 #include <string.h>
@@ -35,17 +35,17 @@
 #include <sstream>
 #include <string>
 
-#include "a2dp_aac_constants.h"
-#include "a2dp_aac_decoder.h"
-#include "a2dp_aac_encoder.h"
-#include "a2dp_api.h"
-#include "a2dp_codec_api.h"
-#include "a2dp_constants.h"
-#include "avdt_api.h"
 #include "gd/common/utils.h"
 #include "hardware/bt_av.h"
 #include "internal_include/bt_trace.h"
 #include "osi/include/properties.h"
+#include "stack/include/a2dp_aac_constants.h"
+#include "stack/include/a2dp_aac_decoder.h"
+#include "stack/include/a2dp_aac_encoder.h"
+#include "stack/include/a2dp_api.h"
+#include "stack/include/a2dp_codec_api.h"
+#include "stack/include/a2dp_constants.h"
+#include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
 
 #define A2DP_AAC_DEFAULT_BITRATE 165000  // 165 kbps
@@ -945,13 +945,10 @@ tA2DP_STATUS A2dpCodecConfigAacBase::setCodecConfig(const uint8_t* p_peer_codec_
   btav_a2dp_codec_config_t saved_codec_selectable_capability = codec_selectable_capability_;
   btav_a2dp_codec_config_t saved_codec_user_config = codec_user_config_;
   btav_a2dp_codec_config_t saved_codec_audio_config = codec_audio_config_;
-  uint8_t saved_ota_codec_config[AVDT_CODEC_SIZE];
-  uint8_t saved_ota_codec_peer_capability[AVDT_CODEC_SIZE];
-  uint8_t saved_ota_codec_peer_config[AVDT_CODEC_SIZE];
-  memcpy(saved_ota_codec_config, ota_codec_config_, sizeof(ota_codec_config_));
-  memcpy(saved_ota_codec_peer_capability, ota_codec_peer_capability_,
-         sizeof(ota_codec_peer_capability_));
-  memcpy(saved_ota_codec_peer_config, ota_codec_peer_config_, sizeof(ota_codec_peer_config_));
+  bluetooth::a2dp::MediaCodecCapabilities saved_ota_codec_config = ota_codec_config_;
+  bluetooth::a2dp::MediaCodecCapabilities saved_ota_codec_peer_capability =
+          ota_codec_peer_capability_;
+  bluetooth::a2dp::MediaCodecCapabilities saved_ota_codec_peer_config = ota_codec_peer_config_;
 
   tA2DP_STATUS status = A2DP_ParseInfoAac(&peer_info_cie, p_peer_codec_info, is_capability);
   if (status != A2DP_SUCCESS) {
@@ -1272,16 +1269,17 @@ tA2DP_STATUS A2dpCodecConfigAacBase::setCodecConfig(const uint8_t* p_peer_codec_
   // Create a local copy of the peer codec capability/config, and the
   // result codec config.
   if (is_capability) {
-    log::assert_that(
-            A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &peer_info_cie, ota_codec_peer_capability_),
-            "Failed to build media codec capabilities");
+    log::assert_that(A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &peer_info_cie,
+                                       ota_codec_peer_capability_.data()),
+                     "Failed to build media codec capabilities");
   } else {
     log::assert_that(
-            A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &peer_info_cie, ota_codec_peer_config_),
+            A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &peer_info_cie, ota_codec_peer_config_.data()),
             "Failed to build media codec capabilities");
   }
-  log::assert_that(A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &result_config_cie, ota_codec_config_),
-                   "Failed to build media codec capabilities");
+  log::assert_that(
+          A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &result_config_cie, ota_codec_config_.data()),
+          "Failed to build media codec capabilities");
   return A2DP_SUCCESS;
 
 fail:
@@ -1290,10 +1288,9 @@ fail:
   codec_selectable_capability_ = saved_codec_selectable_capability;
   codec_user_config_ = saved_codec_user_config;
   codec_audio_config_ = saved_codec_audio_config;
-  memcpy(ota_codec_config_, saved_ota_codec_config, sizeof(ota_codec_config_));
-  memcpy(ota_codec_peer_capability_, saved_ota_codec_peer_capability,
-         sizeof(ota_codec_peer_capability_));
-  memcpy(ota_codec_peer_config_, saved_ota_codec_peer_config, sizeof(ota_codec_peer_config_));
+  ota_codec_config_ = saved_ota_codec_config;
+  ota_codec_peer_capability_ = saved_ota_codec_peer_capability;
+  ota_codec_peer_config_ = saved_ota_codec_peer_config;
   return status;
 }
 
@@ -1307,9 +1304,8 @@ bool A2dpCodecConfigAacBase::setPeerCodecCapabilities(const uint8_t* p_peer_code
 
   // Save the internal state
   btav_a2dp_codec_config_t saved_codec_selectable_capability = codec_selectable_capability_;
-  uint8_t saved_ota_codec_peer_capability[AVDT_CODEC_SIZE];
-  memcpy(saved_ota_codec_peer_capability, ota_codec_peer_capability_,
-         sizeof(ota_codec_peer_capability_));
+  bluetooth::a2dp::MediaCodecCapabilities saved_ota_codec_peer_capability =
+          ota_codec_peer_capability_;
 
   tA2DP_STATUS status = A2DP_ParseInfoAac(&peer_info_cie, p_peer_codec_capabilities, true);
   if (status != A2DP_SUCCESS) {
@@ -1355,16 +1351,15 @@ bool A2dpCodecConfigAacBase::setPeerCodecCapabilities(const uint8_t* p_peer_code
             static_cast<int64_t>(AacEncoderBitrateMode::AACENC_BR_MODE_CBR);
   }
 
-  log::assert_that(
-          A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &peer_info_cie, ota_codec_peer_capability_),
-          "Failed to build media codec capabilities");
+  log::assert_that(A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &peer_info_cie,
+                                     ota_codec_peer_capability_.data()),
+                   "Failed to build media codec capabilities");
   return true;
 
 fail:
   // Restore the internal state
   codec_selectable_capability_ = saved_codec_selectable_capability;
-  memcpy(ota_codec_peer_capability_, saved_ota_codec_peer_capability,
-         sizeof(ota_codec_peer_capability_));
+  ota_codec_peer_capability_ = saved_ota_codec_peer_capability;
   return false;
 }
 

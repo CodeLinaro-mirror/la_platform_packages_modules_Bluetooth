@@ -55,13 +55,14 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 
-#include "bt_types.h"
+#include "stack/include/bt_types.h"
 #include "stack/btm/internal/btm_api.h"
-#include "gap_api.h"
-#include "gatt_api.h"
+#include "stack/include/gap_api.h"
+#include "stack/include/gatt_api.h"
 #include "stack/l2cap/internal/l2c_api.h"
 #include "stack/include/smp_api_types.h"
-#include "smp_status.h"
+#include "stack/include/smp_status.h"
+#include "stack/include/stack_app.h"
 
 __BEGIN_DECLS
 
@@ -169,7 +170,7 @@ typedef struct {
 typedef struct {
   size_t size;
   // GATT common APIs (Both client and server)
-  tGATT_IF (*Register)(bluetooth::Uuid& p_app_uuid128, tGATT_CBACK* p_cb_info,
+  tGATT_IF (*Register)(bluetooth::Uuid& p_app_uuid128, bluetooth::stack::tGATT_CBACK* p_cb_info,
                        bool eatt_support);
   void (*Deregister)(tGATT_IF gatt_if);
   void (*StartIf)(tGATT_IF gatt_if);
@@ -189,7 +190,6 @@ typedef struct {
                          tGATT_VALUE* p_write);
   tGATT_STATUS (*cExecuteWrite)(uint16_t conn_id, bool is_execute);
   tGATT_STATUS (*cSendHandleValueConfirm)(uint16_t conn_id, uint16_t handle);
-  void (*cSetIdleTimeout)(RawAddress bd_addr, uint16_t idle_tout);
   void (*cSetVisibility)(uint16_t disc_mode, uint16_t conn_mode);
 
   // GATT Server APIs

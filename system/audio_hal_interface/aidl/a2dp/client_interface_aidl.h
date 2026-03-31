@@ -31,7 +31,7 @@
 // Keep after audio_aidl_interfaces.h because of <base/logging.h>
 // conflicting definitions.
 #include "a2dp_aidl_transport.h"
-#include "a2dp_encoding.h"
+#include "audio_hal_interface/a2dp_encoding.h"
 
 namespace bluetooth {
 namespace audio {

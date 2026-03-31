@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "a2dp_aidl_transport.h"
+#include "audio_hal_interface/aidl/a2dp/a2dp_aidl_transport.h"
 #include "audio_aidl_interfaces.h"
 
 namespace bluetooth {

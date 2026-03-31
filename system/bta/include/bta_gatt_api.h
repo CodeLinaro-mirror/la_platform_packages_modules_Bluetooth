@@ -346,119 +346,49 @@ inline std::string gatt_server_event_text(const tBTA_GATTS_EVT& event) {
 #define BTA_GATTC_CHAR_DESCR_MAX 7
 #endif
 
-/***********************  NV callback Data Definitions   **********************
- */
-typedef struct {
-  bluetooth::Uuid app_uuid128;
-  bluetooth::Uuid svc_uuid;
-  uint16_t svc_inst;
-  uint16_t s_handle;
-  uint16_t e_handle;
-  bool is_primary; /* primary service or secondary */
-} tBTA_GATTS_HNDL_RANGE;
-
-typedef struct {
-  tGATT_STATUS status;
-  RawAddress remote_bda;
-  uint32_t trans_id;
-  tCONN_ID conn_id;
-  tGATTS_DATA* p_data;
-} tBTA_GATTS_REQ;
-
-typedef struct {
-  tGATT_IF server_if;
-  tGATT_STATUS status;
-  bluetooth::Uuid uuid;
-} tBTA_GATTS_REG_OPER;
-
-typedef struct {
-  tGATT_IF server_if;
-  uint16_t service_id;
-  uint16_t svc_instance;
-  bool is_primary;
-  tGATT_STATUS status;
-  bluetooth::Uuid uuid;
-} tBTA_GATTS_CREATE;
-
-typedef struct {
-  tGATT_IF server_if;
-  uint16_t service_id;
-  tGATT_STATUS status;
-} tBTA_GATTS_SRVC_OPER;
-
-typedef struct {
-  tGATT_IF server_if;
-  RawAddress remote_bda;
-  tCONN_ID conn_id;
-  tBT_TRANSPORT transport;
-} tBTA_GATTS_CONN;
-
-typedef struct {
-  tCONN_ID conn_id;
-  bool congested; /* report channel congestion indicator */
-} tBTA_GATTS_CONGEST;
-
-typedef struct {
-  tCONN_ID conn_id;    /* connection ID */
-  tGATT_STATUS status; /* notification/indication status */
-} tBTA_GATTS_CONF;
-
-typedef struct {
-  tGATT_IF server_if;
-  tCONN_ID conn_id;
-  uint8_t tx_phy;
-  uint8_t rx_phy;
-  tGATT_STATUS status;
-} tBTA_GATTS_PHY_UPDATE;
-
-typedef struct {
-  tGATT_IF server_if;
-  tCONN_ID conn_id;
-  uint16_t interval;
-  uint16_t latency;
-  uint16_t timeout;
-  tGATT_STATUS status;
-} tBTA_GATTS_CONN_UPDATE;
-
-typedef struct {
-  tGATT_IF server_if;
-  tCONN_ID conn_id;
-  uint16_t subrate_factor;
-  uint16_t latency;
-  uint16_t cont_num;
-  uint16_t timeout;
-  tGATT_SUBRATE_MODE subrate_mode;
-  tGATT_STATUS status;
-} tBTA_GATTS_SUBRATE_CHG;
-
-typedef struct {
-  tCONN_ID conn_id;
-  uint32_t session_id;
-  tGATT_STATUS status;
-} tBTA_GATTS_CHARACTERISTICS_UNOFFLOADED;
-
-/* GATTS callback data */
-typedef union {
-  tBTA_GATTS_REG_OPER reg_oper;
-  tBTA_GATTS_CREATE create;
-  tBTA_GATTS_SRVC_OPER srvc_oper;
-  tGATT_STATUS status; /* BTA_GATTS_LISTEN_EVT */
-  tBTA_GATTS_REQ req_data;
-  tBTA_GATTS_CONN conn;               /* BTA_GATTS_CONN_EVT */
-  tBTA_GATTS_CONGEST congest;         /* BTA_GATTS_CONGEST_EVT callback data */
-  tBTA_GATTS_CONF confirm;            /* BTA_GATTS_CONF_EVT callback data */
-  tBTA_GATTS_PHY_UPDATE phy_update;   /* BTA_GATTS_PHY_UPDATE_EVT callback data */
-  tBTA_GATTS_CONN_UPDATE conn_update; /* BTA_GATTS_CONN_UPDATE_EVT callback data */
-  tBTA_GATTS_SUBRATE_CHG subrate_chg; /* BTA_GATTS_SUBRATE_CHG_EVT */
-  tBTA_GATTS_CHARACTERISTICS_UNOFFLOADED
-          characteristics_unoffloaded; /* BTA_GATTS_CHARACTERISTICS_UNOFFLOADED_EVT */
-} tBTA_GATTS;
-
 /* GATTS enable callback function */
 typedef void(tBTA_GATTS_ENB_CBACK)(tGATT_STATUS status);
 
 /* Server callback function */
-typedef void(tBTA_GATTS_CBACK)(tBTA_GATTS_EVT event, tBTA_GATTS* p_data);
+typedef struct {
+  void (*p_reg_cb)(tGATT_STATUS status, tGATT_IF server_if, const bluetooth::Uuid& uuid);
+  void (*p_dereg_cb)(tGATT_STATUS status, tGATT_IF server_if);
+  void (*p_connect_cb)(tGATT_IF server_if, const RawAddress& remote_bda, tCONN_ID conn_id,
+                       tBT_TRANSPORT transport);
+  void (*p_disconnect_cb)(tGATT_IF server_if, const RawAddress& remote_bda, tCONN_ID conn_id,
+                          tBT_TRANSPORT transport);
+  void (*p_stop_service_cb)(tGATT_STATUS status, tGATT_IF server_if, uint16_t service_id);
+  void (*p_delete_service_cb)(tGATT_STATUS status, tGATT_IF server_if, uint16_t service_id);
+  void (*p_read_characteristic_cb)(tCONN_ID conn_id, uint32_t trans_id,
+                                   const RawAddress& remote_bda, uint16_t handle, uint16_t offset,
+                                   bool is_long);
+  void (*p_read_descriptor_cb)(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                               uint16_t handle, uint16_t offset, bool is_long);
+  void (*p_write_characteristic_cb)(tCONN_ID conn_id, uint32_t trans_id,
+                                    const RawAddress& remote_bda, uint16_t handle, uint16_t offset,
+                                    bool need_rsp, bool is_prep, uint8_t* value, uint16_t len);
+  void (*p_write_descriptor_cb)(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                                uint16_t handle, uint16_t offset, bool need_rsp, bool is_prep,
+                                uint8_t* value, uint16_t len);
+  void (*p_exec_write_cb)(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                          tGATT_EXEC_FLAG exec_write);
+  void (*p_mtu_changed_cb)(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                           uint16_t mtu);
+  void (*p_conf_cb)(tCONN_ID conn_id, tGATT_STATUS status);
+  void (*p_congestion_cb)(tCONN_ID conn_id, bool congested);
+  void (*p_phy_update_cb)(tGATT_IF server_if, tCONN_ID conn_id, uint8_t tx_phy, uint8_t rx_phy,
+                          tGATT_STATUS status);
+  void (*p_conn_update_cb)(tGATT_IF server_if, tCONN_ID conn_id, uint16_t interval,
+                           uint16_t latency, uint16_t timeout, tGATT_STATUS status);
+  void (*p_subrate_chg_cb)(tGATT_IF server_if, tCONN_ID conn_id, uint16_t subrate_factor,
+                           uint16_t latency, uint16_t cont_num, uint16_t timeout,
+                           tGATT_SUBRATE_MODE subrate_mode, tGATT_STATUS status);
+  void (*p_req_open_cb)(tGATT_STATUS status);
+  void (*p_cancel_open_cb)(tGATT_STATUS status);
+  void (*p_close_cb)(tGATT_STATUS status);
+  void (*p_characteristics_unoffloaded_cb)(tCONN_ID conn_id, uint32_t session_id,
+                                           tGATT_STATUS status);
+} tBTA_GATTS_CBACK;
 
 /*****************************************************************************
  *  External Function Declarations
@@ -518,12 +448,12 @@ void BTA_GATTC_AppDeregister(tGATT_IF client_if);
  *
  ******************************************************************************/
 void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda,
-                    tBTM_BLE_CONN_TYPE connection_type, bool opportunistic);
+                    tBTM_BLE_CONN_TYPE connection_type);
 void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
-                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
+                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport,
                     uint16_t preferred_mtu, bool prefer_relax_mode);
 void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
-                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport, bool opportunistic,
+                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport,
                     uint16_t preferred_mtu, bool prefer_relax_mode, bool auto_mtu_enabled);
 
 /*******************************************************************************
@@ -905,40 +835,6 @@ void BTA_GATTC_OffloadCharacteristics(tCONN_ID conn_id, std::vector<btgatt_db_el
 void BTA_GATTC_UnoffloadCharacteristics(tCONN_ID conn_id, int session_id);
 
 /*******************************************************************************
- * Function         BTA_GATTC_SubrateModeRequest
- *
- * Description      subrate mode request, can only be used when connection is up.
- *
- * Parameters:      client_if     - client interface.
- *                  bd_addr       - BD address of the peer
- *                  subrate_mode  - subrate mode [none/low/balanced/high/lea]
- *
- * Returns          tGATT_STATUS
- *
- ******************************************************************************/
-tGATT_STATUS BTA_GATTC_SubrateModeRequest(tGATT_IF client_if, const RawAddress& bd_addr,
-                              tGATT_SUBRATE_MODE subrate_mode);
-
-/*******************************************************************************
- * Function         BTA_GATTC_SubrateModeRequest
- *
- * Description      Update fixed subrate parameters of subrate mode in config.
- *                  Subrate mode request, can only be used when connection is up.
- *
- * Parameters:      client_if     - client interface.
- *                  bd_addr       - BD address of the peer
- *                  subrate_mode  - subrate mode [none/low/balanced/high/lea]
- *                  Subrate parameters
- *
- * Returns          tGATT_STATUS
- *
- ******************************************************************************/
-tGATT_STATUS BTA_GATTC_SubrateModeRequest(tGATT_IF client_if, const RawAddress& bd_addr,
-                                          tGATT_SUBRATE_MODE subrate_mode,
-                                          uint16_t subrate_max, uint16_t subrate_min,
-                                          uint16_t cont_num);
-
-/*******************************************************************************
  *  BTA GATT Server API
  ******************************************************************************/
 
@@ -982,7 +878,7 @@ void BTA_GATTS_Disable(void);
  * Returns          None
  *
  ******************************************************************************/
-void BTA_GATTS_AppRegister(const bluetooth::Uuid& app_uuid, tBTA_GATTS_CBACK* p_cback,
+void BTA_GATTS_AppRegister(const bluetooth::Uuid& app_uuid, const tBTA_GATTS_CBACK* p_cback,
                            bool eatt_support);
 
 /*******************************************************************************
@@ -1037,19 +933,6 @@ void BTA_GATTS_DeleteService(uint16_t service_id);
 
 /*******************************************************************************
  *
- * Function         BTA_GATTS_StopService
- *
- * Description      This function is called to stop a service.
- *
- * Parameters       service_id - service to be topped.
- *
- * Returns          None
- *
- ******************************************************************************/
-void BTA_GATTS_StopService(uint16_t service_id);
-
-/*******************************************************************************
- *
  * Function         BTA_GATTS_HandleValueIndication
  *
  * Description      This function is called to read a characteristics
@@ -1076,12 +959,13 @@ void BTA_GATTS_HandleValueIndication(tCONN_ID conn_id, uint16_t attr_id, std::ve
  * Parameters       conn_id - connection identifier.
  *                  trans_id - transaction ID.
  *                  status - response status
- *                  p_msg - response data.
+ *                  rsp - response data.
  *
  * Returns          None
  *
  ******************************************************************************/
-void BTA_GATTS_SendRsp(tCONN_ID conn_id, uint32_t trans_id, tGATT_STATUS status, tGATTS_RSP* p_msg);
+void BTA_GATTS_SendRsp(tCONN_ID conn_id, uint32_t trans_id, tGATT_STATUS status,
+                       std::unique_ptr<tGATTS_RSP> rsp);
 
 /*******************************************************************************
  *

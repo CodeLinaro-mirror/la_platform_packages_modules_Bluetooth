@@ -43,9 +43,10 @@
 #include "btif_api.h"
 #include "btif_config.h"
 #include "stack/l2cap/internal/l2c_api.h"
-#include "l2cdefs.h"
+#include "stack/include/l2cdefs.h"
 #include "osi/include/allocator.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/btm_sec_api.h"
 #include "stack/l2cap/l2c_int.h"
 #include <cutils/properties.h>
 #include "stack/include/main_thread.h"
@@ -235,14 +236,14 @@ static bt_status_t L2cap_Register(uint16_t psm, bool conn_type,
                                   uint16_t my_mtu, uint16_t required_remote_mtu,
                                   uint16_t sec_level) {
   log::debug("L2cap_Register :: psm={}", psm);
-  if (!get_btm_client_interface().security.BTM_SetSecurityLevel(
+  if (!get_security_client_interface().BTM_SetSecurityLevel(
           conn_type, "l2test", BTM_SEC_PROTO_L2CAP, sec_level, psm, 0, 0)) {
     log::debug("Error:: BTM_SetSecurityLevel failed");
     return BT_STATUS_FAIL;
   }
 #if 1
   if (4113 == psm) {
-    if (!get_btm_client_interface().security.BTM_SetSecurityLevel(
+    if (!get_security_client_interface().BTM_SetSecurityLevel(
             conn_type, "l2test 4113", BTM_SEC_PROTO_L2CAP, sec_level, psm, 0,
             0)) {
       log::debug("Error:: BTM_SetSecurityLevel failed");
@@ -292,7 +293,7 @@ static bt_status_t L2cap_LE_Register(uint16_t le_psm, bool ConnType,
     return BT_STATUS_FAIL;
   }
 
-  if (!get_btm_client_interface().security.BTM_SetSecurityLevel(
+  if (!get_security_client_interface().BTM_SetSecurityLevel(
           ConnType, "l2c_le_test", BTM_SEC_SERVICE_ATT, SecLevel, le_psm, 0,
           0)) {
     log::error("LE-L2CAP: BTM_SetSecurityLevel failed");
@@ -315,7 +316,7 @@ static bt_status_t L2cap_coc_register(uint16_t psm,
     return BT_STATUS_FAIL;
   }
 
-  if (!get_btm_client_interface().security.BTM_SetSecurityLevel(
+  if (!get_security_client_interface().BTM_SetSecurityLevel(
           true, "ecfc_test", BTM_SEC_SERVICE_EATT, secLevel, psm, 0, 0)) {
     log::error("ECFC-L2CAP: BTM_SetSecurityLevel failed");
     return BT_STATUS_FAIL;

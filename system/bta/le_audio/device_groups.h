@@ -80,7 +80,10 @@ public:
     LeAudioDeviceGroup* group_;
     types::CigState state_;
 
-    /* Life time of cises is from GenerateCisIds() up to when CIG is removed.*/
+    /* Life time of cises is from GenerateCisIds() up to when CIG is removed.
+     * Note in case of stream being reconfigured before CIG is created, cises might be
+     * regenerated (i.e. cleared and generated)
+     */
     std::vector<struct types::cis> cises;
   } cig;
 
@@ -226,7 +229,6 @@ public:
   uint8_t GetRtn(uint8_t direction, uint8_t cis_id) const;
   uint16_t GetMaxSduSize(uint8_t direction, uint8_t cis_id) const;
   uint8_t GetPhyBitmask(uint8_t direction) const;
-  uint8_t GetTargetPhy(uint8_t direction) const;
   bool GetPresentationDelay(uint32_t* delay, uint8_t direction) const;
   uint16_t GetRemoteDelay(uint8_t direction) const;
   bool UpdateAudioSetConfigurationCache(types::LeAudioContextType ctx_type,

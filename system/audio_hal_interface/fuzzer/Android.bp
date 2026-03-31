@@ -37,7 +37,6 @@ cc_defaults {
     ],
     shared_libs: [
         "vendor.qti.hardware.bluetooth.audio-V1-ndk",
-        "libPlatformProperties",
         "libaaudio",
         "libaconfig_storage_read_api_cc",
         "libbinder_ndk",
@@ -59,6 +58,7 @@ cc_defaults {
         "android.system.suspend.control-V1-ndk",
         "bluetooth_flags_c_lib_for_test",
         "libFraunhoferAAC",
+        "libPlatformProperties",
         "libbase",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd",
@@ -103,7 +103,6 @@ cc_defaults {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/btif",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     target: {
         android: {

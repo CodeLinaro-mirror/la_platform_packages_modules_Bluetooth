@@ -39,10 +39,11 @@
 #include "stack/include/l2cap_module.h"
 #include "stack/include/l2cdefs.h"
 #include "stack/l2cap/l2c_int.h"
+#include "stack/mock/mock_stack_acl.h"
+#include "stack/mock/mock_stack_btm_devctl.h"
+#include "stack/mock/mock_stack_btm_interface.h"
 #include "test/fake/fake_osi.h"
 #include "test/mock/mock_main_shim_entry.h"
-#include "test/mock/mock_stack_acl.h"
-#include "test/mock/mock_stack_btm_devctl.h"
 
 using bluetooth::Uuid;
 using testing::Return;
@@ -103,6 +104,8 @@ bool direct_connect_add(uint8_t /* id */, const RawAddress& /* bd_addr */,
                         tBLE_ADDR_TYPE /* addr_type */, bool /* prefer_relax_mode */) {
   return true;
 }
+
+void on_connection_complete(const RawAddress& /* address */) {}
 }  // namespace connection_manager
 
 namespace {
@@ -140,9 +143,15 @@ public:
     ON_CALL(*bluetooth::hci::testing::mock_controller_, SupportsBle).WillByDefault(Return(true));
     ON_CALL(*bluetooth::hci::testing::mock_controller_, GetAclPacketLength)
             .WillByDefault(Return(512));
+
+    set_mock_btm_client_interface(&mock_btm_client_interface_);
+    ON_CALL(mock_btm_client_interface_, BTM_IsDeviceUp()).WillByDefault(Return(true));
   }
 
+  MockBtmClientInterface mock_btm_client_interface_;
+
   ~FakeBtStack() {
+    reset_mock_btm_client_interface();
     test::mock::stack_acl::acl_send_data_packet_br_edr = {};
     test::mock::stack_acl::acl_send_data_packet_ble = {};
     bluetooth::hci::testing::mock_controller_.reset();

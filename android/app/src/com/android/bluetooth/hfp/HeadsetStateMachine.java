@@ -44,7 +44,6 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
 import android.os.SystemProperties;
-import android.os.UserHandle;
 import android.telephony.PhoneNumberUtils;
 import android.telephony.PhoneStateListener;
 import android.telephony.ServiceState;
@@ -56,7 +55,6 @@ import com.android.bluetooth.Util;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.InteropUtil;
-import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.metrics.MetricsLogger;
 import com.android.bluetooth.profile.ProfileService;
@@ -174,7 +172,6 @@ class HeadsetStateMachine extends StateMachine {
     private final AdapterService mAdapterService;
     private final HeadsetNativeInterface mNativeInterface;
     private final HeadsetSystemInterface mSystemInterface;
-    private final DatabaseManager mDatabaseManager; // Migrating
     private final BluetoothStorageManager mStorage;
 
     // Runtime states
@@ -271,30 +268,11 @@ class HeadsetStateMachine extends StateMachine {
         mNativeInterface = requireNonNull(nativeInterface);
         mSystemInterface = requireNonNull(systemInterface);
         mAdapterService = requireNonNull(adapterService);
-        if (Flags.mainlineBetaStorage()) {
-            mDatabaseManager = null;
-            mStorage = requireNonNull(storage);
-        } else {
-            mDatabaseManager = requireNonNull(adapterService.getDatabaseManager()); // Migrating
-            mStorage = null;
-        }
+        mStorage = requireNonNull(storage);
 
         mDeviceSilenced = false;
 
-        if (Flags.mainlineBetaStorage()) {
-            mHsClientAudioPolicy = mStorage.getAudioPolicyMetadata(device);
-        } else {
-            BluetoothSinkAudioPolicy storedAudioPolicy =
-                    mDatabaseManager.getAudioPolicyMetadata(device); // Migrating
-            if (storedAudioPolicy == null) {
-                Log.w(TAG, "Audio Policy not created in database! Creating...");
-                mHsClientAudioPolicy = new BluetoothSinkAudioPolicy.Builder().build();
-                mDatabaseManager.setAudioPolicyMetadata(device, mHsClientAudioPolicy); // Migrating
-            } else {
-                Log.i(TAG, "Audio Policy found in database!");
-                mHsClientAudioPolicy = storedAudioPolicy;
-            }
-        }
+        mHsClientAudioPolicy = mStorage.getAudioPolicyMetadata(device);
 
         // Create phonebook helper
         mPhonebook = new AtPhonebook(mAdapterService, mNativeInterface);
@@ -442,13 +420,7 @@ class HeadsetStateMachine extends StateMachine {
                 intent.putExtra(BluetoothHeadset.EXTRA_DISCONNECTED_REASON, mReason);
             }
             intent.addFlags(Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
-            if (Flags.onlyBroadcastToLocalUser()) {
-                mHeadsetService.sendBroadcast(
-                        intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-            } else {
-                mHeadsetService.sendBroadcastAsUser(
-                        intent, UserHandle.ALL, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-            }
+            mHeadsetService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
         }
 
         // Should not be called from enter() method
@@ -468,13 +440,7 @@ class HeadsetStateMachine extends StateMachine {
             intent.putExtra(BluetoothProfile.EXTRA_PREVIOUS_STATE, fromState);
             intent.putExtra(BluetoothProfile.EXTRA_STATE, toState);
             intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
-            if (Flags.onlyBroadcastToLocalUser()) {
-                mHeadsetService.sendBroadcast(
-                        intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-            } else {
-                mHeadsetService.sendBroadcastAsUser(
-                        intent, UserHandle.ALL, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-            }
+            mHeadsetService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
         }
 
         /**
@@ -2073,12 +2039,7 @@ class HeadsetStateMachine extends StateMachine {
                 BluetoothHeadset.VENDOR_SPECIFIC_HEADSET_EVENT_COMPANY_ID_CATEGORY
                         + "."
                         + Integer.toString(companyId));
-        if (Flags.onlyBroadcastToLocalUser()) {
-            mHeadsetService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-        } else {
-            mHeadsetService.sendBroadcastAsUser(
-                    intent, UserHandle.ALL, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
-        }
+        mHeadsetService.sendBroadcast(intent, BLUETOOTH_CONNECT, Util.getTempBroadcastBundle());
     }
 
     private void setAudioParameters() {
@@ -2944,11 +2905,7 @@ class HeadsetStateMachine extends StateMachine {
 
     private void setHfpCallAudioPolicy(BluetoothSinkAudioPolicy policies) {
         mHsClientAudioPolicy = policies;
-        if (Flags.mainlineBetaStorage()) {
-            mStorage.setAudioPolicyMetadata(mDevice, policies);
-        } else {
-            mDatabaseManager.setAudioPolicyMetadata(mDevice, policies); // Migrating
-        }
+        mStorage.setAudioPolicyMetadata(mDevice, policies);
     }
 
     /** get the audio policy of the client device */

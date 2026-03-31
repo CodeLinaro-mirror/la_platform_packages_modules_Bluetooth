@@ -1765,10 +1765,8 @@ public class BluetoothInCallService extends InCallService {
             }
             return true;
         } else if (chld == CHLD_TYPE_RELEASEACTIVE_ACCEPTHELD) {
-            if (Flags.endOutgoingCallOnChld()) {
-                if (activeCall == null) {
-                    activeCall = mCallInfo.getOutgoingCall();
-                }
+            if (activeCall == null) {
+                activeCall = mCallInfo.getOutgoingCall();
             }
             if (mCallInfo.isNullCall(activeCall)
                     && mCallInfo.isNullCall(ringingCall)
@@ -1845,7 +1843,6 @@ public class BluetoothInCallService extends InCallService {
                     }
                 }
             }
-            return true;
         }
         return false;
     }

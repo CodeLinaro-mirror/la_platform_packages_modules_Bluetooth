@@ -34,7 +34,7 @@
 
 #define LOG_TAG "a2dp_vendor_aptx_adaptive_encoder"
 
-#include "a2dp_vendor_aptx_adaptive_encoder.h"
+#include "stack/include/a2dp_vendor_aptx_adaptive_encoder.h"
 
 #include <dlfcn.h>
 #include <inttypes.h>
@@ -44,8 +44,8 @@
 
 #include <cmath>
 
-#include "a2dp_vendor.h"
-#include "a2dp_vendor_aptx_adaptive.h"
+#include "stack/include/a2dp_vendor.h"
+#include "stack/include/a2dp_vendor_aptx_adaptive.h"
 
 typedef struct {
   uint64_t session_start_us;

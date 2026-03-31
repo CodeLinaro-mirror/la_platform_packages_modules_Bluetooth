@@ -24,9 +24,9 @@
 #include "bta_jv_api.h"
 #include "osi/include/allocator.h"
 #include "stack/include/sdp_status.h"
+#include "stack/mock/mock_stack_sdp_legacy_api.h"
 #include "test/common/mock_functions.h"
 #include "test/fake/fake_osi.h"
-#include "test/mock/mock_stack_sdp_legacy_api.h"
 
 bool bta_ag_is_call_present(const RawAddress* peer_addr) { return true; }
 

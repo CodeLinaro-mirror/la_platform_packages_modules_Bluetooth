@@ -35,6 +35,7 @@ import android.bluetooth.BluetoothProfile.LE_AUDIO
 import android.bluetooth.BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT
 import android.bluetooth.BluetoothProfile.MAP
 import android.bluetooth.BluetoothProfile.MAP_CLIENT
+import android.bluetooth.BluetoothProfile.MCP_CLIENT
 import android.bluetooth.BluetoothProfile.PAN
 import android.bluetooth.BluetoothProfile.PBAP
 import android.bluetooth.BluetoothProfile.PBAP_CLIENT
@@ -49,7 +50,6 @@ import android.util.Log
 import com.android.bluetooth.Util
 import com.android.bluetooth.Util.arrayContains
 import com.android.bluetooth.btservice.AdapterService
-import com.android.bluetooth.flags.Flags
 import com.android.bluetooth.hid.HidHostService
 import com.android.bluetooth.storage.BluetoothStorageManager
 
@@ -64,22 +64,15 @@ constructor(
     protected val storage: BluetoothStorageManager? = null,
 ) : ProfileService(id, adapterService) {
 
-    protected val databaseManager =
-        if (Flags.mainlineBetaStorage()) {
-            null
-        } else {
-            adapterService.databaseManager
-        }
-
     /**
      * Connects the given Bluetooth device to the profile.
      *
      * @return `true` if the connection was successful, `false` otherwise
      */
-    abstract fun connect(device: BluetoothDevice?): Boolean
+    abstract fun connect(device: BluetoothDevice): Boolean
 
     /** Disconnects the given device from the profile. */
-    abstract fun disconnect(device: BluetoothDevice?): Boolean
+    abstract fun disconnect(device: BluetoothDevice): Boolean
 
     /** @return `true` if connection to remote device is allowed, otherwise `false` */
     open fun okToConnect(device: BluetoothDevice): Boolean {
@@ -120,7 +113,7 @@ constructor(
      *   which case implementations should typically return [BluetoothProfile.STATE_DISCONNECTED].
      * @return The current connection state for the device with this profile.
      */
-    abstract fun getConnectionState(device: BluetoothDevice?): Int
+    abstract fun getConnectionState(device: BluetoothDevice): Int
 
     /**
      * Get the connection policy of the profile.
@@ -144,22 +137,18 @@ constructor(
      * @return true if connectionPolicy is set, false on error
      */
     abstract fun setConnectionPolicy(
-        device: BluetoothDevice?,
+        device: BluetoothDevice,
         @BluetoothProfile.ConnectionPolicy connectionPolicy: Int,
     ): Boolean
 
     /** Process a change in the bonding state for a device */
-    open fun handleBondStateChanged(device: BluetoothDevice?, fromState: Int, toState: Int) {
+    open fun handleBondStateChanged(device: BluetoothDevice, fromState: Int, toState: Int) {
         Log.w(name, "handleBondStateChanged(): Called but not implemented")
     }
 
     companion object {
         @JvmStatic
-        fun isSupported(
-            adapterService: AdapterService,
-            device: BluetoothDevice?,
-            id: Int,
-        ): Boolean {
+        fun isSupported(adapterService: AdapterService, device: BluetoothDevice, id: Int): Boolean {
             val remoteDeviceUuids: Array<ParcelUuid>? = adapterService.getRemoteUuids(device)
             if (remoteDeviceUuids.isNullOrEmpty()) {
                 Log.e(TAG, "isSupported(): remoteUuids is null for device: $device")
@@ -203,6 +192,7 @@ constructor(
                 MAP_CLIENT ->
                     localDeviceUuids.arrayContains(BluetoothUuid.MNS) &&
                         remoteDeviceUuids.arrayContains(BluetoothUuid.MAS)
+                MCP_CLIENT -> remoteDeviceUuids.arrayContains(BluetoothUuid.GENERIC_MEDIA_CONTROL)
                 PAN -> remoteDeviceUuids.arrayContains(BluetoothUuid.NAP)
                 PBAP_CLIENT ->
                     localDeviceUuids.arrayContains(BluetoothUuid.PBAP_PCE) &&

@@ -64,7 +64,6 @@ static struct btm_client_interface_t btm_client_interface = {
                         .BTM_SwitchRoleToCentral = ::BTM_SwitchRoleToCentral,
                         .BTM_block_role_switch_for = ::BTM_block_role_switch_for,
                         .BTM_block_sniff_mode_for = ::BTM_block_sniff_mode_for,
-                        .BTM_default_unblock_role_switch = ::BTM_default_unblock_role_switch,
                         .BTM_unblock_role_switch_for = ::BTM_unblock_role_switch_for,
                         .BTM_unblock_sniff_mode_for = ::BTM_unblock_sniff_mode_for,
                         .BTM_WritePageTimeout = ::BTM_WritePageTimeout,
@@ -76,15 +75,12 @@ static struct btm_client_interface_t btm_client_interface = {
                         .BTM_ReadRSSI = ::BTM_ReadRSSI,
                 },
 
-        .security = get_security_client_interface(),
-
         .ble =
                 {
                         .BTM_BleGetEnergyInfo = ::BTM_BleGetEnergyInfo,
                         .BTM_BleObserve = ::BTM_BleObserve,
                         .BTM_SetBleDataLength = ::BTM_SetBleDataLength,
                         .BTM_BleReadControllerFeatures = ::BTM_BleReadControllerFeatures,
-                        .BTM_BleSetPhy = ::BTM_BleSetPhy,
                         .BTM_BleSetPrefConnParams = ::BTM_BleSetPrefConnParams,
                         .BTM_UseLeLink = ::BTM_UseLeLink,
                         .BTM_IsRemoteVersionReceived = ::BTM_IsRemoteVersionReceived,

@@ -161,6 +161,7 @@ static void FillRemoteCapabilityToBtLeAudioCodecConfigs(
       }
       if (!caps.HasSupportedAudioChannelCounts()) {
         btle_audio_codec_config_t config = {
+                .codec_id = codec_id.getCodecIdRaw(),
                 .codec_type = utils::translateLeAudioCodecIdToCodecType(
                         codec_id, types::LeAudioCoreCodecConfig::GetSamplingFrequencyHz(freq_bit)),
                 .sample_rate = utils::translateToBtLeAudioCodecConfigSampleRate(
@@ -177,6 +178,7 @@ static void FillRemoteCapabilityToBtLeAudioCodecConfigs(
             continue;
           }
           btle_audio_codec_config_t config = {
+                  .codec_id = codec_id.getCodecIdRaw(),
                   .codec_type = utils::translateLeAudioCodecIdToCodecType(
                           codec_id,
                           types::LeAudioCoreCodecConfig::GetSamplingFrequencyHz(freq_bit)),

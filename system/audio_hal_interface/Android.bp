@@ -19,7 +19,6 @@ cc_library_static {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/bta/sys",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     shared_libs: [
         "android.hardware.bluetooth.audio@2.0",
@@ -116,7 +115,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/audio_hal_interface",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     sanitize: {
         cfi: true,
@@ -132,7 +130,6 @@ cc_test {
         ":TestCommonMockFunctions",
         ":TestMockAudioHalInterface",
         ":TestMockOsi",
-        ":TestMockStackA2dp",
         "aidl/a2dp/a2dp_aidl_transport.cc",
         "aidl/a2dp/a2dp_encoding_aidl_utils.cc",
         "aidl/a2dp/a2dp_provider_info.cc",
@@ -162,6 +159,7 @@ cc_test {
         "libbluetooth_log",
         "libbluetooth_types",
         "libbt-common",
+        "libbt-stack-mock",
         "libchrome",
         "libcom.android.sysprop.bluetooth.wrapped",
         "libflagtest",
@@ -187,7 +185,6 @@ cc_defaults {
         "latest_android_media_audio_common_types_ndk_static",
     ],
     shared_libs: [
-        "libPlatformProperties",
         "libbinder_ndk",
         "libcrypto",
         "libfmq",
@@ -203,6 +200,7 @@ cc_defaults {
         "android.hardware.common-V2-ndk",
         "android.hardware.common.fmq-V1-ndk",
         "libFraunhoferAAC",
+        "libPlatformProperties",
         "libbase",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd",
@@ -241,7 +239,6 @@ cc_defaults {
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/btif",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
 }
 
@@ -263,7 +260,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/bta/include",
         "packages/modules/Bluetooth/system/gd",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     srcs: [
         "aidl/le_audio_utils.cc",

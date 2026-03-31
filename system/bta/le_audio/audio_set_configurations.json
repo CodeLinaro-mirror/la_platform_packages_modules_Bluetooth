@@ -556,6 +556,20 @@
       ]
     },
     {
+      "name": "One-OneChan-SrcAse-Lc3_48_2_Low_Latency",
+      "codec_config_name": "One-OneChan-SrcAse-Lc3_48_2",
+      "qos_config_name": [
+        "QoS_Config_Low_Latency"
+      ]
+    },
+    {
+      "name": "One-OneChan-SrcAse-Lc3_48_1_Low_Latency",
+      "codec_config_name": "One-OneChan-SrcAse-Lc3_48_1",
+      "qos_config_name": [
+        "QoS_Config_Low_Latency"
+      ]
+    },
+    {
       "name": "One-OneChan-SrcAse-Lc3_32_2_Low_Latency",
       "codec_config_name": "One-OneChan-SrcAse-Lc3_32_2",
       "qos_config_name": [

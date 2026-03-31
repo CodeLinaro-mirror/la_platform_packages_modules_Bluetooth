@@ -557,15 +557,6 @@ int get_common_criteria_config_compare_result() {
 
 bool is_atv_device() { return is_local_device_atv; }
 
-static int get_adapter_properties(void) {
-  if (!stack_is_running()) {
-    return BT_STATUS_NOT_READY;
-  }
-
-  do_in_main_thread(base::BindOnce(btif_get_adapter_properties));
-  return BT_STATUS_SUCCESS;
-}
-
 static int get_adapter_property(bt_property_type_t type) {
   /* Allow get_adapter_property only for BDADDR and BDNAME if BT is disabled */
   if (!stack_is_running() && (type != BT_PROPERTY_BDADDR) && (type != BT_PROPERTY_BDNAME)) {
@@ -902,7 +893,7 @@ static int restore_filter_accept_list() {
   // connections that have `is_direct=False`. Currently, we only restore LE hid
   // devices.
   std::vector<std::pair<RawAddress, uint8_t>> le_hid_addrs;
-  if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+  if (!com_android_bluetooth_flags_le_hid_connection_policy_suspend()) {
     le_hid_addrs = btif_storage_get_le_hid_devices();
   }
   if (com_android_bluetooth_flags_clean_up_posting_on_main_thread()) {
@@ -918,7 +909,7 @@ static int allow_wake_by_hid() {
     return BT_STATUS_NOT_READY;
   }
   std::vector<std::pair<RawAddress, uint8_t>> le_hid_addrs;
-  if (!com::android::bluetooth::flags::le_hid_connection_policy_suspend()) {
+  if (!com_android_bluetooth_flags_le_hid_connection_policy_suspend()) {
     le_hid_addrs = btif_storage_get_le_hid_devices();
   }
   auto classic_hid_addrs = btif_storage_get_wake_capable_classic_hid_devices();
@@ -974,7 +965,7 @@ static void dump(int fd, const char** /*arguments*/) {
   btif_sock_dump(fd);
   bluetooth::avrcp::AvrcpService::DebugDump(fd);
   gatt_tcb_dump(fd);
-  if (com::android::bluetooth::flags::gatt_offload_api()) {
+  if (com_android_bluetooth_flags_gatt_offload_api()) {
     gatt_offload_sessions_dump(fd);
   }
   bta_gatt_client_dump(fd);
@@ -1022,6 +1013,23 @@ static bool pbap_pse_dynamic_version_upgrade_is_enabled() {
 
   return is_pse_version_upgrade_enabled();
 }
+
+// Wrapper functions for GATT TOOL interface
+static void bluetooth_init_wrapper(bt_callbacks_t* callbacks, bool guest_mode,
+                                   bool is_common_criteria_mode, int config_compare_result,
+                                   bool is_atv, const char* hci_instance_name,
+                                   bt_os_callouts_t* callouts, bool autonomous_repairing_initiation) {
+  bluetooth_init(callbacks, guest_mode, is_common_criteria_mode, config_compare_result, is_atv,
+                 std::string(hci_instance_name ? hci_instance_name : ""), callouts, autonomous_repairing_initiation);
+}
+
+static void bluetooth_enable_wrapper(const char* local_name) {
+  bluetooth_enable(std::string(local_name ? local_name : ""));
+}
+
+static void bluetooth_disable_wrapper(void) { bluetooth_disable(); }
+
+static void bluetooth_cleanup_wrapper(void) { bluetooth_cleanup(); }
 
 static const void* get_profile_interface(const char* profile_id) {
   log::info("id = {}", profile_id);
@@ -1277,7 +1285,6 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
 #ifdef TARGET_FLOSS
         .set_adapter_index = set_adapter_index,
 #endif
-        .get_adapter_properties = get_adapter_properties,
         .get_adapter_property = get_adapter_property,
         .set_scan_mode = set_scan_mode,
         .set_adapter_property = set_adapter_property,
@@ -1332,6 +1339,10 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .interop_database_add_remove_name = interop_database_add_remove_name,
         .get_remote_pbap_pce_version = get_remote_pbap_pce_version,
         .pbap_pse_dynamic_version_upgrade_is_enabled = pbap_pse_dynamic_version_upgrade_is_enabled,
+        .bluetooth_init_wrapper = bluetooth_init_wrapper,
+        .bluetooth_enable_wrapper = bluetooth_enable_wrapper,
+        .bluetooth_disable_wrapper = bluetooth_disable_wrapper,
+        .bluetooth_cleanup_wrapper = bluetooth_cleanup_wrapper,
 };
 
 // callback reporting helpers
@@ -1582,7 +1593,7 @@ void invoke_switch_buffer_size_cb(bool is_low_latency_buffer_size) {
 }
 
 void invoke_switch_codec_cb(bool is_low_latency_buffer_size) {
-  log::assert_that(!com::android::bluetooth::flags::a2dp_handle_sa_reconfig_in_native(),
+  log::assert_that(!com_android_bluetooth_flags_a2dp_handle_sa_reconfig_in_native(),
                    "Reconfig is in native");
   do_in_jni_thread(base::BindOnce(
           [](bool is_low_latency_buffer_size) {

@@ -54,7 +54,6 @@ import android.bluetooth.IBluetoothConnectionCallback;
 import android.bluetooth.State;
 import android.companion.CompanionDeviceManager;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PermissionInfo;
@@ -70,6 +69,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.RemoteException;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.permission.PermissionManager;
@@ -229,8 +229,7 @@ public class AdapterServiceTest {
 
     @Parameters(name = "{0}")
     public static List<FlagsWrapper> getParams() {
-        return FlagsWrapper.progressionOf(
-                Flags.FLAG_SKIP_BLE_ON_WHEN_TURNING_OFF, Flags.FLAG_MAINLINE_BETA_STORAGE);
+        return FlagsWrapper.progressionOf();
     }
 
     public AdapterServiceTest(FlagsWrapper flags) {
@@ -339,9 +338,9 @@ public class AdapterServiceTest {
 
         configureEnabledProfiles();
 
-        Config.init(mContext);
-        MetricsLogger.setInstanceForTesting(mMockMetricsLogger);
         mAdapter.onCreate();
+        mAdapter.init("CoolName");
+        MetricsLogger.setInstanceForTesting(mMockMetricsLogger);
         mLooper.dispatchAll();
         mAdapter.registerRemoteCallback(mIBluetoothCallback);
         mAdapter.getBluetoothConnectionCallbacks().register(mConnectionCallback);
@@ -380,16 +379,26 @@ public class AdapterServiceTest {
                 : List.of(mMockService1, mMockService2);
     }
 
+    private static boolean isAdapterSuspendFeatureEnabled() {
+        if (!Flags.adapterSuspendMgmt()) return false;
+        return SystemProperties.getBoolean(AdapterSuspend.BLUETOOTH_SUSPEND_DISCONNECT_ACL, false)
+                || SystemProperties.getBoolean(
+                        AdapterSuspend.BLUETOOTH_SUSPEND_SCAN_MODE_NONE, false)
+                || SystemProperties.getBoolean(AdapterSuspend.BLUETOOTH_SUSPEND_STOP_LE_SCAN, false)
+                || SystemProperties.getBoolean(
+                        AdapterSuspend.BLUETOOTH_SUSPEND_PAUSE_ADVERTISEMENT, false);
+    }
+
     void offToBleOn() {
         mAdapter.offToBleOn(false, "default");
         syncHandler(0); // `init` need to be run first
-        if (Flags.adapterSuspendMgmt()) {
+        if (isAdapterSuspendFeatureEnabled()) {
             syncHandler(-2); // Init AdapterSuspendStateMachine
         }
         syncHandler(AdapterState.BLE_TURN_ON);
         verifyStateChange(State.OFF, State.BLE_TURNING_ON);
 
-        if (Flags.adapterSuspendMgmt()) {
+        if (isAdapterSuspendFeatureEnabled()) {
             // Called after callbacks are registered in DeviceStateManager
             syncHandler(0); // notifySupportedDeviceStateChanged
             syncHandler(0); // notifyDeviceStateChanged
@@ -424,15 +433,9 @@ public class AdapterServiceTest {
         }
 
         syncHandler(AdapterState.BREDR_STOPPED);
-        if (Flags.skipBleOnWhenTurningOff()) {
-            verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
+        verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
 
-            assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_OFF);
-            return;
-        }
-        verifyStateChange(State.TURNING_OFF, State.BLE_ON);
-
-        assertThat(mAdapter.getState()).isEqualTo(State.BLE_ON);
+        assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_OFF);
     }
 
     void onToOff(boolean onlyGatt) {
@@ -495,14 +498,7 @@ public class AdapterServiceTest {
         Log.e(TAG, "doDisable() start");
         assertThat(mAdapter.getState()).isEqualTo(State.ON);
 
-        if (Flags.skipBleOnWhenTurningOff()) {
-            onToOff(onlyGatt);
-        } else {
-            onToBleOn(onlyGatt);
-            mAdapter.bleOnToOff();
-            syncHandler(AdapterState.BLE_TURN_OFF);
-            verifyStateChange(State.BLE_ON, State.BLE_TURNING_OFF);
-        }
+        onToOff(onlyGatt);
 
         if (!Flags.onlyStartScanDuringBleOn()) {
             syncHandler(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
@@ -599,13 +595,13 @@ public class AdapterServiceTest {
 
         mAdapter.offToBleOn(false, "default");
         syncHandler(0); // `init` need to be run first
-        if (Flags.adapterSuspendMgmt()) {
+        if (isAdapterSuspendFeatureEnabled()) {
             syncHandler(-2); // Init AdapterSuspendStateMachine
         }
         syncHandler(AdapterState.BLE_TURN_ON);
         verifyStateChange(State.OFF, State.BLE_TURNING_ON);
         assertThat(mAdapter.getBluetoothGatt()).isNotNull();
-        if (Flags.adapterSuspendMgmt()) {
+        if (isAdapterSuspendFeatureEnabled()) {
             // Called after callbacks are registered in DeviceStateManager
             syncHandler(0); // notifySupportedDeviceStateChanged
             syncHandler(0); // notifyDeviceStateChanged
@@ -646,15 +642,7 @@ public class AdapterServiceTest {
         initTest();
         doEnable(false);
 
-        if (Flags.skipBleOnWhenTurningOff()) {
-            onToOff(false);
-        } else {
-            onToBleOn(false);
-            mAdapter.bleOnToOff();
-            syncHandler(AdapterState.BLE_TURN_OFF);
-            verifyStateChange(State.BLE_ON, State.BLE_TURNING_OFF);
-            assertThat(mAdapter.getBluetoothGatt()).isNull();
-        }
+        onToOff(false);
 
         // Fetch Gatt message and never process it to simulate a timeout.
         dropNextMessage(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
@@ -775,13 +763,8 @@ public class AdapterServiceTest {
         }
 
         syncHandler(AdapterState.BREDR_STOPPED);
-        if (Flags.skipBleOnWhenTurningOff()) {
-            verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
-            assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_OFF);
-        } else {
-            verifyStateChange(State.TURNING_OFF, State.BLE_ON);
-            assertThat(mAdapter.getState()).isEqualTo(State.BLE_ON);
-        }
+        verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
+        assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_OFF);
 
         assertThat(mLooper.nextMessage()).isNull();
     }
@@ -819,16 +802,10 @@ public class AdapterServiceTest {
         syncHandler(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
         syncHandler(AdapterState.BREDR_STOPPED);
 
-        if (Flags.skipBleOnWhenTurningOff()) {
-            verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
-            if (!Flags.onlyStartScanDuringBleOn()) {
-                syncHandler(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
-                syncHandler(MESSAGE_PROFILE_SERVICE_UNREGISTERED);
-            }
-        } else {
-            verifyStateChange(State.TURNING_OFF, State.BLE_ON);
-            // Ensure GATT is still running
-            assertThat(mAdapter.getBluetoothGatt()).isNotNull();
+        verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
+        if (!Flags.onlyStartScanDuringBleOn()) {
+            syncHandler(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
+            syncHandler(MESSAGE_PROFILE_SERVICE_UNREGISTERED);
         }
 
         assertThat(mLooper.nextMessage()).isNull();
@@ -1327,22 +1304,6 @@ public class AdapterServiceTest {
         order.verify(mMockLeAudioService).setAutoActiveModeState(groupId, true);
         orderNative.verify(mNativeInterface, never()).disconnectAcl(any(), anyInt());
         assertThat(mAdapter.mLeGattClientsControllingAutoActiveMode).isEmpty();
-    }
-
-    @Test
-    @DisableFlags(Flags.FLAG_MAINLINE_BETA_STORAGE) // permission are now part of device entry
-    public void testRemovePermissionBondedToBonding() {
-        initTest();
-        SharedPreferences mockPreferences = mock(SharedPreferences.class);
-        SharedPreferences.Editor mockEditor = mock(SharedPreferences.Editor.class);
-
-        doReturn(mockPreferences).when(mContext).getSharedPreferences(anyString(), anyInt());
-        doReturn(mockEditor).when(mockPreferences).edit();
-
-        mAdapter.handleBondStateChanged(
-                mDevice1, BluetoothDevice.BOND_BONDED, BluetoothDevice.BOND_BONDING);
-
-        verify(mockEditor, times(3)).remove(anyString());
     }
 
     @Test

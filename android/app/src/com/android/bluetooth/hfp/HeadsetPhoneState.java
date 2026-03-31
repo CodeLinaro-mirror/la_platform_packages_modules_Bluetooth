@@ -122,6 +122,10 @@ public class HeadsetPhoneState {
 
     @Override
     public String toString() {
+        int telephonyEvents;
+        synchronized (mDeviceEventMap) {
+            telephonyEvents = getTelephonyEventsToListen();
+        }
         return "HeadsetPhoneState "
                 + ("[mTelephonyServiceAvailability=" + mCindService)
                 + (", mNumActive=" + mNumActive)
@@ -130,7 +134,7 @@ public class HeadsetPhoneState {
                 + (", mSignal=" + mCindSignal)
                 + (", mRoam=" + mCindRoam)
                 + (", mBatteryCharge=" + mCindBatteryCharge)
-                + (", TelephonyEvents=" + getTelephonyEventsToListen() + "]");
+                + (", TelephonyEvents=" + telephonyEvents + "]");
     }
 
     @GuardedBy("mDeviceEventMap")
@@ -236,13 +240,13 @@ public class HeadsetPhoneState {
 
     @GuardedBy("mDeviceEventMap")
     private void startListenForPhoneState() {
+        int events = getTelephonyEventsToListen();
         Runnable asyncRunnable =
                 () -> {
                     if (mPhoneStateListener != null) {
                         Log.w(TAG, "startListenForPhoneState: already listening");
                         return;
                     }
-                    int events = getTelephonyEventsToListen();
                     if (events == PhoneStateListener.LISTEN_NONE) {
                         Log.w(TAG, "startListenForPhoneState: no event to listen");
                         return;

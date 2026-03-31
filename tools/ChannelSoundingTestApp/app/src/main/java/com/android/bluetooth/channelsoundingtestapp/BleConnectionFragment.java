@@ -73,7 +73,7 @@ public class BleConnectionFragment extends Fragment {
 
         mBondedBtDevicesArrayAdapter =
                 new ArrayAdapter<String>(
-                        getContext(), android.R.layout.simple_spinner_item, new ArrayList<>());
+                        requireContext(), android.R.layout.simple_spinner_item, new ArrayList<>());
         mBondedBtDevicesArrayAdapter.setDropDownViewResource(
                 android.R.layout.simple_spinner_dropdown_item);
         mSpinnerBtAddress.setAdapter(mBondedBtDevicesArrayAdapter);
@@ -174,13 +174,13 @@ public class BleConnectionFragment extends Fragment {
                                     if (txPowerSpinner != null) {
                                         List<String> txPowerLevels = Arrays.asList("Ultra Low", "Low", "Medium", "High");
                                         ArrayAdapter<String> txPowerAdapter = new ArrayAdapter<>(
-                                            getContext(), 
-                                            android.R.layout.simple_spinner_item, 
+                                            requireContext(),
+                                            android.R.layout.simple_spinner_item,
                                             txPowerLevels);
                                         txPowerAdapter.setDropDownViewResource(
                                             android.R.layout.simple_spinner_dropdown_item);
                                         txPowerSpinner.setAdapter(txPowerAdapter);
-                                        txPowerSpinner.setSelection(3);   
+                                        txPowerSpinner.setSelection(3);
                                         txPowerSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
                                             @Override
                                             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {

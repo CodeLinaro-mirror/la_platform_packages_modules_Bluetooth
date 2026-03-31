@@ -92,6 +92,7 @@ cc_library_shared {
         "libbluetooth_metrics",
         "libbluetooth_private_gatt_rs",
         "libbluetooth_private_gatt_rs_bridge",
+        "libbluetooth_rs",
         "libbluetooth_types",
         "libbt-audio-asrc",
         "libbt-audio-hal-interface",
@@ -134,7 +135,6 @@ cc_library_shared {
         "libstatssocket",
         "libvndksupport",
         "vendor.qti.hardware.bluetooth.audio-V1-ndk",
-        "libxml2",
     ],
     sanitize: {
         scs: true,
@@ -212,6 +212,7 @@ android_library {
         "sap-api-java-static",
         "net-utils-services-common",
         "networkstack-client",
+        "telephony_flags_core_java_exported_lib",
     ],
 
     plugins: [

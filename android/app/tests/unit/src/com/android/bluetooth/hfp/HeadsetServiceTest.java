@@ -74,7 +74,6 @@ import com.android.bluetooth.btservice.ActiveDeviceManager;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.RemoteDevices;
 import com.android.bluetooth.btservice.SilenceDeviceManager;
-import com.android.bluetooth.btservice.storage.DatabaseManager;
 import com.android.bluetooth.storage.BluetoothStorageManager;
 import com.android.tests.bluetooth.MockitoRule;
 
@@ -103,7 +102,6 @@ public class HeadsetServiceTest {
     @Mock private AdapterService mAdapterService;
     @Mock private ActiveDeviceManager mActiveDeviceManager;
     @Mock private SilenceDeviceManager mSilenceDeviceManager;
-    @Mock private DatabaseManager mDatabaseManager;
     @Mock private BluetoothStorageManager mStorage;
     @Mock private HeadsetSystemInterface mSystemInterface;
     @Mock private HeadsetNativeInterface mNativeInterface;
@@ -145,7 +143,6 @@ public class HeadsetServiceTest {
                 .when(mAdapterService)
                 .getBondState(any(BluetoothDevice.class));
         doReturn(mSilenceDeviceManager).when(mAdapterService).getSilenceDeviceManager();
-        doReturn(mDatabaseManager).when(mAdapterService).getDatabaseManager();
         doReturn(mRemoteDevices).when(mAdapterService).getRemoteDevices();
         doAnswer(
                         invocation -> {
@@ -1249,9 +1246,6 @@ public class HeadsetServiceTest {
     public void testGetFallbackCandidates() {
         BluetoothDevice deviceA = getTestDevice(0);
         BluetoothDevice deviceB = getTestDevice(1);
-        doReturn(null)
-                .when(mDatabaseManager)
-                .getCustomMeta(any(BluetoothDevice.class), any(Integer.class));
 
         // No connected device
         assertThat(mHeadsetService.getFallbackCandidates()).isEmpty();
@@ -1662,5 +1656,119 @@ public class HeadsetServiceTest {
         connectTestDevice(device);
         assertThat(mHeadsetService.setActiveDevice(device)).isTrue();
         assertThat(mHeadsetService.getActiveDevice()).isEqualTo(device);
+    }
+
+    @Test
+    public void onAudioStateChanged_scoNotManagedByAudio_cleansUpVr() {
+        BluetoothDevice device = getTestDevice(0);
+        connectAndSetActiveDevice(device);
+        doReturn(false).when(mSystemInterface).isScoManagedByAudioEnabled();
+        doReturn(true).when(mNativeInterface).isVoiceRecognitionSupported(device);
+        doReturn(true).when(mSystemInterface).isCallIdle(); // for isAudioModeIdle check
+        doReturn(true).when(mSystemInterface).deactivateVoiceRecognition(device);
+
+        // Start voice recognition
+        assertThat(mHeadsetService.startVoiceRecognition(device)).isTrue();
+
+        // Mock that audio is connected
+        doReturn(BluetoothHeadset.STATE_AUDIO_CONNECTED)
+                .when(mStateMachines.get(device))
+                .getAudioState();
+        assertThat(mHeadsetService.isAudioOn()).isTrue();
+
+        // Disconnect audio
+        mHeadsetService.onAudioStateChangedFromStateMachine(
+                device,
+                BluetoothHeadset.STATE_AUDIO_CONNECTED,
+                BluetoothHeadset.STATE_AUDIO_DISCONNECTED);
+
+        // Verify that cleanup is called
+        verify(mSystemInterface).deactivateVoiceRecognition(device);
+    }
+
+    @Test
+    public void onAudioStateChanged_scoManagedByAudio_doesNotCleanupVr() {
+        BluetoothDevice device = getTestDevice(0);
+        connectAndSetActiveDevice(device);
+        doReturn(true).when(mSystemInterface).isScoManagedByAudioEnabled();
+        doReturn(true).when(mNativeInterface).isVoiceRecognitionSupported(device);
+        doReturn(true).when(mSystemInterface).isCallIdle(); // for isAudioModeIdle check
+        doReturn(true).when(mSystemInterface).requestBluetoothAudio(device);
+
+        // Start voice recognition
+        assertThat(mHeadsetService.startVoiceRecognition(device)).isTrue();
+
+        // Mock that audio is connected
+        doReturn(BluetoothHeadset.STATE_AUDIO_CONNECTED)
+                .when(mStateMachines.get(device))
+                .getAudioState();
+        assertThat(mHeadsetService.isAudioOn()).isTrue();
+
+        // Disconnect audio
+        mHeadsetService.onAudioStateChangedFromStateMachine(
+                device,
+                BluetoothHeadset.STATE_AUDIO_CONNECTED,
+                BluetoothHeadset.STATE_AUDIO_DISCONNECTED);
+
+        // Verify that cleanup is NOT called due to the early return
+        verify(mSystemInterface, never()).deactivateVoiceRecognition(any());
+    }
+
+    @Test
+    public void cleanUpAfterScoDisconnection_vrStarted_stopSucceeds() {
+        BluetoothDevice device = getTestDevice(0);
+        connectAndSetActiveDevice(device);
+        doReturn(true).when(mNativeInterface).isVoiceRecognitionSupported(device);
+        doReturn(true).when(mSystemInterface).isCallIdle(); // for isAudioModeIdle check
+        // Make stopVoiceRecognitionByHeadset succeed
+        doReturn(true).when(mSystemInterface).deactivateVoiceRecognition(device);
+
+        // Start voice recognition to set mVoiceRecognitionStarted = true
+        assertThat(mHeadsetService.startVoiceRecognition(device)).isTrue();
+
+        // Execute the method under test
+        mHeadsetService.cleanUpAfterScoDisconnection(device);
+
+        // Verify stop was attempted and native interface was called with OK
+        verify(mSystemInterface).deactivateVoiceRecognition(device);
+        verify(mNativeInterface).atResponseCode(device, HeadsetHalConstants.AT_RESPONSE_OK, 0);
+        verify(mNativeInterface, never())
+                .atResponseCode(device, HeadsetHalConstants.AT_RESPONSE_ERROR, 0);
+    }
+
+    @Test
+    public void cleanUpAfterScoDisconnection_vrStarted_stopFails() {
+        BluetoothDevice device = getTestDevice(0);
+        connectAndSetActiveDevice(device);
+        doReturn(true).when(mNativeInterface).isVoiceRecognitionSupported(device);
+        doReturn(true).when(mSystemInterface).isCallIdle(); // for isAudioModeIdle check
+        // Make stopVoiceRecognitionByHeadset fail
+        doReturn(false).when(mSystemInterface).deactivateVoiceRecognition(device);
+
+        // Start voice recognition to set mVoiceRecognitionStarted = true
+        assertThat(mHeadsetService.startVoiceRecognition(device)).isTrue();
+
+        // Execute the method under test
+        mHeadsetService.cleanUpAfterScoDisconnection(device);
+
+        // Verify stop was attempted and native interface was called with ERROR
+        verify(mSystemInterface).deactivateVoiceRecognition(device);
+        verify(mNativeInterface).atResponseCode(device, HeadsetHalConstants.AT_RESPONSE_ERROR, 0);
+        verify(mNativeInterface, never())
+                .atResponseCode(device, HeadsetHalConstants.AT_RESPONSE_OK, 0);
+    }
+
+    @Test
+    public void cleanUpAfterScoDisconnection_vrNotStarted() {
+        BluetoothDevice device = getTestDevice(0);
+        connectAndSetActiveDevice(device);
+        // Ensure mVoiceRecognitionStarted is false (default)
+
+        // Execute the method under test
+        mHeadsetService.cleanUpAfterScoDisconnection(device);
+
+        // Verify nothing happens
+        verify(mSystemInterface, never()).deactivateVoiceRecognition(device);
+        verify(mNativeInterface, never()).atResponseCode(any(), anyInt(), anyInt());
     }
 }

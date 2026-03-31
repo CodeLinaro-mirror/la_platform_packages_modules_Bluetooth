@@ -1750,9 +1750,6 @@ public class RemoteDevices {
                     .getBatteryService()
                     .filter(battery -> transport == TRANSPORT_LE)
                     .ifPresent(battery -> battery.connectIfPossible(device));
-            if (!Flags.mainlineBetaStorage()) {
-                mAdapterService.updatePhonePolicyOnAclConnect(device);
-            }
             SecurityLog.writeEvent(
                     SecurityLog.TAG_BLUETOOTH_CONNECTION,
                     device.toString(), /* success */
@@ -1849,9 +1846,8 @@ public class RemoteDevices {
                 .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT)
                 .addFlags(Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
         final BroadcastOptions options = Util.getTempBroadcastOptions();
-        if (Flags.coalesceAclConnectionBroadcasts()
-                && (BluetoothDevice.ACTION_ACL_CONNECTED.equals(intent.getAction())
-                        || BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(intent.getAction()))) {
+        if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(intent.getAction())
+                || BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(intent.getAction())) {
             // This allows the broadcasting system to discard any older broadcasts
             // waiting to be delivered to a process.
             options.setDeliveryGroupPolicy(BroadcastOptions.DELIVERY_GROUP_POLICY_MOST_RECENT);
@@ -2020,6 +2016,13 @@ public class RemoteDevices {
 
         if (Utils.isAutonomousRepairingSupported()) {
             MetricsLogger.getInstance().count(BluetoothProtoEnums.BOND_LOSS_DETECTED_REPAIRING, 1);
+            MetricsLogger.getInstance()
+                    .logBluetoothEvent(
+                            device,
+                            BluetoothStatsLog
+                                    .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__BOND_REPAIR,
+                            BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__START,
+                            0);
         } else {
             MetricsLogger.getInstance().count(BluetoothProtoEnums.BOND_LOSS_DETECTED, 1);
         }
@@ -2038,11 +2041,7 @@ public class RemoteDevices {
             }
 
             Log.w(TAG, "Removing " + device + " on behalf of: " + Arrays.toString(packages));
-            if (Flags.mainlineBetaStorage()) {
-                mAdapterService.syncPost(() -> mAdapterService.removeBond(device), false);
-            } else {
-                mAdapterService.removeBond(device);
-            }
+            mAdapterService.syncPost(() -> mAdapterService.removeBond(device), false);
         }
 
         if (!Utils.isAutonomousRepairingSupported()) {
@@ -2092,6 +2091,8 @@ public class RemoteDevices {
                         + encryptionAlgo
                         + ", keySize: "
                         + keySize);
+
+        logEncryptionEvent(bluetoothDevice, transport, encryptionEnable);
 
         if (encryptionEnable) {
             // Log transition to encryption change state (bonded), if the key missing count is > 0
@@ -2668,5 +2669,32 @@ public class RemoteDevices {
                 Activity.RESULT_OK /* initialCode */,
                 null /* initialData */,
                 null /* initialExtras */);
+    }
+
+    private static void logEncryptionEvent(
+            BluetoothDevice device, int transport, boolean encryptionEnable) {
+        int eventType;
+        if (transport == TRANSPORT_BREDR) {
+            eventType =
+                    BluetoothStatsLog
+                            .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__BREDR_ENCRYPTION;
+        } else if (transport == TRANSPORT_LE) {
+            eventType =
+                    BluetoothStatsLog
+                            .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__LE_ENCRYPTION;
+        } else {
+            Log.e(TAG, "logEncryptionEvent() unexpected transport: " + transport);
+            return;
+        }
+        MetricsLogger.getInstance()
+                .logBluetoothEvent(
+                        device,
+                        eventType,
+                        encryptionEnable
+                                ? BluetoothStatsLog
+                                        .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__ENABLED
+                                : BluetoothStatsLog
+                                        .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__DISABLED,
+                        0);
     }
 }

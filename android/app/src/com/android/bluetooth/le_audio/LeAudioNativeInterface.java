@@ -182,12 +182,10 @@ public class LeAudioNativeInterface {
         mService.messageFromNative(event);
     }
 
-    void OnMetadataUpdate(int context_type) {
-        Log.w(TAG, "Context Type: " + context_type);
-        LeAudioService service = LeAudioService.getLeAudioService();
-        if (service != null) {
-            service.setMetadataContext(context_type);
-        }
+    @VisibleForTesting
+    void onMetadataUpdate(int context_type) {
+        Log.d(TAG, "Context Type: " + context_type);
+        mService.setMetadataContext(context_type);
     }
 
     @VisibleForTesting

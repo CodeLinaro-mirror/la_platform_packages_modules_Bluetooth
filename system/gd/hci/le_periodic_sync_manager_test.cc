@@ -153,7 +153,7 @@ protected:
     handler_ = new os::Handler(thread_);
     test_le_scanning_interface_ = new TestLeScanningInterface();
     periodic_sync_manager_ = new PeriodicSyncManager(&mock_callbacks_);
-    periodic_sync_manager_->Init(test_le_scanning_interface_, handler_);
+    periodic_sync_manager_->Init(test_le_scanning_interface_, handler_, nullptr);
   }
 
   void TearDown() override {

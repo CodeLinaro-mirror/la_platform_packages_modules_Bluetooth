@@ -266,11 +266,6 @@ protected:
       last_command = GetConnectionManagementCommand(OpCode::CREATE_CONNECTION);
     }
 
-    if (!com_android_bluetooth_flags_remove_fake_role_change_event()) {
-      EXPECT_CALL(mock_connection_management_callbacks_,
-                  OnRoleChange(hci::ErrorCode::SUCCESS, Role::CENTRAL));
-    }
-
     auto first_connection = GetConnectionFuture();
     test_hci_layer_->IncomingEvent(ConnectionCompleteBuilder::Create(
             ErrorCode::SUCCESS, handle_, remote, LinkType::ACL, Enable::DISABLED));
@@ -472,21 +467,6 @@ TEST_F(AclManagerClassicWithConnectionTest, send_read_clock_offset) {
   EXPECT_CALL(mock_connection_management_callbacks_, OnReadClockOffsetComplete(0x0123, 0x0123));
   test_hci_layer_->IncomingEvent(
           ReadClockOffsetCompleteBuilder::Create(ErrorCode::SUCCESS, handle_, 0x0123));
-  sync_client_handler();
-}
-
-TEST_F(AclManagerClassicWithConnectionTest, send_hold_mode) {
-  connection_->HoldMode(0x0500, 0x0020);
-  auto packet = GetConnectionManagementCommand(OpCode::HOLD_MODE);
-  auto command_view = HoldModeView::Create(packet);
-  ASSERT_TRUE(command_view.IsValid());
-  ASSERT_EQ(command_view.GetHoldModeMaxInterval(), 0x0500);
-  ASSERT_EQ(command_view.GetHoldModeMinInterval(), 0x0020);
-
-  EXPECT_CALL(mock_connection_management_callbacks_,
-              OnModeChange(ErrorCode::SUCCESS, Mode::HOLD, 0x0020));
-  test_hci_layer_->IncomingEvent(
-          ModeChangeBuilder::Create(ErrorCode::SUCCESS, handle_, Mode::HOLD, 0x0020));
   sync_client_handler();
 }
 

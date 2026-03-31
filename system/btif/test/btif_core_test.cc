@@ -53,14 +53,14 @@
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/main_thread.h"
 #include "stack/l2cap/internal/l2c_api.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_btm_sec.h"
+#include "stack/mock/mock_stack_security_client_interface.h"
 #include "test/common/core_interface.h"
 #include "test/fake/fake_osi.h"
 #include "test/mock/mock_main_shim_entry.h"
 #include "test/mock/mock_osi_properties.h"
 #include "test/mock/mock_osi_thread.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_btm_sec.h"
-#include "test/mock/mock_stack_security_client_interface.h"
 
 namespace bluetooth::testing {
 void set_hal_cbacks(bt_callbacks_t* callbacks);
@@ -227,7 +227,6 @@ protected:
     bluetooth::testing::set_hal_cbacks(&callbacks);
 
     set_security_client_interface(mock_btm_security_);
-    set_mock_btm_client_interface_security(mock_btm_security_);
 
     auto promise = std::promise<void>();
     auto future = promise.get_future();

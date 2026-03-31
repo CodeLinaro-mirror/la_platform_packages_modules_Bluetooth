@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-#include "bt_types.h"
+#include "stack/include/bt_types.h"
 #include "device/include/esco_parameters.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/neighbor_inquiry.h"

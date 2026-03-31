@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "hci/address_with_type.h"
+#include "hci/controller.h"
 #include "hci/event_checkers.h"
 #include "hci/hci_packets.h"
 #include "hci/le_scanning_callback.h"
@@ -79,12 +80,14 @@ public:
   explicit PeriodicSyncManager(ScanningCallback* callbacks)
       : le_scanning_interface_(nullptr),
         handler_(nullptr),
+        controller_(nullptr),
         callbacks_(callbacks),
         sync_received_callback_id(0) {}
 
-  void Init(hci::LeScanningInterface* le_scanning_interface, os::Handler* handler) {
+  void Init(hci::LeScanningInterface* le_scanning_interface, os::Handler* handler, hci::Controller* controller) {
     le_scanning_interface_ = le_scanning_interface;
     handler_ = handler;
+    controller_ = controller;
   }
 
   void SetScanningCallback(ScanningCallback* callbacks) { callbacks_ = callbacks; }
@@ -197,12 +200,19 @@ public:
     log::assert_that(handler_->thread().IsSameThread(), "Wrong thread");
 
     log::debug("[PAST]: mode={}, skip={}, timeout={}", mode, skip, timeout);
-    auto sync_cte_type = static_cast<CteType>(
-            static_cast<uint8_t>(PeriodicSyncCteType::AVOID_AOA_CONSTANT_TONE_EXTENSION) |
-            static_cast<uint8_t>(
-                    PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_ONE_US_SLOTS) |
-            static_cast<uint8_t>(
-                    PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_TWO_US_SLOTS));
+    // Per ES-25703: V6.1 Errata : If controller doesn't support Connectionless CTE Receiver,
+    // Sync_CTE_Type must be set to 0.
+    auto sync_cte_type = static_cast<CteType>(0);
+    if (controller_ != nullptr && controller_->SupportsBleConnectionlessCteReceiver()) {
+      sync_cte_type = static_cast<CteType>(
+              static_cast<uint8_t>(PeriodicSyncCteType::AVOID_AOA_CONSTANT_TONE_EXTENSION) |
+              static_cast<uint8_t>(
+                      PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_ONE_US_SLOTS) |
+              static_cast<uint8_t>(
+                      PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_TWO_US_SLOTS));
+    } else {
+      log::info("[PAST]: Controller does not support LE_CONNLESS_CTE_RECEIVER, setting Sync_CTE_Type to 0");
+    }
     sync_received_callback_registered_ = true;
     sync_received_callback_id = reg_id;
 
@@ -560,12 +570,19 @@ private:
   void HandleStartSyncRequest(uint8_t sid, const AddressWithType& address_with_type, uint16_t skip,
                               uint16_t timeout) {
     PeriodicAdvertisingOptions options;
-    auto sync_cte_type =
-            static_cast<uint8_t>(PeriodicSyncCteType::AVOID_AOA_CONSTANT_TONE_EXTENSION) |
-            static_cast<uint8_t>(
-                    PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_ONE_US_SLOTS) |
-            static_cast<uint8_t>(
-                    PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_TWO_US_SLOTS);
+    // Per ES-25703: V6.1 Errata: If controller doesn't support Connectionless CTE Receiver,
+    // Sync_CTE_Type must be set to 0.
+    auto sync_cte_type = static_cast<uint8_t>(0);
+    if (controller_ != nullptr && controller_->SupportsBleConnectionlessCteReceiver()) {
+      sync_cte_type =
+              static_cast<uint8_t>(PeriodicSyncCteType::AVOID_AOA_CONSTANT_TONE_EXTENSION) |
+              static_cast<uint8_t>(
+                      PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_ONE_US_SLOTS) |
+              static_cast<uint8_t>(
+                      PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_TWO_US_SLOTS);
+    } else {
+      log::info("[PSync]: Controller does not support LE_CONNLESS_CTE_RECEIVER, setting Sync_CTE_Type to 0");
+    }
     AdvertisingAddressType advertisingAddressType =
             static_cast<AdvertisingAddressType>(address_with_type.GetAddressType());
     le_scanning_interface_->EnqueueCommand(
@@ -633,6 +650,7 @@ private:
 
   hci::LeScanningInterface* le_scanning_interface_;
   os::Handler* handler_;
+  hci::Controller* controller_;
   ScanningCallback* callbacks_;
   std::list<PendingPeriodicSyncRequest> pending_sync_requests_;
   std::list<PeriodicSyncStates> periodic_syncs_;

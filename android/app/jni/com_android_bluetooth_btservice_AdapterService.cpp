@@ -642,7 +642,7 @@ static void switch_buffer_size_callback(bool is_low_latency_buffer_size) {
 }
 
 static void switch_codec_callback(bool is_low_latency_buffer_size) {
-  log::assert_that(!com::android::bluetooth::flags::a2dp_handle_sa_reconfig_in_native(),
+  log::assert_that(!com_android_bluetooth_flags_a2dp_handle_sa_reconfig_in_native(),
                    "Reconfig is in native");
   std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
   if (!sJniCallbacksObj) {
@@ -1393,17 +1393,6 @@ static jboolean setAdapterPropertyNative(JNIEnv* env, jobject /* obj */, jint ty
   return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
-static jboolean getAdapterPropertiesNative(JNIEnv* /* env */, jobject /* obj */) {
-  log::verbose("");
-
-  if (!sBluetoothInterface) {
-    return JNI_FALSE;
-  }
-
-  int ret = sBluetoothInterface->get_adapter_properties();
-  return (ret == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
-}
-
 static jboolean getAdapterPropertyNative(JNIEnv* /* env */, jobject /* obj */, jint type) {
   log::verbose("");
 
@@ -1988,8 +1977,6 @@ static int register_com_android_bluetooth_btservice_AdapterService(JNIEnv* env) 
           {"setLocalNameNative", "(Ljava/lang/String;)V",
            reinterpret_cast<void*>(setLocalNameNative)},
           {"setAdapterPropertyNative", "(I[B)Z", reinterpret_cast<void*>(setAdapterPropertyNative)},
-          {"getAdapterPropertiesNative", "()Z",
-           reinterpret_cast<void*>(getAdapterPropertiesNative)},
           {"getAdapterPropertyNative", "(I)Z", reinterpret_cast<void*>(getAdapterPropertyNative)},
           {"getDevicePropertyNative", "([BI)Z", reinterpret_cast<void*>(getDevicePropertyNative)},
           {"setDevicePropertyNative", "([BI[B)Z", reinterpret_cast<void*>(setDevicePropertyNative)},
@@ -2253,9 +2240,21 @@ jint JNI_OnLoad(JavaVM* jvm, void* /* reserved */) {
     return JNI_ERR;
   }
 
+  status = android::register_com_android_bluetooth_mcp_client(e);
+  if (status < 0) {
+    log::error("jni le_audio mcp client registration failure: {}", status);
+    return JNI_ERR;
+  }
+
   status = android::register_com_android_bluetooth_vc(e);
   if (status < 0) {
     log::error("jni vc registration failure: {}", status);
+    return JNI_ERR;
+  }
+
+  status = android::register_com_android_bluetooth_vcp_renderer(e);
+  if (status < 0) {
+    log::error("jni vcp renderer registration failure: {}", status);
     return JNI_ERR;
   }
 

@@ -32,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 private const val SERVICE_NAME = "bluetooth_manager"
 private const val TAG = "BluetoothService"
 
+@kotlin.time.ExperimentalTime
 class BluetoothService(context: Context) : SystemService(context) {
     private val looper = HandlerThread("BluetoothSystemServer").apply { start() }.looper
     private val serviceDispatcher = Handler(looper).asCoroutineDispatcher()
@@ -45,11 +46,15 @@ class BluetoothService(context: Context) : SystemService(context) {
         // Run BluetoothManagerService on the correct thread even during constructor
         supervisor =
             runBlocking(serviceDispatcher) {
-                BluetoothSupervisor(context, looper, bluetoothComponent)
+                if (Flags.systemServerMigrateBmsToKotlin()) {
+                    BluetoothSupervisorNew(context, looper, bluetoothComponent)
+                } else {
+                    BluetoothSupervisorLegacy(context, looper, bluetoothComponent)
+                }
             }
 
         launchOnServerThread {
-            BluetoothRestriction.initialize(context, looper, supervisor::onBluetoothDisallowed)
+            BluetoothRestriction.initialize(context, looper, supervisor::onRestrictionChange)
         }
     }
 

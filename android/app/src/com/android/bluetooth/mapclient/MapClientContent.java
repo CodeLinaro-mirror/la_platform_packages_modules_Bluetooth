@@ -476,10 +476,14 @@ class MapClientContent {
 
         Uri uri = Threads.CONTENT_URI.buildUpon().appendQueryParameter("simple", "true").build();
         try (Cursor threadCursor = resolver.query(uri, null, null, null, null)) {
-            while (threadCursor.moveToNext()) {
-                threadsBuilder
-                        .append(threadCursor.getInt(threadCursor.getColumnIndex(Threads._ID)))
-                        .append(", ");
+            if (threadCursor != null) {
+                while (threadCursor.moveToNext()) {
+                    threadsBuilder
+                            .append(threadCursor.getInt(threadCursor.getColumnIndex(Threads._ID)))
+                            .append(", ");
+                }
+            } else {
+                Log.e(TAG, "[AllDevices] Failed to query threads: cursor is null");
             }
         }
 

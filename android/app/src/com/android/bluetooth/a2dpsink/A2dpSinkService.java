@@ -25,7 +25,6 @@ import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothAudioConfig;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
 import android.os.Handler;
@@ -241,10 +240,8 @@ public class A2dpSinkService extends ConnectableProfile {
     public boolean setConnectionPolicy(BluetoothDevice device, int connectionPolicy) {
         Log.i(TAG, "setConnectionPolicy(device=" + device + ", policy=" + connectionPolicy + ")");
 
-        if (!getAdapterService()
-                .setProfileConnectionPolicy(device, getProfileId(), connectionPolicy)) {
-            return false;
-        }
+        getAdapterService().setProfileConnectionPolicy(device, getProfileId(), connectionPolicy);
+
         if (connectionPolicy == CONNECTION_POLICY_ALLOWED) {
             connect(device);
         } else if (connectionPolicy == CONNECTION_POLICY_FORBIDDEN) {
@@ -295,19 +292,6 @@ public class A2dpSinkService extends ConnectableProfile {
         synchronized (mStreamHandlerLock) {
             return mA2dpSinkStreamHandler.isPlaying();
         }
-    }
-
-    BluetoothAudioConfig getAudioConfig(BluetoothDevice device) {
-        if (device == null) return null;
-        A2dpSinkStateMachine stateMachine;
-        synchronized (mDeviceStateMap) {
-            stateMachine = mDeviceStateMap.get(device);
-        }
-        // a state machine instance doesn't exist. maybe it is already gone?
-        if (stateMachine == null) {
-            return null;
-        }
-        return stateMachine.getAudioConfig();
     }
 
     // ---------------------------------------------------------------------------------------------

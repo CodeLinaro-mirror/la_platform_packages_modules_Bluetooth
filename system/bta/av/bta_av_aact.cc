@@ -37,14 +37,6 @@
 #include <cstring>
 #include <vector>
 
-#include "a2dp_api.h"
-#include "a2dp_codec_api.h"
-#include "a2dp_constants.h"
-#include "a2dp_sbc_constants.h"
-#include "avdt_api.h"
-#include "avrc_api.h"
-#include "avrc_defs.h"
-#include "bt_name.h"
 #include "bta/av/bta_av_int.h"
 #include "bta/include/bta_av_co.h"
 #include "bta_av_api.h"
@@ -54,34 +46,42 @@
 #include "btif/include/btif_av_co.h"
 #include "btif/include/btif_config.h"
 #include "btif/include/btif_storage.h"
-#include "btm_api_types.h"
 #include "common/message_loop_thread.h"
 #include "device/include/device_iot_conf_defs.h"
 #include "device/include/device_iot_config.h"
 #include "device/include/interop.h"
 #include "hardware/bt_av.h"
-#include "hci_error_code.h"
-#include "hcidefs.h"
 #include "internal_include/bt_target.h"
-#include "l2cap_types.h"
 #include "osi/include/alarm.h"
 #include "osi/include/allocator.h"
 #include "osi/include/list.h"
 #include "osi/include/osi.h"  // UINT_TO_PTR PTR_TO_UINT
 #include "osi/include/properties.h"
-#include "sdpdefs.h"
+#include "stack/include/a2dp_api.h"
+#include "stack/include/a2dp_codec_api.h"
+#include "stack/include/a2dp_constants.h"
 #include "stack/include/a2dp_ext.h"
 #include "stack/include/a2dp_sbc.h"
+#include "stack/include/a2dp_sbc_constants.h"
 #include "stack/include/acl_api.h"
+#include "stack/include/avdt_api.h"
+#include "stack/include/avrc_api.h"
+#include "stack/include/avrc_defs.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/bt_name.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/btm_ble_api.h"
+#include "stack/include/btm_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/hci_error_code.h"
+#include "stack/include/hcidefs.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/acl/acl.h"
+#include "stack/include/l2cap_types.h"
+#include "stack/include/sdpdefs.h"
 #include "storage/config_keys.h"
 
 using namespace bluetooth;
@@ -115,12 +115,6 @@ constexpr char kBtmLogTag[] = "A2DP";
 
 /* ACL quota we are letting FW use for A2DP Offload Tx. */
 #define BTA_AV_A2DP_OFFLOAD_XMIT_QUOTA 4
-
-/* Time to wait for open from SNK when signaling is initiated from SNK. */
-/* If not, we abort and try to initiate the connection as SRC. */
-#ifndef BTA_AV_ACCEPT_OPEN_TIMEOUT_MS
-#define BTA_AV_ACCEPT_OPEN_TIMEOUT_MS (10 * 1000) /* 10 seconds */
-#endif
 
 static void bta_av_accept_open_timer_cback(void* data);
 static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb, tBT_A2DP_OFFLOAD* p_a2dp_offload);
@@ -1171,8 +1165,7 @@ void bta_av_setconfig_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       p_scb->accept_open_timer = alarm_new("accept_open_timer");
     }
     const uint64_t accept_open_timeout =
-            android::sysprop::bluetooth::A2dp::avdt_accept_open_timeout_ms().value_or(
-                    BTA_AV_ACCEPT_OPEN_TIMEOUT_MS);
+            android::sysprop::bluetooth::A2dp::avdt_accept_open_timeout_ms();
     log::debug("accept_open_timeout = {} ms", accept_open_timeout);
     alarm_set_on_mloop(p_scb->accept_open_timer, accept_open_timeout,
                        bta_av_accept_open_timer_cback, UINT_TO_PTR(p_scb->hdi));
@@ -2586,10 +2579,6 @@ void bta_av_str_closed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
             p_scb->hndl, p_scb->open_status, p_scb->chnl, p_scb->co_started);
 
   BTM_unblock_role_switch_and_sniff_mode_for(p_scb->PeerAddress());
-  if (bta_av_cb.audio_open_cnt <= 1) {
-    get_btm_client_interface().link_policy.BTM_default_unblock_role_switch();
-  }
-
   stack::l2cap::get_interface().L2CA_SetMediaStreamChannel(p_scb->l2c_cid, false);
 
   if (p_scb->open_status != BTA_AV_SUCCESS) {

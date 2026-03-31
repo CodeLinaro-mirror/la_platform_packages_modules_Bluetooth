@@ -2,26 +2,6 @@ package: "com.android.bluetooth.flags"
 container: "com.android.bt"
 
 flag {
-    name: "only_broadcast_to_local_user"
-    namespace: "bluetooth"
-    description: "The bluetooth stack start and exist only for the current user. We should only restrict the intent to the current user"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-    bug: "435244086"
-}
-
-flag {
-    name: "skip_ble_on_when_turning_off"
-    namespace: "bluetooth"
-    description: "Now that transitioning from ON to BLE_ON go through OFF, we should not broadcast BLE_ON when going OFF."
-    bug: "444761370"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "reject_enable_from_unknown_requester"
     namespace: "bluetooth"
     description: "Sometimes, the requester of enable/enableBle is unknown, making investigation impossible. Let's reject them to trace and properly identify the caller"
@@ -32,13 +12,10 @@ flag {
 }
 
 flag {
-    name: "set_name_in_system_server"
+    name: "system_server_migrate_bms_to_kotlin"
     namespace: "bluetooth"
-    description: "We should offer a consistent API to set the Bluetooth friendly name, whatever if Bluetooth is ON or OFF"
-    bug: "448709503"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
+    description: "The entire Bluetooth System Server is now in Kotlin, except BluetoothManagerService. Let's finish it"
+    bug: "478056203"
 }
 
 flag {

@@ -70,6 +70,8 @@
 #include "l2c_int.h"
 #include "stack/include/hcimsgs.h"
 #include <bt_testapp.h>
+#include "stack/include/stack_app.h"
+#include "stack/include/stack_le_connection.h"
 
 using bluetooth::Uuid;
 #define L2CAP_FCR_CHAN_OPT_STREAM (1 << L2CAP_FCR_STREAM_MODE)
@@ -143,6 +145,7 @@ static void register_server_cb(int status, int server_if, const Uuid& app_uuid);
 static unsigned char main_done = 0;
 static int status;
 
+
 bool sr_gaw_bi_09 = false;
 bool sr_gar_bi_13 = false;
 typedef struct {
@@ -170,29 +173,13 @@ static unsigned long g_delay = 1; /* Default delay before data transfer */
 static int count = 1;
 static uint16_t g_BleEncKeySize = 16;
 static int g_le_coc_if = 0;
-static int rcv_itration = 0;
+static int rcv_iteration = 0;
 static volatile bool cong_status = FALSE;
 static tL2CAP_LE_CONN_INFO le_conn_info;
 static tL2CAP_LE_CFG_INFO local_coc_cfg;
 
 /* Main API */
 const bt_interface_t* sBtInterface = NULL;
-
-typedef void (*bluetooth_init_t)(bt_callbacks_t* callbacks, bool guest_mode,
-                                 bool is_common_criteria_mode,
-                                 int config_compare_result, bool is_atv,
-                                 const std::string hci_instance_name,
-                                 bt_os_callouts_t* callouts);
-bluetooth_init_t bluetooth_init_func = NULL;
-
-typedef void (*bluetooth_enable_t)(const std::string local_name);
-bluetooth_enable_t bluetooth_enable_func = NULL;
-
-typedef void (*bluetooth_disable_t)(void);
-bluetooth_disable_t bluetooth_disable_func = NULL;
-
-typedef void (*bluetooth_cleanup_t)(void);
-bluetooth_cleanup_t bluetooth_cleanup_func = NULL;
 
 static gid_t groups[] = {AID_NET_BT,    AID_INET, AID_NET_BT_ADMIN,
                          AID_SYSTEM,    AID_MISC, AID_SDCARD_RW,
@@ -222,6 +209,7 @@ const btgap_interface_t* sGapInterface = NULL;
 const btl2cap_interface_t* sL2capInterface = NULL;
 const bthci_test_interface_t* sHciInterface = NULL; // New HCI interface
 const btvendor_interface_t* btvendorInterface = NULL;
+
 
 int Btif_gatt_layer = TRUE;
 RawAddress remote_bd_address;
@@ -1241,20 +1229,22 @@ void service_added_cb(int status, int server_if,
 
 static btgatt_server_callbacks_t sGattServer_cb = {
     register_server_cb,
-    server_connection_cb,  // connection_callback             connection_cb;
-    NULL,      // service_added_callback          service_added_cb;
-    NULL,  // included_service_added_callback included_service_added_cb;
-    NULL,  // characteristic_added_callback   characteristic_added_cb;
-    request_read_cb,   // request_read_callback request_read_characteristic_cb
-    request_read_cb,   // request_read_callback request_read_characteristic_cb
-    request_write_cb,  // request_write_callback          request_write_cb;
-    request_write_cb,  // request_write_callback          request_write_cb;
-    request_exec_write_cb,     // request_exec_write_callback
-                               // request_exec_write_cb;
-    response_confirmation_cb,  // response_confirmation_callback
-                               // response_confirmation_cb;
-    indication_sent_cb,  // indication_sent_callback        indication_sent_cb;
-    NULL, NULL, NULL, NULL, NULL /*subrate_chg_cb*/
+    server_connection_cb,      // connection_callback             connection_cb;
+    NULL,                      // service_added_callback          service_added_cb;
+    NULL,                      // service_deleted_callback        service_deleted_cb;
+    request_read_cb,           // request_read_callback           request_read_characteristic_cb
+    request_read_cb,           // request_read_callback           request_read_descriptor_cb
+    request_write_cb,          // request_write_callback          request_write_characteristic_cb
+    request_write_cb,          // request_write_callback          request_write_descriptor_cb
+    request_exec_write_cb,     // request_exec_write_callback     request_exec_write_cb;
+    response_confirmation_cb,  // response_confirmation_callback  response_confirmation_cb;
+    indication_sent_cb,        // indication_sent_callback        indication_sent_cb;
+    NULL,                      // congestion_callback             congestion_cb;
+    NULL,                      // mtu_changed_callback            mtu_changed_cb;
+    NULL,                      // phy_updated_callback            phy_updated_cb;
+    NULL,                      // conn_updated_callback           conn_updated_cb;
+    NULL,                      // subrate_change_callback         subrate_chg_cb;
+    NULL                       // characteristics_unoffloaded_callback characteristics_unoffloaded_cb;
 };
 
 /************************************************************************************
@@ -1296,7 +1286,7 @@ static void AttributeReq_cb(uint16_t conn_id, uint32_t trans_id,
          trans_id, type);
 }
 
-static tGATT_CBACK sGattCB = {
+static bluetooth::stack::tGATT_CBACK sGattCB = {
     Connection_cb,
     OperationCmpl_cb,
     DiscoverRes_cb,
@@ -1614,7 +1604,6 @@ void do_le_client_read_ext(char* p);
 void do_le_client_write(char* p);
 void do_le_client_write_ext(char* p);
 void do_le_execute_write(char* p);
-void do_le_set_idle_timeout(char* p);
 void do_le_server_register(char* p);
 void do_le_server_register_ext(char* p);
 void do_le_server_deregister(char* p);
@@ -1652,6 +1641,7 @@ void do_send_ble_set_data_length(char* p);
 void do_send_ble_set_default_phy(char* p);
 void do_send_refresh_enc_key_v2(char* p);
 void do_send_ble_set_data_length_v2(char* p);
+void reset_rcv_iteration(char* p);
 
 
 /*******************************************************************
@@ -1748,7 +1738,6 @@ const t_cmd console_cmd_list[] = {
      int min_interval,int max_interval,int adv_type,int chnl_map, int tx_power,
      int timeout",0}, { "stop_advertising", do_le_client_adv_disable, "::int
      adv_if",0},*/
-    {"c_set_idle_timeout", do_le_set_idle_timeout, "bd_addr, time_out(int)", 0},
     {"c_gap_attr_init", do_le_gap_attr_init, "::", 0},
     {"c_gap_conn_param_update", do_le_gap_conn_param_update, "::", 0},
     {"c_set_char_len", do_le_set_char_len, ":: <Default value: 512>", 0},
@@ -1821,6 +1810,8 @@ const t_cmd console_cmd_list[] = {
      ":: handle(hex), hdt_mic_length(hex)", 0},
      {"btsnd_hcic_ble_set_data_length_v2", do_send_ble_set_data_length,
      ":: handle(hex) tx_pdu_length(hex) tx_time(hex) phys(hex)", 0},
+     {"reset_rcv_iteration", reset_rcv_iteration,
+     ":: ", 0},
 
     /* LE-L2CAP cmds */
     {" ", NULL, "\n\t\t\033[0m\033[34mLE L2CAP CoC Commands\033[0m", 0},
@@ -1945,28 +1936,6 @@ int load_bt_lib(const bt_interface_t** interface) {
     goto error;
   }
 
-  // Get the address of bluetooth_init
-  bluetooth_init_func = (bluetooth_init_t)dlsym(handle, "bluetooth_init");
-  if (!bluetooth_init_func) {
-    printf("failed to load symbol bluetooth_init from Bluetooth library\n");
-    goto error;
-  }
-
-  bluetooth_enable_func = (bluetooth_enable_t)dlsym(handle, "bluetooth_enable");
-  if (!bluetooth_enable_func) {
-    printf("failed to load symbol bluetooth_enable from Bluetooth library\n");
-  }
-
-  bluetooth_disable_func = (bluetooth_disable_t)dlsym(handle, "bluetooth_disable");
-  if (!bluetooth_disable_func) {
-    printf("failed to load symbol bluetooth_disable from Bluetooth library\n");
-  }
-
-  bluetooth_cleanup_func = (bluetooth_cleanup_t)dlsym(handle, "bluetooth_cleanup");
-  if (!bluetooth_cleanup_func) {
-    printf("failed to load symbol bluetooth_cleanup from Bluetooth library\n");
-  }
-
   // Success.
   printf(" loaded HAL Success\n");
   *interface = itf;
@@ -2046,7 +2015,9 @@ static void adapter_state_changed(bt_state_t state) {
     printf("GATT_TOOL: %s setting: BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE", __FUNCTION__);
     //status = sBtInterface->set_adapter_property(&property1);
     status = sBtInterface->set_adapter_property(&property);
-    status = sBtInterface->set_adapter_property(&property2);
+   // Commenting out adapter name property setting to avoid crash when
+   // com_android_bluetooth_flags_set_name_in_system_server() flag is enabled
+   // status = sBtInterface->set_adapter_property(&property2);
   } else {
     bt_enabled = 0;
   }
@@ -2082,11 +2053,10 @@ static void pin_request_cb(RawAddress remote_bd_addr, bt_bdname_t* bd_name,
       "entry with .\n");
     // Avoid unused parameter warnings if not used
 }
-
-static void ssp_request_cb(RawAddress remote_bd_addr, int transport,
+static void ssp_request_cb(RawAddress remote_bd_addr,int transport,
                            PairingVariant pairing_variant,
-                           uint32_t pass_key, int  pairing_alg) {
-  printf("ssp_request_cb : variant=%d passkey=%u transport=%d\n", pairing_variant, pass_key, transport);
+                           uint32_t pass_key, int pairing_alg) {
+  printf("ssp_request_cb : variant=%d passkey=%u\n", pairing_variant, pass_key);
   if (BT_STATUS_SUCCESS != sBtInterface->ssp_reply(remote_bd_addr,
                                                    pairing_variant, TRUE,
                                                    pass_key)) {
@@ -2275,18 +2245,18 @@ static void l2test_l2c_QoSViolationInd(const RawAddress& bd_addr) {
   printf("l2test_l2c_QoSViolationInd\n");
 }
 static void l2test_l2c_data_ind_cb(uint16_t lcid, BT_HDR* p_buf) {
-  rcv_itration++;
+  rcv_iteration++;
   printf(
       "l2test_l2c_data_ind_cb:: itration=%d, event=%u, len=%u, "
       "offset=%u, layer_specific=%u\n",
-      rcv_itration, p_buf->event, p_buf->len, p_buf->offset,
+      rcv_iteration, p_buf->event, p_buf->len, p_buf->offset,
       p_buf->layer_specific);
-  if (rcv_itration == 1) {
+  if (rcv_iteration == 1) {
     start = std::chrono::steady_clock::now();
   }
   auto end = std::chrono::steady_clock::now();
   auto elapsed_seconds = std::chrono::duration<double>(end - start).count();
-  int file_size = (rcv_itration - 1) * p_buf->len;
+  int file_size = (rcv_iteration - 1) * p_buf->len;
   double throughput = ((file_size * 8.0) / elapsed_seconds) / (1024.0 * 1024.0);
   printf("Throughput = %f" , throughput);
   
@@ -2365,12 +2335,11 @@ static btgatt_callbacks_t sGatt_cb = {
 void bdt_init(void) {
   bdt_log("INIT BT ");
   handle_value_map.clear(); // Clear handle_value_map during BT initialization
-  
-  // Call the global bluetooth_init function instead of sBtInterface->init
-  if (bluetooth_init_func) {
-      bluetooth_init_func(&bt_callbacks, false, false, 0, false, "default", &bt_os_callbacks);
+
+  if (sBtInterface && sBtInterface->bluetooth_init_wrapper) {
+      sBtInterface->bluetooth_init_wrapper(&bt_callbacks, false, false, 0, false, "default", &bt_os_callbacks, false);
   } else {
-      bdt_log("Error: bluetooth_init function not found");
+      bdt_log("Error: Wrapper interface not found");
       exit(0);
   }
   
@@ -2400,14 +2369,14 @@ void bdt_enable(void) {
     return;
   }
 
-  if (bluetooth_enable_func) {
-      std::string toolName = "gatt_tool";
-      bluetooth_enable_func(std::move(toolName));
+  if (sBtInterface && sBtInterface->bluetooth_enable_wrapper) {
+     sBtInterface->bluetooth_enable_wrapper("gatt_tool");
+     status = BT_STATUS_SUCCESS;
   } else {
-      bdt_log("Error: bluetooth_enable function not found");
+      bdt_log("Error: wrapper interface not loaded");
+      status = BT_STATUS_FAIL;
   }
-  
-  status = BT_STATUS_SUCCESS;
+
   check_return_status(status);
 }
 
@@ -2417,14 +2386,15 @@ void bdt_disable(void) {
     bdt_log("Bluetooth is already disabled");
     return;
   }
-  
-  if (bluetooth_disable_func) {
-      bluetooth_disable_func();
+
+  if (sBtInterface && sBtInterface->bluetooth_disable_wrapper) {
+      sBtInterface->bluetooth_disable_wrapper();
+      status = BT_STATUS_SUCCESS;
   } else {
-      bdt_log("Error: bluetooth_disable function not found");
+      bdt_log("Error: wrapper interface not loaded");
+      check_return_status(status);
   }
-  
-  status = BT_STATUS_SUCCESS;
+
   check_return_status(status);
 }
 
@@ -2444,10 +2414,11 @@ void do_pairing(char* p) {
 
 void bdt_cleanup(void) {
   bdt_log("CLEANUP");
-  if (bluetooth_cleanup_func) {
-    bluetooth_cleanup_func();
+
+  if (sBtInterface && sBtInterface->bluetooth_cleanup_wrapper) {
+      sBtInterface->bluetooth_cleanup_wrapper();
   } else {
-    bdt_log("Error: bluetooth_cleanup function not found");
+      bdt_log("Error: wrapper interface not loaded");
   }
 }
 
@@ -3058,13 +3029,6 @@ void do_le_execute_write(char* p) {
   Ret = sGattInterface->cExecuteWrite(g_conn_id, is_execute);
   printf("%s:: Ret=%d \n", __FUNCTION__, Ret);
 }
-void do_le_set_idle_timeout(char* p) {
-  int idle_timeout;
-  RawAddress bd_addr = RawAddress::kEmpty;
-  if (FALSE == GetBdAddr(p, &bd_addr)) return;
-  idle_timeout = get_int(&p, -1);  // arg2
-  sGattInterface->cSetIdleTimeout(bd_addr.address, idle_timeout);
-}
 
 /*******************************************************************************
  ** GATT SERVER API commands
@@ -3640,7 +3604,6 @@ static void le_l2cap_listen(char* p) {
   cfg.mtu = le_conn_info->loc_conn_info.le_mtu;
   cfg.mps = le_conn_info->loc_conn_info.le_mps;
   cfg.credits = le_conn_info->loc_conn_info.init_credits;
-
   sL2capInterface->RegisterLePsm(le_conn_info->loc_conn_info.le_psm, FALSE,
                                  le_coc_seclevel, g_BleEncKeySize,
                                  l2test_l2c_appl, cfg);
@@ -3713,6 +3676,8 @@ static int Send_Data(char* p) {
   send_mode = get_int(&p, -1);
   int length = get_int(&p, -1);
   int loop = get_int(&p, -1);
+  int buffer = get_int(&p, -1);
+  int timer = get_int(&p, -1);
 
   char tmpBuffer_2[] = {0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F,
                         0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F,
@@ -3723,18 +3688,24 @@ static int Send_Data(char* p) {
     printf("Sending Segmented data...\nData written len %d...\n",
            sizeof(tmpBuffer_2));
     int i=0;
+    int j=1;
     while (i<loop) {
       char* tmpBuffer_1;
       tmpBuffer_1 = (char*)malloc(length);
       memset(tmpBuffer_1, '\x7f', length);
       printf("Sending Segmented data...\nData written len %d...\n",
-           sizeof(tmpBuffer_1));
+           length);
       while (cong_status) {
         usleep(50*1000);
 
       }
       do_l2cap_DataWrite(lcid, tmpBuffer_1, length);
       i++;
+      j++;
+      if (j==buffer && timer > 0) {
+        j = 1;
+        usleep(timer*1000);
+      }
     }
   } else if (send_mode == 0)  // unsegmented
   {
@@ -3978,6 +3949,7 @@ int main(int argc, char* argv[]) {
   sHciInterface =
       (bthci_test_interface_t*)btvendorInterface->get_testapp_interface(
           TEST_APP_HCI);
+      
   printf("\n Before l2cap init\n");
   do_l2cap_init(NULL);
   printf("\n after l2cap init\n");
@@ -4176,5 +4148,10 @@ void do_send_ble_set_data_length_v2(char* p) {
   } else {
     printf("HCI Interface not available.\n");
   }
+}
+
+void reset_rcv_iteration(char* p) {
+  printf("Resetting rcv iteration, previous itaration: %d", rcv_iteration);
+  rcv_iteration = 0;
 }
 #endif  // TEST_APP_INTERFACE

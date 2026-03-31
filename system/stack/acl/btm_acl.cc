@@ -21,7 +21,7 @@
  *  Name:          btm_acl.cc
  *
  *  Description:   This file contains functions that handle ACL connections.
- *                 This includes operations such as hold and sniff modes,
+ *                 This includes operations such as active and sniff modes,
  *                 supported packet types.
  *
  *                 This module contains both internal and external (API)
@@ -47,6 +47,8 @@
 #include "device/include/device_iot_config.h"
 #include "device/include/interop.h"
 #include "hci/controller.h"
+#include "device/include/interop_config.h"
+#include "hci/hci_packets.h"
 #include "include/l2cap_hci_link_interface.h"
 #include "internal_include/bt_target.h"
 #include "main/shim/acl_api.h"
@@ -105,7 +107,7 @@ struct StackAclBtmAcl {
   tACL_CONN* btm_bda_to_acl(const RawAddress& bda, tBT_TRANSPORT transport);
   bool change_connection_packet_types(tACL_CONN& link, const uint16_t new_packet_type_bitmask);
   void btm_establish_continue(tACL_CONN* p_acl_cb, bool locally_initiated = false);
-  void btm_set_default_link_policy(tLINK_POLICY settings);
+  void btm_set_default_link_policy();
   void btm_acl_role_changed(tHCI_STATUS hci_status, const RawAddress& bd_addr, tHCI_ROLE new_role);
   void hci_start_role_switch_to_central(tACL_CONN& p_acl);
   void set_default_packet_types_supported(uint16_t packet_types_supported) {
@@ -154,8 +156,8 @@ static void acl_write_automatic_flush_timeout(const RawAddress& bd_addr,
                                               uint16_t flush_timeout_in_ticks);
 static void btm_process_remote_ext_features(tACL_CONN* p_acl_cb, uint8_t max_page_number);
 static void btm_read_rssi_timeout(void* data);
-static void btm_set_link_policy(tACL_CONN* conn, tLINK_POLICY policy);
-static void check_link_policy(tLINK_POLICY* settings);
+static void btm_apply_link_policy(tACL_CONN* conn);
+static void sanitize_link_policy(LinkPolicy& link_policy);
 
 namespace {
 void NotifyAclLinkUp(tACL_CONN& p_acl, bool locally_initiated) {
@@ -183,15 +185,14 @@ void NotifyAclRoleSwitchComplete(const RawAddress& bda, tHCI_ROLE new_role,
   BTA_dm_report_role_change(bda, new_role, hci_status);
 }
 
-void NotifyAclFeaturesReadComplete(tACL_CONN& p_acl, uint8_t max_page_number) {
-  btm_process_remote_ext_features(&p_acl, max_page_number);
-  btm_set_link_policy(&p_acl, btm_cb.acl_cb_.DefaultLinkPolicy());
+void NotifyAclFeaturesReadComplete(tACL_CONN& acl, uint8_t max_page_number) {
+  btm_process_remote_ext_features(&acl, max_page_number);
   int32_t flush_timeout = osi_property_get_int32(PROPERTY_AUTO_FLUSH_TIMEOUT, 0);
   if (bluetooth::shim::GetController()->SupportsNonFlushablePb() && flush_timeout != 0) {
-    acl_write_automatic_flush_timeout(p_acl.link_spec.addrt.bda,
+    acl_write_automatic_flush_timeout(acl.link_spec.addrt.bda,
                                       static_cast<uint16_t>(flush_timeout));
   }
-  BTA_dm_notify_remote_features_complete(p_acl.link_spec.addrt.bda);
+  BTA_dm_notify_remote_features_complete(acl.link_spec.addrt.bda);
 }
 
 }  // namespace
@@ -218,9 +219,7 @@ void StackAclBtmAcl::hci_start_role_switch_to_central(tACL_CONN& p_acl) {
 #define BTM_DEV_REPLY_TIMEOUT_MS (3 * 1000)
 
 void BTM_acl_after_controller_started() {
-  internal_.btm_set_default_link_policy(HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH |
-                                        HCI_ENABLE_HOLD_MODE | HCI_ENABLE_SNIFF_MODE |
-                                        HCI_ENABLE_PARK_MODE);
+  internal_.btm_set_default_link_policy();
 
   /* Create ACL supported packet types mask */
   uint16_t btm_acl_pkt_types_supported = (HCI_PKT_TYPES_MASK_DH1 + HCI_PKT_TYPES_MASK_DM1);
@@ -387,9 +386,6 @@ void btm_acl_created(const AclLinkSpec& link_spec, uint16_t hci_handle, tHCI_ROL
     p_acl->hci_handle = hci_handle;
     p_acl->link_role = link_role;
     p_acl->link_spec = link_spec;
-    if (link_spec.transport == BT_TRANSPORT_BR_EDR) {
-      btm_set_link_policy(p_acl, btm_cb.acl_cb_.DefaultLinkPolicy());
-    }
     log::warn(
             "Unable to create duplicate acl when one already exists handle:{} "
             "role:{} link_spec:{}",
@@ -411,13 +407,13 @@ void btm_acl_created(const AclLinkSpec& link_spec, uint16_t hci_handle, tHCI_ROL
   p_acl->sca = 0xFF;
   p_acl->switch_role_failed_attempts = 0;
   p_acl->switch_role_state_ = BtmAclSwitchKeyState::kIdle;
+  p_acl->switch_role_attempts = 0;
 
   log::debug("Created new ACL connection peer:{} role:{} handle:0x{:04x}", link_spec,
              RoleText(p_acl->link_role), hci_handle);
 
   if (p_acl->is_transport_br_edr()) {
     BTM_PM_OnConnected(hci_handle, link_spec.addrt.bda);
-    btm_set_link_policy(p_acl, btm_cb.acl_cb_.DefaultLinkPolicy());
   }
 
   // save remote properties to iot conf file
@@ -561,8 +557,13 @@ tBTM_STATUS BTM_SwitchRoleToCentral(const RawAddress& remote_bd_addr) {
   }
 
   if (interop_match_addr(INTEROP_DYNAMIC_ROLE_SWITCH, remote_bd_addr)) {
-    log::debug("Device restrict listed under INTEROP_DYNAMIC_ROLE_SWITCH");
-    return tBTM_STATUS::BTM_DEV_RESTRICT_LISTED;
+    if (p_acl->switch_role_attempts == BTM_MAX_BL_SW_ROLE_ATTEMPTS) {
+      log::debug("Device restrict listed under INTEROP_DYNAMIC_ROLE_SWITCH");
+      return tBTM_STATUS::BTM_DEV_RESTRICT_LISTED;
+    } else {
+      log::debug("Device blacklisted, try role change again");
+      p_acl->switch_role_attempts++;
+    }
   }
 
   tBTM_PM_MODE pwr_mode;
@@ -573,7 +574,7 @@ tBTM_STATUS BTM_SwitchRoleToCentral(const RawAddress& remote_bd_addr) {
     return tBTM_STATUS::BTM_UNKNOWN_ADDR;
   };
 
-  if (pwr_mode == BTM_PM_MD_PARK || pwr_mode == BTM_PM_MD_SNIFF) {
+  if (pwr_mode == BTM_PM_MD_SNIFF) {
     if (!BTM_SetLinkPolicyActiveMode(p_acl->link_spec.addrt.bda)) {
       log::warn("Unable to set link policy active before attempting switch");
       return tBTM_STATUS::BTM_WRONG_MODE;
@@ -665,55 +666,24 @@ void btm_acl_encrypt_change(uint16_t handle, uint8_t /* status */, uint8_t encr_
   }
 }
 
-static void check_link_policy(tLINK_POLICY* settings) {
-  if ((*settings & HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH) &&
-      (!bluetooth::shim::GetController()->SupportsRoleSwitch())) {
-    *settings &= (~HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH);
-    log::info("Role switch not supported (settings: 0x{:04x})", *settings);
+static void sanitize_link_policy(LinkPolicy& link_policy) {
+  if (link_policy.role_switch && (!bluetooth::shim::GetController()->SupportsRoleSwitch())) {
+    link_policy.role_switch = false;
+    log::info("Role switch not supported (link policy: {})", link_policy);
   }
-  if ((*settings & HCI_ENABLE_HOLD_MODE) &&
-      (!bluetooth::shim::GetController()->SupportsHoldMode())) {
-    *settings &= (~HCI_ENABLE_HOLD_MODE);
-    log::info("hold not supported (settings: 0x{:04x})", *settings);
-  }
-  if ((*settings & HCI_ENABLE_SNIFF_MODE) &&
-      (!bluetooth::shim::GetController()->SupportsSniffMode())) {
-    *settings &= (~HCI_ENABLE_SNIFF_MODE);
-    log::info("sniff not supported (settings: 0x{:04x})", *settings);
-  }
-  if ((*settings & HCI_ENABLE_PARK_MODE) &&
-      (!bluetooth::shim::GetController()->SupportsParkMode())) {
-    *settings &= (~HCI_ENABLE_PARK_MODE);
-    log::info("park not supported (settings: 0x{:04x})", *settings);
+  if (link_policy.sniff_mode && (!bluetooth::shim::GetController()->SupportsSniffMode())) {
+    link_policy.sniff_mode = false;
+    log::info("Sniff not supported (link policy: {})", link_policy);
   }
 }
 
-static void btm_set_link_policy(tACL_CONN* conn, tLINK_POLICY policy) {
-  conn->link_policy = policy;
-  check_link_policy(&conn->link_policy);
-  if ((conn->link_policy & HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH) &&
+static void btm_apply_link_policy(tACL_CONN* conn) {
+  sanitize_link_policy(conn->link_policy);
+  if (conn->link_policy.role_switch &&
       interop_match_addr(INTEROP_DISABLE_SNIFF, conn->link_spec.addrt.bda)) {
-    conn->link_policy &= (~HCI_ENABLE_SNIFF_MODE);
+    conn->link_policy.sniff_mode = false;
   }
   btsnd_hcic_write_policy_set(conn->hci_handle, static_cast<uint16_t>(conn->link_policy));
-}
-
-static void btm_toggle_policy_on_for(const RawAddress& peer_addr, uint16_t flag) {
-  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
-  if (!conn) {
-    log::warn("Unable to find active acl");
-    return;
-  }
-  btm_set_link_policy(conn, conn->link_policy | flag);
-}
-
-static void btm_toggle_policy_off_for(const RawAddress& peer_addr, uint16_t flag) {
-  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
-  if (!conn) {
-    log::warn("Unable to find active acl");
-    return;
-  }
-  btm_set_link_policy(conn, conn->link_policy & ~flag);
 }
 
 bool BTM_is_sniff_allowed_for(const RawAddress& peer_addr) {
@@ -722,43 +692,75 @@ bool BTM_is_sniff_allowed_for(const RawAddress& peer_addr) {
     log::warn("Unable to find active acl");
     return false;
   }
-  return conn->link_policy & HCI_ENABLE_SNIFF_MODE;
+  return conn->link_policy.sniff_mode;
 }
 
 void BTM_unblock_sniff_mode_for(const RawAddress& peer_addr) {
-  btm_toggle_policy_on_for(peer_addr, HCI_ENABLE_SNIFF_MODE);
+  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
+  if (!conn) {
+    log::warn("Unable to find active acl");
+    return;
+  }
+  conn->link_policy.sniff_mode = true;
+  btm_apply_link_policy(conn);
 }
 
 void BTM_block_sniff_mode_for(const RawAddress& peer_addr) {
-  btm_toggle_policy_off_for(peer_addr, HCI_ENABLE_SNIFF_MODE);
+  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
+  if (!conn) {
+    log::warn("Unable to find active acl");
+    return;
+  }
+  conn->link_policy.sniff_mode = false;
+  btm_apply_link_policy(conn);
 }
 
 void BTM_unblock_role_switch_for(const RawAddress& peer_addr) {
-  btm_toggle_policy_on_for(peer_addr, HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH);
+  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
+  if (!conn) {
+    log::warn("Unable to find active acl");
+    return;
+  }
+  conn->link_policy.role_switch = true;
+  btm_apply_link_policy(conn);
 }
 
 void BTM_block_role_switch_for(const RawAddress& peer_addr) {
-  btm_toggle_policy_off_for(peer_addr, HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH);
+  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
+  if (!conn) {
+    log::warn("Unable to find active acl");
+    return;
+  }
+  conn->link_policy.role_switch = false;
+  btm_apply_link_policy(conn);
 }
 
 void BTM_unblock_role_switch_and_sniff_mode_for(const RawAddress& peer_addr) {
-  btm_toggle_policy_on_for(peer_addr, HCI_ENABLE_SNIFF_MODE | HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH);
+  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
+  if (!conn) {
+    log::warn("Unable to find active acl");
+    return;
+  }
+  conn->link_policy.role_switch = true;
+  conn->link_policy.sniff_mode = true;
+  btm_apply_link_policy(conn);
 }
 
 void BTM_block_role_switch_and_sniff_mode_for(const RawAddress& peer_addr) {
-  btm_toggle_policy_off_for(peer_addr,
-                            HCI_ENABLE_SNIFF_MODE | HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH);
+  auto conn = internal_.btm_bda_to_acl(peer_addr, BT_TRANSPORT_BR_EDR);
+  if (!conn) {
+    log::warn("Unable to find active acl");
+    return;
+  }
+  conn->link_policy.role_switch = false;
+  conn->link_policy.sniff_mode = false;
+  btm_apply_link_policy(conn);
 }
 
-void StackAclBtmAcl::btm_set_default_link_policy(tLINK_POLICY settings) {
-  check_link_policy(&settings);
-  btm_cb.acl_cb_.btm_def_link_policy = settings;
-  btsnd_hcic_write_def_policy_set(settings);
-}
-
-void BTM_default_unblock_role_switch() {
-  internal_.btm_set_default_link_policy(btm_cb.acl_cb_.DefaultLinkPolicy() |
-                                        HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH);
+void StackAclBtmAcl::btm_set_default_link_policy() {
+  LinkPolicy link_policy = kLinkPolicyDefault;
+  sanitize_link_policy(link_policy);
+  btsnd_hcic_write_def_policy_set(static_cast<uint16_t>(link_policy));
 }
 
 static void maybe_chain_more_commands_after_read_remote_version_complete(uint8_t /* status */,
@@ -910,7 +912,6 @@ void StackAclBtmAcl::btm_establish_continue(tACL_CONN* p_acl, bool locally_initi
       log::error("Unable to change connection packet type types:{:04x} address:{}",
                  default_packet_type_mask, p_acl->RemoteAddress());
     }
-    btm_set_link_policy(p_acl, btm_cb.acl_cb_.DefaultLinkPolicy());
   } else if (p_acl->is_transport_ble()) {
     btm_ble_connection_established(p_acl->link_spec.addrt.bda);
     locally_initiated = p_acl->link_role == HCI_ROLE_CENTRAL ? true : false;
@@ -1289,6 +1290,11 @@ void StackAclBtmAcl::btm_acl_role_changed(tHCI_STATUS hci_status, const RawAddre
 
 void btm_acl_role_changed(tHCI_STATUS hci_status, const RawAddress& bd_addr, tHCI_ROLE new_role) {
   btm_rejectlist_role_change_device(bd_addr, hci_status);
+  tACL_CONN* p = internal_.btm_bda_to_acl(bd_addr, BT_TRANSPORT_BR_EDR);
+  if (hci_status == HCI_SUCCESS && new_role == HCI_ROLE_CENTRAL) {
+    interop_database_remove_addr(INTEROP_DYNAMIC_ROLE_SWITCH, bd_addr);
+    p->switch_role_attempts = 0;
+  }
 
   if (hci_status == HCI_SUCCESS) {
     l2c_link_role_changed(&bd_addr, new_role, hci_status);
@@ -1566,7 +1572,7 @@ void btm_read_rssi_timeout(void* /* data */) {
  * Returns          void
  *
  ******************************************************************************/
-void btm_read_rssi_complete(uint8_t* p, uint16_t evt_len) {
+void btm_read_rssi_complete(bluetooth::hci::CommandCompleteView view) {
   tBTM_CMPL_CB* p_cb = btm_cb.devcb.p_rssi_cmpl_cb;
   tBTM_RSSI_RESULT result;
 
@@ -1575,23 +1581,20 @@ void btm_read_rssi_complete(uint8_t* p, uint16_t evt_len) {
 
   /* If there was a registered callback, call it */
   if (p_cb) {
-    if (evt_len < 1) {
-      goto err_out;
+    auto read_rssi_complete_view = bluetooth::hci::ReadRssiCompleteView::Create(view);
+    if (!read_rssi_complete_view.IsValid()) {
+      log::error("Invalid read rssi complete view");
+      return;
     }
 
-    STREAM_TO_UINT8(result.hci_status, p);
+    result.hci_status = static_cast<tHCI_STATUS>(read_rssi_complete_view.GetStatus());
     result.status = tBTM_STATUS::BTM_ERR_PROCESSING;
 
     if (result.hci_status == HCI_SUCCESS) {
-      uint16_t handle;
+      uint16_t handle = read_rssi_complete_view.GetConnectionHandle();
+      result.rssi = read_rssi_complete_view.GetRssi();
 
-      if (evt_len < 4) {
-        goto err_out;
-      }
-      STREAM_TO_UINT16(handle, p);
-
-      STREAM_TO_UINT8(result.rssi, p);
-      log::debug("Read rrsi complete rssi:{} hci status:{}", result.rssi,
+      log::debug("Read rssi complete rssi:{} hci status:{}", result.rssi,
                  hci_status_code_text(to_hci_status_code(result.hci_status)));
 
       tACL_CONN* p_acl_cb = internal_.acl_get_connection_from_handle(handle);
@@ -1602,11 +1605,6 @@ void btm_read_rssi_complete(uint8_t* p, uint16_t evt_len) {
     }
     (*p_cb)(&result);
   }
-
-  return;
-
-err_out:
-  log::error("Bogus event packet, too short");
 }
 
 /*******************************************************************************
@@ -1620,7 +1618,7 @@ err_out:
  * Returns          void
  *
  ******************************************************************************/
-void btm_read_automatic_flush_timeout_complete(uint8_t* p) {
+void btm_read_automatic_flush_timeout_complete(bluetooth::hci::CommandCompleteView view) {
   tBTM_CMPL_CB* p_cb = btm_cb.devcb.p_automatic_flush_timeout_cmpl_cb;
   tBTM_AUTOMATIC_FLUSH_TIMEOUT_RESULT result;
 
@@ -1629,15 +1627,23 @@ void btm_read_automatic_flush_timeout_complete(uint8_t* p) {
 
   /* If there was a registered callback, call it */
   if (p_cb) {
+    auto read_automatic_flush_timeout_complete_view =
+            bluetooth::hci::ReadAutomaticFlushTimeoutCompleteView::Create(view);
+    if (!read_automatic_flush_timeout_complete_view.IsValid()) {
+      log::error("Invalid read automatic flush timeout complete view");
+      return;
+    }
+
+    result.hci_status =
+            static_cast<tHCI_STATUS>(read_automatic_flush_timeout_complete_view.GetStatus());
     uint16_t handle;
-    STREAM_TO_UINT8(result.hci_status, p);
     result.status = tBTM_STATUS::BTM_ERR_PROCESSING;
 
     if (result.hci_status == HCI_SUCCESS) {
       result.status = tBTM_STATUS::BTM_SUCCESS;
 
-      STREAM_TO_UINT16(handle, p);
-      STREAM_TO_UINT16(result.automatic_flush_timeout, p);
+      handle = read_automatic_flush_timeout_complete_view.GetConnectionHandle();
+      result.automatic_flush_timeout = read_automatic_flush_timeout_complete_view.GetFlushTimeout();
       log::debug("Read automatic flush timeout complete timeout:{} hci_status:{}",
                  result.automatic_flush_timeout,
                  hci_error_code_text(static_cast<tHCI_STATUS>(result.hci_status)));
@@ -1975,10 +1981,6 @@ void acl_set_disconnect_reason(tHCI_STATUS acl_disc_reason) {
   btm_cb.acl_cb_.set_disconnect_reason(acl_disc_reason);
 }
 
-bool acl_is_role_switch_allowed() {
-  return btm_cb.acl_cb_.DefaultLinkPolicy() & HCI_ENABLE_CENTRAL_PERIPHERAL_SWITCH;
-}
-
 uint16_t acl_get_supported_packet_types() { return btm_cb.acl_cb_.DefaultPacketTypes(); }
 
 bool acl_set_peer_le_features_from_handle(uint16_t hci_handle, const uint8_t* p) {
@@ -2017,9 +2019,7 @@ void on_acl_br_edr_connected(const RawAddress& bda, uint16_t handle, uint8_t enc
     return;
   }
 
-  if (com_android_bluetooth_flags_remove_fake_role_change_event()) {
-    p_acl->link_role = role;
-  }
+  p_acl->link_role = role;
 
   /*
    * The legacy code path informs the upper layer via the BTA

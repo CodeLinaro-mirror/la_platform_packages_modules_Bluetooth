@@ -97,6 +97,7 @@ import com.android.bluetooth.le_audio.LeAudioConstants;
 import com.android.bluetooth.le_audio.LeAudioService;
 import com.android.bluetooth.le_audio.LeAudioStackEvent;
 import com.android.bluetooth.le_scan.ScanController;
+import com.android.bluetooth.mcp.McpService;
 import com.android.tests.bluetooth.MockitoRule;
 
 import com.google.common.truth.Expect;
@@ -140,6 +141,7 @@ public class BassClientServiceTest {
     @Mock private ScanController mScanController;
     @Mock private CsipSetCoordinatorService mCsipService;
     @Mock private LeAudioService mLeAudioService;
+    @Mock private McpService mMcpService;
     @Mock private IBluetoothLeBroadcastAssistantCallback mCallback;
     @Mock private Binder mBinder;
 
@@ -413,19 +415,9 @@ public class BassClientServiceTest {
             return;
         }
 
-        if (Flags.scanRegisterAndStart()) {
-            mInOrderScanController
-                    .verify(mScanController)
-                    .registerAndStartScanInternal(any(), any(), any(), any());
-        } else {
-            int scannerId = 1;
-            mInOrderScanController
-                    .verify(mScanController)
-                    .registerScannerInternal(any(), any(), any());
-            mInOrderScanController
-                    .verify(mScanController)
-                    .startScanInternal(eq(scannerId), any(), any());
-        }
+        mInOrderScanController
+                .verify(mScanController)
+                .registerAndStartScanInternal(any(), any(), any(), any());
     }
 
     @Before
@@ -504,40 +496,24 @@ public class BassClientServiceTest {
 
         doReturn(Optional.of(mCsipService)).when(mAdapterService).getCsipSetCoordinatorService();
         doReturn(Optional.of(mLeAudioService)).when(mAdapterService).getLeAudioService();
+        doReturn(Optional.of(mMcpService)).when(mAdapterService).getMcpService();
 
         mBassScanCallbackCaptor = ArgumentCaptor.forClass(IScannerCallback.class);
-        if (Flags.scanRegisterAndStart()) {
-            doAnswer(
-                            invocation -> {
-                                try {
-                                    int scannerId = 1;
-                                    mBassScanCallbackCaptor
-                                            .getValue()
-                                            .onScannerRegistered(0, scannerId);
-                                } catch (RemoteException e) {
-                                    // the mocked onScannerRegistered doesn't throw RemoteException
-                                }
-                                return null;
-                            })
-                    .when(mScanController)
-                    .registerAndStartScanInternal(
-                            mBassScanCallbackCaptor.capture(), any(), any(), any());
-        } else {
-            doAnswer(
-                            invocation -> {
-                                try {
-                                    int scannerId = 1;
-                                    mBassScanCallbackCaptor
-                                            .getValue()
-                                            .onScannerRegistered(0, scannerId);
-                                } catch (RemoteException e) {
-                                    // the mocked onScannerRegistered doesn't throw RemoteException
-                                }
-                                return null;
-                            })
-                    .when(mScanController)
-                    .registerScannerInternal(mBassScanCallbackCaptor.capture(), any(), any());
-        }
+        doAnswer(
+                        invocation -> {
+                            try {
+                                int scannerId = 1;
+                                mBassScanCallbackCaptor
+                                        .getValue()
+                                        .onScannerRegistered(0, scannerId);
+                            } catch (RemoteException e) {
+                                // the mocked onScannerRegistered doesn't throw RemoteException
+                            }
+                            return null;
+                        })
+                .when(mScanController)
+                .registerAndStartScanInternal(
+                        mBassScanCallbackCaptor.capture(), any(), any(), any());
 
         doReturn(mBinder).when(mCallback).asBinder();
         mBassClientService.registerCallback(mCallback);
@@ -672,7 +648,6 @@ public class BassClientServiceTest {
     public void testStartSearchingForSources() {
         prepareConnectedDeviceGroup();
         List<ScanFilter> scanFilters = new ArrayList<>();
-        int scannerId = 1;
 
         assertThat(mStateMachines).hasSize(2);
         for (BassClientStateMachine sm : mStateMachines.values()) {
@@ -681,18 +656,9 @@ public class BassClientServiceTest {
 
         assertThat(mBassClientService.isSearchInProgress()).isFalse();
         mBassClientService.startSearchingForSources(scanFilters);
-        if (Flags.scanRegisterAndStart()) {
-            mInOrderScanController
-                    .verify(mScanController)
-                    .registerAndStartScanInternal(any(), any(), any(), any());
-        } else {
-            mInOrderScanController
-                    .verify(mScanController)
-                    .registerScannerInternal(any(), any(), any());
-            mInOrderScanController
-                    .verify(mScanController)
-                    .startScanInternal(eq(scannerId), any(), any());
-        }
+        mInOrderScanController
+                .verify(mScanController)
+                .registerAndStartScanInternal(any(), any(), any(), any());
         assertThat(mBassClientService.isSearchInProgress()).isTrue();
         for (BassClientStateMachine sm : mStateMachines.values()) {
             verify(sm).sendMessage(BassClientStateMachine.START_SCAN_OFFLOAD);
@@ -749,7 +715,6 @@ public class BassClientServiceTest {
 
     private void startSearchingForSourcesWithAutoSync(BluetoothDevice device) {
         List<ScanFilter> scanFilters = new ArrayList<>();
-        int scannerId = 1;
 
         assertThat(mStateMachines).hasSize(2);
         for (BassClientStateMachine sm : mStateMachines.values()) {
@@ -764,18 +729,9 @@ public class BassClientServiceTest {
             verifyRegisterSyncCalled(device);
         }
         if (!mBassClientService.isAnySearchInProgress()) {
-            if (Flags.scanRegisterAndStart()) {
-                mInOrderScanController
-                        .verify(mScanController)
-                        .registerAndStartScanInternal(any(), any(), any(), any());
-            } else {
-                mInOrderScanController
-                        .verify(mScanController)
-                        .registerScannerInternal(any(), any(), any());
-                mInOrderScanController
-                        .verify(mScanController)
-                        .startScanInternal(eq(scannerId), any(), any());
-            }
+            mInOrderScanController
+                    .verify(mScanController)
+                    .registerAndStartScanInternal(any(), any(), any(), any());
             for (BassClientStateMachine sm : mStateMachines.values()) {
                 verify(sm).sendMessage(BassClientStateMachine.START_SCAN_OFFLOAD);
             }
@@ -1399,11 +1355,7 @@ public class BassClientServiceTest {
         };
     }
 
-    private void onPeriodicAdvertisingReport() {
-        byte[] scanRecord = getPAScanRecord();
-        ScanRecord record = ScanRecord.parseFromBytes(scanRecord);
-        PeriodicAdvertisingReport report =
-                new PeriodicAdvertisingReport(TEST_SYNC_HANDLE, 0, 0, 0, record);
+    private void onPeriodicAdvertisingReport(PeriodicAdvertisingReport report) {
         if (Flags.leaudioBroadcastImproveSourceOperations()) {
             BassClientService.PACallback callback = mBassClientService.new PACallback();
             callback.onPeriodicAdvertisingReport(report);
@@ -1412,6 +1364,17 @@ public class BassClientServiceTest {
                     mBassClientService.new PACallbackObsolete();
             callback.onPeriodicAdvertisingReport(report);
         }
+    }
+
+    private void onPeriodicAdvertisingReport(byte[] scanRecord) {
+        ScanRecord record = ScanRecord.parseFromBytes(scanRecord);
+        PeriodicAdvertisingReport report =
+                new PeriodicAdvertisingReport(TEST_SYNC_HANDLE, 0, 0, 0, record);
+        onPeriodicAdvertisingReport(report);
+    }
+
+    private void onPeriodicAdvertisingReport() {
+        onPeriodicAdvertisingReport(getPAScanRecord());
     }
 
     private void onBigInfoAdvertisingReport() {
@@ -4830,6 +4793,43 @@ public class BassClientServiceTest {
     }
 
     @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_CLEAR_NOTIFIED_FLAGS,
+        Flags.FLAG_LEAUDIO_BROADCAST_IMPROVE_SOURCE_OPERATIONS
+    })
+    public void testStartSearchingForSources_ClearNotifiedFlags_WhenAlreadySearching()
+            throws RemoteException {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // 1. Source found and notified
+        onPeriodicAdvertisingReport();
+        mLooper.dispatchAll();
+        verify(mCallback).onSourceFound(any());
+        clearInvocations(mCallback);
+
+        // 2. Source report again - should NOT notify
+        onPeriodicAdvertisingReport();
+        mLooper.dispatchAll();
+        verify(mCallback, never()).onSourceFound(any());
+
+        // 3. Start searching AGAIN (while already running)
+        // With the flag enabled, this should clear notified flags, even if it returns error.
+        assertThat(mBassClientService.isSearchInProgress()).isTrue();
+
+        mBassClientService.startSearchingForSources(new ArrayList<>());
+        mLooper.dispatchAll();
+
+        // It should fail with ALREADY_IN_TARGET_STATE because it is already searching
+        verify(mCallback).onSearchStartFailed(BluetoothStatusCodes.ERROR_ALREADY_IN_TARGET_STATE);
+
+        // 4. Source report again - SHOULD notify because flags were cleared
+        onPeriodicAdvertisingReport();
+        mLooper.dispatchAll();
+        verify(mCallback).onSourceFound(any());
+    }
+
+    @Test
     public void onSyncLost_notifySourceLostAndCancelSync() throws RemoteException {
         prepareConnectedDeviceGroup();
         prepareSyncToSourceAndVerify();
@@ -7182,6 +7182,7 @@ public class BassClientServiceTest {
         mBassClientService.startSearchingForSources(scanFilters);
         mLooper.dispatchAll();
         verify(mCallback).onSearchStartFailed(BluetoothStatusCodes.ERROR_ALREADY_IN_TARGET_STATE);
+        onScanResult(mSourceDevice, TEST_BROADCAST_ID);
 
         // 3. Stop Foreground
         mBassClientService.stopSearchingForSources();
@@ -9158,7 +9159,7 @@ public class BassClientServiceTest {
 
     @Test
     @EnableFlags(Flags.FLAG_LEAUDIO_BROADCAST_SOURCE_CHANNEL_MAP_CLASSIFICATION)
-    public void testNotifyReceiveStateChanged_addClientForBigChannelMap() {
+    public void testNotifyReceiveStateChanged_addClientForBigChannelMapwhenPaSynced() {
         // Mock that the broadcast is local
         doReturn(mBroadcastMetadata1).when(mLeAudioService).getBroadcastMetadata(anyInt());
         prepareConnectedDeviceGroup();
@@ -9168,6 +9169,30 @@ public class BassClientServiceTest {
 
         injectRemoteSourceStateChanged(
                 mBroadcastMetadata1, /* isPaSynced */ true, /* isBisSynced */ false);
+
+        // Verify that setBigChannelMapClassification is called with ADD action
+        verify(mLeAudioService)
+                .setBigChannelMapClassification(
+                        eq(BassClientService.SetBigChannelMapClassificationAction.ADD.getValue()),
+                        eq(mCurrentDevice),
+                        eq(mBroadcastMetadata1.getBroadcastId()));
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_SOURCE_CHANNEL_MAP_CLASSIFICATION,
+        Flags.FLAG_LEAUDIO_BROADCAST_SOURCE_CHANNEL_MAP_CLASSIFICATION_IMPROVEMENT
+    })
+    public void testNotifyReceiveStateChanged_addClientForBigChannelMapwhenBisSynced() {
+        // Mock that the broadcast is local
+        doReturn(mBroadcastMetadata1).when(mLeAudioService).getBroadcastMetadata(anyInt());
+        prepareConnectedDeviceGroup();
+
+        injectRemoteSourceStateChanged(
+                mBroadcastMetadata1, /* isPaSynced */ false, /* isBisSynced */ false);
+
+        injectRemoteSourceStateChanged(
+                mBroadcastMetadata1, /* isPaSynced */ false, /* isBisSynced */ true);
 
         // Verify that setBigChannelMapClassification is called with ADD action
         verify(mLeAudioService)
@@ -9342,5 +9367,515 @@ public class BassClientServiceTest {
         // Device disconnected -> isEncrypted() -> false
         injectDeviceDisconnection(mCurrentDevice);
         assertThat(mBassClientService.isEncrypted(mCurrentDevice)).isFalse();
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_IMPROVE_SOURCE_OPERATIONS
+    })
+    public void testResumeSynchronization_SpecificBroadcast_BigInfoReport() {
+        prepareConnectedDeviceGroup();
+
+        // Set maximum source capacity to 2
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            doReturn(2).when(sm).getMaximumSourceCapacity();
+        }
+
+        // Add source 1
+        prepareSyncToSourceAndVerify();
+        addSourceAndVerify(mBroadcastMetadata1);
+        injectRemoteSourceStateSourceAdded(
+                mBroadcastMetadata1, /* isPaSynced */ true, /* isBisSynced */ true);
+
+        // Add source 2
+        onScanResult(mSourceDevice2, TEST_BROADCAST_ID_2);
+        onSyncEstablished(mSourceDevice2, TEST_SYNC_HANDLE_2);
+        addSourceAndVerify(mBroadcastMetadata2);
+
+        // For metadata 2, inject with correct source IDs (TEST_SOURCE_ID + 2/3)
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            int sourceId =
+                    sm.getDevice().equals(mCurrentDevice) ? TEST_SOURCE_ID + 2 : TEST_SOURCE_ID + 3;
+            injectRemoteSourceStateSourceAdded(
+                    sm,
+                    mBroadcastMetadata2,
+                    sourceId,
+                    BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED,
+                    BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                    null,
+                    1L);
+        }
+
+        // Simulate loss of sync for both to trigger BIG_MONITORING
+        // Source 1 lost
+        injectRemoteSourceStateChanged(
+                mStateMachines.get(mCurrentDevice),
+                mBroadcastMetadata1,
+                TEST_SOURCE_ID,
+                BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                null,
+                0L);
+        injectRemoteSourceStateChanged(
+                mStateMachines.get(mCurrentDevice1),
+                mBroadcastMetadata1,
+                TEST_SOURCE_ID + 1,
+                BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                null,
+                0L);
+
+        // Source 2 lost
+        injectRemoteSourceStateChanged(
+                mStateMachines.get(mCurrentDevice),
+                mBroadcastMetadata2,
+                TEST_SOURCE_ID + 2,
+                BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                null,
+                0L);
+        injectRemoteSourceStateChanged(
+                mStateMachines.get(mCurrentDevice1),
+                mBroadcastMetadata2,
+                TEST_SOURCE_ID + 3,
+                BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                null,
+                0L);
+
+        // Clear invocations
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            clearInvocations(sm);
+        }
+
+        // Trigger BIG Info report for Source 1
+        onPeriodicAdvertisingReport();
+        onBigInfoAdvertisingReport();
+
+        // Verify Source 1 resumed
+        verifyAllGroupMembersGettingUpdateOrAddSource(mBroadcastMetadata1);
+
+        // Verify Source 2 NOT resumed
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+            verify(sm, atLeast(0)).sendMessage(messageCaptor.capture());
+            for (Message msg : messageCaptor.getAllValues()) {
+                if (msg.what == BassClientStateMachine.ADD_BCAST_SOURCE
+                        || msg.what == BassClientStateMachine.UPDATE_BCAST_SOURCE) {
+                    if (msg.obj instanceof BluetoothLeBroadcastMetadata) {
+                        BluetoothLeBroadcastMetadata meta = (BluetoothLeBroadcastMetadata) msg.obj;
+                        if (meta.getBroadcastId() == TEST_BROADCAST_ID_2) {
+                            throw new AssertionError("Should not resume Broadcast 2");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private BluetoothLeBroadcastMetadata createInstructionalBroadcastMetadata(int broadcastId) {
+        BluetoothLeAudioContentMetadata contentMetadata =
+                BluetoothLeAudioContentMetadata.fromRawBytes(
+                        new byte[] {
+                            0x03,
+                            0x02, // Type: Streaming Audio Contexts
+                            (byte) (BluetoothLeAudio.CONTEXT_TYPE_INSTRUCTIONAL & 0xFF),
+                            (byte) ((BluetoothLeAudio.CONTEXT_TYPE_INSTRUCTIONAL >> 8) & 0xFF),
+                            0x02,
+                            0x08, // Type: Audio Active State
+                            0x00 // Value: False
+                        });
+
+        BluetoothLeBroadcastSubgroup subgroup =
+                new BluetoothLeBroadcastSubgroup.Builder()
+                        .setCodecId(TEST_CODEC_ID)
+                        .setCodecSpecificConfig(
+                                new BluetoothLeAudioCodecConfigMetadata.Builder()
+                                        .setAudioLocation(TEST_AUDIO_LOCATION_FRONT_LEFT)
+                                        .build())
+                        .setContentMetadata(contentMetadata)
+                        .addChannel(
+                                new BluetoothLeBroadcastChannel.Builder()
+                                        .setSelected(true)
+                                        .setChannelIndex(1)
+                                        .setCodecMetadata(
+                                                new BluetoothLeAudioCodecConfigMetadata.Builder()
+                                                        .setAudioLocation(
+                                                                TEST_AUDIO_LOCATION_FRONT_LEFT)
+                                                        .build())
+                                        .build())
+                        .build();
+
+        return new BluetoothLeBroadcastMetadata.Builder()
+                .setEncrypted(false)
+                .setSourceDevice(mSourceDevice, ADDRESS_TYPE_RANDOM)
+                .setSourceAdvertisingSid(TEST_ADVERTISER_SID)
+                .setBroadcastId(broadcastId)
+                .setPaSyncInterval(TEST_PA_SYNC_INTERVAL)
+                .setPresentationDelayMicros(TEST_PRESENTATION_DELAY_MS)
+                .addSubgroup(subgroup)
+                .build();
+    }
+
+    private static PeriodicAdvertisingReport createPeriodicAdvertisingReportWithAudioActiveState(
+            int syncHandle, boolean active) {
+        byte[] scanRecord =
+                new byte[] {
+                    0x02,
+                    0x01,
+                    0x1a, // advertising flags
+                    0x03,
+                    0x02,
+                    0x51,
+                    0x18, // Service UUID 0x1851 (Basic Audio)
+                    (byte) 0x18, // Length of Service Data
+                    0x16,
+                    0x51,
+                    0x18, // Service Data UUID 0x1851
+                    // Base Data
+                    (byte) 0x01,
+                    (byte) 0x02,
+                    (byte) 0x03, // mPresentationDelay
+                    (byte) 0x01, // mNumSubGroups
+                    // Subgroup
+                    (byte) 0x01, // mNumBises
+                    (byte) 0x06,
+                    (byte) 0x00,
+                    (byte) 0x00,
+                    (byte) 0x00,
+                    (byte) 0x00, // Codec ID
+                    (byte) 0x00, // mCodecSpecificConfigurationLength
+                    (byte) 0x07, // mMetaDataLength
+                    // Metadata: Audio Active State
+                    (byte) 0x02, // Length
+                    (byte) 0x08, // Type: Audio Active State
+                    (byte) (active ? 0x01 : 0x00), // Value
+                    // Metadata: Streaming Audio Contexts
+                    (byte) 0x03, // Length
+                    (byte) 0x02, // Type: Streaming Audio Contexts
+                    (byte) (BluetoothLeAudio.CONTEXT_TYPE_INSTRUCTIONAL & 0xFF),
+                    (byte) ((BluetoothLeAudio.CONTEXT_TYPE_INSTRUCTIONAL >> 8) & 0xFF),
+                    // BIS
+                    (byte) 0x01, // BIS Index
+                    (byte) 0x00 // Codec Specific Config Length
+                };
+        return new PeriodicAdvertisingReport(
+                syncHandle, 0, 0, 0, ScanRecord.parseFromBytes(scanRecord));
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_USE_BACKGROUND_SCANNER
+    })
+    public void announcementMonitoring_StartMonitoringOnInstructional_ResumeBroadcast() {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // Add source with instructional metadata
+        BluetoothLeBroadcastMetadata instructionalMetadata =
+                createInstructionalBroadcastMetadata(TEST_BROADCAST_ID);
+        mBassClientService.addSource(mCurrentDevice, instructionalMetadata, /* isGroupOp */ true);
+        injectRemoteSourceStateSourceAdded(instructionalMetadata, true, true);
+
+        // Pause it via Unicast (REQUESTED)
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_REQUESTED);
+        injectRemoteSourceStateChanged(
+                instructionalMetadata, /* isPaSynced */ true, /* isBisSynced */ false);
+
+        // Clear invocations
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            clearInvocations(sm);
+        }
+
+        // Verify that monitoring started by checking if PA report triggers action
+        // Inject PA report with Audio Active State = TRUE
+        PeriodicAdvertisingReport report =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, true);
+        onPeriodicAdvertisingReport(report);
+        verifyAllGroupMembersGettingUpdateOrAddSource(instructionalMetadata);
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_USE_BACKGROUND_SCANNER
+    })
+    public void announcementMonitoring_NotStartMonitoringWithoutInstructional() {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // Add source without instructional metadata
+        mBassClientService.addSource(mCurrentDevice, mBroadcastMetadata1, /* isGroupOp */ true);
+        injectRemoteSourceStateSourceAdded(mBroadcastMetadata1, true, true);
+
+        // Pause it via Unicast (REQUESTED)
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_REQUESTED);
+        injectRemoteSourceStateChanged(
+                mBroadcastMetadata1, /* isPaSynced */ true, /* isBisSynced */ false);
+
+        // Clear invocations
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            clearInvocations(sm);
+        }
+
+        // Verify that monitoring is not started
+        // Inject PA report with Audio Active State = TRUE
+        PeriodicAdvertisingReport report =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, true);
+        onPeriodicAdvertisingReport(report);
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            verify(sm, never()).sendMessage(any());
+        }
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_USE_BACKGROUND_SCANNER
+    })
+    public void announcementMonitoring_Active_UnicastResumeFlagBehavior() {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // Add source with instructional metadata
+        BluetoothLeBroadcastMetadata instructionalMetadata =
+                createInstructionalBroadcastMetadata(TEST_BROADCAST_ID);
+        mBassClientService.addSource(mCurrentDevice, instructionalMetadata, /* isGroupOp */ true);
+        injectRemoteSourceStateSourceAdded(instructionalMetadata, true, true);
+
+        // Pause it via Unicast (REQUESTED)
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_REQUESTED);
+        injectRemoteSourceStateChanged(
+                instructionalMetadata, /* isPaSynced */ true, /* isBisSynced */ false);
+
+        // Case 1: Unicast Streaming
+        // mIsUnicastAutoResuming = true if active state becomes true
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_STREAMING);
+        PeriodicAdvertisingReport reportActive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, true);
+        onPeriodicAdvertisingReport(reportActive);
+
+        // Inject PA report (Inactive) should resume unicast
+        PeriodicAdvertisingReport reportInactive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, false);
+        onPeriodicAdvertisingReport(reportInactive);
+        verify(mMcpService).playRequest();
+
+        // Case 2: Unicast Suspended
+        // mIsUnicastAutoResuming = false if active state is false during unicast suspending
+        clearInvocations(mMcpService);
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_SUSPENDED);
+
+        // Inject PA report (Active)
+        onPeriodicAdvertisingReport(reportActive);
+
+        // Inject PA report (Inactive)
+        onPeriodicAdvertisingReport(reportInactive);
+
+        // Verify playRequest NOT called
+        verify(mMcpService, never()).playRequest();
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_USE_BACKGROUND_SCANNER
+    })
+    public void announcementMonitoring_StopMonitoringOnSourceRemoval() {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // Add source with instructional metadata
+        BluetoothLeBroadcastMetadata instructionalMetadata =
+                createInstructionalBroadcastMetadata(TEST_BROADCAST_ID);
+        mBassClientService.addSource(mCurrentDevice, instructionalMetadata, /* isGroupOp */ true);
+        injectRemoteSourceStateSourceAdded(instructionalMetadata, true, true);
+
+        // Pause it via Unicast (REQUESTED)
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_REQUESTED);
+        injectRemoteSourceStateChanged(
+                instructionalMetadata, /* isPaSynced */ true, /* isBisSynced */ false);
+
+        // mIsUnicastAutoResuming = true if active state becomes true
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_STREAMING);
+        PeriodicAdvertisingReport reportActive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, true);
+        onPeriodicAdvertisingReport(reportActive);
+
+        // Inject Source Removal on first sink not cause disabling monitoring
+        injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice), TEST_SOURCE_ID);
+
+        // Inject PA report (Inactive) should resume unicast
+        PeriodicAdvertisingReport reportInactive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, false);
+        onPeriodicAdvertisingReport(reportInactive);
+        verify(mMcpService).playRequest();
+        clearInvocations(mMcpService);
+
+        // Inject PA report (Active)
+        onPeriodicAdvertisingReport(reportActive);
+
+        // Inject Source Removal on second sink should disable monitoring
+        injectRemoteSourceStateRemoval(mStateMachines.get(mCurrentDevice1), TEST_SOURCE_ID + 1);
+
+        // Inject PA report (Inactive) should not try to resume unicast
+        onPeriodicAdvertisingReport(reportInactive);
+        verify(mMcpService, never()).playRequest();
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_USE_BACKGROUND_SCANNER
+    })
+    public void announcementMonitoring_StopMonitoringOnDeviceDisconnection() {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // Add source with instructional metadata
+        BluetoothLeBroadcastMetadata instructionalMetadata =
+                createInstructionalBroadcastMetadata(TEST_BROADCAST_ID);
+        mBassClientService.addSource(mCurrentDevice, instructionalMetadata, /* isGroupOp */ true);
+        injectRemoteSourceStateSourceAdded(instructionalMetadata, true, true);
+
+        // Pause it via Unicast (REQUESTED)
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_REQUESTED);
+        injectRemoteSourceStateChanged(
+                instructionalMetadata, /* isPaSynced */ true, /* isBisSynced */ false);
+
+        // mIsUnicastAutoResuming = true if active state becomes true
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_STREAMING);
+        PeriodicAdvertisingReport reportActive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, true);
+        onPeriodicAdvertisingReport(reportActive);
+
+        // Disconnect first sink not cause disabling monitoring
+        injectDeviceDisconnection(mCurrentDevice);
+
+        // Inject PA report (Inactive) should resume unicast
+        PeriodicAdvertisingReport reportInactive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, false);
+        onPeriodicAdvertisingReport(reportInactive);
+        verify(mMcpService).playRequest();
+        clearInvocations(mMcpService);
+
+        // Inject PA report (Active)
+        onPeriodicAdvertisingReport(reportActive);
+
+        // Disconnect second sink should disable monitoring
+        injectDeviceDisconnection(mCurrentDevice1);
+
+        // Inject PA report (Inactive) should not try to resume unicast
+        onPeriodicAdvertisingReport(reportInactive);
+        verify(mMcpService, never()).playRequest();
+    }
+
+    @Test
+    @EnableFlags({
+        Flags.FLAG_LEAUDIO_BROADCAST_AUTO_SWITCH_ANNOUNCEMENT,
+        Flags.FLAG_LEAUDIO_BROADCAST_ALWAYS_USE_BACKGROUND_SCANNER
+    })
+    public void announcementMonitoring_Inactive_SwitchesToAlternativeInstructional() {
+        prepareConnectedDeviceGroup();
+        prepareSyncToSourceAndVerify();
+
+        // Increase capacity
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            doReturn(2).when(sm).getMaximumSourceCapacity();
+        }
+
+        BluetoothLeBroadcastMetadata meta1 =
+                createInstructionalBroadcastMetadata(TEST_BROADCAST_ID);
+        mBassClientService.addSource(mCurrentDevice, meta1, /* isGroupOp */ true);
+        injectRemoteSourceStateSourceAdded(meta1, true, true);
+
+        // Add Source 2
+        BluetoothLeBroadcastMetadata meta2 =
+                createInstructionalBroadcastMetadata(TEST_BROADCAST_ID_2);
+        // Mock syncing to Source 2
+        onScanResult(mSourceDevice2, TEST_BROADCAST_ID_2);
+        onSyncEstablished(mSourceDevice2, TEST_SYNC_HANDLE_2);
+        mBassClientService.addSource(mCurrentDevice, meta2, /* isGroupOp */ true);
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            int sourceId =
+                    sm.getDevice().equals(mCurrentDevice) ? TEST_SOURCE_ID + 2 : TEST_SOURCE_ID + 3;
+            injectRemoteSourceStateSourceAdded(
+                    sm,
+                    meta2,
+                    sourceId,
+                    BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED,
+                    BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                    null,
+                    1L);
+        }
+
+        // Pause it via Unicast (REQUESTED)
+        mBassClientService.handleUnicastSourceStreamStatusChange(
+                LeAudioStackEvent.STATUS_LOCAL_STREAM_REQUESTED);
+        injectRemoteSourceStateChanged(meta1, /* isPaSynced */ false, /* isBisSynced */ false);
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            int sourceId =
+                    sm.getDevice().equals(mCurrentDevice) ? TEST_SOURCE_ID + 2 : TEST_SOURCE_ID + 3;
+            injectRemoteSourceStateSourceAdded(
+                    sm,
+                    meta2,
+                    sourceId,
+                    BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE,
+                    BluetoothLeBroadcastReceiveState.BIG_ENCRYPTION_STATE_NOT_ENCRYPTED,
+                    null,
+                    0L);
+        }
+
+        // Make both Active but only first sync
+        PeriodicAdvertisingReport report1Active =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, true);
+        PeriodicAdvertisingReport report2Active =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE_2, true);
+        onPeriodicAdvertisingReport(report1Active);
+        onPeriodicAdvertisingReport(report2Active);
+        injectRemoteSourceStateChanged(meta1, /* isPaSynced */ true, /* isBisSynced */ true);
+
+        // Clear invocations
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            clearInvocations(sm);
+        }
+
+        // Make Source 1 Inactive
+        PeriodicAdvertisingReport report1Inactive =
+                createPeriodicAdvertisingReportWithAudioActiveState(TEST_SYNC_HANDLE, false);
+        onPeriodicAdvertisingReport(report1Inactive);
+
+        // Verify switch to Source 2 (resume broadcast 2)
+        for (BassClientStateMachine sm : mStateMachines.values()) {
+            ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+            verify(sm, atLeast(1)).sendMessage(messageCaptor.capture());
+
+            Optional<Message> msg =
+                    messageCaptor.getAllValues().stream()
+                            .filter(m -> m.what == BassClientStateMachine.UPDATE_BCAST_SOURCE)
+                            .findFirst();
+            assertThat(msg.isPresent()).isTrue();
+            assertThat(msg.get().obj).isEqualTo(meta2);
+
+            // Verify using the right sourceId on each device
+            if (sm.getDevice().equals(mCurrentDevice)) {
+                assertThat(msg.get().arg1).isEqualTo(TEST_SOURCE_ID + 2);
+            } else if (sm.getDevice().equals(mCurrentDevice1)) {
+                assertThat(msg.get().arg1).isEqualTo(TEST_SOURCE_ID + 3);
+            } else {
+                throw new AssertionError("Unexpected device");
+            }
+        }
     }
 }

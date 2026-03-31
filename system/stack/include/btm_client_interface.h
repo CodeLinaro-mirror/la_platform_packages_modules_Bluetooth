@@ -80,7 +80,6 @@ struct btm_client_interface_t {
     [[nodiscard]] tBTM_STATUS (*BTM_SwitchRoleToCentral)(const RawAddress& remote_bd_addr);
     void (*BTM_block_role_switch_for)(const RawAddress& peer_addr);
     void (*BTM_block_sniff_mode_for)(const RawAddress& peer_addr);
-    void (*BTM_default_unblock_role_switch)();
     void (*BTM_unblock_role_switch_for)(const RawAddress& peer_addr);
     void (*BTM_unblock_sniff_mode_for)(const RawAddress& peer_addr);
     void (*BTM_WritePageTimeout)(uint16_t timeout);
@@ -92,7 +91,6 @@ struct btm_client_interface_t {
     [[nodiscard]] tBTM_STATUS (*BTM_ReadRSSI)(const RawAddress& bd_addr, tBTM_CMPL_CB* p_cb);
   } link_controller;
 
-  SecurityClientInterface security;
   struct {
     [[nodiscard]] tBTM_STATUS (*BTM_BleGetEnergyInfo)(tBTM_BLE_ENERGY_INFO_CBACK* callback);
     [[nodiscard]] tBTM_STATUS (*BTM_BleObserve)(bool start, uint8_t duration,
@@ -102,8 +100,6 @@ struct btm_client_interface_t {
                                                       uint16_t tx_pdu_length,
                                                       bool is_privileged_client);
     void (*BTM_BleReadControllerFeatures)(tBTM_BLE_CTRL_FEATURES_CBACK* p_vsc_cback);
-    void (*BTM_BleSetPhy)(const RawAddress& bd_addr, uint8_t tx_phys, uint8_t rx_phys,
-                          uint16_t phy_options);
     void (*BTM_BleSetPrefConnParams)(const RawAddress& bd_addr, uint16_t min_conn_int,
                                      uint16_t max_conn_int, uint16_t peripheral_latency,
                                      uint16_t supervision_tout);

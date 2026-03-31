@@ -56,7 +56,7 @@ public:
 
   Return<void> hciEventReceived(const hidl_vec<uint8_t>& packet) override {
     std::unique_ptr<common::Watchdog> wd_ptr;
-    if (com::android::bluetooth::flags::add_watchdog_with_timeout()) {
+    if (com_android_bluetooth_flags_add_watchdog_with_timeout()) {
       wd_ptr = make_unique<common::Watchdog>(kTimeoutMs);
     }
     callbacks_->hciEventReceived(packet);
@@ -65,7 +65,7 @@ public:
 
   Return<void> aclDataReceived(const hidl_vec<uint8_t>& packet) override {
     std::unique_ptr<common::Watchdog> wd_ptr;
-    if (com::android::bluetooth::flags::add_watchdog_with_timeout()) {
+    if (com_android_bluetooth_flags_add_watchdog_with_timeout()) {
       wd_ptr = make_unique<common::Watchdog>(kTimeoutMs);
     }
     callbacks_->aclDataReceived(packet);
@@ -74,7 +74,7 @@ public:
 
   Return<void> scoDataReceived(const hidl_vec<uint8_t>& data) override {
     std::unique_ptr<common::Watchdog> wd_ptr;
-    if (com::android::bluetooth::flags::add_watchdog_with_timeout()) {
+    if (com_android_bluetooth_flags_add_watchdog_with_timeout()) {
       wd_ptr = make_unique<common::Watchdog>(kTimeoutMs);
     }
     callbacks_->scoDataReceived(data);
@@ -83,7 +83,7 @@ public:
 
   Return<void> isoDataReceived(const hidl_vec<uint8_t>& data) override {
     std::unique_ptr<common::Watchdog> wd_ptr;
-    if (com::android::bluetooth::flags::add_watchdog_with_timeout()) {
+    if (com_android_bluetooth_flags_add_watchdog_with_timeout()) {
       wd_ptr = make_unique<common::Watchdog>(kTimeoutMs);
     }
     callbacks_->isoDataReceived(data);

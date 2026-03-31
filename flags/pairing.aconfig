@@ -32,16 +32,6 @@ flag {
 }
 
 flag {
-    name: "role_switch_after_encryption"
-    namespace: "bluetooth"
-    description: "Role switch after encryption if security procedure was initiated locally"
-    bug: "431669341"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "skip_excess_name_discovery"
     namespace: "bluetooth"
     description: "Skip name discovery during BR/EDR pairing if the name is already known"
@@ -62,16 +52,6 @@ flag {
 }
 
 flag {
-    name: "pairing_collision_with_same_device"
-    namespace: "bluetooth"
-    description: "Continue pairing if collision is detected with the same device"
-    bug: "438291410"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "reject_bond_request_during_bonding"
     namespace: "bluetooth"
     description: "Don't accept new bond request when bonding"
@@ -86,26 +66,6 @@ flag {
     namespace: "bluetooth"
     description: "Modify BTM device record list only in main thread"
     bug: "444243832"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "device_record_wipe_ranking"
-    namespace: "bluetooth"
-    description: "New ranking for wiping oldest device record"
-    bug: "444268274"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "btm_le_pairing_state_reset"
-    namespace: "bluetooth"
-    description: "Reset BTM pairing state when LE pairing concludes"
-    bug: "444741056"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -247,6 +207,36 @@ flag {
     namespace: "bluetooth"
     description: "Add generic bugfixes for autonomous repairing feature."
     bug: "481170402"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "process_iocap_rsp_while_repairing"
+    namespace: "bluetooth"
+    description: "Process HCI IO capability response when received for repairing."
+    bug: "487510188"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "link_key_request_timer"
+    namespace: "bluetooth"
+    description: "Wait for CTKD to complete when Link Key is requested"
+    bug: "488024640"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "remove_bond_in_idle_state"
+    namespace: "bluetooth"
+    description: "Remove bond without transitioning BondStateMachine to bonding state"
+    bug: "489217572"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

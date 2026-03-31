@@ -26,6 +26,8 @@
 
 #define BTIF_STORAGE_KEY_ADDR_TYPE "AddrType"
 #define BTIF_STORAGE_KEY_ADDRESS "Address"
+#define BTIF_STORAGE_KEY_FOR_AAC_VBR "PeerAacVbrSupported"
+#define BTIF_STORAGE_KEY_FOR_SUPPORTED_CODECS "PeerSupportedCodecs"
 #define BTIF_STORAGE_KEY_ADV_AUDIO_REMOTE_SERVICE "AdvAudioService"
 #define BTIF_STORAGE_KEY_ALIAS "Aliase"
 #define BTIF_STORAGE_KEY_APPEARANCE "Appearance"

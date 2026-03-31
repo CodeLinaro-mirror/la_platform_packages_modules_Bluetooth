@@ -35,8 +35,9 @@
 #include "mock_codec_manager.h"
 #include "mock_csis_client.h"
 #include "stack/btm/btm_int_types.h"
+#include "stack/mock/mock_stack_l2cap_interface.h"
+#include "stack/mock/mock_stack_le_connection.h"
 #include "test/mock/mock_main_shim_entry.h"
-#include "test/mock/mock_stack_l2cap_interface.h"
 
 using bluetooth::le_audio::utils::GetConfigurationHash;
 
@@ -102,12 +103,17 @@ static RawAddress GetTestAddress(uint8_t index) {
   return RawAddress(bytes);
 }
 
+::testing::MockFunction<tGATT_STATUS(tGATT_IF gatt_if, const RawAddress& bd_addr,
+                                     tGATT_SUBRATE_MODE subrate_mode, uint16_t subrate_max,
+                                     uint16_t subrate_min, uint16_t cont_num)>
+        leConnectionUpdateSubrateConfigMock;
+
 class LeAudioDevicesTest : public Test {
 protected:
   void SetUp() override {
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
-    com::android::bluetooth::flags::provider_->reset_flags();
-    com::android::bluetooth::flags::provider_->leaudio_fix_allocation_in_codec_config(true);
+    com_android_bluetooth_flags_reset_flags();
+    set_com_android_bluetooth_flags_leaudio_fix_allocation_in_codec_config(true);
     devices_ = new LeAudioDevices();
     bluetooth::manager::SetMockBtmInterface(&btm_interface);
     bluetooth::storage::SetMockBtifStorageInterface(&mock_btif_storage_);
@@ -551,12 +557,12 @@ protected:
                                           ? requirements.sink_requirements
                                           : requirements.source_requirements;
 
-    if (std::count_if(required_pacs->begin(), required_pacs->end(),
-                      [](auto const& pac) { return pac.codec_spec_caps_raw.empty(); })) {
+    if (!required_pacs.has_value() || (required_pacs->size() == 0)) {
       return ase_confs;
     }
 
-    if (!required_pacs.has_value() || (required_pacs->size() == 0)) {
+    if (std::count_if(required_pacs->begin(), required_pacs->end(),
+                      [](auto const& pac) { return pac.codec_spec_caps_raw.empty(); })) {
       return ase_confs;
     }
 
@@ -2694,10 +2700,17 @@ protected:
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
 
     gatt::SetMockBtaGattInterface(&gatt_interface_);
-    // default action for SubrateModeRequest function call
-    ON_CALL(gatt_interface_, SubrateModeRequest(_, _, _))
-            .WillByDefault(Return(GATT_SUCCESS));
     bluetooth::manager::SetMockBtmInterface(&btm_interface_);
+
+    test::mock::stack_le_connection::leConnectionUpdateSubrateConfig.body =
+            [](tGATT_IF gatt_if, const RawAddress& bd_addr, tGATT_SUBRATE_MODE subrate_mode,
+               uint16_t subrate_max, uint16_t subrate_min, uint16_t cont_num) {
+              return leConnectionUpdateSubrateConfigMock.Call(gatt_if, bd_addr, subrate_mode,
+                                                              subrate_max, subrate_min, cont_num);
+            };
+    ON_CALL(leConnectionUpdateSubrateConfigMock, Call(_, _, _, _, _, _))
+            .WillByDefault(Return(GATT_SUCCESS));
+
     bluetooth::hci::testing::mock_controller_ =
             std::make_unique<NiceMock<bluetooth::hci::testing::MockController>>();
     ON_CALL(*bluetooth::hci::testing::mock_controller_, SupportsBleConnectionSubrating)
@@ -2712,6 +2725,7 @@ protected:
 
   void TearDown() override {
     delete device_;
+    test::mock::stack_le_connection::leConnectionUpdateSubrateConfig.body = {};
     bluetooth::hci::testing::mock_controller_.reset();
     gatt::SetMockBtaGattInterface(nullptr);
     bluetooth::manager::SetMockBtmInterface(nullptr);
@@ -2731,10 +2745,10 @@ TEST_F(LeAudioDeviceSubrateTest, startConnSubrateControllerNotSupport) {
 }
 
 TEST_F(LeAudioDeviceSubrateTest, startConnSubrateMgrRegisterFail) {
-  com::android::bluetooth::flags::provider_->le_subrate_manager(true);
+  set_com_android_bluetooth_flags_le_subrate_manager(true);
   ON_CALL(mock_stack_l2cap_interface_, L2CA_GetBleConnInterval(_))
           .WillByDefault(Return(LeConnectionParameters::GetMinConnIntervalLeIsoAggressive()));
-  ON_CALL(gatt_interface_, SubrateModeRequest(_, _, _))
+  ON_CALL(leConnectionUpdateSubrateConfigMock, Call(_, _, _, _, _, _))
           .WillByDefault(Return(GATT_ERROR));
   EXPECT_CALL(mock_stack_l2cap_interface_,
               L2CA_LockBleConnParamsForLeAudioSubrate(device_->address_, true))
@@ -2747,11 +2761,11 @@ TEST_F(LeAudioDeviceSubrateTest, startConnSubrateMgrRegisterFail) {
 }
 
 TEST_F(LeAudioDeviceSubrateTest, startConnSubrateMgerRegisterFailAfterConnParamsUpdateComplete) {
-  com::android::bluetooth::flags::provider_->le_subrate_manager(true);
+  set_com_android_bluetooth_flags_le_subrate_manager(true);
   device_->SetSubrateState(SubrateState::PENDING_ENABLING_CONN_UPDATE_COMPLETE);
   ON_CALL(mock_stack_l2cap_interface_, L2CA_GetBleConnInterval(_))
           .WillByDefault(Return(LeConnectionParameters::GetMinConnIntervalLeIsoAggressive()));
-  ON_CALL(gatt_interface_, SubrateModeRequest(_, _, _))
+  ON_CALL(leConnectionUpdateSubrateConfigMock, Call(_, _, _, _, _, _))
           .WillByDefault(Return(GATT_ERROR));
   EXPECT_CALL(mock_stack_l2cap_interface_,
               L2CA_LockBleConnParamsForLeAudioSubrate(device_->address_, true))
@@ -2764,10 +2778,10 @@ TEST_F(LeAudioDeviceSubrateTest, startConnSubrateMgerRegisterFailAfterConnParams
 }
 
 TEST_F(LeAudioDeviceSubrateTest, startConnSubrateMgrRegisterSuccess) {
-  com::android::bluetooth::flags::provider_->le_subrate_manager(true);
+  set_com_android_bluetooth_flags_le_subrate_manager(true);
   ON_CALL(mock_stack_l2cap_interface_, L2CA_GetBleConnInterval(_))
           .WillByDefault(Return(LeConnectionParameters::GetMinConnIntervalLeIsoAggressive()));
-  ON_CALL(gatt_interface_, SubrateModeRequest(_, _, _))
+  ON_CALL(leConnectionUpdateSubrateConfigMock, Call(_, _, _, _, _, _))
           .WillByDefault(Return(GATT_SUCCESS));
   device_->StartConnSubrate();
   ASSERT_EQ(device_->GetSubrateState(), SubrateState::PENDING_ENABLING_SUBRATE_UPDATE);

@@ -21,17 +21,21 @@ import android.bluetooth.BluetoothUuid;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.TransportBlockFilter;
 import android.os.ParcelUuid;
+import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 /** Helper class used to manage advertisement package filters. */
 public class ScanFilterQueue {
+    private static final String TAG = ScanFilterQueue.class.getSimpleName();
+
     @VisibleForTesting static final int TYPE_DEVICE_ADDRESS = 0;
     @VisibleForTesting static final int TYPE_SERVICE_DATA_CHANGED = 1;
     @VisibleForTesting static final int TYPE_SERVICE_UUID = 2;
@@ -294,9 +298,14 @@ public class ScanFilterQueue {
         byte[] uuid = BluetoothUuid.uuidToBytes(serviceDataUuid);
 
         int dataLen = uuid.length + serviceData.length;
+        int serviceDataLen = serviceData.length;
         // If data is too long, don't add it to hardware scan filter.
         if (dataLen > MAX_LEN_PER_FIELD) {
-            return null;
+            Log.d(TAG, "concatenate, serviceData too long, serviceDataUuid=" +
+                    Objects.toString(serviceDataUuid) + ", serviceData=" +
+                    Arrays.toString(serviceData) + ", isMask=" + isMask);
+            dataLen = MAX_LEN_PER_FIELD;
+            serviceDataLen = dataLen - uuid.length;
         }
         byte[] concatenated = new byte[dataLen];
         if (isMask) {
@@ -306,7 +315,7 @@ public class ScanFilterQueue {
         } else {
             System.arraycopy(uuid, 0, concatenated, 0, uuid.length);
         }
-        System.arraycopy(serviceData, 0, concatenated, uuid.length, serviceData.length);
+        System.arraycopy(serviceData, 0, concatenated, uuid.length, serviceDataLen);
         return concatenated;
     }
 }

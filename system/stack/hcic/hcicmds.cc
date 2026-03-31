@@ -30,7 +30,6 @@
 #include <string.h>
 
 #include "device/include/esco_parameters.h"
-#include "hcidefs.h"
 #include "hcimsgs.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/allocator.h"
@@ -39,6 +38,7 @@
 #include "stack/include/bt_lap.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btu_hcif.h"
+#include "stack/include/hcidefs.h"
 
 /* Message by message.... */
 
@@ -198,14 +198,6 @@
 #define HCI_REJECT_ESCO_BDADDR_OFF 0
 #define HCI_REJECT_ESCO_REASON_OFF 6
 
-/* Hold Mode */
-#define HCIC_PARAM_SIZE_HOLD_MODE 6
-
-#define HCI_HOLD_MODE_HANDLE_OFF 0
-#define HCI_HOLD_MODE_MAX_PER_OFF 2
-#define HCI_HOLD_MODE_MIN_PER_OFF 4
-/* Hold Mode */
-
 /* Sniff Mode */
 #define HCIC_PARAM_SIZE_SNIFF_MODE 10
 
@@ -215,14 +207,6 @@
 #define HCI_SNIFF_MODE_ATTEMPT_OFF 6
 #define HCI_SNIFF_MODE_TIMEOUT_OFF 8
 /* Sniff Mode */
-
-/* Park Mode */
-#define HCIC_PARAM_SIZE_PARK_MODE 6
-
-#define HCI_PARK_MODE_HANDLE_OFF 0
-#define HCI_PARK_MODE_MAX_PER_OFF 2
-#define HCI_PARK_MODE_MIN_PER_OFF 4
-/* Park Mode */
 
 /* QoS Setup */
 #define HCIC_PARAM_SIZE_QOS_SETUP 20
@@ -758,23 +742,6 @@ void btsnd_hcic_reject_esco_conn(const RawAddress& bd_addr, uint8_t reason) {
   btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
 }
 
-void btsnd_hcic_hold_mode(uint16_t handle, uint16_t max_hold_period, uint16_t min_hold_period) {
-  BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
-  uint8_t* pp = (uint8_t*)(p + 1);
-
-  p->len = HCIC_PREAMBLE_SIZE + HCIC_PARAM_SIZE_HOLD_MODE;
-  p->offset = 0;
-
-  UINT16_TO_STREAM(pp, HCI_HOLD_MODE);
-  UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_HOLD_MODE);
-
-  UINT16_TO_STREAM(pp, handle);
-  UINT16_TO_STREAM(pp, max_hold_period);
-  UINT16_TO_STREAM(pp, min_hold_period);
-
-  btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
-}
-
 void btsnd_hcic_sniff_mode(uint16_t handle, uint16_t max_sniff_period, uint16_t min_sniff_period,
                            uint16_t sniff_attempt, uint16_t sniff_timeout) {
   BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
@@ -803,39 +770,6 @@ void btsnd_hcic_exit_sniff_mode(uint16_t handle) {
   p->offset = 0;
 
   UINT16_TO_STREAM(pp, HCI_EXIT_SNIFF_MODE);
-  UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_CMD_HANDLE);
-
-  UINT16_TO_STREAM(pp, handle);
-
-  btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
-}
-
-void btsnd_hcic_park_mode(uint16_t handle, uint16_t beacon_max_interval,
-                          uint16_t beacon_min_interval) {
-  BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
-  uint8_t* pp = (uint8_t*)(p + 1);
-
-  p->len = HCIC_PREAMBLE_SIZE + HCIC_PARAM_SIZE_PARK_MODE;
-  p->offset = 0;
-
-  UINT16_TO_STREAM(pp, HCI_PARK_MODE);
-  UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_PARK_MODE);
-
-  UINT16_TO_STREAM(pp, handle);
-  UINT16_TO_STREAM(pp, beacon_max_interval);
-  UINT16_TO_STREAM(pp, beacon_min_interval);
-
-  btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
-}
-
-void btsnd_hcic_exit_park_mode(uint16_t handle) {
-  BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
-  uint8_t* pp = (uint8_t*)(p + 1);
-
-  p->len = HCIC_PREAMBLE_SIZE + HCIC_PARAM_SIZE_CMD_HANDLE;
-  p->offset = 0;
-
-  UINT16_TO_STREAM(pp, HCI_EXIT_PARK_MODE);
   UINT8_TO_STREAM(pp, HCIC_PARAM_SIZE_CMD_HANDLE);
 
   UINT16_TO_STREAM(pp, handle);
@@ -1378,16 +1312,15 @@ void btsnd_hcic_read_rssi(uint16_t handle) {
   btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
 }
 
-static void read_encryption_key_size_complete(ReadEncKeySizeCb cb, uint8_t* return_parameters,
-                                              uint16_t /* return_parameters_length */) {
-  uint8_t status;
-  uint16_t handle;
-  uint8_t key_size;
-  STREAM_TO_UINT8(status, return_parameters);
-  STREAM_TO_UINT16(handle, return_parameters);
-  STREAM_TO_UINT8(key_size, return_parameters);
-
-  std::move(cb).Run(status, handle, key_size);
+static void read_encryption_key_size_complete(ReadEncKeySizeCb cb,
+                                              bluetooth::hci::CommandCompleteView view) {
+  auto complete_view = bluetooth::hci::ReadEncryptionKeySizeCompleteView::Create(view);
+  if (!complete_view.IsValid()) {
+    bluetooth::log::error("Invalid ReadEncryptionKeySize command complete view");
+    return;
+  }
+  std::move(cb).Run(static_cast<uint8_t>(complete_view.GetStatus()),
+                    complete_view.GetConnectionHandle(), complete_view.GetKeySize());
 }
 
 void btsnd_hcic_read_encryption_key_size(uint16_t handle, ReadEncKeySizeCb cb) {
@@ -1448,13 +1381,16 @@ void btsnd_hcic_write_pagescan_type(uint8_t type) {
 }
 
 static void btsnd_hcic_vendor_spec_complete(tBTM_VSC_CMPL_CB* p_vsc_cplt_cback, uint16_t opcode,
-                                            uint8_t* data, uint16_t len) {
+                                            bluetooth::hci::CommandCompleteView view) {
   /* If there was a callback address for vcs complete, call it */
   if (p_vsc_cplt_cback) {
+    auto payload = view.GetPayload();
+    std::vector<uint8_t> data(payload.begin(), payload.end());
+
     tBTM_VSC_CMPL vcs_cplt_params;
     vcs_cplt_params.opcode = opcode;
-    vcs_cplt_params.param_len = len;
-    vcs_cplt_params.p_param_buf = data;
+    vcs_cplt_params.param_len = data.size();
+    vcs_cplt_params.p_param_buf = data.data();
     /* Call the VSC complete callback function */
     (*p_vsc_cplt_cback)(&vcs_cplt_params);
   }

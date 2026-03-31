@@ -23,7 +23,6 @@
 #include <bluetooth/types/uuid.h>
 #include <com_android_bluetooth_flags.h>
 
-#include "gatt_api.h"
 #include "hardware/bt_gatt_types.h"
 #include "osi/include/allocator.h"
 #include "osi/include/osi.h"
@@ -31,6 +30,7 @@
 #include "srvc_eng_int.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
+#include "stack/include/gatt_api.h"
 
 using namespace bluetooth;
 
@@ -254,7 +254,8 @@ bool DIS_ReadDISInfo(const RawAddress& peer_bda, tDIS_READ_CBACK* p_cback, tDIS_
   }
 
   // For now, we don't serve the request if GATT isn't connected.
-  // We need to call GATT_Connect and implement the handler for both success and failure case.
+  // We need to call stack::leConnectionConnect and implement the handler for both success and
+  // failure case.
   if (!GATT_GetConnIdIfConnected(srvc_eng_cb.gatt_if, peer_bda, &conn_id, BT_TRANSPORT_LE)) {
     return false;
   }

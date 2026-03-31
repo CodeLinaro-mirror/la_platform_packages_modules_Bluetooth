@@ -18,6 +18,7 @@
 #include "a2dp_aidl_transport.h"
 
 #include <bluetooth/log.h>
+#include <com_android_bluetooth_flags.h>
 
 #include <vector>
 
@@ -61,6 +62,8 @@ void A2dpTransport::UpdateAudioConfiguration(const AudioConfiguration& audio_con
 }
 
 Status A2dpTransport::StartRequest(bool is_low_latency) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   // Check if a previous Start request is ongoing.
   if (a2dp_pending_cmd_ == A2DP_CTRL_CMD_START) {
     log::warn("unable to start stream: already pending");
@@ -86,6 +89,8 @@ Status A2dpTransport::StartRequest(bool is_low_latency) {
 }
 
 Status A2dpTransport::SuspendRequest() {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   // Check if a previous Suspend request is ongoing.
   if (a2dp_pending_cmd_ == A2DP_CTRL_CMD_SUSPEND) {
     log::warn("unable to suspend stream: already pending");
@@ -111,6 +116,8 @@ Status A2dpTransport::SuspendRequest() {
 }
 
 void A2dpTransport::StopRequest() {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   log::info("");
 
   a2dp_pending_cmd_ = A2DP_CTRL_CMD_STOP;
@@ -148,9 +155,15 @@ bool A2dpTransport::GetPresentationPosition(uint64_t* remote_delay_report_ns,
   return true;
 }
 
-tA2DP_CTRL_CMD A2dpTransport::GetPendingCmd() const { return a2dp_pending_cmd_; }
+tA2DP_CTRL_CMD A2dpTransport::GetPendingCmd() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return a2dp_pending_cmd_;
+}
 
-void A2dpTransport::ResetPendingCmd() { a2dp_pending_cmd_ = A2DP_CTRL_CMD_NONE; }
+void A2dpTransport::ResetPendingCmd() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  a2dp_pending_cmd_ = A2DP_CTRL_CMD_NONE;
+}
 
 void A2dpTransport::ResetPresentationPosition() {
   remote_delay_report_ = 0;

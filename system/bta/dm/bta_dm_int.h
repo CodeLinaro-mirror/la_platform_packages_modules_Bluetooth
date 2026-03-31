@@ -176,13 +176,10 @@ typedef struct {
 
 typedef struct {
 #define BTA_DM_PM_SNIFF_TIMER_IDX 0
-#define BTA_DM_PM_PARK_TIMER_IDX 1
-#define BTA_DM_PM_SUSPEND_TIMER_IDX 2
-#define BTA_DM_PM_MODE_TIMER_MAX 3
-  /*
-   * Keep three different timers for PARK, SNIFF and SUSPEND if TBFC is
-   * supported.
-   */
+#define BTA_DM_PM_SUSPEND_TIMER_IDX 1
+#define BTA_DM_PM_MODE_TIMER_MAX 2
+
+  // Keep two different timers for SNIFF and SUSPEND if TBFC is supported.
   alarm_t* timer[BTA_DM_PM_MODE_TIMER_MAX];
 
   uint8_t srvc_id[BTA_DM_PM_MODE_TIMER_MAX];
@@ -255,8 +252,8 @@ typedef struct {
 } tBTA_DM_PM_ACTN;
 
 typedef struct {
-  uint8_t allow_mask; /* mask of sniff/hold/park modes to allow */
-  uint8_t ssr;        /* set SSR on conn open/unpark */
+  uint8_t allow_mask; /* mask of sniff/hold modes to allow */
+  uint8_t ssr;        /* set SSR on conn open/unsniff */
   tBTA_DM_PM_ACTN actn_tbl[BTA_DM_PM_NUM_EVTS][2];
 } tBTA_DM_PM_SPEC;
 
@@ -316,10 +313,6 @@ void bta_dm_enable(tBTA_DM_SEC_CBACK*, tBTA_DM_ACL_CBACK*);
 void bta_dm_disable();
 void bta_dm_set_dev_name(const std::vector<uint8_t>&);
 
-void bta_dm_ble_set_conn_params(const RawAddress&, uint16_t, uint16_t, uint16_t, uint16_t);
-void bta_dm_ble_update_conn_params(const RawAddress&, uint16_t, uint16_t, uint16_t, uint16_t,
-                                   uint16_t, uint16_t);
-
 void bta_dm_ble_set_data_length(const RawAddress& bd_addr);
 
 void bta_dm_ble_get_energy_info(tBTA_BLE_ENERGY_INFO_CBACK*);
@@ -347,10 +340,6 @@ void bta_dm_ble_reset_id(void);
 
 void bta_dm_eir_update_uuid(uint16_t uuid16, bool adding);
 void bta_dm_eir_update_cust_uuid(const tBTA_CUSTOM_UUID& curr, bool adding);
-
-void bta_dm_ble_subrate_request(const RawAddress& bd_addr, uint16_t subrate_min,
-                                uint16_t subrate_max, uint16_t max_latency, uint16_t cont_num,
-                                uint16_t timeout);
 
 tBTM_PM_PWR_MD bta_dm_pm_get_sniff_entry(size_t index);
 void bta_dm_disable_timer_cback(void);

@@ -44,16 +44,16 @@
 #include "bta/le_audio/le_audio_types.h"
 #include "bta/vcp/vcp_controller_devices.h"
 #include "bta_groups.h"
-#include "btm_ble_api_types.h"
 #include "gatt/database.h"
-#include "gatt_api.h"
 #include "gd/common/utils.h"
 #include "osi/include/alarm.h"
 #include "osi/include/osi.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/include/bt_types.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_status.h"
+#include "stack/include/gatt_api.h"
 #include "vcp/vcp_controller_types.h"
 
 using bluetooth::groups::DeviceGroups;
@@ -138,11 +138,11 @@ public:
   }
 
   void StartOpportunisticConnect(const RawAddress& address) {
-    /* Oportunistic works only for direct connect,
+    /* Opportunistic works only for direct connect,
      * but in fact this is background connect
      */
     bluetooth::log::info(": {}", address);
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, true);
+    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_OPPORTUNISTIC);
   }
 
   void Connect(const RawAddress& address) override {
@@ -150,7 +150,7 @@ public:
 
     auto device = volume_control_devices_.FindByAddress(address);
     if (!device) {
-      if (!get_btm_client_interface().security.BTM_IsBonded(address, BT_TRANSPORT_LE)) {
+      if (!get_security_client_interface().BTM_IsBonded(address, BT_TRANSPORT_LE)) {
         bluetooth::log::error("Connecting  {} when not bonded", address);
         callbacks_->OnConnectionState(ConnectionState::DISCONNECTED, address);
         return;
@@ -1727,7 +1727,7 @@ private:
 
       case BTA_GATTC_ENC_CMPL_CB_EVT: {
         tBTM_STATUS encryption_status;
-        if (get_btm_client_interface().security.BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
+        if (get_security_client_interface().BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
                                                                 BT_TRANSPORT_LE)) {
           encryption_status = tBTM_STATUS::BTM_SUCCESS;
         } else {

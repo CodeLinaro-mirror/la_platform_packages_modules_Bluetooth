@@ -37,9 +37,9 @@
 #include "osi/test/alarm_mock.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/btm_status.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_security_client_interface.h"
 #include "test/common/mock_functions.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_security_client_interface.h"
 
 struct alarm_t {
   alarm_callback_t cb = nullptr;
@@ -442,9 +442,9 @@ protected:
 
   void SetUp(void) override {
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
-    com::android::bluetooth::flags::provider_->reset_flags();
+    com_android_bluetooth_flags_reset_flags();
 
-    com::android::bluetooth::flags::provider_->vcp_skip_redundant_operation_writes(true);
+    set_com_android_bluetooth_flags_vcp_skip_redundant_operation_writes(true);
 
     MockCsisClient::SetMockInstanceForTesting(&mock_csis_client_module_);
     MockDeviceGroups::SetMockInstanceForTesting(&mock_groups_module_);
@@ -452,7 +452,6 @@ protected:
     gatt::SetMockBtaGattQueue(&gatt_queue);
     reset_mock_function_count_map();
     set_security_client_interface(mock_btm_security_);
-    set_mock_btm_client_interface_security(mock_btm_security_);
 
     ON_CALL(mock_btm_security_, BTM_IsBonded(_, _)).WillByDefault(DoAll(Return(true)));
 
@@ -586,7 +585,7 @@ protected:
     // by default indicate link as encrypted
     ON_CALL(mock_btm_security_, BTM_IsEncrypted(address, _)).WillByDefault(DoAll(Return(true)));
 
-    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, true));
+    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_OPPORTUNISTIC));
     VolumeController::Get()->Connect(address);
     Mock::VerifyAndClearExpectations(&gatt_interface);
   }
@@ -616,7 +615,7 @@ protected:
     // by default indicate link as encrypted
     ON_CALL(mock_btm_security_, BTM_IsEncrypted(address, _)).WillByDefault(DoAll(Return(true)));
 
-    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, true));
+    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_OPPORTUNISTIC));
     VolumeController::Get()->AddFromStorage(address);
   }
 
@@ -896,7 +895,7 @@ TEST_F(VolumeControlTest, test_verify_opportunistic_connect_active_after_connect
   TestConnect(address);
 
   EXPECT_CALL(gatt_interface, CancelOpen(gatt_if, address, _)).Times(0);
-  EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, true)).Times(1);
+  EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_OPPORTUNISTIC)).Times(1);
 
   GetConnectedEvent(address, 1, GATT_ERROR);
   Mock::VerifyAndClearExpectations(&callbacks);

@@ -962,8 +962,7 @@ tBTM_STATUS btm_ble_start_encrypt(const RawAddress& bda, bool use_stk, Octet16* 
   }
 
   // Some controllers may not like encrypting both transports at the same time
-  bool allow_le_enc_with_bredr =
-          android::sysprop::bluetooth::Ble::allow_enc_with_bredr().value_or(false);
+  bool allow_le_enc_with_bredr = android::sysprop::bluetooth::Ble::allow_enc_with_bredr();
   if (!allow_le_enc_with_bredr && p_device->sec_rec.is_security_state_bredr_encrypting()) {
     log::warn("BR/EDR link encryption is active, Busy!");
     return tBTM_STATUS::BTM_BUSY;
@@ -1096,7 +1095,7 @@ void btm_ble_link_encrypted(const RawAddress& bd_addr, uint8_t encr_enable) {
   }
 
   if (btm_cb.encrypted_advertising_data_supported && encr_enable &&
-      get_btm_client_interface().security.BTM_IsBonded(p_device->ble.pseudo_addr, BT_TRANSPORT_AUTO)){
+      get_security_client_interface().BTM_IsBonded(p_device->ble.pseudo_addr, BT_TRANSPORT_AUTO)){
     size_t length = btif_storage_get_enc_key_material_length(&p_device->ble.pseudo_addr);
 
     tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(p_device->ble.pseudo_addr, BT_TRANSPORT_LE);
@@ -1211,13 +1210,11 @@ static void btm_ble_get_auth_req(const BtmDevice* p_device, tBTM_LE_AUTH_REQ* p_
  ******************************************************************************/
 static tBTM_STATUS btm_ble_io_capabilities_req(BtmDevice* p_device, tBTM_LE_IO_REQ* p_data) {
   log::verbose("p_device->bd_addr:{}", p_device->bd_addr);
-  if (BtmSecurity::Get().api_.p_le_callback) {
-    tBTM_STATUS status = (*BtmSecurity::Get().api_.p_le_callback)(
-            BTM_LE_IO_REQ_EVT, p_device->bd_addr, (tBTM_LE_EVT_DATA*)p_data);
-    if (status != tBTM_STATUS::BTM_SUCCESS) {
-      log::warn("Security callback failed {} for {}", btm_status_text(status), p_device->bd_addr);
-      return status;
-    }
+  tBTM_STATUS status = (BtmSecurity::Get().app_->le_callback)(BTM_LE_IO_REQ_EVT, p_device->bd_addr,
+                                                              (tBTM_LE_EVT_DATA*)p_data);
+  if (status != tBTM_STATUS::BTM_SUCCESS) {
+    log::warn("Security callback failed {} for {}", btm_status_text(status), p_device->bd_addr);
+    return status;
   }
 
   if (BTM_OOB_UNKNOWN == p_data->oob_data) {
@@ -1470,12 +1467,12 @@ static void btm_ble_complete_evt(const RawAddress& bd_addr, BtmDevice* p_device,
   BTM_BLE_SEC_CALLBACK(BTM_LE_COMPLT_EVT, bd_addr, p_data);
 
   /* Reset BTM state if the callback address matches pairing address */
-  if (com_android_bluetooth_flags_btm_le_pairing_state_reset() &&
-      bd_addr == BtmSecurity::Get().link_spec_.addrt.bda) {
+  if (bd_addr == BtmSecurity::Get().link_spec_.addrt.bda) {
     BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_IDLE);
     BtmSecurity::Get().link_spec_ = {};
     BtmSecurity::Get().link_spec_.addrt.bda = RawAddress::kAny;
     BtmSecurity::Get().pairing_flags_ = 0;
+    BtmSecurity::Get().ResetLinkKeyRequestTimer();
   }
 
   p_device = btm_get_dev(bd_addr);  // BTM_LE_COMPLT_EVT event may have removed the device
@@ -1484,8 +1481,7 @@ static void btm_ble_complete_evt(const RawAddress& bd_addr, BtmDevice* p_device,
     return;
   }
 
-  if (com_android_bluetooth_flags_role_switch_after_encryption() &&
-      p_device->role_switch_pending == BtmDevice::RoleSwitchPending::kAfterCtkd &&
+  if (p_device->role_switch_pending == BtmDevice::RoleSwitchPending::kAfterCtkd &&
       p_data->complt.smp_over_br) {
     tHCI_ROLE role = HCI_ROLE_UNKNOWN;
     if (get_btm_client_interface().link_policy.BTM_GetRole(bd_addr, BT_TRANSPORT_BR_EDR, &role) !=
@@ -1513,9 +1509,9 @@ static void btm_ble_complete_evt(const RawAddress& bd_addr, BtmDevice* p_device,
   log::verbose("after update result={} sec_level=0x{:x} sec_flags=0x{:x}", res,
                p_data->complt.sec_level, p_device->sec_rec.sec_flags);
 
-  if (p_data->complt.is_pair_cancel && BtmSecurity::Get().api_.p_bond_cancel_cmpl_callback) {
+  if (p_data->complt.is_pair_cancel) {
     log::verbose("Pairing Cancel completed");
-    (*BtmSecurity::Get().api_.p_bond_cancel_cmpl_callback)(tBTM_STATUS::BTM_SUCCESS);
+    (BtmSecurity::Get().app_->bond_cancel_cmpl_callback)(tBTM_STATUS::BTM_SUCCESS);
   }
 
   if (res != tBTM_STATUS::BTM_SUCCESS && p_data->complt.reason != SMP_CONN_TOUT) {
@@ -1531,15 +1527,6 @@ static void btm_ble_complete_evt(const RawAddress& bd_addr, BtmDevice* p_device,
 
   log::verbose("BtmSecurity::Get().pairing_state_={:x} pairing_flags={:x} ",
                BtmSecurity::Get().pairing_state_, BtmSecurity::Get().pairing_flags_);
-
-  /* Reset btm state only if the callback address matches pairing address */
-  if (!com_android_bluetooth_flags_btm_le_pairing_state_reset() &&
-      bd_addr == BtmSecurity::Get().link_spec_.addrt.bda) {
-    BtmSecurity::Get().link_spec_ = {};
-    BtmSecurity::Get().link_spec_.addrt.bda = RawAddress::kAny;
-    BtmSecurity::Get().pairing_state_ = BTM_PAIR_STATE_IDLE;
-    BtmSecurity::Get().pairing_flags_ = 0;
-  }
 
   if (res == tBTM_STATUS::BTM_SUCCESS) {
     p_device->sec_rec.le_link = tSECURITY_STATE::IDLE;
@@ -1569,7 +1556,7 @@ static void btm_ble_complete_evt(const RawAddress& bd_addr, BtmDevice* p_device,
 }
 
 static tBTM_STATUS btm_ble_sirk_verification_req(const RawAddress& bd_addr) {
-  tBTM_STATUS res = (*BtmSecurity::Get().api_.p_sirk_verification_callback)(bd_addr);
+  tBTM_STATUS res = (BtmSecurity::Get().app_->sirk_verification_callback)(bd_addr);
   if (res == tBTM_STATUS::BTM_CMD_STARTED) {
     res = tBTM_STATUS::BTM_SUCCESS;
   } else {
@@ -1597,14 +1584,11 @@ tBTM_STATUS btm_proc_smp_cback(tSMP_EVT event, const RawAddress& bd_addr, tSMP_E
   if (p_device == nullptr) {
     log::warn("Unexpected event '{}' for unknown device.", smp_evt_to_text(event));
     if (bd_addr == BtmSecurity::Get().link_spec_.addrt.bda && event == SMP_COMPLT_EVT) {
-      if (com_android_bluetooth_flags_btm_le_pairing_state_reset()) {
-        BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_IDLE);
-      } else {
-        BtmSecurity::Get().pairing_state_ = BTM_PAIR_STATE_IDLE;
-      }
+      BtmSecurity::Get().change_pairing_state(BTM_PAIR_STATE_IDLE);
       BtmSecurity::Get().link_spec_ = {};
       BtmSecurity::Get().link_spec_.addrt.bda = RawAddress::kAny;
       BtmSecurity::Get().pairing_flags_ = 0;
+      BtmSecurity::Get().ResetLinkKeyRequestTimer();
     }
     return tBTM_STATUS::BTM_UNKNOWN_ADDR;
   }
@@ -1782,29 +1766,33 @@ void btm_ble_sirk_confirm_device_reply(const RawAddress& bd_addr, tBTM_STATUS re
  ******************************************************************************/
 /** This function is to notify application new keys have been generated. */
 static void btm_notify_new_key(uint8_t key_type) {
-  tBTM_BLE_LOCAL_KEYS* p_local_keys = NULL;
+  if (BtmSecurity::Get().app_ == nullptr) {
+    log::warn("No app registered");
+    return;
+  }
+
+  tBTM_BLE_LOCAL_KEYS* p_local_keys = nullptr;
 
   log::verbose("key_type={}", key_type);
 
-  if (BtmSecurity::Get().api_.p_le_key_callback) {
-    switch (key_type) {
-      case BTM_BLE_KEY_TYPE_ID:
-        log::verbose("BTM_BLE_KEY_TYPE_ID");
-        p_local_keys = (tBTM_BLE_LOCAL_KEYS*)&BtmSecurity::Get().devcb_.id_keys;
-        break;
+  switch (key_type) {
+    case BTM_BLE_KEY_TYPE_ID:
+      log::verbose("BTM_BLE_KEY_TYPE_ID");
+      p_local_keys = (tBTM_BLE_LOCAL_KEYS*)&BtmSecurity::Get().devcb_.id_keys;
+      break;
 
-      case BTM_BLE_KEY_TYPE_ER:
-        log::verbose("BTM_BLE_KEY_TYPE_ER");
-        p_local_keys = (tBTM_BLE_LOCAL_KEYS*)&BtmSecurity::Get().devcb_.ble_encryption_key_value;
-        break;
+    case BTM_BLE_KEY_TYPE_ER:
+      log::verbose("BTM_BLE_KEY_TYPE_ER");
+      p_local_keys = (tBTM_BLE_LOCAL_KEYS*)&BtmSecurity::Get().devcb_.ble_encryption_key_value;
+      break;
 
-      default:
-        log::error("unknown key type: {}", key_type);
-        break;
-    }
-    if (p_local_keys != NULL) {
-      (*BtmSecurity::Get().api_.p_le_key_callback)(key_type, p_local_keys);
-    }
+    default:
+      log::error("unknown key type: {}", key_type);
+      break;
+  }
+
+  if (p_local_keys != nullptr) {
+    (BtmSecurity::Get().app_->le_key_callback)(key_type, p_local_keys);
   }
 }
 

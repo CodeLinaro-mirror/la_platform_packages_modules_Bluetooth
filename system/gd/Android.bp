@@ -162,7 +162,6 @@ cc_defaults {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/include",
         "packages/modules/Bluetooth/system/internal_include",
-        "packages/modules/Bluetooth/system/stack/include",
         "packages/modules/Bluetooth/system/types",
     ],
 }
@@ -213,6 +212,7 @@ cc_defaults {
         "os/linux_generic/reactor.cc",
         "os/linux_generic/repeating_alarm.cc",
         "os/linux_generic/thread.cc",
+        "os/linux_generic/timed_mutex.cc",
         "os/linux_generic/wakelock_manager.cc",
     ],
     static_libs: [
@@ -229,7 +229,6 @@ cc_defaults {
     ],
     include_dirs: [
         "packages/modules/Bluetooth/system/include",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
 }
 
@@ -333,6 +332,7 @@ cc_test {
         "os/linux_generic/reactor.cc",
         "os/linux_generic/repeating_alarm.cc",
         "os/linux_generic/thread.cc",
+        "os/linux_generic/timed_mutex.cc",
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
@@ -364,7 +364,6 @@ cc_test {
     include_dirs: [
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/include",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     host_supported: true,
     // TODO(b/231993739): Reenable isolated:true by deleting the explicit disable below
@@ -374,6 +373,7 @@ cc_test {
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
+        "libPlatformProperties",
         "libbase",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd",
@@ -389,12 +389,13 @@ cc_test {
         "server_configurable_flags",
     ],
     shared_libs: [
-        "libPlatformProperties",
         "libaconfig_storage_read_api_cc",
         "libcrypto",
+        "liblog",
     ],
     sanitize: {
-        address: true,
+        // TODO(b/484475434): Mts fails with asan
+        address: false,
     },
     min_sdk_version: "36",
 }
@@ -410,7 +411,6 @@ cc_test {
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/include",
         "packages/modules/Bluetooth/system/types",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
     host_supported: true,
     // TODO(b/231993739): Reenable isolated:true by deleting the explicit disable below
@@ -427,6 +427,7 @@ cc_test {
                 "os/linux_generic/reactor_unittest.cc",
                 "os/linux_generic/repeating_alarm_unittest.cc",
                 "os/linux_generic/thread_unittest.cc",
+                "os/linux_generic/timed_mutex_unittest.cc",
                 "os/linux_generic/wakelock_manager_unittest.cc",
             ],
         },
@@ -440,6 +441,11 @@ cc_test {
             ],
         },
         android: {
+            sanitize: {
+                // TODO(b/484475434): Mts fails with asan
+                address: false,
+                cfi: false,
+            },
             srcs: [
                 "hal/hci_hal_impl_android_test.cc",
                 "os/android/wakelock_native_test.cc",
@@ -465,7 +471,6 @@ cc_test {
         ":TestCommonMockFunctions",
         ":TestMockMainShim",
         ":TestMockMainShimEntry",
-        ":TestMockStackBtm",
         "common/bidi_queue_unittest.cc",
         "common/blocking_queue_unittest.cc",
         "common/byte_array_test.cc",
@@ -524,6 +529,7 @@ cc_test {
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
+        "libPlatformProperties",
         "libbase",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd_os_mock",
@@ -536,6 +542,7 @@ cc_test {
         "libbluetooth_smp_pdl",
         "libbluetooth_types",
         "libbt-common",
+        "libbt-stack-mock",
         "libbtdevice",
         "libchrome",
         "libcom.android.sysprop.bluetooth.wrapped",
@@ -547,11 +554,11 @@ cc_test {
         "server_configurable_flags",
     ],
     shared_libs: [
-        "libPlatformProperties",
         "libaconfig_storage_read_api_cc",
         "libcrypto",
         "libxml2",
         "libutils",
+        "liblog",
     ],
     min_sdk_version: "36",
 }
@@ -621,6 +628,7 @@ cc_defaults {
     ],
     static_libs: [
         "bluetooth_flags_c_lib_for_test",
+        "libPlatformProperties",
         "libbluetooth_crypto_toolbox",
         "libbluetooth_gd_fuzzing",
         "libbluetooth_log",
@@ -635,7 +643,6 @@ cc_defaults {
     ],
     host_supported: true,
     shared_libs: [
-        "libPlatformProperties",
         "libaconfig_storage_read_api_cc",
         "libbase",
         "libcrypto",
@@ -691,16 +698,15 @@ cc_fuzz {
     srcs: [
         ":TestCommonMockFunctions",
         ":TestMockMainShim",
-        ":TestMockStackBtm",
         "hci/fuzz/acl_manager_fuzz_test.cc",
     ],
     static_libs: [
+        "libbt-stack-mock",
         "libbtdevice",
     ],
     include_dirs: [
         "packages/modules/Bluetooth/system",
         "packages/modules/Bluetooth/system/include",
-        "packages/modules/Bluetooth/system/stack/include",
     ],
 }
 

@@ -115,6 +115,9 @@ typedef struct {
   tCONN_ID conn_id;
   alarm_t* gatt_close_timer;    /* GATT channel close delay timer */
   RawAddress pending_close_bda; /* pending GATT channel remote device address */
+  /* Fields to handle GATT client registration race condition */
+  bool gatt_registration_pending;
+  std::queue<RawAddress> pending_gatt_discoveries;  
 } tBTA_DM_SERVICE_DISCOVERY_CB;
 
 void bta_dm_disc_override_sdp_performer_for_testing(

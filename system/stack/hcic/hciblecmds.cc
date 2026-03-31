@@ -31,13 +31,13 @@
 
 #include <bitset>
 
-#include "hcidefs.h"
 #include "hcimsgs.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btu_hcif.h"
+#include "stack/include/hcidefs.h"
 
 /*******************************************************************************
  * BLE Commands
@@ -162,17 +162,30 @@ void btsnd_hcic_ble_read_remote_feat(uint16_t handle) {
 }
 
 void btsnd_hcic_ble_rand(base::OnceCallback<void(Octet8)> cb) {
-  btu_hcif_send_cmd_with_cb(HCI_BLE_RAND, nullptr, 0,
-                            base::BindOnce(
-                                    [](base::OnceCallback<void(Octet8)> cb, uint8_t* param,
-                                       uint16_t /* param_len */) {
-                                      bluetooth::log::assert_that(
-                                              param[0] == 0, "LE Rand return status must be zero");
-                                      Octet8 rand{};
-                                      memcpy(rand.data(), param + 1, rand.size()); /* Skip status */
-                                      std::move(cb).Run(rand);
-                                    },
-                                    std::move(cb)));
+  btu_hcif_send_cmd_with_cb(
+          HCI_BLE_RAND, nullptr, 0,
+          base::BindOnce(
+                  [](base::OnceCallback<void(Octet8)> cb,
+                     bluetooth::hci::CommandCompleteView view) {
+                    auto complete_view = bluetooth::hci::LeRandCompleteView::Create(view);
+                    if (!complete_view.IsValid()) {
+                      bluetooth::log::error("Invalid LE Rand complete view");
+                      return;
+                    }
+                    if (complete_view.GetStatus() != bluetooth::hci::ErrorCode::SUCCESS) {
+                      bluetooth::log::error(
+                              "LE Rand command failed: {}",
+                              bluetooth::hci::ErrorCodeText(complete_view.GetStatus()));
+                      return;
+                    }
+                    auto random_number = complete_view.GetRandomNumber();
+                    Octet8 rand;
+                    for (int i = 0; i < 8; i++) {
+                      rand[i] = (uint8_t)(random_number >> (i * 8));
+                    }
+                    std::move(cb).Run(rand);
+                  },
+                  std::move(cb)));
 }
 
 void btsnd_hcic_ble_start_enc(uint16_t handle, Octet8 rand, uint16_t ediv, const Octet16& ltk) {
@@ -396,7 +409,15 @@ void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_itv_mtos, uint32
     UINT8_TO_STREAM(pp, cis_cfg[i].rtn_stom);
   }
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_SET_CIG_PARAMS, param, params_len, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_SET_CIG_PARAMS, param, params_len,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_set_cig_params_v3(uint8_t cig_id, uint32_t sdu_itv_mtos, uint32_t sdu_itv_stom,
@@ -434,7 +455,15 @@ void btsnd_hcic_set_cig_params_v3(uint8_t cig_id, uint32_t sdu_itv_mtos, uint32_
     UINT8_TO_STREAM(pp, cis_cfg[i].hdt_packet_format);
   }
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_SET_CIG_PARAMS_V3, param, params_len, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_SET_CIG_PARAMS_V3, param, params_len,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_ble_create_cis(uint8_t num_cis, const EXT_CIS_CREATE_CFG* cis_cfg,
@@ -454,7 +483,15 @@ void btsnd_hcic_ble_create_cis(uint8_t num_cis, const EXT_CIS_CREATE_CFG* cis_cf
     UINT16_TO_STREAM(pp, cis_cfg[i].acl_conn_handle);
   }
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_CREATE_CIS, param, params_len, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_CREATE_CIS, param, params_len,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_ble_remove_cig(uint8_t cig_id, base::OnceCallback<void(uint8_t*, uint16_t)> cb) {
@@ -464,7 +501,15 @@ void btsnd_hcic_ble_remove_cig(uint8_t cig_id, base::OnceCallback<void(uint8_t*,
 
   UINT8_TO_STREAM(pp, cig_id);
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_REMOVE_CIG, param, kParamsLen, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_REMOVE_CIG, param, kParamsLen,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_ble_req_peer_sca(uint16_t conn_handle) {
@@ -564,7 +609,15 @@ void btsnd_hcic_ble_big_terminate_sync(uint8_t big_handle,
 
   UINT8_TO_STREAM(pp, big_handle);
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_TERM_SYNC, param, 1, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_TERM_SYNC, param, 1,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 void btsnd_hcic_ble_setup_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir,
                                         uint8_t data_path_id, uint8_t codec_id_format,
@@ -588,7 +641,15 @@ void btsnd_hcic_ble_setup_iso_data_path(uint16_t iso_handle, uint8_t data_path_d
   UINT8_TO_STREAM(pp, codec_conf.size());
   ARRAY_TO_STREAM(pp, codec_conf.data(), static_cast<int>(codec_conf.size()));
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_SETUP_ISO_DATA_PATH, param, params_len, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_SETUP_ISO_DATA_PATH, param, params_len,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_ble_remove_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir,
@@ -600,7 +661,15 @@ void btsnd_hcic_ble_remove_iso_data_path(uint16_t iso_handle, uint8_t data_path_
   UINT16_TO_STREAM(pp, iso_handle);
   UINT8_TO_STREAM(pp, data_path_dir);
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_REMOVE_ISO_DATA_PATH, param, kParamsLen, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_REMOVE_ISO_DATA_PATH, param, kParamsLen,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_ble_read_iso_link_quality(uint16_t iso_handle,
@@ -611,7 +680,15 @@ void btsnd_hcic_ble_read_iso_link_quality(uint16_t iso_handle,
 
   UINT16_TO_STREAM(pp, iso_handle);
 
-  btu_hcif_send_cmd_with_cb(HCI_LE_READ_ISO_LINK_QUALITY, param, kParamsLen, std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_READ_ISO_LINK_QUALITY, param, kParamsLen,
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }
 
 void btsnd_hcic_ble_set_big_channel_map_classification_vsc(uint8_t action, uint8_t big_handle,
@@ -762,5 +839,13 @@ void btsnd_hcic_ble_reject_cis_req(uint16_t cis_conn_handle, uint8_t reason,
 
   UINT16_TO_STREAM(pp, cis_conn_handle);
   UINT8_TO_STREAM(pp, reason);
-  btu_hcif_send_cmd_with_cb(HCI_LE_REJ_CIS_REQ, param, sizeof(param), std::move(cb));
+  btu_hcif_send_cmd_with_cb(HCI_LE_REJ_CIS_REQ, param, sizeof(param),
+                            base::BindOnce(
+                                    [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+                                       bluetooth::hci::CommandCompleteView view) {
+                                      auto payload = view.GetPayload();
+                                      std::vector<uint8_t> data(payload.begin(), payload.end());
+                                      std::move(cb).Run(data.data(), data.size());
+                                    },
+                                    std::move(cb)));
 }

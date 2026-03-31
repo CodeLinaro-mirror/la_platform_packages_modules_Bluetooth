@@ -343,7 +343,7 @@ void bta_ag_rfc_do_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data) {
   int management_callback_index = bta_ag_scb_to_idx(p_scb) - 1;
   bluetooth::metrics::LogRfcommNativeStartEvent(
           p_scb->peer_addr, bluetooth::metrics::EventType::RFCOMM_HFP_AG_CONNECTION, 0);
-  get_btm_client_interface().security.BTM_SetSecurityLevel(
+  get_security_client_interface().BTM_SetSecurityLevel(
          true, "HFP_AG", BTM_SEC_SERVICE_AG_HANDSFREE , (BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT),
          BT_PSM_RFCOMM,BTM_SEC_PROTO_RFCOMM, 0);
   int status = RFCOMM_CreateConnectionWithSecurity(

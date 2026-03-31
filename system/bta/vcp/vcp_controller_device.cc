@@ -32,16 +32,16 @@
 #include "bta/include/bta_gatt_api.h"
 #include "bta/include/bta_gatt_queue.h"
 #include "bta/vcp/vcp_controller_devices.h"
-#include "btm_ble_api_types.h"
-#include "btm_sec_api_types.h"
-#include "btm_status.h"
 #include "gatt/database.h"
-#include "gattdefs.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_types.h"
+#include "stack/include/btm_ble_api_types.h"
 #include "stack/include/btm_client_interface.h"
+#include "stack/include/btm_sec_api_types.h"
+#include "stack/include/btm_status.h"
 #include "stack/include/gatt_api.h"
+#include "stack/include/gattdefs.h"
 #include "vcp/vcp_controller_types.h"
 
 using bluetooth::vcp::internal::VolumeControllerDevice;
@@ -694,11 +694,11 @@ bool VolumeControllerDevice::ExtAudioInControlPointOperation(uint8_t ext_input_i
 }
 
 bool VolumeControllerDevice::IsEncryptionEnabled() {
-  return get_btm_client_interface().security.BTM_IsEncrypted(address, BT_TRANSPORT_LE);
+  return get_security_client_interface().BTM_IsEncrypted(address, BT_TRANSPORT_LE);
 }
 
 bool VolumeControllerDevice::EnableEncryption() {
-  tBTM_STATUS result = get_btm_client_interface().security.BTM_SetEncryption(
+  tBTM_STATUS result = get_security_client_interface().BTM_SetEncryption(
           address, BT_TRANSPORT_LE, nullptr, nullptr, BTM_BLE_SEC_ENCRYPT);
   log::info("{}: result=0x{:02x}", address, result);
 

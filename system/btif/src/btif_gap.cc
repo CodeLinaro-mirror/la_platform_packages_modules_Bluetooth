@@ -42,7 +42,7 @@
 #include <unistd.h>
 
 #include "btif_api.h"
-#include "gap_api.h"
+#include "stack/include/gap_api.h"
 
 using namespace bluetooth;
 #include <bt_testapp.h>

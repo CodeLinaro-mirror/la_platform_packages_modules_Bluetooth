@@ -40,9 +40,10 @@
 #include "mock_csis_client.h"
 #include "mock_test_sync_main_handler.h"
 #include "stack/include/bt_types.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_btm_iso.h"
 #include "test/common/mock_functions.h"
 #include "test/mock/mock_main_shim_entry.h"
-#include "test/mock/mock_stack_btm_iso.h"
 
 using ::bluetooth::le_audio::DeviceConnectState;
 using ::bluetooth::le_audio::StateMachineInvalidStatus;
@@ -303,15 +304,15 @@ protected:
 
   virtual void SetUp() override {
     __android_log_set_minimum_priority(ANDROID_LOG_DEBUG);
-    com::android::bluetooth::flags::provider_->reset_flags();
-    com::android::bluetooth::flags::provider_->leaudio_always_use_group_size_to_check_audio_config(
-            true);
-    com::android::bluetooth::flags::provider_->leaudio_fix_allocation_in_codec_config(true);
-    com::android::bluetooth::flags::provider_->leaudio_fix_clear_cises_in_the_cig(true);
+    com_android_bluetooth_flags_reset_flags();
+    set_com_android_bluetooth_flags_leaudio_always_use_group_size_to_check_audio_config(true);
+    set_com_android_bluetooth_flags_leaudio_fix_allocation_in_codec_config(true);
+    set_com_android_bluetooth_flags_leaudio_fix_clear_cises_in_the_cig(true);
+    com::android::bluetooth::flags::provider_->leaudio_fix_qos_reconfiguration(true);
 
     init_message_loop_thread();
     reset_mock_function_count_map();
-    bluetooth::manager::SetMockBtmInterface(&btm_interface);
+    set_mock_btm_client_interface(&btm_interface);
     gatt::SetMockBtaGattInterface(&gatt_interface);
     gatt::SetMockBtaGattQueue(&gatt_queue);
 
@@ -392,8 +393,8 @@ protected:
             }));
 
     // Support 2M Phy
-    ON_CALL(btm_interface, IsPhy2mSupported(_, _)).WillByDefault(Return(true));
-    ON_CALL(btm_interface, GetHCIConnHandle(_, _))
+    ON_CALL(btm_interface, BTM_IsPhy2mSupported(_, _)).WillByDefault(Return(true));
+    ON_CALL(btm_interface, BTM_GetHCIConnHandle(_, _))
             .WillByDefault(Invoke([](RawAddress const& remote_bda, tBT_TRANSPORT /*transport*/) {
               return remote_bda.IsEmpty()
                              ? HCI_INVALID_HANDLE
@@ -852,7 +853,7 @@ protected:
 
     gatt::SetMockBtaGattQueue(nullptr);
     gatt::SetMockBtaGattInterface(nullptr);
-    bluetooth::manager::SetMockBtmInterface(nullptr);
+    reset_mock_btm_client_interface();
 
     le_audio_devices_.clear();
     le_audio_device_groups_.clear();
@@ -1529,6 +1530,14 @@ protected:
     return le_audio_device_groups_.count(leaudio_group_id)
                    ? le_audio_device_groups_[leaudio_group_id].get()
                    : nullptr;
+  }
+
+  void ClearCodecConfigureCodecHandler(void) {
+    ON_CALL(ase_ctp_handler, AseCtpConfigureCodecHandler)
+            .WillByDefault(Invoke([](LeAudioDevice* /*device*/, std::vector<uint8_t> /*value*/,
+                                     GATT_WRITE_OP_CB /*cb*/, void* /*cb_data*/) {
+              log::info("Codec Configured Handler is empty");
+            }));
   }
 
   void PrepareConfigureCodecHandler(LeAudioDeviceGroup* group, int verify_ase_count = 0,
@@ -2313,7 +2322,7 @@ protected:
   }
 
   MockCsisClient mock_csis_client_module_;
-  NiceMock<bluetooth::manager::MockBtmInterface> btm_interface;
+  NiceMock<MockBtmClientInterface> btm_interface;
   gatt::MockBtaGattInterface gatt_interface;
   gatt::MockBtaGattQueue gatt_queue;
 
@@ -8647,6 +8656,7 @@ TEST_F(StateMachineTest, StartStreamAfterConfigureToQoS_invalidateCacheInBetween
   InjectQoSConfigurationForGroupActiveAses_andWait(group);
 
   Mock::VerifyAndClearExpectations(&mock_callbacks_);
+  Mock::VerifyAndClearExpectations(&gatt_queue);
 }
 
 TEST_F(StateMachineTest, StartStreamAfterConfigureToQoS_UnknownMetatadaDuringConfiguration) {
@@ -12587,6 +12597,169 @@ TEST_F(StateMachineTest, testSuccessfulCigCreateForMultipleDevicesWhenOneDeviceP
   Mock::VerifyAndClearExpectations(mock_iso_manager_);
   Mock::VerifyAndClearExpectations(&mock_callbacks_);
   ASSERT_EQ(group->GetMaxTransportLatencyMtos(), test_tl);
+}
+
+TEST_F(StateMachineTest, testReconfigureWhenOneDeviceIsInQoSConfiguredState) {
+  auto context_type = kContextTypeMedia;
+  auto leaudio_group_id = 2;
+  auto num_devices = 2;
+
+  /* Scenario:
+   * 1. Put one set member to QoS Configured state
+   * 2. Reconfigure two devices, in this stage do not response on Codec Configure command.
+   * 3. Inject Codec Configured state for device not being in QoS Configured state.
+   * 4. Make sure, Android will wait for response on the other device.
+   * 5. Inject Codec Configured state from device being previously in QoS Configured state
+   * 6. Verify QoS Config is send out to both devices
+   */
+
+  channel_count_ = kLeAudioCodecChannelCountTwoChannel;
+
+  // Prepare multiple fake connected devices in a group
+  auto* group = PrepareSingleTestDeviceGroup(leaudio_group_id, context_type, num_devices);
+  ASSERT_NE(group, nullptr);
+  ASSERT_EQ(group->Size(), num_devices);
+
+  PrepareConfigureCodecHandler(group, 0, true);
+  PrepareConfigureQosHandler(group, 0, true);
+  PrepareEnableHandler(group, 0);
+
+  auto* first_device = group->GetFirstDevice();
+  ASSERT_NE(first_device, nullptr);
+  auto* second_device = group->GetNextDevice(first_device);
+  ASSERT_NE(second_device, nullptr);
+
+  EXPECT_CALL(*mock_iso_manager_, CreateCig(_, _, _)).Times(1);
+  EXPECT_CALL(mock_callbacks_,
+              StatusReportCb(leaudio_group_id,
+                             bluetooth::le_audio::GroupStreamStatus::CONFIGURED_BY_USER))
+          .Times(1);
+
+  InjectInitialIdleNotification(group);
+
+  auto* firstDevice = group->GetFirstDevice();
+  auto* secondDevice = group->GetNextDevice(firstDevice);
+
+  log::debug("Step 1: Put one set member to QoS Configured state and the other to IDLE");
+  ConfigureStream_onMainloop(group, context_type,
+                             {.sink = types::AudioContexts(context_type),
+                              .source = types::AudioContexts(context_type)},
+                             {.sink = {}, .source = {}}, false);
+
+  ASSERT_EQ(group->GetState(), types::AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED);
+
+  auto stored_conn_id = firstDevice->conn_id_;
+  InjectAclDisconnected_andWait(group, firstDevice);
+
+  // Start the configuration and stream Media content
+  ConfigureStream_onMainloop(group, context_type,
+                             {.sink = types::AudioContexts(context_type),
+                              .source = types::AudioContexts(context_type)},
+                             {.sink = {}, .source = {}}, true);
+
+  ASSERT_EQ(group->GetState(), types::AseState::BTA_LE_AUDIO_ASE_STATE_QOS_CONFIGURED);
+
+  log::info("Inject connecting second device");
+  InjectAclConnected(group, firstDevice, stored_conn_id);
+
+  log::debug(
+          "Step 2: Reconfigure two devices, in this stage do not response on Codec Configure "
+          "command.");
+  ClearCodecConfigureCodecHandler();
+
+  // Validate GroupStreamStatus
+  EXPECT_CALL(mock_callbacks_,
+              StatusReportCb(leaudio_group_id, bluetooth::le_audio::GroupStreamStatus::STREAMING))
+          .Times(1);
+
+  StartStream_onMainloop(group, context_type,
+                         {.sink = types::AudioContexts(context_type),
+                          .source = types::AudioContexts(context_type)});
+
+  log::debug("Step 3: Inject Codec Configured state for device not being in QoS Configured state.");
+  InjectCachedConfigurationForActiveAses(group, firstDevice);
+  SyncOnMainLoop();
+
+  log::debug("Step 4: Make sure, Android will wait for response on the other device");
+  ASSERT_TRUE(group->HaveAnyActiveDeviceInUnconfiguredState());
+
+  log::debug(
+          "Step 5: Inject Codec Configured state from device being previously in QoS Configured "
+          "state");
+  InjectCachedConfigurationForActiveAses(group, secondDevice);
+  SyncOnMainLoop();
+
+  log::debug("Step 6: Verify QoS Config is send out to both devices and stream moved to STREAMING");
+  Mock::VerifyAndClearExpectations(&mock_callbacks_);
+}
+
+TEST_F(StateMachineTest, testReconfigureFromMediaToConversationalBeforeCigWasCreated) {
+  auto leaudio_group_id = 2;
+  auto num_devices = 2;
+
+  channel_count_ = kLeAudioCodecChannelCountSingleChannel;
+
+  /* Scenario:
+   * 1. Configure group for MEDIA
+   * 2. Do not start the stream
+   * 3. Configure group to Conversational
+   * 4. Make sure, group is configured properly
+   */
+
+  // Prepare multiple fake connected devices in a group
+  auto* group =
+          PrepareSingleTestDeviceGroup(leaudio_group_id, kContextTypeConversational, num_devices,
+                                       kContextTypeConversational | kContextTypeMedia);
+  ASSERT_NE(group, nullptr);
+  ASSERT_EQ(group->Size(), num_devices);
+
+  PrepareConfigureCodecHandler(group, 0);
+  PrepareConfigureQosHandler(group);
+  PrepareEnableHandler(group);
+  PrepareReceiverStartReadyHandler(group);
+
+  EXPECT_CALL(mock_callbacks_,
+              StatusReportCb(leaudio_group_id,
+                             bluetooth::le_audio::GroupStreamStatus::CONFIGURED_BY_USER))
+          .Times(1);
+
+  EXPECT_CALL(mock_callbacks_,
+              StatusReportCb(leaudio_group_id, bluetooth::le_audio::GroupStreamStatus::STREAMING))
+          .Times(1);
+
+  InjectInitialIdleNotification(group);
+
+  /* Do reconfiguration */
+  group->SetPendingConfiguration();
+  ConfigureStream_onMainloop(group, kContextTypeMedia,
+                             {.sink = types::AudioContexts(kContextTypeMedia),
+                              .source = types::AudioContexts(kContextTypeMedia)},
+                             {.sink = {}, .source = {}}, false);
+
+  SyncOnMainLoop();
+  ASSERT_EQ(group->GetState(), types::AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED);
+
+  auto group_config = group->GetActiveConfiguration();
+  ASSERT_NE(group_config, nullptr);
+  auto [media_sink_is_enabled, media_source_is_enabled] = group_config->getDirections();
+  ASSERT_TRUE(media_sink_is_enabled);
+  ASSERT_FALSE(media_source_is_enabled);
+
+  // Start the configuration and stream Media content
+  StartStream_onMainloop(group, kContextTypeConversational,
+                         {.sink = types::AudioContexts(kContextTypeConversational),
+                          .source = types::AudioContexts(kContextTypeConversational)},
+                         {.sink = {}, .source = {}});
+  SyncOnMainLoop();
+
+  group_config = group->GetActiveConfiguration();
+  ASSERT_NE(group_config, nullptr);
+  auto [conv_sink_is_enabled, conv_source_is_enabled] = group_config->getDirections();
+  ASSERT_TRUE(conv_sink_is_enabled);
+  ASSERT_TRUE(conv_source_is_enabled);
+  ASSERT_EQ(group->GetState(), types::AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING);
+
+  Mock::VerifyAndClearExpectations(&mock_callbacks_);
 }
 
 }  // namespace internal

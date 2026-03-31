@@ -61,7 +61,7 @@ constexpr int MAX_KEY_SIZE = 16;
  * Returns          true if registered OK, else false
  *
  ******************************************************************************/
-bool btm_sec_register(const tBTM_APPL_INFO* p_cb_info);
+bool btm_sec_register(const BtmAppReg& app_reg);
 
 bool btm_is_encrypted(const RawAddress& bd_addr, tBT_TRANSPORT transport);
 bool btm_is_link_key_authed(const RawAddress& bd_addr, tBT_TRANSPORT transport);
@@ -423,7 +423,7 @@ void btm_sec_conn_req(const RawAddress& bda, const DEV_CLASS dc);
  * Returns          void
  *
  ******************************************************************************/
-void btm_create_conn_cancel_complete(uint8_t status, const RawAddress bd_addr);
+void btm_create_conn_cancel_complete(uint8_t status, const RawAddress& bd_addr);
 
 /*******************************************************************************
  *
@@ -473,7 +473,7 @@ void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr, const uint8_
  * Returns          void
  *
  ******************************************************************************/
-void btm_sec_rmt_host_support_feat_evt(const RawAddress bd_addr, uint8_t features_0);
+void btm_sec_rmt_host_support_feat_evt(const RawAddress& bd_addr, uint8_t features_0);
 
 /*******************************************************************************
  *
@@ -486,7 +486,7 @@ void btm_sec_rmt_host_support_feat_evt(const RawAddress bd_addr, uint8_t feature
  * Returns          void
  *
  ******************************************************************************/
-void btm_io_capabilities_req(RawAddress p);
+void btm_io_capabilities_req(const RawAddress& bda);
 
 /*******************************************************************************
  *
@@ -512,7 +512,7 @@ void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data);
  * Returns          void
  *
  ******************************************************************************/
-void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, uint32_t value);
+void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress& bda, uint32_t value);
 
 /*******************************************************************************
  *
@@ -524,7 +524,7 @@ void btm_proc_sp_req_evt(tBTM_SP_EVT event, const RawAddress bda, uint32_t value
  * Returns          void
  *
  ******************************************************************************/
-void btm_simple_pair_complete(const RawAddress bd_addr, uint8_t status);
+void btm_simple_pair_complete(const RawAddress& bd_addr, uint8_t status);
 
 /*******************************************************************************
  *
@@ -536,7 +536,7 @@ void btm_simple_pair_complete(const RawAddress bd_addr, uint8_t status);
  * Returns          void
  *
  ******************************************************************************/
-void btm_rem_oob_req(const RawAddress bd_addr);
+void btm_rem_oob_req(const RawAddress& bd_addr);
 
 /*******************************************************************************
  *
@@ -654,7 +654,7 @@ void btm_sec_encryption_key_refresh_complete(uint16_t handle, tHCI_STATUS status
  * Returns          Pointer to the record or NULL
  *
  ******************************************************************************/
-void btm_sec_link_key_request(const RawAddress bda);
+void btm_sec_link_key_request(const RawAddress& bda);
 
 /*******************************************************************************
  *
@@ -665,7 +665,7 @@ void btm_sec_link_key_request(const RawAddress bda);
  * Returns          Pointer to the record or NULL
  *
  ******************************************************************************/
-void btm_sec_pin_code_request(const RawAddress bda);
+void btm_sec_pin_code_request(const RawAddress& bda);
 
 /*******************************************************************************
  *

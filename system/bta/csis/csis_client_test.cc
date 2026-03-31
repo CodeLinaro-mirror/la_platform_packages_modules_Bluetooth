@@ -39,9 +39,9 @@
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
+#include "stack/mock/mock_stack_btm_interface.h"
+#include "stack/mock/mock_stack_security_client_interface.h"
 #include "test/common/mock_functions.h"
-#include "test/mock/mock_stack_btm_interface.h"
-#include "test/mock/mock_stack_security_client_interface.h"
 
 bool gatt_cl_read_sirk_req(const RawAddress& /*peer_bda*/,
                            base::OnceCallback<void(tGATT_STATUS status, const RawAddress&,
@@ -419,10 +419,9 @@ protected:
   void SetUp(void) override {
     reset_mock_function_count_map();
     __android_log_set_minimum_priority(ANDROID_LOG_VERBOSE);
-    com::android::bluetooth::flags::provider_->reset_flags();
-    com::android::bluetooth::flags::provider_->csis_quirk_for_single_device_with_sirk_all_zeros(
-            true);
-    com::android::bluetooth::flags::provider_->leaudio_csis_handle_misconfigured_sets(true);
+    com_android_bluetooth_flags_reset_flags();
+    set_com_android_bluetooth_flags_csis_quirk_for_single_device_with_sirk_all_zeros(true);
+    set_com_android_bluetooth_flags_leaudio_csis_handle_misconfigured_sets(true);
     bluetooth::manager::SetMockBtmInterface(&btm_interface);
     dm::SetMockBtaDmInterface(&dm_interface);
     gatt::SetMockBtaGattInterface(&gatt_interface);
@@ -431,7 +430,6 @@ protected:
     callbacks.reset(new MockCsisCallbacks());
 
     set_security_client_interface(mock_btm_security_);
-    set_mock_btm_client_interface_security(mock_btm_security_);
 
     ON_CALL(mock_btm_security_, BTM_IsBonded(_, _)).WillByDefault(DoAll(Return(true)));
 
@@ -520,7 +518,7 @@ protected:
 
   void TestNoConnection(const RawAddress& address) {
     // by default indicate link as encrypted
-    EXPECT_CALL(gatt_interface, Open(gatt_if, address, _, _)).Times(0);
+    EXPECT_CALL(gatt_interface, Open(gatt_if, address, _)).Times(0);
     CsisClient::Get()->Connect(address);
     Mock::VerifyAndClearExpectations(&gatt_interface);
   }
@@ -529,8 +527,11 @@ protected:
     // by default indicate link as encrypted
     ON_CALL(btm_interface, GetSecurityFlagsByTransport(address, NotNull(), _))
             .WillByDefault(DoAll(SetArgPointee<1>(BTM_SEC_FLAG_ENCRYPTED), Return(encrypted)));
-
-    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, opportunistic));
+    if (opportunistic) {
+      EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_OPPORTUNISTIC));
+    } else {
+      EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION));
+    }
     CsisClient::Get()->Connect(address);
     Mock::VerifyAndClearExpectations(&gatt_interface);
     Mock::VerifyAndClearExpectations(&btm_interface);
@@ -552,9 +553,9 @@ protected:
     EXPECT_CALL(*callbacks, OnConnectionState(address, ConnectionState::CONNECTED)).Times(1);
     EXPECT_CALL(*callbacks, OnDeviceAvailable(address, _, _, _, _)).Times(AtLeast(1));
 
-    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_DIRECT_CONNECTION, true))
+    EXPECT_CALL(gatt_interface, Open(gatt_if, address, BTM_BLE_OPPORTUNISTIC))
             .WillOnce(Invoke([this, conn_id](tGATT_IF /*client_if*/, const RawAddress& remote_bda,
-                                             bool /*is_direct*/, bool /*opportunistic*/) {
+                                             tBTM_BLE_CONN_TYPE /*connection_type */) {
               InjectConnectedEvent(remote_bda, conn_id);
               GetSearchCompleteEvent(conn_id);
             }));
@@ -748,8 +749,7 @@ TEST_F(CsisClientTest, test_verify_opportunistic_connect_active_after_connect_ti
   TestConnect(test_address, true, false);
 
   EXPECT_CALL(gatt_interface, CancelOpen(gatt_if, test_address, _)).Times(0);
-  EXPECT_CALL(gatt_interface, Open(gatt_if, test_address, BTM_BLE_DIRECT_CONNECTION, true))
-          .Times(1);
+  EXPECT_CALL(gatt_interface, Open(gatt_if, test_address, BTM_BLE_OPPORTUNISTIC)).Times(1);
 
   InjectConnectedEvent(test_address, 0, GATT_ERROR);
   Mock::VerifyAndClearExpectations(&gatt_interface);

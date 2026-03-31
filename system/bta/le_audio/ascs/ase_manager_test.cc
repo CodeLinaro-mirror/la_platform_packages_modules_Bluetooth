@@ -34,13 +34,14 @@
 #include "ascs_types.h"
 #include "ase_state_machine.h"
 #include "bta/le_audio/common/mock_iso_app_proxy.h"
+#include "bta/le_audio/le_audio_utils.h"
 #include "osi/include/properties.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/mock/mock_stack_btm_dev.h"
+#include "stack/mock/mock_stack_btm_iso.h"
+#include "stack/mock/mock_stack_hcic_layer.h"
 #include "test/common/sync_main_handler.h"
-#include "test/mock/mock_legacy_hci_interface.h"
 #include "test/mock/mock_main_shim_entry.h"
-#include "test/mock/mock_stack_btm_dev.h"
-#include "test/mock/mock_stack_btm_iso.h"
 
 static constexpr char kIsPeripheralCachingSupportedProperty[] =
         "bluetooth.le_audio.peripheral.caching.enabled";
@@ -166,7 +167,7 @@ public:
             .WillByDefault(Return(true));
 
     // Set up the mock for the legacy HCI interface
-    bluetooth::legacy::hci::testing::SetMock(legacy_hci_mock_);
+    hcic::SetMockHcicInterface(&legacy_hci_mock_);
 
     // Set up the mock ASCS
     mock_ascs_ = std::make_shared<MockAscs>();
@@ -309,7 +310,7 @@ public:
     ascs::AseStateCodecConfiguration configuration;
     configuration.codec_id = request.codec_id;
     configuration.codec_spec_conf = request.codec_spec_conf;
-    configuration.preferred_phy = request.target_phy;
+    configuration.preferred_phy = utils::GetPreferredPhyFromTargetPhy(request.target_phy);
 
     // WARNING: pres_delay_min == 0 (not set) will prevent the state machine from going
     //          back to CODEC_CONFIGURED on RELEASED (caching).
@@ -333,7 +334,7 @@ public:
   MockAseManagerCallbacks mock_ase_manager_cb_;
   Ascs::ServiceDescriptor ascs_svc_descriptor_;
 
-  bluetooth::legacy::hci::testing::MockInterface legacy_hci_mock_;
+  hcic::MockHcicInterface legacy_hci_mock_;
 
   RawAddress test_address1_ = GetTestAddress(1);
   RawAddress test_address2_ = GetTestAddress(2);

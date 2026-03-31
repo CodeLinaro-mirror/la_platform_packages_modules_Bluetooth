@@ -27,6 +27,7 @@ import android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_POWER
 import android.bluetooth.le.ScanSettings.SCAN_MODE_OPPORTUNISTIC
 import com.android.bluetooth.Utils
 import com.android.bluetooth.btservice.AdapterService
+import com.android.bluetooth.le_scan.ScanThrottler.ScanAllowanceLedger
 import com.android.bluetooth.le_scan.ScanUtil.WEIGHT_AMBIENT_DISCOVERY
 import com.android.bluetooth.le_scan.ScanUtil.WEIGHT_BALANCED
 import com.android.bluetooth.le_scan.ScanUtil.WEIGHT_LOW_LATENCY
@@ -95,16 +96,24 @@ class AppScanStats(
         internal var isAutoBatchScan: Boolean = false,
         internal var resultsScreenOn: Int = 0,
         internal var resultsScreenOff: Int = 0,
-    )
+    ) {
+        internal val resultsTotal: Int
+            get() = resultsScreenOn + resultsScreenOff
+    }
 
     private val lastScans: MutableList<LastScan> = ArrayList()
     private val ongoingScans: MutableMap<Int, LastScan> = HashMap()
+
+    private val consumptionStats = AppCurrentConsumptionStats(timeProvider)
 
     var isAppDead = false
     var isRegistered = false
     var appImportance = IMPORTANCE_CACHED
         @Synchronized get
         @Synchronized set
+
+    var scanAllowanceLedger = ScanAllowanceLedger()
+        @Synchronized get
 
     private var scansStarted = 0
     private var scansStopped = 0
@@ -140,7 +149,7 @@ class AppScanStats(
         }
 
         val scan = getScanFromScannerId(scannerId) ?: return
-        val resultsBeforeUpdate = scan.resultsScreenOn + scan.resultsScreenOff
+        val resultsBeforeUpdate = scan.resultsTotal
         if (isScreenOn) {
             scan.resultsScreenOn += numberOfNewResults
         } else {
@@ -148,8 +157,14 @@ class AppScanStats(
         }
 
         // Only update battery stats every 100 results to lower the high-cost of binder transactions
-        if ((scan.resultsScreenOn + scan.resultsScreenOff) / 100 > resultsBeforeUpdate / 100) {
+        if (scan.resultsTotal / 100 > resultsBeforeUpdate / 100) {
             scanMetricsReporter.reportScanResults(100)
+        }
+
+        consumptionStats.addScanResults(numberOfNewResults, isScreenOn)
+        // Check threshold violations every 40 results to be efficient and align with thresholds
+        if (scan.resultsTotal / 40 > resultsBeforeUpdate / 40) {
+            consumptionStats.checkThresholdViolation(name)
         }
 
         scanMetricsReporter.reportLeScanResult(
@@ -157,6 +172,7 @@ class AppScanStats(
             numberOfNewResults,
             isScreenOn,
             getAttributionTagFromScannerId(scannerId),
+            scan,
         )
     }
 
@@ -440,6 +456,8 @@ class AppScanStats(
             append("  Number of batch alarms scheduled                                         ")
                 .appendLine("  : $scheduledBatchAlarmCount")
         }
+
+        appendLine(consumptionStats.dump().indent("  "))
 
         if (lastScans.isNotEmpty()) {
             appendLine("  Last ${lastScans.size} scans:")

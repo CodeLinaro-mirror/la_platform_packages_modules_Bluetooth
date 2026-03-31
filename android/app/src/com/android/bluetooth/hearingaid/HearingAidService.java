@@ -40,7 +40,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.ParcelUuid;
-import android.os.UserHandle;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
@@ -161,8 +160,10 @@ public class HearingAidService extends ConnectableProfile {
 
         mHandler.removeCallbacksAndMessages(null);
 
-        mAudioManager.unregisterAudioDeviceCallback(mAudioManagerOnAudioDevicesAddedCallback);
-        mAudioManager.unregisterAudioDeviceCallback(mAudioManagerOnAudioDevicesRemovedCallback);
+        if (!true) {
+            mAudioManager.unregisterAudioDeviceCallback(mAudioManagerOnAudioDevicesAddedCallback);
+            mAudioManager.unregisterAudioDeviceCallback(mAudioManagerOnAudioDevicesRemovedCallback);
+        }
     }
 
     /**
@@ -385,10 +386,8 @@ public class HearingAidService extends ConnectableProfile {
     public boolean setConnectionPolicy(BluetoothDevice device, int connectionPolicy) {
         Log.d(TAG, "Saved connectionPolicy " + device + " = " + connectionPolicy);
 
-        if (!getAdapterService()
-                .setProfileConnectionPolicy(device, getProfileId(), connectionPolicy)) {
-            return false;
-        }
+        getAdapterService().setProfileConnectionPolicy(device, getProfileId(), connectionPolicy);
+
         if (connectionPolicy == CONNECTION_POLICY_ALLOWED) {
             connect(device);
         } else if (connectionPolicy == CONNECTION_POLICY_FORBIDDEN) {
@@ -515,6 +514,15 @@ public class HearingAidService extends ConnectableProfile {
         return activeDevices;
     }
 
+    /**
+     * Get the current active device
+     *
+     * @return the current active device
+     */
+    public BluetoothDevice getActiveDevice() {
+        return mActiveDevice;
+    }
+
     void onConnectionStateChangedFromNative(BluetoothDevice device, int state) {
         synchronized (mStateMachines) {
             var stateMachine = mStateMachines.get(device);
@@ -552,17 +560,16 @@ public class HearingAidService extends ConnectableProfile {
         intent.addFlags(
                 Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
                         | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
-        if (Flags.onlyBroadcastToLocalUser()) {
-            sendBroadcast(intent, BLUETOOTH_CONNECT);
-        } else {
-            sendBroadcastAsUser(intent, UserHandle.ALL, BLUETOOTH_CONNECT);
-        }
+        sendBroadcast(intent, BLUETOOTH_CONNECT);
     }
 
     /* Notifications of audio device disconnection events. */
     private class AudioManagerOnAudioDevicesRemovedCallback extends AudioDeviceCallback {
         @Override
         public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+            if (true) {
+                throw new IllegalStateException("admCentralizeActiveDeviceHandling");
+            }
             for (AudioDeviceInfo deviceInfo : removedDevices) {
                 if (deviceInfo.getType() == AudioDeviceInfo.TYPE_HEARING_AID) {
                     Log.d(TAG, " onAudioDevicesRemoved: device type: " + deviceInfo.getType());
@@ -581,6 +588,9 @@ public class HearingAidService extends ConnectableProfile {
     private class AudioManagerOnAudioDevicesAddedCallback extends AudioDeviceCallback {
         @Override
         public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+            if (true) {
+                throw new IllegalStateException("admCentralizeActiveDeviceHandling");
+            }
             for (AudioDeviceInfo deviceInfo : addedDevices) {
                 if (deviceInfo.getType() == AudioDeviceInfo.TYPE_HEARING_AID) {
                     Log.d(TAG, " onAudioDevicesAdded: device type: " + deviceInfo.getType());
@@ -593,6 +603,40 @@ public class HearingAidService extends ConnectableProfile {
                 }
             }
         }
+    }
+
+    /**
+     * Handle when AudioManager add audio device.
+     *
+     * @return true if the success, otherwise false
+     */
+    public boolean handleAudioDeviceAdded() {
+        if (!true) {
+            return false;
+        }
+        if (mAudioManager == null) {
+            Log.w(TAG, "onAudioDevicesAdded: mAudioManager is null");
+            return false;
+        }
+        notifyActiveDeviceChanged();
+        return true;
+    }
+
+    /**
+     * Handle when AudioManager remove audio device.
+     *
+     * @return true if the success, otherwise false
+     */
+    public boolean handleAudioDeviceRemoved() {
+        if (!true) {
+            return false;
+        }
+        if (mAudioManager == null) {
+            Log.w(TAG, "onAudioDevicesRemoved: mAudioManager is null");
+            return false;
+        }
+        notifyActiveDeviceChanged();
+        return true;
     }
 
     private HearingAidStateMachine getOrCreateStateMachine(BluetoothDevice device) {
@@ -663,14 +707,15 @@ public class HearingAidService extends ConnectableProfile {
                         + ". Stop audio: "
                         + stopAudio);
 
-        if (device != null) {
-            mAudioManager.registerAudioDeviceCallback(
-                    mAudioManagerOnAudioDevicesAddedCallback, mHandler);
-        } else {
-            mAudioManager.registerAudioDeviceCallback(
-                    mAudioManagerOnAudioDevicesRemovedCallback, mHandler);
+        if (!true) {
+            if (device != null) {
+                mAudioManager.registerAudioDeviceCallback(
+                        mAudioManagerOnAudioDevicesAddedCallback, mHandler);
+            } else {
+                mAudioManager.registerAudioDeviceCallback(
+                        mAudioManagerOnAudioDevicesRemovedCallback, mHandler);
+            }
         }
-
         mAudioManager.handleBluetoothActiveDeviceChanged(
                 device,
                 previousAudioDevice,

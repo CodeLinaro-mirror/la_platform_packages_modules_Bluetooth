@@ -36,6 +36,34 @@
 
 namespace bluetooth::le_audio {
 namespace utils {
+
+inline uint8_t GetPreferredPhyFromTargetPhy(uint8_t target_phy) {
+  switch (target_phy) {
+    case types::kTargetPhy1M:
+      return bluetooth::hci::kIsoCigPhy1M;
+    case types::kTargetPhy2M:
+      return bluetooth::hci::kIsoCigPhy2M;
+    case types::kTargetPhyCoded:
+      return bluetooth::hci::kIsoCigPhyC;
+    case types::kTargetPhyUndefined:
+      [[fallthrough]];  // bluetooth::hci::kIsoCigPhy2M
+    default:
+      return bluetooth::hci::kIsoCigPhy2M;
+  }
+}
+
+inline uint8_t GetTargetPhyFromPreferredPhy(uint8_t preferred_phy) {
+  if (preferred_phy & bluetooth::hci::kIsoCigPhy2M) {
+    return types::kTargetPhy2M;
+  } else if (preferred_phy & bluetooth::hci::kIsoCigPhy1M) {
+    return types::kTargetPhy1M;
+  } else if (preferred_phy & bluetooth::hci::kIsoCigPhyC) {
+    return types::kTargetPhyCoded;
+  } else {
+    return types::kTargetPhyUndefined;
+  }
+}
+
 types::LeAudioContextType AudioContentToLeAudioContext(audio_content_type_t content_type,
                                                        audio_usage_t usage);
 types::AudioContexts GetAudioContextsFromSourceMetadata(
@@ -375,6 +403,7 @@ private:
 bluetooth::le_audio::btle_audio_codec_index_t translateLeAudioCodecIdToCodecType(
         const types::LeAudioCodecId& codecId,
         std::optional<uint32_t> sampling_frequency_hz = std::nullopt);
+types::LeAudioCodecId translateCodecIdToLeAudioCodecId(uint64_t codec_id);
 types::LeAudioCodecId translateCodecTypeToLeAudioCodecId(btle_audio_codec_index_t codecIndex);
 
 bluetooth::le_audio::btle_audio_sample_rate_index_t translateToBtLeAudioCodecConfigSampleRate(
