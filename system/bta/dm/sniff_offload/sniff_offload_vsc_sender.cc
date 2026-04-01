@@ -26,7 +26,7 @@
 #include "main/shim/entry.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/main_thread.h"
-#include "bluetooth/types/address.h"
+#include "types/raw_address.h"
 
 namespace bluetooth {
 namespace sniff_offload {

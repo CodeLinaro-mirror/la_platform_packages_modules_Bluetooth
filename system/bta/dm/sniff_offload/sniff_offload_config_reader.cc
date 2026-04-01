@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <bluetooth/log.h>
 #include "bta/dm/bta_dm_int.h"
-#include "bluetooth/types/address.h"
+#include "types/raw_address.h"
 
 namespace bluetooth {
 namespace sniff_offload {
