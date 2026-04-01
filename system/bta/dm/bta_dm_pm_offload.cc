@@ -139,9 +139,9 @@ private:
 }  // namespace
 
 static constexpr uint16_t kSniffOffloadUpdateDelayValueMs = 200;
-static constexpr uint16_t kDefaultSubratingMaxLatency = 0;
-static constexpr uint16_t kDefaultSubratingMinLocalTimeout = 0;
-static constexpr uint16_t kDefaultSubratingMinRemoteTimeout = 0;
+static constexpr uint16_t kDefaultSubratingMaxLatency = BTA_DM_PM_SNIFF_MAX;
+static constexpr uint16_t kDefaultSubratingMinLocalTimeout = 2;
+static constexpr uint16_t kDefaultSubratingMinRemoteTimeout = 2;
 
 static const char kPropertySniffSubratingMaxLatency[] =
         "bluetooth.core.classic.sniff_subrating_max_latency_default";
