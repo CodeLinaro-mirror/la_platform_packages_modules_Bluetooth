@@ -620,6 +620,7 @@ struct Controller::impl {
     vendor_capabilities_.a2dp_source_offload_capability_mask_ = 0x00;
     vendor_capabilities_.bluetooth_quality_report_support_ = 0x00;
     vendor_capabilities_.a2dp_offload_v2_support_ = 0x00;
+    vendor_capabilities_.sniff_offload_support_ = 0x00;
 
     if (!complete_view.IsValid()) {
       vendor_promise.set_value();
@@ -702,6 +703,14 @@ struct Controller::impl {
       log::info("invalid data for hci requirements v1.04");
     } else {
       vendor_capabilities_.a2dp_offload_v2_support_ = v104.GetA2dpOffloadV2Support();
+    }
+
+    // v1.05
+    auto v105 = LeGetVendorCapabilitiesComplete105View::Create(v104);
+    if (!v105.IsValid()) {
+      log::info("invalid data for hci requirements v1.05");
+    } else {
+      vendor_capabilities_.sniff_offload_support_ = v105.GetSniffOffloadSupport();
     }
 
     if (vendor_capabilities_.dynamic_audio_buffer_support_) {
@@ -1234,6 +1243,9 @@ struct Controller::impl {
       case OpCode::LE_CS_SET_PROCEDURE_PARAMETERS:
         // TODO add to OP_CODE_MAPPING list
         return false;
+      case OpCode::WRITE_SNIFF_OFFLOAD_ENABLE:
+      case OpCode::WRITE_SNIFF_OFFLOAD_PARAMETERS:
+        return vendor_capabilities_.sniff_offload_support_ == 0x01;
     }
     return false;
   }
@@ -1669,7 +1681,8 @@ void Controller::impl::dump(OutputT&& out) const {
           "        a2dp_source_offload_capability_mask: {}\n"
           "        bluetooth_quality_report_support: {}\n"
           "        dynamic_audio_buffer_support: {}\n"
-          "        a2dp_offload_v2_support: {}\n",
+          "        a2dp_offload_v2_support: {}\n"
+          "        sniff_offload_support: {}\n",
           vendor_capabilities_.is_supported_, vendor_capabilities_.max_advt_instances_,
           vendor_capabilities_.offloaded_resolution_of_private_address_,
           vendor_capabilities_.total_scan_results_storage_, vendor_capabilities_.max_irk_list_sz_,
@@ -1682,7 +1695,8 @@ void Controller::impl::dump(OutputT&& out) const {
           vendor_capabilities_.a2dp_source_offload_capability_mask_,
           vendor_capabilities_.bluetooth_quality_report_support_,
           vendor_capabilities_.dynamic_audio_buffer_support_,
-          vendor_capabilities_.a2dp_offload_v2_support_);
+          vendor_capabilities_.a2dp_offload_v2_support_,
+          vendor_capabilities_.sniff_offload_support_);
 }
 
 void Controller::Dump(int fd) const {
