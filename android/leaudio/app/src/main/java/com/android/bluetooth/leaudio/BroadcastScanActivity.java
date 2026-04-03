@@ -35,7 +35,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.EditText;
 import android.text.TextUtils;
-import android.view.LayoutInflater;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.media.AudioManager;
@@ -82,6 +81,13 @@ public class BroadcastScanActivity extends AppCompatActivity {
     /** Track whether broadcast source has been removed */
     private boolean mBroadcastSourceRemoved = false;
 
+    /**
+     * True when the DBIG status reported a new device added whose DevID matches
+     * the AGP DevID stored in SharedPreferences. The Acquire button is only shown
+     * when this flag is true.
+     */
+    private boolean mAgpDeviceJoined = false;
+
     private final BroadcastReceiver mBluetoothStateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -121,6 +127,54 @@ public class BroadcastScanActivity extends AppCompatActivity {
             if (action != null && action.equals(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED)) {
                 // Extract the status from the intent
                 int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                boolean newDeviceAdded = (status & 0x0100) != 0;
+                if (newDeviceAdded) {
+                    int devId = intent.getIntExtra(
+                            "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    byte[] nameBytes = intent.getByteArrayExtra(
+                            "android.bluetooth.extra.DBIG_NAME");
+                    String nameStr = (nameBytes != null)
+                            ? new String(nameBytes,
+                                    java.nio.charset.StandardCharsets.UTF_8).trim()
+                            : "";
+                    Log.i(TAG, "New device added to DBIG: devId=" + devId + ", name=" + nameStr);
+                    Toast.makeText(context,
+                            "New device joined DBIG: DevID=" + devId
+                                    + ", Name=" + nameStr,
+                            Toast.LENGTH_LONG).show();
+
+                    // Check if the joined device's DevID matches our stored AGP DevID
+                    int agpDevId = getSharedPreferences("achat_prefs", MODE_PRIVATE)
+                            .getInt("agp_dev_id", -1);
+                    if (agpDevId != -1 && devId == agpDevId) {
+                        Log.i(TAG, "AGP device joined DBIG (devId=" + devId
+                                + " matches stored AGP devId=" + agpDevId + ")");
+                        mAgpDeviceJoined = true;
+                    } else {
+                        Log.d(TAG, "Joined devId=" + devId
+                                + " does not match AGP devId=" + agpDevId);
+                    }
+                }
+                // bit 9 (0x0200) – device is exiting / removed from DBIG
+                boolean deviceRemoved = (status & 0x0200) != 0;
+                Log.d(TAG, "Device removed bit"+ newDeviceAdded);
+                if (deviceRemoved) {
+                    int devId = intent.getIntExtra(
+                            "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    byte[] nameBytes = intent.getByteArrayExtra(
+                            "android.bluetooth.extra.DBIG_NAME");
+                    String nameStr = (nameBytes != null)
+                            ? new String(nameBytes,
+                                    java.nio.charset.StandardCharsets.UTF_8).trim()
+                            : "";
+                    Log.i(TAG, "Device removed from DBIG: devId=0x"
+                            + String.format("%04X", devId) + ", name=" + nameStr);
+                    Toast.makeText(context,
+                            "Device exited DBIG: DevID"
+                                    +  devId
+                                    + ", Name=" + nameStr,
+                            Toast.LENGTH_LONG).show();
+                }
                 boolean bisAvailable = (status & 0x0001) != 0;
                 boolean localOccupying = (status & 0x0002) != 0;
                 int bis_is_out_of_range = (status & 0x0004);
@@ -278,8 +332,8 @@ public class BroadcastScanActivity extends AppCompatActivity {
                         "Release BIS for broadcast " + broadcast.getBroadcastId(),
                         Toast.LENGTH_SHORT).show();
             });
-        } else if (mBisAvailability == BisAvailability.AVAILABLE) {
-            // bit 1 == 0 && bit 0 == 1 → show Acquire
+        } else if (mBisAvailability == BisAvailability.AVAILABLE && mAgpDeviceJoined) {
+            // bit 1 == 0 && bit 0 == 1, AND our AGP device has joined → show Acquire
             alert.setNegativeButton("Acquire", (dialog, which) -> {
                 try {
                     audioManager.setParameters("achat_tx_acquire=true");
@@ -346,9 +400,6 @@ public class BroadcastScanActivity extends AppCompatActivity {
                 mBroadcastSourceAdded = true;
                 mBroadcastSourceRemoved = false; // Reset remove state
 
-                // Update BIS state after adding broadcast source
-                // mLocalOccupyingBis = true;
-                // mBisAvailability = BisAvailability.UNAVAILABLE;
                 Log.d(TAG, "Broadcast source add requested, waiting for DBIG status update");
             });
         }
@@ -512,8 +563,8 @@ public class BroadcastScanActivity extends AppCompatActivity {
                             Toast.LENGTH_SHORT).show();
                 });
             }
-        } else if (mBisAvailability == BisAvailability.AVAILABLE) {
-            // Show Acquire button
+        } else if (mBisAvailability == BisAvailability.AVAILABLE && mAgpDeviceJoined) {
+            // Show Acquire button only when our AGP device has joined
             if (negativeButton != null) {
                 negativeButton.setText("Acquire");
                 negativeButton.setVisibility(View.VISIBLE);
