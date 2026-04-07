@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.mapclient;
@@ -74,12 +79,14 @@ public class MasClient {
     private static final int MAP_FEATURE_BROWSING = 0x00000004;
     private static final int MAP_FEATURE_UPLOADING = 0x00000008;
     private static final int MAP_FEATURE_EXTENDED_EVENT_REPORT_1_1 = 0x00000040;
+    private static final int MAP_FEATURE_MSG_LISTING_FORMAT_1_1 = 0x00000200;
     static final int MAP_SUPPORTED_FEATURES =
             MAP_FEATURE_NOTIFICATION_REGISTRATION
                     | MAP_FEATURE_NOTIFICATION
                     | MAP_FEATURE_BROWSING
                     | MAP_FEATURE_UPLOADING
-                    | MAP_FEATURE_EXTENDED_EVENT_REPORT_1_1;
+                    | MAP_FEATURE_EXTENDED_EVENT_REPORT_1_1
+                    | MAP_FEATURE_MSG_LISTING_FORMAT_1_1;
 
     private final StateMachine mCallback;
     private final Handler mHandler;

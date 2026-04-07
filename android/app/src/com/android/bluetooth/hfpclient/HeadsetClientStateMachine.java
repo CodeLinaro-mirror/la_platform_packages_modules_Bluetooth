@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
@@ -1675,6 +1675,19 @@ public class HeadsetClientStateMachine extends StateMachine {
                                             + event.valueInt
                                             + " queuedAction: "
                                             + queuedAction.first);
+
+                            if (event.valueInt != BluetoothHeadsetClient.ACTION_RESULT_OK) {
+                                intent = new Intent(BluetoothHeadsetClient.ACTION_RESULT);
+                                intent.putExtra(BluetoothHeadsetClient.EXTRA_RESULT_CODE,
+                                        event.valueInt);
+                                if (event.valueInt
+                                            == BluetoothHeadsetClient.ACTION_RESULT_ERROR_CME) {
+                                    intent.putExtra(BluetoothHeadsetClient.EXTRA_CME_CODE,
+                                            event.valueInt2);
+                                }
+                                mService.sendBroadcast(
+                                        intent, BLUETOOTH_CONNECT, Utils.getTempBroadcastBundle());
+                            }
 
                             switch (queuedAction.first) {
                                 case QUERY_CURRENT_CALLS -> queryCallsDone();
