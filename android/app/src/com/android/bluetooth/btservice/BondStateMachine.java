@@ -59,6 +59,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /**
  * This state machine handles Bluetooth Adapter State. States: {@link StableState} : No device is in
@@ -226,15 +227,30 @@ final class BondStateMachine extends StateMachine {
                 case ACL_DISCONNECTED:
                     if (dev.isBondingInitiatedLocally()) {
                         if (hasMessages(BONDED_INTENT_DELAY)) {
-                            removeMessages(BONDED_INTENT_DELAY);
-                            mPendingBondedDevices.remove(dev);
-                            DeviceProperties devProp =
+                            if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                                if (mPendingBondedDevices.contains(dev)) {
+                                    removeMessages(BONDED_INTENT_DELAY);
+                                    mPendingBondedDevices.remove(dev);
+                                    DeviceProperties devProp =
                                     mRemoteDevices.getDeviceProperties(dev);
-                            if (devProp != null && devProp.getUuids() == null) {
-                                Log.e(TAG,
-                                        "ACL DISCONNECTED during Bonding: Remove the device "
-                                        + dev);
-                                removeBond(dev, true);
+                                    if (devProp != null && devProp.getUuids() == null) {
+                                        Log.e(TAG,
+                                                "ACL DISCONNECTED during Bonding: Remove the device "
+                                                + dev);
+                                        removeBond(dev, true);
+                                    }
+                                }
+                            } else {
+                                removeMessages(BONDED_INTENT_DELAY);
+                                mPendingBondedDevices.remove(dev);
+                                DeviceProperties devProp =
+                                    mRemoteDevices.getDeviceProperties(dev);
+                                if (devProp != null && devProp.getUuids() == null) {
+                                    Log.e(TAG,
+                                            "ACL DISCONNECTED during Bonding: Remove the device "
+                                            + dev);
+                                    removeBond(dev, true);
+                                }
                             }
                         }
                     } else {
