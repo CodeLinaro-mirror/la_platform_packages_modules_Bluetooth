@@ -18,8 +18,12 @@ package com.android.bluetooth.a2dpsink;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -136,9 +140,33 @@ public class A2dpSinkStateMachineTest {
     }
 
     @Test
-    public void testIncomingConnectedInDisconnected() {
+    public void testAllowedIncomingConnectedInDisconnected_transitionToConnected() {
+        mockDeviceConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_ALLOWED);
         sendConnectionEvent(BluetoothProfile.STATE_CONNECTED);
         assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_CONNECTED);
+        verify(mService).connectionStateChanged(mDevice,
+                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
+        verify(mService).connectionStateChanged(mDevice,
+                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
+    }
+
+    @Test
+    public void testForbiddenIncomingConnectedInDisconnected_noTransitionToConnected() {
+        mockDeviceConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
+        sendConnectionEvent(BluetoothProfile.STATE_CONNECTED);
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        verify(mService, never()).connectionStateChanged(eq(mDevice), anyInt(), anyInt());
+    }
+
+    @Test
+    public void testUnknownIncomingConnectedInDisconnected_transitionToConnected() {
+        mockDeviceConnectionPolicy(mDevice, BluetoothProfile.CONNECTION_POLICY_UNKNOWN);
+        sendConnectionEvent(BluetoothProfile.STATE_CONNECTED);
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_CONNECTED);
+        verify(mService).connectionStateChanged(mDevice,
+                BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_CONNECTING);
+        verify(mService).connectionStateChanged(mDevice,
+                BluetoothProfile.STATE_CONNECTING, BluetoothProfile.STATE_CONNECTED);
     }
 
     @Test
@@ -280,6 +308,8 @@ public class A2dpSinkStateMachineTest {
 
         syncHandler(A2dpSinkStateMachine.DISCONNECT); // message was defer
         verify(mNativeInterface).disconnectA2dpSink(mDevice);
+        sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTING);
+        sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTED);
         assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
 
         syncHandler(A2dpSinkStateMachine.CLEANUP);
@@ -306,6 +336,8 @@ public class A2dpSinkStateMachineTest {
         mStateMachine.disconnect();
         syncHandler(A2dpSinkStateMachine.DISCONNECT);
         verify(mNativeInterface).disconnectA2dpSink(mDevice);
+        sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTING);
+        sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTED);
         assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
 
         syncHandler(A2dpSinkStateMachine.CLEANUP);
@@ -347,8 +379,9 @@ public class A2dpSinkStateMachineTest {
         sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTING);
         assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
 
-        syncHandler(A2dpSinkStateMachine.CLEANUP);
-        verify(mService).removeStateMachine(mStateMachine);
+        verify(mService).connectionStateChanged(mDevice, BluetoothProfile.STATE_CONNECTED,
+                BluetoothProfile.STATE_DISCONNECTING);
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTING);
     }
 
     @Test
@@ -356,10 +389,72 @@ public class A2dpSinkStateMachineTest {
         testConnectedInConnecting();
 
         sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTED);
+
+        verify(mService).connectionStateChanged(mDevice, BluetoothProfile.STATE_CONNECTED,
+                BluetoothProfile.STATE_DISCONNECTING);
+        verify(mService).connectionStateChanged(mDevice, BluetoothProfile.STATE_DISCONNECTING,
+                BluetoothProfile.STATE_DISCONNECTED);
         assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
 
         syncHandler(A2dpSinkStateMachine.CLEANUP);
         verify(mService).removeStateMachine(mStateMachine);
+    }
+
+    /**********************************************************************************************
+     * DISCONNECTING STATE TESTS                                                                  *
+     *********************************************************************************************/
+
+    @Test
+    public void testDisconnectedInDisconnecting_proceedsToDisconnected() {
+        testDisconnectingInConnected();
+
+        sendConnectionEvent(BluetoothProfile.STATE_DISCONNECTED);
+
+        verify(mService).connectionStateChanged(mDevice, BluetoothProfile.STATE_DISCONNECTING,
+                BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+
+        syncHandler(A2dpSinkStateMachine.CLEANUP);
+        verify(mService).removeStateMachine(mStateMachine);
+    }
+
+    @Test
+    public void testDisconnectTimeoutInDisconnecting_proceedsToDisconnected() {
+        testDisconnectingInConnected();
+
+        mLooper.moveTimeForward(120_000); // Skip time so the timeout fires
+        syncHandler(A2dpSinkStateMachine.DISCONNECT_TIMEOUT);
+
+        verify(mService).connectionStateChanged(mDevice, BluetoothProfile.STATE_DISCONNECTING,
+                BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+
+        syncHandler(A2dpSinkStateMachine.CLEANUP);
+        verify(mService).removeStateMachine(mStateMachine);
+    }
+
+    @Test
+    public void testDisconnectRequestInDisconnecting_requestDeferred() {
+        testDisconnectingInConnected();
+        clearInvocations(mNativeInterface);
+
+        mStateMachine.sendMessage(A2dpSinkStateMachine.DISCONNECT);
+        syncHandler(A2dpSinkStateMachine.DISCONNECT);
+
+        verify(mNativeInterface, never()).disconnectA2dpSink(any());
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTING);
+    }
+
+    @Test
+    public void testConnectRequestInDisconnecting_requestDeferred() {
+        testDisconnectingInConnected();
+        clearInvocations(mNativeInterface);
+
+        mStateMachine.sendMessage(A2dpSinkStateMachine.CONNECT);
+        syncHandler(A2dpSinkStateMachine.CONNECT);
+
+        verify(mNativeInterface, never()).connectA2dpSink(any());
+        assertThat(mStateMachine.getState()).isEqualTo(BluetoothProfile.STATE_DISCONNECTING);
     }
 
     /**********************************************************************************************

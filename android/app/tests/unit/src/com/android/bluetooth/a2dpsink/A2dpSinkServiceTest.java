@@ -210,6 +210,19 @@ public class A2dpSinkServiceTest {
         assertThat(mService.disconnect(mDevice1)).isTrue();
         syncHandler(A2dpSinkStateMachine.DISCONNECT);
         assertThat(mService.getConnectionState(mDevice1))
+                .isEqualTo(BluetoothProfile.STATE_DISCONNECTING);
+
+        StackEvent disconnectingEvent = StackEvent.connectionStateChanged(mDevice1,
+                StackEvent.CONNECTION_STATE_DISCONNECTING);
+        mService.messageFromNative(disconnectingEvent);
+        syncHandler(A2dpSinkStateMachine.STACK_EVENT);
+
+        StackEvent disconnectedEvent = StackEvent.connectionStateChanged(mDevice1,
+                StackEvent.CONNECTION_STATE_DISCONNECTED);
+        mService.messageFromNative(disconnectedEvent);
+        syncHandler(A2dpSinkStateMachine.STACK_EVENT);
+
+        assertThat(mService.getConnectionState(mDevice1))
                 .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
 
         syncHandler(A2dpSinkStateMachine.CLEANUP, -1 /* SM_QUIT_CMD */);
@@ -225,6 +238,25 @@ public class A2dpSinkServiceTest {
     @Test
     public void testDisconnectNullDevice() {
         assertThrows(IllegalArgumentException.class, () -> mService.disconnect(null));
+    }
+
+    @Test
+    public void testConnectionStateChanged_toConnected_policyForbidden_disconnectIssued() {
+        mockDevicePriority(mDevice1, BluetoothProfile.CONNECTION_POLICY_FORBIDDEN);
+
+        assertThat(mLooper.nextMessage()).isNull();
+        assertThat(mService.getConnectionState(mDevice1))
+                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        assertThat(mLooper.nextMessage()).isNull();
+
+        StackEvent nativeEvent =
+                StackEvent.connectionStateChanged(mDevice1, StackEvent.CONNECTION_STATE_CONNECTED);
+        mService.messageFromNative(nativeEvent);
+        syncHandler(A2dpSinkStateMachine.STACK_EVENT);
+
+        assertThat(mService.getConnectionState(mDevice1))
+                .isEqualTo(BluetoothProfile.STATE_DISCONNECTED);
+        verify(mNativeInterface).disconnectA2dpSink(eq(mDevice1));
     }
 
     /** Assure dump() returns something and does not crash */
