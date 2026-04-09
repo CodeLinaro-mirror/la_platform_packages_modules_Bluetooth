@@ -199,8 +199,16 @@ class DistanceMeasurementInitiator {
         if (mSession == null) {
             return;
         }
-        mSession.stopSession();
-        mSession = null;
+
+        try {
+            mSession.stopSession();
+        } catch (RuntimeException e) {
+            printLog("Failed to stop distance measurement session: " + e.getMessage());
+        } catch (Exception e) {
+            printLog("Unexpected error in stopSession: " + e.getMessage());
+        } finally {
+            mSession = null;
+        }
     }
 
     private DistanceMeasurementSession.Callback mTestcallback =

@@ -1050,12 +1050,21 @@ public class GattService extends ProfileService {
         } else if (tag != null) {
             name = name + "[" + tag + "]";
         }
+        int state = BluetoothAdapter.STATE_OFF;
+        if (mAdapterService != null) {
+          state = mAdapterService.getState();
+        }
 
-        Log.d(TAG, "registerClient() - UUID=" + uuid + " name=" + name);
-        mClientMap.add(uuid, callback, this, source);
-
-        mNativeInterface.gattClientRegisterApp(
-                uuid.getLeastSignificantBits(), uuid.getMostSignificantBits(), name, eatt_support);
+        if (state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_BLE_ON) {
+          Log.d(TAG, "registerClient() - UUID=" + uuid + " name=" + name);
+          mClientMap.add(uuid, callback, this, source);
+          mNativeInterface.gattClientRegisterApp(
+                  uuid.getLeastSignificantBits(), uuid.getMostSignificantBits(), name, eatt_support);
+        } else {
+            Log.e(TAG, "registerClient() -  Disallowed in BT state: " + state);
+            callbackToApp(() -> callback.onClientRegistered(BluetoothGatt.GATT_FAILURE,0));
+            return;
+        }
     }
 
     @RequiresPermission(BLUETOOTH_CONNECT)

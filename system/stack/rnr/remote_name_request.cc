@@ -79,9 +79,10 @@ static void btm_inq_rmt_name_failed_cancelled(void) {
 
   if (btm_cb.rnr.remname_active) {
     btm_process_remote_name(&btm_cb.rnr.remname_bda, NULL, 0, HCI_ERR_UNSPECIFIED);
+    btm_sec_rmt_name_request_complete(&btm_cb.rnr.remname_bda, NULL, HCI_ERR_UNSPECIFIED);
+  } else {
+    btm_sec_rmt_name_request_complete(NULL, NULL, HCI_ERR_UNSPECIFIED);
   }
-
-  btm_sec_rmt_name_request_complete(NULL, NULL, HCI_ERR_UNSPECIFIED);
 }
 
 void btm_inq_remote_name_timer_timeout(void* /* data */) { btm_inq_rmt_name_failed_cancelled(); }

@@ -164,6 +164,7 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
   tHCI_STATUS hci_status = HCI_SUCCESS;
   bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
   bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
+  bool is_dual_sco_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled", false);
 
   log::verbose("");
 
@@ -202,14 +203,17 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
   } else {
     hci_status = HCI_ERR_HOST_REJECT_DEVICE;
   }
-  std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
-  GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
-                                mClientScoDataPathId, sco_vendor_config_data);
-  GetInterface().ConfigureDataPath(hci_data_direction_t::CONTROLLER_TO_HOST,
-                                mClientScoDataPathId, sco_vendor_config_data);
+  if (is_hf_client_enabled && is_ag_role_enabled && is_dual_sco_enabled) {
+     log::verbose("");
+     std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
+     GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
+                                   mClientScoDataPathId, sco_vendor_config_data);
+     GetInterface().ConfigureDataPath(hci_data_direction_t::CONTROLLER_TO_HOST,
+                                   mClientScoDataPathId, sco_vendor_config_data);
 
-  resp.input_data_path = mClientScoDataPathId;
-  resp.output_data_path = mClientScoDataPathId;
+     resp.input_data_path = mClientScoDataPathId;
+     resp.output_data_path = mClientScoDataPathId;
+  }
 
   get_btm_client_interface().sco.BTM_EScoConnRsp(p_data->sco_inx, hci_status, &resp);
 }
@@ -306,6 +310,7 @@ static void bta_hf_client_sco_create(tBTA_HF_CLIENT_CB* client_cb, bool is_orig)
   tBTM_STATUS status;
   bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
   bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
+  bool is_dual_sco_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled", false);
 
   log::verbose("{}", is_orig);
 
@@ -338,7 +343,7 @@ static void bta_hf_client_sco_create(tBTA_HF_CLIENT_CB* client_cb, bool is_orig)
     bta_sys_sco_use(BTA_ID_HS, 1, client_cb->peer_addr);
   }
 
-  if (is_hf_client_enabled && is_ag_role_enabled) {
+  if (is_hf_client_enabled && is_ag_role_enabled && is_dual_sco_enabled) {
      log::warn("use only 2EV3 packets ");
      params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
                 ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
@@ -349,13 +354,12 @@ static void bta_hf_client_sco_create(tBTA_HF_CLIENT_CB* client_cb, bool is_orig)
         log::warn("exiting sniff mode before sco");
         bta_sys_busy(BTA_ID_HS, 1, client_cb->peer_addr);
      }
+     std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
+     GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
+                                  mClientScoDataPathId, sco_vendor_config_data);
+     GetInterface().ConfigureDataPath(hci_data_direction_t::CONTROLLER_TO_HOST,
+                                  mClientScoDataPathId, sco_vendor_config_data);
   }
-
-  std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
-  GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
-                               mClientScoDataPathId, sco_vendor_config_data);
-  GetInterface().ConfigureDataPath(hci_data_direction_t::CONTROLLER_TO_HOST,
-                               mClientScoDataPathId, sco_vendor_config_data);
 
   status = get_btm_client_interface().sco.BTM_CreateSco(
           &client_cb->peer_addr, is_orig, params.packet_types, &client_cb->sco_idx,
