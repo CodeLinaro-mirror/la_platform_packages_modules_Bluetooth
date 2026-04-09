@@ -75,7 +75,8 @@ constexpr uint16_t L2CAP_CREDIT_BASED_MIN_MPS = 64;
 #define L2CAP_WAIT_INFO_RSP_TIMEOUT_MS (3 * 1000)      /* 3 seconds */
 #define L2CAP_BLE_LINK_CONNECT_TIMEOUT_MS (30 * 1000)  /* 30 seconds */
 #define L2CAP_FCR_ACK_TIMEOUT_MS 200                   /* 200 milliseconds */
-
+#define CLASS_OF_DEVICE_HOGP_MASK  0x1F00
+#define CLASS_OF_DEVICE_HOGP_VALUE 0x0500
 /* Define the possible L2CAP channel states. The names of
  * the states may seem a bit strange, but they are taken from
  * the Bluetooth specification.

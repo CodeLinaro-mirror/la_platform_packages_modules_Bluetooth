@@ -60,6 +60,8 @@
 #include "stack/include/main_thread.h"
 #include "stack/l2cap/l2c_int.h"
 #include "types/raw_address.h"
+#include "device/include/interop.h"
+#include "stack/btm/btm_dev.h"
 
 using namespace bluetooth;
 
@@ -361,6 +363,23 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
           } else {
             p_lcb->max_interval = max_interval;
             p_lcb->latency = latency;
+            const char* btm_name = BTM_SecReadDevName(p_lcb->remote_bd_addr);
+            bool name_found = (btm_name != nullptr);
+            BD_NAME remote_name = {0};
+            if (name_found) {
+                    strncpy((char*)remote_name, btm_name, BD_NAME_LEN - 1);
+                    remote_name[BD_NAME_LEN - 1] = '\0';
+                  }
+            if (name_found && interop_match_name(INTEROP_HID_PREF_CONN_ZERO_LATENCY, (const char*)remote_name)){
+                DEV_CLASS dev_class = BTM_SecReadDevClass(p_lcb->remote_bd_addr);
+                uint32_t cod = ((dev_class[2]) << 16) | ((dev_class[1]) << 8) | (dev_class[0]);
+                bool is_hogp = ((cod & CLASS_OF_DEVICE_HOGP_MASK) == CLASS_OF_DEVICE_HOGP_VALUE);
+                log::warn("  > Is HOGP: {}", is_hogp);
+                if (is_hogp && name_found ) {
+                   log::warn("  > Applying Zero Latency Interop Fix!");
+                   p_lcb->latency = 0;
+                }
+            }
             p_lcb->timeout = timeout;
             p_lcb->conn_update_mask |= L2C_BLE_NEW_CONN_PARAM;
             if (com::android::bluetooth::flags::initial_conn_params_p1()) {

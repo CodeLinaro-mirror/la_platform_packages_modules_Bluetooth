@@ -2295,8 +2295,8 @@ private:
 
     bool ignore_cis_create = false;
     for (auto& it : conn_pairs) {
-      if (!it.cis_conn_handle) {
-        log::error("cis handle 0. Is CreateCig skipped ?");
+      if (it.cis_conn_handle == bluetooth::le_audio::kInvalidCisConnHandle) {
+        log::error("Invalid cis handle. Is CreateCig skipped ?");
         ignore_cis_create = true;
         break;
       }

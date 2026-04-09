@@ -1643,7 +1643,7 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
     struct bluetooth::le_audio::types::cis cis_entry = {
             .id = idx,
             .type = CisType::CIS_TYPE_BIDIRECTIONAL,
-            .conn_handle = 0,
+            .conn_handle = kInvalidCisConnHandle,
             .addr = RawAddress::kEmpty,
     };
     cises.push_back(cis_entry);
@@ -1655,7 +1655,7 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
     struct bluetooth::le_audio::types::cis cis_entry = {
             .id = idx,
             .type = CisType::CIS_TYPE_UNIDIRECTIONAL_SINK,
-            .conn_handle = 0,
+            .conn_handle = kInvalidCisConnHandle,
             .addr = RawAddress::kEmpty,
     };
     cises.push_back(cis_entry);
@@ -1667,7 +1667,7 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
     struct bluetooth::le_audio::types::cis cis_entry = {
             .id = idx,
             .type = CisType::CIS_TYPE_UNIDIRECTIONAL_SOURCE,
-            .conn_handle = 0,
+            .conn_handle = kInvalidCisConnHandle,
             .addr = RawAddress::kEmpty,
     };
     cises.push_back(cis_entry);
@@ -1851,7 +1851,9 @@ void LeAudioDeviceGroup::CigConfiguration::UnassignCis(LeAudioDevice* leAudioDev
   log::info("Group {}, group_id {}, device: {}, conn_handle: {:#x}", std::format_ptr(group_),
             group_->group_id_, leAudioDevice->address_, conn_handle);
 
-  for (struct bluetooth::le_audio::types::cis& cis_entry : cises) {
+  for (struct bluetooth::le_audio::types::cis& cis_entry : cises){
+    log::info("cis_entry.addr: {}, cis_entry.conn_handle: {:#x}", cis_entry.addr,
+            cis_entry.conn_handle);
     if (cis_entry.conn_handle == conn_handle && cis_entry.addr == leAudioDevice->address_) {
       cis_entry.addr = RawAddress::kEmpty;
     }
