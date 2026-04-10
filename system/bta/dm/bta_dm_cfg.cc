@@ -278,7 +278,7 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco open  */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco close   */
 #ifdef TARGET_SUPPORTS_WEARABLES
-                   {{BTA_DM_PM_SNIFF_A2DP_IDX, 1000}, {BTA_DM_PM_NO_ACTION, 0}}, /* idle */
+                   {{BTA_DM_PM_SNIFF_A2DP_IDX, 1200}, {BTA_DM_PM_NO_ACTION, 0}}, /* idle */
 #else
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, BTA_JVC_IDLE_TO_SNIFF_DELAY_MS},
                     {BTA_DM_PM_NO_ACTION, 0}},                          /* idle */
