@@ -104,6 +104,10 @@
 #include <hardware/audio.h>
 #endif  // TARGET_FLOSS
 
+#ifdef __ANDROID__
+#include "os/system_properties.h"
+#endif
+
 using namespace bluetooth;
 using base::Closure;
 using bluetooth::Uuid;
@@ -717,11 +721,6 @@ public:
       alarm_cancel(reconfiguration_timeout_);
     }
     reconfiguration_group_ = bluetooth::groups::kGroupUnknown;
-
-    LeAudioDeviceGroup* group = aseGroups_.FindById(group_id);
-    if (group && group->IsSuspendedForReconfiguration()) {
-      reconfigurationComplete();
-    }
   }
 
   void StartSuspendTimeout(void) {
@@ -1444,6 +1443,17 @@ public:
     SendAudioGroupSelectableCodecConfigChanged(group);
     SendAudioGroupCurrentCodecConfigChanged(group);
     callbacks_->OnGroupStatus(active_group_id_, GroupStatus::ACTIVE);
+
+    /* Notify metadata update for dual mode audio profile selection */
+#ifdef __ANDROID__
+    if (bluetooth::os::GetSystemPropertyBool(
+                  bluetooth::os::kIsDualModeAudioEnabledProperty, false)) {
+      uint16_t context_update_ = LeAudioContextToIntContent(configuration_context_type_);
+      log::info("OnMetadataUpdate for context type: {} when device became active",
+                    ToHexString(configuration_context_type_));
+      callbacks_->OnMetadataUpdate(context_update_);
+    }
+#endif
   }
 
   void CheckAndNotifyGroupInactive(const int group_id) {

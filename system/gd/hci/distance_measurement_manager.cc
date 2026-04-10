@@ -1056,10 +1056,26 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      uint16_t min_period_time_ms = procedure_setting.min_period_between_proc;
      uint16_t max_period_time_ms = procedure_setting.max_period_between_proc;
 
-     uint16_t min_period_between_proc = static_cast<uint16_t>(std::round(
-         (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
-     uint16_t max_period_between_proc = static_cast<uint16_t>(std::round(
-         (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+     uint16_t min_period_between_proc;
+     uint16_t max_period_between_proc;
+     uint8_t tmp_tone_antenna_config_sel =  tone_antenna_config_selection;
+
+     if (config_used) {
+       min_period_between_proc = procedure_setting.min_period_between_proc;
+       max_period_between_proc = procedure_setting.max_period_between_proc;
+       tmp_tone_antenna_config_sel =  procedure_setting.tone_ant_cfg_selection;
+       log::info("Using local config: min_period_between_proc={}, max_period_between_proc={}, "
+                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel);
+     } else {
+       min_period_between_proc = static_cast<uint16_t>(std::round(
+           (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+       max_period_between_proc = static_cast<uint16_t>(std::round(
+           (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+       log::info("Using static config: min_period_between_proc={}, max_period_between_proc={}, "
+                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel);
+     }
 
      log::info("config_avb: conn_interval={}, min_period_time={}ms, max_period_time={}ms, "
                "min_period_between_proc={}, max_period_between_proc={}",
@@ -1077,7 +1093,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
             min_subevent_len,
 	    max_subevent_len,
            // kToneAntennaConfigSelection,
-	    procedure_setting.tone_ant_cfg_selection,
+            tmp_tone_antenna_config_sel,
             (CsPhy)procedure_setting.phy,
             procedure_setting.tx_pwr_delta,
             preferred_peer_antenna,

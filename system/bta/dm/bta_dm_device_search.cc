@@ -136,12 +136,13 @@ static void bta_dm_search_cancel() {
     bta_dm_search_cancel_notify();
     bta_dm_search_cmpl();
   } else if (!bta_dm_search_cb.name_discover_done) {
+    tBTM_STATUS status = get_stack_rnr_interface().BTM_CancelRemoteDeviceName();
     /* If no Service Search going on then issue cancel remote name in case it is active */
-    if (get_stack_rnr_interface().BTM_CancelRemoteDeviceName() != tBTM_STATUS::BTM_CMD_STARTED) {
-      log::warn("Unable to cancel RNR");
+    if (status != tBTM_STATUS::BTM_CMD_STARTED) {
+      log::warn("Unable to cancel RNR, {}", btm_status_text(status));
     }
     /* bta_dm_search_cmpl is called when receiving the remote name cancel evt */
-    if (!com::android::bluetooth::flags::
+    if (status == tBTM_STATUS::BTM_WRONG_MODE || !com::android::bluetooth::flags::
                 bta_dm_defer_device_discovery_state_change_until_rnr_complete()) {
       bta_dm_search_cmpl();
     }
@@ -242,6 +243,12 @@ static void bta_dm_service_search_remname_cback(const RawAddress& bd_addr, DEV_C
     rem_name.bd_addr = bd_addr;
     bd_name_copy(rem_name.remote_bd_name, bd_name);
     rem_name.btm_status = tBTM_STATUS::BTM_SUCCESS;
+    rem_name.hci_status = HCI_SUCCESS;
+    bta_dm_remname_cback(&rem_name);
+  } else if (bta_dm_search_get_state() == BTA_DM_SEARCH_CANCELLING) {
+    log::info("CANCELLING");
+    rem_name.bd_addr = bta_dm_search_cb.peer_bdaddr;
+    rem_name.remote_bd_name[0] = 0;
     rem_name.hci_status = HCI_SUCCESS;
     bta_dm_remname_cback(&rem_name);
   } else {

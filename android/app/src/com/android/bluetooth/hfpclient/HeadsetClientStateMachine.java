@@ -805,6 +805,14 @@ public class HeadsetClientStateMachine extends StateMachine {
                 return;
             }
             action = HeadsetClientHalConstants.CALL_ACTION_CHLD_0;
+        } else if (c.isMultiParty() && c.getState() == HfpClientCall.CALL_STATE_ACTIVE) {
+            // if the call is in conference mode, terminate specified call index
+            // to passs pts test case HFP/HF/ECC/BV-01
+            if (mNativeInterface.handleCallAction(
+                    mCurrentDevice, HeadsetClientHalConstants.CALL_ACTION_CHLD_1X, c.getId())) {
+                debug("terminateCall: failed to send specified index");
+            }
+            return;
         }
         if (c != null) {
             if (mNativeInterface.handleCallAction(mCurrentDevice, action, 0)) {

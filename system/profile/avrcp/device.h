@@ -348,6 +348,7 @@ private:
 
   bool IsPendingPlay_ = false;
 
+  bool pushed_already = false;
   // Enables AVRCP 1.3 Compatibility mode. This disables any AVRCP 1.4+ features
   // such as browsing and playlists but has the highest chance of working.
   bool avrcp13_compatibility_ = false;

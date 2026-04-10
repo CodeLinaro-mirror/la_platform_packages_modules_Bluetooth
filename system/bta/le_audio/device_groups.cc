@@ -1643,7 +1643,7 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
     struct bluetooth::le_audio::types::cis cis_entry = {
             .id = idx,
             .type = CisType::CIS_TYPE_BIDIRECTIONAL,
-            .conn_handle = 0,
+            .conn_handle = kInvalidCisConnHandle,
             .addr = RawAddress::kEmpty,
     };
     cises.push_back(cis_entry);
@@ -1655,7 +1655,7 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
     struct bluetooth::le_audio::types::cis cis_entry = {
             .id = idx,
             .type = CisType::CIS_TYPE_UNIDIRECTIONAL_SINK,
-            .conn_handle = 0,
+            .conn_handle = kInvalidCisConnHandle,
             .addr = RawAddress::kEmpty,
     };
     cises.push_back(cis_entry);
@@ -1667,7 +1667,7 @@ void LeAudioDeviceGroup::CigConfiguration::GenerateCisIds(LeAudioContextType con
     struct bluetooth::le_audio::types::cis cis_entry = {
             .id = idx,
             .type = CisType::CIS_TYPE_UNIDIRECTIONAL_SOURCE,
-            .conn_handle = 0,
+            .conn_handle = kInvalidCisConnHandle,
             .addr = RawAddress::kEmpty,
     };
     cises.push_back(cis_entry);
@@ -1851,7 +1851,9 @@ void LeAudioDeviceGroup::CigConfiguration::UnassignCis(LeAudioDevice* leAudioDev
   log::info("Group {}, group_id {}, device: {}, conn_handle: {:#x}", std::format_ptr(group_),
             group_->group_id_, leAudioDevice->address_, conn_handle);
 
-  for (struct bluetooth::le_audio::types::cis& cis_entry : cises) {
+  for (struct bluetooth::le_audio::types::cis& cis_entry : cises){
+    log::info("cis_entry.addr: {}, cis_entry.conn_handle: {:#x}", cis_entry.addr,
+            cis_entry.conn_handle);
     if (cis_entry.conn_handle == conn_handle && cis_entry.addr == leAudioDevice->address_) {
       cis_entry.addr = RawAddress::kEmpty;
     }
@@ -2715,9 +2717,20 @@ std::unique_ptr<types::AudioSetConfiguration> LeAudioDeviceGroup::FindFirstSuppo
   log::debug("context type: {},  number of connected devices: {}",
              bluetooth::common::ToString(requirements.audio_context_type), NumOfConnected());
 
+  /* Check if PTS property is enabled to determine if we should skip vendor configs */
+  bool is_pts_enabled = osi_property_get_bool("persist.bluetooth.leaudio.bap.pts", false);
+
   /* Filter out device set for each end every scenario */
   for (const auto& conf : *confs) {
     log::assert_that(conf != nullptr, "confs should not be null");
+
+    /* If PTS is enabled, skip any configuration starting with "VND_"
+       This change is done for BAP/UCL/SCC/BV-072-C on PTS.        */
+    if (is_pts_enabled && conf->name.find("VND_") == 0) {
+      log::info("PTS enabled: skipping vendor configuration {}", conf->name);
+      continue;
+    }
+
     if (IsAudioSetConfigurationSupported(requirements, conf, use_preference)) {
       log::debug("found: {}", conf->name);
       return std::make_unique<types::AudioSetConfiguration>(*conf);

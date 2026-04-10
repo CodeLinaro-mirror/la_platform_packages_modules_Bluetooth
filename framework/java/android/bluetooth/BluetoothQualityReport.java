@@ -36,6 +36,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Set;
 
 /**
  * This class provides the System APIs to access the data of BQR event reported from firmware side.
@@ -279,7 +280,7 @@ public final class BluetoothQualityReport implements Parcelable {
 
     private static final int BQR_VERSION_4_0 = 0x101;
     private static final int BQR_VERSION_5_0 = 0x103;
-    private static final int BQR_VERSION_6_0 = 0x104;
+    private static final int BQR_VERSION_7_0 = 0x105;
 
     private static int getBqrCommonLength(int version) {
         if (version == 0) {
@@ -288,12 +289,20 @@ public final class BluetoothQualityReport implements Parcelable {
             return 55;
         } else if (version <= BQR_VERSION_5_0) {
             return 79;
-        } else if (version <= BQR_VERSION_6_0) {
+        } else if (version <= BQR_VERSION_7_0) {
             return 85;
         } else  {
            throw new IllegalArgumentException(TAG + ": unsupported version:" + version);
         }
     }
+
+    private static final Set<Integer> REPORT_IDS_WITH_COMMON_PART = Set.of(
+        QUALITY_REPORT_ID_MONITOR,
+        QUALITY_REPORT_ID_APPROACH_LSTO,
+        QUALITY_REPORT_ID_A2DP_CHOPPY,
+        QUALITY_REPORT_ID_SCO_CHOPPY,
+        QUALITY_REPORT_ID_CONN_FAIL
+    );
 
     /**
      * Constructs a {@link BluetoothQualityReport} from raw byte data.
@@ -322,7 +331,10 @@ public final class BluetoothQualityReport implements Parcelable {
         int id = mBqrCommon.getQualityReportId();
         if (id == QUALITY_REPORT_ID_MONITOR) return;
 
-        int vsPartOffset = getBqrCommonLength(versionSupported);
+        int vsPartOffset = -1;
+        if (REPORT_IDS_WITH_COMMON_PART.contains(id)) {
+            vsPartOffset = getBqrCommonLength(versionSupported);
+        }
         if (id == QUALITY_REPORT_ID_APPROACH_LSTO) {
             mBqrVsLsto = new BqrVsLsto(rawData, vsPartOffset);
         } else if (id == QUALITY_REPORT_ID_A2DP_CHOPPY) {
@@ -816,8 +828,6 @@ public final class BluetoothQualityReport implements Parcelable {
         private int mCoexInfoMask;
 
         private BqrCommon(byte[] rawData, int offset, int versionSupported) {
-            int commonLen = BluetoothQualityReport.getBqrCommonLength(versionSupported);
-
             mQualityReportId = rawData[0] & 0xFF;
             if (Flags.supportBluetoothQualityReportV6()) {
                 if ((mQualityReportId == QUALITY_REPORT_ID_ENERGY_MONITOR)
@@ -825,6 +835,8 @@ public final class BluetoothQualityReport implements Parcelable {
                     return;
                 }
             }
+
+            int commonLen = BluetoothQualityReport.getBqrCommonLength(versionSupported);
 
             if (rawData == null || rawData.length < offset + commonLen) {
                 throw new IllegalArgumentException(TAG + ": BQR raw data length is abnormal.");

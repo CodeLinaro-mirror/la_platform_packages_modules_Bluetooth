@@ -164,8 +164,7 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
   tHCI_STATUS hci_status = HCI_SUCCESS;
   bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
   bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
-  bool is_dual_sco_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled",
-   false);
+  bool is_dual_sco_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled", false);
 
   log::verbose("");
 
@@ -311,8 +310,7 @@ static void bta_hf_client_sco_create(tBTA_HF_CLIENT_CB* client_cb, bool is_orig)
   tBTM_STATUS status;
   bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
   bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
-  bool is_dual_sco_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled",
-  false);
+  bool is_dual_sco_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled", false);
 
   log::verbose("{}", is_orig);
 
