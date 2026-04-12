@@ -4157,6 +4157,12 @@ public:
   void PrepareAndSendToTwoCises(
           const std::vector<uint8_t>& data,
           const struct bluetooth::le_audio::stream_parameters& stream_params) {
+    std::lock_guard<std::mutex> lock(sw_codec_mutex_);
+    if (!sw_enc_left || !sw_enc_right) {
+      log::warn("Encoder not available, audio suspended during encoding");
+      return;
+    }
+
     uint16_t left_cis_handle = 0;
     uint16_t right_cis_handle = 0;
 
@@ -4220,6 +4226,12 @@ public:
   void PrepareAndSendToSingleCis(
           const std::vector<uint8_t>& data,
           const struct bluetooth::le_audio::stream_parameters& stream_params) {
+    std::lock_guard<std::mutex> lock(sw_codec_mutex_);
+    if (!sw_enc_left) {
+      log::warn("Encoder not available, audio suspended during encoding");
+      return;
+    }
+
     uint16_t num_channels = stream_params.num_of_channels;
     uint16_t cis_handle = stream_params.stream_config.stream_map.front().stream_handle;
 
@@ -4635,17 +4647,20 @@ public:
   void SuspendAudio(void) {
     CancelStreamingRequest();
 
-    if (sw_enc_left) {
-      sw_enc_left.reset();
-    }
-    if (sw_enc_right) {
-      sw_enc_right.reset();
-    }
-    if (sw_dec_left) {
-      sw_dec_left.reset();
-    }
-    if (sw_dec_right) {
-      sw_dec_right.reset();
+    {
+      std::lock_guard<std::mutex> lock(sw_codec_mutex_);
+      if (sw_enc_left) {
+        sw_enc_left.reset();
+      }
+      if (sw_enc_right) {
+        sw_enc_right.reset();
+      }
+      if (sw_dec_left) {
+        sw_dec_left.reset();
+      }
+      if (sw_dec_right) {
+        sw_dec_right.reset();
+      }
     }
     CleanCachedMicrophoneData();
   }
@@ -7064,17 +7079,20 @@ public:
          */
       case GroupStreamStatus::IDLE: {
         if (is_active_group_operation) {
-          if (sw_enc_left) {
-            sw_enc_left.reset();
-          }
-          if (sw_enc_right) {
-            sw_enc_right.reset();
-          }
-          if (sw_dec_left) {
-            sw_dec_left.reset();
-          }
-          if (sw_dec_right) {
-            sw_dec_right.reset();
+          {
+            std::lock_guard<std::mutex> lock(sw_codec_mutex_);
+            if (sw_enc_left) {
+              sw_enc_left.reset();
+            }
+            if (sw_enc_right) {
+              sw_enc_right.reset();
+            }
+            if (sw_dec_left) {
+              sw_dec_left.reset();
+            }
+            if (sw_dec_right) {
+              sw_dec_right.reset();
+            }
           }
           CleanCachedMicrophoneData();
         }
@@ -7303,6 +7321,7 @@ private:
           .data_interval_us = LeAudioCodecConfiguration::kInterval10000Us,
   };
 
+  std::mutex sw_codec_mutex_;
   std::unique_ptr<bluetooth::le_audio::CodecInterface> sw_enc_left;
   std::unique_ptr<bluetooth::le_audio::CodecInterface> sw_enc_right;
 
