@@ -97,7 +97,6 @@ public class AdapterProperties {
             new CompletableFuture<>();
 
     private volatile int mConnectionState = BluetoothAdapter.STATE_DISCONNECTED;
-    private volatile int mState = BluetoothAdapter.STATE_OFF;
     private int mMaxConnectedAudioDevices = 1;
     private boolean mA2dpOffloadEnabled = false;
 
@@ -124,6 +123,7 @@ public class AdapterProperties {
     private boolean mIsLePeriodicAdvertisingSupported;
     private int mLeMaximumAdvertisingDataLength;
     private boolean mIsOffloadedTransportDiscoveryDataScanSupported;
+    private boolean mIsLeBigSetChannelClassificationSupported;
 
     private int mIsDynamicAudioBufferSizeSupported;
     private int mDynamicAudioBufferSizeSupportedCodecsGroup1;
@@ -241,15 +241,6 @@ public class AdapterProperties {
         return mConnectionState;
     }
 
-    void setState(int state) {
-        debugLog("Setting state to " + BluetoothAdapter.nameForState(state));
-        mState = state;
-    }
-
-    int getState() {
-        return mState;
-    }
-
     int getNumOfAdvertisementInstancesSupported() {
         return mNumOfAdvertisementInstancesSupported;
     }
@@ -333,6 +324,10 @@ public class AdapterProperties {
         return mA2dpOffloadEnabled;
     }
 
+    boolean isLeBigSetChannelClassificationSupported() {
+        return mIsLeBigSetChannelClassificationSupported;
+    }
+
     /**
      * @return Dynamic Audio Buffer support
      */
@@ -393,7 +388,7 @@ public class AdapterProperties {
             return;
         }
         try {
-            byte[] addrByte = Utils.getByteAddress(device);
+            byte[] addrByte = Util.getByteAddress(device);
             DeviceProperties prop = mRemoteDevices.getDeviceProperties(device);
             if (prop == null) {
                 prop = mRemoteDevices.addDeviceProperties(addrByte, device.getAddressType());
@@ -451,7 +446,7 @@ public class AdapterProperties {
             if (removeExisting) {
                 // Found an existing LE-only device with the same identity address but different
                 // pseudo address
-                if (mService.getNative().removeBond(Utils.getBytesFromAddress(existingAddress))) {
+                if (mService.getNative().removeBond(Util.getBytesFromAddress(existingAddress))) {
                     mBondedDevices.remove(existingDevice);
                     infoLog(
                             "Removing old bond"
@@ -796,6 +791,7 @@ public class AdapterProperties {
         mIsLeChannelSoundingSupported = ((0xFF & ((int) val[30])) != 0);
         mIsLeHighDataThroughputPhySupported = ((0xFF & ((int) val[31])) != 0);
         mIsLeConnectedIsochronousStreamPeripheralSupported = ((0xFF & ((int) val[32])) != 0);
+        mIsLeBigSetChannelClassificationSupported = ((0xFF & ((int) val[33])) != 0);
 
         debugLog(
                 "BT_PROPERTY_LOCAL_LE_FEATURES: update from BT controller"
@@ -836,7 +832,9 @@ public class AdapterProperties {
                                 + mIsOffloadedTransportDiscoveryDataScanSupported)
                         + (", isLeChannelSoundingSupported = " + mIsLeChannelSoundingSupported)
                         + (", isLeHighDataThroughputPhySupported = "
-                                + mIsLeHighDataThroughputPhySupported));
+                                + mIsLeHighDataThroughputPhySupported)
+                        + (", isLeBigSetChannelClassificationSupported = "
+                                + mIsLeBigSetChannelClassificationSupported));
         invalidateIsOffloadedFilteringSupportedCache();
     }
 
@@ -906,11 +904,7 @@ public class AdapterProperties {
     }
 
     void onBluetoothReady() {
-        debugLog(
-                "onBluetoothReady, state="
-                        + BluetoothAdapter.nameForState(getState())
-                        + ", ScanMode="
-                        + mScanMode);
+        debugLog("onBluetoothReady ScanMode=" + mScanMode);
 
         synchronized (mObject) {
             // Reset adapter and profile connection states
@@ -965,9 +959,8 @@ public class AdapterProperties {
     protected void dump(PrintWriter writer) {
         writer.println(TAG);
         writer.println("  " + "Name: " + mService.getName());
-        writer.println("  " + "Address: " + Utils.getRedactedAddressStringFromByte(mAddress));
+        writer.println("  " + "Address: " + Util.getRedactedAddressStringFromByte(mAddress));
         writer.println("  " + "ConnectionState: " + dumpConnectionState(getConnectionState()));
-        writer.println("  " + "State: " + BluetoothAdapter.nameForState(getState()));
         writer.println("  " + "MaxConnectedAudioDevices: " + getMaxConnectedAudioDevices());
         writer.println("  " + "A2dpOffloadEnabled: " + mA2dpOffloadEnabled);
         writer.println("  " + "Discovering: " + mService.isDiscovering());

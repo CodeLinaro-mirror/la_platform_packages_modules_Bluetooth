@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "bluetooth-a2dp-ahal-aidl"
+#define LOG_TAG "bluetooth-a2dp-aidl"
 
 #include "a2dp_aidl_transport.h"
 
@@ -150,8 +150,8 @@ bool A2dpTransport::GetPresentationPosition(uint64_t* remote_delay_report_ns,
   *remote_delay_report_ns = remote_delay_report_ * 100000u;
   *total_bytes_read = total_bytes_read_;
   *data_position = data_position_;
-  log::verbose("delay={}/10ms, data={} byte(s), timestamp={}.{}s", remote_delay_report_,
-               total_bytes_read_, data_position_.tv_sec, data_position_.tv_nsec);
+  log::debug("delay={}/10ms, data={} byte(s), timestamp={}.{}s", remote_delay_report_,
+             total_bytes_read_, data_position_.tv_sec, data_position_.tv_nsec);
   return true;
 }
 

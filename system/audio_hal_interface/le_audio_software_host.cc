@@ -311,6 +311,11 @@ void LeAudioClientInterface::Sink::CancelStreamingRequest() {
   }
 }
 
+void LeAudioClientInterface::Sink::CancelStreamingRequestWithUnsupported() {
+  log::info("");
+  // TODO
+}
+
 void LeAudioClientInterface::Sink::UpdateAudioConfigToHal(
         const ::le_audio::stream_config& /*offload_config*/) {}
 
@@ -491,6 +496,11 @@ void LeAudioClientInterface::Source::CancelStreamingRequest() {
       log::error("Invalid state, start stream already confirmed");
       break;
   }
+}
+
+void LeAudioClientInterface::Source::CancelStreamingRequestWithUnsupported() {
+  log::info("");
+  // TODO
 }
 
 void LeAudioClientInterface::Source::UpdateAudioConfigToHal(

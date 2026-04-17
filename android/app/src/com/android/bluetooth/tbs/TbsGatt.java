@@ -297,9 +297,6 @@ public class TbsGatt {
         gattService.addCharacteristic(mBearerListCurrentCallsCharacteristic);
         gattService.addCharacteristic(mContentControlIdCharacteristic);
         gattService.addCharacteristic(mStatusFlagsCharacteristic);
-        if (Utils.isTbsPtsTestMode()) {
-           gattService.addCharacteristic(mIncomingCallTargetURICharacteristic);
-        }
         gattService.addCharacteristic(mCallStateCharacteristic);
         gattService.addCharacteristic(mCallControlPointCharacteristic);
         gattService.addCharacteristic(mCallControlPointOptionalOpcodesCharacteristic);
@@ -307,8 +304,10 @@ public class TbsGatt {
         gattService.addCharacteristic(mIncomingCallCharacteristic);
         gattService.addCharacteristic(mCallFriendlyNameCharacteristic);
         if (Utils.isTbsPtsTestMode()) {
+		   mBearerSignalStrengthReportingIntervalCharecteristic.setValue(new byte[] {(byte) 2});
            gattService.addCharacteristic(mBearerSignalStrengthCharacteristic);
            gattService.addCharacteristic(mBearerSignalStrengthReportingIntervalCharecteristic);
+		   gattService.addCharacteristic(mIncomingCallTargetURICharacteristic);
         }
 
         mEventLogger =
@@ -589,11 +588,7 @@ public class TbsGatt {
                 BluetoothDevice device, int requestId, boolean responseNeeded, byte[] value) {
             if (responseNeeded) {
                 mBluetoothGattServer.sendResponse(
-                        device, requestId, BluetoothGatt.GATT_FAILURE, 0, value);
-            } else {
-              Log.d(TAG, "response is not needed");
-              //mBluetoothGattServer.sendResponse(
-              //          device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value);
+                        device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value);
             }
         }
     }

@@ -33,36 +33,31 @@
 #include <com_android_bluetooth_flags.h>
 #include <hardware/ble_scanner.h>
 
-#include <bitset>
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <type_traits>
 #include <vector>
 
 #include "ble_appearance.h"
 #include "bta/include/bta_api.h"
-#include "btif/include/btif_gatt.h"
 #include "btif/include/stack_manager_t.h"
 #include "common/time_util.h"
 #include "hci/controller.h"
 #include "main/shim/acl_api.h"
-#include "main/shim/ble_scanner_interface_impl.h"
 #include "main/shim/entry.h"
 #include "main/shim/le_scanning_manager.h"
-#include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "osi/include/stack_power_telemetry.h"
+
 #include "stack/btm/btm_ble_int.h"
 #include "stack/btm/btm_ble_int_types.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/btm_sec.h"
-#include "stack/btm/btm_security.h"
 #include "stack/btm/internal/btm_api.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/advertise_data_parser.h"
+#include "stack/include/ble_hci_link_interface.h"
 #include "stack/include/bt_dev_class.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
@@ -343,7 +338,7 @@ static std::pair<uint16_t /* interval */, uint16_t /* window */> get_low_latency
  *
  ******************************************************************************/
 tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration, tBTM_INQ_RESULTS_CB* p_results_cb,
-                           tBTM_CMPL_CB* p_cmpl_cb) {
+                           tBTM_INQUIRY_CMPL_CB* p_cmpl_cb) {
   tBTM_STATUS status = tBTM_STATUS::BTM_WRONG_MODE;
   uint8_t scan_phy = btm_cb.ble_ctr_cb.inq_var.scan_phy | BTM_BLE_DEFAULT_PHYS;
 
@@ -521,6 +516,8 @@ void BTM_BleReadControllerFeatures(tBTM_BLE_CTRL_FEATURES_CBACK* p_vsc_cback) {
   btm_cb.cmn_ble_vsc_cb.dynamic_audio_buffer_support =
           vendor_capabilities.dynamic_audio_buffer_support_;
   btm_cb.cmn_ble_vsc_cb.a2dp_offload_v2_support = vendor_capabilities.a2dp_offload_v2_support_;
+  btm_cb.cmn_ble_vsc_cb.big_set_channel_map_classification_support =
+          vendor_capabilities.big_set_channel_map_classification_support_;
 
   if (vendor_capabilities.dynamic_audio_buffer_support_) {
     std::array<bluetooth::hci::DynamicAudioBufferCodecCapability, BTM_CODEC_TYPE_MAX_RECORDS>
@@ -674,6 +671,7 @@ void btm_send_hci_set_scan_params(uint8_t scan_type, uint16_t scan_int_1m, uint1
   }
 }
 
+// TODO(b/459944050): Delete msft related functions when scan multiplexing feature is done.
 /* Whether or not to use MSFT-based scan filtering */
 static bool use_msft_filtering() {
   // We prefer to use APCF-based filtering over MSFT if it's available, so only use MSFT
@@ -681,6 +679,7 @@ static bool use_msft_filtering() {
   return !BTM_BleIsFilteringSupported() && scanner->IsMsftSupported();
 }
 
+// TODO(b/459944050): Delete msft related functions when scan multiplexing feature is done.
 /* MSFT advertisement enable callback */
 static void msft_adv_mon_enable_cb(bool restart_scan, bool enable, uint8_t status) {
   if (status == MSFT_FILTER_ENABLE_CMD_DISALLOWED) {
@@ -1774,7 +1773,7 @@ void btm_ble_stop_inquiry(void) {
  *
  ******************************************************************************/
 static void btm_ble_stop_observe(void) {
-  tBTM_CMPL_CB* p_obs_cb = btm_cb.ble_ctr_cb.p_obs_cmpl_cb;
+  tBTM_INQUIRY_CMPL_CB* p_obs_cb = btm_cb.ble_ctr_cb.p_obs_cmpl_cb;
 
   alarm_cancel(btm_cb.ble_ctr_cb.observer_timer);
 

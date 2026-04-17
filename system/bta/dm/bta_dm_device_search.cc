@@ -21,6 +21,7 @@
 #include <base/functional/bind.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 #include <stddef.h>
 
@@ -32,7 +33,6 @@
 #include "bta/dm/bta_dm_device_search_int.h"
 #include "bta/dm/bta_dm_disc_int.h"
 #include "common/circular_buffer.h"
-#include "common/strings.h"
 #include "device/include/interop.h"
 #include "main/shim/dumpsys.h"
 #include "stack/btm/neighbor_inquiry.h"
@@ -56,7 +56,7 @@ tBTA_DM_SEARCH_CB bta_dm_search_cb;
 
 static void bta_dm_inq_results_cb(tBTM_INQ_RESULTS* p_inq, const uint8_t* p_eir, uint16_t eir_len);
 static void bta_dm_inq_cmpl();
-static void bta_dm_inq_cmpl_cb(void* p_result);
+static void bta_dm_inq_cmpl_cb(tBTM_INQUIRY_CMPL* p_result);
 static void bta_dm_service_search_remname_cback(const RawAddress& bd_addr, const BD_NAME& bd_name);
 static void bta_dm_search_cmpl();
 static void bta_dm_discover_next_device(void);
@@ -71,7 +71,7 @@ static void bta_dm_search_sm_execute(tBTA_DM_DEV_SEARCH_EVT event,
                                      std::unique_ptr<tBTA_DM_SEARCH_MSG> msg);
 static void bta_dm_observe_results_cb(tBTM_INQ_RESULTS* p_inq, const uint8_t* p_eir,
                                       uint16_t eir_len);
-static void bta_dm_observe_cmpl_cb(void* p_result);
+static void bta_dm_observe_cmpl_cb(tBTM_INQUIRY_CMPL* p_result);
 
 static void bta_dm_search_set_state(tBTA_DM_DEVICE_SEARCH_STATE state) {
   bta_dm_search_cb.search_state = state;
@@ -154,7 +154,7 @@ static void bta_dm_search_cancel() {
  * Returns          void
  *
  ******************************************************************************/
-static void bta_dm_inq_cmpl_cb(void* /* p_result */) {
+static void bta_dm_inq_cmpl_cb(tBTM_INQUIRY_CMPL* /* p_result */) {
   log::verbose("");
 
   bta_dm_inq_cmpl();
@@ -725,11 +725,11 @@ static void bta_dm_opportunistic_observe_results_cb(tBTM_INQ_RESULTS* p_inq, con
  * Returns          void
  *
  ******************************************************************************/
-static void bta_dm_observe_cmpl_cb(void* p_result) {
+static void bta_dm_observe_cmpl_cb(tBTM_INQUIRY_CMPL* p_result) {
   log::verbose("bta_dm_observe_cmpl_cb");
 
   if (bta_dm_search_cb.p_csis_scan_cback) {
-    auto num_resps = ((tBTM_INQUIRY_CMPL*)p_result)->num_resp;
+    auto num_resps = p_result->num_resp;
     tBTA_DM_SEARCH data{.observe_cmpl{.num_resps = num_resps}};
     bta_dm_search_cb.p_csis_scan_cback(BTA_DM_OBSERVE_CMPL_EVT, &data);
   }
@@ -963,8 +963,8 @@ bool bta_dm_read_remote_device_name(const RawAddress& bd_addr, tBT_TRANSPORT tra
 }
 
 void bta_dm_inq_cmpl() { ::bta_dm_inq_cmpl(); }
-void bta_dm_inq_cmpl_cb(void* p_result) { ::bta_dm_inq_cmpl_cb(p_result); }
-void bta_dm_observe_cmpl_cb(void* p_result) { ::bta_dm_observe_cmpl_cb(p_result); }
+void bta_dm_inq_cmpl_cb(tBTM_INQUIRY_CMPL* p_result) { ::bta_dm_inq_cmpl_cb(p_result); }
+void bta_dm_observe_cmpl_cb(tBTM_INQUIRY_CMPL* p_result) { ::bta_dm_observe_cmpl_cb(p_result); }
 void bta_dm_observe_results_cb(tBTM_INQ_RESULTS* p_inq, const uint8_t* p_eir, uint16_t eir_len) {
   ::bta_dm_observe_results_cb(p_inq, p_eir, eir_len);
 }

@@ -86,6 +86,7 @@ constexpr interop_feature_t kInteropFeature[] = {
         interop_feature_t::INTEROP_DISABLE_ROBUST_CACHING,
         interop_feature_t::INTEROP_HFP_1_7_ALLOWLIST,
         interop_feature_t::INTEROP_IGNORE_DISC_BEFORE_SIGNALLING_TIMEOUT,
+        interop_feature_t::INTEROP_SUPPRESS_A2DP_AUTO_CONNECT,
 };
 constexpr esco_codec_t kEscoCodec[] = {
         esco_codec_t::SCO_CODEC_CVSD_D1,  esco_codec_t::ESCO_CODEC_CVSD_S3,

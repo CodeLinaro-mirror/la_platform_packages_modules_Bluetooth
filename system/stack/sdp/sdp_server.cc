@@ -39,6 +39,7 @@
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
+#include "stack/include/btm_sec_api.h"
 #include "stack/include/sdp_api.h"
 #include "stack/include/sdpdefs.h"
 #include "stack/sdp/sdpint.h"
@@ -398,7 +399,7 @@ static bool is_device_in_allowlist_for_pbap(RawAddress remote_address,
         return true;
       }
     } else {
-      const char* p_name = BTM_SecReadDevName(remote_address);
+      const char* p_name = get_security_client_interface().BTM_SecReadDevName(remote_address);
       if ((p_name != NULL) &&
           interop_match_name(INTEROP_ADV_PBAP_VER_1_2, p_name)) {
         log::verbose(

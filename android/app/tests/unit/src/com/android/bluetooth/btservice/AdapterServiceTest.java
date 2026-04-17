@@ -22,6 +22,9 @@ import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 
+import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
+import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
+
 import static com.android.bluetooth.TestUtils.getTestDevice;
 import static com.android.bluetooth.TestUtils.mockGetSystemService;
 
@@ -49,11 +52,13 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothStatusCodes;
+import android.bluetooth.BluetoothUuid;
 import android.bluetooth.IBluetoothCallback;
 import android.bluetooth.IBluetoothConnectionCallback;
 import android.bluetooth.State;
 import android.companion.CompanionDeviceManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PermissionInfo;
@@ -67,6 +72,7 @@ import android.os.Bundle;
 import android.os.IpcDataCache;
 import android.os.Looper;
 import android.os.Message;
+import android.os.ParcelUuid;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.SystemProperties;
@@ -86,7 +92,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.bluetooth.TestLooper;
 import com.android.bluetooth.TestUtils;
-import com.android.bluetooth.Utils;
+import com.android.bluetooth.Util;
 import com.android.bluetooth.btservice.bluetoothkeystore.BluetoothKeystoreNativeInterface;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.gatt.AdvertiseManagerNativeInterface;
@@ -101,6 +107,8 @@ import com.android.bluetooth.sdp.SdpManagerNativeInterface;
 import com.android.tests.bluetooth.FlagsWrapper;
 import com.android.tests.bluetooth.MockitoRule;
 
+import org.hamcrest.Matcher;
+import org.hamcrest.core.AllOf;
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -116,7 +124,9 @@ import platform.test.runner.parameterized.Parameters;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Test cases for {@link AdapterService}. */
@@ -172,6 +182,8 @@ public class AdapterServiceTest {
     private static class MockAdapterService extends AdapterService {
         private final LeAudioService mTestLeAudio;
         int mSetProfileServiceStateCounter = 0;
+        int mSendUuidsInternalCounter = 0;
+        final Map<BluetoothDevice, Integer> mConnectionStateOverlay = new HashMap<>();
 
         MockAdapterService(
                 Looper looper,
@@ -211,6 +223,20 @@ public class AdapterServiceTest {
         @Override
         void setProfileServiceState(int profileId, int state) {
             mSetProfileServiceStateCounter++;
+        }
+
+        @Override
+        void sendUuidsInternal(BluetoothDevice device, ParcelUuid[] uuids) {
+            mSendUuidsInternalCounter++;
+            super.sendUuidsInternal(device, uuids);
+        }
+
+        @Override
+        public int getConnectionState(BluetoothDevice device) {
+            if (mConnectionStateOverlay.containsKey(device)) {
+                return mConnectionStateOverlay.get(device);
+            }
+            return super.getConnectionState(device);
         }
     }
 
@@ -396,7 +422,6 @@ public class AdapterServiceTest {
             syncHandler(-2); // Init AdapterSuspendStateMachine
         }
         syncHandler(AdapterState.BLE_TURN_ON);
-        verifyStateChange(State.OFF, State.BLE_TURNING_ON);
 
         if (isAdapterSuspendFeatureEnabled()) {
             // Called after callbacks are registered in DeviceStateManager
@@ -416,32 +441,9 @@ public class AdapterServiceTest {
         assertThat(mAdapter.getState()).isEqualTo(State.BLE_ON);
     }
 
-    void onToBleOn(boolean onlyGatt) {
-        mAdapter.onToBleOn();
-        syncHandler(AdapterState.USER_TURN_OFF);
-        verifyStateChange(State.ON, State.TURNING_OFF);
-
-        if (!onlyGatt) {
-            List<ProfileService> services = listOfMockServices();
-            // Stop (if Flags.onlyStartScanDuringBleOn GATT), PBAP, and PAN services
-            assertThat(mAdapter.mSetProfileServiceStateCounter).isEqualTo(services.size() * 2);
-
-            for (ProfileService service : services) {
-                mAdapter.onProfileServiceStateChanged(service, State.OFF);
-                syncHandler(MESSAGE_PROFILE_SERVICE_STATE_CHANGED);
-            }
-        }
-
-        syncHandler(AdapterState.BREDR_STOPPED);
-        verifyStateChange(State.TURNING_OFF, State.BLE_TURNING_OFF);
-
-        assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_OFF);
-    }
-
     void onToOff(boolean onlyGatt) {
         mAdapter.onToBleOn();
         syncHandler(AdapterState.USER_TURN_OFF);
-        verifyStateChange(State.ON, State.TURNING_OFF);
 
         if (!onlyGatt) {
             List<ProfileService> services = listOfMockServices();
@@ -469,7 +471,6 @@ public class AdapterServiceTest {
 
         mAdapter.bleOnToOn();
         syncHandler(AdapterState.USER_TURN_ON);
-        verifyStateChange(State.BLE_ON, State.TURNING_ON);
 
         if (!onlyGatt) {
             List<ProfileService> services = listOfMockServices();
@@ -599,7 +600,6 @@ public class AdapterServiceTest {
             syncHandler(-2); // Init AdapterSuspendStateMachine
         }
         syncHandler(AdapterState.BLE_TURN_ON);
-        verifyStateChange(State.OFF, State.BLE_TURNING_ON);
         assertThat(mAdapter.getBluetoothGatt()).isNotNull();
         if (isAdapterSuspendFeatureEnabled()) {
             // Called after callbacks are registered in DeviceStateManager
@@ -697,7 +697,6 @@ public class AdapterServiceTest {
 
         mAdapter.bleOnToOff();
         syncHandler(AdapterState.BLE_TURN_OFF);
-        verifyStateChange(State.BLE_ON, State.BLE_TURNING_OFF);
 
         verify(mNativeInterface).disable();
         mAdapter.stateChangeCallback(AbstractionLayer.BT_STATE_OFF);
@@ -729,7 +728,6 @@ public class AdapterServiceTest {
 
         mAdapter.bleOnToOn();
         syncHandler(AdapterState.USER_TURN_ON);
-        verifyStateChange(State.BLE_ON, State.TURNING_ON);
 
         // Start Mock PBAP, PAN, and GATT services
         assertThat(mAdapter.mSetProfileServiceStateCounter).isEqualTo(3);
@@ -752,7 +750,6 @@ public class AdapterServiceTest {
 
         mAdapter.onToBleOn();
         syncHandler(AdapterState.USER_TURN_OFF);
-        verifyStateChange(State.ON, State.TURNING_OFF);
 
         // Stop PBAP, PAN, and GATT services
         assertThat(mAdapter.mSetProfileServiceStateCounter).isEqualTo(6);
@@ -780,7 +777,6 @@ public class AdapterServiceTest {
 
         mAdapter.bleOnToOn();
         syncHandler(AdapterState.USER_TURN_ON);
-        verifyStateChange(State.BLE_ON, State.TURNING_ON);
         assertThat(mAdapter.mSetProfileServiceStateCounter).isEqualTo(2);
 
         mAdapter.addProfile(mMockService1);
@@ -820,7 +816,6 @@ public class AdapterServiceTest {
 
         mAdapter.onToBleOn();
         syncHandler(AdapterState.USER_TURN_OFF);
-        verifyStateChange(State.ON, State.TURNING_OFF);
         assertThat(mAdapter.mSetProfileServiceStateCounter).isEqualTo(4);
 
         mAdapter.onProfileServiceStateChanged(mMockService1, State.OFF);
@@ -864,12 +859,11 @@ public class AdapterServiceTest {
         initTest();
         doEnable(false); // Need BluetoothAdapter for mAdapter.getRemoteDevice
         RemoteDevices remoteDevices = mAdapter.getRemoteDevices();
-        remoteDevices.addDeviceProperties(Utils.getBytesFromAddress((TEST_BT_ADDR_1)));
+        remoteDevices.addDeviceProperties(Util.getBytesFromAddress((TEST_BT_ADDR_1)));
 
         // Trigger address consolidate callback
         remoteDevices.addressConsolidateCallback(
-                Utils.getBytesFromAddress(TEST_BT_ADDR_1),
-                Utils.getBytesFromAddress(TEST_BT_ADDR_2));
+                Util.getBytesFromAddress(TEST_BT_ADDR_1), Util.getBytesFromAddress(TEST_BT_ADDR_2));
 
         // Verify we can get correct identity address
         String identityAddress = mAdapter.getIdentityAddress(TEST_BT_ADDR_1);
@@ -882,14 +876,14 @@ public class AdapterServiceTest {
         initTest();
         doEnable(false); // Need BluetoothAdapter for mAdapter.getRemoteDevice
         RemoteDevices remoteDevices = mAdapter.getRemoteDevices();
-        remoteDevices.addDeviceProperties(Utils.getBytesFromAddress((TEST_BT_ADDR_1)));
+        remoteDevices.addDeviceProperties(Util.getBytesFromAddress((TEST_BT_ADDR_1)));
 
         int identityAddressTypePublic = 0x00; // Should map to BluetoothDevice.ADDRESS_TYPE_PUBLIC
         int identityAddressTypeRandom = 0x01; // Should map to BluetoothDevice.ADDRESS_TYPE_RANDOM
 
         remoteDevices.leAddressAssociateCallback(
-                Utils.getBytesFromAddress(TEST_BT_ADDR_1),
-                Utils.getBytesFromAddress(TEST_BT_ADDR_2),
+                Util.getBytesFromAddress(TEST_BT_ADDR_1),
+                Util.getBytesFromAddress(TEST_BT_ADDR_2),
                 identityAddressTypePublic);
 
         BluetoothDevice.BluetoothAddress bluetoothAddress =
@@ -899,8 +893,8 @@ public class AdapterServiceTest {
                 .isEqualTo(BluetoothDevice.ADDRESS_TYPE_PUBLIC);
 
         remoteDevices.leAddressAssociateCallback(
-                Utils.getBytesFromAddress(TEST_BT_ADDR_1),
-                Utils.getBytesFromAddress(TEST_BT_ADDR_2),
+                Util.getBytesFromAddress(TEST_BT_ADDR_1),
+                Util.getBytesFromAddress(TEST_BT_ADDR_2),
                 identityAddressTypeRandom);
 
         bluetoothAddress = mAdapter.getIdentityAddressWithType(TEST_BT_ADDR_1);
@@ -927,12 +921,12 @@ public class AdapterServiceTest {
         RemoteDevices remoteDevices = mAdapter.getRemoteDevices();
         BluetoothDevice device = getTestDevice(0);
         String identityAddressString = "0A:0B:0C:0D:0E:0F";
-        byte[] identityAddressBytes = Utils.getBytesFromAddress(identityAddressString);
+        byte[] identityAddressBytes = Util.getBytesFromAddress(identityAddressString);
 
         // Set up the identity address for the device
-        remoteDevices.addDeviceProperties(Utils.getBytesFromAddress(device.getAddress()));
+        remoteDevices.addDeviceProperties(Util.getBytesFromAddress(device.getAddress()));
         remoteDevices.leAddressAssociateCallback(
-                Utils.getBytesFromAddress(device.getAddress()),
+                Util.getBytesFromAddress(device.getAddress()),
                 identityAddressBytes,
                 BluetoothDevice.ADDRESS_TYPE_PUBLIC);
 
@@ -948,7 +942,7 @@ public class AdapterServiceTest {
         initTest();
         doEnable(false); // Needed for getRemoteDevice to work
         BluetoothDevice device = getTestDevice(0);
-        byte[] deviceAddressBytes = Utils.getByteAddress(device);
+        byte[] deviceAddressBytes = Util.getByteAddress(device);
 
         // Ensure no identity address is set (this is the default state)
         assertThat(mAdapter.getByteIdentityAddress(device)).isNull();
@@ -958,6 +952,143 @@ public class AdapterServiceTest {
 
         // Verify that the device's own address is returned
         assertThat(result).isEqualTo(deviceAddressBytes);
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateOn_broadcastsIntent() {
+        initTest();
+        doEnable(false); // State will be STATE_ON
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(1);
+
+        verifyIntentSent(
+                hasAction(BluetoothDevice.ACTION_UUID),
+                hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice1));
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateOn_fails_broadcastsIntent() {
+        initTest();
+        doEnable(false); // State will be STATE_ON
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, false);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(0);
+
+        verifyIntentSent(
+                hasAction(BluetoothDevice.ACTION_UUID),
+                hasExtra(BluetoothDevice.EXTRA_DEVICE, mDevice1));
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateBleOn_doesNotBroadcastIntent() {
+        initTest();
+        offToBleOn(); // State will be STATE_BLE_ON
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(1);
+
+        verify(mContext, never()).sendBroadcast(any(), any(), any());
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateBleTurningOn_doesNotBroadcastIntent() {
+        initTest();
+        mAdapter.offToBleOn(false, "default");
+        syncHandler(0); // `init` need to be run first
+        if (isAdapterSuspendFeatureEnabled()) {
+            syncHandler(-2); // Init AdapterSuspendStateMachine
+        }
+        syncHandler(AdapterState.BLE_TURN_ON);
+
+        assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_ON);
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(1);
+
+        verify(mContext, never()).sendBroadcast(any(), any(), any());
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateTurningOn_doesNotBroadcastIntent() {
+        initTest();
+        offToBleOn(); // State will be STATE_BLE_ON
+
+        mAdapter.bleOnToOn();
+        syncHandler(AdapterState.USER_TURN_ON);
+
+        assertThat(mAdapter.getState()).isEqualTo(State.TURNING_ON);
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(1);
+
+        verify(mContext, never()).sendBroadcast(any(), any(), any());
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateOff_dropsUpdate() {
+        initTest(); // State is STATE_OFF
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(0);
+
+        verify(mContext, never()).sendBroadcast(any(), any(), any());
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateTurningOff_dropsUpdate() {
+        initTest();
+        doEnable(false); // State will be STATE_ON
+
+        mAdapter.onToBleOn();
+        syncHandler(AdapterState.USER_TURN_OFF);
+
+        assertThat(mAdapter.getState()).isEqualTo(State.TURNING_OFF);
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(0);
+
+        verify(mContext, never()).sendBroadcast(any(), any(), any());
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_BROADCAST_UUIDS_FROM_MAIN_LOOPER)
+    public void deviceUuidsUpdated_inStateBleTurningOff_dropsUpdate() {
+        initTest();
+        offToBleOn(); // State will be STATE_BLE_ON
+
+        mAdapter.bleOnToOff();
+        syncHandler(AdapterState.BLE_TURN_OFF);
+
+        assertThat(mAdapter.getState()).isEqualTo(State.BLE_TURNING_OFF);
+
+        ParcelUuid[] sampleUuids = new ParcelUuid[] {BluetoothUuid.A2DP_SINK};
+        mAdapter.deviceUuidsUpdated(mDevice1, sampleUuids, true);
+
+        assertThat(mAdapter.mSendUuidsInternalCounter).isEqualTo(0);
+
+        verify(mContext, never()).sendBroadcast(any(), any(), any());
     }
 
     /**
@@ -996,9 +1127,10 @@ public class AdapterServiceTest {
         doReturn(returnOnGetConnectionStateLeAudio)
                 .when(mMockLeAudioService)
                 .getConnectionState(any());
-        doReturn(returnOnGetConnectionStateAdapter)
-                .when(mNativeInterface)
-                .getConnectionState(any());
+
+        for (BluetoothDevice device : devices) {
+            mAdapter.mConnectionStateOverlay.put(device, returnOnGetConnectionStateAdapter);
+        }
 
         doReturn(returnOnSetAutoActiveModeState)
                 .when(mMockLeAudioService)
@@ -1367,7 +1499,7 @@ public class AdapterServiceTest {
         doEnable(false);
 
         final int reason = BluetoothStatusCodes.ERROR_UNKNOWN;
-        final byte[] address = Utils.getByteAddress(mDevice1);
+        final byte[] address = Util.getByteAddress(mDevice1);
 
         mAdapter.getRemoteDevices()
                 .aclStateChangeCallback(
@@ -1419,6 +1551,15 @@ public class AdapterServiceTest {
 
         assertThat(result).isEqualTo(BluetoothStatusCodes.SUCCESS);
         verify(mNativeInterface, never()).disconnectAllAcls(any(BluetoothDevice.class));
+    }
+
+    @SafeVarargs
+    private void verifyIntentSent(Matcher<Intent>... matchers) {
+        verify(mContext)
+                .sendBroadcast(
+                        org.mockito.hamcrest.MockitoHamcrest.argThat(AllOf.allOf(matchers)),
+                        any(),
+                        any());
     }
 }
 

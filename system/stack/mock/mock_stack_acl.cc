@@ -365,7 +365,7 @@ void btm_flow_spec_complete(uint8_t status, uint16_t handle, tBT_FLOW_SPEC* p_fl
   inc_func_call_count(__func__);
 }
 
-tBTM_STATUS BTM_FlowSpec(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_CMPL_CB* p_cb) {
+tBTM_STATUS BTM_FlowSpec(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_FLOW_SPEC_CMPL_CB* p_cb) {
   inc_func_call_count(__func__);
   return test::mock::stack_acl::BTM_FlowSpec(addr, p_flow, p_cb);
 }

@@ -26,17 +26,15 @@
 #include <base/functional/bind.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
+#include <bluetooth/types/string_helpers.h>
 #include <bluetooth/types/uuid.h>
 
 #include <cstdint>
-#include <deque>
-#include <list>
 #include <map>
 #include <unordered_set>
 #include <vector>
 
 #include "common/circular_buffer.h"
-#include "common/strings.h"
 #include "hal/gatt_hal.h"
 #include "internal_include/bt_target.h"
 #include "macros.h"
@@ -701,8 +699,6 @@ tGATT_STATUS gatt_sr_process_app_rsp(tGATT_TCB& tcb, tGATT_IF gatt_if, uint32_t 
                                      tGATT_SR_CMD* sr_res_p);
 void gatt_server_handle_client_req(tGATT_TCB& p_tcb, uint16_t cid, uint8_t op_code, uint16_t len,
                                    uint8_t* p_data);
-void gatt_sr_send_req_callback(tCONN_ID conn_id, uint32_t trans_id, uint8_t op_code,
-                               tGATTS_DATA* p_req_data);
 uint32_t gatt_sr_enqueue_cmd(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t handle);
 bool gatt_cancel_open(tGATT_IF gatt_if, const RawAddress& bda);
 void gatt_notify_phy_updated(tHCI_STATUS status, uint16_t handle, uint8_t tx_phy, uint8_t rx_phy);

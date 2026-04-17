@@ -22,7 +22,6 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.OobData;
 
 import com.android.bluetooth.Util;
-import com.android.bluetooth.Utils;
 
 import java.io.FileDescriptor;
 import java.lang.annotation.Native;
@@ -119,10 +118,6 @@ public class AdapterNativeInterface {
 
     boolean sdpSearch(byte[] address, byte[] uuid) {
         return sdpSearchNative(address, uuid);
-    }
-
-    int getConnectionState(byte[] address) {
-        return getConnectionStateNative(address);
     }
 
     boolean startDiscovery() {
@@ -230,7 +225,7 @@ public class AdapterNativeInterface {
     }
 
     void metadataChanged(BluetoothDevice device, int key, byte[] value) {
-        metadataChangedNative(Utils.getBytesFromAddress(device.getAddress()), key, value);
+        metadataChangedNative(Util.getBytesFromAddress(device.getAddress()), key, value);
     }
 
     boolean interopMatchAddr(String featureName, String address) {
@@ -283,7 +278,7 @@ public class AdapterNativeInterface {
     }
 
     boolean disconnectAcl(BluetoothDevice device, int transport) {
-        return disconnectAclNative(Utils.getBytesFromAddress(device.getAddress()), transport);
+        return disconnectAclNative(Util.getBytesFromAddress(device.getAddress()), transport);
     }
 
     boolean allowWakeByHid() {
@@ -338,8 +333,6 @@ public class AdapterNativeInterface {
     private native void generateLocalOobDataNative(int transport);
 
     private native boolean sdpSearchNative(byte[] address, byte[] uuid);
-
-    private native int getConnectionStateNative(byte[] address);
 
     private native boolean startDiscoveryNative();
 

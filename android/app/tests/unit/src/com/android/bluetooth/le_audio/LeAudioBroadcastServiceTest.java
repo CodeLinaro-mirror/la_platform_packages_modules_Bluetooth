@@ -73,7 +73,6 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
-import android.platform.test.annotations.DisableFlags;
 import android.platform.test.annotations.EnableFlags;
 import android.platform.test.flag.junit.SetFlagsRule;
 
@@ -82,7 +81,7 @@ import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.bluetooth.TestLooper;
-import com.android.bluetooth.Utils;
+import com.android.bluetooth.Util;
 import com.android.bluetooth.bass_client.BassClientService;
 import com.android.bluetooth.btservice.ActiveDeviceManager;
 import com.android.bluetooth.btservice.AdapterService;
@@ -255,15 +254,12 @@ public class LeAudioBroadcastServiceTest {
         // Set up the State Changed receiver
         doReturn(mBroadcastDevice)
                 .when(mAdapterService)
-                .getDeviceFromByte(Utils.getBytesFromAddress("FF:FF:FF:FF:FF:FF"));
+                .getDeviceFromByte(Util.getBytesFromAddress("FF:FF:FF:FF:FF:FF"));
     }
 
     @After
     public void tearDown() throws Exception {
         mService.cleanup();
-        if (!Flags.leaudioBroadcastCreationTimeoutFix()) {
-            assertThat(LeAudioService.getLeAudioService()).isNull();
-        }
         MetricsLogger.setInstanceForTesting(null);
     }
 
@@ -273,12 +269,6 @@ public class LeAudioBroadcastServiceTest {
             return null;
         }
         return devices.get(0);
-    }
-
-    @Test
-    @DisableFlags(Flags.FLAG_LEAUDIO_BROADCAST_CREATION_TIMEOUT_FIX)
-    public void testGetLeAudioService() {
-        assertThat(LeAudioService.getLeAudioService()).isEqualTo(mService);
     }
 
     void startBroadcastAndVerify(int broadcastId, BluetoothLeBroadcastSettings settings)
@@ -488,14 +478,11 @@ public class LeAudioBroadcastServiceTest {
         mLooper.dispatchAll();
         verify(mCallbacks).onBroadcastStartFailed(eq(BluetoothStatusCodes.ERROR_TIMEOUT));
 
-        if (Flags.leaudioBroadcastCreationTimeoutFix()) {
-            // Try again
-            mService.createBroadcast(settings);
-            mLooper.moveTimeForward(LeAudioService.CREATE_BROADCAST_TIMEOUT_MS);
-            mLooper.dispatchAll();
-            verify(mCallbacks, times(2))
-                    .onBroadcastStartFailed(eq(BluetoothStatusCodes.ERROR_TIMEOUT));
-        }
+        // Try again
+        mService.createBroadcast(settings);
+        mLooper.moveTimeForward(LeAudioService.CREATE_BROADCAST_TIMEOUT_MS);
+        mLooper.dispatchAll();
+        verify(mCallbacks, times(2)).onBroadcastStartFailed(eq(BluetoothStatusCodes.ERROR_TIMEOUT));
     }
 
     @Test

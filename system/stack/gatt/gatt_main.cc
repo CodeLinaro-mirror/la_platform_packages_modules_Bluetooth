@@ -32,7 +32,6 @@
 #include "internal_include/bt_target.h"
 #include "osi/include/properties.h"
 #include "stack/btm/btm_dev.h"
-#include "stack/btm/btm_sec.h"
 #include "stack/connection_manager/connection_manager.h"
 #include "stack/eatt/eatt.h"
 #include "stack/gatt/gatt_int.h"
@@ -42,7 +41,6 @@
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/gatt_api.h"
 #include "stack/include/hci_error_code.h"
-#include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
 
@@ -652,8 +650,7 @@ void gatt_chk_srv_chg(tGATTS_SRV_CHG* p_srv_chg_clt) {
   log::verbose("srv_changed={}, start_handle: {:#x}", p_srv_chg_clt->srv_changed,
                p_srv_chg_clt->start_handle);
 
-  if (com_android_bluetooth_flags_gatt_not_send_service_change_indication_iop() &&
-      p_srv_chg_clt->srv_changed) {
+  if (p_srv_chg_clt->srv_changed) {
     char remote_name[BD_NAME_LEN] = "";
 
     if (btif_storage_get_stored_remote_name(p_srv_chg_clt->bda, remote_name)) {

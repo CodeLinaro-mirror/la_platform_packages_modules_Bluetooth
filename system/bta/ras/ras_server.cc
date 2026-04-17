@@ -156,8 +156,7 @@ public:
     }
   }
 
-  static void OnGattMtuChangedStatic(tCONN_ID conn_id, uint32_t /*trans_id*/,
-                                     const RawAddress& remote_bda, uint16_t mtu) {
+  static void OnGattMtuChangedStatic(tCONN_ID conn_id, const RawAddress& remote_bda, uint16_t mtu) {
     if (instance) {
       instance->OnGattMtuChanged(conn_id, remote_bda, mtu);
     }
@@ -507,8 +506,8 @@ public:
   }
 
   void OnWriteCharacteristic(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
-                             uint16_t handle, uint16_t offset, bool need_rsp, bool is_prep,
-                             uint8_t* value, uint16_t len) {
+                             uint16_t handle, uint16_t /* offset */, bool need_rsp,
+                             bool /* is_prep */, uint8_t* value, uint16_t len) {
     log::info("conn_id:{}, handle:0x{:04x}, need_rsp{}, len:{}", conn_id, handle, need_rsp, len);
 
     std::unique_ptr<tGATTS_RSP> p_msg = std::make_unique<tGATTS_RSP>();
@@ -522,15 +521,8 @@ public:
     auto uuid = characteristics_[handle].uuid_;
     auto vendor_specific_characteristic = GetVendorSpecificCharacteristic(uuid);
     if (vendor_specific_characteristic != nullptr) {
-      tGATT_WRITE_REQ write_req;
-      write_req.handle = handle;
-      write_req.offset = offset;
-      write_req.len = len;
-      write_req.need_rsp = need_rsp;
-      write_req.is_prep = is_prep;
-      memcpy(write_req.value, value, len);
       WriteVendorSpecificCharacteristic(vendor_specific_characteristic, conn_id, trans_id,
-                                        remote_bda, &write_req, std::move(p_msg));
+                                        remote_bda, value, len, std::move(p_msg));
       return;
     }
     log::info("Write uuid, {}", getUuidName(uuid));
@@ -547,14 +539,7 @@ public:
         if (need_rsp) {
           BTA_GATTS_SendRsp(conn_id, trans_id, GATT_SUCCESS, std::move(p_msg));
         }
-        tGATT_WRITE_REQ write_req;
-        write_req.handle = handle;
-        write_req.offset = offset;
-        write_req.len = len;
-        write_req.need_rsp = need_rsp;
-        write_req.is_prep = is_prep;
-        memcpy(write_req.value, value, len);
-        HandleControlPoint(tracker, &write_req);
+        HandleControlPoint(tracker, value, len);
       } break;
       default:
         log::warn("Unhandled uuid {}", uuid.ToString());
@@ -565,10 +550,9 @@ public:
 
   void WriteVendorSpecificCharacteristic(
           VendorSpecificCharacteristic* vendor_specific_characteristic, tCONN_ID conn_id,
-          uint32_t trans_id, const RawAddress& remote_bda, tGATT_WRITE_REQ* write_req,
+          uint32_t trans_id, const RawAddress& remote_bda, uint8_t* value, uint16_t len,
           std::unique_ptr<tGATTS_RSP> p_msg) {
     log::debug("uuid {}", vendor_specific_characteristic->characteristicUuid_);
-    uint16_t len = write_req->len;
 
     if (trackers_.find(remote_bda) == trackers_.end()) {
       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_INVALID_HANDLE, std::move(p_msg));
@@ -578,7 +562,6 @@ public:
 
     // Update reply value
     auto& tracker = trackers_[remote_bda];
-    auto value = write_req->value;
     vendor_specific_characteristic->reply_value_.clear();
     vendor_specific_characteristic->reply_value_.reserve(len);
     vendor_specific_characteristic->reply_value_.assign(value, value + len);
@@ -634,9 +617,7 @@ public:
       ccc_on_demand_temp = ccc_value;
     }
     if (ccc_real_time_temp != GATT_CLT_CONFIG_NONE && ccc_on_demand_temp != GATT_CLT_CONFIG_NONE) {
-      log::warn(
-              "Client Characteristic Configuration Descriptor Improperly "
-              "Configured");
+      log::warn("Client Characteristic Configuration Descriptor Improperly Configured");
       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_CCC_CFG_ERR, std::move(p_msg));
       return;
     }
@@ -651,9 +632,9 @@ public:
     BTA_GATTS_SendRsp(conn_id, trans_id, GATT_SUCCESS, std::move(p_msg));
   }
 
-  void HandleControlPoint(ClientTracker* tracker, tGATT_WRITE_REQ* write_req) {
+  void HandleControlPoint(ClientTracker* tracker, uint8_t* value, uint16_t len) {
     ControlPointCommand command;
-    ParseControlPointCommand(&command, write_req->value, write_req->len);
+    ParseControlPointCommand(&command, value, len);
 
     if (!command.isValid_) {
       SendResponseCode(ResponseCodeValue::INVALID_PARAMETER, tracker);

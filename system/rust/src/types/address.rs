@@ -24,6 +24,13 @@ pub struct Address {
     value: u64,
 }
 
+// SAFETY: The memory layout of the Rust `Address` struct matches the
+// memory layout of the `ffi::Address` struct in C++ (a single uint64_t).
+unsafe impl cxx::ExternType for Address {
+    type Id = cxx::type_id!("ffi::Address");
+    type Kind = cxx::kind::Trivial;
+}
+
 impl Address {
     /// Creates an Address from big-endian bytes (6 bytes).
     pub fn from_be_bytes(bytes: [u8; 6]) -> Self {
@@ -70,21 +77,6 @@ impl fmt::Debug for Address {
         let b = self.to_be_bytes();
         write!(f, "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", b[0], b[1], b[2], b[3], b[4], b[5])
     }
-}
-
-/// Represents the address type.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum AddressType {
-    /// Public Device Address.
-    #[default]
-    PublicDeviceAddress = 0x00,
-    /// Random Device Address.
-    RandomDeviceAddress = 0x01,
-    /// Public Identity Address.
-    PublicIdentityAddress = 0x02,
-    /// Random (Static) Identity Address.
-    RandomStaticIdentityAddress = 0x03,
 }
 
 #[cfg(test)]

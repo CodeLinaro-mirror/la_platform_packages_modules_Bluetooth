@@ -272,7 +272,7 @@ static void btgattc_open_cb(int conn_id, int status, int clientIf, int transport
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onConnected, clientIf, conn_id, transport,
                                status, address.get());
 }
@@ -285,7 +285,7 @@ static void btgattc_close_cb(int conn_id, int status, int clientIf, int transpor
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onDisconnected, clientIf, conn_id, transport,
                                status, address.get());
 }
@@ -309,7 +309,7 @@ static void btgattc_notify_cb(int conn_id, const btgatt_notify_params_t& p_data)
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), p_data.bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, p_data.bda);
   ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(p_data.len));
   sCallbackEnv->SetByteArrayRegion(jb.get(), 0, p_data.len, (jbyte*)p_data.value);
 
@@ -406,7 +406,7 @@ static void btgattc_remote_rssi_cb(int client_if, const RawAddress& bda, int rss
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
 
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onReadRemoteRssi, client_if, address.get(),
                                rssi, status);
@@ -621,7 +621,7 @@ static void btgatts_connection_cb(int conn_id, int server_if, int transport, int
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientConnected, address.get(), transport,
                                connected, conn_id, server_if);
 }
@@ -678,7 +678,7 @@ static void btgatts_request_read_characteristic_cb(int conn_id, int trans_id, co
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerReadCharacteristic, address.get(),
                                conn_id, trans_id, attr_handle, offset, is_long);
 }
@@ -691,7 +691,7 @@ static void btgatts_request_read_descriptor_cb(int conn_id, int trans_id, const 
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerReadDescriptor, address.get(), conn_id,
                                trans_id, attr_handle, offset, is_long);
 }
@@ -706,7 +706,7 @@ static void btgatts_request_write_characteristic_cb(int conn_id, int trans_id,
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   ScopedLocalRef<jbyteArray> val(sCallbackEnv.get(), sCallbackEnv->NewByteArray(length));
   if (val.get()) {
     sCallbackEnv->SetByteArrayRegion(val.get(), 0, length, (jbyte*)value);
@@ -725,7 +725,7 @@ static void btgatts_request_write_descriptor_cb(int conn_id, int trans_id, const
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   ScopedLocalRef<jbyteArray> val(sCallbackEnv.get(), sCallbackEnv->NewByteArray(length));
   if (val.get()) {
     sCallbackEnv->SetByteArrayRegion(val.get(), 0, length, (jbyte*)value);
@@ -743,7 +743,7 @@ static void btgatts_request_exec_write_cb(int conn_id, int trans_id, const RawAd
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onExecuteWrite, address.get(), conn_id,
                                trans_id, exec_write);
 }
@@ -960,7 +960,7 @@ public:
       return;
     }
 
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onOwnAddressRead, advertiser_id,
                                  address_type, addr.get());
   }
@@ -979,7 +979,7 @@ public:
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
       return;
     }
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(mDistanceMeasurementCallbacksObj,
                                  method_onDistanceMeasurementStarted, addr.get(), method);
   }
@@ -990,7 +990,7 @@ public:
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
       return;
     }
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(mDistanceMeasurementCallbacksObj,
                                  method_onDistanceMeasurementStopped, addr.get(), reason, method);
   }
@@ -1007,7 +1007,7 @@ public:
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
       return;
     }
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(
             mDistanceMeasurementCallbacksObj, method_onDistanceMeasurementResult, addr.get(),
             meter, error_centimeter, azimuth_angle, error_azimuth_angle, altitude_angle,
@@ -1179,7 +1179,7 @@ static void readClientPhyCb(uint8_t clientIf, RawAddress bda, uint8_t tx_phy, ui
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
 
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientPhyRead, clientIf, address.get(),
                                tx_phy, rx_phy, status);
@@ -1457,7 +1457,7 @@ static void readServerPhyCb(uint8_t serverIf, RawAddress bda, uint8_t tx_phy, ui
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
 
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerPhyRead, serverIf, address.get(),
                                tx_phy, rx_phy, status);
@@ -1865,7 +1865,7 @@ static void getOwnAddressCb(uint8_t advertiser_id, uint8_t address_type, RawAddr
     return;
   }
 
-  ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+  ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
   sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onOwnAddressRead, advertiser_id,
                                address_type, addr.get());
 }

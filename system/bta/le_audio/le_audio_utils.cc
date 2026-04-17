@@ -17,6 +17,7 @@
 #include "le_audio_utils.h"
 
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 
 #include <cstdint>
 #include <sstream>
@@ -26,7 +27,6 @@
 #include "audio_hal_client/audio_hal_client.h"
 #include "codec_manager.h"
 #include "com_android_bluetooth_flags.h"
-#include "common/strings.h"
 #include "hardware/bt_le_audio.h"
 #include "le_audio/codec_manager.h"
 #include "le_audio_types.h"

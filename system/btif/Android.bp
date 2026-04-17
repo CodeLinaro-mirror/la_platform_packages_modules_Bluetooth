@@ -31,6 +31,7 @@ cc_library_static {
     srcs: ["src/btif_jni_task.cc"],
     static_libs: [
         "bluetooth_flags_c_lib",
+        "libbluetooth_hci_pdl",
         "libbluetooth_log",
         "libbluetooth_types",
         "libosi",
@@ -79,7 +80,6 @@ cc_library_static {
         "src/btif_hh.cc",
         "src/btif_iot_config.cc",
         "src/btif_iot_config.cc",
-        "src/btif_keystore.cc",
         "src/btif_le_audio.cc",
         "src/btif_le_audio_broadcaster.cc",
         "src/btif_le_audio_server.cc",
@@ -342,6 +342,7 @@ cc_test {
         ":TestCommonMockFunctions",
         ":TestMockBtaAv",
         ":TestMockOsi",
+        "src/btif_rc.cc",
         "src/btif_util.cc",
         "test/btif_rc_test.cc",
     ],

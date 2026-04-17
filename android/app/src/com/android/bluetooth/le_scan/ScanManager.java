@@ -17,6 +17,7 @@
 package com.android.bluetooth.le_scan;
 
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED;
+import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
@@ -63,6 +64,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.util.SparseBooleanArray;
+import android.util.SparseIntArray;
 
 import androidx.annotation.Nullable;
 
@@ -70,13 +72,11 @@ import com.android.bluetooth.Util;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.flags.Flags;
-import com.android.bluetooth.le_scan.ScanManager.UidImportance;
 import com.android.bluetooth.util.TimeProvider;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -87,19 +87,20 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /** Class that handles Bluetooth LE scan related operations. */
 public class ScanManager {
     private static final String TAG = ScanUtil.TAG_PREFIX + ScanManager.class.getSimpleName();
 
-    private static final int FOREGROUND_IMPORTANCE_CUTOFF = IMPORTANCE_FOREGROUND_SERVICE;
+    private static final int FOREGROUND_SERVICE_IMPORTANCE_CUTOFF = IMPORTANCE_FOREGROUND_SERVICE;
+    private static final int FOREGROUND_UI_IMPORTANCE_CUTOFF = IMPORTANCE_FOREGROUND;
     private static final boolean DEFAULT_UID_IS_FOREGROUND = true;
+    private static final boolean DEFAULT_UID_IS_FOREGROUND_UI = false;
     private static final int SCAN_MODE_FORCE_DOWNGRADED = ScanSettings.SCAN_MODE_LOW_POWER;
     private static final boolean DEFAULT_UID_HAS_PRIVILEGED_PERMISSION = false;
 
     // Timeout for each controller operation.
-    private static final int MAX_IS_UID_FOREGROUND_MAP_SIZE = 500;
+    private static final int MAX_UID_IMPORTANCE_MAP_SIZE = 500;
 
     private static final int ALL_PASS_FILTER_INDEX_REGULAR_SCAN = 1;
     private static final int ALL_PASS_FILTER_INDEX_BATCH_SCAN = 2;
@@ -117,7 +118,7 @@ public class ScanManager {
     private final Set<ScanClient> mRegularScanClients = ConcurrentHashMap.newKeySet();
     private final Set<ScanClient> mBatchClients = ConcurrentHashMap.newKeySet();
     private final Set<ScanClient> mSuspendedScanClients = ConcurrentHashMap.newKeySet();
-    private final SparseBooleanArray mIsUidForegroundMap = new SparseBooleanArray();
+    private final SparseIntArray mUidImportanceMap = new SparseIntArray();
     private final SparseBooleanArray mIsUidPrivilegedPermissionMap = new SparseBooleanArray();
 
     // Filter indices that are available to user. It's sad we need to maintain filter index.
@@ -144,6 +145,7 @@ public class ScanManager {
     private final ScanController mScanController;
     private final ScanNativeCallback mNativeCallback;
     private final ScanNativeInterface mNativeInterface;
+    private final ScanRadioStats mScanRadioStats;
     private final TimeProvider mTimeProvider;
     private final AlarmManager mAlarmManager;
     private final PendingIntent mBatchScanIntervalIntent;
@@ -184,6 +186,7 @@ public class ScanManager {
             AdapterService service,
             ScanController scanController,
             ScanNativeInterface nativeInterface,
+            ScanRadioStats scanRadioStats,
             Looper looper,
             TimeProvider timeProvider) {
         this(
@@ -191,6 +194,7 @@ public class ScanManager {
                 scanController,
                 new ScanNativeCallback(service, scanController),
                 nativeInterface,
+                scanRadioStats,
                 looper,
                 timeProvider);
     }
@@ -201,6 +205,7 @@ public class ScanManager {
             ScanController scanController,
             ScanNativeCallback nativeCallback,
             ScanNativeInterface nativeInterface,
+            ScanRadioStats scanRadioStats,
             Looper looper,
             TimeProvider timeProvider) {
         mAdapterService = requireNonNull(service);
@@ -246,19 +251,26 @@ public class ScanManager {
         mIsConnecting = false;
         mHandler = new Handler(looper);
         mScreenOn = mAdapterService.getDisplayListener().isScreenOn();
+        mScanRadioStats = scanRadioStats;
         mScanController.doOnScanThread(
                 () -> {
                     AppScanStats.setScreenState(mScreenOn);
-                    mScanController.getScanRadioStats().setScreenState(mScreenOn);
+                    mScanRadioStats.setScreenState(mScreenOn);
                 });
         if (mActivityManager != null) {
             mActivityManager.addOnUidImportanceListener(
-                    mUidImportanceListener, FOREGROUND_IMPORTANCE_CUTOFF);
+                    mForegroundServiceImportanceListener, FOREGROUND_SERVICE_IMPORTANCE_CUTOFF);
         }
         IntentFilter locationIntentFilter = new IntentFilter(LocationManager.MODE_CHANGED_ACTION);
         locationIntentFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
         mAdapterService.registerReceiver(mLocationReceiver, locationIntentFilter);
         mScanThrottler = new ScanThrottler(this, mAdapterService, mHandler);
+        if (mScanThrottler.isScanAllowanceThrottlingEnabled()) {
+            if (mActivityManager != null) {
+                mActivityManager.addOnUidImportanceListener(
+                        mForegroundUiImportanceListener, FOREGROUND_UI_IMPORTANCE_CUTOFF);
+            }
+        }
         mBatchScanThrottler = new BatchScanThrottler(timeProvider, mScreenOn);
 
         Log.d(TAG, "MSFT: isSupported=" + mIsMsftSupported + ", useFiltering=" + mUseMsftFiltering);
@@ -273,7 +285,11 @@ public class ScanManager {
 
         if (mActivityManager != null) {
             try {
-                mActivityManager.removeOnUidImportanceListener(mUidImportanceListener);
+                mActivityManager.removeOnUidImportanceListener(
+                        mForegroundServiceImportanceListener);
+                if (mScanThrottler.isScanAllowanceThrottlingEnabled()) {
+                    mActivityManager.removeOnUidImportanceListener(mForegroundUiImportanceListener);
+                }
             } catch (IllegalArgumentException e) {
                 Log.w(TAG, "exception when invoking removeOnUidImportanceListener", e);
             }
@@ -292,12 +308,6 @@ public class ScanManager {
         } catch (IllegalArgumentException e) {
             Log.w(TAG, "exception when invoking unregisterReceiver(mLocationReceiver)", e);
         }
-    }
-
-    Map<Integer, ScanSettings> getSettingsMap() {
-        return Stream.of(mRegularScanClients, mBatchClients, mSuspendedScanClients)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toMap(ScanClient::getScannerId, ScanClient::getSettings));
     }
 
     @VisibleForTesting
@@ -377,10 +387,8 @@ public class ScanManager {
         for (String packageName : packages) {
             importance = Math.min(importance, mActivityManager.getPackageImportance(packageName));
         }
-        boolean isForeground = importance <= IMPORTANCE_FOREGROUND_SERVICE;
-        mIsUidForegroundMap.put(client.getAppUid(), isForeground);
-        final int finalImportance = importance;
-        client.ifAppScanStatsPresent(stats -> stats.setAppImportance(finalImportance));
+        mUidImportanceMap.put(client.getAppUid(), importance);
+        client.getAppScanStats().setAppImportance(importance);
     }
 
     void fetchUidPermission(ScanClient client) {
@@ -423,7 +431,7 @@ public class ScanManager {
                     "Cannot start LE scan in system-suspend."
                             + (" This scan will be resumed later for " + client));
             mSuspendedScanClients.add(client);
-            client.ifAppScanStatsPresent(stats -> stats.recordScanSuspend(client.getScannerId()));
+            client.getAppScanStats().recordScanSuspend(client.getScannerId());
             return;
         }
 
@@ -433,7 +441,7 @@ public class ScanManager {
                     "Cannot start unfiltered scan in screen-off."
                             + (" This scan will be resumed later for " + client));
             mSuspendedScanClients.add(client);
-            client.ifAppScanStatsPresent(stats -> stats.recordScanSuspend(client.getScannerId()));
+            client.getAppScanStats().recordScanSuspend(client.getScannerId());
             return;
         }
 
@@ -444,7 +452,7 @@ public class ScanManager {
                     "Cannot start unfiltered scan in location-off."
                             + (" This scan will be resumed when location is on for " + client));
             mSuspendedScanClients.add(client);
-            client.ifAppScanStatsPresent(stats -> stats.recordScanSuspend(client.getScannerId()));
+            client.getAppScanStats().recordScanSuspend(client.getScannerId());
             return;
         }
 
@@ -459,8 +467,8 @@ public class ScanManager {
         if (isAptXLowLatencyModeEnabled()) {
             Log.i(TAG, "Cannot start Scan when aptX LL mode is enabled. This scan will be"
                     + " resumed when aptX LL mode is disabled: " + client.getScannerId());
+            client.getAppScanStats().recordScanSuspend(client.getScannerId());
             mSuspendedScanClients.add(client);
-            client.ifAppScanStatsPresent(stats -> stats.recordScanSuspend(client.getScannerId()));
             return;
         }
 
@@ -591,7 +599,7 @@ public class ScanManager {
     @VisibleForTesting
     void handleScreenOff() {
         AppScanStats.setScreenState(false);
-        mScanController.getScanRadioStats().setScreenState(false);
+        mScanRadioStats.setScreenState(false);
         if (!mScreenOn) {
             return;
         }
@@ -665,8 +673,7 @@ public class ScanManager {
             var screenRequirementUnmet = requiresScreenOn(client) && !mScreenOn;
             var locationRequirementUnmet = requiresLocationOn(client) && !isLocationEnabled;
             if (screenRequirementUnmet || locationRequirementUnmet) {
-                client.ifAppScanStatsPresent(
-                        stats -> stats.recordScanSuspend(client.getScannerId()));
+                client.getAppScanStats().recordScanSuspend(client.getScannerId());
                 Log.d(TAG, "Suspending scan for " + client);
                 handleStopScan(client);
                 mSuspendedScanClients.add(client);
@@ -707,6 +714,20 @@ public class ScanManager {
     }
 
     private void updateRegularScanClientsScreenOff() {
+        // use the scan_allowance_throttling_enabled flag to gate the screen off delayed
+        // throttling
+        if (mScanThrottler.isScanAllowanceThrottlingEnabled()) {
+            if (!mRegularScanClients.isEmpty()) {
+                mScanThrottler.throttleAllScanModeScreenOffDelayed(
+                        mRegularScanClients,
+                        isUpdated -> {
+                            if (isUpdated) {
+                                configureRegularScanParams();
+                            }
+                        });
+            }
+            return;
+        }
         boolean updatedScanParams = false;
         for (ScanClient client : mRegularScanClients) {
             if (mScanThrottler.throttleScanModeScreenOff(client)) {
@@ -723,7 +744,17 @@ public class ScanManager {
      * background triggering onUidImportance().
      */
     boolean isAppForeground(ScanClient client) {
-        return mIsUidForegroundMap.get(client.getAppUid(), DEFAULT_UID_IS_FOREGROUND);
+        if (mUidImportanceMap.indexOfKey(client.getAppUid()) < 0) {
+            return DEFAULT_UID_IS_FOREGROUND;
+        }
+        return mUidImportanceMap.get(client.getAppUid()) <= IMPORTANCE_FOREGROUND_SERVICE;
+    }
+
+    boolean isAppForegroundUi(ScanClient client) {
+        if (mUidImportanceMap.indexOfKey(client.getAppUid()) < 0) {
+            return DEFAULT_UID_IS_FOREGROUND_UI;
+        }
+        return mUidImportanceMap.get(client.getAppUid()) <= IMPORTANCE_FOREGROUND;
     }
 
     boolean hasPrivilegedPermission(ScanClient client) {
@@ -802,42 +833,69 @@ public class ScanManager {
         final int importance = imp.importance;
         final boolean isForeground = importance <= IMPORTANCE_FOREGROUND_SERVICE;
 
-        if (mIsUidForegroundMap.size() < MAX_IS_UID_FOREGROUND_MAP_SIZE) {
-            mIsUidForegroundMap.put(uid, isForeground);
+        // There can be multuple importance changed listeners registered to listen multiple cut
+        // point like IMPORTANCE_FOREGROUND_SERVICES and IMPORTANCE_FOREGROUND. Skip if
+        // importance is already up to date.
+        if (mUidImportanceMap.get(uid) == importance) {
+            return;
         }
 
+        if (mUidImportanceMap.size() < MAX_UID_IMPORTANCE_MAP_SIZE) {
+            mUidImportanceMap.put(uid, importance);
+        }
+
+        Set<ScanClient> uidScanClients =
+                mRegularScanClients.stream()
+                        .filter(
+                                client ->
+                                        client.getAppUid() == uid
+                                                && !isOpportunisticScanClient(client))
+                        .collect(Collectors.toSet());
+
+        if (uidScanClients.isEmpty()) return;
+
         boolean updatedScanParams = false;
-        for (ScanClient client : mRegularScanClients) {
-            if (client.getAppUid() != uid || isOpportunisticScanClient(client)) {
-                continue;
-            }
-            client.ifAppScanStatsPresent(stats -> stats.setAppImportance(importance));
-            final var scanSettings = client.getSettings();
+        for (ScanClient client : uidScanClients) {
+            client.getAppScanStats().setAppImportance(importance);
             if (isForeground) {
                 if (mScanThrottler.throttleScanModeForegroundUid(client, uid, mScreenOn)) {
                     updatedScanParams = true;
                 }
             } else {
-                if (mScanThrottler.throttleScanModeBackgroundUid(client, uid, mScreenOn)) {
+                // use the scan_allowance_throttling_enabled flag to gate the background uid
+                // delayed
+                // throttling. Background uid immediate throttling should be disabled when flag is
+                // on
+                if (!mScanThrottler.isScanAllowanceThrottlingEnabled()
+                        && mScanThrottler.throttleScanModeBackgroundUid(client, uid, mScreenOn)) {
                     updatedScanParams = true;
                 }
             }
-            Log.d(
-                    TAG,
-                    "handleImportanceChange(): "
-                            + ("for " + client + " uid=" + uid + " isForeground=" + isForeground)
-                            + (" scanMode=" + scanModeToString(scanSettings.getScanMode())));
         }
 
         if (updatedScanParams) {
             configureRegularScanParams();
+        }
+
+        // use the scan_allowance_throttling_enabled flag to gate the background uid delayed
+        // throttling
+        if (mScanThrottler.isScanAllowanceThrottlingEnabled() && !isForeground) {
+            mScanThrottler.throttleAllScanModeBackgroundUidDelayed(
+                    uid,
+                    mScreenOn,
+                    uidScanClients,
+                    isUpdated -> {
+                        if (isUpdated) {
+                            configureRegularScanParams();
+                        }
+                    });
         }
     }
 
     @VisibleForTesting
     void handleScreenOn() {
         AppScanStats.setScreenState(true);
-        mScanController.getScanRadioStats().setScreenState(true);
+        mScanRadioStats.setScreenState(true);
         if (mScreenOn) {
             return;
         }
@@ -856,8 +914,7 @@ public class ScanManager {
             ScanClient client = iterator.next();
             if ((!requiresScreenOn(client) || mScreenOn)
                     && (!requiresLocationOn(client) || mLocationManager.isLocationEnabled())) {
-                client.ifAppScanStatsPresent(
-                        stats -> stats.recordScanResume(client.getScannerId()));
+                client.getAppScanStats().recordScanResume(client.getScannerId());
                 Log.d(TAG, "Resume scan for " + client);
                 handleStartScan(client);
                 iterator.remove();
@@ -954,7 +1011,7 @@ public class ScanManager {
             int scanWindowCoded = ScanUtil.scanWindow(mAdapterService, clientCoded);
             int scanIntervalCoded = ScanUtil.scanInterval(mAdapterService, clientCoded);
             mNativeInterface.scan(false, "configureRegularScanParams");
-            mScanController.getScanRadioStats().recordScanRadioStop("configureRegularScanParams");
+            mScanRadioStats.recordScanRadioStop("configureRegularScanParams");
             Log.d(
                     TAG,
                     (header + "Set Scan Parameters Native")
@@ -1001,14 +1058,12 @@ public class ScanManager {
         }
         if (chosenClient != null && chosenClient.getAppScanStats() != null) {
             var chosenClientSettings = chosenClient.getSettings();
-            mScanController
-                    .getScanRadioStats()
-                    .recordScanRadioStart(
-                            chosenClient.getScanModeApp(),
-                            chosenClient.getScannerId(),
-                            chosenClient.getAppScanStats(),
-                            ScanUtil.windowMillis(mAdapterService, chosenClientSettings),
-                            ScanUtil.intervalMillis(mAdapterService, chosenClientSettings));
+            mScanRadioStats.recordScanRadioStart(
+                    chosenClient.getScanModeApp(),
+                    chosenClient.getScannerId(),
+                    chosenClient.getAppScanStats(),
+                    ScanUtil.windowMillis(mAdapterService, chosenClientSettings),
+                    ScanUtil.intervalMillis(mAdapterService, chosenClientSettings));
         }
     }
 
@@ -1142,7 +1197,7 @@ public class ScanManager {
         final long windowStartMs = mTimeProvider.elapsedRealtime() + batchTriggerIntervalMillis;
         final var windowStartReadable = Utils.formatElapsedRealtime(windowStartMs);
         Log.d(TAG, header + "For=" + windowStartReadable + " (" + windowStartMs + "ms)");
-        client.ifAppScanStatsPresent(AppScanStats::recordBatchAlarmScheduled);
+        client.getAppScanStats().recordBatchAlarmScheduled();
         mAlarmManager.setWindow(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 windowStartMs,
@@ -1173,7 +1228,7 @@ public class ScanManager {
         mRegularScanClients.remove(client);
         if (numRegularScanClients() == 0) {
             mNativeInterface.scan(false, "stopRegularScan");
-            mScanController.getScanRadioStats().recordScanRadioStop("stopRegularScan");
+            mScanRadioStats.recordScanRadioStop("stopRegularScan");
         }
 
         if (mUseMsftFiltering) {
@@ -1203,19 +1258,17 @@ public class ScanManager {
                 int maxScanMode = SCAN_MODE_FORCE_DOWNGRADED;
                 client.updateScanMode(minScanMode(scanMode, maxScanMode));
             }
-            client.ifAppScanStatsPresent(
-                    stats -> {
-                        stats.setScanTimeout(client.getScannerId());
-                        stats.recordScanTimeoutCountMetrics(
-                                client.getScannerId(), mAdapterService.getScanTimeout().toMillis());
-                    });
+            client.getAppScanStats().setScanTimeout(client.getScannerId());
+            client.getAppScanStats()
+                    .recordScanTimeoutCountMetrics(
+                            client.getScannerId(), mAdapterService.getScanTimeout().toMillis());
         }
 
         // The scan should continue for background scans
         configureRegularScanParams();
         if (numRegularScanClients() == 0) {
             mNativeInterface.scan(false, "handleRegularScanTimeout");
-            mScanController.getScanRadioStats().recordScanRadioStop("handleRegularScanTimeout");
+            mScanRadioStats.recordScanRadioStop("handleRegularScanTimeout");
         }
     }
 
@@ -1283,10 +1336,9 @@ public class ScanManager {
                                 "No hardware resources for onfound/onlost filter " + trackEntries);
                         var mumOfOffloadedScanFilterSupported =
                                 mAdapterService.getNumOfOffloadedScanFilterSupported();
-                        client.ifAppScanStatsPresent(
-                                stats ->
-                                        stats.recordHwFilterNotAvailableCountMetrics(
-                                                scannerId, mumOfOffloadedScanFilterSupported));
+                        client.getAppScanStats()
+                                .recordHwFilterNotAvailableCountMetrics(
+                                        scannerId, mumOfOffloadedScanFilterSupported);
                         mScanController.onScanManagerErrorCallback(
                                 scannerId, ScanCallback.SCAN_FAILED_INTERNAL_ERROR);
                     }
@@ -1349,11 +1401,10 @@ public class ScanManager {
             return true;
         }
         if (client.getFilters().size() > mFilterIndexStack.size()) {
-            client.ifAppScanStatsPresent(
-                    stats ->
-                            stats.recordHwFilterNotAvailableCountMetrics(
-                                    client.getScannerId(),
-                                    mAdapterService.getNumOfOffloadedScanFilterSupported()));
+            client.getAppScanStats()
+                    .recordHwFilterNotAvailableCountMetrics(
+                            client.getScannerId(),
+                            mAdapterService.getNumOfOffloadedScanFilterSupported());
             return true;
         }
         return false;
@@ -1583,19 +1634,25 @@ public class ScanManager {
             }
         });
     }
-    private final ActivityManager.OnUidImportanceListener mUidImportanceListener =
-            new ActivityManager.OnUidImportanceListener() {
-                @Override
-                public void onUidImportance(final int uid, final int importance) {
-                    mScanController.doOnScanThread(
-                            () -> {
-                                if (mScanController.getScannerMap().getAppScanStatsByUid(uid)
-                                        != null) {
-                                    handleImportanceChange(new UidImportance(uid, importance));
-                                }
-                            });
-                }
-            };
+
+    private final ActivityManager.OnUidImportanceListener mForegroundServiceImportanceListener =
+            getUidImportanceListener();
+    private final ActivityManager.OnUidImportanceListener mForegroundUiImportanceListener =
+            getUidImportanceListener();
+
+    private ActivityManager.OnUidImportanceListener getUidImportanceListener() {
+        return new ActivityManager.OnUidImportanceListener() {
+            @Override
+            public void onUidImportance(final int uid, final int importance) {
+                mScanController.doOnScanThread(
+                        () -> {
+                            if (mScanController.getScannerMap().getAppScanStatsByUid(uid) != null) {
+                                handleImportanceChange(new UidImportance(uid, importance));
+                            }
+                        });
+            }
+        };
+    }
 
     private final BroadcastReceiver mLocationReceiver =
             new BroadcastReceiver() {

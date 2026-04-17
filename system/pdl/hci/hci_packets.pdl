@@ -5316,6 +5316,7 @@ packet LeCsSetChannelClassification : DistanceMeasurementCommand (op_code = LE_C
 }
 
 packet LeCsSetChannelClassificationComplete : CommandComplete (command_op_code = LE_CS_SET_CHANNEL_CLASSIFICATION) {
+  status : ErrorCode,
 }
 
 enum CsPhy : 8 {
@@ -5471,8 +5472,10 @@ packet LeGetVendorCapabilitiesComplete105 : LeGetVendorCapabilitiesComplete104 {
 
 // HCI v1.06
 packet LeGetVendorCapabilitiesComplete106 : LeGetVendorCapabilitiesComplete105 {
+  big_set_channel_map_classification_support : 16,
   vendor_connection_handle_min : 16,
   vendor_connection_handle_max : 16,
+  _payload_,
 }
 
 enum SubOcf : 8 {

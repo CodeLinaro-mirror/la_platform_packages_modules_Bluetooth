@@ -25,11 +25,9 @@
 #include <bluetooth/log.h>
 
 #include "osi/include/allocator.h"
-#include "stack/btm/btm_sec.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_psm_types.h"
-#include "stack/include/btm_client_interface.h"
-#include "stack/include/l2cap_acl_interface.h"
+#include "stack/include/btm_sec_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
 
@@ -60,6 +58,20 @@ const tL2CAP_APPL_INFO dyn_info = {gatt_l2cif_connect_ind_cback,
                                    NULL,
                                    NULL,
                                    NULL};
+
+void (*notify_pm_br_gatt_conn_open)(const RawAddress& bda) = nullptr;
+void (*notify_pm_br_gatt_conn_close)(const RawAddress& bda) = nullptr;
+void (*notify_pm_br_gatt_client_op)(const RawAddress& bda) = nullptr;
+void (*notify_pm_br_gatt_server_op)(const RawAddress& bda) = nullptr;
+
+void gatt_set_br_pm_callbacks(void (*open)(const RawAddress&), void (*close)(const RawAddress&),
+                              void (*client)(const RawAddress&),
+                              void (*server)(const RawAddress&)) {
+  notify_pm_br_gatt_conn_open = open;
+  notify_pm_br_gatt_conn_close = close;
+  notify_pm_br_gatt_client_op = client;
+  notify_pm_br_gatt_server_op = server;
+}
 
 void gatt_init_br() {
   /* Now, register with L2CAP for ATT PSM over BR/EDR */
@@ -172,6 +184,9 @@ void gatt_l2cif_config_cfm_cback(uint16_t lcid, uint16_t /* initiator */, tL2CAP
 
   /* send callback */
   gatt_send_conn_cback(p_tcb);
+  if (notify_pm_br_gatt_conn_open) {
+    (*notify_pm_br_gatt_conn_open)(p_tcb->peer_bda);
+  }
 }
 
 /** This is the L2CAP config indication callback function */
@@ -204,6 +219,9 @@ void gatt_l2cif_disconnect_ind_cback(uint16_t lcid, bool /* ack_needed */) {
   }
   /* send disconnect callback */
   gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_TERMINATE_PEER_USER, BT_TRANSPORT_BR_EDR);
+  if (notify_pm_br_gatt_conn_close) {
+    (*notify_pm_br_gatt_conn_close)(p_tcb->peer_bda);
+  }
 }
 
 static void gatt_l2cif_disconnect(uint16_t lcid) {
@@ -224,6 +242,26 @@ static void gatt_l2cif_disconnect(uint16_t lcid) {
   }
 
   gatt_cleanup_upon_disc(p_tcb->peer_bda, GATT_CONN_TERMINATE_LOCAL_HOST, BT_TRANSPORT_BR_EDR);
+  if (notify_pm_br_gatt_conn_close) {
+    (*notify_pm_br_gatt_conn_close)(p_tcb->peer_bda);
+  }
+}
+
+static void notify_pm_gatt_op(tGATT_TCB& tcb, BT_HDR* p_buf) {
+  uint8_t* p = (uint8_t*)(p_buf + 1) + p_buf->offset;
+  if (p_buf->len <= 0) {
+    log::error("invalid data length, ignore");
+    return;
+  }
+  uint8_t op_code = *p;
+
+  if ((op_code % 2) == 0) {
+    /* message from client */
+    notify_pm_br_gatt_server_op(tcb.peer_bda);
+  } else {
+    /* message from server */
+    notify_pm_br_gatt_client_op(tcb.peer_bda);
+  }
 }
 
 /** This is the L2CAP data indication callback function */
@@ -231,6 +269,7 @@ static void gatt_l2cif_data_ind_cback(uint16_t lcid, BT_HDR* p_buf) {
   /* look up clcb for this channel */
   tGATT_TCB* p_tcb = gatt_find_tcb_by_cid(lcid);
   if (p_tcb && gatt_get_ch_state(p_tcb) == GATT_CH_OPEN) {
+    notify_pm_gatt_op(*p_tcb, p_buf);
     /* process the data */
     gatt_data_process(*p_tcb, lcid, p_buf);
   }

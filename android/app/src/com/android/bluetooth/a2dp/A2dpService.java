@@ -1138,7 +1138,7 @@ public class A2dpService extends ConnectableProfile {
                         continue;
                     }
 
-                    byte[] addressBytes = Utils.getBytesFromAddress(address);
+                    byte[] addressBytes = Util.getBytesFromAddress(address);
                     BluetoothDevice device = getAdapterService().getDeviceFromByte(addressBytes);
 
                     Log.d(

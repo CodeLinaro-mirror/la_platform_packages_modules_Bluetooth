@@ -47,6 +47,7 @@
 #include "packet/avrcp/set_absolute_volume.h"
 #include "packet/avrcp/set_addressed_player.h"
 #include "packet/avrcp/set_player_application_setting_value.h"
+#include "stack/include/avrc_defs.h"
 #include "stack/include/main_thread.h"
 #include "btif/include/btif_config.h"
 #include "storage/config_keys.h"
@@ -1267,13 +1268,12 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
         return;
       }
 
-      if((pass_through_packet->GetOperationId() == uint8_t(OperationID::PLAY) &&
+      if((pass_through_packet->GetOperationId() == AVRC_ID_PLAY &&
           pass_through_packet->GetKeyState() == KeyState::PUSHED)) {
           log::warn("Play push received");
           pushed_already = true;
       }
-      // TODO (apanicke): Use an enum for media key ID's
-      if (pass_through_packet->GetOperationId() == uint8_t(OperationID::PLAY) &&
+      if (pass_through_packet->GetOperationId() == AVRC_ID_PLAY &&
           (pass_through_packet->GetKeyState() == KeyState::PUSHED ||
           (!pushed_already && pass_through_packet->GetKeyState() == KeyState::RELEASED))) {
         fast_forwarding_ = false;
@@ -1307,7 +1307,7 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                       d->IsPendingPlay_ = true;
                     }
                   } else {
-                    d->media_interface_->SendKeyEvent(d->address_, uint8_t(OperationID::PLAY), KeyState::PUSHED);
+                    d->media_interface_->SendKeyEvent(d->address_, AVRC_ID_PLAY, KeyState::PUSHED);
                   }
                 },
                 weak_ptr_factory_.GetWeakPtr()));
@@ -2388,7 +2388,7 @@ std::ostream& operator<<(std::ostream& out, const Device& d) {
   if (d.uids_changed_.first) {
     out << "        UIDs Changed\n";
   }
-  out << "    Last Play State: " << d.last_play_status_.state << std::endl;
+  out << "    Last Play State: " << static_cast<int>(d.last_play_status_.state) << std::endl;
   out << "    Last Song Sent ID: \"" << d.last_song_info_.media_id << "\"\n";
   out << "    Current Folder: \"" << d.CurrentFolder() << "\"\n";
   out << "    MTU Sizes: CTRL=" << d.ctrl_mtu_ << " BROWSE=" << d.browse_mtu_ << std::endl;

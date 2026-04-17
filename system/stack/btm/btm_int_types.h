@@ -49,19 +49,21 @@ extern bluetooth::common::TimestamperInMilliseconds timestamper_in_milliseconds;
 /* Define the Device Management control structure
  */
 typedef struct tBTM_DEVCB {
-  tBTM_CMPL_CB* p_rln_cmpl_cb;    /* Callback function to be called when  */
-                                  /* read local name function complete    */
+  tBTM_CMPL_CB* p_rln_cmpl_cb; /* Callback function to be called when  */
+                               /* read local name function complete    */
 
-  alarm_t* read_rssi_timer;     /* Read RSSI timer */
-  tBTM_CMPL_CB* p_rssi_cmpl_cb; /* Callback function to be called when  */
-                                /* read RSSI function completes */
+  alarm_t* read_rssi_timer;          /* Read RSSI timer */
+  tBTM_READ_RSSI_CB* p_rssi_cmpl_cb; /* Callback function to be called when  */
+                                     /* read RSSI function completes */
 
   alarm_t* read_automatic_flush_timeout_timer;     /* Read Automatic Flush Timeout */
                                                    /* timer */
-  tBTM_CMPL_CB* p_automatic_flush_timeout_cmpl_cb; /* Callback function to be */
-  /* called when read Automatic Flush Timeout function completes */
+  tBTM_READ_AUTOMATIC_FLUSH_TIMEOUT_CB*
+          p_automatic_flush_timeout_cmpl_cb; /* Callback function to be */
+                                             /* called when read Automatic Flush Timeout function
+                                                completes */
 
-  tBTM_CMPL_CB* p_flow_spec_cmpl_cb; /* Callback function to be called when  */
+  tBTM_FLOW_SPEC_CMPL_CB* p_flow_spec_cmpl_cb; /* Callback function to be called when  */
                                      /* flow spec function completes         */
 
   alarm_t* conn_proc_timer; /* Connection processing timer */

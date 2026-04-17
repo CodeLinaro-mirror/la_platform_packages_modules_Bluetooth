@@ -52,6 +52,8 @@ object ScanUtil {
     @JvmField val DEFAULT_SCAN_TIMEOUT = 10.minutes.toJavaDuration()
     @JvmField val DEFAULT_SCAN_UPGRADE_DURATION = 6.seconds.toJavaDuration()
     @JvmField val DEFAULT_SCAN_DOWNGRADE_DURATION_BT_CONNECTING = 6.seconds.toJavaDuration()
+    // TODO(b/478349128): tune the value of DEFAULT_SCAN_THROTTLE_DELAY
+    val DEFAULT_SCAN_THROTTLE_DELAY = 2.seconds
 
     // Scan params corresponding to regular scan setting
     const val SCAN_MODE_LOW_POWER_WINDOW_MS = 140
@@ -362,15 +364,15 @@ object ScanUtil {
         isTimeoutScanClient(client) || isDowngradedScanClient(client)
 
     private fun isTimeoutScanClient(client: ScanClient) =
-        client.appScanStats?.isScanTimeout(client.scannerId) ?: false
+        client.appScanStats.isScanTimeout(client.scannerId)
 
     @JvmStatic
     fun isDowngradedScanClient(client: ScanClient) =
-        client.appScanStats?.isScanDowngraded(client.scannerId) ?: false
+        client.appScanStats.isScanDowngraded(client.scannerId)
 
     @JvmStatic
     fun isAutoBatchScanClientEnabled(client: ScanClient) =
-        client.appScanStats?.isAutoBatchScan(client.scannerId) ?: false
+        client.appScanStats.isAutoBatchScan(client.scannerId)
 
     @JvmStatic
     fun getAggressiveClient(
@@ -430,7 +432,7 @@ object ScanUtil {
         val scanMode = ScanMode(SCAN_MODE_SCREEN_OFF)
         Log.d(TAG, "setAutoBatchScanClient($client): Update scan mode to $scanMode")
         client.updateScanMode(SCAN_MODE_SCREEN_OFF)
-        client.appScanStats?.setAutoBatchScan(client.scannerId, true)
+        client.appScanStats.setAutoBatchScan(client.scannerId, true)
     }
 
     @JvmStatic
@@ -441,7 +443,7 @@ object ScanUtil {
         val scanMode = ScanMode(client.scanModeApp)
         Log.d(TAG, "clearAutoBatchScanClient($client): Update scan mode to $scanMode")
         client.updateScanMode(client.scanModeApp)
-        client.appScanStats?.setAutoBatchScan(client.scannerId, false)
+        client.appScanStats.setAutoBatchScan(client.scannerId, false)
     }
 
     // EN format defined here:

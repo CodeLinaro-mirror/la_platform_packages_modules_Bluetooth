@@ -202,16 +202,6 @@ flag {
 }
 
 flag {
-    name: "leaudio_vaps_improvements"
-    namespace: "bluetooth"
-    description: "LE Audio VAPS improvements"
-    bug: "444029563"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "leaudio_always_use_group_size_to_check_audio_config"
     namespace: "bluetooth"
     description: "When checking support for audio configuration, take into account all the devices"
@@ -226,46 +216,6 @@ flag {
     namespace: "bluetooth"
     description: "Broadcast connection changed intent when state machine is cleaned up"
     bug: "441564325"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_broadcast_creation_timeout_fix"
-    namespace: "bluetooth"
-    description: "Properly clean up state after a broadcast creation timeout"
-    bug: "443811487"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_broadcast_sync_handle_to_device_fix"
-    namespace: "bluetooth"
-    description: "Fix updating sync handle to device map for the same device"
-    bug: "444365749"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_broadcast_improve_source_operations"
-    namespace: "bluetooth"
-    description: "Improve broadcast source operations"
-    bug: "444010402"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_reactivate_autonomously_inactivated_group_by_broadcast"
-    namespace: "bluetooth"
-    description: "Reactivate group autonomously deactivated due to broadcast sync"
-    bug: "439502201"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -296,16 +246,6 @@ flag {
     namespace: "bluetooth"
     description: "Always use the scanner when trying to sync to a broadcaster"
     bug: "467625545"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "leaudio_improve_unicast_monitor"
-    namespace: "bluetooth"
-    description: "Improve unicast monitor mode robustness"
-    bug: "440506873"
     metadata {
         purpose: PURPOSE_BUGFIX
     }
@@ -495,6 +435,16 @@ flag {
     namespace: "bluetooth"
     description: "Improve broadcast channel classification"
     bug: "487242521"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "leaudio_auracast_credential_extension"
+    namespace: "bluetooth"
+    description: "Extending Auracast credential sharing"
+    bug: "490092067"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

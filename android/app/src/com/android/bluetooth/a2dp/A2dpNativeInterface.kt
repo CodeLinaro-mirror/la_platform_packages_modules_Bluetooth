@@ -19,7 +19,7 @@ import android.bluetooth.BluetoothCodecConfig
 import android.bluetooth.BluetoothCodecType
 import android.bluetooth.BluetoothDevice
 import android.util.Log;
-import com.android.bluetooth.Utils
+import com.android.bluetooth.Util
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.profile.NativeInterface
 
@@ -120,7 +120,7 @@ class A2dpNativeInterface(
 
     private fun getByteAddress(device: BluetoothDevice?): ByteArray {
         if (device == null) {
-            return Utils.getBytesFromAddress("00:00:00:00:00:00")
+            return Util.getBytesFromAddress("00:00:00:00:00:00")
         }
         return adapterService.getByteBrEdrAddress(device)
     }

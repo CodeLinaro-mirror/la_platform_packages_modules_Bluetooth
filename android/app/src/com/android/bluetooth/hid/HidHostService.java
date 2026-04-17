@@ -51,7 +51,6 @@ import android.util.Log;
 import androidx.annotation.VisibleForTesting;
 
 import com.android.bluetooth.Util;
-import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.metrics.MetricsLogger;
@@ -210,7 +209,7 @@ public class HidHostService extends ConnectableProfile {
 
         if (transport == TRANSPORT_LE) {
             // Use pseudo address when HOGP is to be used
-            return Utils.getByteAddress(device);
+            return Util.getByteAddress(device);
         } else if (transport == TRANSPORT_BREDR) {
             // Use BR/EDR address if HID is to be used
             return getAdapterService().getByteBrEdrAddress(device);
@@ -222,7 +221,7 @@ public class HidHostService extends ConnectableProfile {
                 return getAdapterService().getByteBrEdrAddress(device);
             } else {
                 // Otherwise use pseudo address
-                return Utils.getByteAddress(device);
+                return Util.getByteAddress(device);
             }
         }
     }
@@ -634,9 +633,7 @@ public class HidHostService extends ConnectableProfile {
             }
         }
 
-        if (Flags.hidDontReconnectOnUhidTimeout()
-                && state == STATE_DISCONNECTED
-                && status == BTHH_ERR_TOD_UNSPT) {
+        if (state == STATE_DISCONNECTED && status == BTHH_ERR_TOD_UNSPT) {
             Log.w(
                     TAG,
                     "handleMessageConnectStateChanged: Disabling HID connection for unsupported"

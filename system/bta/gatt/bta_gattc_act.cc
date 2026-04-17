@@ -599,7 +599,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
           log::info("{} conn_id=0x{:x} Service discovery in progress, will not load database.",
                     p_clcb->bda, p_clcb->bta_conn_id);
           p_clcb->p_srcb->state = BTA_GATTC_SERV_IDLE;
-          p_clcb->state = BTA_GATTC_DISCOVER_ST;
+          bta_gattc_set_state(p_clcb, BTA_GATTC_DISCOVER_ST);
         }
       }
 
@@ -628,7 +628,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
         }
       }
     } else { /* cache is building */
-      p_clcb->state = BTA_GATTC_DISCOVER_ST;
+      bta_gattc_set_state(p_clcb, BTA_GATTC_DISCOVER_ST);
     }
   } else {
     /* a pending service handle change indication */
@@ -644,11 +644,6 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   }
 
   if (p_clcb->p_rcb) {
-    /* there is no RM for GATT */
-    if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-      bta_sys_conn_open(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-    }
-
     bta_gattc_send_open_cback(p_clcb->p_rcb, GATT_SUCCESS, p_clcb->bda, p_clcb->bta_conn_id,
                               p_clcb->transport, p_clcb->p_srcb->mtu);
   }
@@ -692,9 +687,6 @@ void bta_gattc_close(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   if (com_android_bluetooth_flags_le_subrate_manager()) {
     stack::leConnectionUpdateSubrateConfig(p_clcb->p_rcb->client_if, p_clcb->bda,
                                            GATT_SUBRATE_MODE_OFF, 0, 0, 0);
-  }
-  if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-    bta_sys_conn_close(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
   }
 
   /* Disable notification registration for closed connection */
@@ -763,7 +755,7 @@ void bta_gattc_disc_close(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data
        p_clcb->request_during_discovery == BTA_GATTC_DISCOVER_REQ_READ_DB_HASH_FOR_SVC_CHG)) {
     bta_gattc_reset_discover_st(p_clcb->p_srcb, GATT_ERROR);
   } else {
-    p_clcb->state = BTA_GATTC_CONN_ST;
+    bta_gattc_set_state(p_clcb, BTA_GATTC_CONN_ST);
   }
 
   // This function only gets called as the result of a BTA_GATTC_API_CLOSE_EVT
@@ -790,7 +782,7 @@ static void bta_gattc_set_discover_st(tBTA_GATTC_SERV* p_srcb) {
       break;
     }
     p_clcb->status = GATT_SUCCESS;
-    p_clcb->state = BTA_GATTC_DISCOVER_ST;
+    bta_gattc_set_state(p_clcb.get(), BTA_GATTC_DISCOVER_ST);
     p_clcb->request_during_discovery = BTA_GATTC_DISCOVER_REQ_NONE;
   }
 }
@@ -939,7 +931,7 @@ void bta_gattc_start_discover(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* /*
     p_clcb->auto_update = BTA_GATTC_DISC_WAITING;
 
     if (p_clcb->p_srcb->state == BTA_GATTC_SERV_IDLE) {
-      p_clcb->state = BTA_GATTC_CONN_ST; /* set clcb state */
+      bta_gattc_set_state(p_clcb, BTA_GATTC_CONN_ST);
     }
   }
 }
@@ -1190,17 +1182,11 @@ void bta_gattc_execute(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
 }
 
 /** send handle value confirmation */
-void bta_gattc_confirm(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
+void bta_gattc_confirm(tBTA_GATTC_CLCB* /*p_clcb*/, const tBTA_GATTC_DATA* p_data) {
   uint16_t cid = p_data->api_confirm.cid;
   auto conn_id = static_cast<tCONN_ID>(p_data->api_confirm.hdr.layer_specific);
   if (GATTC_SendHandleValueConfirm(conn_id, cid) != GATT_SUCCESS) {
     log::error("to cid=0x{:x} failed", cid);
-  } else {
-    /* if over BR_EDR, inform PM for mode change */
-    if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-      bta_sys_busy(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-      bta_sys_idle(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-    }
   }
 }
 
@@ -1455,7 +1441,7 @@ void bta_gattc_search(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
             "callback yet",
             p_clcb->bta_conn_id, p_clcb->p_srcb->server_bda);
     bta_gattc_enqueue(p_clcb, p_data);
-    p_clcb->state = BTA_GATTC_DISCOVER_ST;
+    bta_gattc_set_state(p_clcb, BTA_GATTC_DISCOVER_ST);
     return;
   }
 
@@ -1614,18 +1600,16 @@ static bool bta_gattc_process_srvc_chg_ind(tCONN_ID conn_id, tBTA_GATTC_RCB* p_c
   log::info("{} service changed s_handle=0x{:x}, e_handle=0x{:x}", p_srcb->server_bda, s_handle,
             e_handle);
 
-  if (com_android_bluetooth_flags_ignore_service_change_indication()) {
-    char remote_name[BD_NAME_LEN] = "";
-    btif_storage_get_stored_remote_name(p_srcb->server_bda, remote_name);
-    if (interop_match_name(INTEROP_IGNORE_SERVICE_CHANGED_IND, remote_name)) {
-      if (GATTC_SendHandleValueConfirm(conn_id, p_notify->cid) != GATT_SUCCESS) {
-        log::warn("Unable to send GATT client handle value confirmation conn_id:{} cid:{}", conn_id,
-                  p_notify->cid);
-      }
-
-      log::warn("ignore service changed ind");
-      return true;
+  char remote_name[BD_NAME_LEN] = "";
+  btif_storage_get_stored_remote_name(p_srcb->server_bda, remote_name);
+  if (interop_match_name(INTEROP_IGNORE_SERVICE_CHANGED_IND, remote_name)) {
+    if (GATTC_SendHandleValueConfirm(conn_id, p_notify->cid) != GATT_SUCCESS) {
+      log::warn("Unable to send GATT client handle value confirmation conn_id:{} cid:{}", conn_id,
+                p_notify->cid);
     }
+
+    log::warn("ignore service changed ind");
+    return true;
   }
 
   if (com_android_bluetooth_flags_gatt_offload_api()) {
@@ -1681,9 +1665,7 @@ static bool bta_gattc_process_srvc_chg_ind(tCONN_ID conn_id, tBTA_GATTC_RCB* p_c
     } else {
       log::warn("No clcb is available to handle service change indication");
       // To respond to the next service change indication
-      if (com_android_bluetooth_flags_reset_service_change_ind_counter()) {
-        p_srcb->update_count = 0;
-      }
+      p_srcb->update_count = 0;
     }
   }
 
@@ -1820,12 +1802,6 @@ static void bta_gattc_cmpl_cback(tCONN_ID conn_id, tGATTC_OPTYPE op, tGATT_STATU
   if (!p_clcb) {
     log::error("unknown conn_id=0x{:x} ignore data", conn_id);
     return;
-  }
-
-  /* if over BR_EDR, inform PM for mode change */
-  if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-    bta_sys_busy(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-    bta_sys_idle(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
   }
 
   bta_gattc_cmpl_sendmsg(conn_id, op, status, p_data);

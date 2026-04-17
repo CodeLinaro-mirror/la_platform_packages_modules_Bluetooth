@@ -87,7 +87,7 @@ import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.bluetooth.TestLooper;
-import com.android.bluetooth.Utils;
+import com.android.bluetooth.Util;
 import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.bass_client.BassClientService;
 import com.android.bluetooth.btservice.ActiveDeviceManager;
@@ -329,7 +329,7 @@ public class LeAudioServiceTest {
 
         doReturn(mBroadcastDevice)
                 .when(mAdapterService)
-                .getDeviceFromByte(Utils.getBytesFromAddress("FF:FF:FF:FF:FF:FF"));
+                .getDeviceFromByte(Util.getBytesFromAddress("FF:FF:FF:FF:FF:FF"));
 
         doReturn(Optional.of(mA2dpService)).when(mAdapterService).getA2dpService();
         doReturn(Optional.of(mBassClientService)).when(mAdapterService).getBassClientService();
@@ -370,13 +370,6 @@ public class LeAudioServiceTest {
         assertThat(mService.mLeAudioNativeIsInitialized).isTrue();
 
         mInOrder.verify(mNativeInterface).init(any());
-    }
-
-    @Test
-    @DisableFlags(Flags.FLAG_LEAUDIO_BROADCAST_CREATION_TIMEOUT_FIX)
-    public void initAndTeardown() {
-        mService.cleanup();
-        assertThat(LeAudioService.getLeAudioService()).isNull();
     }
 
     @Test
@@ -426,7 +419,7 @@ public class LeAudioServiceTest {
         }
         int mask =
                 Flags.leaudioCentralizeTmap()
-                        ? LeAudioTmapService.calculateTmapRoleMask()
+                        ? LeAudioTmapGattServer.calculateTmapRoleMask()
                         : new LeAudioService(
                                         mAdapterService,
                                         mStorage,
@@ -439,13 +432,6 @@ public class LeAudioServiceTest {
                                         mPackageManager)
                                 .getTmapRoleMask();
         assertThat(mask).isEqualTo(expectedMasks);
-    }
-
-    /** Test getting LeAudio Service: getLeAudioService() */
-    @Test
-    @DisableFlags(Flags.FLAG_LEAUDIO_BROADCAST_CREATION_TIMEOUT_FIX)
-    public void testGetLeAudioService() {
-        assertThat(mService).isEqualTo(LeAudioService.getLeAudioService());
     }
 
     /** Test enabling disabling device autoconnections when connection policy is set */

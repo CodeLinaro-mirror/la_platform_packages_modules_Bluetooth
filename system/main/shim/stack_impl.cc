@@ -19,6 +19,7 @@
 #include "main/shim/stack_impl.h"
 
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -29,7 +30,6 @@
 #include <string>
 #include <signal.h>
 
-#include "common/strings.h"
 #include "main/shim/hci_layer.h"
 #include "main/shim/le_advertising_manager.h"
 #include "main/shim/le_scanning_manager.h"

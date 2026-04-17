@@ -250,7 +250,7 @@ void BTM_WriteVoiceSettings(uint16_t settings);
  ******************************************************************************/
 [[nodiscard]] tBTM_STATUS BTM_ClearInqDb(const RawAddress* p_bda);
 
-extern tBTM_STATUS BTM_FlowSpec(const RawAddress& bd, tBT_FLOW_SPEC* p_flow, tBTM_CMPL_CB* p_cb);
+extern tBTM_STATUS BTM_FlowSpec(const RawAddress& bd, tBT_FLOW_SPEC* p_flow, tBTM_FLOW_SPEC_CMPL_CB* p_cb);
 
 /*****************************************************************************
  *  (e)SCO CHANNEL MANAGEMENT FUNCTIONS

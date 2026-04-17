@@ -55,9 +55,7 @@
 #include "main/shim/acl_api.h"
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
-#include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "stack/btm/btm_ble_int.h"
 #include "stack/btm/btm_ble_sec.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_device_record.h"
@@ -75,7 +73,6 @@
 #include "stack/include/btm_ble_privacy.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_log_history.h"
-#include "stack/include/btm_sec_api.h"
 #include "stack/include/btm_status.h"
 #include "stack/include/hci_error_code.h"
 #include "stack/include/hcidefs.h"
@@ -619,7 +616,7 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr, tBLE_ADDR_TYPE 
   /* Finished if connection is active and already paired */
   if (!com_android_bluetooth_flags_check_bond_status_before_pairing()) {
     if (transport == BT_TRANSPORT_BR_EDR && p_device->hci_handle != HCI_INVALID_HANDLE &&
-        btm_get_bond_type_dev(bd_addr) == BOND_TYPE_PERSISTENT &&
+        p_device->sec_rec.bond_type == BOND_TYPE_PERSISTENT &&
         (p_device->sec_rec.sec_flags & BTM_SEC_AUTHENTICATED)) {
       log::warn("Already Paired");
       return tBTM_STATUS::BTM_SUCCESS;
@@ -2626,11 +2623,15 @@ void btm_io_capabilities_rsp(const tBTM_SP_IO_RSP evt_data) {
   /* If device is bonded, and encrypted it's upgrading security and it's ok.
    * If it's bonded and not encrypted, it's remote missing keys scenario
    * Do not process this RSP and return, REQ will handle generation of
-   * key missing event and disconnect.*/
+   * key missing event and disconnect.
+   *
+   * Note: Process this RSP if autonomous repair is supported, as this will be used to continue the
+   * re-pair attempt. The changes in this function will be reset on pairing success or failure.
+   */
   if (p_device->sec_rec.is_bonded(BT_TRANSPORT_BR_EDR) &&
       !p_device->sec_rec.is_device_encrypted() &&
       !(com::android::bluetooth::flags::process_iocap_rsp_while_repairing() &&
-        is_autonomous_repairing_supported() && p_device->bond_lost)) {
+        is_autonomous_repairing_supported())) {
     log::warn("Incoming bond request, but {} is already bonded (notifying user)", evt_data.bd_addr);
     return;
   }
@@ -4308,6 +4309,7 @@ void btm_sec_link_key_request(const RawAddress& bda) {
     btm_security.lk_req_timer_ = alarm_new("btm_sec_lk_req_timer");
     alarm_set_on_mloop(btm_security.lk_req_timer_, BTM_SEC_LK_REQ_TIMEOUT_MS,
                        btm_sec_lk_req_timeout, nullptr);
+    return;
   }
 
   /* The link key is not in the database and it is not known to the manager */

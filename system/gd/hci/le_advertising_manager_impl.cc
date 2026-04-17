@@ -21,6 +21,7 @@
 
 #include <base/strings/string_number_conversions.h>
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 #include <openssl/aead.h>
 #include <openssl/base.h>
@@ -31,7 +32,6 @@
 #include <memory>
 #include <mutex>
 
-#include "common/strings.h"
 #include "hardware/ble_advertiser.h"
 #include "hci/controller.h"
 #include "hci/event_checkers.h"
@@ -332,8 +332,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
     if (!advertising_sets_.contains(advertiser_id)) {
       log::warn("Unknown advertiser id {}", advertiser_id);
 
-      if (com_android_bluetooth_flags_ensure_acl_connection_is_removed_from_pending_list() &&
-          removed_advertising_sets_.contains(advertiser_id)) {
+      if (removed_advertising_sets_.contains(advertiser_id)) {
         log::info("Found advertiser id {} in removed advertisers.", advertiser_id);
         AddressWithType advertiser_address =
                 removed_advertising_sets_[advertiser_id].current_address;
@@ -446,8 +445,7 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
     advertising_sets_[id].in_use = true;
     num_advertisers_in_use_++;
 
-    if (com_android_bluetooth_flags_ensure_acl_connection_is_removed_from_pending_list() &&
-        removed_advertising_sets_.contains(id)) {
+    if (removed_advertising_sets_.contains(id)) {
       log::info("Removing advertiser id {} from removed advertisers.", id);
       removed_advertising_sets_.erase(id);
     }
@@ -509,11 +507,9 @@ struct LeAdvertisingManagerImpl::impl : public bluetooth::hci::LeAddressManagerC
       }
     }
 
-    if (com_android_bluetooth_flags_ensure_acl_connection_is_removed_from_pending_list()) {
-      removed_advertising_sets_[advertiser_id] =
-              RemovedAdvertiser(advertising_sets_[advertiser_id].current_address,
-                                advertising_sets_[advertiser_id].discoverable);
-    }
+    removed_advertising_sets_[advertiser_id] =
+            RemovedAdvertiser(advertising_sets_[advertiser_id].current_address,
+                              advertising_sets_[advertiser_id].discoverable);
 
     advertising_sets_.erase(advertiser_id);
     num_advertisers_in_use_--;

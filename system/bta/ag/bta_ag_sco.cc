@@ -666,6 +666,18 @@ static void bta_ag_codec_negotiation_timer_cback(void* data) {
     log::verbose("dev {} is already blacklisted for codec negotiation",
                  p_scb->peer_addr.ToString().c_str());
   }
+  // CancelStreamingRequest before callback is sent to java layer
+  if (bta_ag_is_sco_managed_by_audio()) {
+    if (hfp_software_datapath_enabled) {
+      if (hfp_encode_interface) {
+        hfp_encode_interface->CancelStreamingRequest();
+        hfp_decode_interface->CancelStreamingRequest();
+      }
+    } else {
+      hfp_offload_interface->CancelStreamingRequest();
+    }
+  }
+
   /* call app callback */
   bta_ag_cback_sco(p_scb, BTA_AG_AUDIO_CLOSE_EVT, CODEC_NEGOTIATION_FAIL);
 }

@@ -55,8 +55,6 @@ static bool get_pts_configure_svc_chg_indication(void) {
   // when sending service changed indications. Return false by default for tests.
   return false; 
 }
-struct config_t;
-static config_t* get_all(void) { return nullptr; }
 struct packet_fragmenter_t;
 const packet_fragmenter_t* packet_fragmenter_get_interface() { return nullptr; }
 
@@ -85,7 +83,6 @@ stack_config_t mock_stack_config{
         .get_pts_le_audio_disable_ases_before_stopping =
                 get_pts_le_audio_disable_ases_before_stopping,
         .get_pts_configure_svc_chg_indication = get_pts_configure_svc_chg_indication,
-        .get_all = get_all,
 };
 
 const stack_config_t* stack_config_get_interface(void) { return &mock_stack_config; }

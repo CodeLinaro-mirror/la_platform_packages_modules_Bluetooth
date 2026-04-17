@@ -416,6 +416,9 @@ typedef enum {
   // blocks pairing_cb reset, preventing subsequent pairings with other devices.
   INTEROP_SKIP_GATT_DISCOVERY_OVER_LE,
 
+  //To Suppress A2DP while HFP is connected in particular carkits
+  INTEROP_SUPPRESS_A2DP_AUTO_CONNECT,
+
   END_OF_INTEROP_LIST
 } interop_feature_t;
 

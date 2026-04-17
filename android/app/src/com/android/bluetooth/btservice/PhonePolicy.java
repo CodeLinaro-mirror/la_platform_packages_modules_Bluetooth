@@ -116,12 +116,12 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
 
     @Override
     public void onBluetoothStateChange(int prevState, int newState) {
-        // Only act if the adapter has actually changed state from non-ON to ON.
-        // NOTE: ON is the state depicting BREDR ON and not just BLE ON.
-        if (newState == State.ON) {
-            resetStates();
-            autoConnect();
+        if (newState != State.ON) {
+            // Only act if the adapter has actually changed state from non-ON to ON.
+            return;
         }
+        resetStates();
+        autoConnect();
     }
 
 
@@ -640,7 +640,15 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
                         handleConnectionPolicyAfterCsipConnect(device);
                 default -> {} // Nothing to do
             }
-            connectOtherProfile(device);
+
+            if (profile == BluetoothProfile.HEADSET && device != null &&
+                    mAdapterService.interopMatchDevice(
+                    InteropUtil.InteropFeature.INTEROP_SUPPRESS_A2DP_AUTO_CONNECT,
+                    device)) {
+                Log.d(TAG,"fix to suppress auto a2dp when HFP is connected in some carkit");
+            } else {
+                connectOtherProfile(device);
+            }
         } else if (nextState == STATE_DISCONNECTED) {
             if (prevState == STATE_CONNECTING || prevState == STATE_DISCONNECTING) {
                 if (profile == BluetoothProfile.A2DP || profile == BluetoothProfile.HEADSET) {

@@ -37,20 +37,16 @@
 #include <string>
 
 #include "internal_include/bt_target.h"
-#include "internal_include/stack_config.h"
-#include "main/shim/helpers.h"
 #include "os/system_properties.h"
 #include "osi/include/allocator.h"
 #include "stack/arbiter/acl_arbiter.h"
 #include "stack/btm/btm_dev.h"
-#include "stack/connection_manager/connection_manager.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/ais_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_psm_types.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/btm_client_interface.h"
-#include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/l2cdefs.h"
 #include "stack/include/sdp_api.h"
@@ -742,6 +738,19 @@ void GATTS_OffloadCharacteristics(tCONN_ID conn_id, btgatt_db_element_t* service
 void GATTS_UnoffloadCharacteristics(tCONN_ID conn_id, uint16_t session_id) {
   log::info("conn_id: {}, session_id: {}", conn_id, session_id);
   gatt_unoffload_session(conn_id, session_id);
+}
+
+std::optional<bluetooth::Uuid> GATTS_LookupServiceUuidByStartHandle(uint16_t start_handle) {
+  auto end_it = gatt_cb.hdl_list_info->end();
+  for (auto it = gatt_cb.hdl_list_info->begin(); it != end_it; ++it) {
+    if (it->asgn_range.s_handle != start_handle) {
+      continue;
+    }
+    return it->asgn_range.svc_uuid;
+  }
+
+  // No match found
+  return std::nullopt;
 }
 
 /******************************************************************************/

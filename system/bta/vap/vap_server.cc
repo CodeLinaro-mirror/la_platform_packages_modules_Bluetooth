@@ -17,7 +17,6 @@
 #include <base/functional/bind.h>
 #include <base/functional/callback.h>
 #include <bluetooth/log.h>
-#include <com_android_bluetooth_flags.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -144,8 +143,7 @@ public:
     }
   }
 
-  static void OnGattMtuChangedStatic(tCONN_ID conn_id, uint32_t /*trans_id*/,
-                                     const RawAddress& remote_bda, uint16_t mtu) {
+  static void OnGattMtuChangedStatic(tCONN_ID conn_id, const RawAddress& remote_bda, uint16_t mtu) {
     if (instance) {
       instance->OnGattMtuChanged(conn_id, remote_bda, mtu);
     }
@@ -213,16 +211,14 @@ public:
        uint16_t ccc_va_session_state = remote_client.ccc_values_[kVaSessionStateCharacteristic];
        log::info("device:{}", bda);
 
-       if (true /*com_android_bluetooth_flags_leaudio_vaps_improvements()*/) {
-         uint16_t ccc_va_name = remote_client.ccc_values_[kVaNameCharacteristic];
-         uint16_t ccc_va_uuid = remote_client.ccc_values_[kVaUuidCharacteristic];
-         // Send VA Name notification
-         SendVaNameNotification(&remote_client, ccc_va_name, va_name);
+       uint16_t ccc_va_name = remote_client.ccc_values_[kVaNameCharacteristic];
+       uint16_t ccc_va_uuid = remote_client.ccc_values_[kVaUuidCharacteristic];
+       // Send VA Name notification
+       SendVaNameNotification(&remote_client, ccc_va_name, va_name);
 
-         // Send VA UUID notification
-         // Using VA name bytes for VA UUID as we don't have an API from VA apps
-         SendVaUuidNotification(&remote_client, ccc_va_uuid, va_name);
-       }
+       // Send VA UUID notification
+       // Using VA name bytes for VA UUID as we don't have an API from VA apps
+       SendVaUuidNotification(&remote_client, ccc_va_uuid, va_name);
 
        // Send VA Session State notification
        SendVaSessionStateNotification(&remote_client, ccc_va_session_state, va_session_state);
@@ -246,45 +242,37 @@ public:
      if (remote_clients_.find(bda) != remote_clients_.end()) {
        RemoteClient* remote_client = &remote_clients_[bda];
        uint16_t ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
-       uint16_t ccc_va_session_state = remote_client->ccc_values_[kVaSessionStateCharacteristic];
        ResponseCodeValue rsp_code_value =
            is_success ? ResponseCodeValue::SUCCESS : ResponseCodeValue::OPERATION_FALIED;
        // Send VAS Control Point notification
        SendVasControlPointNotification(remote_client, rsp_code_value, ccc_vas_control_point);
 
-       if (true /*com_android_bluetooth_flags_leaudio_vaps_improvements()*/) {
-         int group_id;
-         auto csis_api = CsisClient::Get();
-         if (csis_api == nullptr) {
-           log::error("csis api is null");
-           return;
-         }
+       int group_id;
+       auto csis_api = CsisClient::Get();
+       if (csis_api == nullptr) {
+         log::error("csis api is null");
+         return;
+       }
 
-         group_id = csis_api->GetGroupId(bda, bluetooth::le_audio::uuid::kCapServiceUuid);
-         log::info("group_id:{}", group_id);
-         if (group_id != bluetooth::groups::kGroupUnknown) {
-           std::vector<RawAddress> devices = csis_api->GetDeviceList(group_id);
+       group_id = csis_api->GetGroupId(bda, bluetooth::le_audio::uuid::kCapServiceUuid);
+       log::info("group_id:{}", group_id);
+       if (group_id != bluetooth::groups::kGroupUnknown) {
+         std::vector<RawAddress> devices = csis_api->GetDeviceList(group_id);
 
-           for (const auto& device : devices) {
-             log::info("NotifyVaSessionInitialized:, device:{}", device);
-             if (remote_clients_.find(device) != remote_clients_.end()) {
-               RemoteClient* remote_client = &remote_clients_[device];
-               uint16_t ccc_va_session_state =
-                   remote_client->ccc_values_[kVaSessionStateCharacteristic];
+         for (const auto& device : devices) {
+           log::info("NotifyVaSessionInitialized:, device:{}", device);
+           if (remote_clients_.find(device) != remote_clients_.end()) {
+             RemoteClient* remote_client = &remote_clients_[device];
+             uint16_t ccc_va_session_state =
+                 remote_client->ccc_values_[kVaSessionStateCharacteristic];
 
-               uint8_t va_session_state =
-                   static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
-               // Send VA Session State notification
-               SendVaSessionStateNotification(remote_client, ccc_va_session_state,
-                   va_session_state, /*is_group_device*/ true);
-             }
+             uint8_t va_session_state =
+                 static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
+             // Send VA Session State notification
+             SendVaSessionStateNotification(remote_client, ccc_va_session_state,
+                 va_session_state, /*is_group_device*/ true);
            }
          }
-       } else {
-         uint8_t va_session_state =
-             static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
-         // Send VA Session State notification
-         SendVaSessionStateNotification(remote_client, ccc_va_session_state, va_session_state);
        }
      }
    }
@@ -562,40 +550,38 @@ public:
      // CCC descriptor for VA Session State characteristic
      service.push_back(ccc_descriptor);
 
-     if (true /*com_android_bluetooth_flags_leaudio_vaps_improvements()*/) {
-       // VA Session Flag characteristic
-       btgatt_db_element_t va_session_flag_characteristic;
-       va_session_flag_characteristic.uuid = kVaSessionFlagCharacteristic;
-       va_session_flag_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-       va_session_flag_characteristic.properties =
-            (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
-       va_session_flag_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
-       service.push_back(va_session_flag_characteristic);
-       //CCC descriptor for VA Session Flag characteristic
-       service.push_back(ccc_descriptor);
+     // VA Session Flag characteristic
+     btgatt_db_element_t va_session_flag_characteristic;
+     va_session_flag_characteristic.uuid = kVaSessionFlagCharacteristic;
+     va_session_flag_characteristic.type = BTGATT_DB_CHARACTERISTIC;
+     va_session_flag_characteristic.properties =
+          (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
+     va_session_flag_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
+     service.push_back(va_session_flag_characteristic);
+     //CCC descriptor for VA Session Flag characteristic
+     service.push_back(ccc_descriptor);
 
-       // VA Supported Languages characteristic
-       btgatt_db_element_t va_supported_lang_characteristic;
-       va_supported_lang_characteristic.uuid = kVaSupportedLanguagesCharacteristic;
-       va_supported_lang_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-       va_supported_lang_characteristic.properties =
-            (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
-       va_supported_lang_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
-       service.push_back(va_supported_lang_characteristic);
-       //CCC descriptor for VA Supported Languages characteristic
-       service.push_back(ccc_descriptor);
+     // VA Supported Languages characteristic
+     btgatt_db_element_t va_supported_lang_characteristic;
+     va_supported_lang_characteristic.uuid = kVaSupportedLanguagesCharacteristic;
+     va_supported_lang_characteristic.type = BTGATT_DB_CHARACTERISTIC;
+     va_supported_lang_characteristic.properties =
+          (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
+     va_supported_lang_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
+     service.push_back(va_supported_lang_characteristic);
+     //CCC descriptor for VA Supported Languages characteristic
+     service.push_back(ccc_descriptor);
 
-       // VA Supported Features characteristic
-       btgatt_db_element_t va_supported_features_characteristic;
-       va_supported_features_characteristic.uuid = kVaSupportedFeaturesCharacteristic;
-       va_supported_features_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-       va_supported_features_characteristic.properties =
-            (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
-       va_supported_features_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
-       service.push_back(va_supported_features_characteristic);
-       // CCC descriptor for VA Supported Features characteristic
-       service.push_back(ccc_descriptor);
-     }
+     // VA Supported Features characteristic
+     btgatt_db_element_t va_supported_features_characteristic;
+     va_supported_features_characteristic.uuid = kVaSupportedFeaturesCharacteristic;
+     va_supported_features_characteristic.type = BTGATT_DB_CHARACTERISTIC;
+     va_supported_features_characteristic.properties =
+          (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
+     va_supported_features_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
+     service.push_back(va_supported_features_characteristic);
+     // CCC descriptor for VA Supported Features characteristic
+     service.push_back(ccc_descriptor);
 
      BTA_GATTS_AddService(server_if_, service,
                           base::BindOnce([](tGATT_STATUS status, int server_if,
@@ -810,12 +796,10 @@ public:
      uint16_t ccc_vas_control_point = GATT_CLT_CONFIG_NONE;
      VaSessionState va_session_state = GetVaSessionState();
 
-     if (true /*com_android_bluetooth_flags_leaudio_vaps_improvements()*/) {
-       ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
-       if (ccc_vas_control_point == GATT_CLT_CONFIG_NONE) {
-         log::warn(" VAS Control Point CCCD not configured by remote client, ignore the command");
-         return;
-       }
+     ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
+     if (ccc_vas_control_point == GATT_CLT_CONFIG_NONE) {
+       log::warn(" VAS Control Point CCCD not configured by remote client, ignore the command");
+       return;
      }
 
      ControlPointResponse cp_rsp =

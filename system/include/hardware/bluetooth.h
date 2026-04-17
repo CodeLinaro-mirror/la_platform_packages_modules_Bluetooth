@@ -39,7 +39,6 @@
 
 /** Bluetooth profile interface IDs */
 #define BT_BQR_ID "bqr"
-#define BT_KEYSTORE_ID "bluetooth_keystore"
 #define BT_PROFILE_ADVANCED_AUDIO_ID "a2dp"
 #define BT_PROFILE_ADVANCED_AUDIO_SINK_ID "a2dp_sink"
 #define BT_PROFILE_AV_RC_CTRL_ID "avrcp_ctrl"
@@ -263,6 +262,7 @@ typedef struct {
   bool le_high_data_rate_throughput_supported;
   bool le_hdt_phy_supported;
   bool le_connected_isochronous_stream_peripheral_supported;
+  bool le_big_set_channel_map_classification_support;
 } __attribute__((packed)) bt_local_le_features_t;
 
 typedef struct {
@@ -946,12 +946,14 @@ typedef struct {
 
   bool (*pairing_is_busy)();
 
+#ifdef TARGET_FLOSS
   /**
    * Get the connection status for a given remote device.
    * return value of 0 means the device is not connected,
    * non-zero return status indicates an active connection.
    */
   int (*get_connection_state)(RawAddress bd_addr);
+#endif
 
   /** BT Legacy PinKey Reply */
   /** If accept==FALSE, then pin_len and pin_code shall be 0x0 */

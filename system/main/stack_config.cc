@@ -22,6 +22,7 @@
 
 #include <bluetooth/log.h>
 
+#include "osi/include/config.h"
 #include "osi/include/future.h"
 #include "osi/include/properties.h"
 
@@ -232,7 +233,6 @@ static bool get_pts_configure_svc_chg_indication(void) {
 static bool get_pts_DB_out_of_sync(void){
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_DB_OUT_OF_SYNC, false);
  }
-static config_t* get_all(void) { return config.get(); }
 
 static bool get_pts_gatt_skip_service_discovery(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_GATT_SKIP_SERVICE_DISCOVERY_DURING_CONN, false);
@@ -266,7 +266,6 @@ const stack_config_t interface = {get_pts_avrcp_test,
                                   get_pts_le_audio_disable_ases_before_stopping,
                                   get_pts_gatt_skip_service_discovery,
                                   get_pts_configure_svc_chg_indication,
-                                  get_pts_DB_out_of_sync,
-                                  get_all};
+                                  get_pts_DB_out_of_sync};
 
 const stack_config_t* stack_config_get_interface(void) { return &interface; }

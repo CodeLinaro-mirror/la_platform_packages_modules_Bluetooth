@@ -1280,18 +1280,73 @@ static void Connection_cb(tGATT_IF gatt_if, const RawAddress& bda,
   g_conn_id = conn_id;
 }
 
-static void AttributeReq_cb(uint16_t conn_id, uint32_t trans_id,
-                            tGATTS_REQ_TYPE type, tGATTS_DATA* p_data) {
-  printf("%s:: conn_id=%d, trans_id=%d, type=%u\n", __FUNCTION__, conn_id,
-         trans_id, type);
+static void GattReqReadCharacteristic_cb(tCONN_ID conn_id, uint32_t trans_id,
+                                         const RawAddress& remote_bda,
+                                         uint16_t handle, uint16_t offset,
+                                         bool is_long) {
+  printf("%s:: conn_id=%d, trans_id=%d, handle=%d, offset=%d, is_long=%d\n",
+         __FUNCTION__, conn_id, trans_id, handle, offset, is_long);
 }
+
+static void GattReqReadDescriptor_cb(tCONN_ID conn_id, uint32_t trans_id,
+                                     const RawAddress& remote_bda,
+                                     uint16_t handle, uint16_t offset,
+                                     bool is_long) {
+  printf("%s:: conn_id=%d, trans_id=%d, handle=%d, offset=%d, is_long=%d\n",
+         __FUNCTION__, conn_id, trans_id, handle, offset, is_long);
+}
+
+static void GattReqWriteCharacteristic_cb(tCONN_ID conn_id, uint32_t trans_id,
+                                          const RawAddress& remote_bda,
+                                          uint16_t handle, uint16_t offset,
+                                          bool need_rsp, bool is_prep,
+                                          uint8_t* value, uint16_t len) {
+  printf("%s:: conn_id=%d, trans_id=%d, handle=%d, offset=%d, len=%d\n",
+         __FUNCTION__, conn_id, trans_id, handle, offset, len);
+}
+
+static void GattReqWriteDescriptor_cb(tCONN_ID conn_id, uint32_t trans_id,
+                                      const RawAddress& remote_bda,
+                                      uint16_t handle, uint16_t offset,
+                                      bool need_rsp, bool is_prep,
+                                      uint8_t* value, uint16_t len) {
+  printf("%s:: conn_id=%d, trans_id=%d, handle=%d, offset=%d, len=%d\n",
+         __FUNCTION__, conn_id, trans_id, handle, offset, len);
+}
+
+static void GattReqExecWrite_cb(tCONN_ID conn_id, uint32_t trans_id,
+                                const RawAddress& remote_bda,
+                                tGATT_EXEC_FLAG exec_write) {
+  printf("%s:: conn_id=%d, trans_id=%d, exec_write=%d\n",
+         __FUNCTION__, conn_id, trans_id, exec_write);
+}
+
+static void GattReqMtuChanged_cb(tCONN_ID conn_id, const RawAddress& remote_bda,
+                                 uint16_t mtu) {
+  printf("%s:: conn_id=%d, mtu=%d\n", __FUNCTION__, conn_id, mtu);
+}
+
+static void GattReqConf_cb(tCONN_ID conn_id, uint32_t trans_id,
+                           const RawAddress& remote_bda) {
+  printf("%s:: conn_id=%d, trans_id=%d\n", __FUNCTION__, conn_id, trans_id);
+}
+
+static bluetooth::stack::tGATT_REQ_CBACK sGattReqCB = {
+    GattReqReadCharacteristic_cb,
+    GattReqReadDescriptor_cb,
+    GattReqWriteCharacteristic_cb,
+    GattReqWriteDescriptor_cb,
+    GattReqExecWrite_cb,
+    GattReqMtuChanged_cb,
+    GattReqConf_cb
+};
 
 static bluetooth::stack::tGATT_CBACK sGattCB = {
     Connection_cb,
     OperationCmpl_cb,
     DiscoverRes_cb,
     DiscoverCmpl_cb,
-    AttributeReq_cb,
+    &sGattReqCB,
     NULL,
     NULL,
     NULL,

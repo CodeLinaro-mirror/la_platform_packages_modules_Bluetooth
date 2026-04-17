@@ -18,10 +18,10 @@
 
 #pragma once
 
-#include <stdbool.h>
+#include <cstdbool>
+#include <string>
 
 #include "btcore/include/module.h"
-#include "osi/include/config.h"
 
 static const char STACK_CONFIG_MODULE[] = "stack_config_module";
 
@@ -55,7 +55,6 @@ typedef struct {
   bool(*get_pts_gatt_skip_service_discovery)(void);
   bool (*get_pts_configure_svc_chg_indication)(void);
   bool (*get_pts_DB_out_of_sync)(void);
-  config_t* (*get_all)(void);
 } stack_config_t;
 
 extern const stack_config_t* stack_config_get_interface(void);

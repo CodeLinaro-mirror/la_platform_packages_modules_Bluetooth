@@ -81,7 +81,6 @@
 #include "btif/include/btif_hf.h"
 #include "btif/include/btif_hf_client.h"
 #include "btif/include/btif_hh.h"
-#include "btif/include/btif_keystore.h"
 #include "btif/include/btif_le_audio.h"
 #include "btif/include/btif_le_audio_peripheral.h"
 #include "btif/include/btif_pan.h"
@@ -485,8 +484,6 @@ void bluetooth_init(bt_callbacks_t* callbacks, bool start_restricted, bool is_co
 
   restricted_mode = start_restricted;
 
-  bluetooth::os::ParameterProvider::SetBtKeystoreInterface(
-          bluetooth::bluetooth_keystore::getBluetoothKeystoreInterface());
   bluetooth::os::ParameterProvider::SetCommonCriteriaMode(is_common_criteria_mode);
   if (is_bluetooth_uid() && is_common_criteria_mode) {
     bluetooth::os::ParameterProvider::SetCommonCriteriaConfigCompareResult(config_compare_result);
@@ -732,6 +729,7 @@ static bool pairing_is_busy() {
   return false;
 }
 
+#ifdef TARGET_FLOSS
 static int get_connection_state(const RawAddress bd_addr) {
   if (!interface_ready()) {
     return 0;
@@ -739,6 +737,7 @@ static int get_connection_state(const RawAddress bd_addr) {
 
   return btif_dm_get_connection_state(bd_addr);
 }
+#endif
 
 static int pin_reply(const RawAddress bd_addr, uint8_t accept, uint8_t pin_len,
                      bt_pin_code_t* pin_code) {
@@ -1084,10 +1083,6 @@ static const void* get_profile_interface(const char* profile_id) {
     return btif_has_client_get_interface();
   }
 
-  if (is_profile(profile_id, BT_KEYSTORE_ID)) {
-    return bluetooth::bluetooth_keystore::getBluetoothKeystoreInterface();
-  }
-
   if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_ID)) {
     return btif_le_audio_get_interface();
   }
@@ -1300,7 +1295,9 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .remove_bond = remove_bond,
         .cancel_bond = cancel_bond,
         .pairing_is_busy = pairing_is_busy,
+#ifdef TARGET_FLOSS
         .get_connection_state = get_connection_state,
+#endif
         .pin_reply = pin_reply,
         .ssp_reply = ssp_reply,
         .get_profile_interface = get_profile_interface,

@@ -79,6 +79,7 @@ public:
   void ConfirmSuspendRequest() override;
   void ConfirmStreamingRequest(bool force) override;
   void CancelStreamingRequest() override;
+  void CancelStreamingRequestWithUnsupported() override;
   void SetCodecPriority(const ::bluetooth::le_audio::types::LeAudioCodecId& codecId,
                         int32_t priority) override;
   void UpdateRemoteDelay(uint16_t remote_delay_ms) override;
@@ -489,6 +490,16 @@ void SourceImpl::CancelStreamingRequest() {
 
   log::info("");
   halSinkInterface_->CancelStreamingRequest();
+}
+
+void SourceImpl::CancelStreamingRequestWithUnsupported() {
+  if ((halSinkInterface_ == nullptr) || (le_audio_sink_hal_state_ != HAL_STARTED)) {
+    log::error("Audio HAL Audio sink was not started!");
+    return;
+  }
+
+  log::info("");
+  halSinkInterface_->CancelStreamingRequestWithUnsupported();
 }
 
 void SourceImpl::SetCodecPriority(const ::bluetooth::le_audio::types::LeAudioCodecId& codecId,

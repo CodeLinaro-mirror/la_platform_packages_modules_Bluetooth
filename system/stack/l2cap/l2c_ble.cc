@@ -43,10 +43,8 @@
 #include "main/shim/entry.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "stack/btm/btm_int_types.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/btm/btm_sec_int_types.h"
-#include "stack/btm/internal/btm_api.h"
 #include "stack/connection_manager/connection_manager.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_psm_types.h"
@@ -56,7 +54,6 @@
 #include "stack/include/btm_log_history.h"
 #include "stack/include/btm_sec_api.h"
 #include "stack/include/btm_status.h"
-#include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_controller_interface.h"
 #include "stack/include/l2cap_hci_link_interface.h"
 #include "stack/include/l2cap_interface.h"
@@ -637,8 +634,15 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
        * good*/
       num_of_channels = (p_pkt_end - p) / sizeof(uint16_t);
       if (num_of_channels != p_lcb->pending_ecoc_conn_cnt) {
-        log::error("Incorrect response.expected num of channels = {}received num of channels = {}",
-                   num_of_channels, p_lcb->pending_ecoc_conn_cnt);
+        log::error(
+                "Incorrect response.expected num of channels = {} received num of "
+                "channels = {}",
+                num_of_channels, p_lcb->pending_ecoc_conn_cnt);
+        if (com_android_bluetooth_flags_reject_invalid_eatt_channels_in_response()) {
+            con_info.l2cap_result =
+              static_cast<tL2CAP_CONN>(tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_INVALID_PARAMETERS);
+            l2cble_handle_connect_rsp_neg(p_lcb, &con_info);
+        }
         return;
       }
 

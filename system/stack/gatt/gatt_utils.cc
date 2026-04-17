@@ -34,11 +34,9 @@
 #include "hardware/bt_gatt_types.h"
 #include "internal_include/bt_target.h"
 #include "internal_include/stack_config.h"
-#include "main/shim/acl_api.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/btm/btm_sec_utils.h"
 #include "stack/connection_manager/connection_manager.h"
@@ -893,32 +891,6 @@ void gatt_sr_get_sec_info(const RawAddress& rem_bda, tBT_TRANSPORT transport,
 
   *p_key_size = get_security_client_interface().BTM_BleReadSecKeySize(rem_bda);
   *p_sec_flag = flags;
-}
-/*******************************************************************************
- *
- * Function         gatt_sr_send_req_callback
- *
- * Description
- *
- *
- * Returns          void
- *
- ******************************************************************************/
-void gatt_sr_send_req_callback(tCONN_ID conn_id, uint32_t trans_id, tGATTS_REQ_TYPE type,
-                               tGATTS_DATA* p_data) {
-  tGATT_IF gatt_if = gatt_get_gatt_if(conn_id);
-  tGATT_REG* p_reg = gatt_get_regcb(gatt_if);
-
-  if (!p_reg) {
-    log::error("p_reg not found discard request");
-    return;
-  }
-
-  if (p_reg->in_use && p_reg->app_cb.p_req_cb) {
-    (*p_reg->app_cb.p_req_cb)(conn_id, trans_id, type, p_data);
-  } else {
-    log::warn("Call back not found for application conn_id={}", conn_id);
-  }
 }
 
 /*******************************************************************************

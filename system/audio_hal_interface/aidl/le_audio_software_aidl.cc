@@ -22,6 +22,7 @@
 #include <aidl/vendor/qti/hardware/bluetooth/audio/LeAudioVendorConfiguration.h>
 #include <aidl/vendor/qti/hardware/bluetooth/audio/VendorCodecType.h>
 #include <bluetooth/log.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 
 #include <atomic>
@@ -30,7 +31,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/strings.h"
 #include "hal_version_manager.h"
 #include "le_audio_utils.h"
 #include "osi/include/properties.h"

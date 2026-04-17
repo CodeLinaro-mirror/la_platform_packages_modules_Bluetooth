@@ -83,7 +83,6 @@ static bool get_pts_unencrypt_broadcast(void) { return false; }
 static bool get_pts_eatt_peripheral_collision_support(void) { return false; }
 static bool get_pts_force_le_audio_multiple_contexts_metadata(void) { return false; }
 static bool get_pts_le_audio_disable_ases_before_stopping(void) { return false; }
-static config_t* get_all(void) { return nullptr; }
 
 stack_config_t mock_stack_config{
         .get_pts_avrcp_test = get_pts_avrcp_test,
@@ -101,7 +100,6 @@ stack_config_t mock_stack_config{
                 get_pts_force_le_audio_multiple_contexts_metadata,
         .get_pts_le_audio_disable_ases_before_stopping =
                 get_pts_le_audio_disable_ases_before_stopping,
-        .get_all = get_all,
 };
 const stack_config_t* stack_config_get_interface(void) { return &mock_stack_config; }
 
@@ -687,17 +685,17 @@ protected:
                     evt.cis_conn_hdl = pair.cis_conn_handle;
                     evt.cig_sync_delay = 0;
                     evt.cis_sync_delay = 0;
-                    evt.trans_lat_mtos = 0;
-                    evt.trans_lat_stom = 0;
-                    evt.phy_mtos = 0;
-                    evt.phy_stom = 0;
+                    evt.trans_lat_c_to_p = 0;
+                    evt.trans_lat_p_to_c = 0;
+                    evt.phy_c_to_p = 0;
+                    evt.phy_p_to_c = 0;
                     evt.nse = 0;
-                    evt.bn_mtos = 0;
-                    evt.bn_stom = 0;
-                    evt.ft_mtos = 0;
-                    evt.ft_stom = 0;
-                    evt.max_payload_mtos = 0;
-                    evt.max_payload_stom = 0;
+                    evt.bn_c_to_p = 0;
+                    evt.bn_p_to_c = 0;
+                    evt.ft_c_to_p = 0;
+                    evt.ft_p_to_c = 0;
+                    evt.max_pdu_c_to_p = 0;
+                    evt.max_pdu_p_to_c = 0;
                     evt.iso_itv = 0;
 
                     InjectHciNotifyCisEstablished(group.get(), dev_it->get(), evt);
@@ -2551,8 +2549,8 @@ TEST_F(StateMachineTest, testConfigureCodecSingleFb2) {
           group->GetActiveConfiguration()->confs.sink.at(0).codec.GetChannelCountPerIsoStream();
   auto frame_octets = group->GetActiveConfiguration()->confs.sink.at(0).codec.GetOctetsPerFrame();
   ASSERT_NE(last_cig_params_.cis_cfgs.size(), 0lu);
-  ASSERT_EQ(last_cig_params_.sdu_itv_mtos, data_interval);
-  ASSERT_EQ(last_cig_params_.cis_cfgs.at(0).max_sdu_size_mtos,
+  ASSERT_EQ(last_cig_params_.sdu_itv_c_to_p, data_interval);
+  ASSERT_EQ(last_cig_params_.cis_cfgs.at(0).max_sdu_size_c_to_p,
             codec_frame_blocks_per_sdu_ * channel_count * frame_octets);
 }
 
@@ -12182,11 +12180,11 @@ TEST_F(StateMachineTest, testStreamMultipleDsa) {
   ASSERT_TRUE(group_config->hasDsaBackChannel());
 
   // Verify that the CIG has proper parameters for the back channel
-  ASSERT_NE(last_cig_params_.sdu_itv_stom, 0lu);
-  ASSERT_NE(last_cig_params_.max_trans_lat_stom, 0lu);
+  ASSERT_NE(last_cig_params_.sdu_itv_p_to_c, 0lu);
+  ASSERT_NE(last_cig_params_.max_trans_lat_p_to_c, 0lu);
   for (auto const& cfg : last_cig_params_.cis_cfgs) {
-    ASSERT_NE(cfg.max_sdu_size_stom, 0lu);
-    ASSERT_NE(cfg.rtn_stom, 0lu);
+    ASSERT_NE(cfg.max_sdu_size_p_to_c, 0lu);
+    ASSERT_NE(cfg.rtn_p_to_c, 0lu);
   }
 
   // Verify data path
@@ -12596,7 +12594,7 @@ TEST_F(StateMachineTest, testSuccessfulCigCreateForMultipleDevicesWhenOneDeviceP
                           .source = types::AudioContexts(context_type)});
   Mock::VerifyAndClearExpectations(mock_iso_manager_);
   Mock::VerifyAndClearExpectations(&mock_callbacks_);
-  ASSERT_EQ(group->GetMaxTransportLatencyMtos(), test_tl);
+  ASSERT_EQ(group->GetMaxTransportLatencyCToP(), test_tl);
 }
 
 TEST_F(StateMachineTest, testReconfigureWhenOneDeviceIsInQoSConfiguredState) {

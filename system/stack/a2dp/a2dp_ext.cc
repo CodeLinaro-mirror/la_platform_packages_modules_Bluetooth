@@ -55,6 +55,7 @@ A2dpCodecConfigExt::A2dpCodecConfigExt(btav_a2dp_codec_index_t codec_index, bool
 tA2DP_STATUS A2dpCodecConfigExt::setCodecConfig(const uint8_t* p_peer_codec_info,
                                                 bool /* is_capability */,
                                                 uint8_t* p_result_codec_config) {
+  log::info("A2dpCodecConfigExt::setCodecConfig: codec={}", name_);
   if (p_peer_codec_info == nullptr || p_result_codec_config == nullptr) {
     return A2DP_FAIL;
   }
@@ -81,7 +82,20 @@ tA2DP_STATUS A2dpCodecConfigExt::setCodecConfig(const uint8_t* p_peer_codec_info
   // peer capabilities and the selectable capabilities cannot be
   // computed.
   codec_selectable_capability_ = codec_local_capability_;
+
+  // Preserve the priority from codec_config_ before overwriting
+  // The vendor HAL doesn't set priority, so we must preserve the user-requested priority
+  btav_a2dp_codec_priority_t saved_priority = codec_user_config_.codec_priority;
+  btav_a2dp_codec_priority_t vendor_returned_priority = result->codec_parameters.codec_priority;
+
   codec_config_ = result->codec_parameters;
+
+  // Restore the preserved priority
+  codec_config_.codec_priority = saved_priority;
+  log::verbose("A2dpCodecConfigExt::setCodecConfig: Priority preservation: vendor returned={},"
+               " preserved={}, updated codec_config_.codec_priority={}",
+                vendor_returned_priority, saved_priority, codec_config_.codec_priority);
+
   vendor_specific_parameters_ = result->vendor_specific_parameters;
   ota_codec_config_ = bluetooth::a2dp::MediaCodecCapabilities(result->codec_config);
   memcpy(p_result_codec_config, result->codec_config, AVDT_CODEC_SIZE);
@@ -101,12 +115,26 @@ bool A2dpCodecConfigExt::setPeerCodecCapabilities(const uint8_t* p_peer_codec_ca
 void A2dpCodecConfigExt::setCodecConfig(btav_a2dp_codec_config_t codec_parameters,
                                         uint8_t const codec_config[AVDT_CODEC_SIZE],
                                         std::vector<uint8_t> const& vendor_specific_parameters) {
+  log::info("A2dpCodecConfigExt::setCodecConfig(overload): ENTRY - codec={}", name_);
   // Use the local capabilities for the selectable capabilities:
   // the provider AIDL HAL does not provide an interface to parse the
   // peer capabilities and the selectable capabilities cannot be
   // computed.
   codec_selectable_capability_ = codec_local_capability_;
+
+  // Preserve the priority from codec_config_ before overwriting
+  // The input codec_parameters has priority=0, but we need to preserve the user-requested priority
+  btav_a2dp_codec_priority_t saved_priority = codec_user_config_.codec_priority;
+  btav_a2dp_codec_priority_t input_priority = codec_parameters.codec_priority;
+
   codec_config_ = codec_parameters;
+
+  // Restore the preserved priority
+  codec_config_.codec_priority = saved_priority;
+  log::info("A2dpCodecConfigExt::setCodecConfig(overload): Priority preservation: input had={},"
+            " preserved={}, updated codec_config_.codec_priority={}",
+             input_priority, saved_priority, codec_config_.codec_priority);
+
   ota_codec_config_ = bluetooth::a2dp::MediaCodecCapabilities(codec_config);
   vendor_specific_parameters_ = vendor_specific_parameters;
 }

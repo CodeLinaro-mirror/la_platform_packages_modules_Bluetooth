@@ -626,13 +626,13 @@ extern struct btm_flow_spec_complete btm_flow_spec_complete;
 
 // Name: BTM_FlowSpec
 // Params: const RawAddress& addr, tBT_FLOW_SPEC* p_flow,
-// tBTM_CMPL_CB* p_cb Returns: tBTM_STATUS
+// tBTM_FLOW_SPEC_CMPL_CB* p_cb Returns: tBTM_STATUS
 struct BTM_FlowSpec {
-  std::function<tBTM_STATUS(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_CMPL_CB* p_cb)>
-          body{[](const RawAddress& /*addr*/, tBT_FLOW_SPEC* /*p_flow*/, tBTM_CMPL_CB* /*p_cb*/) {
+  std::function<tBTM_STATUS(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_FLOW_SPEC_CMPL_CB* p_cb)>
+          body{[](const RawAddress& /*addr*/, tBT_FLOW_SPEC* /*p_flow*/, tBTM_FLOW_SPEC_CMPL_CB* /*p_cb*/) {
             return tBTM_STATUS::BTM_SUCCESS;
           }};
-  tBTM_STATUS operator()(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_CMPL_CB* p_cb) {
+  tBTM_STATUS operator()(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_FLOW_SPEC_CMPL_CB* p_cb) {
     return body(addr, p_flow, p_cb);
   }
 };

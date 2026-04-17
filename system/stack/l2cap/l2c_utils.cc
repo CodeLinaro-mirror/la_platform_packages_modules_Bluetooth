@@ -51,6 +51,7 @@
 #include "osi/include/allocator.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_sec.h"
+#include "stack/connection_manager/connection_manager.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
@@ -58,7 +59,6 @@
 #include "stack/include/btm_status.h"
 #include "stack/include/hci_error_code.h"
 #include "stack/include/hcidefs.h"
-#include "stack/include/l2cap_acl_interface.h"
 #include "stack/include/l2cap_controller_interface.h"
 #include "stack/include/l2cap_hci_link_interface.h"
 #include "stack/include/l2cap_interface.h"
@@ -1714,6 +1714,21 @@ void l2cu_release_ccb(tL2C_CCB* p_ccb) {
           log::warn("disconnecting the LE link");
           l2cu_no_dynamic_ccbs(p_lcb);
         }
+        log::verbose("l2cu_release_ccb: triggered_le_acl_conn: {}",
+                p_lcb->triggered_le_acl_conn);
+        if (p_lcb->triggered_le_acl_conn > 0) {
+          p_lcb->triggered_le_acl_conn--;
+          if (com_android_bluetooth_flags_cancel_pending_le_conn_on_socket_close() &&
+                p_lcb->triggered_le_acl_conn == 0) {
+            if (!connection_manager::direct_connect_remove(CONN_MGR_ID_L2CAP,
+                                                           p_lcb->remote_bd_addr)) {
+              log::debug("Error removing direct connect entry for {}", p_lcb->remote_bd_addr);
+            } else {
+              // On Successful removal, clean up the LCB
+              l2cu_release_lcb(p_lcb);
+            }
+          }
+        }
       }
     }
   }
@@ -2917,8 +2932,7 @@ void l2cu_no_dynamic_ccbs(tL2C_LCB* p_lcb) {
       l2cu_process_fixed_disc_cback(p_lcb);
       /* BTM SEC will make sure that link is release (probably after pairing is
        * done) */
-      if (com_android_bluetooth_flags_l2c_not_cancel_timeout() &&
-          p_lcb->link_state == LST_CONNECTING) {
+      if (p_lcb->link_state == LST_CONNECTING) {
         // If connecting, trigger alarm to release lcb right now since no callbacks are expected.
         start_timeout = true;
       } else {

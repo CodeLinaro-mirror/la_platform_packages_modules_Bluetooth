@@ -22,6 +22,7 @@
 #include <base/strings/string_number_conversions.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/bt_transport.h>
+#include <bluetooth/types/string_helpers.h>
 #include <stdio.h>
 
 #include <algorithm>
@@ -44,7 +45,6 @@
 #include "btif/include/btif_profile_storage.h"
 #include "client_parser.h"
 #include "com_android_bluetooth_flags.h"
-#include "common/strings.h"
 #include "hardware/bt_le_audio.h"
 #include "hci/controller.h"
 #include "internal_include/bt_trace.h"
@@ -719,19 +719,19 @@ static uint16_t find_max_transport_latency(const LeAudioDeviceGroup* group, uint
   return max_transport_latency;
 }
 
-uint16_t LeAudioDeviceGroup::GetMaxTransportLatencyStom(void) const {
+uint16_t LeAudioDeviceGroup::GetMaxTransportLatencyPToC(void) const {
   return find_max_transport_latency(this, types::kLeAudioDirectionSource);
 }
 
-uint16_t LeAudioDeviceGroup::GetMaxTransportLatencyMtos(void) const {
+uint16_t LeAudioDeviceGroup::GetMaxTransportLatencyCToP(void) const {
   return find_max_transport_latency(this, types::kLeAudioDirectionSink);
 }
 
 uint32_t LeAudioDeviceGroup::GetTransportLatencyUs(uint8_t direction) const {
   if (direction == types::kLeAudioDirectionSink) {
-    return transport_latency_mtos_us_;
+    return transport_latency_c_to_p_us_;
   } else if (direction == types::kLeAudioDirectionSource) {
-    return transport_latency_stom_us_;
+    return transport_latency_p_to_c_us_;
   } else {
     log::error("invalid direction");
     return 0;
@@ -742,9 +742,9 @@ void LeAudioDeviceGroup::SetTransportLatency(uint8_t direction, uint32_t new_tra
   uint32_t* transport_latency_us;
 
   if (direction == types::kLeAudioDirectionSink) {
-    transport_latency_us = &transport_latency_mtos_us_;
+    transport_latency_us = &transport_latency_c_to_p_us_;
   } else if (direction == types::kLeAudioDirectionSource) {
-    transport_latency_us = &transport_latency_stom_us_;
+    transport_latency_us = &transport_latency_p_to_c_us_;
   } else {
     log::error("invalid direction");
     return;
@@ -2173,7 +2173,11 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
             GetLatestAvailableContexts().source.test(requirements.audio_context_type))) {
         log::error("Remote does not supports context::{} in both direction",
                    bluetooth::common::ToString(requirements.audio_context_type));
-        return false;
+        if (osi_property_get_bool("persist.bluetooth.leaudio.cap.pts", false)) {
+          log::debug("CAP pts execution. need unidirectional LIVE");
+        } else {
+          return false;
+        }
       }
     }
   }
@@ -2489,7 +2493,8 @@ bool LeAudioDeviceGroup::ConfigureAses(
         return false;
       }
 
-      if (!dev->GetAvailableContexts().test(context_type)) {
+      if (!dev->GetAvailableContexts().test(context_type) &&
+          !(osi_property_get_bool("persist.bluetooth.leaudio.cap.pts", false))) {
         log::debug("Device {} not available for context {}", dev->address_,
                    bluetooth::common::ToString(context_type));
         return false;
@@ -3080,19 +3085,20 @@ void LeAudioDeviceGroup::PrintDebugState(void) const {
     uint32_t source_delay = 0;
     GetPresentationDelay(&sink_delay, bluetooth::le_audio::types::kLeAudioDirectionSink);
     GetPresentationDelay(&source_delay, bluetooth::le_audio::types::kLeAudioDirectionSource);
-    auto phy_mtos = GetPhyBitmask(bluetooth::le_audio::types::kLeAudioDirectionSink);
-    auto phy_stom = GetPhyBitmask(bluetooth::le_audio::types::kLeAudioDirectionSource);
-    auto max_transport_latency_mtos = GetMaxTransportLatencyMtos();
-    auto max_transport_latency_stom = GetMaxTransportLatencyStom();
-    auto sdu_mts = GetSduInterval(bluetooth::le_audio::types::kLeAudioDirectionSink);
-    auto sdu_stom = GetSduInterval(bluetooth::le_audio::types::kLeAudioDirectionSource);
+    auto phy_c_to_p = GetPhyBitmask(bluetooth::le_audio::types::kLeAudioDirectionSink);
+    auto phy_p_to_c = GetPhyBitmask(bluetooth::le_audio::types::kLeAudioDirectionSource);
+    auto max_transport_latency_c_to_p = GetMaxTransportLatencyCToP();
+    auto max_transport_latency_p_to_c = GetMaxTransportLatencyPToC();
+    auto sdu_interval_c_to_p = GetSduInterval(bluetooth::le_audio::types::kLeAudioDirectionSink);
+    auto sdu_interval_p_to_c = GetSduInterval(bluetooth::le_audio::types::kLeAudioDirectionSource);
 
     debug_str << "\n presentation_delay for sink (speaker): " << +sink_delay
               << " us, presentation_delay for source (microphone): " << +source_delay
-              << "us\n MtoS transport latency:  " << +max_transport_latency_mtos
-              << ", StoM transport latency: " << +max_transport_latency_stom
-              << "\n MtoS Phy: " << loghex(phy_mtos) << ", MtoS sdu: " << loghex(phy_stom)
-              << "\n MtoS sdu: " << +sdu_mts << ", StoM sdu: " << +sdu_stom;
+              << "us\n transport latency C to P:  " << +max_transport_latency_c_to_p
+              << ", transport latency P to C: " << +max_transport_latency_p_to_c
+              << "\n Phy C to P: " << loghex(phy_c_to_p) << ", Phy C to P: " << loghex(phy_p_to_c)
+              << "\n sdu interval C to P: " << +sdu_interval_c_to_p
+              << ", sdu interval P to C: " << +sdu_interval_p_to_c;
   }
 
   log::info("{}", debug_str.str());

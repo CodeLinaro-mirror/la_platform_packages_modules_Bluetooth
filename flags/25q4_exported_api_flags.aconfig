@@ -8,14 +8,6 @@ container: "com.android.bt"
 # Do not add any flag to this file
 
 flag {
-    name: "a2dp_lhdc_api"
-    namespace: "bluetooth"
-    description: "API change for LHDC codec support"
-    is_exported: true
-    bug: "380118954"
-}
-
-flag {
     name: "add_profile_as_intent_extra"
     is_exported: true
     namespace: "bluetooth"

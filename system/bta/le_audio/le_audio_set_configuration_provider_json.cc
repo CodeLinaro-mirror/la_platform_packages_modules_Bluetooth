@@ -556,6 +556,7 @@ private:
   AudioSetConfigurations AudioSetConfigurationsFromFlatScenario(
           const fbs::le_audio::AudioSetScenario* const flat_scenario) {
     AudioSetConfigurations items;
+    log::debug("AudioSetConfigurationsFromFlatScenario :");
     if (!flat_scenario->configurations()) {
       return items;
     }
@@ -566,11 +567,31 @@ private:
         continue;
       }
 
-      log::debug("pushing config {} :", config_name->str());
-      auto& cfg = configurations_.at(config_name->str());
-      items.push_back(&cfg);
+      bool is_pts_execution = osi_property_get_bool("persist.bluetooth.is_pts_execution", false);
+      log::debug("is_pts_execution {} :", is_pts_execution);
+      char conf_to_be_selected[PROPERTY_VALUE_MAX] = {0};
+      static constexpr const char* kPropertyLc3Conf =
+              "persist.bluetooth.lc3_conf_to_be_selected";
+      osi_property_get(kPropertyLc3Conf, conf_to_be_selected, "");
+      log::debug("property_name |{}| :", conf_to_be_selected);
+      std::string str(conf_to_be_selected);
+      log::debug("string_name |{}| :", str);
+      log::debug("config_name |{}| :", config_name->str());
+      if (is_pts_execution /*&& flat_scenario->name->c_str() == "Conversational"*/) {
+         if (str == config_name->str()) {
+             log::debug("pushing config {} :", config_name->str());
+             auto& cfg = configurations_.at(config_name->str());
+             items.push_back(&cfg);
+         } else {
+           log::debug("ignoring the config {} :", config_name->str());
+           continue;
+         }
+      } else {
+       log::debug("pushing config {} :", config_name->str());
+       auto& cfg = configurations_.at(config_name->str());
+       items.push_back(&cfg);
+      }
     }
-
     return items;
   }
 

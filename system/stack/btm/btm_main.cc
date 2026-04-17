@@ -25,20 +25,18 @@
 #include <base/functional/callback.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
+#include <bluetooth/types/string_helpers.h>
 #include <com_android_bluetooth_flags.h>
 
-#include <future>
 #include <memory>
 #include <string>
 
-#include "common/strings.h"
 #include "main/shim/dumpsys.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/internal/btm_api.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/main_thread.h"
-#include "stack/include/security_client_callbacks.h"
 #include "btif/include/stack_manager_t.h"
 
 using namespace bluetooth;

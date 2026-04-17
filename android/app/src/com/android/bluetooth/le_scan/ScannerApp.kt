@@ -16,6 +16,7 @@
 
 package com.android.bluetooth.le_scan
 
+import android.app.PendingIntent
 import android.bluetooth.le.IScannerCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanSettings
@@ -24,6 +25,7 @@ import android.os.RemoteException
 import android.os.UserHandle
 import android.util.Log
 import com.android.bluetooth.ActionOnDeathRecipient
+import com.android.internal.annotations.VisibleForTesting
 import java.util.UUID
 
 private const val TAG = ScanUtil.TAG_PREFIX + "ScannerApp"
@@ -37,10 +39,10 @@ class ScannerApp(
     val settings: ScanSettings,
     val filters: List<ScanFilter>,
     val source: AttributionSource,
-    val info: ScanController.PendingIntentInfo?, // Context information
+    val pendingIntent: PendingIntent?,
     val isInternal: Boolean,
 ) {
-    var id = 0
+    var scannerId = 0
     var hasLocationPermission = false
     var hasNetworkSettingsPermission = false
     var hasNetworkSetupWizardPermission = false
@@ -48,7 +50,7 @@ class ScannerApp(
     var hasDisavowedLocation = false
     var eligibleForSanitizedExposureNotification = false
     var associatedDevices: MutableList<String>? = null
-    private var deathRecipient: ActionOnDeathRecipient? = null
+    @VisibleForTesting var deathRecipient: ActionOnDeathRecipient? = null
 
     val uid = appScanStats.uid
     val pid = appScanStats.pid
@@ -62,7 +64,7 @@ class ScannerApp(
                 cb.asBinder().linkToDeath(recipient, 0)
                 deathRecipient = recipient
             } catch (_: RemoteException) {
-                Log.e(TAG, "Unable to link deathRecipient for app id=$id")
+                Log.e(TAG, "Failed to linkToDeath for $this with scannerId=$scannerId")
                 cleanup()
             }
         }
@@ -75,7 +77,7 @@ class ScannerApp(
                 try {
                     cb.asBinder().unlinkToDeath(recipient, 0)
                 } catch (_: NoSuchElementException) {
-                    Log.e(TAG, "Unable to unlink deathRecipient for app id=$id")
+                    Log.e(TAG, "Failed to unlinkToDeath for $this with scannerId=$scannerId")
                 }
             }
         }

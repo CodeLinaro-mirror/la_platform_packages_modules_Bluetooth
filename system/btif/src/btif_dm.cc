@@ -36,6 +36,7 @@
 #include <bluetooth/metrics/metric_id_api.h>
 #include <bluetooth/metrics/os_metrics.h>
 #include <bluetooth/types/ble_address_with_type.h>
+#include <bluetooth/types/string_helpers.h>
 #include <bluetooth/types/uuid.h>
 #include <com_android_bluetooth_flags.h>
 #include <hardware/bluetooth.h>
@@ -66,10 +67,10 @@
 #include "btif_util.h"
 #include "btif_vendor.h"
 #include "common/lru_cache.h"
-#include "common/strings.h"
 #include "device/include/interop.h"
 #include "hci/acl_manager/acl_manager_le.h"
 #include "hci/controller.h"
+#include "hci/hci_packets.h"
 #include "hci/le_rand_callback.h"
 #include "internal_include/bt_target.h"
 #include "internal_include/stack_config.h"
@@ -993,6 +994,7 @@ static void btif_dm_cb_create_bond_le(const RawAddress bd_addr, tBLE_ADDR_TYPE a
   }
 }
 
+#ifdef TARGET_FLOSS
 /*******************************************************************************
  *
  * Function         btif_dm_get_connection_state
@@ -1019,42 +1021,7 @@ uint16_t btif_dm_get_connection_state(const RawAddress& bd_addr) {
   }
   return rc;
 }
-
-static uint16_t btif_dm_get_resolved_connection_state(tBLE_BD_ADDR ble_bd_addr) {
-  uint16_t rc = 0;
-  if (maybe_resolve_address(&ble_bd_addr.bda, &ble_bd_addr.type)) {
-    if (BTA_DmGetConnectionState(ble_bd_addr.bda)) {
-      rc = 0x0001;
-      if (get_security_client_interface().BTM_IsEncrypted(ble_bd_addr.bda,
-                                                              BT_TRANSPORT_BR_EDR)) {
-        rc |= ENCRYPTED_BREDR;
-      }
-      if (get_security_client_interface().BTM_IsEncrypted(ble_bd_addr.bda, BT_TRANSPORT_LE)) {
-        rc |= ENCRYPTED_LE;
-      }
-    }
-  }
-  return rc;
-}
-
-uint16_t btif_dm_get_connection_state_sync(const RawAddress& bd_addr) {
-  std::promise<uint16_t> promise;
-  std::future future = promise.get_future();
-
-  auto status = do_in_main_thread(base::BindOnce(
-          [](const RawAddress bd_addr, std::promise<uint16_t> promise) {
-            // Experiment to try with maybe resolved address
-            uint16_t state = btif_dm_get_resolved_connection_state({
-                    .type = BLE_ADDR_RANDOM,
-                    .bda = bd_addr,
-            });
-            state |= btif_dm_get_connection_state(bd_addr);
-            promise.set_value(state);
-          },
-          bd_addr, std::move(promise)));
-  log::assert_that(status, "assert failed: status is success");
-  return future.get();
-}
+#endif
 
 /******************************************************************************
  *
@@ -3163,6 +3130,11 @@ void btif_dm_cancel_bond(const RawAddress bd_addr) {
 void btif_dm_remove_bond(const RawAddress bd_addr) {
   log::verbose("bd_addr={}", bd_addr);
 
+  // reset the bond lost status first
+  if (is_autonomous_repairing_supported()) {
+    btm_update_bond_lost(bd_addr, false);
+  }
+
   if (com_android_bluetooth_flags_cancel_pairing_while_remove_bond()) {
     if (is_bonding_or_sdp() && pairing_cb.bd_addr == bd_addr) {
       log::warn("Ongoing pairing/sdp detected, cancelling it first before removing bond.");
@@ -3170,15 +3142,20 @@ void btif_dm_remove_bond(const RawAddress bd_addr) {
     }
     if (!get_security_client_interface().BTM_IsBonded(bd_addr, BT_TRANSPORT_AUTO)) {
       log::warn("Device is not bonded on any transport, skipping remove bond!!");
+      // TODO (b/489217572): Remove when the flag remove_bond_in_idle_state is shipped
+      // Without the flag remove_bond_in_idle_state, BondStateMachine tracks each remove bond
+      // request separately and expects a bond state changed callback for each remove bond request.
+      // If duplicate remove bond requests are received in quick succession, not sending bond state
+      // changed callback for each request may leave the BondStateMachine stuck in BONDING state.
+      GetInterfaceToProfiles()->events->invoke_bond_state_changed_cb(
+              BT_STATUS_SUCCESS, bd_addr, BT_TRANSPORT_AUTO, BT_BOND_STATE_NONE, kPairingTypeNone,
+              HCI_SUCCESS, PairingInitiator::APP);
       return;
     }
   }
 
   BTM_LogHistory(kBtmLogTag, bd_addr, "Remove bond");
 
-  if (is_autonomous_repairing_supported()) {
-    btm_update_bond_lost(bd_addr, false);  // reset the bond lost status
-  }
   btif_stats_add_bond_event(bd_addr, BTIF_DM_FUNC_REMOVE_BOND, pairing_cb.state);
 
   // special handling for HID devices
@@ -3840,14 +3817,6 @@ static void btif_dm_ble_passkey_notif_evt(tBTA_DM_SP_KEY_NOTIF* p_ssp_key_notif)
           static_cast<int>(pairing_cb.pairing_type.algorithm));
 }
 
-static bool btif_dm_ble_is_temp_pairing(RawAddress& bd_addr, bool ctkd) {
-  if (btm_get_bond_type_dev(bd_addr) == BOND_TYPE_TEMPORARY) {
-    return ctkd;
-  }
-
-  return false;
-}
-
 static bool btif_model_name_known(const RawAddress& bd_addr) {
   bt_property_t prop;
   bt_bdname_t model_name;
@@ -3916,6 +3885,8 @@ static void btif_dm_ble_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
     pairing_cb.pairing_type.algorithm = PairingAlgorithm::SC;
   }
 
+  pairing_cb.fail_reason = p_auth_cmpl->fail_reason;
+
   /* Clear OOB data */
   memset(&oob_cb, 0, sizeof(oob_cb));
 
@@ -3931,40 +3902,29 @@ static void btif_dm_ble_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
       btif_storage_set_remote_addr_type(bd_addr, p_auth_cmpl->addr_type);
     }
 
-    /* Test for temporary bonding */
-    if (btif_dm_ble_is_temp_pairing(bd_addr, p_auth_cmpl->is_ctkd)) {
-      log::debug("sending BT_BOND_STATE_NONE for Temp pairing");
-      btif_storage_remove_bonded_device(bd_addr);
-      state = BT_BOND_STATE_NONE;
-    } else {
-      btif_dm_save_ble_keys(bd_addr);
+    btif_dm_save_ble_keys(bd_addr);
 
-      if (is_le_audio_capable_during_service_discovery(bd_addr) &&
-          !btif_model_name_known(bd_addr) &&
-          get_btm_client_interface().peer.BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE)) {
-        log::info("Read model name for le audio capable device");
-        if (!DIS_ReadDISInfo(bd_addr, read_dis_cback, DIS_ATTR_MODEL_NUM_BIT)) {
-          log::warn("Read DIS failed");
-        }
-      }
-
-      if(interop_match_addr(INTEROP_SKIP_GATT_DISCOVERY_OVER_LE, bd_addr) &&
-                                                 p_auth_cmpl->smp_over_br) {
-        log::info(" skip_GATT_discovery ");
-        skip_GATT_discovery = true;
-      }
-      if (!skip_GATT_discovery &&pairing_cb.gatt_over_le ==
-          btif_dm_pairing_cb_t::ServiceDiscoveryState::NOT_STARTED) {
-        log::info("scheduling GATT discovery over LE for {}", bd_addr);
-        pairing_cb.gatt_over_le = btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED;
-        btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_LE);
-      } else {
-        log::info(
-                "skipping GATT discovery over LE - was already scheduled or "
-                "finished for {}, state: {}",
-                bd_addr, pairing_cb.gatt_over_le);
+    if (is_le_audio_capable_during_service_discovery(bd_addr) && !btif_model_name_known(bd_addr) &&
+        get_btm_client_interface().peer.BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE)) {
+      log::info("Read model name for le audio capable device");
+      if (!DIS_ReadDISInfo(bd_addr, read_dis_cback, DIS_ATTR_MODEL_NUM_BIT)) {
+        log::warn("Read DIS failed");
       }
     }
+
+    if (pairing_cb.gatt_over_le == btif_dm_pairing_cb_t::ServiceDiscoveryState::NOT_STARTED) {
+      log::info("scheduling GATT discovery over LE for {}", bd_addr);
+      pairing_cb.gatt_over_le = btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED;
+      btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_LE);
+    } else {
+      log::info(
+              "skipping GATT discovery over LE - was already scheduled or "
+              "finished for {}, state: {}",
+              bd_addr, pairing_cb.gatt_over_le);
+    }
+  } else if (is_autonomous_repairing_supported() && btm_is_bond_lost(bd_addr)) {
+    log::info("Re-pairing failed for {}, will not remove the keys", bd_addr);
+    status = BT_STATUS_AUTH_FAILURE;  // this will be overwritten by the bond_state_changed anyways.
   } else {
     /* Map the HCI fail reason  to  bt status  */
     // TODO This is not a proper use of the type
@@ -4378,32 +4338,31 @@ static void btif_dm_ble_sc_oob_req_evt(tBTA_DM_SP_RMT_OOB* req_oob_type) {
           req_oob_type->bd_addr, oob_data_to_use.c, oob_data_to_use.r);
 }
 
-static void btif_dm_ble_tx_test_cback(void* p) {
-  char* p_param = (char*)p;
-  uint8_t status;
-  STREAM_TO_UINT8(status, p_param);
-  GetInterfaceToProfiles()->events->invoke_le_test_mode_cb(
-          (status == 0) ? BT_STATUS_SUCCESS : BT_STATUS_FAIL, 0);
-}
-
-static void btif_dm_ble_rx_test_cback(void* p) {
-  char* p_param = (char*)p;
-  uint8_t status;
-  STREAM_TO_UINT8(status, p_param);
-  GetInterfaceToProfiles()->events->invoke_le_test_mode_cb(
-          (status == 0) ? BT_STATUS_SUCCESS : BT_STATUS_FAIL, 0);
-}
-
-static void btif_dm_ble_test_end_cback(void* p) {
-  char* p_param = (char*)p;
-  uint8_t status;
-  uint16_t count = 0;
-  STREAM_TO_UINT8(status, p_param);
-  if (status == 0) {
-    STREAM_TO_UINT16(count, p_param);
+static void btif_dm_ble_tx_test_cback(bluetooth::hci::CommandCompleteView view) {
+  auto complete_view = bluetooth::hci::LeTransmitterTestCompleteView::Create(view);
+  bt_status_t status = BT_STATUS_FAIL;
+  if (complete_view.IsValid() && complete_view.GetStatus() == bluetooth::hci::ErrorCode::SUCCESS) {
+    status = BT_STATUS_SUCCESS;
   }
-  GetInterfaceToProfiles()->events->invoke_le_test_mode_cb(
-          (status == 0) ? BT_STATUS_SUCCESS : BT_STATUS_FAIL, count);
+  GetInterfaceToProfiles()->events->invoke_le_test_mode_cb(status, 0);
+}
+
+static void btif_dm_ble_rx_test_cback(bluetooth::hci::CommandCompleteView view) {
+  auto complete_view = bluetooth::hci::LeReceiverTestCompleteView::Create(view);
+  bt_status_t status = BT_STATUS_FAIL;
+  if (complete_view.IsValid() && complete_view.GetStatus() == bluetooth::hci::ErrorCode::SUCCESS) {
+    status = BT_STATUS_SUCCESS;
+  }
+  GetInterfaceToProfiles()->events->invoke_le_test_mode_cb(status, 0);
+}
+
+static void btif_dm_ble_test_end_cback(bluetooth::hci::CommandCompleteView view) {
+  auto complete_view = bluetooth::hci::LeTestEndCompleteView::Create(view);
+  bt_status_t status = BT_STATUS_FAIL;
+  if (complete_view.IsValid() && complete_view.GetStatus() == bluetooth::hci::ErrorCode::SUCCESS) {
+    status = BT_STATUS_SUCCESS;
+  }
+  GetInterfaceToProfiles()->events->invoke_le_test_mode_cb(status, 0);
 }
 
 void btif_ble_transmitter_test(uint8_t tx_freq, uint8_t test_data_len, uint8_t packet_payload) {

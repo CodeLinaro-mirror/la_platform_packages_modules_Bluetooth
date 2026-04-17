@@ -106,7 +106,7 @@ class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
         return marshalFd(
                 mService.getNative()
                         .connectSocket(
-                                Utils.getBytesFromAddress(
+                                Util.getBytesFromAddress(
                                         type == BluetoothSocket.TYPE_LE
                                                 ? leDeviceAddr
                                                 : brEdrAddress),
@@ -169,7 +169,7 @@ class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
         return marshalFd(
                 mService.getNative()
                         .connectSocket(
-                                Utils.getBytesFromAddress(
+                                Util.getBytesFromAddress(
                                         type == BluetoothSocket.TYPE_LE
                                                 ? device.getAddress()
                                                 : brEdrAddress),
@@ -314,7 +314,7 @@ class BluetoothSocketManagerBinder extends IBluetoothSocketManager.Stub {
         }
 
         mService.getNative()
-                .requestMaximumTxDataLength(Utils.getBytesFromAddress(device.getAddress()));
+                .requestMaximumTxDataLength(Util.getBytesFromAddress(device.getAddress()));
     }
 
     private void enforceActiveUser() {

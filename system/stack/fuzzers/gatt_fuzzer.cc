@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <string>
 
-#include "btif_status.h"
+#include "bt_status.h"
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_uuid16.h"
@@ -163,8 +163,7 @@ static void GattInit() {
           .p_cmpl_cb = [](uint16_t, tGATTC_OPTYPE, tGATT_STATUS, tGATT_CL_COMPLETE*) {},
           .p_disc_res_cb = nullptr,
           .p_disc_cmpl_cb = nullptr,
-          .p_req_cb = [](uint16_t conn_id, uint32_t trans_id, tGATTS_REQ_TYPE type,
-                         tGATTS_DATA* p_data) {},
+          .p_req_cb = nullptr,
           .p_enc_cmpl_cb = nullptr,
           .p_congestion_cb = nullptr,
           .p_phy_update_cb = nullptr,

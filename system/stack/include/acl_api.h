@@ -129,7 +129,7 @@ tBTM_STATUS BTM_SwitchRoleToCentral(const RawAddress& remote_bd_addr);
  *                  tBTM_STATUS::BTM_BUSY if command is already in progress
  *
  ******************************************************************************/
-tBTM_STATUS BTM_ReadRSSI(const RawAddress& remote_bda, tBTM_CMPL_CB* p_cb);
+tBTM_STATUS BTM_ReadRSSI(const RawAddress& remote_bda, tBTM_READ_RSSI_CB* p_cb);
 
 /*******************************************************************************
  *
@@ -155,7 +155,7 @@ uint16_t BTM_GetNumAclLinks(void);
  ******************************************************************************/
 uint16_t BTM_GetNumBredrAclLinks(void);
 
-tBTM_STATUS BTM_FlowSpec(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_CMPL_CB* p_cb);
+tBTM_STATUS BTM_FlowSpec(const RawAddress& addr, tBT_FLOW_SPEC* p_flow, tBTM_FLOW_SPEC_CMPL_CB* p_cb);
 
 void btm_flow_spec_complete(uint8_t status, uint16_t handle, tBT_FLOW_SPEC* p_flow);
 
