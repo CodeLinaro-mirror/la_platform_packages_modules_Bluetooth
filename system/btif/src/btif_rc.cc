@@ -56,193 +56,7 @@
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
 
-#define RC_INVALID_TRACK_ID (0xFFFFFFFFFFFFFFFFULL)
-
-/*****************************************************************************
- *  Constants & Macros
- *****************************************************************************/
-
-/* cod value for Headsets */
-#define COD_AV_HEADSETS 0x0404
-/* for AVRC 1.4 need to change this */
-#define MAX_RC_NOTIFICATIONS AVRC_EVT_VOLUME_CHANGE
-
-#define IDX_GET_PLAY_STATUS_RSP 0
-#define IDX_LIST_APP_ATTR_RSP 1
-#define IDX_LIST_APP_VALUE_RSP 2
-#define IDX_GET_CURR_APP_VAL_RSP 3
-#define IDX_SET_APP_VAL_RSP 4
-#define IDX_GET_APP_ATTR_TXT_RSP 5
-#define IDX_GET_APP_VAL_TXT_RSP 6
-#define IDX_GET_ELEMENT_ATTR_RSP 7
-#define IDX_SET_ADDR_PLAYER_RSP 8
-#define IDX_SET_BROWSED_PLAYER_RSP 9
-#define IDX_GET_FOLDER_ITEMS_RSP 10
-#define IDX_CHG_PATH_RSP 11
-#define IDX_GET_ITEM_ATTR_RSP 12
-#define IDX_PLAY_ITEM_RSP 13
-#define IDX_GET_TOTAL_NUM_OF_ITEMS_RSP 14
-#define IDX_SEARCH_RSP 15
-#define IDX_ADD_TO_NOW_PLAYING_RSP 16
-
-/* Update MAX value whenever IDX will be changed */
-#define MAX_CMD_QUEUE_LEN 17
-
-#define MAX_VOLUME 128
-#define MAX_LABEL 16
-#define MAX_TRANSACTIONS_PER_SESSION 16
-#define PLAY_STATUS_PLAYING 1
-#define BTIF_RC_NUM_CONN BT_RC_NUM_APP
-
-/* Configurable playback_position_changed_update interval */
-#define PLAY_POS_UPDATE_INTERVAL_PROPERTY \
-  "bluetooth.avrcp.controller.playback_pos_update_interval_sec"
-// Default interval associated with AVRC_EVT_PLAY_POS_CHANGED
-#define DEFAULT_PLAY_POS_UPDATE_INTERVAL_SEC 2
-
-#define CHECK_RC_CONNECTED(p_dev)                    \
-  do {                                               \
-    if ((p_dev) == NULL || !(p_dev)->rc_connected) { \
-      log::warn("called when RC is not connected");  \
-      return BtifStatus(NOT_READY);                  \
-    }                                                \
-  } while (0)
-
-#define CHECK_BR_CONNECTED(p_dev)                    \
-  do {                                               \
-    if ((p_dev) == NULL || !(p_dev)->br_connected) { \
-      log::warn("called when BR is not connected");  \
-      return BtifStatus(NOT_READY);                  \
-    }                                                \
-  } while (0)
-
 using namespace bluetooth;
-
-/*****************************************************************************
- *  Local type definitions
- *****************************************************************************/
-typedef struct {
-  uint8_t bNotify;
-  uint8_t label;
-} btif_rc_reg_notifications_t;
-
-typedef struct {
-  uint8_t label;
-  uint8_t ctype;
-  bool is_rsp_pending;
-} btif_rc_cmd_ctxt_t;
-
-/* 2 second timeout to get command response, then we free label */
-#define BTIF_RC_TIMEOUT_MS (2 * 1000)
-
-typedef enum { eNOT_REGISTERED, eREGISTERED, eINTERIM } btif_rc_nfn_reg_status_t;
-
-typedef struct {
-  uint8_t event_id;
-  uint8_t label;
-  btif_rc_nfn_reg_status_t status;
-} btif_rc_supported_event_t;
-
-#define BTIF_RC_STS_TIMEOUT 0xFE
-
-typedef struct {
-  bool query_started;
-  uint8_t num_attrs;
-  uint8_t num_ext_attrs;
-
-  uint8_t attr_index;
-  uint8_t ext_attr_index;
-  uint8_t ext_val_index;
-  btrc_player_app_attr_t attrs[AVRC_MAX_APP_ATTR_SIZE];
-  btrc_player_app_ext_attr_t ext_attrs[AVRC_MAX_APP_ATTR_SIZE];
-} btif_rc_player_app_settings_t;
-
-// The context associated with a passthru command
-typedef struct {
-  uint8_t rc_id;
-  uint8_t key_state;
-  uint8_t custom_id;
-} rc_passthru_context_t;
-
-// The context associated with a vendor command
-typedef struct {
-  uint8_t pdu_id;
-  uint8_t event_id;
-} rc_vendor_context_t;
-
-// The context associated with a browsing command
-typedef struct {
-  uint8_t pdu_id;
-} rc_browse_context_t;
-
-typedef union {
-  rc_vendor_context_t vendor;
-  rc_browse_context_t browse;
-  rc_passthru_context_t passthru;
-} rc_command_context_t;
-
-// The context associated with any command transaction requiring a label.
-// The opcode determines how to determine the data in the union. Context is
-// used to track which requests have which labels
-typedef struct {
-  RawAddress rc_addr;
-  uint8_t label;
-  uint8_t opcode;
-  rc_command_context_t command;
-} rc_transaction_context_t;
-typedef struct {
-  bool in_use;
-  uint8_t label;
-  rc_transaction_context_t context;
-  alarm_t* timer;
-} rc_transaction_t;
-
-typedef struct {
-  std::recursive_mutex label_lock;
-  rc_transaction_t transaction[MAX_TRANSACTIONS_PER_SESSION];
-} rc_transaction_set_t;
-
-/* TODO : Merge btif_rc_reg_notifications_t and btif_rc_cmd_ctxt_t to a single
- * struct */
-typedef struct {
-  bool rc_connected;
-  bool br_connected;  // Browsing channel.
-  uint8_t rc_handle;
-  tBTA_AV_FEAT rc_features;
-  uint16_t rc_cover_art_psm;  // AVRCP-BIP psm
-  btrc_connection_state_t rc_state;
-  RawAddress rc_addr;
-  btif_rc_cmd_ctxt_t rc_pdu_info[MAX_CMD_QUEUE_LEN];
-  btif_rc_reg_notifications_t rc_notif[MAX_RC_NOTIFICATIONS];
-  unsigned int rc_volume;
-  uint8_t rc_vol_label;
-  list_t* rc_supported_event_list;
-  btif_rc_player_app_settings_t rc_app_settings;
-  alarm_t* rc_play_status_timer;
-  bool rc_features_processed;
-  uint64_t rc_playing_uid;
-  bool rc_procedure_complete;
-  rc_transaction_set_t transaction_set;
-  tBTA_AV_FEAT peer_ct_features;
-  tBTA_AV_FEAT peer_tg_features;
-  uint8_t launch_cmd_pending; /* true: getcap/regvolume */
-} btif_rc_device_cb_t;
-
-#define RC_PENDING_ACT_GET_CAP (1 << 0)
-#define RC_PENDING_ACT_REG_VOL (1 << 1)
-#define RC_PENDING_ACT_REPORT_CONN (1 << 2)
-
-typedef struct {
-  std::mutex lock;
-  btif_rc_device_cb_t rc_multi_cb[BTIF_RC_NUM_CONN];
-} rc_cb_t;
-
-typedef struct {
-  uint8_t handle;
-} btif_rc_handle_t;
-
-/* Response status code - Unknown Error - this is changed to "reserved" */
-#define BTIF_STS_GEN_ERROR 0x06
 
 static void initialize_device(btif_rc_device_cb_t* p_dev);
 static void send_reject_response(uint8_t rc_handle, uint8_t label, uint8_t pdu, uint8_t status,
@@ -366,18 +180,28 @@ static btif_rc_device_cb_t* alloc_device() {
   return NULL;
 }
 
+static void dealloc_device(btif_rc_device_cb_t* p_dev) {
+  CHECK(p_dev != nullptr);
+  p_dev->rc_connected = false;
+  p_dev->rc_handle = 0;
+  p_dev->rc_features = 0;
+  p_dev->rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
+  p_dev->rc_addr = RawAddress::kEmpty;
+  p_dev->rc_volume = MAX_VOLUME;
+  p_dev->rc_vol_label = MAX_LABEL;
+  p_dev->peer_ct_features = 0;
+  p_dev->peer_tg_features = 0;
+  p_dev->launch_cmd_pending = 0;
+}
+
 static void initialize_device(btif_rc_device_cb_t* p_dev) {
   if (p_dev == nullptr) {
     return;
   }
 
-  p_dev->rc_connected = false;
+  dealloc_device(p_dev);
   p_dev->br_connected = false;
-  p_dev->rc_handle = 0;
-  p_dev->rc_features = 0;
   p_dev->rc_cover_art_psm = 0;
-  p_dev->rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
-  p_dev->rc_addr = RawAddress::kEmpty;
   for (int i = 0; i < MAX_CMD_QUEUE_LEN; ++i) {
     p_dev->rc_pdu_info[i].ctype = 0;
     p_dev->rc_pdu_info[i].label = 0;
@@ -387,16 +211,11 @@ static void initialize_device(btif_rc_device_cb_t* p_dev) {
     list_clear(p_dev->rc_supported_event_list);
   }
   p_dev->rc_supported_event_list = nullptr;
-  p_dev->rc_volume = MAX_VOLUME;
-  p_dev->rc_vol_label = MAX_LABEL;
   memset(&p_dev->rc_app_settings, 0, sizeof(btif_rc_player_app_settings_t));
   p_dev->rc_play_status_timer = nullptr;
   p_dev->rc_features_processed = false;
   p_dev->rc_playing_uid = 0;
   p_dev->rc_procedure_complete = false;
-  p_dev->peer_ct_features = 0;
-  p_dev->peer_tg_features = 0;
-  p_dev->launch_cmd_pending = 0;
 
   // Reset the transaction set for this device. If this initialize_device() call
   // is made due to a disconnect event, this cancels any pending timers too.
@@ -667,17 +486,8 @@ static void handle_rc_connect(tBTA_AV_RC_OPEN* p_rc_open) {
 
   if (!(p_rc_open->status == BTA_AV_SUCCESS)) {
     log::error("Connect failed with error code: {}", p_rc_open->status);
-    p_dev->rc_connected = false;
+    dealloc_device(p_dev);
     BTA_AvCloseRc(p_rc_open->rc_handle);
-    p_dev->rc_handle = 0;
-    p_dev->rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
-    p_dev->rc_features = 0;
-    p_dev->peer_ct_features = 0;
-    p_dev->peer_tg_features = 0;
-    p_dev->launch_cmd_pending = 0;
-    p_dev->rc_vol_label = MAX_LABEL;
-    p_dev->rc_volume = MAX_VOLUME;
-    p_dev->rc_addr = RawAddress::kEmpty;
     return;
   }
 
@@ -2543,25 +2353,59 @@ static void handle_avk_rc_metamsg_cmd(tBTA_AV_META_MSG* pmeta_msg) {
  * Returns          void
  *
  **************************************************************************/
+static void reset_device(btif_rc_device_cb_t& dev) {
+  dev.rc_connected = {};
+  dev.br_connected = {};
+  dev.rc_handle = {};
+  dev.rc_features = {};
+  dev.rc_cover_art_psm = {};
+  dev.rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
+  dev.rc_addr = RawAddress::kEmpty;
+  for (int i = 0; i < MAX_CMD_QUEUE_LEN; ++i) {
+    dev.rc_pdu_info[i] = {};
+  }
+  for (int i = 0; i < MAX_RC_NOTIFICATIONS; ++i) {
+    dev.rc_notif[i] = {};
+  }
+  if (dev.rc_supported_event_list != nullptr) {
+    list_free(dev.rc_supported_event_list);
+    dev.rc_supported_event_list = nullptr;
+  }
+  dev.rc_volume = MAX_VOLUME;
+  dev.rc_vol_label = MAX_LABEL;
+  dev.rc_app_settings = {};
+
+  alarm_free(dev.rc_play_status_timer);
+  dev.rc_play_status_timer = nullptr;
+
+  dev.rc_features_processed = {};
+  dev.rc_playing_uid = {};
+  dev.rc_procedure_complete = {};
+
+  for (int i = 0; i < MAX_TRANSACTIONS_PER_SESSION; ++i) {
+    dev.transaction_set.transaction[i].in_use = {};
+    dev.transaction_set.transaction[i].label = {};
+    dev.transaction_set.transaction[i].context = {};
+    alarm_free(dev.transaction_set.transaction[i].timer);
+    dev.transaction_set.transaction[i].timer = nullptr;
+  }
+
+  dev.peer_ct_features = {};
+  dev.peer_tg_features = {};
+  dev.launch_cmd_pending = {};
+}
+
 static void cleanup_ctrl() {
   log::verbose("");
 
   if (bt_rc_ctrl_callbacks) {
-    bt_rc_ctrl_callbacks = NULL;
+    bt_rc_ctrl_callbacks = nullptr;
   }
 
-  /*
-   * TODO: the void* casts are a workaround to silence a glibc+clang warning that memset
-   *       should not be used on complex data structures / classes.
-   */
   for (int idx = 0; idx < BTIF_RC_NUM_CONN; idx++) {
-    alarm_free(btif_rc_cb.rc_multi_cb[idx].rc_play_status_timer);
-
-    void* ptr = static_cast<void*>(&btif_rc_cb.rc_multi_cb[idx]);
-    memset(ptr, 0, sizeof(btif_rc_cb.rc_multi_cb[idx]));
+    reset_device(btif_rc_cb.rc_multi_cb[idx]);
   }
 
-  memset(static_cast<void*>(&btif_rc_cb.rc_multi_cb), 0, sizeof(btif_rc_cb.rc_multi_cb));
   log::verbose("completed");
 }
 
@@ -3458,10 +3302,9 @@ static void start_transaction_timer(btif_rc_device_cb_t* p_dev, uint8_t label,
     log::warn("Restarting timer that's already scheduled");
   }
 
-  std::stringstream ss;
-  ss << "btif_rc." << p_dev->rc_addr.ToRedactedStringForLogging() << "." << transaction->label;
+  std::string alarm_label = std::format("btif_rc.{}.{}", p_dev->rc_addr, transaction->label);
   alarm_free(transaction->timer);
-  transaction->timer = alarm_new(ss.str().c_str());
+  transaction->timer = alarm_new(alarm_label.c_str());
   alarm_set_on_mloop(transaction->timer, timeout_ms, btif_rc_transaction_timer_timeout,
                      &transaction->context);
 }
@@ -3523,8 +3366,8 @@ static std::string dump_transaction(const rc_transaction_t* const transaction) {
       ss << " pdu_id=" << dump_rc_pdu(context.command.browse.pdu_id);
       break;
     case AVRC_OP_PASS_THRU:
-      ss << " rc_id=" << context.command.passthru.rc_id;
-      ss << " key_state=" << context.command.passthru.key_state;
+      ss << " rc_id=" << static_cast<int>(context.command.passthru.rc_id);
+      ss << " key_state=" << static_cast<int>(context.command.passthru.key_state);
       break;
   }
   ss << ")";
@@ -3852,3 +3695,106 @@ void btif_debug_rc_dump(int fd) {
     }
   }
 }
+
+namespace bluetooth::testing::avrc {
+
+static btif_rc_interface interface = {
+        /*************************************************************************
+         * Group 1: Command Transmission & Infrastructure
+         *************************************************************************/
+        .build_and_send_browsing_cmd = ::build_and_send_browsing_cmd,
+        .build_and_send_vendor_cmd = ::build_and_send_vendor_cmd,
+        .btif_rc_ctrl_upstreams_rsp_cmd = ::btif_rc_ctrl_upstreams_rsp_cmd,
+        .send_reject_response = ::send_reject_response,
+
+        /*************************************************************************
+         * Group 2: Player Metadata & Status Tracking
+         *************************************************************************/
+        .get_element_attribute_cmd = ::get_element_attribute_cmd,
+        .get_metadata_attribute_cmd = ::get_metadata_attribute_cmd,
+        .get_play_status_cmd = ::get_play_status_cmd,
+        .get_player_app_setting_attr_text_cmd = ::get_player_app_setting_attr_text_cmd,
+        .get_player_app_setting_cmd = ::get_player_app_setting_cmd,
+        .get_player_app_setting_value_text_cmd = ::get_player_app_setting_value_text_cmd,
+        .list_player_app_setting_attrib_cmd = ::list_player_app_setting_attrib_cmd,
+        .list_player_app_setting_value_cmd = ::list_player_app_setting_value_cmd,
+        .handle_app_attr_response = ::handle_app_attr_response,
+        .handle_app_attr_txt_response = ::handle_app_attr_txt_response,
+        .handle_app_attr_val_txt_response = ::handle_app_attr_val_txt_response,
+        .handle_app_cur_val_response = ::handle_app_cur_val_response,
+        .handle_app_val_response = ::handle_app_val_response,
+        .handle_get_metadata_attr_response = ::handle_get_metadata_attr_response,
+        .handle_get_playstatus_response = ::handle_get_playstatus_response,
+        .handle_set_app_attr_val_response = ::handle_set_app_attr_val_response,
+        .cleanup_app_attr_val_txt_response = ::cleanup_app_attr_val_txt_response,
+        .rc_is_track_id_valid = ::rc_is_track_id_valid,
+
+        /*************************************************************************
+         * Group 3: Player & Feature Discovery
+         *************************************************************************/
+        .getcapabilities_cmd = ::getcapabilities_cmd,
+        .handle_get_capability_response = ::handle_get_capability_response,
+        .handle_rc_browse_connect = ::handle_rc_browse_connect,
+        .handle_rc_connect = ::handle_rc_connect,
+        .handle_rc_ctrl_features = ::handle_rc_ctrl_features,
+        .handle_rc_ctrl_features_all = ::handle_rc_ctrl_features_all,
+        .handle_rc_ctrl_psm = ::handle_rc_ctrl_psm,
+        .handle_rc_disconnect = ::handle_rc_disconnect,
+        .handle_set_addressed_player_response = ::handle_set_addressed_player_response,
+        .handle_set_browsed_player_response = ::handle_set_browsed_player_response,
+        .dump_peer_features = ::dump_peer_features,
+        .get_requested_attributes_list_size = ::get_requested_attributes_list_size,
+
+        /*************************************************************************
+         * Group 4: Device & Transaction Management
+         *************************************************************************/
+        .alloc_device = ::alloc_device,
+        .btif_rc_get_device_by_bda = ::btif_rc_get_device_by_bda,
+        .btif_rc_get_device_by_handle = ::btif_rc_get_device_by_handle,
+        .get_connected_device = ::get_connected_device,
+        .get_transaction = ::get_transaction,
+        .get_transaction_by_lbl = ::get_transaction_by_lbl,
+        .initialize_device = ::initialize_device,
+        .init_all_transactions = ::init_all_transactions,
+        .initialize_transaction = ::initialize_transaction,
+        .release_transaction = ::release_transaction,
+        .dump_transaction = ::dump_transaction,
+
+        /*************************************************************************
+         * Group 5: Browsing & Content Navigation
+         *************************************************************************/
+        .get_folder_items_cmd = ::get_folder_items_cmd,
+        .get_item_attribute_cmd = ::get_item_attribute_cmd,
+        .handle_change_path_response = ::handle_change_path_response,
+        .handle_get_folder_items_response = ::handle_get_folder_items_response,
+        .get_folder_item_type_folder = ::get_folder_item_type_folder,
+        .get_folder_item_type_media = ::get_folder_item_type_media,
+        .get_folder_item_type_player = ::get_folder_item_type_player,
+        .cleanup_btrc_folder_items = ::cleanup_btrc_folder_items,
+
+        /*************************************************************************
+         * Group 6: Event Notification & Timeout Handling
+         *************************************************************************/
+        .register_notification_cmd = ::register_notification_cmd,
+        .register_for_event_notification = ::register_for_event_notification,
+        .handle_notification_response = ::handle_notification_response,
+        .iterate_supported_event_list_for_interim_rsp =
+                ::iterate_supported_event_list_for_interim_rsp,
+        .rc_notification_interim_timeout = ::rc_notification_interim_timeout,
+        .rc_ctrl_procedure_complete = ::rc_ctrl_procedure_complete,
+        .start_transaction_timer = ::start_transaction_timer,
+        .clear_cmd_timeout = ::clear_cmd_timeout,
+        .passthru_cmd_timeout_handler = ::passthru_cmd_timeout_handler,
+        .vendor_cmd_timeout_handler = ::vendor_cmd_timeout_handler,
+        .browse_cmd_timeout_handler = ::browse_cmd_timeout_handler,
+        .btif_rc_transaction_timer_timeout = ::btif_rc_transaction_timer_timeout,
+        .btif_rc_transaction_timeout_handler = ::btif_rc_transaction_timeout_handler,
+        .handle_rc_passthrough_rsp = ::handle_rc_passthrough_rsp,
+        .handle_rc_vendorunique_rsp = ::handle_rc_vendorunique_rsp,
+        .handle_avk_rc_metamsg_cmd = ::handle_avk_rc_metamsg_cmd,
+        .handle_avk_rc_metamsg_rsp = ::handle_avk_rc_metamsg_rsp,
+};
+
+btif_rc_interface* btif_rc_ctrl_get_interface() { return &interface; }
+
+}  // namespace bluetooth::testing::avrc

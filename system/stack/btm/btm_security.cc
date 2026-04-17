@@ -25,7 +25,6 @@
 
 #include <cstdint>
 
-#include "internal_include/bt_trace.h"
 #include "internal_include/stack_config.h"
 #include "osi/include/allocator.h"
 #include "osi/include/list.h"
@@ -46,23 +45,15 @@ void BtmSecurity::Init() {
 }
 
 void BtmSecurity::Init(uint8_t initial_security_mode) {
-  pin_code_ = {};
-  memset(&cfg_, 0, sizeof(cfg_));
-  memset(&devcb_, 0, sizeof(devcb_));
-  memset(&enc_rand_, 0, sizeof(enc_rand_));
-  memset(&api_, 0, sizeof(api_));
-  memset(sec_serv_rec_, 0, sizeof(sec_serv_rec_));
+  *this = {};
+
   connecting_bda_ = RawAddress::kEmpty;
   connecting_dc_ = kDevClassEmpty;
-
   sec_collision_timer_ = alarm_new("btm.sec_collision_timer_");
   pairing_timer_ = alarm_new("btm.pairing_timer_");
-  execution_wait_timer_ = alarm_new("btm.execution_wait_timer_");
-
   security_mode_ = initial_security_mode;
-  link_spec_ = {};
   link_spec_.addrt.bda = RawAddress::kAny;
-  if (!com::android::bluetooth::flags::use_array_instead_list_in_sec_dev_rec()) {
+  if (!com_android_bluetooth_flags_use_array_instead_list_in_sec_dev_rec()) {
     sec_dev_rec_ = list_new([](void* ptr) {
       // Invoke destructor for all record objects and reset to default
       // initialized value so memory may be properly freed
@@ -71,15 +62,13 @@ void BtmSecurity::Init(uint8_t initial_security_mode) {
     });
     return;
   }
-
-  device_records_ = {};
 }
 
 void BtmSecurity::Free() {
   service_access_q_.clear();
   enc_request_q_.clear();
 
-  if (!com::android::bluetooth::flags::use_array_instead_list_in_sec_dev_rec()) {
+  if (!com_android_bluetooth_flags_use_array_instead_list_in_sec_dev_rec()) {
     list_free(sec_dev_rec_);
     sec_dev_rec_ = nullptr;
   } else {
@@ -91,9 +80,6 @@ void BtmSecurity::Free() {
 
   alarm_free(pairing_timer_);
   pairing_timer_ = nullptr;
-
-  alarm_free(execution_wait_timer_);
-  execution_wait_timer_ = nullptr;
 }
 
 /*******************************************************************************
@@ -368,7 +354,7 @@ bool BtmSecurityRecord::is_bonded(tBT_TRANSPORT transport) const {
 // that inline.
 // This is similar to list_foreach, but for array.
 BtmDevice* BtmSecurity::for_each_dev_rec(sec_dev_rec_iter_cb cb, void* context) {
-  log::assert_that(com::android::bluetooth::flags::use_array_instead_list_in_sec_dev_rec(),
+  log::assert_that(com_android_bluetooth_flags_use_array_instead_list_in_sec_dev_rec(),
                    "assert failed: flag use_array_instead_list_in_sec_dev_rec is disabled.");
   log::assert_that(cb != NULL, "assert failed: callback is null.");
 
@@ -378,4 +364,14 @@ BtmDevice* BtmSecurity::for_each_dev_rec(sec_dev_rec_iter_cb cb, void* context) 
     }
   }
   return nullptr;
+}
+
+bool BtmSecurity::ResetLinkKeyRequestTimer() {
+  if (lk_req_timer_ != nullptr) {
+    log::debug("Resetting Link Key Request Timer");
+    alarm_free(lk_req_timer_);
+    lk_req_timer_ = nullptr;
+    return true;
+  }
+  return false;
 }

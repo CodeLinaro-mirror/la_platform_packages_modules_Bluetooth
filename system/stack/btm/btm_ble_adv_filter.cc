@@ -26,8 +26,7 @@
 #include "btm_ble_api.h"
 #include "osi/include/allocator.h"
 #include "stack/btm/btm_ble_int.h"
-#include "stack/btm/btm_int_types.h"
-#include "stack/btm/internal/btm_api.h"
+#include "stack/btm/btm_ble_int_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_status.h"
 #include "stack/include/btu_hcif.h"
@@ -115,18 +114,25 @@ static uint8_t btm_ble_ocf_to_condtype(uint8_t ocf) {
   return cond_type;
 }
 
-static void btm_flt_update_cb(uint8_t expected_ocf, tBTM_BLE_PF_CFG_CBACK cb, uint8_t* p,
-                              uint16_t evt_len) {
-  if (evt_len != 4) {
-    log::error("bad length: {}", evt_len);
+static void btm_flt_update_cb(uint8_t expected_ocf, tBTM_BLE_PF_CFG_CBACK cb,
+                              bluetooth::hci::CommandCompleteView view) {
+  auto le_adv_filter_complete_view = bluetooth::hci::LeAdvFilterCompleteView::Create(view);
+  if (!le_adv_filter_complete_view.IsValid()) {
+    log::error("Invalid le_adv_filter_complete_view");
     return;
   }
 
-  uint8_t status, op_subcode, action, num_avail;
-  STREAM_TO_UINT8(status, p);
-  STREAM_TO_UINT8(op_subcode, p);
-  STREAM_TO_UINT8(action, p);
-  STREAM_TO_UINT8(num_avail, p);
+  uint8_t status = static_cast<uint8_t>(le_adv_filter_complete_view.GetStatus());
+  uint8_t op_subcode = static_cast<uint8_t>(le_adv_filter_complete_view.GetApcfOpcode());
+  auto set_filtering_parameters_view =
+          bluetooth::hci::LeAdvFilterSetFilteringParametersCompleteView::Create(
+                  le_adv_filter_complete_view);
+  if (!set_filtering_parameters_view.IsValid()) {
+    log::error("Invalid set_filtering_parameters_view");
+    return;
+  }
+  uint8_t action = static_cast<uint8_t>(set_filtering_parameters_view.GetApcfAction());
+  uint8_t num_avail = static_cast<uint8_t>(set_filtering_parameters_view.GetApcfAvailableSpaces());
 
   if (expected_ocf != op_subcode) {
     log::error("Incorrect opcode: 0x{:02x}, expected: 0x{:02x}", expected_ocf, op_subcode);

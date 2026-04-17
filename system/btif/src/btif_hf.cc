@@ -506,7 +506,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
 
         bluetooth::metrics::Counter(bluetooth::metrics::CounterKey::HFP_SELF_INITIATED_AG_FAILED);
         btif_queue_advance();
-        if (get_btm_client_interface().security.BTM_IsBonded(connected_bda, BT_TRANSPORT_AUTO)) {
+        if (get_security_client_interface().BTM_IsBonded(connected_bda, BT_TRANSPORT_AUTO)) {
           DEVICE_IOT_CONFIG_ADDR_INT_ADD_ONE(connected_bda, IOT_CONF_KEY_HFP_SLC_CONN_FAIL_COUNT);
         }
       }
@@ -589,17 +589,11 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
     /* Java needs to send OK/ERROR for these commands */
     case BTA_AG_AT_BLDN_EVT:
     case BTA_AG_AT_D_EVT:
-      if (com_android_bluetooth_flags_check_call_state_atd()) {
-        if (btif_hf_cb[idx].call_setup_state == BTHF_CALL_STATE_IDLE) {
-          bt_hf_callbacks->DialCallCallback(
-                  (event == BTA_AG_AT_D_EVT) ? p_data->val.str : (char*)"",
-                  btif_hf_cb[idx].connected_bda);
-        } else {
-          send_at_result(BTA_AG_OK_ERROR, BTA_AG_ERR_OP_NOT_ALLOWED, idx);
-        }
-      } else {
+      if (btif_hf_cb[idx].call_setup_state == BTHF_CALL_STATE_IDLE) {
         bt_hf_callbacks->DialCallCallback((event == BTA_AG_AT_D_EVT) ? p_data->val.str : (char*)"",
                                           btif_hf_cb[idx].connected_bda);
+      } else {
+        send_at_result(BTA_AG_OK_ERROR, BTA_AG_ERR_OP_NOT_ALLOWED, idx);
       }
       break;
 

@@ -46,6 +46,8 @@
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/main_thread.h"
+#include "stack/include/stack_app.h"
+#include "stack/include/stack_le_connection.h"
 
 using bluetooth::Uuid;
 using namespace bluetooth;
@@ -74,7 +76,7 @@ static void bta_gattc_characteristics_unoffloaded_cback(tGATT_IF gatt_if, tCONN_
                                                         uint32_t session_id, tGATT_STATUS status);
 static void bta_gattc_offloaded_service_chg_cback(tCONN_ID conn_id);
 
-static tGATT_CBACK bta_gattc_cl_cback = {
+static stack::tGATT_CBACK bta_gattc_cl_cback = {
         .p_conn_cb = bta_gattc_conn_cback,
         .p_cmpl_cb = bta_gattc_cmpl_cback,
         .p_disc_res_cb = bta_gattc_disc_res_cback,
@@ -165,7 +167,7 @@ static void bta_gattc_start_if(uint8_t client_if) {
     return;
   }
 
-  GATT_StartIf(client_if);
+  stack::appStartIf(client_if);
 }
 
 /** Register a GATT client application with BTA */
@@ -181,7 +183,7 @@ void bta_gattc_register(const Uuid& app_uuid, const std::string& name, tBTA_GATT
     bta_gattc_enable();
   }
 
-  client_if = GATT_Register(app_uuid, name, &bta_gattc_cl_cback, eatt_support);
+  client_if = stack::appRegister(app_uuid, name, &bta_gattc_cl_cback, eatt_support);
   if (client_if == 0) {
     log::error("Register with GATT stack failed");
     status = GATT_ERROR;
@@ -224,7 +226,8 @@ void bta_gattc_deregister(tBTA_GATTC_RCB* p_clreg) {
 
     if (bta_gattc_cb.bg_track[i].cif_set.contains(p_clreg->client_if)) {
       bta_gattc_mark_bg_conn(p_clreg->client_if, bta_gattc_cb.bg_track[i].remote_bda, false);
-      if (!GATT_CancelConnect(p_clreg->client_if, bta_gattc_cb.bg_track[i].remote_bda, false)) {
+      if (!stack::leConnectionCancelConnect(p_clreg->client_if, bta_gattc_cb.bg_track[i].remote_bda,
+                                            false)) {
         log::warn(
                 "Unable to cancel GATT connection client_if:{} peer:{} "
                 "is_direct:{}",
@@ -268,7 +271,9 @@ void bta_gattc_process_api_open(const tBTA_GATTC_DATA* p_msg) {
     return;
   }
 
-  if (p_msg->api_conn.connection_type != BTM_BLE_DIRECT_CONNECTION) {
+  auto connection_type = p_msg->api_conn.connection_type;
+  if ((connection_type == BTM_BLE_BKG_CONNECT_ALLOW_LIST) ||
+      (connection_type == BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS)) {
     bta_gattc_init_bk_conn(&p_msg->api_conn, p_clreg);
     return;
   }
@@ -374,15 +379,25 @@ void bta_gattc_open(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   tBTA_GATTC_DATA gattc_data;
 
   log::verbose("auto_mtu_enabled: {}", p_data->api_conn.auto_mtu_enabled);
+
   /* open/hold a connection */
-  if (!GATT_Connect(p_clcb->p_rcb->client_if, p_data->api_conn.remote_bda,
-                    p_data->api_conn.remote_addr_type, BTM_BLE_DIRECT_CONNECTION,
-                    p_data->api_conn.transport, p_data->api_conn.opportunistic,
-                    p_data->api_conn.preferred_mtu, p_data->api_conn.prefer_relax_mode,
-                    p_data->api_conn.auto_mtu_enabled)) {
-    log::error("Connection open failure");
-    bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_OPEN_FAIL_EVT, p_data);
-    return;
+  if (p_data->api_conn.transport == BT_TRANSPORT_BR_EDR) {
+    if (!GATT_BR_Connect(p_clcb->p_rcb->client_if, p_data->api_conn.remote_bda)) {
+      log::error("Connection open failure");
+      bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_OPEN_FAIL_EVT, p_data);
+      return;
+    }
+  } else {
+    // BT_TRANSPORT_LE
+    if (!stack::leConnectionConnect(
+                p_clcb->p_rcb->client_if, p_data->api_conn.remote_bda,
+                p_data->api_conn.remote_addr_type, p_data->api_conn.connection_type,
+                p_data->api_conn.preferred_mtu, p_data->api_conn.prefer_relax_mode,
+                p_data->api_conn.auto_mtu_enabled)) {
+      log::error("Connection open failure");
+      bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_OPEN_FAIL_EVT, p_data);
+      return;
+    }
   }
 
   tBTA_GATTC_RCB* p_clreg = p_clcb->p_rcb;
@@ -413,10 +428,17 @@ static void bta_gattc_init_bk_conn(const tBTA_GATTC_API_OPEN* p_data, tBTA_GATTC
     return;
   }
 
+  if (p_data->transport != BT_TRANSPORT_LE) {
+    log::error("Background connect is just for LE transport! bd_addr={}", p_data->remote_bda);
+    bta_gattc_send_open_cback(p_clreg, GATT_ILLEGAL_PARAMETER, p_data->remote_bda,
+                              GATT_INVALID_CONN_ID, BT_TRANSPORT_LE, 0);
+    return;
+  }
+
   /* always call open to hold a connection */
-  if (!GATT_Connect(p_data->client_if, p_data->remote_bda, BLE_ADDR_PUBLIC, p_data->connection_type,
-                    p_data->transport, false, p_data->preferred_mtu, p_data->prefer_relax_mode,
-                    p_data->auto_mtu_enabled)) {
+  if (!stack::leConnectionConnect(p_data->client_if, p_data->remote_bda, BLE_ADDR_PUBLIC,
+                                  p_data->connection_type, p_data->preferred_mtu,
+                                  p_data->prefer_relax_mode, p_data->auto_mtu_enabled)) {
     log::error("Unable to connect to remote bd_addr={}", p_data->remote_bda);
     bta_gattc_send_open_cback(p_clreg, GATT_ILLEGAL_PARAMETER, p_data->remote_bda,
                               GATT_INVALID_CONN_ID, BT_TRANSPORT_LE, 0);
@@ -458,7 +480,7 @@ void bta_gattc_cancel_bk_conn(const tBTA_GATTC_API_CANCEL_OPEN* p_data) {
 
   /* remove the device from the bg connection mask */
   if (bta_gattc_mark_bg_conn(p_data->client_if, p_data->remote_bda, false)) {
-    if (GATT_CancelConnect(p_data->client_if, p_data->remote_bda, false)) {
+    if (stack::leConnectionCancelConnect(p_data->client_if, p_data->remote_bda, false)) {
       cb_data.status = GATT_SUCCESS;
     } else {
       log::error("failed for client_if={}, remote_bda={}, is_direct=false",
@@ -486,7 +508,8 @@ void bta_gattc_cancel_open_ok(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* /*
 void bta_gattc_cancel_open(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   tBTA_GATTC cb_data;
 
-  if (GATT_CancelConnect(p_clcb->p_rcb->client_if, p_data->api_cancel_conn.remote_bda, true)) {
+  if (stack::leConnectionCancelConnect(p_clcb->p_rcb->client_if, p_data->api_cancel_conn.remote_bda,
+                                       true)) {
     bta_gattc_sm_execute(p_clcb, BTA_GATTC_INT_CANCEL_OPEN_OK_EVT, p_data);
   } else {
     if (p_clcb->p_rcb->p_cback) {
@@ -517,7 +540,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
     p_clcb->p_srcb->mtu = GATT_DEF_BLE_MTU_SIZE;
   }
 
-  if (com::android::bluetooth::flags::gatt_conn_settings()) {
+  if (com_android_bluetooth_flags_gatt_conn_settings()) {
     if (p_clcb->p_srcb->mtu == GATT_DEF_BLE_MTU_SIZE) {
       // Set the default based on the APP's preference
       log::verbose("bd_addr: {}", p_clcb->bda);
@@ -546,7 +569,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
       // Only load the database if we are bonded, since the device cache is
       // meaningless otherwise (as we need to do rediscovery regardless)
       gatt::Database db =
-              get_btm_client_interface().security.BTM_IsBonded(p_clcb->bda, BT_TRANSPORT_AUTO)
+              get_security_client_interface().BTM_IsBonded(p_clcb->bda, BT_TRANSPORT_AUTO)
                       ? bta_gattc_cache_load(p_clcb->p_srcb->server_bda)
                       : gatt::Database();
       auto robust_caching_support = GetRobustCachingSupport(p_clcb, db);
@@ -563,7 +586,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
           log::info("{} conn_id=0x{:x} Service discovery in progress, will not load database.",
                     p_clcb->bda, p_clcb->bta_conn_id);
           p_clcb->p_srcb->state = BTA_GATTC_SERV_IDLE;
-          p_clcb->state = BTA_GATTC_DISCOVER_ST;
+          bta_gattc_set_state(p_clcb, BTA_GATTC_DISCOVER_ST);
         }
       }
 
@@ -591,7 +614,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
         }
       }
     } else { /* cache is building */
-      p_clcb->state = BTA_GATTC_DISCOVER_ST;
+      bta_gattc_set_state(p_clcb, BTA_GATTC_DISCOVER_ST);
     }
   } else {
     /* a pending service handle change indication */
@@ -607,11 +630,6 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   }
 
   if (p_clcb->p_rcb) {
-    /* there is no RM for GATT */
-    if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-      bta_sys_conn_open(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-    }
-
     bta_gattc_send_open_cback(p_clcb->p_rcb, GATT_SUCCESS, p_clcb->bda, p_clcb->bta_conn_id,
                               p_clcb->transport, p_clcb->p_srcb->mtu);
   }
@@ -652,12 +670,9 @@ void bta_gattc_close(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
                   },
   };
 
-  if (com::android::bluetooth::flags::le_subrate_manager()) {
-    bta_gattc_subrate_mode_request(p_clcb->p_rcb->client_if, p_clcb->bda,
-                                   GATT_SUBRATE_MODE_OFF, 0, 0, 0);
-  }
-  if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-    bta_sys_conn_close(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
+  if (com_android_bluetooth_flags_le_subrate_manager()) {
+    stack::leConnectionUpdateSubrateConfig(p_clcb->p_rcb->client_if, p_clcb->bda,
+                                           GATT_SUBRATE_MODE_OFF, 0, 0, 0);
   }
 
   /* Disable notification registration for closed connection */
@@ -726,7 +741,7 @@ void bta_gattc_disc_close(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data
        p_clcb->request_during_discovery == BTA_GATTC_DISCOVER_REQ_READ_DB_HASH_FOR_SVC_CHG)) {
     bta_gattc_reset_discover_st(p_clcb->p_srcb, GATT_ERROR);
   } else {
-    p_clcb->state = BTA_GATTC_CONN_ST;
+    bta_gattc_set_state(p_clcb, BTA_GATTC_CONN_ST);
   }
 
   // This function only gets called as the result of a BTA_GATTC_API_CLOSE_EVT
@@ -749,7 +764,7 @@ static void bta_gattc_set_discover_st(tBTA_GATTC_SERV* p_srcb) {
       break;
     }
     p_clcb->status = GATT_SUCCESS;
-    p_clcb->state = BTA_GATTC_DISCOVER_ST;
+    bta_gattc_set_state(p_clcb.get(), BTA_GATTC_DISCOVER_ST);
     p_clcb->request_during_discovery = BTA_GATTC_DISCOVER_REQ_NONE;
   }
 }
@@ -884,7 +899,7 @@ void bta_gattc_start_discover(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* /*
     p_clcb->auto_update = BTA_GATTC_DISC_WAITING;
 
     if (p_clcb->p_srcb->state == BTA_GATTC_SERV_IDLE) {
-      p_clcb->state = BTA_GATTC_CONN_ST; /* set clcb state */
+      bta_gattc_set_state(p_clcb, BTA_GATTC_CONN_ST);
     }
   }
 }
@@ -984,9 +999,8 @@ void bta_gattc_disc_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* /* p_da
     }
   }
 
-  if (p_clcb->p_q_cmd == nullptr) {
-    bta_gattc_continue(p_clcb);
-  }
+  /* Make sure that if there is any queued gatt command. If it is, let's execute it. */
+  bta_gattc_continue(p_clcb);
 
   if (p_clcb->p_rcb->p_cback) {
     tBTA_GATTC bta_gattc = {
@@ -1124,17 +1138,11 @@ void bta_gattc_execute(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
 }
 
 /** send handle value confirmation */
-void bta_gattc_confirm(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
+void bta_gattc_confirm(tBTA_GATTC_CLCB* /*p_clcb*/, const tBTA_GATTC_DATA* p_data) {
   uint16_t cid = p_data->api_confirm.cid;
   auto conn_id = static_cast<tCONN_ID>(p_data->api_confirm.hdr.layer_specific);
   if (GATTC_SendHandleValueConfirm(conn_id, cid) != GATT_SUCCESS) {
     log::error("to cid=0x{:x} failed", cid);
-  } else {
-    /* if over BR_EDR, inform PM for mode change */
-    if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-      bta_sys_busy(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-      bta_sys_idle(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-    }
   }
 }
 
@@ -1233,7 +1241,7 @@ static void bta_gattc_cfg_mtu_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_OP_
     }
   }
 
-  if (com::android::bluetooth::flags::gatt_conn_settings() && p_data->p_cmpl &&
+  if (com_android_bluetooth_flags_gatt_conn_settings() && p_data->p_cmpl &&
       p_data->status == GATT_SUCCESS) {
     p_clcb->p_srcb->mtu = p_data->p_cmpl->mtu;
   }
@@ -1249,7 +1257,7 @@ static void bta_gattc_cfg_mtu_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_OP_
 void bta_gattc_op_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
   if (p_clcb->p_q_cmd == NULL) {
     if (p_data->op_cmpl.op_code == GATTC_OPTYPE_CONFIG) {
-      if (!com::android::bluetooth::flags::gatt_conn_settings()) {
+      if (!com_android_bluetooth_flags_gatt_conn_settings()) {
         bta_gattc_cfg_mtu_cmpl(p_clcb, &p_data->op_cmpl);
       } else {
         if (p_data->op_cmpl.status != GATT_SUCCESS) {
@@ -1389,7 +1397,7 @@ void bta_gattc_search(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* p_data) {
             "callback yet",
             p_clcb->bta_conn_id, p_clcb->p_srcb->server_bda);
     bta_gattc_enqueue(p_clcb, p_data);
-    p_clcb->state = BTA_GATTC_DISCOVER_ST;
+    bta_gattc_set_state(p_clcb, BTA_GATTC_DISCOVER_ST);
     return;
   }
 
@@ -1421,7 +1429,7 @@ static void bta_gattc_deregister_cmpl(tBTA_GATTC_RCB* p_clreg) {
 
   memset(&cb_data, 0, sizeof(tBTA_GATTC));
 
-  GATT_Deregister(p_clreg->client_if);
+  stack::appDeregister(p_clreg->client_if);
   if (bta_gattc_cb.cl_rcb_map.erase(p_clreg->client_if) == 0) {
     log::warn("deregistered unknown rcb client_if={}", p_clreg->client_if);
   }
@@ -1442,16 +1450,6 @@ static void bta_gattc_deregister_cmpl(tBTA_GATTC_RCB* p_clreg) {
 static void bta_gattc_conn_cback(tGATT_IF gattc_if, const RawAddress& bdaddr, tCONN_ID conn_id,
                                  bool connected, tGATT_DISCONN_REASON reason,
                                  tBT_TRANSPORT transport) {
-  if (connected) {
-    log::info("Connected client_if:{} addr:{}, transport:{} reason:{}", gattc_if, bdaddr,
-              bt_transport_text(transport), gatt_disconnection_reason_text(reason));
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_CONNECTED, reason);
-  } else {
-    log::info("Disconnected att_id:{} addr:{}, transport:{} reason:{}", gattc_if, bdaddr,
-              bt_transport_text(transport), gatt_disconnection_reason_text(reason));
-    btif_debug_conn_state(bdaddr, BTIF_DEBUG_DISCONNECTED, reason);
-  }
-
   tBTA_GATTC_DATA* p_buf = (tBTA_GATTC_DATA*)osi_calloc(sizeof(tBTA_GATTC_DATA));
   p_buf->int_conn.hdr.event = connected ? BTA_GATTC_INT_CONN_EVT : BTA_GATTC_INT_DISCONN_EVT;
   p_buf->int_conn.hdr.layer_specific = static_cast<uint16_t>(conn_id);
@@ -1512,31 +1510,6 @@ void bta_gattc_process_api_refresh(tGATT_IF client_if, const RawAddress& remote_
   bta_gattc_cache_reset(remote_bda);
 }
 
-tGATT_STATUS bta_gattc_subrate_mode_request(tGATT_IF client_if, const RawAddress& bd_addr,
-                                            tGATT_SUBRATE_MODE subrate_mode,
-                                            uint16_t subrate_max, uint16_t subrate_min,
-                                            uint16_t cont_num) {
-  log::info("client_if:{} addr:{}, subrate_mode:{}", client_if, bd_addr, subrate_mode);
-
-  tBTA_GATTC_CLCB* p_clcb = bta_gattc_find_clcb_by_cif(client_if, bd_addr, BT_TRANSPORT_LE);
-  if (p_clcb == NULL) {
-    return GATT_ERROR;
-  }
-
-  log::verbose("client_if:{} addr:{}, state:{}", client_if, bd_addr, p_clcb->state);
-  if (p_clcb->state == BTA_GATTC_IDLE_ST || p_clcb->state == BTA_GATTC_W4_CONN_ST) {
-    return GATT_ERROR;
-  }
-  if (subrate_max != 0 || subrate_min != 0 || cont_num != 0) {
-    log::info("update subrate parameters: {} {} {}", subrate_max, subrate_min, cont_num);
-    GATT_UpdateSubrateConfig(subrate_mode, subrate_max, subrate_min, cont_num);
-  }
-  if (!GATT_SubrateRequest(client_if, bd_addr, subrate_mode)) {
-    return GATT_ERROR;;
-  }
-  return GATT_SUCCESS;
-}
-
 /** process service change indication */
 static bool bta_gattc_process_srvc_chg_ind(tCONN_ID conn_id, tBTA_GATTC_RCB* p_clrcb,
                                            tBTA_GATTC_SERV* p_srcb, tBTA_GATTC_CLCB* p_clcb,
@@ -1573,21 +1546,19 @@ static bool bta_gattc_process_srvc_chg_ind(tCONN_ID conn_id, tBTA_GATTC_RCB* p_c
   log::info("{} service changed s_handle=0x{:x}, e_handle=0x{:x}", p_srcb->server_bda, s_handle,
             e_handle);
 
-  if (com::android::bluetooth::flags::ignore_service_change_indication()) {
-    char remote_name[BD_NAME_LEN] = "";
-    btif_storage_get_stored_remote_name(p_srcb->server_bda, remote_name);
-    if (interop_match_name(INTEROP_IGNORE_SERVICE_CHANGED_IND, remote_name)) {
-      if (GATTC_SendHandleValueConfirm(conn_id, p_notify->cid) != GATT_SUCCESS) {
-        log::warn("Unable to send GATT client handle value confirmation conn_id:{} cid:{}", conn_id,
-                  p_notify->cid);
-      }
-
-      log::warn("ignore service changed ind");
-      return true;
+  char remote_name[BD_NAME_LEN] = "";
+  btif_storage_get_stored_remote_name(p_srcb->server_bda, remote_name);
+  if (interop_match_name(INTEROP_IGNORE_SERVICE_CHANGED_IND, remote_name)) {
+    if (GATTC_SendHandleValueConfirm(conn_id, p_notify->cid) != GATT_SUCCESS) {
+      log::warn("Unable to send GATT client handle value confirmation conn_id:{} cid:{}", conn_id,
+                p_notify->cid);
     }
+
+    log::warn("ignore service changed ind");
+    return true;
   }
 
-  if (com::android::bluetooth::flags::gatt_offload_api()) {
+  if (com_android_bluetooth_flags_gatt_offload_api()) {
     GATTC_InformServiceChangedIndication(p_srcb->server_bda);
   }
 
@@ -1640,9 +1611,7 @@ static bool bta_gattc_process_srvc_chg_ind(tCONN_ID conn_id, tBTA_GATTC_RCB* p_c
     } else {
       log::warn("No clcb is available to handle service change indication");
       // To respond to the next service change indication
-      if (com_android_bluetooth_flags_reset_service_change_ind_counter()) {
-        p_srcb->update_count = 0;
-      }
+      p_srcb->update_count = 0;
     }
   }
 
@@ -1779,12 +1748,6 @@ static void bta_gattc_cmpl_cback(tCONN_ID conn_id, tGATTC_OPTYPE op, tGATT_STATU
   if (!p_clcb) {
     log::error("unknown conn_id=0x{:x} ignore data", conn_id);
     return;
-  }
-
-  /* if over BR_EDR, inform PM for mode change */
-  if (p_clcb->transport == BT_TRANSPORT_BR_EDR) {
-    bta_sys_busy(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
-    bta_sys_idle(BTA_ID_GATTC, BTA_ALL_APP_ID, p_clcb->bda);
   }
 
   bta_gattc_cmpl_sendmsg(conn_id, op, status, p_data);

@@ -85,7 +85,7 @@ void BTM_BleGetDynamicAudioBuffer(tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB* p_dynamic_aud
  *
  ******************************************************************************/
 tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration, tBTM_INQ_RESULTS_CB* p_results_cb,
-                           tBTM_CMPL_CB* p_cmpl_cb);
+                           tBTM_INQUIRY_CMPL_CB* p_cmpl_cb);
 
 /*******************************************************************************
  *
@@ -313,32 +313,6 @@ tBTM_STATUS BTM_BleGetEnergyInfo(tBTM_BLE_ENERGY_INFO_CBACK* p_ener_cback);
  ******************************************************************************/
 tBTM_STATUS BTM_SetBleDataLength(const RawAddress& bd_addr, uint16_t tx_pdu_length,
                                  bool is_privileged_client);
-
-/*******************************************************************************
- *
- * Function         BTM_BleReadPhy
- *
- * Description      To read the current PHYs for specified LE connection
- *
- *
- * Returns          tBTM_STATUS::BTM_SUCCESS if success; otherwise failed.
- *
- ******************************************************************************/
-void BTM_BleReadPhy(const RawAddress& bd_addr,
-                    base::OnceCallback<void(uint8_t tx_phy, uint8_t rx_phy, uint8_t status)> cb);
-
-/*******************************************************************************
- *
- * Function         BTM_BleSetPhy
- *
- * Description      To set PHY preferences for specified LE connection
- *
- *
- * Returns          tBTM_STATUS::BTM_SUCCESS if success; otherwise failed.
- *
- ******************************************************************************/
-void BTM_BleSetPhy(const RawAddress& bd_addr, uint8_t tx_phys, uint8_t rx_phys,
-                   uint16_t phy_options);
 
 /*******************************************************************************
  *

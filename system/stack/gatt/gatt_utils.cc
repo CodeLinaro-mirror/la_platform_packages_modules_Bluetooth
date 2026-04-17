@@ -31,13 +31,12 @@
 #include <cstdint>
 #include <deque>
 
+#include "btif/include/btif_debug_conn.h"
 #include "hardware/bt_gatt_types.h"
 #include "internal_include/bt_target.h"
-#include "main/shim/acl_api.h"
 #include "main/shim/dumpsys.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/btm/btm_sec_utils.h"
 #include "stack/connection_manager/connection_manager.h"
@@ -881,39 +880,13 @@ std::list<tGATT_SRV_LIST_ELEM>::iterator gatt_sr_find_i_rcb_by_handle(uint16_t h
 void gatt_sr_get_sec_info(const RawAddress& rem_bda, tBT_TRANSPORT transport,
                           tGATT_SEC_FLAG* p_sec_flag, uint8_t* p_key_size) {
   tGATT_SEC_FLAG flags = {};
-  flags.is_link_key_known = get_btm_client_interface().security.BTM_IsBonded(rem_bda, transport);
+  flags.is_link_key_known = get_security_client_interface().BTM_IsBonded(rem_bda, transport);
   flags.is_link_key_authed = btm_is_link_key_authed(rem_bda, transport);
-  flags.is_encrypted = get_btm_client_interface().security.BTM_IsEncrypted(rem_bda, transport);
+  flags.is_encrypted = get_security_client_interface().BTM_IsEncrypted(rem_bda, transport);
   flags.can_read_discoverable_characteristics = BTM_CanReadDiscoverableCharacteristics(rem_bda);
 
-  *p_key_size = get_btm_client_interface().security.BTM_BleReadSecKeySize(rem_bda);
+  *p_key_size = get_security_client_interface().BTM_BleReadSecKeySize(rem_bda);
   *p_sec_flag = flags;
-}
-/*******************************************************************************
- *
- * Function         gatt_sr_send_req_callback
- *
- * Description
- *
- *
- * Returns          void
- *
- ******************************************************************************/
-void gatt_sr_send_req_callback(tCONN_ID conn_id, uint32_t trans_id, tGATTS_REQ_TYPE type,
-                               tGATTS_DATA* p_data) {
-  tGATT_IF gatt_if = gatt_get_gatt_if(conn_id);
-  tGATT_REG* p_reg = gatt_get_regcb(gatt_if);
-
-  if (!p_reg) {
-    log::error("p_reg not found discard request");
-    return;
-  }
-
-  if (p_reg->in_use && p_reg->app_cb.p_req_cb) {
-    (*p_reg->app_cb.p_req_cb)(conn_id, trans_id, type, p_data);
-  } else {
-    log::warn("Call back not found for application conn_id={}", conn_id);
-  }
 }
 
 /*******************************************************************************
@@ -1692,9 +1665,9 @@ bool gatt_is_outstanding_msg_in_att_send_queue(const tGATT_TCB& tcb) {
 void gatt_end_operation(tGATT_CLCB* p_clcb, tGATT_STATUS status, void* p_data) {
   tGATT_CL_COMPLETE cb_data;
   tGATT_REG* p_reg = gatt_get_regcb(gatt_get_gatt_if(p_clcb->conn_id));
-  tGATT_CMPL_CBACK* p_cmpl_cb =
+  stack::tGATT_CMPL_CBACK* p_cmpl_cb =
           ((p_clcb->p_reg == p_reg) && p_reg) ? p_reg->app_cb.p_cmpl_cb : NULL;
-  tGATT_DISC_CMPL_CB* p_disc_cmpl_cb =
+  stack::tGATT_DISC_CMPL_CB* p_disc_cmpl_cb =
           ((p_clcb->p_reg == p_reg) && p_reg) ? p_clcb->p_reg->app_cb.p_disc_cmpl_cb : NULL;
   tGATTC_OPTYPE op = p_clcb->operation;
   tGATT_DISC_TYPE disc_type = GATT_DISC_MAX;
@@ -1758,9 +1731,18 @@ void gatt_end_operation(tGATT_CLCB* p_clcb, tGATT_STATUS status, void* p_data) {
   }
 }
 
+void gatt_set_debug_conn_state_cb(void (*debug_conn_state)(
+        const RawAddress& bda, bool connected, const tGATT_DISCONN_REASON disconnect_reason)) {
+  gatt_cb.debug_conn_state = debug_conn_state;
+}
+
 static void gatt_disconnect_complete_notify_user(const RawAddress& bda, tGATT_DISCONN_REASON reason,
                                                  tBT_TRANSPORT transport) {
   tGATT_TCB* p_tcb = gatt_find_tcb_by_addr(bda, transport);
+
+  if (gatt_cb.debug_conn_state) {
+    gatt_cb.debug_conn_state(bda, false, reason);
+  }
 
   for (auto& [i, p_reg] : gatt_cb.cl_rcb_map) {
     if (p_reg->in_use && p_reg->app_cb.p_conn_cb) {
@@ -1787,7 +1769,7 @@ void gatt_cleanup_upon_disc(const RawAddress& bda, tGATT_DISCONN_REASON reason,
     return;
   }
 
-  if (com::android::bluetooth::flags::gatt_offload_api()) {
+  if (com_android_bluetooth_flags_gatt_offload_api()) {
     /* Notify disconnection to offload HAL */
     gatt_offload_clear_sessions_by_acl_handle(gatt_get_acl_handle_by_tcb(p_tcb),
                                               bluetooth::hal::GATT_ERROR_NONE);

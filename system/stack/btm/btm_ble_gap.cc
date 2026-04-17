@@ -33,36 +33,31 @@
 #include <com_android_bluetooth_flags.h>
 #include <hardware/ble_scanner.h>
 
-#include <bitset>
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <type_traits>
 #include <vector>
 
 #include "ble_appearance.h"
 #include "bta/include/bta_api.h"
-#include "btif/include/btif_gatt.h"
 #include "btif/include/stack_manager_t.h"
 #include "common/time_util.h"
 #include "hci/controller.h"
 #include "main/shim/acl_api.h"
-#include "main/shim/ble_scanner_interface_impl.h"
 #include "main/shim/entry.h"
 #include "main/shim/le_scanning_manager.h"
-#include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "osi/include/stack_power_telemetry.h"
+
 #include "stack/btm/btm_ble_int.h"
 #include "stack/btm/btm_ble_int_types.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/btm_sec.h"
-#include "stack/btm/btm_security.h"
 #include "stack/btm/internal/btm_api.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/advertise_data_parser.h"
+#include "stack/include/ble_hci_link_interface.h"
 #include "stack/include/bt_dev_class.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
@@ -201,11 +196,6 @@ private:
 AdvertisingCache cache;
 
 }  // namespace
-
-static bool ble_vnd_is_included() {
-  // replace build time config BLE_VND_INCLUDED with runtime
-  return android::sysprop::bluetooth::Ble::vnd_included().value_or(true);
-}
 
 /**********PAST & PS *******************/
 using StartSyncCb = base::RepeatingCallback<void(
@@ -347,7 +337,7 @@ static std::pair<uint16_t /* interval */, uint16_t /* window */> get_low_latency
  *
  ******************************************************************************/
 tBTM_STATUS BTM_BleObserve(bool start, uint8_t duration, tBTM_INQ_RESULTS_CB* p_results_cb,
-                           tBTM_CMPL_CB* p_cmpl_cb) {
+                           tBTM_INQUIRY_CMPL_CB* p_cmpl_cb) {
   tBTM_STATUS status = tBTM_STATUS::BTM_WRONG_MODE;
   uint8_t scan_phy = btm_cb.ble_ctr_cb.inq_var.scan_phy | BTM_BLE_DEFAULT_PHYS;
 
@@ -487,7 +477,7 @@ void BTM_BleGetDynamicAudioBuffer(tBTM_BT_DYNAMIC_AUDIO_BUFFER_CB p_dynamic_audi
  *
  ******************************************************************************/
 void BTM_BleReadControllerFeatures(tBTM_BLE_CTRL_FEATURES_CBACK* p_vsc_cback) {
-  if (!ble_vnd_is_included()) {
+  if (!android::sysprop::bluetooth::Ble::vnd_included()) {
     return;
   }
 
@@ -525,6 +515,8 @@ void BTM_BleReadControllerFeatures(tBTM_BLE_CTRL_FEATURES_CBACK* p_vsc_cback) {
   btm_cb.cmn_ble_vsc_cb.dynamic_audio_buffer_support =
           vendor_capabilities.dynamic_audio_buffer_support_;
   btm_cb.cmn_ble_vsc_cb.a2dp_offload_v2_support = vendor_capabilities.a2dp_offload_v2_support_;
+  btm_cb.cmn_ble_vsc_cb.big_set_channel_map_classification_support =
+          vendor_capabilities.big_set_channel_map_classification_support_;
 
   if (vendor_capabilities.dynamic_audio_buffer_support_) {
     std::array<bluetooth::hci::DynamicAudioBufferCodecCapability, BTM_CODEC_TYPE_MAX_RECORDS>
@@ -678,6 +670,7 @@ void btm_send_hci_set_scan_params(uint8_t scan_type, uint16_t scan_int_1m, uint1
   }
 }
 
+// TODO(b/459944050): Delete msft related functions when scan multiplexing feature is done.
 /* Whether or not to use MSFT-based scan filtering */
 static bool use_msft_filtering() {
   // We prefer to use APCF-based filtering over MSFT if it's available, so only use MSFT
@@ -685,6 +678,7 @@ static bool use_msft_filtering() {
   return !BTM_BleIsFilteringSupported() && scanner->IsMsftSupported();
 }
 
+// TODO(b/459944050): Delete msft related functions when scan multiplexing feature is done.
 /* MSFT advertisement enable callback */
 static void msft_adv_mon_enable_cb(bool restart_scan, bool enable, uint8_t status) {
   if (status == MSFT_FILTER_ENABLE_CMD_DISALLOWED) {
@@ -1108,7 +1102,11 @@ static void btm_ble_update_inq_result(tINQ_DB_ENT* p_i, uint8_t addr_type,
       local_flag = *p_flag;
     }
 
-    p_cur->dev_class = btm_ble_get_appearance_as_cod(data);
+    // CoD received from inquiry response should not be overwritten by the appearance value. So
+    // update it only if it is not known.
+    if (p_cur->dev_class == kDevClassUnclassified || p_cur->dev_class == kDevClassEmpty) {
+      p_cur->dev_class = btm_ble_get_appearance_as_cod(data);
+    }
 
     const uint8_t* p_rsi = AdvertiseDataParser::GetFieldByType(data, BTM_BLE_AD_TYPE_RSI, &len);
     if (p_rsi != nullptr && len == 6) {
@@ -1354,7 +1352,7 @@ void btm_ble_process_adv_pkt_cont_for_inquiry(uint16_t evt_type, tBLE_ADDR_TYPE 
   const uint8_t* p_flag =
           AdvertiseDataParser::GetFieldByType(advertising_data, BTM_BLE_AD_TYPE_FLAG, &len);
 
-  if (len != 1) {
+  if (len > 1) {
     log::warn("Dropping bad advertising packet from {}: len={}", bda, len);
     return;
   }
@@ -1598,7 +1596,7 @@ void btm_ble_stop_inquiry(void) {
  *
  ******************************************************************************/
 static void btm_ble_stop_observe(void) {
-  tBTM_CMPL_CB* p_obs_cb = btm_cb.ble_ctr_cb.p_obs_cmpl_cb;
+  tBTM_INQUIRY_CMPL_CB* p_obs_cb = btm_cb.ble_ctr_cb.p_obs_cmpl_cb;
 
   alarm_cancel(btm_cb.ble_ctr_cb.observer_timer);
 
@@ -1664,7 +1662,7 @@ void btm_ble_read_remote_features_complete(uint8_t* p, uint8_t length) {
       return;
     }
 
-    if (com::android::bluetooth::flags::le_subrate_manager()) {
+    if (com_android_bluetooth_flags_le_subrate_manager()) {
       const BtmDevice* p_device = btm_find_dev_by_handle(handle);
       if (p_device) {
           // init when acl connected & remote_feature received
@@ -1722,7 +1720,7 @@ void btm_ble_init(void) {
           alarm_new("btm_ble_addr.refresh_raddr_timer");
   btm_ble_pa_sync_cb = {};
   sync_timeout_alarm = alarm_new("btm.sync_start_task");
-  if (!ble_vnd_is_included()) {
+  if (!android::sysprop::bluetooth::Ble::vnd_included()) {
     btm_ble_adv_filter_init();
   }
 }

@@ -34,8 +34,10 @@
 
 void BTA_GATTS_Disable(void) { inc_func_call_count(__func__); }
 void BTA_GATTS_AppDeregister(tGATT_IF /* server_if */) { inc_func_call_count(__func__); }
-void BTA_GATTS_AppRegister(const bluetooth::Uuid& /* app_uuid */, tBTA_GATTS_CBACK* /* p_cback */,
-                           bool /* eatt_support */) {
+void BTA_GATTS_AppRegister(const bluetooth::Uuid& /* app_uuid */,
+                           const tBTA_GATTS_CBACK* /* p_cback */, bool /* eatt_support */,
+                           void (*)(tGATT_STATUS status, tGATT_IF server_if,
+                                    const bluetooth::Uuid& uuid)) {
   inc_func_call_count(__func__);
 }
 void BTA_GATTS_CancelOpen(tGATT_IF /* server_if */, const RawAddress& /* remote_bda */,
@@ -47,7 +49,11 @@ void BTA_GATTS_AddService(tGATT_IF /* server_if */, std::vector<btgatt_db_elemen
                           BTA_GATTS_AddServiceCb /* cb */) {
   inc_func_call_count(__func__);
 }
-void BTA_GATTS_DeleteService(uint16_t /* service_id */) { inc_func_call_count(__func__); }
+void BTA_GATTS_DeleteService(tGATT_IF /* server_if */, uint16_t /* service_id */,
+                             void (*)(tGATT_STATUS status, tGATT_IF server_if,
+                                      uint16_t service_id)) {
+  inc_func_call_count(__func__);
+}
 void BTA_GATTS_HandleValueIndication(uint16_t /* conn_id */, uint16_t /* attr_id */,
                                      std::vector<uint8_t> /* value */, bool /* need_confirm */) {
   inc_func_call_count(__func__);
@@ -58,10 +64,9 @@ void BTA_GATTS_Open(tGATT_IF /* server_if */, const RawAddress& /* remote_bda */
   inc_func_call_count(__func__);
 }
 void BTA_GATTS_SendRsp(uint16_t /* conn_id */, uint32_t /* trans_id */, tGATT_STATUS /* status */,
-                       tGATTS_RSP* /* p_msg */) {
+                       std::unique_ptr<tGATTS_RSP> /* p_msg */) {
   inc_func_call_count(__func__);
 }
-void BTA_GATTS_StopService(uint16_t /* service_id */) { inc_func_call_count(__func__); }
 void BTA_GATTS_InitBonded(void) { inc_func_call_count(__func__); }
 void BTA_GATTS_OffloadCharacteristics(tCONN_ID /* conn_id */,
                                       std::vector<btgatt_db_element_t> /* service */,

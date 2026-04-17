@@ -34,10 +34,10 @@
 #include "stack/include/acl_hci_link_interface.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/l2cap/l2c_int.h"
+#include "stack/mock/mock_stack_hcic_layer.h"
 #include "stack/rnr/remote_name_request.h"
 #include "stack/test/btm/btm_test_fixtures.h"
 #include "test/common/mock_functions.h"
-#include "test/mock/mock_legacy_hci_interface.h"
 #include "test/mock/mock_main_shim_entry.h"
 
 using ::testing::_;
@@ -81,7 +81,7 @@ protected:
     bluetooth::hci::testing::mock_hci_layer_ =
             std::make_unique<bluetooth::hci::testing::MockHciLayer>();
     bluetooth::hci::testing::mock_gd_shim_handler_ = up_handler_;
-    bluetooth::legacy::hci::testing::SetMock(legacy_hci_mock_);
+    hcic::SetMockHcicInterface(&legacy_hci_mock_);
     EXPECT_CALL(*bluetooth::hci::testing::mock_hci_layer_, RegisterForScoConnectionRequests(_));
     EXPECT_CALL(*bluetooth::hci::testing::mock_hci_layer_, RegisterForDisconnects(_));
   }
@@ -96,7 +96,7 @@ protected:
     StackBtmTest::TearDown();
   }
   bluetooth::common::BidiQueue<bluetooth::hci::ScoView, bluetooth::hci::ScoBuilder> sco_queue_{10};
-  bluetooth::legacy::hci::testing::MockInterface legacy_hci_mock_;
+  hcic::MockHcicInterface legacy_hci_mock_;
   bluetooth::os::Thread* up_thread_;
   bluetooth::os::Handler* up_handler_;
   bluetooth::os::Thread* down_thread_;
@@ -241,20 +241,18 @@ void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr, const uint8_
 
 struct {
   RawAddress bd_addr;
-  DEV_CLASS dc;
   BD_NAME bd_name;
 } btm_test;
 
 namespace {
-void BTM_RMT_NAME_CALLBACK(const RawAddress& bd_addr, DEV_CLASS dc, BD_NAME bd_name) {
+void BTM_RMT_NAME_CALLBACK(const RawAddress& bd_addr, const BD_NAME& bd_name) {
   btm_test.bd_addr = bd_addr;
-  btm_test.dc = dc;
   memcpy(btm_test.bd_name, bd_name, BD_NAME_LEN);
 }
 }  // namespace
 
 TEST_F(StackBtmWithInitFreeTest, btm_sec_rmt_name_request_complete) {
-  btm_cb.rnr.p_rmt_name_callback[0] = BTM_RMT_NAME_CALLBACK;
+  btm_cb.rnr.p_rmt_name_callback = BTM_RMT_NAME_CALLBACK;
 
   RawAddress bd_addr = RawAddress("A1:A2:A3:A4:A5:A6");
   const uint8_t* p_bd_name = (const uint8_t*)"MyTestName";
@@ -263,15 +261,13 @@ TEST_F(StackBtmWithInitFreeTest, btm_sec_rmt_name_request_complete) {
   btm_sec_rmt_name_request_complete(&bd_addr, p_bd_name, HCI_SUCCESS);
 
   ASSERT_THAT(btm_test.bd_name, Each(Eq(0)));
-  ASSERT_THAT(btm_test.dc, Each(Eq(0)));
-  ASSERT_EQ(bd_addr, btm_test.bd_addr);
+  ASSERT_EQ(btm_test.bd_addr, RawAddress::kEmpty);
 
   btm_test = {};
   ASSERT_TRUE(btm_find_or_alloc_dev(bd_addr) != nullptr);
   btm_sec_rmt_name_request_complete(&bd_addr, p_bd_name, HCI_SUCCESS);
 
   ASSERT_STREQ((const char*)p_bd_name, (const char*)btm_test.bd_name);
-  ASSERT_THAT(btm_test.dc, Each(Eq(0)));
   ASSERT_EQ(bd_addr, btm_test.bd_addr);
 }
 
@@ -292,7 +288,7 @@ TEST_F(StackBtmTest, sco_state_text) {
           std::make_pair(SCO_ST_CONNECTING, "SCO_ST_CONNECTING"),
           std::make_pair(SCO_ST_CONNECTED, "SCO_ST_CONNECTED"),
           std::make_pair(SCO_ST_DISCONNECTING, "SCO_ST_DISCONNECTING"),
-          std::make_pair(SCO_ST_PEND_UNPARK, "SCO_ST_PEND_UNPARK"),
+          std::make_pair(SCO_ST_PEND_UNSNIFF, "SCO_ST_PEND_UNSNIFF"),
           std::make_pair(SCO_ST_PEND_ROLECHANGE, "SCO_ST_PEND_ROLECHANGE"),
           std::make_pair(SCO_ST_PEND_MODECHANGE, "SCO_ST_PEND_MODECHANGE"),
   };

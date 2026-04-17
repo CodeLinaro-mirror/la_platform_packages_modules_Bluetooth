@@ -17,7 +17,6 @@
 #include <base/functional/bind.h>
 #include <base/functional/callback.h>
 #include <bluetooth/log.h>
-#include <com_android_bluetooth_flags.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -35,6 +34,7 @@
 #include "bta/include/bta_vap_server_api.h"
 #include "bta/le_audio/device_groups.h"
 #include "bta/vap/vap_server_types.h"
+#include "gd/common/utils.h"
 #include "gd/os/rand.h"
 #include "hardware/bt_common_types.h"
 #include "main/shim/entry.h"
@@ -48,6 +48,7 @@ using namespace bluetooth;
 using bluetooth::csis::CsisClient;
 using namespace ::vap;
 using namespace ::vap::uuid;
+using bluetooth::stack::tGATT_REQ_CBACK;
 
 namespace {
 
@@ -84,6 +85,67 @@ public:
             base::BindOnce(&VapServerImpl::do_initialize, base::Unretained(this), callbacks));
   }
 
+  static void OnGattRegisterStatic(tGATT_STATUS status, tGATT_IF server_if,
+                                   const bluetooth::Uuid& /*uuid*/) {
+    if (instance) {
+      instance->OnGattServerRegister(status, server_if);
+    }
+  }
+
+  static void OnGattConnStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
+                               tCONN_ID conn_id, bool connected, tGATT_DISCONN_REASON /*reason*/,
+                               tBT_TRANSPORT transport) {
+    if (instance) {
+      if (connected) {
+        instance->OnGattConnect(remote_bda, conn_id, transport);
+      } else {
+        instance->OnGattDisconnect(remote_bda, conn_id);
+      }
+    }
+  }
+
+  static void OnGattReadCharacteristicStatic(tCONN_ID conn_id, uint32_t trans_id,
+                                             const RawAddress& remote_bda, uint16_t handle,
+                                             uint16_t offset, bool is_long) {
+    if (instance) {
+      instance->OnReadCharacteristic(conn_id, trans_id, remote_bda, handle, offset, is_long);
+    }
+  }
+
+  static void OnGattWriteCharacteristicStatic(tCONN_ID conn_id, uint32_t trans_id,
+                                              const RawAddress& remote_bda, uint16_t handle,
+                                              uint16_t offset, bool need_rsp, bool is_prep,
+                                              uint8_t* value, uint16_t len) {
+    if (instance) {
+      instance->OnWriteCharacteristic(conn_id, trans_id, remote_bda, handle, offset, need_rsp,
+                                      is_prep, value, len);
+    }
+  }
+
+  static void OnGattReadDescriptorStatic(tCONN_ID conn_id, uint32_t trans_id,
+                                         const RawAddress& remote_bda, uint16_t handle,
+                                         uint16_t offset, bool is_long) {
+    if (instance) {
+      instance->OnReadDescriptor(conn_id, trans_id, remote_bda, handle, offset, is_long);
+    }
+  }
+
+  static void OnGattWriteDescriptorStatic(tCONN_ID conn_id, uint32_t trans_id,
+                                          const RawAddress& remote_bda, uint16_t handle,
+                                          uint16_t offset, bool need_rsp, bool is_prep,
+                                          uint8_t* value, uint16_t len) {
+    if (instance) {
+      instance->OnWriteDescriptor(conn_id, trans_id, remote_bda, handle, offset, need_rsp, is_prep,
+                                  value, len);
+    }
+  }
+
+  static void OnGattMtuChangedStatic(tCONN_ID conn_id, const RawAddress& remote_bda, uint16_t mtu) {
+    if (instance) {
+      instance->OnGattMtuChanged(conn_id, remote_bda, mtu);
+    }
+  }
+
   void do_initialize(bluetooth::vap::VapServerCallbacks* callbacks) {
     log::info("initialize vap server");
     callbacks_ = callbacks;
@@ -91,14 +153,23 @@ public:
     Uuid uuid = Uuid::From128BitBE(bluetooth::os::GenerateRandom<Uuid::kNumBytes128>());
     app_uuid_ = uuid;
     log::info("Register server with uuid:{}", app_uuid_.ToString());
-    BTA_GATTS_AppRegister(
-            app_uuid_,
-            [](tBTA_GATTS_EVT event, tBTA_GATTS* p_data) {
-              if (instance && p_data) {
-                instance->GattsCallback(event, p_data);
-              }
-            },
-            true);
+
+    static bluetooth::stack::tGATT_REQ_CBACK vap_server_cbacks = {
+            .read_characteristic_cb = OnGattReadCharacteristicStatic,
+            .read_descriptor_cb = OnGattReadDescriptorStatic,
+            .write_characteristic_cb = OnGattWriteCharacteristicStatic,
+            .write_descriptor_cb = OnGattWriteDescriptorStatic,
+            .exec_write_cb = tGATT_REQ_CBACK::do_nothing,
+            .mtu_changed_cb = OnGattMtuChangedStatic,
+            .conf_cb = tGATT_REQ_CBACK::do_nothing,
+            .conf_send_fail_cb = tGATT_REQ_CBACK::do_nothing,
+    };
+    static const tBTA_GATTS_CBACK vap_ops = {
+            .p_conn_cb = OnGattConnStatic,
+            .server_cbacks = &vap_server_cbacks,
+    };
+
+    BTA_GATTS_AppRegister(app_uuid_, &vap_ops, true, OnGattRegisterStatic);
   }
 
   void Cleanup() override {
@@ -141,16 +212,14 @@ public:
        uint16_t ccc_va_session_state = remote_client.ccc_values_[kVaSessionStateCharacteristic];
        log::info("device:{}", bda);
 
-       if (com_android_bluetooth_flags_leaudio_vaps_improvements()) {
-         uint16_t ccc_va_name = remote_client.ccc_values_[kVaNameCharacteristic];
-         uint16_t ccc_va_uuid = remote_client.ccc_values_[kVaUuidCharacteristic];
-         // Send VA Name notification
-         SendVaNameNotification(&remote_client, ccc_va_name, va_name);
+       uint16_t ccc_va_name = remote_client.ccc_values_[kVaNameCharacteristic];
+       uint16_t ccc_va_uuid = remote_client.ccc_values_[kVaUuidCharacteristic];
+       // Send VA Name notification
+       SendVaNameNotification(&remote_client, ccc_va_name, va_name);
 
-         // Send VA UUID notification
-         // Using VA name bytes for VA UUID as we don't have an API from VA apps
-         SendVaUuidNotification(&remote_client, ccc_va_uuid, va_name);
-       }
+       // Send VA UUID notification
+       // Using VA name bytes for VA UUID as we don't have an API from VA apps
+       SendVaUuidNotification(&remote_client, ccc_va_uuid, va_name);
 
        // Send VA Session State notification
        SendVaSessionStateNotification(&remote_client, ccc_va_session_state, va_session_state);
@@ -174,45 +243,37 @@ public:
      if (remote_clients_.find(bda) != remote_clients_.end()) {
        RemoteClient* remote_client = &remote_clients_[bda];
        uint16_t ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
-       uint16_t ccc_va_session_state = remote_client->ccc_values_[kVaSessionStateCharacteristic];
        ResponseCodeValue rsp_code_value =
            is_success ? ResponseCodeValue::SUCCESS : ResponseCodeValue::OPERATION_FALIED;
        // Send VAS Control Point notification
        SendVasControlPointNotification(remote_client, rsp_code_value, ccc_vas_control_point);
 
-       if (com_android_bluetooth_flags_leaudio_vaps_improvements()) {
-         int group_id;
-         auto csis_api = CsisClient::Get();
-         if (csis_api == nullptr) {
-           log::error("csis api is null");
-           return;
-         }
+       int group_id;
+       auto csis_api = CsisClient::Get();
+       if (csis_api == nullptr) {
+         log::error("csis api is null");
+         return;
+       }
 
-         group_id = csis_api->GetGroupId(bda, bluetooth::le_audio::uuid::kCapServiceUuid);
-         log::info("group_id:{}", group_id);
-         if (group_id != bluetooth::groups::kGroupUnknown) {
-           std::vector<RawAddress> devices = csis_api->GetDeviceList(group_id);
+       group_id = csis_api->GetGroupId(bda, bluetooth::le_audio::uuid::kCapServiceUuid);
+       log::info("group_id:{}", group_id);
+       if (group_id != bluetooth::groups::kGroupUnknown) {
+         std::vector<RawAddress> devices = csis_api->GetDeviceList(group_id);
 
-           for (const auto& device : devices) {
-             log::info("NotifyVaSessionInitialized:, device:{}", device);
-             if (remote_clients_.find(device) != remote_clients_.end()) {
-               RemoteClient* remote_client = &remote_clients_[device];
-               uint16_t ccc_va_session_state =
-                   remote_client->ccc_values_[kVaSessionStateCharacteristic];
+         for (const auto& device : devices) {
+           log::info("NotifyVaSessionInitialized:, device:{}", device);
+           if (remote_clients_.find(device) != remote_clients_.end()) {
+             RemoteClient* remote_client = &remote_clients_[device];
+             uint16_t ccc_va_session_state =
+                 remote_client->ccc_values_[kVaSessionStateCharacteristic];
 
-               uint8_t va_session_state =
-                   static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
-               // Send VA Session State notification
-               SendVaSessionStateNotification(remote_client, ccc_va_session_state,
-                   va_session_state, /*is_group_device*/ true);
-             }
+             uint8_t va_session_state =
+                 static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
+             // Send VA Session State notification
+             SendVaSessionStateNotification(remote_client, ccc_va_session_state,
+                 va_session_state, /*is_group_device*/ true);
            }
          }
-       } else {
-         uint8_t va_session_state =
-             static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
-         // Send VA Session State notification
-         SendVaSessionStateNotification(remote_client, ccc_va_session_state, va_session_state);
        }
      }
    }
@@ -386,80 +447,44 @@ public:
      }
    }
 
-   void GattsCallback(tBTA_GATTS_EVT event, tBTA_GATTS* p_data) {
-     log::info("event: {}", gatt_server_event_text(event));
-     switch (event) {
-       case BTA_GATTS_CONNECT_EVT: {
-         OnGattConnect(p_data);
-       } break;
-       case BTA_GATTS_DISCONNECT_EVT: {
-         OnGattDisconnect(p_data);
-       } break;
-       case BTA_GATTS_MTU_EVT: {
-         OnGattMtuChanged(p_data->req_data);
-       } break;
-       case BTA_GATTS_REG_EVT: {
-         OnGattServerRegister(p_data);
-       } break;
-       case BTA_GATTS_READ_CHARACTERISTIC_EVT: {
-         OnReadCharacteristic(p_data);
-       } break;
-       case BTA_GATTS_READ_DESCRIPTOR_EVT: {
-         OnReadDescriptor(p_data);
-       } break;
-       case BTA_GATTS_WRITE_CHARACTERISTIC_EVT: {
-         OnWriteCharacteristic(p_data);
-       } break;
-       case BTA_GATTS_WRITE_DESCRIPTOR_EVT: {
-         OnWriteDescriptor(p_data);
-       } break;
-       default:
-         log::warn("Unhandled event {}", event);
-     }
-   }
-
-   void OnGattConnect(tBTA_GATTS* p_data) {
-     auto address = p_data->conn.remote_bda;
-     log::info("Address: {}, conn_id:{}", address, p_data->conn.conn_id);
-     if (p_data->conn.transport == BT_TRANSPORT_BR_EDR) {
+   void OnGattConnect(const RawAddress& remote_bda, tCONN_ID conn_id, tBT_TRANSPORT transport) {
+     log::info("Address: {}, conn_id:{}", remote_bda, conn_id);
+     if (transport == BT_TRANSPORT_BR_EDR) {
        log::warn("Skip BE/EDR connection");
        return;
      }
 
-     if (remote_clients_.find(address) == remote_clients_.end()) {
+     if (remote_clients_.find(remote_bda) == remote_clients_.end()) {
        log::warn("Create new remote_client");
      }
-     remote_clients_[address].conn_id_ = p_data->conn.conn_id;
+     remote_clients_[remote_bda].conn_id_ = conn_id;
 
      if (GetVaSessionState() != VaSessionState::VA_SESSION_UNAVAILABLE) {
        SetVaSessionState(VaSessionState::VA_SESSION_RESET);
      }
    }
 
-   void OnGattMtuChanged(const tBTA_GATTS_REQ& req_data) {
-     auto remote_bda = req_data.remote_bda;
-     log::info("mtu is changed as {}", req_data.p_data->mtu);
+   void OnGattMtuChanged(tCONN_ID /*conn_id*/, const RawAddress& remote_bda, uint16_t mtu) {
+     log::info("mtu is changed as {}", mtu);
      auto it = remote_clients_.find(remote_bda);
      if (it != remote_clients_.end()) {
-       it->second.mtu_ = req_data.p_data->mtu;
+       it->second.mtu_ = mtu;
      }
    }
 
-   void OnGattDisconnect(tBTA_GATTS* p_data) {
-     auto remote_bda = p_data->conn.remote_bda;
-     log::info("Address: {}, conn_id:{}", remote_bda, p_data->conn.conn_id);
+   void OnGattDisconnect(const RawAddress& remote_bda, tCONN_ID conn_id) {
+     log::info("Address: {}, conn_id:{}", remote_bda, conn_id);
      remote_clients_.erase(remote_bda);
    }
 
-   void OnGattServerRegister(tBTA_GATTS* p_data) {
-     tGATT_STATUS status = p_data->reg_oper.status;
-     log::info("status: {}", gatt_status_text(p_data->reg_oper.status));
+   void OnGattServerRegister(tGATT_STATUS status, tGATT_IF server_if) {
+     log::info("status: {}", gatt_status_text(status));
 
      if (status != tGATT_STATUS::GATT_SUCCESS) {
        log::warn("Register Server fail");
        return;
      }
-     server_if_ = p_data->reg_oper.server_if;
+     server_if_ = server_if;
 
      std::vector<btgatt_db_element_t> service;
      // Generic Voice Assistant Service
@@ -525,18 +550,16 @@ public:
      // CCC descriptor for VA Session State characteristic
      service.push_back(ccc_descriptor);
 
-     if (com_android_bluetooth_flags_leaudio_vaps_improvements()) {
-       // VA Supported Features characteristic
-       btgatt_db_element_t va_supported_features_characteristic;
-       va_supported_features_characteristic.uuid = kVaSupportedFeaturesCharacteristic;
-       va_supported_features_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-       va_supported_features_characteristic.properties =
-            (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
-       va_supported_features_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
-       service.push_back(va_supported_features_characteristic);
-       // CCC descriptor for VA Supported Features characteristic
-       service.push_back(ccc_descriptor);
-     }
+     // VA Supported Features characteristic
+     btgatt_db_element_t va_supported_features_characteristic;
+     va_supported_features_characteristic.uuid = kVaSupportedFeaturesCharacteristic;
+     va_supported_features_characteristic.type = BTGATT_DB_CHARACTERISTIC;
+     va_supported_features_characteristic.properties =
+          (GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY);
+     va_supported_features_characteristic.permissions = GATT_PERM_READ_ENCRYPTED;
+     service.push_back(va_supported_features_characteristic);
+     // CCC descriptor for VA Supported Features characteristic
+     service.push_back(ccc_descriptor);
 
      BTA_GATTS_AddService(server_if_, service,
                           base::BindOnce([](tGATT_STATUS status, int server_if,
@@ -547,89 +570,82 @@ public:
                           }));
    }
 
-   void OnReadCharacteristic(tBTA_GATTS* p_data) {
-     uint16_t read_req_handle = p_data->req_data.p_data->read_req.handle;
-     uint16_t offset = p_data->req_data.p_data->read_req.offset;
-     log::info("read_req_handle: 0x{:04x}, offset: 0x{:04x}", read_req_handle, offset);
+   void OnReadCharacteristic(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                             uint16_t handle, uint16_t offset, bool /*is_long*/) {
+     log::info("read_req_handle: 0x{:04x}, offset: 0x{:04x}", handle, offset);
 
-     tGATTS_RSP p_msg;
-     p_msg.attr_value.handle = read_req_handle;
-     if (characteristics_.find(read_req_handle) == characteristics_.end()) {
-       log::error("Invalid handle 0x{:04x}", read_req_handle);
-       BTA_GATTS_SendRsp(p_data->req_data.conn_id, p_data->req_data.trans_id,
-                         GATT_INVALID_HANDLE, &p_msg);
+     std::unique_ptr<tGATTS_RSP> p_msg = std::make_unique<tGATTS_RSP>();
+     p_msg->attr_value.handle = handle;
+     if (characteristics_.find(handle) == characteristics_.end()) {
+       log::error("Invalid handle 0x{:04x}", handle);
+       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_INVALID_HANDLE, std::move(p_msg));
        return;
      }
 
-     auto uuid = characteristics_[read_req_handle].uuid_;
+     auto uuid = characteristics_[handle].uuid_;
      log::info("Read uuid, {}", getUuidName(uuid));
-     if (remote_clients_.find(p_data->req_data.remote_bda) == remote_clients_.end()) {
-       log::warn("Can't find remote_client for {}", p_data->req_data.remote_bda);
-       BTA_GATTS_SendRsp(p_data->req_data.conn_id, p_data->req_data.trans_id,
-                         GATT_ILLEGAL_PARAMETER,
-                         &p_msg);
+     if (remote_clients_.find(remote_bda) == remote_clients_.end()) {
+       log::warn("Can't find remote_client for {}", remote_bda);
+       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_ILLEGAL_PARAMETER, std::move(p_msg));
        return;
      }
-     RemoteClient* remote_client = &remote_clients_[p_data->req_data.remote_bda];
+     RemoteClient* remote_client = &remote_clients_[remote_bda];
 
      // Check Characteristic UUIDs of GVAS service
      switch (uuid.As16Bit()) {
        case kVaNameCharacteristic16bit: {
-        std::string service_name = va_name_;
-        std::vector<uint8_t> svc_name(service_name.begin(), service_name.end());
-        log::info("svc_name: {}", svc_name.size());
+         std::string service_name = va_name_;
+         std::vector<uint8_t> svc_name(service_name.begin(), service_name.end());
+         log::info("svc_name: {}", svc_name.size());
 
-        // Copy from the offset
-        size_t copy_len = 0;
-        if (offset < svc_name.size()) {
-          copy_len = std::min((size_t)(svc_name.size() - offset), (size_t)remote_client->mtu_);
-          memcpy(p_msg.attr_value.value, svc_name.data() + offset, copy_len);
-        }
-        p_msg.attr_value.len = copy_len;
-      } break;
+         // Copy from the offset
+         size_t copy_len = 0;
+         if (offset < svc_name.size()) {
+           copy_len = std::min((size_t)(svc_name.size() - offset), (size_t)remote_client->mtu_);
+           memcpy(p_msg->attr_value.value, svc_name.data() + offset, copy_len);
+         }
+         p_msg->attr_value.len = copy_len;
+       } break;
        case kVaUuidCharacteristic16bit: {
          // Use VA name as VA UUID
          std::string va_uuid_str = va_name_.substr(0, kVaUuidSize);
          std::vector<uint8_t> va_uuid(va_uuid_str.begin(), va_uuid_str.end());
 
-         p_msg.attr_value.len = kVaUuidSize;
-         memcpy(p_msg.attr_value.value, va_uuid.data(), kVaUuidSize);
+         p_msg->attr_value.len = kVaUuidSize;
+         memcpy(p_msg->attr_value.value, va_uuid.data(), kVaUuidSize);
        } break;
        case kVaCcidCharacteristic16bit: {
-         p_msg.attr_value.len = 1;
-         memcpy(p_msg.attr_value.value, &kVapCcid, sizeof(uint8_t));
+         p_msg->attr_value.len = 1;
+         memcpy(p_msg->attr_value.value, &kVapCcid, sizeof(uint8_t));
        } break;
        case kVaSessionStateCharacteristic16bit: {
-         p_msg.attr_value.len = 1;
-         memcpy(p_msg.attr_value.value, &va_session_state_, sizeof(uint8_t));
+         p_msg->attr_value.len = 1;
+         memcpy(p_msg->attr_value.value, &va_session_state_, sizeof(uint8_t));
        } break;
        case kVaSupportedFeaturesCharacteristic16bit: {
-         p_msg.attr_value.len = 1;
-         memcpy(p_msg.attr_value.value, &kVaSupportedFeatures, sizeof(uint8_t));
+         p_msg->attr_value.len = 1;
+         memcpy(p_msg->attr_value.value, &kVaSupportedFeatures, sizeof(uint8_t));
        } break;
        default:
          log::warn("Unhandled uuid {}", uuid.ToString());
-         BTA_GATTS_SendRsp(p_data->req_data.conn_id, p_data->req_data.trans_id,
-                           GATT_ILLEGAL_PARAMETER, &p_msg);
+         BTA_GATTS_SendRsp(conn_id, trans_id, GATT_ILLEGAL_PARAMETER, std::move(p_msg));
          return;
      }
-     BTA_GATTS_SendRsp(p_data->req_data.conn_id, p_data->req_data.trans_id, GATT_SUCCESS, &p_msg);
+     BTA_GATTS_SendRsp(conn_id, trans_id, GATT_SUCCESS, std::move(p_msg));
    }
 
-   void OnReadDescriptor(tBTA_GATTS* p_data) {
-     tCONN_ID conn_id = p_data->req_data.conn_id;
-     uint16_t read_req_handle = p_data->req_data.p_data->read_req.handle;
-     RawAddress remote_bda = p_data->req_data.remote_bda;
-     log::info("conn_id:{}, read_req_handle:0x{:04x}", conn_id, read_req_handle);
+   void OnReadDescriptor(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                         uint16_t handle, uint16_t /*offset*/, bool /*is_long*/) {
+     log::info("conn_id:{}, read_req_handle:0x{:04x}", conn_id, handle);
 
-     tGATTS_RSP p_msg;
-     p_msg.attr_value.handle = read_req_handle;
+     std::unique_ptr<tGATTS_RSP> p_msg = std::make_unique<tGATTS_RSP>();
+     p_msg->attr_value.handle = handle;
 
      // Only Client Characteristic Configuration (CCC) descriptor is expected
-     VapCharacteristic* characteristic = GetCharacteristicByCccHandle(read_req_handle);
+     VapCharacteristic* characteristic = GetCharacteristicByCccHandle(handle);
      if (characteristic == nullptr) {
-       log::warn("Can't find Characteristic for CCC Descriptor, handle 0x{:04x}", read_req_handle);
-       BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_INVALID_HANDLE, &p_msg);
+       log::warn("Can't find Characteristic for CCC Descriptor, handle 0x{:04x}", handle);
+       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_INVALID_HANDLE, std::move(p_msg));
        return;
      }
      log::info("Read CCC for uuid, {}", getUuidName(characteristic->uuid_));
@@ -638,87 +654,78 @@ public:
        ccc_value = remote_clients_[remote_bda].ccc_values_[characteristic->uuid_];
      }
 
-     p_msg.attr_value.len = kCccValueSize;
-     memcpy(p_msg.attr_value.value, &ccc_value, sizeof(uint16_t));
+     p_msg->attr_value.len = kCccValueSize;
+     memcpy(p_msg->attr_value.value, &ccc_value, sizeof(uint16_t));
 
      log::info("Send response for CCC value 0x{:04x}", ccc_value);
-     BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_SUCCESS, &p_msg);
+     BTA_GATTS_SendRsp(conn_id, trans_id, GATT_SUCCESS, std::move(p_msg));
    }
 
-   void OnWriteCharacteristic(tBTA_GATTS* p_data) {
-     tCONN_ID conn_id = p_data->req_data.conn_id;
-     uint16_t write_req_handle = p_data->req_data.p_data->write_req.handle;
-     uint16_t len = p_data->req_data.p_data->write_req.len;
-     bool need_rsp = p_data->req_data.p_data->write_req.need_rsp;
-     log::info("conn_id:{}, write_req_handle:0x{:04x}, need_rsp{}, len:{}", conn_id,
-               write_req_handle, need_rsp, len);
+   void OnWriteCharacteristic(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                              uint16_t handle, uint16_t /* offset */, bool need_rsp,
+                              bool /* is_prep */, uint8_t* value, uint16_t len) {
+     log::info("conn_id:{}, handle:0x{:04x}, need_rsp{}, len:{}", conn_id, handle, need_rsp, len);
 
-     tGATTS_RSP p_msg;
-     p_msg.handle = write_req_handle;
-     if (characteristics_.find(write_req_handle) == characteristics_.end()) {
-       log::error("Invalid handle {}", write_req_handle);
-       BTA_GATTS_SendRsp(p_data->req_data.conn_id, p_data->req_data.trans_id, GATT_INVALID_HANDLE,
-                         &p_msg);
+     std::unique_ptr<tGATTS_RSP> p_msg = std::make_unique<tGATTS_RSP>();
+     p_msg->handle = handle;
+     if (characteristics_.find(handle) == characteristics_.end()) {
+       log::error("Invalid handle {}", handle);
+       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_INVALID_HANDLE, std::move(p_msg));
        return;
      }
 
-     auto uuid = characteristics_[write_req_handle].uuid_;
+     auto uuid = characteristics_[handle].uuid_;
      log::info("Write uuid, {}", getUuidName(uuid));
 
      // Check Characteristic UUID
      switch (uuid.As16Bit()) {
        case kVasControlPointCharacteristic16bit: {
-         if (remote_clients_.find(p_data->req_data.remote_bda) == remote_clients_.end()) {
-           log::warn("Can't find remote_clients for {}", p_data->req_data.remote_bda);
-           BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_ILLEGAL_PARAMETER, &p_msg);
+         if (remote_clients_.find(remote_bda) == remote_clients_.end()) {
+           log::warn("Can't find remote_clients for {}", remote_bda);
+           BTA_GATTS_SendRsp(conn_id, trans_id, GATT_ILLEGAL_PARAMETER, std::move(p_msg));
            return;
          }
-         RemoteClient* remote_client = &remote_clients_[p_data->req_data.remote_bda];
+         RemoteClient* remote_client = &remote_clients_[remote_bda];
          if (need_rsp) {
-           BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_SUCCESS, &p_msg);
+           BTA_GATTS_SendRsp(conn_id, trans_id, GATT_SUCCESS, std::move(p_msg));
          }
-         HandleControlPoint(p_data->req_data.remote_bda, remote_client,
-                            &p_data->req_data.p_data->write_req);
+         HandleControlPoint(remote_bda, remote_client, value, len);
        } break;
        default:
          log::warn("Unhandled uuid {}", uuid.ToString());
-         BTA_GATTS_SendRsp(p_data->req_data.conn_id, p_data->req_data.trans_id,
-                           GATT_ILLEGAL_PARAMETER, &p_msg);
+         BTA_GATTS_SendRsp(conn_id, trans_id, GATT_ILLEGAL_PARAMETER, std::move(p_msg));
          return;
      }
    }
 
-   void OnWriteDescriptor(tBTA_GATTS* p_data) {
-     tCONN_ID conn_id = p_data->req_data.conn_id;
-     uint16_t write_req_handle = p_data->req_data.p_data->write_req.handle;
-     uint16_t len = p_data->req_data.p_data->write_req.len;
-     RawAddress remote_bda = p_data->req_data.remote_bda;
-     log::info("conn_id:{}, write_req_handle:0x{:04x}, len:{}", conn_id, write_req_handle, len);
+   void OnWriteDescriptor(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
+                          uint16_t handle, uint16_t /* offset */, bool /*need_rsp */,
+                          bool /*is_prep */, uint8_t* value, uint16_t len) {
+     log::info("conn_id:{}, handle:0x{:04x}, len:{}", conn_id, handle, len);
 
-     tGATTS_RSP p_msg;
-     p_msg.handle = write_req_handle;
+     std::unique_ptr<tGATTS_RSP> p_msg = std::make_unique<tGATTS_RSP>();
+     p_msg->handle = handle;
 
      // Only Client Characteristic Configuration (CCC) descriptor is expected
-     VapCharacteristic* characteristic = GetCharacteristicByCccHandle(write_req_handle);
+     VapCharacteristic* characteristic = GetCharacteristicByCccHandle(handle);
      if (characteristic == nullptr) {
-       log::warn("Can't find Characteristic for CCC Descriptor, handle 0x{:04x}", write_req_handle);
-       BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_INVALID_HANDLE, &p_msg);
+       log::warn("Can't find Characteristic for CCC Descriptor, handle 0x{:04x}", handle);
+       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_INVALID_HANDLE, std::move(p_msg));
        return;
      }
 
      if (remote_clients_.find(remote_bda) == remote_clients_.end()) {
-       log::warn("Can't find remote_client for remote_bda {}", remote_bda);
-       BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_ILLEGAL_PARAMETER, &p_msg);
+       log::warn("Can't find tracker for remote_bda {}", remote_bda);
+       BTA_GATTS_SendRsp(conn_id, trans_id, GATT_ILLEGAL_PARAMETER, std::move(p_msg));
        return;
      }
-     const uint8_t* value = p_data->req_data.p_data->write_req.value;
      uint16_t ccc_value;
      STREAM_TO_UINT16(ccc_value, value);
 
      remote_clients_[remote_bda].ccc_values_[characteristic->uuid_] = ccc_value;
      log::info("Write CCC for {}, conn_id:{}, value:0x{:04x}", getUuidName(characteristic->uuid_),
                conn_id, ccc_value);
-     BTA_GATTS_SendRsp(conn_id, p_data->req_data.trans_id, GATT_SUCCESS, &p_msg);
+     BTA_GATTS_SendRsp(conn_id, trans_id, GATT_SUCCESS, std::move(p_msg));
    }
 
    void DebugDump(int fd) {
@@ -746,23 +753,20 @@ public:
      dprintf(fd, "\n");
    }
 
-   void HandleControlPoint(RawAddress bda, RemoteClient* remote_client,
-                           tGATT_WRITE_REQ* write_req) {
+   void HandleControlPoint(RawAddress bda, RemoteClient* remote_client, uint8_t* value,
+                           uint16_t len) {
      ControlPointCommand command;
      uint16_t ccc_vas_control_point = GATT_CLT_CONFIG_NONE;
      VaSessionState va_session_state = GetVaSessionState();
 
-     if (com_android_bluetooth_flags_leaudio_vaps_improvements()) {
-       ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
-       if (ccc_vas_control_point == GATT_CLT_CONFIG_NONE) {
-         log::warn(" VAS Control Point CCCD not configured by remote client, ignore the command");
-         return;
-       }
+     ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
+     if (ccc_vas_control_point == GATT_CLT_CONFIG_NONE) {
+       log::warn(" VAS Control Point CCCD not configured by remote client, ignore the command");
+       return;
      }
 
      ControlPointResponse cp_rsp =
-         ValidateControlPointOperation(&command, write_req->value,
-                                       write_req->len, va_session_state);
+             ValidateControlPointOperation(&command, value, len, va_session_state);
 
      if (!command.isValid_) {
        SendVasControlPointNotification(remote_client, cp_rsp.code_value_,
@@ -784,14 +788,42 @@ public:
      }
    }
 
+   void NotifyVaSessionStateForPts(RawAddress bda, VaSessionState state) {
+     log::info("bda: {}, state: {}", bda, static_cast<int>(state));
+
+     if (remote_clients_.find(bda) != remote_clients_.end()) {
+       RemoteClient* remote_client = &remote_clients_[bda];
+       uint16_t ccc_vas_control_point = remote_client->ccc_values_[kVasControlPointCharacteristic];
+       uint16_t ccc_va_session_state = remote_client->ccc_values_[kVaSessionStateCharacteristic];
+       ResponseCodeValue rsp_code_value = ResponseCodeValue::SUCCESS;
+
+       // Send VAS Control Point notification
+       SendVasControlPointNotification(remote_client, rsp_code_value, ccc_vas_control_point);
+
+       uint8_t va_session_state = static_cast<uint8_t>(state);
+       // Send VA Session State notification
+       SendVaSessionStateNotification(remote_client, ccc_va_session_state, va_session_state);
+     }
+   }
+
    void OnStartVaSession(RawAddress bda) {
      log::info("bda:{}", bda);
-     callbacks_->OnStartVaSession(bda);
+
+     if (bluetooth::common::IsPtsTestMode()) {
+       NotifyVaSessionStateForPts(bda, VaSessionState::VA_SESSION_ACTIVE);
+     } else {
+       callbacks_->OnStartVaSession(bda);
+     }
    }
 
    void OnStopVaSession(RawAddress bda) {
      log::info("bda:{}", bda);
-     callbacks_->OnStopVaSession(bda);
+
+     if (bluetooth::common::IsPtsTestMode()) {
+       NotifyVaSessionStateForPts(bda, VaSessionState::VA_SESSION_READY);
+     } else {
+       callbacks_->OnStopVaSession(bda);
+     }
    }
 
    void OnInitializeVaSession(RawAddress bda) {

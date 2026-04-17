@@ -131,15 +131,6 @@ int get_common_criteria_config_compare_result(void);
  ******************************************************************************/
 bool is_atv_device(void);
 
-/*******************************************************************************
- *
- * Function         btif_get_adapter_properties
- *
- * Description      Fetches all local adapter properties
- *
- ******************************************************************************/
-void btif_get_adapter_properties(void);
-
 bt_property_t* property_deep_copy(const bt_property_t* prop);
 
 /*******************************************************************************
@@ -270,14 +261,13 @@ void btif_dm_cancel_bond(const RawAddress bd_addr);
  ******************************************************************************/
 void btif_dm_remove_bond(const RawAddress bd_addr);
 
+#ifdef TARGET_FLOSS
 /*******************************************************************************
  *
  * Function         btif_dm_get_connection_state
- *                  btif_dm_get_connection_state_sync
  *
  * Description      Returns bitmask on remote device connection state indicating
- *                  connection and encryption.  The `_sync` version properly
- *                  synchronizes the state and is the preferred mechanism.
+ *                  connection and encryption.
  *                  NOTE: Currently no address resolution is attempted upon
  *                  LE random addresses.
  *
@@ -294,7 +284,7 @@ void btif_dm_remove_bond(const RawAddress bd_addr);
  *
  ******************************************************************************/
 uint16_t btif_dm_get_connection_state(const RawAddress& bd_addr);
-uint16_t btif_dm_get_connection_state_sync(const RawAddress& bd_addr);
+#endif
 
 /*******************************************************************************
  *

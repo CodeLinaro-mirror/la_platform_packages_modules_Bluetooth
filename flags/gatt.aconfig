@@ -17,13 +17,6 @@ flag {
 }
 
 flag {
-    name: "gatt_messaging_permissions"
-    namespace: "bluetooth"
-    description: "Check messaging permission for ANCS"
-    bug: "428743016"
-}
-
-flag {
     name: "check_mapclient_connection_policy_for_ancs"
     namespace: "bluetooth"
     description: "Check MapClient connection policy for ANCS"
@@ -65,16 +58,6 @@ flag {
     namespace: "bluetooth"
     description: "Add CCCD to the service changed"
     bug: "450918251"
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
-    name: "gatt_not_send_service_change_indication_iop"
-    namespace: "bluetooth"
-    description: "Do not send service change indication to devices in the interop db"
-    bug: "447013679"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

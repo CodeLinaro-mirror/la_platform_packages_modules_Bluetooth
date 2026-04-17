@@ -24,7 +24,6 @@ import android.os.SystemProperties;
 import android.util.Log;
 
 import com.android.bluetooth.Util;
-import com.android.bluetooth.flags.Flags;
 import com.android.internal.util.StateMachine;
 
 // This state machine handles Bluetooth Adapter states.
@@ -37,24 +36,6 @@ import com.android.internal.util.StateMachine;
 //      {@link TurningBleOn} : Off to BleOn
 //      {@link TurningBleOff} : BleOn to Off
 //      {@link TurningOn} : BleOn to On
-//      {@link TurningOff} : On to BleOn
-//
-//        +------   Off  <-----+
-//        |                    |
-//        v                    |
-// TurningBleOn   TO--->   TurningBleOff
-//        |                  ^ ^
-//        |                  | |
-//        +----->        ----+ |
-//                 BleOn       |
-//        +------        <---+ O
-//        v                  | T
-//    TurningOn  TO---->  TurningOff
-//        |                    ^
-//        |                    |
-//        +----->   On   ------+
-//
-// Once skip_ble_on_when_turning_off is released it will be:
 //      {@link TurningOff} : On to TurningBleOff
 //
 //           OFF ⮜─────────────────╮
@@ -103,39 +84,31 @@ final class AdapterState extends StateMachine {
     static {
         // Values must not be lower than the one in stack.cc
         int defaultDelay = 4_000 * HW_MULTIPLIER;
-        if (!Flags.unifyTimeoutProperty()) {
-            BLE_START_TIMEOUT_DELAY =
-                    SystemProperties.getInt("ro.bluetooth.ble_start_timeout_delay", defaultDelay);
-            BLE_STOP_TIMEOUT_DELAY =
-                    SystemProperties.getInt("ro.bluetooth.ble_stop_timeout_delay", defaultDelay);
+        // Validate the configuration when property is enabled or for new devices after 25Q4.
+        if ((DEGRADED_PERFORMANCE)
+                && (!SystemProperties.get("ro.bluetooth.ble_start_timeout_delay").isEmpty()
+                        || !SystemProperties.get("ro.bluetooth.ble_stop_timeout_delay").isEmpty()
+                        || !SystemProperties.get("bluetooth.gd.start_timeout").isEmpty()
+                        || !SystemProperties.get("bluetooth.gd.stop_timeout").isEmpty())) {
+            throw new IllegalStateException("Bluetooth timeout properties are incorrect");
+        }
+        if (DEGRADED_PERFORMANCE || HW_MULTIPLIER != 1) {
+            defaultDelay = 8_000;
+            BLE_START_TIMEOUT_DELAY = defaultDelay;
+            BLE_STOP_TIMEOUT_DELAY = defaultDelay;
         } else {
-            // Validate the configuration when property is enabled or for new devices after 25Q4.
-            if ((DEGRADED_PERFORMANCE || !isAtMost25Q4)
-                    && (!SystemProperties.get("ro.bluetooth.ble_start_timeout_delay").isEmpty()
-                            || !SystemProperties.get("ro.bluetooth.ble_stop_timeout_delay")
-                                    .isEmpty()
-                            || !SystemProperties.get("bluetooth.gd.start_timeout").isEmpty()
-                            || !SystemProperties.get("bluetooth.gd.stop_timeout").isEmpty())) {
-                throw new IllegalStateException("Bluetooth timeout properties are incorrect");
-            }
-            if (DEGRADED_PERFORMANCE || HW_MULTIPLIER != 1) {
-                defaultDelay = 8_000;
+            defaultDelay = 4_000;
+            // Tolerate property usage on older devices
+            if (isAtMost25Q4) {
+                BLE_START_TIMEOUT_DELAY =
+                        SystemProperties.getInt(
+                                "ro.bluetooth.ble_start_timeout_delay", defaultDelay);
+                BLE_STOP_TIMEOUT_DELAY =
+                        SystemProperties.getInt(
+                                "ro.bluetooth.ble_stop_timeout_delay", defaultDelay);
+            } else {
                 BLE_START_TIMEOUT_DELAY = defaultDelay;
                 BLE_STOP_TIMEOUT_DELAY = defaultDelay;
-            } else {
-                defaultDelay = 4_000;
-                // Tolerate property usage on older devices
-                if (isAtMost25Q4) {
-                    BLE_START_TIMEOUT_DELAY =
-                            SystemProperties.getInt(
-                                    "ro.bluetooth.ble_start_timeout_delay", defaultDelay);
-                    BLE_STOP_TIMEOUT_DELAY =
-                            SystemProperties.getInt(
-                                    "ro.bluetooth.ble_stop_timeout_delay", defaultDelay);
-                } else {
-                    BLE_START_TIMEOUT_DELAY = defaultDelay;
-                    BLE_STOP_TIMEOUT_DELAY = defaultDelay;
-                }
             }
         }
         BREDR_START_TIMEOUT_DELAY = defaultDelay;
@@ -151,6 +124,7 @@ final class AdapterState extends StateMachine {
     private final Off mOff = new Off(State.OFF);
     private final BleOn mBleOn = new BleOn(State.BLE_ON);
 
+    private int mState = State.OFF;
     private int mPrevState = State.OFF;
 
     AdapterState(AdapterService service, Looper looper) {
@@ -165,6 +139,10 @@ final class AdapterState extends StateMachine {
         mAdapterService = service;
         setInitialState(mOff);
         start();
+    }
+
+    int getState() {
+        return mState;
     }
 
     private static String messageString(int message) {
@@ -206,6 +184,13 @@ final class AdapterState extends StateMachine {
     }
 
     private abstract class BaseAdapterState extends com.android.internal.util.State {
+        private static boolean isStableState(int state) {
+            return switch (state) {
+                case State.ON, State.OFF, State.BLE_ON -> true;
+                default -> false;
+            };
+        }
+
         private final int mStateValue;
 
         BaseAdapterState(int state) {
@@ -214,10 +199,20 @@ final class AdapterState extends StateMachine {
 
         @Override
         public void enter() {
-            int currState = mStateValue;
-            infoLog("entered ");
-            mAdapterService.updateAdapterState(mPrevState, currState);
-            mPrevState = currState;
+            infoLog("State entered");
+            mState = mStateValue;
+            if (isStableState(mPrevState)) {
+                // The SystemServer initiates transition from stable states
+                // AdapterStates notifies only when initiating transitiong from any other state.
+                // The destination transition may not be stable (ex: TURNING_OFF -> BLE_TURNING_OFF)
+                return;
+            }
+            mAdapterService.updateAdapterState(mPrevState, mState);
+        }
+
+        @Override
+        public void exit() {
+            mPrevState = mState;
         }
 
         void infoLog(String msg) {
@@ -236,9 +231,8 @@ final class AdapterState extends StateMachine {
 
         @Override
         public void enter() {
-            int prevState = mPrevState;
             super.enter();
-            if (prevState == State.BLE_TURNING_OFF) {
+            if (mPrevState == State.BLE_TURNING_OFF) {
                 mAdapterService.cleanup();
             }
         }
@@ -393,13 +387,7 @@ final class AdapterState extends StateMachine {
         @Override
         public boolean processMessage(Message msg) {
             switch (msg.what) {
-                case BREDR_STOPPED -> {
-                    if (Flags.skipBleOnWhenTurningOff()) {
-                        transitionTo(mTurningBleOff);
-                    } else {
-                        transitionTo(mBleOn);
-                    }
-                }
+                case BREDR_STOPPED -> transitionTo(mTurningBleOff);
 
                 case BREDR_STOP_TIMEOUT -> {
                     errorLog(messageString(msg.what));

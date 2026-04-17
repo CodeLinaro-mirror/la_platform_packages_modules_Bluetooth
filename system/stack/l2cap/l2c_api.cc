@@ -33,7 +33,6 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include "hal/snoop_logger.h"
 #include "hci/controller.h"
@@ -64,7 +63,7 @@ uint16_t L2CA_RegisterWithSecurity(uint16_t psm, const tL2CAP_APPL_INFO& p_cb_in
                                    uint16_t sec_level) {
   auto ret = L2CA_Register(psm, p_cb_info, enable_snoop, p_ertm_info, my_mtu, required_remote_mtu,
                            sec_level);
-  get_btm_client_interface().security.BTM_SetSecurityLevel(false, "", 0, sec_level, psm, 0, 0);
+  get_security_client_interface().BTM_SetSecurityLevel(false, "", 0, sec_level, psm, 0, 0);
   return ret;
 }
 
@@ -227,7 +226,7 @@ uint16_t L2CA_AllocateLePSM(int lecoc_fixed_psm_slots) {
   uint8_t le_dynamic_psm_end = LE_DYNAMIC_PSM_END;
   uint8_t le_dynamic_psm_slots = LE_DYNAMIC_PSM_RANGE;
 
-  if (com::android::bluetooth::flags::lecoc_with_fixed_psm()) {
+  if (com_android_bluetooth_flags_lecoc_with_fixed_psm()) {
     le_dynamic_psm_end = le_dynamic_psm_end - lecoc_fixed_psm_slots;
     le_dynamic_psm_slots = le_dynamic_psm_slots - lecoc_fixed_psm_slots;
   }
@@ -288,7 +287,7 @@ void L2CA_FreeLePSM(uint16_t psm) {
 
 uint16_t L2CA_ConnectReqWithSecurity(uint16_t psm, const RawAddress& p_bd_addr,
                                      uint16_t sec_level) {
-  get_btm_client_interface().security.BTM_SetSecurityLevel(true, "", 0, sec_level, psm, 0, 0);
+  get_security_client_interface().BTM_SetSecurityLevel(true, "", 0, sec_level, psm, 0, 0);
   return L2CA_ConnectReq(psm, p_bd_addr);
 }
 
@@ -388,7 +387,7 @@ uint16_t L2CA_RegisterLECoc(uint16_t psm, const tL2CAP_APPL_INFO& p_cb_info, uin
   if (p_cb_info.pL2CA_ConnectInd_Cb != nullptr || psm < LE_DYNAMIC_PSM_START) {
     //  If we register LE COC for outgoing connection only, don't register with
     //  BTM_Sec, because it's handled by L2CA_ConnectLECocReq.
-    get_btm_client_interface().security.BTM_SetSecurityLevel(false, "", 0, sec_level, psm, 0, 0);
+    get_security_client_interface().BTM_SetSecurityLevel(false, "", 0, sec_level, psm, 0, 0);
   }
 
   /* Verify that the required callback info has been filled in
@@ -410,7 +409,7 @@ uint16_t L2CA_RegisterLECoc(uint16_t psm, const tL2CAP_APPL_INFO& p_cb_info, uin
   tL2C_RCB* p_rcb;
   uint16_t vpsm = psm;
   log::verbose("psm: 0x{:04x}", psm);
-  if (com::android::bluetooth::flags::lecoc_with_fixed_psm()) {
+  if (com_android_bluetooth_flags_lecoc_with_fixed_psm()) {
     log::verbose("fixed_psm_slots: 0x{:04x}, lecoc_assigned_psm: 0x{:04x}",
                  cfg.lecoc_fixed_psm_slots, cfg.lecoc_assigned_psm);
     /*
@@ -526,7 +525,7 @@ void L2CA_DeregisterLECoc(uint16_t psm) {
  ******************************************************************************/
 uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr, tL2CAP_LE_CFG_INFO* p_cfg,
                               uint16_t sec_level) {
-  get_btm_client_interface().security.BTM_SetSecurityLevel(true, "", 0, sec_level, psm, 0, 0);
+  get_security_client_interface().BTM_SetSecurityLevel(true, "", 0, sec_level, psm, 0, 0);
 
   log::verbose("BDA: {} PSM: 0x{:04x}", p_bd_addr, psm);
 
@@ -545,7 +544,7 @@ uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr, tL2CAP_
 
   /* First, see if we already have a le link to the remote */
   tL2C_LCB* p_lcb = l2cu_find_lcb_by_bd_addr(p_bd_addr, BT_TRANSPORT_LE);
-  if (p_lcb == nullptr && com::android::bluetooth::flags::add_address_mapping_for_lecoc()) {
+  if (p_lcb == nullptr && com_android_bluetooth_flags_add_address_mapping_for_lecoc()) {
     RawAddress le_addr = p_bd_addr;
     // Try "pseudo" address
     tBLE_ADDR_TYPE le_addr_type = BLE_ADDR_PUBLIC;
@@ -566,6 +565,9 @@ uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr, tL2CAP_
       l2cu_release_lcb(p_lcb);
       return 0;
     }
+    // ACL connection is triggered, mark it as pending LE ACL connection
+    log::verbose("triggered_le_acl_conn count incremented: {}", p_lcb->triggered_le_acl_conn);
+    p_lcb->triggered_le_acl_conn++;
   }
 
   /* Allocate a channel control block */
@@ -594,6 +596,10 @@ uint16_t L2CA_ConnectLECocReq(uint16_t psm, const RawAddress& p_bd_addr, tL2CAP_
       // should this operation fail
       do_in_main_thread(base::BindOnce(&l2c_csm_execute, base::Unretained(p_ccb),
                                        L2CEVT_L2CA_CONNECT_REQ, nullptr));
+      if (p_lcb->triggered_le_acl_conn > 0) {
+        log::warn("triggered_le_acl_conn count decremented: {}", p_lcb->triggered_le_acl_conn);
+        p_lcb->triggered_le_acl_conn--;
+      }
     }
   } else if (p_lcb->link_state == LST_DISCONNECTING) {
     /* If link is disconnecting, save link info to retry after disconnect

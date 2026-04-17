@@ -16,16 +16,16 @@
 
 package com.android.bluetooth.gatt
 
+import android.bluetooth.IBluetoothGattServerCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertisingSetParameters
+import android.bluetooth.le.IAdvertisingSetCallback
+import android.bluetooth.le.PeriodicAdvertisingParameters
 import android.content.AttributionSource
-import android.platform.test.annotations.EnableFlags
 import android.platform.test.flag.junit.SetFlagsRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
-import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.btservice.AdapterSuspend
-import com.android.bluetooth.flags.Flags
 import com.android.tests.bluetooth.MockitoRule
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
@@ -34,12 +34,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.kotlin.any
-import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 
 /** Test cases for [AdvertiseSuspendManager]. */
 @SmallTest
@@ -48,7 +47,6 @@ class AdvertiseSuspendManagerTest {
     @get:Rule val mockitoRule = MockitoRule()
     @get:Rule val setFlagsRule = SetFlagsRule()
 
-    @Mock private lateinit var adapterService: AdapterService
     @Mock private lateinit var adapterSuspend: AdapterSuspend
     @Mock private lateinit var advertiseManager: AdvertiseManager
     @Mock private lateinit var source: AttributionSource
@@ -57,12 +55,10 @@ class AdvertiseSuspendManagerTest {
 
     @Before
     fun setUp() {
-        advertiseSuspendManager = AdvertiseSuspendManager(advertiseManager, adapterService)
-        doReturn(adapterSuspend).whenever(adapterService).adapterSuspend
+        advertiseSuspendManager = AdvertiseSuspendManager(advertiseManager, adapterSuspend)
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_ADAPTER_SUSPEND_ADVERTISEMENT)
     fun suspendWithOngoingAdvertisement() {
         // Start an advertisement
         advertiseSuspendManager.onStartAdvertisingSet(
@@ -79,7 +75,9 @@ class AdvertiseSuspendManagerTest {
             .enableAdvertisingSet(eq(ADVERTISER_ID1), eq(false), any<Int>(), any<Int>(), eq(source))
         verify(adapterSuspend, never()).advertiseSuspendReady()
 
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+        // Callback should be skipped as this is an internal disable purely due to system suspend
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK))
+            .isFalse()
         verify(adapterSuspend).advertiseSuspendReady()
 
         // On resume, verify we reenable the advertisement
@@ -92,11 +90,12 @@ class AdvertiseSuspendManagerTest {
                 eq(MAX_EXT_ADV_EVENTS1),
                 eq(source),
             )
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, true, STATUS_OK)
+        // Callback should be skipped as this is an internal enable purely due to system resume
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, true, STATUS_OK))
+            .isFalse()
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_ADAPTER_SUSPEND_ADVERTISEMENT)
     fun suspendWithoutOngoingAdvertisement() {
         // Start an advertisement
         advertiseSuspendManager.onStartAdvertisingSet(
@@ -109,7 +108,9 @@ class AdvertiseSuspendManagerTest {
 
         // Disable the advertisement
         advertiseSuspendManager.onEnableAdvertisingSet(ADVERTISER_ID1)
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+        // Callback should be called as this is a regular disablement, not caused by suspend
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK))
+            .isTrue()
 
         // On suspend, verify we report ready immediately
         advertiseSuspendManager.enterSuspend()
@@ -122,7 +123,6 @@ class AdvertiseSuspendManagerTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_ADAPTER_SUSPEND_ADVERTISEMENT)
     fun suspendWhenCreatingAdvertisement() {
         val order = inOrder(advertiseManager)
 
@@ -167,7 +167,9 @@ class AdvertiseSuspendManagerTest {
         verify(adapterSuspend, never()).advertiseSuspendReady()
 
         // Advertisement A is disabled. We should move to suspend step.
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+        // Callback should be skipped as this is an internal disable
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK))
+            .isFalse()
         order
             .verify(advertiseManager, never())
             .enableAdvertisingSet(any<Int>(), any<Boolean>(), any<Int>(), any<Int>(), eq(source))
@@ -184,14 +186,15 @@ class AdvertiseSuspendManagerTest {
                 eq(MAX_EXT_ADV_EVENTS1),
                 eq(source),
             )
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, true, STATUS_OK)
+        // Callback should be skipped as this is an internal enable
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, true, STATUS_OK))
+            .isFalse()
         order
             .verify(advertiseManager, never())
             .enableAdvertisingSet(any<Int>(), any<Boolean>(), any<Int>(), any<Int>(), eq(source))
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_ADAPTER_SUSPEND_ADVERTISEMENT)
     fun suspendWhenDisablingAdvertisement() {
         val order = inOrder(advertiseManager)
 
@@ -213,7 +216,10 @@ class AdvertiseSuspendManagerTest {
 
         // The advertisement disablement is finally completed.
         // Verify we report ready without any other enable/disablement effort.
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+        // Callback should be called as this is a regular disablement, not caused by suspend,
+        // even though the suspend itself would have also triggered the disablement.
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK))
+            .isTrue()
         verify(adapterSuspend).advertiseSuspendReady()
         order
             .verify(advertiseManager, never())
@@ -227,7 +233,6 @@ class AdvertiseSuspendManagerTest {
     }
 
     @Test
-    @EnableFlags(Flags.FLAG_ADAPTER_SUSPEND_ADVERTISEMENT)
     fun suspendThenQueueFutureRequests() {
         val order = inOrder(advertiseManager)
 
@@ -267,7 +272,9 @@ class AdvertiseSuspendManagerTest {
             .verify(advertiseManager)
             .enableAdvertisingSet(eq(ADVERTISER_ID1), eq(false), any<Int>(), any<Int>(), eq(source))
         advertiseSuspendManager.onEnableAdvertisingSet(ADVERTISER_ID1)
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+        // Callback should be skipped as this is an internal disable
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK))
+            .isFalse()
 
         // At this time suspend is ready. Verify we haven't process the queue.
         verify(adapterSuspend).advertiseSuspendReady()
@@ -295,10 +302,201 @@ class AdvertiseSuspendManagerTest {
         order.verify(advertiseManager, never()).setAdvertisingParameters(any<Int>(), any())
 
         // Only when we finish re-enabling can we process the queue.
-        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, true, STATUS_OK)
+        // Callback should be skipped as this is an internal enable
+        assertThat(advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, true, STATUS_OK))
+            .isFalse()
         order.verify(advertiseManager).setAdvertisingData(eq(ADVERTISER_ID1), eq(advertiseData))
         order.verify(advertiseManager).setScanResponseData(eq(ADVERTISER_ID1), eq(scanResponse))
         order.verify(advertiseManager).setAdvertisingParameters(eq(ADVERTISER_ID1), eq(parameters))
+    }
+
+    @Test
+    fun shouldQueueCommand_inNormalState_returnsFalse() {
+        // In the initial NORMAL state, shouldQueueCommand should be false.
+        assertThat(advertiseSuspendManager.shouldQueueCommand()).isFalse()
+    }
+
+    @Test
+    fun onAdvertisingEnabled_forUnknownId_returnsFalse() {
+        // When onAdvertisingEnabled is called for an advertiserId that is not tracked,
+        // it should return false and not crash.
+        assertThat(
+                advertiseSuspendManager.onAdvertisingEnabled(
+                    ADVERTISER_ID_UNKNOWN,
+                    enable = true,
+                    status = STATUS_OK,
+                )
+            )
+            .isFalse()
+    }
+
+    @Test
+    fun onAdvertisingEnabled_resumeFails_returnsTrue() {
+        // Start an advertisement
+        advertiseSuspendManager.onStartAdvertisingSet(
+            REG_ID1,
+            DURATION1,
+            MAX_EXT_ADV_EVENTS1,
+            source,
+        )
+        advertiseSuspendManager.onAdvertisingSetStarted(REG_ID1, ADVERTISER_ID1, STATUS_OK)
+
+        // Suspend and disable the advertisement
+        advertiseSuspendManager.enterSuspend()
+        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+        verify(adapterSuspend).advertiseSuspendReady()
+
+        // On resume, try to re-enable the advertisement
+        advertiseSuspendManager.exitSuspend()
+        verify(advertiseManager)
+            .enableAdvertisingSet(
+                eq(ADVERTISER_ID1),
+                eq(true),
+                eq(DURATION1),
+                eq(MAX_EXT_ADV_EVENTS1),
+                eq(source),
+            )
+
+        // If the re-enablement fails, the callback should be invoked to notify the app.
+        assertThat(
+                advertiseSuspendManager.onAdvertisingEnabled(
+                    ADVERTISER_ID1,
+                    enable = false,
+                    status = STATUS_FAIL,
+                )
+            )
+            .isTrue()
+    }
+
+    @Test
+    fun onAdvertisingEnabled_unexpectedEventDuringPausing_returnsTrue() {
+        // Start an advertisement
+        advertiseSuspendManager.onStartAdvertisingSet(
+            REG_ID1,
+            DURATION1,
+            MAX_EXT_ADV_EVENTS1,
+            source,
+        )
+        advertiseSuspendManager.onAdvertisingSetStarted(REG_ID1, ADVERTISER_ID1, STATUS_OK)
+
+        // Enter suspend, which will pause the advertisement
+        advertiseSuspendManager.enterSuspend()
+
+        // Simulate an unexpected event: enable is true instead of false
+        val result =
+            advertiseSuspendManager.onAdvertisingEnabled(
+                ADVERTISER_ID1,
+                enable = true,
+                status = STATUS_OK,
+            )
+
+        // Callback should be called because it's an unexpected event
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    fun onAdvertisingEnabled_unexpectedEventDuringResuming_returnsTrue() {
+        // Start an advertisement
+        advertiseSuspendManager.onStartAdvertisingSet(
+            REG_ID1,
+            DURATION1,
+            MAX_EXT_ADV_EVENTS1,
+            source,
+        )
+        advertiseSuspendManager.onAdvertisingSetStarted(REG_ID1, ADVERTISER_ID1, STATUS_OK)
+
+        // Enter suspend and complete pausing
+        advertiseSuspendManager.enterSuspend()
+        advertiseSuspendManager.onAdvertisingEnabled(ADVERTISER_ID1, false, STATUS_OK)
+
+        // Exit suspend, which will resume the advertisement
+        advertiseSuspendManager.exitSuspend()
+
+        // Simulate an unexpected event: enable is false instead of true, but status is OK
+        val result =
+            advertiseSuspendManager.onAdvertisingEnabled(
+                ADVERTISER_ID1,
+                enable = false,
+                status = STATUS_OK,
+            )
+
+        // Callback should be called because it's an unexpected event
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    fun suspendThenQueueAllCommandTypes() {
+        // Enter suspend directly (no ongoing advertisements)
+        advertiseSuspendManager.enterSuspend()
+        verify(adapterSuspend).advertiseSuspendReady()
+
+        // Queue all types of commands not covered by other tests
+        val parameters = AdvertisingSetParameters.Builder().build()
+        val advertiseData = AdvertiseData.Builder().build()
+        val scanResponse = AdvertiseData.Builder().build()
+        val periodicParameters = PeriodicAdvertisingParameters.Builder().build()
+        val periodicData = AdvertiseData.Builder().build()
+        val callback = mock<IAdvertisingSetCallback>()
+        val gattServerCallback = mock<IBluetoothGattServerCallback>()
+
+        advertiseSuspendManager.queueStartAdvertisingSet(
+            parameters,
+            advertiseData,
+            scanResponse,
+            periodicParameters,
+            periodicData,
+            DURATION1,
+            MAX_EXT_ADV_EVENTS1,
+            gattServerCallback,
+            callback,
+            source,
+        )
+        advertiseSuspendManager.queueGetOwnAddress(ADVERTISER_ID1)
+        advertiseSuspendManager.queueStopAdvertisingSet(callback)
+        advertiseSuspendManager.queueEnableAdvertisingSet(
+            ADVERTISER_ID1,
+            true,
+            DURATION1,
+            MAX_EXT_ADV_EVENTS1,
+            source,
+        )
+        advertiseSuspendManager.queueSetPeriodicAdvertisingParameters(
+            ADVERTISER_ID1,
+            periodicParameters,
+        )
+        advertiseSuspendManager.queueSetPeriodicAdvertisingData(ADVERTISER_ID1, periodicData)
+        advertiseSuspendManager.queueSetPeriodicAdvertisingEnable(ADVERTISER_ID1, true)
+
+        // Exit suspend, verify all commands are executed
+        advertiseSuspendManager.exitSuspend()
+
+        verify(advertiseManager)
+            .startAdvertisingSet(
+                eq(parameters),
+                eq(advertiseData),
+                eq(scanResponse),
+                eq(periodicParameters),
+                eq(periodicData),
+                eq(DURATION1),
+                eq(MAX_EXT_ADV_EVENTS1),
+                eq(gattServerCallback),
+                eq(callback),
+                eq(source),
+            )
+        verify(advertiseManager).getOwnAddress(eq(ADVERTISER_ID1))
+        verify(advertiseManager).stopAdvertisingSet(eq(callback))
+        verify(advertiseManager)
+            .enableAdvertisingSet(
+                eq(ADVERTISER_ID1),
+                eq(true),
+                eq(DURATION1),
+                eq(MAX_EXT_ADV_EVENTS1),
+                eq(source),
+            )
+        verify(advertiseManager)
+            .setPeriodicAdvertisingParameters(eq(ADVERTISER_ID1), eq(periodicParameters))
+        verify(advertiseManager).setPeriodicAdvertisingData(eq(ADVERTISER_ID1), eq(periodicData))
+        verify(advertiseManager).setPeriodicAdvertisingEnable(eq(ADVERTISER_ID1), eq(true))
     }
 
     companion object {
@@ -306,6 +504,7 @@ class AdvertiseSuspendManagerTest {
         private const val REG_ID2 = -2
         private const val ADVERTISER_ID1 = 1
         private const val ADVERTISER_ID2 = 2
+        private const val ADVERTISER_ID_UNKNOWN = 99
         private const val DURATION1 = 60
         private const val DURATION2 = 61
         private const val MAX_EXT_ADV_EVENTS1 = 10

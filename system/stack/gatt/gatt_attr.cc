@@ -40,11 +40,14 @@
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/btm_ble_addr.h"
-#include "stack/include/btm_client_interface.h"
+#include "stack/include/btm_sec_api.h"
 #include "stack/include/gatt_api.h"
+#include "stack/include/stack_app.h"
+#include "stack/include/stack_le_connection.h"
 
 using bluetooth::Uuid;
 using namespace bluetooth;
+using stack::tGATT_REQ_CBACK;
 
 #define BLE_GATT_SVR_SUP_FEAT_EATT_BITMASK 0x01
 
@@ -67,8 +70,30 @@ typedef struct {
 
 static std::map<tCONN_ID, std::deque<gatt_op_cb_data>> OngoingOps;
 
-static void gatt_request_cback(tCONN_ID conn_id, uint32_t trans_id, uint8_t op_code,
-                               tGATTS_DATA* p_data);
+static void gatt_read_characteristic_or_descriptor_cback(tCONN_ID conn_id, uint32_t trans_id,
+                                                         const RawAddress& remote_bda,
+                                                         uint16_t handle, uint16_t offset,
+                                                         bool is_long);
+static void gatt_write_characteristic_or_descriptor_cback(tCONN_ID conn_id, uint32_t trans_id,
+                                                          const RawAddress& remote_bda,
+                                                          uint16_t handle, uint16_t offset,
+                                                          bool need_rsp, bool is_prep,
+                                                          uint8_t* value, uint16_t len);
+static void gatt_exec_write_cback(tCONN_ID, uint32_t, const RawAddress&, tGATT_EXEC_FLAG) {}
+static void gatt_mtu_changed_cback(tCONN_ID, const RawAddress&, uint16_t) {}
+static void gatt_conf_cback(tCONN_ID, uint32_t, const RawAddress&) {}
+
+static stack::tGATT_REQ_CBACK gatt_profile_req_cback = {
+        .read_characteristic_cb = gatt_read_characteristic_or_descriptor_cback,
+        .read_descriptor_cb = gatt_read_characteristic_or_descriptor_cback,
+        .write_characteristic_cb = gatt_write_characteristic_or_descriptor_cback,
+        .write_descriptor_cb = gatt_write_characteristic_or_descriptor_cback,
+        .exec_write_cb = gatt_exec_write_cback,
+        .mtu_changed_cb = gatt_mtu_changed_cback,
+        .conf_cb = gatt_conf_cback,
+        .conf_send_fail_cb = tGATT_REQ_CBACK::do_nothing,
+};
+
 static void gatt_connect_cback(tGATT_IF /* gatt_if */, const RawAddress& bda, tCONN_ID conn_id,
                                bool connected, tGATT_DISCONN_REASON reason,
                                tBT_TRANSPORT transport);
@@ -91,14 +116,14 @@ static bool read_sr_sirk_req(tCONN_ID conn_id,
 
 static tGATT_STATUS gatt_sr_read_db_hash(tCONN_ID conn_id, tGATT_VALUE* p_value);
 static tGATT_STATUS gatt_sr_read_cl_supp_feat(tCONN_ID conn_id, tGATT_VALUE* p_value);
-static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, tGATT_WRITE_REQ* p_data);
+static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, uint8_t* value, uint16_t len);
 
-static tGATT_CBACK gatt_profile_cback = {
+static stack::tGATT_CBACK gatt_profile_cback = {
         .p_conn_cb = gatt_connect_cback,
         .p_cmpl_cb = gatt_cl_op_cmpl_cback,
         .p_disc_res_cb = gatt_disc_res_cback,
         .p_disc_cmpl_cb = gatt_disc_cmpl_cback,
-        .p_req_cb = gatt_request_cback,
+        .p_req_cb = &gatt_profile_req_cback,
         .p_enc_cmpl_cb = nullptr,
         .p_congestion_cb = nullptr,
         .p_phy_update_cb = nullptr,
@@ -266,32 +291,38 @@ static tGATT_STATUS read_attr_value(tCONN_ID conn_id, uint16_t handle, tGATT_VAL
     return GATT_READ_NOT_PERMIT;
   }
 
-  if (com::android::bluetooth::flags::gatt_add_cccd_on_service_changed() &&
+  if (com_android_bluetooth_flags_gatt_add_cccd_on_service_changed() &&
       handle == gatt_cb.handle_of_srv_changed_cccd) {
     /* GATT_UUID_GATT_SRV_CHGD CCCD*/
     log::verbose("Read: cccd of service changed");
-    return GATT_READ_NOT_PERMIT;
+    uint8_t* p = p_value->value;
+    /** Service changed for CCCD is always notified for all bonded devices regardless of the
+     * value of the CCCD. return it as 1 as if we are reaching here, It should be from
+     * a bonded device.
+     */
+    UINT16_TO_STREAM(p, 0x0001);
+    p_value->len = 2;
+    return GATT_SUCCESS;
   }
 
   return GATT_NOT_FOUND;
 }
 
 /** GAP Attributes Database Read/Read Blob Request process */
-static tGATT_STATUS proc_read_req(tCONN_ID conn_id, tGATTS_REQ_TYPE, tGATT_READ_REQ* p_data,
+static tGATT_STATUS proc_read_req(tCONN_ID conn_id, uint16_t handle, uint16_t offset, bool is_long,
                                   tGATTS_RSP* p_rsp) {
-  if (p_data->is_long) {
-    p_rsp->attr_value.offset = p_data->offset;
+  if (is_long) {
+    p_rsp->attr_value.offset = offset;
   }
 
-  p_rsp->attr_value.handle = p_data->handle;
+  p_rsp->attr_value.handle = handle;
 
-  return read_attr_value(conn_id, p_data->handle, &p_rsp->attr_value, p_data->is_long);
+  return read_attr_value(conn_id, handle, &p_rsp->attr_value, is_long);
 }
 
 /** GAP ATT server process a write request */
-static tGATT_STATUS proc_write_req(tCONN_ID conn_id, tGATTS_REQ_TYPE, tGATT_WRITE_REQ* p_data) {
-  uint16_t handle = p_data->handle;
-
+static tGATT_STATUS proc_write_req(tCONN_ID conn_id, uint16_t handle, uint8_t* value,
+                                   uint16_t len) {
   /* GATT_UUID_SERVER_SUP_FEAT*/
   if (handle == gatt_cb.handle_sr_supported_feat) {
     return GATT_WRITE_NOT_PERMIT;
@@ -299,7 +330,7 @@ static tGATT_STATUS proc_write_req(tCONN_ID conn_id, tGATTS_REQ_TYPE, tGATT_WRIT
 
   /* GATT_UUID_CLIENT_SUP_FEAT*/
   if (handle == gatt_cb.handle_cl_supported_feat) {
-    return gatt_sr_write_cl_supp_feat(conn_id, p_data);
+    return gatt_sr_write_cl_supp_feat(conn_id, value, len);
   }
 
   /* GATT_UUID_DATABASE_HASH */
@@ -312,7 +343,7 @@ static tGATT_STATUS proc_write_req(tCONN_ID conn_id, tGATTS_REQ_TYPE, tGATT_WRIT
     return GATT_WRITE_NOT_PERMIT;
   }
 
-  if (com::android::bluetooth::flags::gatt_add_cccd_on_service_changed() &&
+  if (com_android_bluetooth_flags_gatt_add_cccd_on_service_changed() &&
       handle == gatt_cb.handle_of_srv_changed_cccd) {
     /* GATT_UUID_GATT_SRV_CHGD CCCD*/
     log::verbose("Write: cccd of service changed");
@@ -322,54 +353,32 @@ static tGATT_STATUS proc_write_req(tCONN_ID conn_id, tGATTS_REQ_TYPE, tGATT_WRIT
   return GATT_NOT_FOUND;
 }
 
-/*******************************************************************************
- *
- * Function         gatt_request_cback
- *
- * Description      GATT profile attribute access request callback.
- *
- * Returns          void.
- *
- ******************************************************************************/
-static void gatt_request_cback(tCONN_ID conn_id, uint32_t trans_id, tGATTS_REQ_TYPE type,
-                               tGATTS_DATA* p_data) {
-  tGATT_STATUS status = GATT_INVALID_PDU;
+static void gatt_read_characteristic_or_descriptor_cback(tCONN_ID conn_id, uint32_t trans_id,
+                                                         const RawAddress& /*remote_bda*/,
+                                                         uint16_t handle, uint16_t offset,
+                                                         bool is_long) {
   tGATTS_RSP rsp_msg;
-  bool rsp_needed = true;
-
   memset(&rsp_msg, 0, sizeof(tGATTS_RSP));
+  tGATT_STATUS status = proc_read_req(conn_id, handle, offset, is_long, &rsp_msg);
+  if (GATTS_SendRsp(conn_id, trans_id, status, &rsp_msg) != GATT_SUCCESS) {
+    log::warn("Unable to send GATT server response conn_id:{}", conn_id);
+  }
+}
 
-  switch (type) {
-    case GATTS_REQ_TYPE_READ_CHARACTERISTIC:
-    case GATTS_REQ_TYPE_READ_DESCRIPTOR:
-      status = proc_read_req(conn_id, type, &p_data->read_req, &rsp_msg);
-      break;
+static void gatt_write_characteristic_or_descriptor_cback(tCONN_ID conn_id, uint32_t trans_id,
+                                                          const RawAddress& /*remote_bda*/,
+                                                          uint16_t handle, uint16_t /* offset */,
+                                                          bool need_rsp, bool /* is_prep */,
+                                                          uint8_t* value, uint16_t len) {
+  tGATT_STATUS status = proc_write_req(conn_id, handle, value, len);
 
-    case GATTS_REQ_TYPE_WRITE_CHARACTERISTIC:
-    case GATTS_REQ_TYPE_WRITE_DESCRIPTOR:
-    case GATTS_REQ_TYPE_WRITE_EXEC:
-    case GATT_CMD_WRITE:
-      if (!p_data->write_req.need_rsp) {
-        rsp_needed = false;
-      }
-
-      status = proc_write_req(conn_id, type, &p_data->write_req);
-      break;
-
-    case GATTS_REQ_TYPE_MTU:
-      log::verbose("Get MTU exchange new mtu size: {}", p_data->mtu);
-      rsp_needed = false;
-      break;
-
-    default:
-      log::verbose("Unknown/unexpected LE GAP ATT request: 0x{:x}", type);
-      break;
+  if (!need_rsp) {
+    return;
   }
 
-  if (rsp_needed) {
-    if (GATTS_SendRsp(conn_id, trans_id, status, &rsp_msg) != GATT_SUCCESS) {
-      log::warn("Unable to send GATT server response conn_id:{}", conn_id);
-    }
+  tGATTS_RSP rsp_msg{};
+  if (GATTS_SendRsp(conn_id, trans_id, status, &rsp_msg) != GATT_SUCCESS) {
+    log::warn("Unable to send GATT server response conn_id:{}", conn_id);
   }
 }
 
@@ -388,7 +397,7 @@ static void gatt_connect_cback(tGATT_IF /* gatt_if */, const RawAddress& bda, tC
   log::verbose("from {} connected: {}, conn_id: 0x{:x}", bda, connected, conn_id);
 
   // if the device is not trusted, remove data when the link is disconnected
-  if (!connected && !get_btm_client_interface().security.BTM_IsBonded(bda, BT_TRANSPORT_AUTO)) {
+  if (!connected && !get_security_client_interface().BTM_IsBonded(bda, BT_TRANSPORT_AUTO)) {
     log::info("remove untrusted client status, bda={}", bda);
     btif_storage_remove_gatt_cl_supp_feat(bda);
     btif_storage_remove_gatt_cl_db_hash(bda);
@@ -428,8 +437,8 @@ void gatt_profile_db_init(void) {
 
   /* Create a GATT profile service */
   gatt_cb.gatt_if =
-          GATT_Register(Uuid::From128BitBE(tmp), "GattProfileDb", &gatt_profile_cback, false);
-  GATT_StartIf(gatt_cb.gatt_if);
+          stack::appRegister(Uuid::From128BitBE(tmp), "GattProfileDb", &gatt_profile_cback, false);
+  stack::appStartIf(gatt_cb.gatt_if);
 
   Uuid service_uuid = Uuid::From16Bit(UUID_SERVCLASS_GATT_SERVER);
 
@@ -452,7 +461,7 @@ void gatt_profile_db_init(void) {
   service_changed_char.permissions = 0;
   service.push_back(service_changed_char);
 
-  if (com::android::bluetooth::flags::gatt_add_cccd_on_service_changed()) {
+  if (com_android_bluetooth_flags_gatt_add_cccd_on_service_changed()) {
     btgatt_db_element_t service_changed_desc;
     service_changed_desc.uuid = srv_changed_desc_cccd_uuid;
     service_changed_desc.type = BTGATT_DB_DESCRIPTOR;
@@ -486,7 +495,7 @@ void gatt_profile_db_init(void) {
   }
 
   gatt_cb.handle_of_h_r = service[1].attribute_handle;
-  if (com::android::bluetooth::flags::gatt_add_cccd_on_service_changed()) {
+  if (com_android_bluetooth_flags_gatt_add_cccd_on_service_changed()) {
     gatt_cb.handle_of_srv_changed_cccd = service[2].attribute_handle;
     gatt_cb.handle_sr_supported_feat = service[3].attribute_handle;
     gatt_cb.handle_cl_supported_feat = service[4].attribute_handle;
@@ -790,26 +799,25 @@ static void gatt_cl_start_config_ccc(tGATT_PROFILE_CLCB* p_clcb) {
 
 /*******************************************************************************
  *
- * Function         GATT_ConfigServiceChangeCCC
+ * Function         GATT_LE_ConfigServiceChangeCCC
  *
  * Description      Configure service change indication on remote device
  *
  * Returns          none
  *
  ******************************************************************************/
-void GATT_ConfigServiceChangeCCC(const RawAddress& remote_bda, bool /* enable */,
-                                 tBT_TRANSPORT transport) {
-  tGATT_PROFILE_CLCB* p_clcb = gatt_profile_find_clcb_by_bd_addr(remote_bda, transport);
+void GATT_LE_ConfigServiceChangeCCC(const RawAddress& remote_bda, bool /* enable */) {
+  tGATT_PROFILE_CLCB* p_clcb = gatt_profile_find_clcb_by_bd_addr(remote_bda, BT_TRANSPORT_LE);
 
   if (p_clcb == NULL) {
-    p_clcb = gatt_profile_clcb_alloc(0, remote_bda, transport);
+    p_clcb = gatt_profile_clcb_alloc(0, remote_bda, BT_TRANSPORT_LE);
   }
 
   if (p_clcb == NULL) {
     return;
   }
 
-  if (GATT_GetConnIdIfConnected(gatt_cb.gatt_if, remote_bda, &p_clcb->conn_id, transport)) {
+  if (GATT_GetConnIdIfConnected(gatt_cb.gatt_if, remote_bda, &p_clcb->conn_id, BT_TRANSPORT_LE)) {
     p_clcb->connected = true;
   } else {
     log::warn(
@@ -819,14 +827,14 @@ void GATT_ConfigServiceChangeCCC(const RawAddress& remote_bda, bool /* enable */
   }
 
   /* hold the link here */
-  if (!GATT_Connect(gatt_cb.gatt_if, remote_bda, BLE_ADDR_PUBLIC, BTM_BLE_DIRECT_CONNECTION,
-                    transport, true, 0, false,
-                    com::android::bluetooth::flags::gatt_conn_settings())) {
+  if (!stack::leConnectionConnect(gatt_cb.gatt_if, remote_bda, BLE_ADDR_PUBLIC,
+                                  BTM_BLE_OPPORTUNISTIC, 0, false,
+                                  com_android_bluetooth_flags_gatt_conn_settings())) {
     log::warn(
             "Unable to connect GATT client gatt_if:{} peer:{} transport:{} "
-            "connection_tyoe:{} opporunistic:{}",
-            gatt_cb.gatt_if, remote_bda, bt_transport_text(transport), "BTM_BLE_DIRECT_CONNECTION",
-            true);
+            "connection_type:{}",
+            gatt_cb.gatt_if, remote_bda, bt_transport_text(BT_TRANSPORT_LE),
+            "BTM_BLE_OPPORTUNISTIC");
   }
   p_clcb->ccc_stage = GATT_SVC_CHANGED_CONNECTING;
 
@@ -1207,10 +1215,10 @@ static tGATT_STATUS gatt_sr_read_cl_supp_feat(tCONN_ID conn_id, tGATT_VALUE* p_v
 }
 
 /* handle request for writing client supported features */
-static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, tGATT_WRITE_REQ* p_data) {
+static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, uint8_t* write_value,
+                                               uint16_t len) {
   std::list<uint8_t> tmp;
-  uint16_t len = p_data->len;
-  uint8_t value, *p = p_data->value;
+  uint8_t value, *p = write_value;
   // Read all octets into list
   while (len > 0) {
     STREAM_TO_UINT8(value, p);

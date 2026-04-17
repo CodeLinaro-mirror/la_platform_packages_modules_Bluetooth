@@ -156,7 +156,6 @@ static jmethodID method_onClientCharacteristicsUnoffloaded;
 static jmethodID method_onServerRegistered;
 static jmethodID method_onClientConnected;
 static jmethodID method_onServiceAdded;
-static jmethodID method_onServiceStopped;
 static jmethodID method_onServiceDeleted;
 static jmethodID method_onResponseSendCompleted;
 static jmethodID method_onServerReadCharacteristic;
@@ -238,7 +237,7 @@ static void btgattc_open_cb(int conn_id, int status, int clientIf, int transport
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onConnected, clientIf, conn_id, transport,
                                status, address.get());
 }
@@ -251,7 +250,7 @@ static void btgattc_close_cb(int conn_id, int status, int clientIf, int transpor
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onDisconnected, clientIf, conn_id, transport,
                                status, address.get());
 }
@@ -275,7 +274,7 @@ static void btgattc_notify_cb(int conn_id, const btgatt_notify_params_t& p_data)
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), p_data.bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, p_data.bda);
   ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(p_data.len));
   sCallbackEnv->SetByteArrayRegion(jb.get(), 0, p_data.len, (jbyte*)p_data.value);
 
@@ -372,7 +371,7 @@ static void btgattc_remote_rssi_cb(int client_if, const RawAddress& bda, int rss
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
 
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onReadRemoteRssi, client_if, address.get(),
                                rssi, status);
@@ -583,7 +582,7 @@ static void btgatts_connection_cb(int conn_id, int server_if, int transport, int
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientConnected, address.get(), transport,
                                connected, conn_id, server_if);
 }
@@ -621,17 +620,6 @@ static void btgatts_service_added_cb(int status, int server_if, const btgatt_db_
                                array.get());
 }
 
-static void btgatts_service_stopped_cb(int status, int server_if, int srvc_handle) {
-  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid() || !mCallbacksObj) {
-    return;
-  }
-  sPrivateGattServerManager->RemoveService(server_if, srvc_handle);
-  sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServiceStopped, status, server_if,
-                               srvc_handle);
-}
-
 static void btgatts_service_deleted_cb(int status, int server_if, int srvc_handle) {
   std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -651,7 +639,7 @@ static void btgatts_request_read_characteristic_cb(int conn_id, int trans_id, co
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerReadCharacteristic, address.get(),
                                conn_id, trans_id, attr_handle, offset, is_long);
 }
@@ -664,7 +652,7 @@ static void btgatts_request_read_descriptor_cb(int conn_id, int trans_id, const 
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerReadDescriptor, address.get(), conn_id,
                                trans_id, attr_handle, offset, is_long);
 }
@@ -679,7 +667,7 @@ static void btgatts_request_write_characteristic_cb(int conn_id, int trans_id,
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   ScopedLocalRef<jbyteArray> val(sCallbackEnv.get(), sCallbackEnv->NewByteArray(length));
   if (val.get()) {
     sCallbackEnv->SetByteArrayRegion(val.get(), 0, length, (jbyte*)value);
@@ -698,7 +686,7 @@ static void btgatts_request_write_descriptor_cb(int conn_id, int trans_id, const
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   ScopedLocalRef<jbyteArray> val(sCallbackEnv.get(), sCallbackEnv->NewByteArray(length));
   if (val.get()) {
     sCallbackEnv->SetByteArrayRegion(val.get(), 0, length, (jbyte*)value);
@@ -716,7 +704,7 @@ static void btgatts_request_exec_write_cb(int conn_id, int trans_id, const RawAd
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onExecuteWrite, address.get(), conn_id,
                                trans_id, exec_write);
 }
@@ -808,7 +796,6 @@ static const btgatt_server_callbacks_t sGattServerCallbacks = {
         btgatts_register_app_cb,
         btgatts_connection_cb,
         btgatts_service_added_cb,
-        btgatts_service_stopped_cb,
         btgatts_service_deleted_cb,
         btgatts_request_read_characteristic_cb,
         btgatts_request_read_descriptor_cb,
@@ -930,7 +917,7 @@ public:
       return;
     }
 
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onOwnAddressRead, advertiser_id,
                                  address_type, addr.get());
   }
@@ -949,7 +936,7 @@ public:
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
       return;
     }
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(mDistanceMeasurementCallbacksObj,
                                  method_onDistanceMeasurementStarted, addr.get(), method);
   }
@@ -960,7 +947,7 @@ public:
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
       return;
     }
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(mDistanceMeasurementCallbacksObj,
                                  method_onDistanceMeasurementStopped, addr.get(), reason, method);
   }
@@ -977,7 +964,7 @@ public:
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
       return;
     }
-    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+    ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(
             mDistanceMeasurementCallbacksObj, method_onDistanceMeasurementResult, addr.get(),
             centimeter, error_centimeter, azimuth_angle, error_azimuth_angle, altitude_angle,
@@ -1149,7 +1136,7 @@ static void readClientPhyCb(uint8_t clientIf, RawAddress bda, uint8_t tx_phy, ui
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
 
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientPhyRead, clientIf, address.get(),
                                tx_phy, rx_phy, status);
@@ -1332,7 +1319,7 @@ static int gattSubrateRequestNative(JNIEnv* env, jobject /* object */, jint /* c
     return 1;  // BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED
   }
   // TODO does BtStatus align with BluetoothStatusCodes ?
-  if (com::android::bluetooth::flags::gatt_return_unsupported_when_not_support_subrating()) {
+  if (com_android_bluetooth_flags_gatt_return_unsupported_when_not_support_subrating()) {
     BtStatus status = sGattIf->client->subrate_request(str2addr(env, address), subrate_min,
                                                         subrate_max, max_latency, cont_num,
                                                         sup_timeout);
@@ -1351,7 +1338,7 @@ static int gattSubrateModeRequestNative(JNIEnv* env, jobject /* object */, jint 
     return 1;  // BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ENABLED
   }
   // TODO does bt_status_t align with BluetoothStatusCodes ?
-  if (com::android::bluetooth::flags::gatt_return_unsupported_when_not_support_subrating()) {
+  if (com_android_bluetooth_flags_gatt_return_unsupported_when_not_support_subrating()) {
     BtStatus status = sGattIf->client->subrate_mode_request(
         client_if, str2addr(env, address), subrate_mode);
     // BluetoothStatusCodes.FEATURE_NOT_SUPPORTED
@@ -1420,7 +1407,7 @@ static void readServerPhyCb(uint8_t serverIf, RawAddress bda, uint8_t tx_phy, ui
     return;
   }
 
-  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv.get(), bda);
+  ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
 
   sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerPhyRead, serverIf, address.get(),
                                tx_phy, rx_phy, status);
@@ -1512,14 +1499,6 @@ static void gattServerAddServiceNative(JNIEnv* env, jobject /* object */, jint s
 
   std::vector<btgatt_db_element_t> db = convertToDbElementsVector(env, gatt_db_elements);
   sGattIf->server->add_service(server_if, db.data(), db.size());
-}
-
-static void gattServerStopServiceNative(JNIEnv* /* env */, jobject /* object */, jint server_if,
-                                        jint svc_handle) {
-  if (!sGattIf) {
-    return;
-  }
-  sGattIf->server->stop_service(server_if, svc_handle);
 }
 
 static void gattServerDeleteServiceNative(JNIEnv* /* env */, jobject /* object */, jint server_if,
@@ -1812,7 +1791,7 @@ static void getOwnAddressCb(uint8_t advertiser_id, uint8_t address_type, RawAddr
     return;
   }
 
-  ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv.get(), address);
+  ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
   sCallbackEnv->CallVoidMethod(mAdvertiseCallbacksObj, method_onOwnAddressRead, advertiser_id,
                                address_type, addr.get());
 }
@@ -2169,7 +2148,6 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
            (void*)gattServerSetPreferredPhyNative},
           {"gattServerReadPhyNative", "(ILjava/lang/String;)V", (void*)gattServerReadPhyNative},
           {"gattServerAddServiceNative", "(ILjava/util/List;)V", (void*)gattServerAddServiceNative},
-          {"gattServerStopServiceNative", "(II)V", (void*)gattServerStopServiceNative},
           {"gattServerDeleteServiceNative", "(II)V", (void*)gattServerDeleteServiceNative},
           {"gattServerSendIndicationNative", "(III[B)V", (void*)gattServerSendIndicationNative},
           {"gattServerSendNotificationNative", "(III[B)V", (void*)gattServerSendNotificationNative},
@@ -2230,7 +2208,6 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"onServerRegistered", "(IIJJ)V", &method_onServerRegistered},
           {"onClientConnected", "(Ljava/lang/String;IZII)V", &method_onClientConnected},
           {"onServiceAdded", "(IILjava/util/List;)V", &method_onServiceAdded},
-          {"onServiceStopped", "(III)V", &method_onServiceStopped},
           {"onServiceDeleted", "(III)V", &method_onServiceDeleted},
           {"onResponseSendCompleted", "(II)V", &method_onResponseSendCompleted},
           {"onServerReadCharacteristic", "(Ljava/lang/String;IIIIZ)V",

@@ -29,15 +29,12 @@ import static com.android.bluetooth.TestUtils.getTestDevice;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 
-import android.bluetooth.BluetoothAudioConfig;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
-import android.media.AudioFormat;
 import android.media.AudioManager;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -84,8 +81,6 @@ public class A2dpSinkServiceTest {
         doReturn(bondedDevices).when(mAdapterService).getBondedDevices();
         doReturn(1).when(mAdapterService).getMaxConnectedAudioDevices();
         TestUtils.mockGetSystemService(mAdapterService, AudioManager.class);
-
-        doReturn(true).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
 
         doReturn(true).when(mNativeInterface).setActiveDevice(any());
 
@@ -260,12 +255,6 @@ public class A2dpSinkServiceTest {
 
         mService.onAudioConfigChangedFromNative(mDevice1, TEST_SAMPLE_RATE, TEST_CHANNEL_COUNT);
         syncHandler(A2dpSinkStateMachine.MESSAGE_AUDIO_CONFIG_CHANGED);
-
-        BluetoothAudioConfig expected =
-                new BluetoothAudioConfig(
-                        TEST_SAMPLE_RATE, TEST_CHANNEL_COUNT, AudioFormat.ENCODING_PCM_16BIT);
-        BluetoothAudioConfig config = mService.getAudioConfig(mDevice1);
-        assertThat(config).isEqualTo(expected);
         assertThat(mLooper.nextMessage()).isNull();
     }
 
@@ -274,7 +263,6 @@ public class A2dpSinkServiceTest {
     public void testOnAudioConfigChanged_withNullDevice_eventDropped() {
         initTest();
         mService.onAudioConfigChangedFromNative(null, TEST_SAMPLE_RATE, TEST_CHANNEL_COUNT);
-        assertThat(mService.getAudioConfig(null)).isNull();
         assertThat(mLooper.nextMessage()).isNull();
     }
 
@@ -284,7 +272,6 @@ public class A2dpSinkServiceTest {
         initTest();
         assertThat(mService.getConnectionState(mDevice1)).isEqualTo(STATE_DISCONNECTED);
         mService.onAudioConfigChangedFromNative(mDevice1, TEST_SAMPLE_RATE, TEST_CHANNEL_COUNT);
-        assertThat(mService.getAudioConfig(mDevice1)).isNull();
         assertThat(mLooper.nextMessage()).isNull();
     }
 
@@ -294,7 +281,6 @@ public class A2dpSinkServiceTest {
         initTest();
         mockDevicePriority(mDevice1, CONNECTION_POLICY_ALLOWED);
         setupDeviceConnection(mDevice1);
-        assertThat(mService.getAudioConfig(mDevice1)).isNull();
         assertThat(mLooper.nextMessage()).isNull();
     }
 
@@ -302,7 +288,6 @@ public class A2dpSinkServiceTest {
     @Test
     public void testGetAudioConfigNullDevice() {
         initTest();
-        assertThat(mService.getAudioConfig(null)).isNull();
         assertThat(mLooper.nextMessage()).isNull();
     }
 
@@ -438,15 +423,6 @@ public class A2dpSinkServiceTest {
         verify(mAdapterService)
                 .setProfileConnectionPolicy(
                         mDevice1, BluetoothProfile.A2DP_SINK, CONNECTION_POLICY_UNKNOWN);
-        assertThat(mLooper.nextMessage()).isNull();
-    }
-
-    /** Test that SetConnectionPolicy is robust to DatabaseManager failures */
-    @Test
-    public void testSetConnectionPolicyDatabaseWriteFails() {
-        initTest();
-        doReturn(false).when(mAdapterService).setProfileConnectionPolicy(any(), anyInt(), anyInt());
-        assertThat(mService.setConnectionPolicy(mDevice1, CONNECTION_POLICY_ALLOWED)).isFalse();
         assertThat(mLooper.nextMessage()).isNull();
     }
 

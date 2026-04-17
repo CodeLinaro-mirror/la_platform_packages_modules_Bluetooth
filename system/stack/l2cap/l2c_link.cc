@@ -35,10 +35,8 @@
 #include "device/include/device_iot_config.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/allocator.h"
-#include "stack/btm/btm_int_types.h"
 #include "stack/btm/btm_sco.h"
 #include "stack/btm/btm_sec.h"
-#include "stack/btm/internal/btm_api.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/ble_hci_link_interface.h"
 #include "stack/include/bt_hdr.h"
@@ -347,7 +345,7 @@ bool l2c_link_hci_disc_comp(uint16_t handle, tHCI_REASON reason) {
     }
     /* for LE link, always drop and re-open to ensure to get LE remote feature
      */
-    if (!com::android::bluetooth::flags::donot_reuse_lecoc_ccbs() &&
+    if (!com_android_bluetooth_flags_donot_reuse_lecoc_ccbs() &&
         p_lcb->transport == BT_TRANSPORT_LE) {
       btm_acl_removed(handle);
       p_lcb->InvalidateHandle();

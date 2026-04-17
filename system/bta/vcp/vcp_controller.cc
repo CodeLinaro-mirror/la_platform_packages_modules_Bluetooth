@@ -138,11 +138,11 @@ public:
   }
 
   void StartOpportunisticConnect(const RawAddress& address) {
-    /* Oportunistic works only for direct connect,
+    /* Opportunistic works only for direct connect,
      * but in fact this is background connect
      */
     bluetooth::log::info(": {}", address);
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_DIRECT_CONNECTION, true);
+    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_OPPORTUNISTIC);
   }
 
   void Connect(const RawAddress& address) override {
@@ -150,7 +150,7 @@ public:
 
     auto device = volume_control_devices_.FindByAddress(address);
     if (!device) {
-      if (!get_btm_client_interface().security.BTM_IsBonded(address, BT_TRANSPORT_LE)) {
+      if (!get_security_client_interface().BTM_IsBonded(address, BT_TRANSPORT_LE)) {
         bluetooth::log::error("Connecting  {} when not bonded", address);
         callbacks_->OnConnectionState(ConnectionState::DISCONNECTED, address);
         return;
@@ -535,96 +535,60 @@ public:
     }
 
     auto addr = device->address;
+    bool first_operation_handled = false;
 
-    if (!com_android_bluetooth_flags_vcp_skip_redundant_operation_writes()) {
-      auto op = find_if(
-              ongoing_operations_.begin(), ongoing_operations_.end(), [addr](auto& operation) {
-                auto it = find(operation.devices_.begin(), operation.devices_.end(), addr);
-                return it != operation.devices_.end();
-              });
-      if (op == ongoing_operations_.end()) {
-        bluetooth::log::debug("Could not find operation id for device: {}. Autonomus change",
-                              device->address);
-        HandleAutonomusVolumeChange(device, is_volume_change, is_mute_change);
-        return;
-      }
-
-      /* Received notification from the device we do expect */
-      auto it = find(op->devices_.begin(), op->devices_.end(), device->address);
-      op->devices_.erase(it);
-      if (!op->devices_.empty()) {
-        bluetooth::log::debug("wait for more responses for operation_id: {}", op->operation_id_);
-        return;
-      }
-
-      if (op->IsGroupOperation()) {
-        callbacks_->OnGroupVolumeStateChanged(op->group_id_, device->volume, device->mute,
-                                              op->is_autonomous_);
-      } else {
-        /* op->is_autonomous_ will always be false,
-          since we only make it true for group operations */
-        callbacks_->OnVolumeStateChanged(device->address, device->volume, device->mute,
-                                         device->flags, false);
-      }
-
-      ongoing_operations_.erase(op);
-    } else {
-      bool first_operation_handled = false;
-
-      for (auto op = ongoing_operations_.begin(); op != ongoing_operations_.end();) {
-        auto dev = std::find(op->devices_.begin(), op->devices_.end(), addr);
-        if (dev == op->devices_.end()) {
-          op++;
-          continue;
-        }
-
-        if (!first_operation_handled) {
-          first_operation_handled = true;
-
-          /* Received notification from the device we do expect */
-          op->devices_.erase(dev);
-          if (!op->devices_.empty()) {
-            bluetooth::log::debug("wait for more responses for operation_id: {}",
-                                  op->operation_id_);
-            return;
-          }
-
-          if (op->IsGroupOperation()) {
-            callbacks_->OnGroupVolumeStateChanged(op->group_id_, device->volume, device->mute,
-                                                  op->is_autonomous_);
-          } else {
-            /* op->is_autonomous_ will always be false,
-              since we only make it true for group operations */
-            callbacks_->OnVolumeStateChanged(device->address, device->volume, device->mute,
-                                             device->flags, false);
-          }
-
-          op = ongoing_operations_.erase(op);
-          continue;
-        }
-
-        /* Check if we should skip next ongoing operation (if same value as current) */
-        std::vector<uint8_t> arg({device->volume});
-        if ((op->opcode_ == kControlPointOpcodeMute && device->mute) ||
-            (op->opcode_ == kControlPointOpcodeUnmute && !device->mute) ||
-            (op->opcode_ == kControlPointOpcodeSetAbsoluteVolume &&
-             std::equal(op->arguments_.begin(), op->arguments_.end(), arg.begin()))) {
-          bluetooth::log::debug("Skip operation {} for device {}", op->operation_id_, *dev);
-          op->devices_.erase(dev);
-        }
-        if (op->devices_.empty()) {
-          op = ongoing_operations_.erase(op);
-        } else {
-          op++;
-        }
+    for (auto op = ongoing_operations_.begin(); op != ongoing_operations_.end();) {
+      auto dev = std::find(op->devices_.begin(), op->devices_.end(), addr);
+      if (dev == op->devices_.end()) {
+        op++;
+        continue;
       }
 
       if (!first_operation_handled) {
-        bluetooth::log::debug("Could not find operation id for device: {}. Autonomus change",
-                              device->address);
-        HandleAutonomusVolumeChange(device, is_volume_change, is_mute_change);
-        return;
+        first_operation_handled = true;
+
+        /* Received notification from the device we do expect */
+        op->devices_.erase(dev);
+        if (!op->devices_.empty()) {
+          bluetooth::log::debug("wait for more responses for operation_id: {}", op->operation_id_);
+          return;
+        }
+
+        if (op->IsGroupOperation()) {
+          callbacks_->OnGroupVolumeStateChanged(op->group_id_, device->volume, device->mute,
+                                                op->is_autonomous_);
+        } else {
+          /* op->is_autonomous_ will always be false,
+            since we only make it true for group operations */
+          callbacks_->OnVolumeStateChanged(device->address, device->volume, device->mute,
+                                           device->flags, false);
+        }
+
+        op = ongoing_operations_.erase(op);
+        continue;
       }
+
+      /* Check if we should skip next ongoing operation (if same value as current) */
+      std::vector<uint8_t> arg({device->volume});
+      if ((op->opcode_ == kControlPointOpcodeMute && device->mute) ||
+          (op->opcode_ == kControlPointOpcodeUnmute && !device->mute) ||
+          (op->opcode_ == kControlPointOpcodeSetAbsoluteVolume &&
+           std::equal(op->arguments_.begin(), op->arguments_.end(), arg.begin()))) {
+        bluetooth::log::debug("Skip operation {} for device {}", op->operation_id_, *dev);
+        op->devices_.erase(dev);
+      }
+      if (op->devices_.empty()) {
+        op = ongoing_operations_.erase(op);
+      } else {
+        op++;
+      }
+    }
+
+    if (!first_operation_handled) {
+      bluetooth::log::debug("Could not find operation id for device: {}. Autonomus change",
+                            device->address);
+      HandleAutonomusVolumeChange(device, is_volume_change, is_mute_change);
+      return;
     }
 
     StartQueueOperation();
@@ -1727,7 +1691,7 @@ private:
 
       case BTA_GATTC_ENC_CMPL_CB_EVT: {
         tBTM_STATUS encryption_status;
-        if (get_btm_client_interface().security.BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
+        if (get_security_client_interface().BTM_IsEncrypted(p_data->enc_cmpl.remote_bda,
                                                                 BT_TRANSPORT_LE)) {
           encryption_status = tBTM_STATUS::BTM_SUCCESS;
         } else {

@@ -22,23 +22,22 @@
 #include <base/functional/bind.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
+#include <bluetooth/types/string_helpers.h>
 #include <bluetooth/types/uuid.h>
 
 #include <cstdint>
-#include <deque>
-#include <list>
 #include <map>
 #include <unordered_set>
 #include <vector>
 
 #include "common/circular_buffer.h"
-#include "common/strings.h"
 #include "hal/gatt_hal.h"
 #include "internal_include/bt_target.h"
 #include "macros.h"
 #include "osi/include/fixed_queue.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/gatt_api.h"
+#include "stack/include/stack_app.h"
 
 #define GATT_TRANS_ID_INVALID 0x0
 #define GATT_TRANS_ID_MAX 0x0fffffff /* 4 MSB is reserved */
@@ -192,7 +191,7 @@ typedef struct {
 
 typedef struct {
   bluetooth::Uuid app_uuid128;
-  tGATT_CBACK app_cb{};
+  bluetooth::stack::tGATT_CBACK app_cb{};
   tGATT_IF gatt_if{0}; /* one based */
   bool in_use{false};
   uint8_t listening{0}; /* if adv for all has been enabled */
@@ -525,6 +524,8 @@ typedef struct {
   std::unordered_map<uint16_t, tGATT_OFFLOAD_SESSION> offload_sessions;
   std::unordered_map<tGATT_SUBRATE_MODE, tGATT_SUBRATE_MODE_CONFIG> subrate_mode_config;
   std::unordered_map<RawAddress, tGATT_SUBRATE_MGR_CB> subrate_info;
+  void (*debug_conn_state)(const RawAddress& bda, bool connected,
+                           const tGATT_DISCONN_REASON disconnect_reason);
 } tGATT_CB;
 
 #define GATT_SIZE_OF_SRV_CHG_HNDL_RANGE 4
@@ -596,8 +597,6 @@ void gatt_force_disconnect(tGATT_TCB* p_tcb, std::string comment);
 bool gatt_disconnect(tGATT_TCB* p_tcb);
 bool gatt_disconnect_br(tGATT_TCB* p_tcb);
 void gatt_channel_congestion(tGATT_TCB* p_tcb, bool congested);
-bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                      tBT_TRANSPORT transport);
 void gatt_data_process(tGATT_TCB& p_tcb, uint16_t cid, BT_HDR* p_buf);
 void gatt_send_conn_cback(tGATT_TCB* p_tcb);
 void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_add,
@@ -694,8 +693,6 @@ tGATT_STATUS gatt_sr_process_app_rsp(tGATT_TCB& tcb, tGATT_IF gatt_if, uint32_t 
                                      tGATT_SR_CMD* sr_res_p);
 void gatt_server_handle_client_req(tGATT_TCB& p_tcb, uint16_t cid, uint8_t op_code, uint16_t len,
                                    uint8_t* p_data);
-void gatt_sr_send_req_callback(tCONN_ID conn_id, uint32_t trans_id, uint8_t op_code,
-                               tGATTS_DATA* p_req_data);
 uint32_t gatt_sr_enqueue_cmd(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t handle);
 bool gatt_cancel_open(tGATT_IF gatt_if, const RawAddress& bda);
 void gatt_notify_phy_updated(tHCI_STATUS status, uint16_t handle, uint8_t tx_phy, uint8_t rx_phy);

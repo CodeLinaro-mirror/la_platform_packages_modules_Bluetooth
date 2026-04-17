@@ -35,6 +35,7 @@ import android.bluetooth.BluetoothProfile.LE_AUDIO
 import android.bluetooth.BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT
 import android.bluetooth.BluetoothProfile.MAP
 import android.bluetooth.BluetoothProfile.MAP_CLIENT
+import android.bluetooth.BluetoothProfile.MCP_CLIENT
 import android.bluetooth.BluetoothProfile.PAN
 import android.bluetooth.BluetoothProfile.PBAP
 import android.bluetooth.BluetoothProfile.PBAP_CLIENT
@@ -49,7 +50,6 @@ import android.util.Log
 import com.android.bluetooth.Util
 import com.android.bluetooth.Util.arrayContains
 import com.android.bluetooth.btservice.AdapterService
-import com.android.bluetooth.flags.Flags
 import com.android.bluetooth.hid.HidHostService
 import com.android.bluetooth.storage.BluetoothStorageManager
 
@@ -63,13 +63,6 @@ constructor(
     adapterService: AdapterService,
     protected val storage: BluetoothStorageManager? = null,
 ) : ProfileService(id, adapterService) {
-
-    protected val databaseManager =
-        if (Flags.mainlineBetaStorage()) {
-            null
-        } else {
-            adapterService.databaseManager
-        }
 
     /**
      * Connects the given Bluetooth device to the profile.
@@ -199,6 +192,7 @@ constructor(
                 MAP_CLIENT ->
                     localDeviceUuids.arrayContains(BluetoothUuid.MNS) &&
                         remoteDeviceUuids.arrayContains(BluetoothUuid.MAS)
+                MCP_CLIENT -> remoteDeviceUuids.arrayContains(BluetoothUuid.GENERIC_MEDIA_CONTROL)
                 PAN -> remoteDeviceUuids.arrayContains(BluetoothUuid.NAP)
                 PBAP_CLIENT ->
                     localDeviceUuids.arrayContains(BluetoothUuid.PBAP_PCE) &&

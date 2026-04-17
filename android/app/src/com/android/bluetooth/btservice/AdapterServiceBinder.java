@@ -32,8 +32,8 @@ import static com.android.bluetooth.ChangeIds.ENFORCE_CONNECT;
 import static com.android.bluetooth.Util.callerIsSystem;
 import static com.android.bluetooth.Util.callerIsSystemOrActiveOrManagedUser;
 import static com.android.bluetooth.Util.enforceConnectPermissionForDataDelivery;
+import static com.android.bluetooth.Util.getBytesFromAddress;
 import static com.android.bluetooth.Util.getUidPidString;
-import static com.android.bluetooth.Utils.getBytesFromAddress;
 
 import static java.util.Objects.requireNonNull;
 
@@ -193,16 +193,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    public String getName(AttributionSource source) {
-        var service = getServiceAndEnforceCallerUserAndConnect(source, "getName");
-        if (service == null) {
-            return null;
-        }
-
-        return service.getName();
-    }
-
-    @Override
     public int getNameLengthForAdvertise(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -212,26 +202,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         return service.getNameLengthForAdvertise();
-    }
-
-    @Override
-    public boolean setName(String name, AttributionSource source) {
-        if (Flags.setNameInSystemServer()) {
-            throw new IllegalStateException("setNameInSystemServer is active");
-        }
-        var service = getServiceAndEnforceCallerUserAndConnect(source, "setName");
-        if (service == null) {
-            return false;
-        }
-
-        requireNonNull(name);
-        name = name.trim();
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("Empty names are not valid");
-        }
-
-        Log.d(TAG, "AdapterServiceBinder.setName(" + name + ")");
-        return service.getAdapterProperties().setName(name);
     }
 
     @Override
@@ -339,10 +309,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        if (Flags.mainlineBetaStorage()) {
-            return service.getMostRecentlyConnectedDevices();
-        }
-        return service.getDatabaseManager().getMostRecentlyConnectedDevices(); // Migrating
+        return service.getMostRecentlyConnectedDevices();
     }
 
     @Override
@@ -511,10 +478,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
 
         Log.i(TAG, "removeBond: device=" + device + ", from " + getUidPidString());
         service.logUserBondResponse(device, false, source);
-        if (Flags.mainlineBetaStorage()) {
-            return service.syncPost(() -> service.removeBond(device), false);
-        }
-        return service.removeBond(device);
+        return service.syncPost(() -> service.removeBond(device), false);
     }
 
     @Override
@@ -1560,6 +1524,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
             return BluetoothStatusCodes.ERROR_BLUETOOTH_NOT_ALLOWED;
         }
 
+        Util.enforceCallingUidIsNotPcc("AdapterServiceBinder.startRfcommListener");
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.startRfcommListener(name, uuid, pendingIntent, source);
     }
@@ -1870,16 +1835,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    public IBinder getProfile(int profileId) {
-        AdapterService service = getService();
-        if (service == null) {
-            return null;
-        }
-
-        return service.getProfile(profileId);
-    }
-
-    @Override
     public void getProfileOneway(int profileId, IBluetoothProfileCallback callback) {
         AdapterService service = getService();
         if (service == null) {
@@ -1907,14 +1862,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        if (Flags.mainlineBetaStorage()) {
-            if (!Util.arrayContains(service.getBondedDevices(), device)) {
-                return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
-            }
-            service.setActiveAudioPolicy(device, policy);
-            return BluetoothStatusCodes.SUCCESS;
+        if (!Util.arrayContains(service.getBondedDevices(), device)) {
+            return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
         }
-        return service.getDatabaseManager().setActiveAudioDevicePolicy(device, policy); // Migrating
+        service.setActiveAudioPolicy(device, policy);
+        return BluetoothStatusCodes.SUCCESS;
     }
 
     @Override
@@ -1934,10 +1886,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-        if (Flags.mainlineBetaStorage()) {
-            return service.getActiveAudioPolicy(device);
-        }
-        return service.getDatabaseManager().getActiveAudioDevicePolicy(device); // Migrating
+        return service.getActiveAudioPolicy(device);
     }
 
     @Override
@@ -1958,15 +1907,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
 
-        if (Flags.mainlineBetaStorage()) {
-            if (!Util.arrayContains(service.getBondedDevices(), device)) {
-                return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
-            }
-            service.setMicrophonePreferredForCalls(device, enabled);
-            return BluetoothStatusCodes.SUCCESS;
+        if (!Util.arrayContains(service.getBondedDevices(), device)) {
+            return BluetoothStatusCodes.ERROR_DEVICE_NOT_BONDED;
         }
-        return service.getDatabaseManager() // Migrating
-                .setMicrophonePreferredForCalls(device, enabled);
+        service.setMicrophonePreferredForCalls(device, enabled);
+        return BluetoothStatusCodes.SUCCESS;
     }
 
     @Override
@@ -1986,10 +1931,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-        if (Flags.mainlineBetaStorage()) {
-            return service.isMicrophonePreferredForCalls(device);
-        }
-        return service.getDatabaseManager().isMicrophonePreferredForCalls(device); // Migrating
+        return service.isMicrophonePreferredForCalls(device);
     }
 
     @Override

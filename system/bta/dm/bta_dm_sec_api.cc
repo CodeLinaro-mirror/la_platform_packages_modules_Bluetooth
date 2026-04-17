@@ -87,7 +87,7 @@ void BTA_DmPinReply(const RawAddress& bd_addr, bool accept, uint8_t pin_len, uin
  * Returns          void
  *
  ******************************************************************************/
-void BTA_DmLocalOob(void) { get_btm_client_interface().security.BTM_ReadLocalOobData(); }
+void BTA_DmLocalOob(void) { get_security_client_interface().BTM_ReadLocalOobData(); }
 
 /*******************************************************************************
  *
@@ -114,7 +114,7 @@ void BTA_DmConfirm(const RawAddress& bd_addr, bool accept) { bta_dm_confirm(bd_a
 void BTA_DmAddDevice(const RawAddress& bd_addr, const DEV_CLASS& dev_class,
                      const PairingType& pairing_type, const LinkKey& link_key, uint8_t key_type,
                      uint8_t pin_length) {
-  get_btm_client_interface().security.BTM_SecAddDevice(bd_addr, dev_class, pairing_type, link_key,
+  get_security_client_interface().BTM_SecAddDevice(bd_addr, dev_class, pairing_type, link_key,
                                                        key_type, pin_length);
 }
 
@@ -161,21 +161,22 @@ void BTA_DmAddBleKey(const RawAddress& bd_addr, const PairingType& pairing_type,
  ******************************************************************************/
 void BTA_DmAddBleDevice(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                         tBT_DEVICE_TYPE dev_type) {
-  if (!com_android_bluetooth_flags_modify_dev_rec_in_main_thread() || is_main_thread()) {
+  if (is_main_thread()) {
     bta_dm_add_ble_device(bd_addr, addr_type, dev_type);
-  } else {
-    std::promise<void> promise;
-    std::future future = promise.get_future();
-    do_in_main_thread(base::BindOnce(
-            [](const RawAddress bd_addr, tBLE_ADDR_TYPE addr_type, tBT_DEVICE_TYPE dev_type,
-               std::promise<void> promise) {
-              bta_dm_add_ble_device(bd_addr, addr_type, dev_type);
-              promise.set_value();
-            },
-            bd_addr, addr_type, dev_type, std::move(promise)));
-    if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
-      log::warn("Timed out waiting to add {}", bd_addr);
-    }
+    return;
+  }
+
+  std::promise<void> promise;
+  std::future future = promise.get_future();
+  do_in_main_thread(base::BindOnce(
+          [](const RawAddress bd_addr, tBLE_ADDR_TYPE addr_type, tBT_DEVICE_TYPE dev_type,
+             std::promise<void> promise) {
+            bta_dm_add_ble_device(bd_addr, addr_type, dev_type);
+            promise.set_value();
+          },
+          bd_addr, addr_type, dev_type, std::move(promise)));
+  if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
+    log::warn("Timed out waiting to add {}", bd_addr);
   }
 }
 
@@ -236,7 +237,7 @@ void BTA_DmBleSecurityGrant(const RawAddress& bd_addr, tBTA_DM_BLE_SEC_GRANT res
     }
   }(res);
 
-  get_btm_client_interface().security.BTM_SecurityGrant(bd_addr, btm_status);
+  get_security_client_interface().BTM_SecurityGrant(bd_addr, btm_status);
 }
 
 /*******************************************************************************

@@ -33,18 +33,15 @@
 #include "base/functional/bind.h"
 #include "btif/include/btif_storage.h"
 #include "hci/controller.h"
+#include "hci/hci_packets.h"
 #include "main/shim/entry.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/btm/internal/btm_api.h"
-#include "stack/gatt/gatt_int.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/ble_hci_link_interface.h"
-#include "stack/include/bt_types.h"
 #include "stack/include/btm_ble_api.h"
 #include "stack/include/btm_client_interface.h"
-#include "stack/include/btu_hcif.h"
-#include "stack/include/gatt_api.h"
 #include "stack/include/hcimsgs.h"
 #include "stack/l2cap/l2c_int.h"
 
@@ -104,13 +101,13 @@ void BTM_BleTestEnd(tBTM_CMPL_CB* p_cmd_cmpl_cback) {
 /*******************************************************************************
  * Internal Functions
  ******************************************************************************/
-void btm_ble_test_command_complete(uint8_t* p) {
+void btm_ble_test_command_complete(bluetooth::hci::CommandCompleteView view) {
   tBTM_CMPL_CB* p_cb = btm_cb.devcb.p_le_test_cmd_cmpl_cb;
 
   btm_cb.devcb.p_le_test_cmd_cmpl_cb = NULL;
 
   if (p_cb) {
-    (*p_cb)(p);
+    (*p_cb)(view);
   }
 }
 
@@ -159,24 +156,12 @@ bool BTM_UseLeLink(const RawAddress& bd_addr) {
     return false;
   }
 
-  // Seen on both transports, use the most recently seen transport
+  if (p_inq_info->results.ble_evt_type != BTM_BLE_ADV_IND_EVT) {  // Not connectable over LE
+    return false;
+  }
+
+  // Use the most recently seen transport
   return p_inq_info->results.last_inq_result_transport == BT_TRANSPORT_LE;
-}
-
-static void read_phy_cb(base::OnceCallback<void(uint8_t tx_phy, uint8_t rx_phy, uint8_t status)> cb,
-                        uint8_t* data, uint16_t len) {
-  uint8_t status, tx_phy, rx_phy;
-  uint16_t handle;
-
-  log::assert_that(len == 5, "Received bad response length:{}", len);
-  uint8_t* pp = data;
-  STREAM_TO_UINT8(status, pp);
-  STREAM_TO_UINT16(handle, pp);
-  handle = handle & 0x0FFF;
-  STREAM_TO_UINT8(tx_phy, pp);
-  STREAM_TO_UINT8(rx_phy, pp);
-
-  std::move(cb).Run(tx_phy, rx_phy, status);
 }
 
 /*******************************************************************************
@@ -456,86 +441,4 @@ tBTM_STATUS BTM_SetBleDataLength(const RawAddress& bd_addr, uint16_t tx_pdu_leng
   }
 
   return tBTM_STATUS::BTM_SUCCESS;
-}
-
-/*******************************************************************************
- *
- * Function         BTM_BleReadPhy
- *
- * Description      To read the current PHYs for specified LE connection
- *
- *
- * Returns          void
- *
- ******************************************************************************/
-void BTM_BleReadPhy(const RawAddress& bd_addr,
-                    base::OnceCallback<void(uint8_t tx_phy, uint8_t rx_phy, uint8_t status)> cb) {
-  if (!get_btm_client_interface().peer.BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE)) {
-    log::error("Wrong mode: no LE link exist or LE not supported");
-    std::move(cb).Run(0, 0, HCI_ERR_NO_CONNECTION);
-    return;
-  }
-
-  // The connection PHY is always LE_1M when the controller supports
-  // neither LE_2M nor LE_CODED PHYs.
-  if (!bluetooth::shim::GetController()->SupportsBle2mPhy() &&
-      !bluetooth::shim::GetController()->SupportsBleCodedPhy()) {
-    std::move(cb).Run(1, 1, HCI_SUCCESS);
-    return;
-  }
-
-  uint16_t handle = get_btm_client_interface().peer.BTM_GetHCIConnHandle(bd_addr, BT_TRANSPORT_LE);
-
-  constexpr uint8_t kLen = HCIC_PARAM_SIZE_BLE_READ_PHY;
-  uint8_t data[kLen];
-  uint8_t* pp = data;
-  UINT16_TO_STREAM(pp, handle);
-  btu_hcif_send_cmd_with_cb(HCI_BLE_READ_PHY, data, kLen,
-                            base::BindOnce(&read_phy_cb, std::move(cb)));
-}
-
-void BTM_BleSetPhy(const RawAddress& bd_addr, uint8_t tx_phys, uint8_t rx_phys,
-                   uint16_t phy_options) {
-  if (!get_btm_client_interface().peer.BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE)) {
-    log::info(
-            "Unable to set phy preferences because no le acl is connected to "
-            "device");
-    return;
-  }
-
-  uint8_t all_phys = 0;
-  if (tx_phys == 0) {
-    all_phys &= 0x01;
-  }
-  if (rx_phys == 0) {
-    all_phys &= 0x02;
-  }
-
-  uint16_t handle = get_btm_client_interface().peer.BTM_GetHCIConnHandle(bd_addr, BT_TRANSPORT_LE);
-
-  // checking if local controller supports it!
-  if (!bluetooth::shim::GetController()->SupportsBle2mPhy() &&
-      !bluetooth::shim::GetController()->SupportsBleCodedPhy()) {
-    log::info("Local controller unable to support setting of le phy parameters");
-    gatt_notify_phy_updated(static_cast<tHCI_STATUS>(GATT_REQ_NOT_SUPPORTED), handle, tx_phys,
-                            rx_phys);
-    return;
-  }
-
-  if (!acl_peer_supports_ble_2m_phy(handle) && !acl_peer_supports_ble_coded_phy(handle)) {
-    log::info("Remote device unable to support setting of le phy parameter");
-    gatt_notify_phy_updated(static_cast<tHCI_STATUS>(GATT_REQ_NOT_SUPPORTED), handle, tx_phys,
-                            rx_phys);
-    return;
-  }
-
-  constexpr uint8_t kLen = HCIC_PARAM_SIZE_BLE_SET_PHY;
-  uint8_t data[kLen];
-  uint8_t* pp = data;
-  UINT16_TO_STREAM(pp, handle);
-  UINT8_TO_STREAM(pp, all_phys);
-  UINT8_TO_STREAM(pp, tx_phys);
-  UINT8_TO_STREAM(pp, rx_phys);
-  UINT16_TO_STREAM(pp, phy_options);
-  btu_hcif_send_cmd_with_cb(HCI_BLE_SET_PHY, data, kLen, base::BindOnce([](uint8_t*, uint16_t) {}));
 }

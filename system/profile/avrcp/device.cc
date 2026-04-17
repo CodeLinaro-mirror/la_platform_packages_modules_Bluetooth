@@ -39,6 +39,7 @@
 #include "packet/avrcp/set_absolute_volume.h"
 #include "packet/avrcp/set_addressed_player.h"
 #include "packet/avrcp/set_player_application_setting_value.h"
+#include "stack/include/avrc_defs.h"
 #include "stack/include/main_thread.h"
 
 template <>
@@ -207,9 +208,9 @@ void Device::VendorPacketHandler(uint8_t label, std::shared_ptr<VendorPacket> pk
         send_message(label, false, std::move(response));
         return;
       }
-      media_interface_->GetSongInfo(base::Bind(&Device::GetElementAttributesResponse,
-                                               weak_ptr_factory_.GetWeakPtr(), label,
-                                               get_element_attributes_request_pkt));
+      media_interface_->GetSongInfo(
+              "", base::Bind(&Device::GetElementAttributesResponse, weak_ptr_factory_.GetWeakPtr(),
+                             label, get_element_attributes_request_pkt));
     } break;
 
     case CommandPdu::GET_PLAY_STATUS: {
@@ -807,7 +808,7 @@ void Device::PlaybackPosNotificationResponse(uint8_t label, bool interim, PlaySt
     log::verbose("Queue next play position update");
     play_pos_update_cb_.Reset(
             base::Bind(&Device::HandlePlayPosUpdate, weak_ptr_factory_.GetWeakPtr()));
-    if (com::android::bluetooth::flags::replace_message_loop_thread_with_gd_handler()) {
+    if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
       /**
        * The `replace_message_loop_thread_with_gd_handler` flag converts libchrome `base::Thread`
        * usage to `GdThread`. This makes `btbase::AbstractMessageLoop::current_task_runner()` return
@@ -974,8 +975,7 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
               pass_through_packet->GetOperationId());
       send_message(label, false, std::move(response));
 
-      // TODO (apanicke): Use an enum for media key ID's
-      if (pass_through_packet->GetOperationId() == 0x44 &&
+      if (pass_through_packet->GetOperationId() == AVRC_ID_PLAY &&
           pass_through_packet->GetKeyState() == KeyState::PUSHED) {
         // We need to get the play status since we need to know
         // what the actual playstate is without being modified
@@ -996,7 +996,7 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                     }
                   }
 
-                  d->media_interface_->SendKeyEvent(d->address_, 0x44, KeyState::PUSHED);
+                  d->media_interface_->SendKeyEvent(d->address_, AVRC_ID_PLAY, KeyState::PUSHED);
                 },
                 weak_ptr_factory_.GetWeakPtr()));
         return;
@@ -1241,11 +1241,18 @@ void Device::HandleGetTotalNumberOfItems(uint8_t label,
                                        base::Bind(&Device::GetTotalNumberOfItemsVFSResponse,
                                                   weak_ptr_factory_.GetWeakPtr(), label));
       break;
-    case Scope::NOW_PLAYING:
-      media_interface_->GetNowPlayingList(
-              base::Bind(&Device::GetTotalNumberOfItemsNowPlayingResponse,
-                         weak_ptr_factory_.GetWeakPtr(), label));
+    case Scope::NOW_PLAYING: {
+      if (curr_addressed_player_id_ == -1) {
+        auto response = GetTotalNumberOfItemsResponseBuilder::MakeBuilder(
+                Status::NO_AVAILABLE_PLAYERS, 0x0000, 0);
+        send_message(label, true, std::move(response));
+        break;
+      }
+      auto builder = GetTotalNumberOfItemsResponseBuilder::MakeBuilder(Status::NO_ERROR, 0x0000,
+                                                                       now_playing_ids_.size());
+      send_message(label, true, std::move(builder));
       break;
+    }
     default:
       log::error("{}: scope={}", address_, pkt->GetScope());
       break;
@@ -1265,22 +1272,6 @@ void Device::GetTotalNumberOfItemsVFSResponse(uint8_t label, std::vector<ListIte
   log::verbose("num_items={}", list.size());
 
   if (curr_browsed_player_id_ == -1) {
-    auto response = GetTotalNumberOfItemsResponseBuilder::MakeBuilder(Status::NO_AVAILABLE_PLAYERS,
-                                                                      0x0000, 0);
-    send_message(label, true, std::move(response));
-    return;
-  }
-
-  auto builder =
-          GetTotalNumberOfItemsResponseBuilder::MakeBuilder(Status::NO_ERROR, 0x0000, list.size());
-  send_message(label, true, std::move(builder));
-}
-
-void Device::GetTotalNumberOfItemsNowPlayingResponse(uint8_t label, std::string /*curr_song_id*/,
-                                                     std::vector<SongInfo> list) {
-  log::verbose("num_items={}", list.size());
-
-  if (curr_addressed_player_id_ == -1) {
     auto response = GetTotalNumberOfItemsResponseBuilder::MakeBuilder(Status::NO_AVAILABLE_PLAYERS,
                                                                       0x0000, 0);
     send_message(label, true, std::move(response));
@@ -1375,8 +1366,10 @@ void Device::HandleGetItemAttributes(uint8_t label, std::shared_ptr<GetItemAttri
 
   switch (pkt->GetScope()) {
     case Scope::NOW_PLAYING: {
-      media_interface_->GetNowPlayingList(base::Bind(&Device::GetItemAttributesNowPlayingResponse,
-                                                     weak_ptr_factory_.GetWeakPtr(), label, pkt));
+      auto media_id = now_playing_ids_.get_media_id(pkt->GetUid());
+      media_interface_->GetSongInfo(media_id,
+                                    base::Bind(&Device::GetItemAttributesNowPlayingResponse,
+                                               weak_ptr_factory_.GetWeakPtr(), label, pkt));
     } break;
     case Scope::VFS:
       // TODO (apanicke): Check the vfs_ids_ here. If the item doesn't exist
@@ -1395,29 +1388,9 @@ void Device::HandleGetItemAttributes(uint8_t label, std::shared_ptr<GetItemAttri
 
 void Device::GetItemAttributesNowPlayingResponse(uint8_t label,
                                                  std::shared_ptr<GetItemAttributesRequest> pkt,
-                                                 std::string curr_media_id,
-                                                 std::vector<SongInfo> song_list) {
+                                                 SongInfo info) {
   log::verbose("uid=0x{:x}", pkt->GetUid());
   auto builder = GetItemAttributesResponseBuilder::MakeBuilder(Status::NO_ERROR, browse_mtu_);
-
-  auto media_id = now_playing_ids_.get_media_id(pkt->GetUid());
-  if (media_id == "") {
-    media_id = curr_media_id;
-  }
-
-  log::verbose("media_id=\"{}\"", media_id);
-
-  SongInfo info;
-  if (song_list.size() == 1) {
-    log::verbose("Send out the only song in the queue as now playing song.");
-    info = song_list.front();
-  } else {
-    for (const auto& temp : song_list) {
-      if (temp.media_id == media_id) {
-        info = temp;
-      }
-    }
-  }
 
   // Filter out DEFAULT_COVER_ART handle if this device has no client
   if (!HasBipClient()) {
@@ -2009,7 +1982,7 @@ std::ostream& operator<<(std::ostream& out, const Device& d) {
   if (d.uids_changed_.first) {
     out << "        UIDs Changed\n";
   }
-  out << "    Last Play State: " << d.last_play_status_.state << std::endl;
+  out << "    Last Play State: " << static_cast<int>(d.last_play_status_.state) << std::endl;
   out << "    Last Song Sent ID: \"" << d.last_song_info_.media_id << "\"\n";
   out << "    Current Folder: \"" << d.CurrentFolder() << "\"\n";
   out << "    MTU Sizes: CTRL=" << d.ctrl_mtu_ << " BROWSE=" << d.browse_mtu_ << std::endl;

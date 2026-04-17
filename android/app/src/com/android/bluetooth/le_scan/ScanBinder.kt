@@ -22,6 +22,7 @@ import android.Manifest.permission.UPDATE_DEVICE_STATS
 import android.annotation.RequiresPermission
 import android.app.PendingIntent
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothStatusCodes.FEATURE_SUPPORTED
 import android.bluetooth.IBluetoothScan
 import android.bluetooth.State
 import android.bluetooth.le.IPeriodicAdvertisingCallback
@@ -31,11 +32,17 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.AttributionSource
+import android.os.Build
 import android.os.WorkSource
 import android.util.Log
 import com.android.bluetooth.Util
+import com.android.bluetooth.Util.appNameOrUnknown
+import com.android.bluetooth.Util.checkCallerHasCoarseOrFineLocation
+import com.android.bluetooth.Util.checkCallerHasFineLocation
+import com.android.bluetooth.Util.checkCallerTargetSdk
 import com.android.bluetooth.Util.enforceScanPermissionForDataDelivery
 import com.android.bluetooth.btservice.AdapterService
+import com.android.bluetooth.flags.Flags
 import com.android.bluetooth.le_scan.ScanUtil.toStringShort
 
 private const val TAG = ScanUtil.TAG_PREFIX + "ScanBinder"
@@ -43,6 +50,7 @@ private const val TAG = ScanUtil.TAG_PREFIX + "ScanBinder"
 class ScanBinder(
     private val adapterService: AdapterService,
     private val scanController: ScanController,
+    private val testModeEnabled: Boolean,
 ) : IBluetoothScan.Stub() {
 
     @Volatile private var isAvailable = true
@@ -56,31 +64,16 @@ class ScanBinder(
         source: AttributionSource,
         method: String,
         block: ScanController.() -> Unit,
-    ) = getController(source, method)?.let { it.runOrDoOnScanThread(it, block) }
+    ) =
+        getController(source, method)?.let { controller ->
+            controller.doOnScanThread { controller.block() }
+        }
 
     @RequiresPermission(BLUETOOTH_SCAN)
     private fun getController(source: AttributionSource, method: String): ScanController? {
         if (!isAvailable) return null
         if (!enforceScanPermissionForDataDelivery(adapterService, source, TAG, method)) return null
         return scanController
-    }
-
-    // TODO(b/455057044) Delete on flag cleanup
-    override fun registerScanner(
-        callback: IScannerCallback,
-        settings: ScanSettings,
-        filters: List<ScanFilter>,
-        workSource: WorkSource?,
-        source: AttributionSource,
-    ) {
-        enforcePrivilegedPermissionIfNeeded(settings, filters)
-        if (workSource != null) {
-            adapterService.enforceCallingOrSelfPermission(UPDATE_DEVICE_STATS, null)
-        }
-        val hasPrivilegedPermission = Util.checkCallerHasPrivilegedPermission(adapterService)
-        withControllerRunOnScanThread(source, "registerScanner") {
-            registerScanner(callback, workSource, source, hasPrivilegedPermission)
-        }
     }
 
     override fun registerAndStartScan(
@@ -90,11 +83,20 @@ class ScanBinder(
         workSource: WorkSource?,
         source: AttributionSource,
     ) {
+        enforceTransportBlockFilterSupported(filters)
         enforcePrivilegedPermissionIfNeeded(settings, filters)
         if (workSource != null) {
             adapterService.enforceCallingOrSelfPermission(UPDATE_DEVICE_STATS, null)
         }
         val hasPrivilegedPermission = Util.checkCallerHasPrivilegedPermission(adapterService)
+
+        if (Flags.earlyRejectUnauthorizedScans() && !hasDisavowedLocationOrHasPermission(source)) {
+            val app = adapterService.appNameOrUnknown(source.uid)
+            Log.w(TAG, "$app requested to scan but does not have location permission")
+            callback.onScannerRegistered(SCAN_FAILED_APPLICATION_REGISTRATION_FAILED, -1)
+            return
+        }
+
         withControllerRunOnScanThread(source, "registerAndStartScan") {
             registerAndStartScan(
                 callback,
@@ -107,21 +109,20 @@ class ScanBinder(
         } ?: run { callback.onScannerRegistered(SCAN_FAILED_APPLICATION_REGISTRATION_FAILED, -1) }
     }
 
-    override fun unregisterScanner(scannerId: Int, source: AttributionSource) {
-        withControllerRunOnScanThread(source, "unregisterScanner") { unregisterScanner(scannerId) }
+    private fun hasDisavowedLocationOrHasPermission(source: AttributionSource): Boolean {
+        if (Util.hasDisavowedLocationForScan(adapterService, source, testModeEnabled)) {
+            return true
+        }
+        val isQApp = adapterService.checkCallerTargetSdk(source, Build.VERSION_CODES.Q)
+        return if (isQApp) {
+            adapterService.checkCallerHasFineLocation(source, getCallingUserHandle())
+        } else {
+            adapterService.checkCallerHasCoarseOrFineLocation(source, getCallingUserHandle())
+        }
     }
 
-    // TODO(b/455057044) Delete on flag cleanup
-    override fun startScan(
-        scannerId: Int,
-        settings: ScanSettings,
-        filters: List<ScanFilter>,
-        source: AttributionSource,
-    ) {
-        enforcePrivilegedPermissionIfNeeded(settings, filters)
-        withControllerRunOnScanThread(source, "startScan") {
-            startScan(scannerId, settings, filters, source)
-        }
+    override fun unregisterScanner(scannerId: Int, source: AttributionSource) {
+        withControllerRunOnScanThread(source, "unregisterScanner") { unregisterScanner(scannerId) }
     }
 
     override fun registerPiAndStartScan(
@@ -130,6 +131,7 @@ class ScanBinder(
         filters: List<ScanFilter>,
         source: AttributionSource,
     ) {
+        enforceTransportBlockFilterSupported(filters)
         enforcePrivilegedPermissionIfNeeded(settings, filters)
         withControllerRunOnScanThread(source, "registerPiAndStartScan") {
             registerPiAndStartScan(intent, settings, filters, source)
@@ -191,7 +193,16 @@ class ScanBinder(
 
     override fun numHwTrackFiltersAvailable(source: AttributionSource): Int {
         val scan = getController(source, "numHwTrackFiltersAvailable") ?: return 0
-        return scan.runOrFetchOnScanThread(scan, 0) { scan.numHwTrackFiltersAvailable() }
+        return scan.fetchOnScanThread({ scan.numHwTrackFiltersAvailable() }, 0)
+    }
+
+    private fun enforceTransportBlockFilterSupported(filters: List<ScanFilter>) {
+        val hasTdsFilter = filters.any { it.transportBlockFilter != null }
+        if (hasTdsFilter) {
+            if (adapterService.offloadedTransportDiscoveryDataScanSupported != FEATURE_SUPPORTED) {
+                throw IllegalArgumentException("Transport Discovery Data filter is not supported")
+            }
+        }
     }
 
     @RequiresPermission(value = BLUETOOTH_PRIVILEGED, conditional = true)
@@ -250,27 +261,5 @@ class ScanBinder(
         }
 
         enforcePrivilegedPermissionIfNeeded(filters)
-    }
-
-    // TODO(b/444010402) Delete on Flags.leaudioBroadcastImproveSourceOperations() cleanup
-    private fun <T> ScanController.runOrDoOnScanThread(target: T, block: T.() -> Unit) {
-        if (isOnScanThread) {
-            target.block()
-        } else {
-            doOnScanThread { target.block() }
-        }
-    }
-
-    // TODO(b/444010402) Delete on Flags.leaudioBroadcastImproveSourceOperations() cleanup
-    private fun <T, R> ScanController.runOrFetchOnScanThread(
-        target: T,
-        defaultValue: R,
-        block: T.() -> R,
-    ): R {
-        return if (isOnScanThread) {
-            target.block()
-        } else {
-            fetchOnScanThread<R>({ target.block() }, defaultValue)
-        }
     }
 }

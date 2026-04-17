@@ -33,7 +33,6 @@
 
 #include "avrc_int.h"
 #include "avrcp.sysprop.h"
-#include "btif/include/btif_av.h"
 #include "btif/include/btif_config.h"
 #include "internal_include/bt_target.h"
 #include "osi/include/alarm.h"
@@ -101,7 +100,33 @@ static void avrc_start_cmd_timer(uint8_t handle, uint8_t label, uint8_t msg_mask
  *
  *****************************************************************************/
 bool avrcp_absolute_volume_is_enabled() {
-  return android::sysprop::bluetooth::Avrcp::absolute_volume().value_or(true);
+  return android::sysprop::bluetooth::Avrcp::absolute_volume();
+}
+
+/******************************************************************************
+ *
+ * Function         avrcp_controller_cover_art_enabled
+ *
+ * Description      Check if Cover Art is enabled in config
+ *
+ * Returns          return true if Cover Art is enabled
+ *
+ *****************************************************************************/
+bool avrcp_controller_cover_art_enabled() {
+  return android::sysprop::bluetooth::Avrcp::isAvrcpControllerCoverArtEnabled();
+}
+
+/******************************************************************************
+ *
+ * Function         avrcp_controller_browsing_enabled
+ *
+ * Description      Check if Browsing is enabled in config
+ *
+ * Returns          return true if Browsing is enabled
+ *
+ *****************************************************************************/
+bool avrcp_controller_browsing_enabled() {
+  return android::sysprop::bluetooth::Avrcp::isAvrcpControllerBrowsingEnabled();
 }
 
 /******************************************************************************

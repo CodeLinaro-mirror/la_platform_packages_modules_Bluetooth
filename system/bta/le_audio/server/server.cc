@@ -41,6 +41,7 @@
 #include "main/shim/entry.h"
 #include "main/shim/le_advertising_manager.h"
 #include "stack/include/acl_api.h"
+#include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/main_thread.h"
 
@@ -49,10 +50,8 @@ using bluetooth::bta::le_audio::PeripheralAudioHalDecoder;
 using bluetooth::bta::le_audio::PeripheralAudioHalEncoder;
 using bluetooth::common::MessageLoopThread;
 using bluetooth::hci::IsoManager;
-using bluetooth::hci::iso_manager::CigCallbacks;
 using bluetooth::le_audio::DsaMode;
 using bluetooth::le_audio::DsaModes;
-using bluetooth::le_audio::GattConnectionState;
 
 namespace bluetooth::le_audio {
 namespace {
@@ -243,7 +242,8 @@ public:
 
     /* To be a Unicast Sink device, this device shall be a Peripheral device. */
     tHCI_ROLE role;
-    auto role_status = BTM_GetRole(address, BT_TRANSPORT_LE, &role);
+    auto role_status =
+            get_btm_client_interface().link_policy.BTM_GetRole(address, BT_TRANSPORT_LE, &role);
     if (role_status != tBTM_STATUS::BTM_SUCCESS || role != HCI_ROLE_PERIPHERAL) {
       log::warn("Unicast server is not available for this connection. {}, status: {}, AclRole: {}",
                 address, btm_status_text(role_status), hci_role_text(role));
@@ -311,7 +311,7 @@ public:
                       weak_this->OnDecodingAudioSessionSuspend();
                     },
             .OnPlaybackMetadataUpdate =
-                    [weak_this](const sink_metadata_v7_t& metadata) {
+                    [weak_this](const source_metadata_v7_t& metadata) {
                       if (!weak_this.get()) {
                         return;
                       }
@@ -384,7 +384,7 @@ public:
                       weak_this->OnEncodingAudioSessionSuspend();
                     },
             .OnRecordingMetadataUpdate =
-                    [weak_this](const source_metadata_v7_t& metadata) {
+                    [weak_this](const sink_metadata_v7_t& metadata) {
                       if (!weak_this.get()) {
                         return;
                       }
@@ -599,7 +599,7 @@ public:
     }
   }
 
-  void OnDecodingAudioSessionMetadataUpdate(const sink_metadata_v7_t& metadata) {
+  void OnDecodingAudioSessionMetadataUpdate(const source_metadata_v7_t& metadata) {
     log::debug("metadata tracks count: {}", metadata.track_count);
 
     if (!is_decoding_session_started_) {
@@ -638,7 +638,7 @@ public:
     }
   }
 
-  void OnEncodingAudioSessionMetadataUpdate(const source_metadata_v7_t& /*source_metadata*/,
+  void OnEncodingAudioSessionMetadataUpdate(const sink_metadata_v7_t& /*source_metadata*/,
                                             DsaMode /*dsa_mode*/) {
     log::debug("");
     if (!is_encoding_session_started_) {

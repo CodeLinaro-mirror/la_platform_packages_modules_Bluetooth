@@ -349,7 +349,7 @@ class A2dpStreamCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
 
     // Check if the stream has already been started.
     if (btif_av_stream_started_ready(A2dpType::kSource)) {
-      log::verbose("stream is already started");
+      log::debug("stream is already started");
       return Status::SUCCESS;
     }
 
@@ -361,7 +361,7 @@ class A2dpStreamCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
 
     // TODO: Remove the entire invoke_switch_codec_cb code path (Native -> JNI -> Java)
     //  when removing the flag a2dp_handle_sa_reconfig_in_native
-    if (com::android::bluetooth::flags::a2dp_handle_sa_reconfig_in_native()) {
+    if (com_android_bluetooth_flags_a2dp_handle_sa_reconfig_in_native()) {
       btif_av_source_set_low_latency_codec(low_latency);
     } else {
       // Check if codec needs to be switched prior to stream start.
@@ -378,7 +378,7 @@ class A2dpStreamCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
     // Check if the stream is already suspended.
     if (!btif_av_stream_started_ready(A2dpType::kSource)) {
       btif_av_clear_remote_suspend_flag(A2dpType::kSource);
-      log::verbose("stream is already suspended");
+      log::debug("stream is already suspended");
       return Status::SUCCESS;
     }
 
@@ -392,7 +392,7 @@ class A2dpStreamCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
     // Check if the stream is already suspended.
     if (!btif_av_stream_started_ready(A2dpType::kSource)) {
       btif_av_clear_remote_suspend_flag(A2dpType::kSource);
-      log::verbose("stream is already stopped");
+      log::debug("stream is already stopped");
       return Status::SUCCESS;
     }
 
@@ -533,7 +533,7 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
   encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
                                   btif_a2dp_source_enqueue_callback);
 
-  if (com::android::bluetooth::flags::ldac_rate_control()) {
+  if (com_android_bluetooth_flags_ldac_rate_control()) {
     stack::l2cap::get_interface().L2CA_SetRateControlEnabled(
             peer_address, get_rate_control_enabled(a2dp_codec_config));
   }
@@ -552,7 +552,7 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
     };
     a2dp_codec_config->copyOutOtaCodecConfig(config.codec_specific_information_elements);
 
-    log::verbose("{}", config.ToString());
+    log::debug("{}", config.ToString());
 
     bluetooth::audio::a2dp::setup_codec(config);
   }
@@ -568,9 +568,7 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
     bluetooth::audio::a2dp::set_remote_delay(btif_av_get_audio_delay(A2dpType::kSource));
   }
 
-  if (com_android_bluetooth_flags_a2dp_control_codec_state_reports()) {
-    bta_av_co_report_codec_config_changed(peer_address);
-  }
+  bta_av_co_report_codec_config_changed(peer_address);
   peer_ready_promise.set_value();
 }
 
@@ -967,7 +965,7 @@ static bool btif_a2dp_source_enqueue_callback(BT_HDR* p_buf, size_t frames_n,
 
   // Check if the transmission queue has been flushed.
   if (btif_a2dp_source_cb.tx_flush) {
-    log::verbose("tx suspended, discarded frame");
+    log::debug("tx suspended, discarded frame");
 
     btif_a2dp_source_cb.stats.tx_queue_total_flushed_messages +=
             fixed_queue_length(btif_a2dp_source_cb.tx_audio_queue);

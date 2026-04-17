@@ -23,7 +23,6 @@
 #include "btif/include/stack_manager_t.h"
 #include "device/include/interop.h"
 #include "device/include/interop_config.h"
-#include "mock_btif_config.h"
 #include "osi/include/allocator.h"
 #include "profile/avrcp/avrcp_config.h"
 #include "stack/include/avrc_api.h"
@@ -31,12 +30,12 @@
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
 #include "stack/include/sdp_api.h"
+#include "stack/mock/mock_stack_l2cap_interface.h"
 #include "stack/sdp/sdpint.h"
 #include "test/fake/fake_osi.h"
 #include "test/mock/mock_btif_config.h"
 #include "test/mock/mock_osi_allocator.h"
 #include "test/mock/mock_osi_properties.h"
-#include "test/mock/mock_stack_l2cap_interface.h"
 
 #ifndef BT_DEFAULT_BUFFER_SIZE
 #define BT_DEFAULT_BUFFER_SIZE (4096 + 16)
@@ -63,6 +62,13 @@ using ::testing::SetArrayArgument;
 
 namespace {
 // convenience mock
+class MockBtifConfigInterface {
+public:
+  MOCK_METHOD4(GetBin, bool(const std::string& section, const std::string& key, uint8_t* value,
+                            size_t* length));
+  MOCK_METHOD2(GetBinLength, size_t(const std::string& section, const std::string& key));
+};
+
 class IopMock {
 public:
   MOCK_METHOD(bool, InteropMatchAddr, (const interop_feature_t, RawAddress));
@@ -271,7 +277,7 @@ protected:
     localAvrcpVersionMock.reset();
     StackSdpInitTest::TearDown();
   }
-  bluetooth::manager::MockBtifConfigInterface btif_config_interface_;
+  MockBtifConfigInterface btif_config_interface_;
 };
 
 TEST_F(StackSdpUtilsTest, sdpu_set_avrc_target_version_device_in_iop_table_version_1_4) {

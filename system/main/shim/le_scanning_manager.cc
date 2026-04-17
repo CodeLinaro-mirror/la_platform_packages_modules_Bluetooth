@@ -34,6 +34,7 @@
 #include "hci/msft.h"
 #include "include/hardware/ble_scanner.h"
 #include "main/shim/ble_scanner_interface_impl.h"
+#include "main/shim/config.h"
 #include "main/shim/entry.h"
 #include "main/shim/helpers.h"
 #include "main/shim/shim.h"
@@ -44,7 +45,6 @@
 #include "stack/include/ble_hci_link_interface.h"
 #include "stack/include/bt_dev_class.h"
 #include "stack/include/btm_ble_addr.h"
-#include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_log_history.h"
 #include "stack/include/btm_sec_api.h"
 #include "stack/include/btm_status.h"
@@ -134,7 +134,7 @@ void BleScannerInterfaceImpl::Init() {
 }
 
 /** Registers a scanner with the stack */
-void BleScannerInterfaceImpl::RegisterScanner(const bluetooth::Uuid& app_uuid, RegisterCallback) {
+void BleScannerInterfaceImpl::RegisterScanner(const bluetooth::Uuid& app_uuid) {
   log::info("in shim layer, UUID={}", app_uuid);
   bluetooth::shim::GetScanning()->RegisterScanner(app_uuid);
 }
@@ -485,7 +485,7 @@ void BleScannerInterfaceImpl::on_scan_result(uint16_t event_type, uint8_t addres
   btm_cb.neighbor.le_scan.results++;
 
   // Do not update device properties of already bonded devices.
-  if (!get_btm_client_interface().security.BTM_IsBonded(raw_address, BT_TRANSPORT_AUTO)) {
+  if (!get_security_client_interface().BTM_IsBonded(raw_address, BT_TRANSPORT_AUTO)) {
     // Prevent updating properties without scan response
     if (!(event_type & kScannableMask) || (event_type & kScanResponseMask) ||
         msft_adv_monitor_enabled_) {
@@ -774,7 +774,12 @@ void BleScannerInterfaceImpl::handle_remote_properties(RawAddress bd_addr, tBLE_
 
   DEV_CLASS dev_class = btm_ble_get_appearance_as_cod(advertising_data);
   if (dev_class != kDevClassUnclassified) {
-    btif_update_remote_properties(bd_addr, bdname.name, dev_class, device_type);
+    int cod = 0;
+    // Use appearance to update COD if it is unknown
+    if (!BtifConfigInterface::GetInt(bd_addr.ToString(), BTIF_STORAGE_KEY_DEV_CLASS, &cod) ||
+        cod == COD_UNCLASSIFIED || cod == 0) {
+      btif_update_remote_properties(bd_addr, bdname.name, dev_class, device_type);
+    }
   }
 
   auto* storage_module = bluetooth::shim::GetStorage();

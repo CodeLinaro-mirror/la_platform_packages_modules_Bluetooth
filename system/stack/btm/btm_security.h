@@ -57,7 +57,7 @@ public:
   /*****************************************************
   **      Security Management
   *****************************************************/
-  tBTM_APPL_INFO api_;
+  const BtmAppReg* app_;
 
   BtmDevice* p_collided_dev_{nullptr};
   alarm_t* sec_collision_timer_{nullptr};
@@ -81,12 +81,12 @@ public:
   AclLinkSpec link_spec_;                                 /* The device currently pairing.
                                                              Address type is ignored currently */
   alarm_t* pairing_timer_{nullptr};                       /* Timer for pairing process    */
-  alarm_t* execution_wait_timer_{nullptr};                /* To avoid concurrent auth request */
+  alarm_t* lk_req_timer_{nullptr}; /* To wait for CTKD to complete when Link Key is requested */
+
   // TODO(b/444620685): Remove when use_array_instead_list_in_sec_dev_rec is shipped.
   list_t* sec_dev_rec_{nullptr}; /* list of BtmDevice */
   std::array<BtmDevice, BTM_SEC_MAX_DEVICE_RECORDS + 1> device_records_ = {};
   tBTM_SEC_SERV_REC* p_out_serv_{nullptr};
-  tBTM_MKEY_CALLBACK* mkey_cback_{nullptr};
 
   RawAddress connecting_bda_;
 
@@ -123,14 +123,13 @@ public:
 
   void change_pairing_state(tBTM_PAIRING_STATE new_state);
   BtmDevice* for_each_dev_rec(sec_dev_rec_iter_cb cb, void* context);
+  bool ResetLinkKeyRequestTimer();
 };
 
-#define BTM_BLE_SEC_CALLBACK(event_, bda_, data_)                                                \
-  do {                                                                                           \
-    if (BtmSecurity::Get().api_.p_le_callback != nullptr) {                                      \
-      tBTM_STATUS status_ = (*BtmSecurity::Get().api_.p_le_callback)((event_), (bda_), (data_)); \
-      if (status_ != tBTM_STATUS::BTM_SUCCESS) {                                                 \
-        log::warn("Security callback failed {} for {}", btm_status_text(status_), (bda_));       \
-      }                                                                                          \
-    }                                                                                            \
+#define BTM_BLE_SEC_CALLBACK(event_, bda_, data_)                                            \
+  do {                                                                                       \
+    tBTM_STATUS status_ = (BtmSecurity::Get().app_->le_callback)((event_), (bda_), (data_)); \
+    if (status_ != tBTM_STATUS::BTM_SUCCESS) {                                               \
+      log::warn("Security callback failed {} for {}", btm_status_text(status_), (bda_));     \
+    }                                                                                        \
   } while (0)
