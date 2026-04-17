@@ -474,6 +474,14 @@ public:
     log::debug("{}", "[PSync]: invoking callback");
     callbacks_->OnBigInfoReport(sync_handle,
                                 event_view.GetEncryption() == Enable::ENABLED ? true : false);
+    // Also fire the extended callback so broadcast sink can capture
+    // iso_interval and phy for DBIG setup parameter selection.
+    callbacks_->OnBigInfoReportFull(
+            sync_handle,
+            static_cast<uint16_t>(event_view.GetIsoInterval()),
+            static_cast<uint8_t>(event_view.GetPhy()),
+            static_cast<uint8_t>(event_view.GetNumBis()),
+            event_view.GetEncryption() == Enable::ENABLED ? true : false);
   }
 
 private:

@@ -75,17 +75,17 @@ class BroadcastSinkInterfaceImpl
                            broadcast_name, is_public, public_metadata,
                            public_features));
   }
-
-  void JoinSource(BroadcastId broadcast_id,
-                  const std::optional<BroadcastCode>& broadcast_code,
-                  const std::vector<uint8_t>& bis_indices) override {
-    do_in_main_thread(Bind(&LeAudioBroadcastSink::JoinSource,
+  void StartEnhancedBroadcastSink(
+      BroadcastId broadcast_id,
+      const std::optional<BroadcastCode>& broadcast_code) override {
+    log::info("StartEnhancedBroadcastSink: broadcast_id=0x{:08x}", broadcast_id);
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::StartEnhancedBroadcastSink,
                            Unretained(LeAudioBroadcastSink::Get()),
-                           broadcast_id, broadcast_code, bis_indices));
+                           broadcast_id, broadcast_code));
   }
 
-  void LeaveSource(BroadcastId broadcast_id) override {
-    do_in_main_thread(Bind(&LeAudioBroadcastSink::LeaveSource,
+  void StopEnhancedBroadcastSink(BroadcastId broadcast_id) override {
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::StopEnhancedBroadcastSink,
                            Unretained(LeAudioBroadcastSink::Get()),
                            broadcast_id));
   }
@@ -101,13 +101,6 @@ class BroadcastSinkInterfaceImpl
                            Unretained(LeAudioBroadcastSink::Get()),
                            broadcast_id));
   }
-
-  void GetSourceMetadata(BroadcastId broadcast_id) override {
-    do_in_main_thread(Bind(&LeAudioBroadcastSink::GetSourceMetadata,
-                           Unretained(LeAudioBroadcastSink::Get()),
-                           broadcast_id));
-  }
-
   void SourcePublicMetadataChanged(BroadcastId broadcast_id,
                            const std::string& broadcast_name,
                            const std::vector<uint8_t>& public_metadata) override {
@@ -168,6 +161,44 @@ class BroadcastSinkInterfaceImpl
     log::info("OnBroadcastSinkStateChanged: broadcast_id=0x{:08x}, state={}", broadcast_id, state);
     do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnBroadcastSinkStateChanged,
                           Unretained(callbacks_), broadcast_id, state));
+  }
+
+  void OnBigSyncCreated(BroadcastId broadcast_id,
+                        uint8_t big_handle,
+                        const std::vector<uint16_t>& bis_handles) override {
+    log::info("OnBigSyncCreated: broadcast_id=0x{:08x}, big_handle={}, num_bis={}",
+              broadcast_id, big_handle, bis_handles.size());
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnBigSyncCreated,
+                          Unretained(callbacks_), broadcast_id, big_handle,
+                          bis_handles));
+  }
+
+  void OnBigSyncLost(BroadcastId broadcast_id,
+                     uint8_t big_handle,
+                     uint8_t reason) override {
+    log::info("OnBigSyncLost: broadcast_id=0x{:08x}, big_handle={}, reason=0x{:02x}",
+              broadcast_id, big_handle, reason);
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnBigSyncLost,
+                          Unretained(callbacks_), broadcast_id, big_handle,
+                          reason));
+  }
+
+  void OnBigSyncTerminated(BroadcastId broadcast_id,
+                           uint8_t big_handle,
+                           uint8_t status) override {
+    log::info("OnBigSyncTerminated: broadcast_id=0x{:08x}, big_handle={}, status=0x{:02x}",
+              broadcast_id, big_handle, status);
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnBigSyncTerminated,
+                          Unretained(callbacks_), broadcast_id, big_handle,
+                          status));
+  }
+
+  void OnEnhancedSourceDetected(BroadcastId broadcast_id,
+                                 uint8_t num_bis) override {
+    log::info("OnEnhancedSourceDetected: broadcast_id=0x{:08x}, num_bis={}",
+              broadcast_id, num_bis);
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnEnhancedSourceDetected,
+                          Unretained(callbacks_), broadcast_id, num_bis));
   }
 
  private:

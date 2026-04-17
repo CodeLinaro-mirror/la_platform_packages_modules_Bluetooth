@@ -136,6 +136,8 @@ public:
   void OnPeriodicSyncTransferred(int pa_source, uint8_t status,
                                  bluetooth::hci::Address address) override;
   void OnBigInfoReport(uint16_t sync_handle, bool encrypted) override;
+  void OnBigInfoReportFull(uint16_t sync_handle, uint16_t iso_interval,
+                           uint8_t phy, uint8_t num_bis, bool encrypted) override;
 
   ::ScanningCallbacks* scanning_callbacks_ = default_scanning_callback;
   std::map<uint8_t, ScanningCallbacks*> native_scanning_callbacks_map_;

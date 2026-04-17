@@ -57,7 +57,7 @@ SPDX-License-Identifier: BSD-3-Clause-Clear -->
                 style="@android:style/Widget.Button.Small" />
 
             <Button
-                android:id="@+id/join_source_button"
+                android:id="@+id/start_enhanced_sink_button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -75,16 +75,16 @@ SPDX-License-Identifier: BSD-3-Clause-Clear -->
             android:layout_marginTop="8dp">
 
             <Button
-                android:id="@+id/update_source_button"
+                android:id="@+id/bis_acquire_button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Update"
+                android:text="BIS acquire"
                 android:layout_marginEnd="4dp"
                 style="@android:style/Widget.Button.Small" />
 
             <Button
-                android:id="@+id/leave_source_button"
+                android:id="@+id/stop_enhanced_sink_button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"

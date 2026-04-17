@@ -54,12 +54,15 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         public final int broadcastId;
         public final ScanResult scanResult;
         public BluetoothLeBroadcastMetadata metadata; // null until PA synced
+        /** True when the source has >= 3 BISes in at least one subgroup (enhanced broadcast). */
+        public boolean isEnhanced;
         private String scanRecordBroadcastName; // Broadcast name from scan record (AD type 0x30)
 
         public FoundBroadcastItem(int broadcastId, ScanResult scanResult) {
             this.broadcastId = broadcastId;
             this.scanResult = scanResult;
             this.metadata = null;
+            this.isEnhanced = false;
             // Parse broadcast name from scan record
             this.scanRecordBroadcastName = BroadcastUtils.getBroadcastName(scanResult);
         }
@@ -141,27 +144,31 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         }
 
         @Override
-        public void onSourceAdded(@NonNull BluetoothLeBroadcastMetadata metadata) {
+        public void onSourceAdded(@NonNull BluetoothLeBroadcastMetadata metadata, boolean isEnhanced) {
             int broadcastId = metadata.getBroadcastId();
+            Log.d(TAG, "onSourceAdded: broadcastId=" + broadcastId + ", isEnhanced=" + isEnhanced);
 
-            // Update found broadcast with metadata
+            // Update found broadcast with metadata and enhanced flag
             String displayName = null;
             synchronized (mFoundBroadcastsMap) {
                 FoundBroadcastItem item = mFoundBroadcastsMap.get(broadcastId);
                 if (item != null) {
                     item.metadata = metadata;
-                    displayName = item.getBroadcastName(); // Use the method that falls back to scan record name
+                    item.isEnhanced = isEnhanced;
+                    displayName = item.getBroadcastName();
                     mFoundBroadcasts.postValue(new ArrayList<>(mFoundBroadcastsMap.values()));
                 }
             }
 
-            // Use the display name from FoundBroadcastItem which includes scan record fallback
             if (displayName == null) {
                 displayName = metadata.getBroadcastName() != null ? metadata.getBroadcastName() : "Broadcast " + broadcastId;
             }
 
-            Log.d(TAG, "onSourceAdded: " + displayName);
-            mStatusMessage.postValue("PA synced to: " + displayName);
+            String status = "PA synced to: " + displayName;
+            if (isEnhanced) {
+                status += " [Enhanced Broadcast]";
+            }
+            mStatusMessage.postValue(status);
         }
 
         @Override
@@ -190,15 +197,15 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         }
 
         @Override
-        public void onSourceJoined(int broadcastId) {
-            Log.d(TAG, "onSourceJoined: broadcastId=" + broadcastId);
+        public void onSinkStarted(int broadcastId) {
+            Log.d(TAG, "onSinkStarted: broadcastId=" + broadcastId);
             mStatusMessage.postValue("Joined broadcast ID: " + broadcastId);
             updateSyncedBroadcasts();
         }
 
         @Override
-        public void onSourceJoinFailed(@NonNull BluetoothLeBroadcastMetadata metadata, int reason) {
-            Log.d(TAG, "onSourceJoinFailed: broadcastId=" +
+        public void onSinkStartFailed(@NonNull BluetoothLeBroadcastMetadata metadata, int reason) {
+            Log.d(TAG, "onSinkStartFailed: broadcastId=" +
                     (metadata != null ? metadata.getBroadcastId() : "unknown") +
                     ", reason=" + reason + " (" + getReasonString(reason) + ")");
 
@@ -238,15 +245,15 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         }
 
         @Override
-        public void onSourceLeft(int broadcastId, int reason) {
-            Log.d(TAG, "onSourceLeft: broadcastId=" + broadcastId + ", reason=" + reason);
+        public void onSinkStopped(int broadcastId, int reason) {
+            Log.d(TAG, "onSinkStopped: broadcastId=" + broadcastId + ", reason=" + reason);
             mStatusMessage.postValue("Left broadcast ID: " + broadcastId + " (reason: " + reason + ")");
             updateSyncedBroadcasts();
         }
 
         @Override
-        public void onSourceLeaveFailed(int broadcastId, int reason) {
-            Log.d(TAG, "onSourceLeaveFailed: broadcastId=" + broadcastId + ", reason=" + reason + " (" + getReasonString(reason) + ")");
+        public void onSinkStopFailed(int broadcastId, int reason) {
+            Log.d(TAG, "onSinkStopFailed: broadcastId=" + broadcastId + ", reason=" + reason + " (" + getReasonString(reason) + ")");
 
             String message;
             switch (reason) {
@@ -291,58 +298,6 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                     break;
                 default:
                     message = "Remove failed for broadcast ID " + broadcastId + " (" + getReasonString(reason) + ")";
-                    break;
-            }
-            mStatusMessage.postValue(message);
-        }
-
-        @Override
-        public void onSourceMetadataChanged(int broadcastId, @NonNull BluetoothLeBroadcastMetadata metadata) {
-            Log.d(TAG, "onSourceMetadataChanged: broadcastId=" + broadcastId);
-            synchronized (mSyncedBroadcastMap) {
-                mSyncedBroadcastMap.put(broadcastId, metadata);
-            }
-            synchronized (mFoundBroadcastsMap) {
-                FoundBroadcastItem item = mFoundBroadcastsMap.get(broadcastId);
-                if (item != null) {
-                    item.metadata = metadata;
-                    mFoundBroadcasts.postValue(new ArrayList<>(mFoundBroadcastsMap.values()));
-                }
-            }
-            mStatusMessage.postValue("Metadata changed for broadcast ID: " + broadcastId);
-            updateSyncedBroadcasts();
-        }
-
-        @Override
-        public void onSourceMetadataUpdated(int broadcastId, @NonNull BluetoothLeBroadcastMetadata metadata) {
-            Log.d(TAG, "onSourceMetadataUpdated: broadcastId=" + broadcastId);
-            synchronized (mSyncedBroadcastMap) {
-                mSyncedBroadcastMap.put(broadcastId, metadata);
-            }
-            mStatusMessage.postValue("Metadata updated for broadcast ID: " + broadcastId);
-            updateSyncedBroadcasts();
-        }
-
-        @Override
-        public void onSourceMetadataUpdateFailed(int broadcastId, @NonNull BluetoothLeBroadcastMetadata metadata, int reason) {
-            Log.d(TAG, "onSourceMetadataUpdateFailed: broadcastId=" + broadcastId + ", reason=" + reason + " (" + getReasonString(reason) + ")");
-
-            String message;
-            switch (reason) {
-                case BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS:
-                    message = "Metadata update failed for broadcast ID " + broadcastId + ": Invalid parameters";
-                    break;
-                case BluetoothLeBroadcastSinkState.REASON_ENCRYPTION_FAILED_BAD_CODE:
-                    message = "Metadata update failed for broadcast ID " + broadcastId + ": Incorrect broadcast code";
-                    break;
-                case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_FAILED:
-                    message = "Metadata update failed for broadcast ID " + broadcastId + ": Unable to sync";
-                    break;
-                case BluetoothLeBroadcastSinkState.REASON_HARDWARE_GENERIC:
-                    message = "Metadata update failed for broadcast ID " + broadcastId + ": Hardware error";
-                    break;
-                default:
-                    message = "Metadata update failed for broadcast ID " + broadcastId + " (" + getReasonString(reason) + ")";
                     break;
             }
             mStatusMessage.postValue(message);
@@ -487,11 +442,11 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         }
     }
 
-    public void joinSource(BluetoothLeBroadcastMetadata metadata, byte[] broadcastCode) {
-        joinSourceWithChannelSelection(metadata, broadcastCode, null);
+    public void startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata metadata, byte[] broadcastCode) {
+        startEnhancedBroadcastSinkWithChannelSelection(metadata, broadcastCode, null);
     }
 
-    public void joinSourceWithChannelSelection(BluetoothLeBroadcastMetadata metadata, byte[] broadcastCode, List<Integer> selectedChannelIndices) {
+    public void startEnhancedBroadcastSinkWithChannelSelection(BluetoothLeBroadcastMetadata metadata, byte[] broadcastCode, List<Integer> selectedChannelIndices) {
         if (mBroadcastSink == null) {
             mStatusMessage.postValue("Broadcast Sink service not available");
             return;
@@ -547,7 +502,7 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             mStatusMessage.postValue(statusMessage);
 
             // Now the framework service layer can extract BIS indices from channels where isSelected() returns true
-            mBroadcastSink.joinSource(metadataToUse);
+            mBroadcastSink.startEnhancedBroadcastSink(metadataToUse);
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to join source", e);
@@ -555,14 +510,14 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         }
     }
 
-    public void leaveSource(int broadcastId) {
+    public void stopEnhancedBroadcastSink(int broadcastId) {
         if (mBroadcastSink == null) {
             mStatusMessage.postValue("Broadcast Sink service not available");
             return;
         }
 
         try {
-            mBroadcastSink.leaveSource(broadcastId);
+            mBroadcastSink.stopEnhancedBroadcastSink(broadcastId);
             mStatusMessage.postValue("Leaving broadcast ID: " + broadcastId);
         } catch (Exception e) {
             Log.e(TAG, "Failed to leave source", e);
@@ -584,57 +539,6 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             mStatusMessage.postValue("Failed to remove: " + e.getMessage());
         }
     }
-
-    public void updateSourceMetadata(BluetoothLeBroadcastMetadata metadata, List<Integer> selectedChannelIndices) {
-        if (mBroadcastSink == null) {
-            mStatusMessage.postValue("Broadcast Sink service not available");
-            return;
-        }
-
-        try {
-            BluetoothLeBroadcastMetadata metadataToUse = metadata;
-
-            // Update channel selection state based on selectedChannelIndices
-            if (selectedChannelIndices != null && !selectedChannelIndices.isEmpty()) {
-                BluetoothLeBroadcastMetadata.Builder metadataBuilder = new BluetoothLeBroadcastMetadata.Builder(metadata);
-                metadataBuilder.clearSubgroup(); // Clear existing subgroups
-
-                // Rebuild subgroups with updated channel selection
-                for (BluetoothLeBroadcastSubgroup originalSubgroup : metadata.getSubgroups()) {
-                    BluetoothLeBroadcastSubgroup.Builder subgroupBuilder = new BluetoothLeBroadcastSubgroup.Builder(originalSubgroup);
-                    subgroupBuilder.clearChannel(); // Clear existing channels
-
-                    // Rebuild channels with updated selection state
-                    for (BluetoothLeBroadcastChannel originalChannel : originalSubgroup.getChannels()) {
-                        boolean isSelected = selectedChannelIndices.contains(originalChannel.getChannelIndex());
-                        BluetoothLeBroadcastChannel updatedChannel = new BluetoothLeBroadcastChannel.Builder(originalChannel)
-                                .setSelected(isSelected)
-                                .build();
-                        subgroupBuilder.addChannel(updatedChannel);
-                    }
-
-                    metadataBuilder.addSubgroup(subgroupBuilder.build());
-                }
-
-                metadataToUse = metadataBuilder.build();
-                Log.d(TAG, "Updated metadata with channel selection: " + selectedChannelIndices);
-            }
-
-            mBroadcastSink.updateSourceMetadata(metadataToUse);
-
-            String statusMessage = "Updating metadata for broadcast: " + metadata.getBroadcastName();
-            if (selectedChannelIndices != null && !selectedChannelIndices.isEmpty()) {
-                statusMessage += " (" + selectedChannelIndices.size() + " channels selected)";
-                Log.d(TAG, "Selected channel indices for update: " + selectedChannelIndices);
-            }
-            mStatusMessage.postValue(statusMessage);
-
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to update source metadata", e);
-            mStatusMessage.postValue("Failed to update metadata: " + e.getMessage());
-        }
-    }
-
     private void updateSyncedBroadcasts() {
         if (mBroadcastSink == null) {
             return;
@@ -652,7 +556,8 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                 mSyncedBroadcastMap.clear();
                 for (BluetoothLeBroadcastSinkState state : sinkStates) {
                     int broadcastId = state.getBroadcastId();
-                    BluetoothLeBroadcastMetadata metadata = mBroadcastSink.getSourceMetadata(broadcastId);
+                    // Metadata is stored locally from onSourceAdded callback (no API call needed)
+                    BluetoothLeBroadcastMetadata metadata = mSyncedBroadcastMap.get(broadcastId);
                     if (metadata != null) {
                         mSyncedBroadcastMap.put(broadcastId, metadata);
                         syncedMetadataList.add(metadata);

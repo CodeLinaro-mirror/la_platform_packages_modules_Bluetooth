@@ -99,18 +99,18 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onJoinSource(BroadcastSinkViewModel.FoundBroadcastItem item) {
-                BroadcastSinkActivity.this.onJoinSource(item);
+            public void onStartEnhancedBroadcastSink(BroadcastSinkViewModel.FoundBroadcastItem item) {
+                BroadcastSinkActivity.this.onStartEnhancedBroadcastSink(item);
             }
 
             @Override
-            public void onUpdateSource(BroadcastSinkViewModel.FoundBroadcastItem item) {
-                BroadcastSinkActivity.this.onUpdateSource(item);
+            public void onBisAcquire(BroadcastSinkViewModel.FoundBroadcastItem item) {
+                BroadcastSinkActivity.this.onBisAcquire(item);
             }
 
             @Override
-            public void onLeaveSource(int broadcastId) {
-                BroadcastSinkActivity.this.onLeaveSource(broadcastId);
+            public void onStopEnhancedBroadcastSink(int broadcastId) {
+                BroadcastSinkActivity.this.onStopEnhancedBroadcastSink(broadcastId);
             }
 
             @Override
@@ -168,31 +168,46 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         Toast.makeText(this, "Adding source (PA sync) for broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
     }
 
-    private void onJoinSource(BroadcastSinkViewModel.FoundBroadcastItem item) {
-        Log.d(TAG, "Join source (BIG sync): " + item.getBroadcastName() + ", encrypted: " + item.isEncrypted());
+    private void onStartEnhancedBroadcastSink(BroadcastSinkViewModel.FoundBroadcastItem item) {
+        Log.d(TAG, "Join source (BIG sync): " + item.getBroadcastName()
+                + ", encrypted: " + item.isEncrypted()
+                + ", isEnhanced: " + item.isEnhanced);
 
-        if (item.metadata != null) {
-            // Show channel selection dialog first
-            showChannelSelectionDialog(item.metadata);
-        } else {
+        if (item.metadata == null) {
             Toast.makeText(this, "Metadata not available yet", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (item.isEnhanced) {
+            // Enhanced broadcast source (>= 3 BISes): no channel selection needed.
+            // startEnhancedBroadcastSink() syncs to all BISes autonomously.
+            if (item.isEncrypted()) {
+                showEnhancedBroadcastCodeDialog(item.metadata);
+            } else {
+                mViewModel.startEnhancedBroadcastSink(item.metadata, null);
+                Toast.makeText(this, "Joining enhanced broadcast: " + item.getBroadcastName(),
+                        Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            // Standard broadcast source: show channel selection dialog
+            showChannelSelectionDialog(item.metadata);
         }
     }
 
-    private void onUpdateSource(BroadcastSinkViewModel.FoundBroadcastItem item) {
-        Log.d(TAG, "Update source metadata: " + item.getBroadcastName());
+    private void onBisAcquire(BroadcastSinkViewModel.FoundBroadcastItem item) {
+        Log.d(TAG, "BIS acquire: " + item.getBroadcastName());
 
         if (item.metadata != null) {
             // Show channel selection dialog for updating metadata
-            showChannelSelectionDialogForUpdate(item.metadata);
+            showChannelSelectionDialogForBisAcquire(item.metadata);
         } else {
             Toast.makeText(this, "Metadata not available yet", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void onLeaveSource(int broadcastId) {
+    private void onStopEnhancedBroadcastSink(int broadcastId) {
         Log.d(TAG, "Leave source (stop BIG sync): broadcastId=" + broadcastId);
-        mViewModel.leaveSource(broadcastId);
+        mViewModel.stopEnhancedBroadcastSink(broadcastId);
         Toast.makeText(this, "Leaving broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
     }
 
@@ -202,7 +217,7 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         Toast.makeText(this, "Removing broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
     }
 
-    private void showChannelSelectionDialogForUpdate(BluetoothLeBroadcastMetadata metadata) {
+    private void showChannelSelectionDialogForBisAcquire(BluetoothLeBroadcastMetadata metadata) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         View dialogView = LayoutInflater.from(this).inflate(R.layout.channel_selection_dialog, null);
         builder.setView(dialogView);
@@ -286,8 +301,7 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             Log.d(TAG, "Selected channels for update: " + selectedChannelIndices);
             dialog.dismiss();
 
-            // Update source metadata with new channel selection
-            mViewModel.updateSourceMetadata(metadata, selectedChannelIndices);
+            // Channel selection update not supported for enhanced broadcast sink (metadata is stable)
         });
 
         dialog.show();
@@ -379,8 +393,47 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 showBroadcastCodeDialog(metadata, selectedChannelIndices);
             } else {
                 // Join directly for unencrypted broadcasts
-                mViewModel.joinSourceWithChannelSelection(metadata, null, selectedChannelIndices);
+                mViewModel.startEnhancedBroadcastSinkWithChannelSelection(metadata, null, selectedChannelIndices);
             }
+        });
+
+        dialog.show();
+    }
+
+    /**
+     * Shows a broadcast code dialog for encrypted enhanced broadcast sources.
+     * No channel selection is needed — startEnhancedBroadcastSink syncs to all BISes.
+     */
+    private void showEnhancedBroadcastCodeDialog(BluetoothLeBroadcastMetadata metadata) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.broadcast_code_dialog, null);
+        builder.setView(dialogView);
+
+        AlertDialog dialog = builder.create();
+
+        EditText codeInput = dialogView.findViewById(R.id.broadcast_code_input);
+        Button okButton = dialogView.findViewById(R.id.ok_button);
+        Button cancelButton = dialogView.findViewById(R.id.cancel_button);
+
+        okButton.setOnClickListener(v -> {
+            String codeStr = codeInput.getText().toString();
+            if (TextUtils.isEmpty(codeStr)) {
+                Toast.makeText(this, "Please enter a broadcast code", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (codeStr.length() < 1 || codeStr.length() > 16) {
+                Toast.makeText(this, "Broadcast code must be 1-16 characters", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            byte[] broadcastCode = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            Log.d(TAG, "Joining encrypted enhanced broadcast with code length: " + broadcastCode.length);
+            mViewModel.startEnhancedBroadcastSink(metadata, broadcastCode);
+            dialog.dismiss();
+        });
+
+        cancelButton.setOnClickListener(v -> {
+            Log.d(TAG, "Enhanced broadcast code dialog cancelled");
+            dialog.dismiss();
         });
 
         dialog.show();
@@ -417,7 +470,7 @@ public class BroadcastSinkActivity extends AppCompatActivity {
 
             Log.d(TAG, "Joining encrypted broadcast with code: " + codeStr +
                     " (length: " + broadcastCode.length + " bytes) and selected channels: " + selectedChannelIndices);
-            mViewModel.joinSourceWithChannelSelection(metadata, broadcastCode, selectedChannelIndices);
+            mViewModel.startEnhancedBroadcastSinkWithChannelSelection(metadata, broadcastCode, selectedChannelIndices);
             dialog.dismiss();
         });
 

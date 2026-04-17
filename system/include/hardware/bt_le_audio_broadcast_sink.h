@@ -59,6 +59,59 @@ class BroadcastSinkCallbacks {
 
   // State change callback - replaces OnSourceAdded, OnSourceJoined, OnSourceLeft, OnSourceRemoved
   virtual void OnBroadcastSinkStateChanged(BroadcastId broadcast_id, uint8_t state) = 0;
+
+  /**
+   * Called when BIG sync is successfully established (BIG_SYNCED).
+   *
+   * For enhanced (enhanced broadcast) sources this fires only after all TX and
+   * RX ISO data paths have been configured — Java never sees intermediate
+   * enhanced broadcast or ISO data path events.
+   *
+   * @param broadcast_id  Broadcast ID
+   * @param big_handle    BIG handle assigned by the controller
+   * @param bis_handles   Connection handles for each BIS in the BIG
+   */
+  virtual void OnBigSyncCreated(BroadcastId broadcast_id,
+                                uint8_t big_handle,
+                                const std::vector<uint16_t>& bis_handles) = 0;
+
+  /**
+   * Called when BIG sync is lost (unexpected disconnection or controller
+   * termination).
+   *
+   * @param broadcast_id  Broadcast ID
+   * @param big_handle    BIG handle that was lost
+   * @param reason        HCI disconnect reason code
+   */
+  virtual void OnBigSyncLost(BroadcastId broadcast_id,
+                             uint8_t big_handle,
+                             uint8_t reason) = 0;
+
+  /**
+   * Called when BIG sync is intentionally terminated by the local device
+   * (user-initiated StopEnhancedBroadcastSink).  This fires after all TX and RX ISO data
+   * paths have been removed and the controller has confirmed BIG termination.
+   *
+   * @param broadcast_id  Broadcast ID
+   * @param big_handle    BIG handle that was terminated
+   * @param status        HCI status code (0x00 = success)
+   */
+  virtual void OnBigSyncTerminated(BroadcastId broadcast_id,
+                                   uint8_t big_handle,
+                                   uint8_t status) = 0;
+
+  /**
+   * Called when BASE data parsing reveals that the broadcast source is an
+   * enhanced (enhanced broadcast) source, i.e. at least one subgroup carries
+   * >= 3 BISes.  The upper layer should call StartEnhancedBroadcastSink() instead
+   * of JoinSource() for such sources so that bidirectional ISO data paths
+   * (RX + TX per BIS) are configured correctly.
+   *
+   * @param broadcast_id  Broadcast ID of the enhanced source
+   * @param num_bis       Total number of BISes detected in the subgroup
+   */
+  virtual void OnEnhancedSourceDetected(BroadcastId broadcast_id,
+                                        uint8_t num_bis) = 0;
 };
 
 // Interface from JNI to BTIF layer
@@ -81,10 +134,25 @@ class BroadcastSinkInterface {
                         uint8_t public_features) = 0;
 
   // BIG sync operations
-  virtual void JoinSource(BroadcastId broadcast_id,
-                         const std::optional<BroadcastCode>& broadcast_code,
-                         const std::vector<uint8_t>& bis_indices) = 0;
-  virtual void LeaveSource(BroadcastId broadcast_id) = 0;
+  /**
+   * Join an enhanced (enhanced broadcast) broadcast source (BIG sync).
+   *
+   * Identical to JoinSource() but explicitly intended for enhanced sources
+   * where at least one subgroup carries >= 3 BISes.  The state machine will
+   * configure bidirectional (RX + TX) ISO data paths for every BIS.
+   * Enhanced broadcast always syncs to all BISes in the BIG — no BIS
+   * selection is supported.
+   *
+   * Should be called after receiving OnEnhancedSourceDetected().
+   *
+   * @param broadcast_id    Unique identifier for the broadcast
+   * @param broadcast_code  Optional broadcast code for encrypted broadcasts
+   */
+  virtual void StartEnhancedBroadcastSink(
+      BroadcastId broadcast_id,
+      const std::optional<BroadcastCode>& broadcast_code) = 0;
+
+  virtual void StopEnhancedBroadcastSink(BroadcastId broadcast_id) = 0;
 
   // Source removal (terminates both PA and BIG sync)
   virtual void RemoveSource(BroadcastId broadcast_id) = 0;
@@ -93,8 +161,6 @@ class BroadcastSinkInterface {
   virtual void DestroySource(BroadcastId broadcast_id) = 0;
 
   // Query operations
-  virtual void GetSourceMetadata(BroadcastId broadcast_id) = 0;
-
   // Metadata update notification
   virtual void SourcePublicMetadataChanged(BroadcastId broadcast_id,
                                    const std::string& broadcast_name,

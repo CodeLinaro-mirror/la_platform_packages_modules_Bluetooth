@@ -658,15 +658,33 @@ public:
             "octets_per_frame={}",
             source_sampling_rate, source_frame_duration, source_octets_per_frame);
 
-    // Find matching configuration in supported_broadcast_config
+    // Enhanced broadcast sink has >= 3 BISes per subgroup.  The standard
+    // offload table only has 1- or 2-stream entries, so we cannot require
+    // stream_map.size() == bis_indices.size() for enhanced sources.
+    // For standard sink (1 or 2 BISes) we keep the strict size check so that
+    // the existing source path is not affected.
+    const bool is_enhanced_sink = (bis_indices.size() > 2);
+    log::info("GetBroadcastSinkOffloadConfig: bis_indices.size()={}, is_enhanced_sink={}",
+              bis_indices.size(), is_enhanced_sink);
+
     broadcast_sink_target_config = -1;
     for (size_t i = 0; i < supported_broadcast_config.size(); i++) {
-      if (supported_broadcast_config[i].sampling_rate == source_sampling_rate &&
-          supported_broadcast_config[i].frame_duration == source_frame_duration &&
-          supported_broadcast_config[i].octets_per_frame == source_octets_per_frame &&
-          supported_broadcast_config[i].stream_map.size() == bis_indices.size()) {
-        broadcast_sink_target_config = i;
-        log::info("Found matching sink offload configuration at index {}", i);
+      bool codec_params_match =
+              (supported_broadcast_config[i].sampling_rate == source_sampling_rate &&
+               supported_broadcast_config[i].frame_duration == source_frame_duration &&
+               supported_broadcast_config[i].octets_per_frame == source_octets_per_frame);
+
+      // For standard sink: also require stream_map size to match exactly.
+      // For enhanced sink: relax the size check — any matching codec entry is used.
+      bool size_match = is_enhanced_sink ||
+                        (supported_broadcast_config[i].stream_map.size() == bis_indices.size());
+
+      if (codec_params_match && size_match) {
+        broadcast_sink_target_config = static_cast<int>(i);
+        log::info("Found matching sink offload configuration at index {} "
+                  "(stream_map.size={}, bis_indices.size={}, is_enhanced={})",
+                  i, supported_broadcast_config[i].stream_map.size(),
+                  bis_indices.size(), is_enhanced_sink);
         break;
       }
     }
@@ -674,9 +692,23 @@ public:
     if (broadcast_sink_target_config == -1) {
       log::error(
               "No matching sink offload configuration for source BASE data "
-              "(sampling_rate={}, frame_duration={}, octets_per_frame={})",
-              source_sampling_rate, source_frame_duration, source_octets_per_frame);
+              "(sampling_rate={}, frame_duration={}, octets_per_frame={}, bis_count={})",
+              source_sampling_rate, source_frame_duration, source_octets_per_frame,
+              bis_indices.size());
       return nullptr;
+    }
+
+    // For enhanced broadcast sink only: resize stream_map to match the actual
+    // number of BISes.  Each slot will be filled with the ISO connection handle
+    // and MONO audio location by UpdateBroadcastConnHandle() after BIG sync.
+    // Standard sink (1 or 2 BISes) already has the correct stream_map size.
+    if (is_enhanced_sink) {
+      log::info("GetBroadcastSinkOffloadConfig: enhanced sink — resizing stream_map "
+                "from {} to {} BIS slots",
+                supported_broadcast_config[broadcast_sink_target_config].stream_map.size(),
+                bis_indices.size());
+      supported_broadcast_config[broadcast_sink_target_config].stream_map.resize(
+              bis_indices.size());
     }
 
     log::info(
@@ -695,17 +727,8 @@ public:
           const CodecManager::BroadcastSinkConfigurationRequirements& requirements) {
     log::info("GetBroadcastSinkConfig");
 
-    if (GetCodecLocation() != types::CodecLocation::ADSP) {
-      // TODO: Software mode (HOST) support
-      log::warn("Software mode not yet supported for broadcast sink");
-      return nullptr;
-    }
-
-    // Get matched offload configuration
-    auto offload_config = GetBroadcastSinkOffloadConfig(requirements.base_data,
-                                                        requirements.bis_indices);
-    if (offload_config == nullptr) {
-      log::error("Failed to get matching offload configuration");
+    if (requirements.base_data.subgroup_configs.empty()) {
+      log::error("GetBroadcastSinkConfig: no subgroup configs in BASE data");
       return nullptr;
     }
 
@@ -713,19 +736,51 @@ public:
     auto& subgroup = requirements.base_data.subgroup_configs[0];
     auto ltv_map = types::LeAudioLtvMap(subgroup.codec_config.codec_specific_params);
 
-    // Construct BroadcastSubgroupCodecConfig from BASE data
-    // Note: We use the same structure as broadcast source for consistency
+    types::DataPathConfiguration data_path;
+
+    // Enhanced broadcast sink (>= 3 BISes) always uses the platform offload
+    // (DSP) data path for both TX and RX ISO paths, regardless of codec location.
+    // Standard broadcast sink preserves the original behavior:
+    //   HOST mode  → kIsoDataPathHci (0x00)  — LC3 runs on host CPU
+    //   ADSP mode  → kIsoDataPathPlatformDefault (0x01) — offload DSP
+    // This ensures broadcast source and unicast audio are not affected.
+    const bool is_enhanced_sink = (requirements.bis_indices.size() >= 3);
+    const bool use_offload_path =
+            is_enhanced_sink || (GetCodecLocation() == types::CodecLocation::ADSP);
+
+    log::info("GetBroadcastSinkConfig: is_enhanced_sink={}, codec_location={}, "
+              "data_path={}",
+              is_enhanced_sink, static_cast<int>(GetCodecLocation()),
+              use_offload_path ? "offload(platform-default)" : "HCI");
+
+    // When using the offload (platform-default) path, isTransparent must be
+    // false so that the LC3 codec ID (0x06) is sent in LE_SETUP_ISO_DATA_PATH.
+    // When using the HCI path (HOST mode, standard sink), isTransparent = true
+    // sends codec_id = transparent (0x03) which is correct for host-side LC3.
+    // This mirrors the broadcaster pattern:
+    //   lc3_data_path        → HCI path,     isTransparent=true  → codec 0x03
+    //   lc3_data_path_duplex → offload path, isTransparent=false → codec 0x06
+    data_path.dataPathId = use_offload_path
+            ? bluetooth::hci::iso_manager::kIsoDataPathPlatformDefault
+            : bluetooth::hci::iso_manager::kIsoDataPathHci;
+    data_path.dataPathConfig = {};
+    data_path.isoDataPathConfig.codecId = {
+            .coding_format = types::kLeAudioCodingFormatLC3,
+            .vendor_company_id = types::kLeAudioVendorCompanyIdUndefined,
+            .vendor_codec_id = types::kLeAudioVendorCodecIdUndefined};
+    data_path.isoDataPathConfig.isTransparent = !use_offload_path;  // false→LC3, true→transparent
+    data_path.isoDataPathConfig.controllerDelayUs = 0x00000000;
+    data_path.isoDataPathConfig.configuration = {};
+
+    // Construct BroadcastSubgroupCodecConfig from BASE data.
+    // bits_per_sample is fixed at 16 — standard LC3 resolution in the audio framework.
     broadcaster::BroadcastSubgroupCodecConfig codec_config(
             broadcaster::kLeAudioCodecIdLc3,
             {broadcaster::BroadcastSubgroupBisCodecConfig(
                     static_cast<uint8_t>(requirements.bis_indices.size()),
-                    1,  // channel_count_per_bis (mono for now)
+                    1,  // channel_count_per_bis (MONO per BIS)
                     ltv_map)},
-            offload_config->bits_per_sample);
-
-    // Set data path configuration - always use ADSP hardware path for broadcast sink
-    auto data_path = broadcaster::lc3_data_path;
-    data_path.dataPathId = bluetooth::hci::iso_manager::kIsoDataPathPlatformDefault;
+            16 /* bits_per_sample */);
 
     // Construct BroadcastSinkConfiguration
     auto sink_config = std::make_unique<broadcast_sink::BroadcastSinkConfiguration>();
@@ -978,22 +1033,36 @@ public:
 
     auto broadcast_config = supported_broadcast_config[target_config];
 
-    log::info("UpdateBroadcastConnHandle: is_source={}, conn_handle.size()={}, target_config={}",
-              is_source, conn_handle.size(), target_config);
+    log::info("UpdateBroadcastConnHandle: is_source={}, conn_handle.size()={}, "
+              "stream_map.size()={}, target_config={}",
+              is_source, conn_handle.size(), broadcast_config.stream_map.size(), target_config);
 
     log::assert_that(conn_handle.size() == broadcast_config.stream_map.size(),
-                     "assert failed: conn_handle.size() == "
-                     "broadcast_config.stream_map.size()");
+                     "assert failed: conn_handle.size() ({}) == "
+                     "broadcast_config.stream_map.size() ({})",
+                     conn_handle.size(), broadcast_config.stream_map.size());
 
     if (broadcast_config.stream_map.size() == LeAudioCodecConfiguration::kChannelNumberStereo) {
+      // Standard stereo (2 BISes): L/R allocation — unchanged from original
       broadcast_config.stream_map[0] = std::pair<uint16_t, uint32_t>{
               conn_handle[0], codec_spec_conf::kLeAudioLocationFrontLeft};
       broadcast_config.stream_map[1] = std::pair<uint16_t, uint32_t>{
               conn_handle[1], codec_spec_conf::kLeAudioLocationFrontRight};
     } else if (broadcast_config.stream_map.size() ==
                LeAudioCodecConfiguration::kChannelNumberMono) {
+      // Standard mono (1 BIS): center allocation — unchanged from original
       broadcast_config.stream_map[0] = std::pair<uint16_t, uint32_t>{
               conn_handle[0], codec_spec_conf::kLeAudioLocationFrontCenter};
+    } else {
+      // Enhanced broadcast (>= 3 BISes): each BIS carries one MONO channel.
+      // This branch is only reached when enhanced broadcast source or sink is
+      // active (stream_map was resized to bis_count by GetBroadcastSinkOffloadConfig).
+      for (size_t i = 0; i < broadcast_config.stream_map.size(); i++) {
+        broadcast_config.stream_map[i] = std::pair<uint16_t, uint32_t>{
+                conn_handle[i], codec_spec_conf::kLeAudioLocationMonoAudio};
+      }
+      log::info("UpdateBroadcastConnHandle: enhanced broadcast — {} BISes, MONO per BIS",
+                broadcast_config.stream_map.size());
     }
 
     update_receiver(broadcast_config);

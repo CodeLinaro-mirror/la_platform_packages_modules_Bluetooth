@@ -427,7 +427,8 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
         }
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-        service.createEnhancedBroadcast(broadcastSettings, isoInterval);
+        // isoInterval is reserved for future native-layer use; delegate to standard createBroadcast
+        service.createBroadcast(broadcastSettings);
     }
 
     @Override

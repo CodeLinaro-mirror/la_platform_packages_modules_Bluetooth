@@ -31,10 +31,12 @@
 
 using bluetooth::hci::IsoManager;
 using bluetooth::hci::iso_manager::BigSyncCallbacks;
+using bluetooth::hci::iso_manager::DbigCallbacks;
 
 using namespace bluetooth;
 using namespace bluetooth::le_audio::broadcast_sink;
 using bluetooth::le_audio::PublicBroadcastAnnouncementData;
+using bluetooth::le_audio::DsaMode;
 
 namespace {
 
@@ -125,7 +127,8 @@ BroadcastMetadata ConvertToMetadata(const BroadcastSinkStateMachine* state_machi
  * Implementation of the Broadcast Sink Manager
  */
 class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
-                                  public BigSyncCallbacks {
+                                  public BigSyncCallbacks,
+                                  public DbigCallbacks {
  public:
   explicit LeAudioBroadcastSinkImpl(BroadcastSinkCallbacks* callbacks,
                                      uint8_t max_source_capacity)
@@ -138,18 +141,12 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
   static bool InitializeScanner() {
     log::info("Initializing BLE scanner for broadcast sink");
-
-    // Get BLE scanner interface
     ble_scanner_ = bluetooth::shim::get_ble_scanner_instance();
     if (!ble_scanner_) {
       log::error("Failed to get BLE scanner instance");
       return false;
     }
-
-    // Register callbacks for native client (kScannerClientIdLeAudio = 0x1)
-    ble_scanner_->RegisterCallbacksNative(&scanning_callbacks_,
-                                         kScannerClientIdLeAudio);
-
+    ble_scanner_->RegisterCallbacksNative(&scanning_callbacks_, kScannerClientIdLeAudio);
     log::info("BLE scanner instance obtained and callbacks registered successfully");
     return true;
   }
@@ -157,6 +154,10 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
   static void InitializeStateMachine(LeAudioBroadcastSinkImpl* instance) {
     log::info("Initializing BroadcastSinkStateMachine subsystem");
     BroadcastSinkStateMachine::Initialize(&state_machine_callbacks_, ble_scanner_);
+    // NOTE: DBIG callbacks are NOT registered here at BT turn-on.
+    // They are registered lazily in StartEnhancedBroadcastSink() to avoid overriding
+    // the DBIG callbacks registered by broadcast source.
+    log::info("BroadcastSinkStateMachine initialized (DBIG callbacks deferred to StartEnhancedBroadcastSink)");
   }
 
   ~LeAudioBroadcastSinkImpl() override {
@@ -165,42 +166,36 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
   void CleanUp() {
     log::info("Cleaning up broadcast sink");
-
     StopScanning();
-
     tracked_sources_.clear();
     callbacks_ = nullptr;
   }
 
-  static void CleanupScanner() {
-    ble_scanner_ = nullptr;
-  }
+  static void CleanupScanner() { ble_scanner_ = nullptr; }
 
   void Stop() {
     log::info("Stopping broadcast sink");
     StopScanning();
   }
 
+  // Internal helper used by StartEnhancedBroadcastSink().
+  // Not part of the public API — JoinSource was removed from the interface.
   void JoinSource(BroadcastId broadcast_id,
                   const std::optional<BroadcastCode>& broadcast_code,
-                  const std::vector<uint8_t>& bis_indices) override {
+                  const std::vector<uint8_t>& bis_indices) {
     log::info("JoinSource: broadcast_id=0x{:08x}, has_code={}, bis_indices_count={}",
               broadcast_id, broadcast_code.has_value(), bis_indices.size());
 
     if (tracked_sources_.count(broadcast_id) == 0) {
       log::error("No such broadcast_id=0x{:08x}", broadcast_id);
-      if (callbacks_) {
-        callbacks_->OnSourceJoinFailed(broadcast_id, 0);
-      }
+      if (callbacks_) callbacks_->OnSourceJoinFailed(broadcast_id, 0);
       return;
     }
 
     auto& tracked_source = tracked_sources_[broadcast_id];
     if (!tracked_source.state_machine) {
       log::error("State machine not found for broadcast_id=0x{:08x}", broadcast_id);
-      if (callbacks_) {
-        callbacks_->OnSourceJoinFailed(broadcast_id, 0);
-      }
+      if (callbacks_) callbacks_->OnSourceJoinFailed(broadcast_id, 0);
       return;
     }
 
@@ -281,8 +276,36 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     // Update state machine with the configuration
     state_machine->UpdateSinkConfiguration(*sink_config);
 
+    /* Acquire and start the appropriate HAL client(s):
+     *   Enhanced source: BOTH source (TX) and sink (RX) HAL clients are started
+     *     here so the QTI HIDL can start the session (it waits for both sides).
+     *     The 1st HIDL start (OnAudioResume on source HAL) triggers CreateBigSync().
+     *     The 2nd HIDL start (OnAudioResume on sink HAL) triggers RX ISO path setup.
+     *     OnTxIsoPathsReady() only acks the 1st HIDL start — it does NOT re-start
+     *     the sink HAL client since it is already running.
+     *   Standard source: sink HAL client (RX) only.
+     *
+     * OnBroadcastSinkAudioSessionCreated is called with the combined success
+     * status so Java can notify MM audio (active device change) only after
+     * both sessions are confirmed started — mirroring the broadcast source
+     * pattern where active device is set after OnBroadcastAudioSessionCreated. */
+    bool session_started = false;
+    if (state_machine->IsEnhanced()) {
+      log::info("Enhanced source: starting source (TX) and sink (RX) HAL clients "
+                "for broadcast_id=0x{:08x}", broadcast_id);
+      bool source_ok = StartSourceHalClient(*sink_config);
+      bool sink_ok   = StartSinkHalClient(*sink_config);
+      session_started = source_ok && sink_ok;
+      log::info("Enhanced source HAL session start: source_ok={}, sink_ok={}, "
+                "session_started={}", source_ok, sink_ok, session_started);
+    } else {
+      log::info("Standard source: starting sink HAL client (RX) for broadcast_id=0x{:08x}",
+                broadcast_id);
+      session_started = StartSinkHalClient(*sink_config);
+    }
+
     if (callbacks_) {
-      callbacks_->OnBroadcastSinkAudioSessionCreated(true);  // Notify success
+      callbacks_->OnBroadcastSinkAudioSessionCreated(session_started);
     }
 
     // Send START_BIG_SYNC message to state machine
@@ -291,8 +314,65 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         BroadcastSinkStateMachine::Message::START_BIG_SYNC, nullptr);
   }
 
-  void LeaveSource(BroadcastId broadcast_id) override {
-    log::info("LeaveSource: broadcast_id=0x{:08x}", broadcast_id);
+  /**
+   * StartEnhancedBroadcastSink - join an enhanced (enhanced broadcast) broadcast source.
+   *
+   * Identical to JoinSource() except that it explicitly marks the source as
+   * enhanced so that the state machine sets up bidirectional (RX + TX) ISO
+   * data paths for every BIS instead of RX-only paths.
+   *
+   * The caller should invoke this method after receiving the
+   * OnEnhancedSourceDetected() callback.
+   */
+  void StartEnhancedBroadcastSink(BroadcastId broadcast_id,
+                          const std::optional<BroadcastCode>& broadcast_code) override {
+    log::info("StartEnhancedBroadcastSink: broadcast_id=0x{:08x}, has_code={}",
+              broadcast_id, broadcast_code.has_value());
+
+    if (tracked_sources_.count(broadcast_id) == 0) {
+      log::error("No such broadcast_id=0x{:08x}", broadcast_id);
+      if (callbacks_) {
+        callbacks_->OnSourceJoinFailed(broadcast_id, 0);
+      }
+      return;
+    }
+
+    auto& tracked_source = tracked_sources_[broadcast_id];
+    if (!tracked_source.state_machine) {
+      log::error("State machine not found for broadcast_id=0x{:08x}", broadcast_id);
+      if (callbacks_) {
+        callbacks_->OnSourceJoinFailed(broadcast_id, 0);
+      }
+      return;
+    }
+
+    if (!tracked_source.state_machine->IsEnhanced()) {
+      log::warn("broadcast_id=0x{:08x} is not an enhanced source; "
+                "falling back to standard JoinSource() with all BISes", broadcast_id);
+      // Pass empty bis_indices so JoinSource syncs to all BISes
+      JoinSource(broadcast_id, broadcast_code, {});
+      return;
+    }
+
+    log::info("broadcast_id=0x{:08x} confirmed as enhanced (enhanced broadcast) source, "
+              "will configure bidirectional ISO data paths for all BISes", broadcast_id);
+
+    // Register DBIG callbacks now (lazy registration to avoid overriding
+    // broadcast source's DBIG callbacks at BT turn-on).
+    if (!dbig_callbacks_registered_) {
+      log::info("StartEnhancedBroadcastSink: registering DBIG callbacks with ISO manager");
+      IsoManager::GetInstance()->RegisterDbigCallbacks(this);
+      dbig_callbacks_registered_ = true;
+    }
+
+    // Delegate to JoinSource with empty bis_indices (all BISes).
+    // The state machine already knows it is enhanced and will set up
+    // RX+TX paths automatically via OnSetupIsoDataPath.
+    JoinSource(broadcast_id, broadcast_code, {});
+  }
+
+  void StopEnhancedBroadcastSink(BroadcastId broadcast_id) override {
+    log::info("StopEnhancedBroadcastSink: broadcast_id=0x{:08x}", broadcast_id);
 
     if (tracked_sources_.count(broadcast_id) == 0) {
       log::error("No such broadcast_id=0x{:08x}", broadcast_id);
@@ -325,21 +405,41 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       return;
     }
 
-    // LeaveSource requested by user - clear any pending rejoin
+    // StopEnhancedBroadcastSink requested by user - clear any pending rejoin and stale suspend flags.
     tracked_source.pending_big_rejoin = false;
-    log::info("LeaveSource requested for broadcast_id=0x{:08x}, cleared rejoin flags", broadcast_id);
+    pending_source_suspend_ = false;
+    pending_sink_suspend_   = false;
 
-    // Stop audio HAL session
-    if (le_audio_sink_hal_client_) {
-      log::info("Stopping audio HAL session for broadcast_id=0x{:08x}", broadcast_id);
-      le_audio_sink_hal_client_->Stop();
-      log::info("Stopped audio HAL session for broadcast_id=0x{:08x}", broadcast_id);
+    // Clear the DBIG registration flag so StartEnhancedBroadcastSink() will re-register
+    // when the next enhanced source is joined.
+    // NOTE: We do NOT call RegisterDbigCallbacks(nullptr) here because
+    // handle_register_dbig_callbacks() asserts callbacks != nullptr and would crash.
+    // The broadcast source will overwrite the DBIG callback pointer when it
+    // calls RegisterDbigCallbacks(instance) during its own Initialize().
+    if (dbig_callbacks_registered_) {
+      log::info("StopEnhancedBroadcastSink: clearing DBIG registration flag for broadcast_id=0x{:08x} "
+                "(broadcast source will overwrite callback pointer on next Initialize)",
+                broadcast_id);
+      dbig_callbacks_registered_ = false;
     }
 
-    // Send STOP_BIG_SYNC message to state machine to stop BIG sync while keeping PA sync
-    log::info("Sending STOP_BIG_SYNC message to state machine for broadcast_id=0x{:08x}", broadcast_id);
-    state_machine->ProcessMessage(
-        BroadcastSinkStateMachine::Message::STOP_BIG_SYNC, nullptr);
+    log::info("StopEnhancedBroadcastSink: state validated, flags cleared for broadcast_id=0x{:08x}. "
+              "MSG_STOP from Java will drive HAL teardown via blocking setParameters().",
+              broadcast_id);
+
+    /* Do NOT call Stop() on the HAL clients here.
+     *
+     * Java stopEnhancedBroadcastSink() calls native stopEnhancedBroadcastSink() FIRST (this function),
+     * then posts MSG_STOP to mHandler.  MSG_STOP calls:
+     *   setParameters("achat_rx_enable=false")  — BLOCKING until sink HAL
+     *     OnAudioSuspend is fully acked (RX ISO paths removed +
+     *     ConfirmSuspendRequest on sink HAL).
+     *   setParameters("achat_tx_enable=false")  — BLOCKING until source HAL
+     *     OnAudioSuspend is fully acked (TX ISO paths removed + BIG sync
+     *     terminated + ConfirmSuspendRequest on source HAL).
+     *
+     * Calling Stop() here would trigger duplicate OnAudioSuspend callbacks
+     * and race with the MSG_STOP-driven teardown. */
   }
 
   void RemoveSource(BroadcastId broadcast_id) override {
@@ -420,27 +520,6 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       le_audio_sink_hal_client_.reset();
     }
   }
-
-  void GetSourceMetadata(BroadcastId broadcast_id) override {
-    log::info("GetSourceMetadata: broadcast_id=0x{:08x}", broadcast_id);
-
-    if (tracked_sources_.count(broadcast_id) == 0) {
-      log::error("No such broadcast_id=0x{:08x}", broadcast_id);
-      return;
-    }
-
-    auto& tracked_source = tracked_sources_[broadcast_id];
-    if (!tracked_source.state_machine) {
-      log::error("State machine not found for broadcast_id=0x{:08x}", broadcast_id);
-      return;
-    }
-
-    auto metadata = ConvertToMetadata(tracked_source.state_machine.get());
-    if (callbacks_) {
-      callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
-    }
-  }
-
   void SourcePublicMetadataChanged(BroadcastId broadcast_id, const std::string& broadcast_name, const std::vector<uint8_t>& public_metadata) override {
     log::info("SourcePublicMetadataChanged: broadcast_id=0x{:08x}, broadcast_name='{}', public_metadata_len={}",
               broadcast_id, broadcast_name, public_metadata.size());
@@ -569,7 +648,21 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         ReleasePaSyncRegId(reg_id);
       }
     } else {
-      log::info("Updating existing broadcast_id=0x{:08x}", broadcast_id);
+      // State machine already exists for this broadcast_id.
+      // Once PA sync is established (PA_SYNCED or beyond), ignore further
+      // scan results from the same enhanced broadcast source.
+      auto current_state = tracked_source.state_machine->GetState();
+      if (current_state == SinkState::PA_SYNCED ||
+          current_state == SinkState::BIG_SYNCING ||
+          current_state == SinkState::BIG_SYNCED ||
+          current_state == SinkState::DISABLING ||
+          current_state == SinkState::STOPPING) {
+        log::info("Ignoring scan result for broadcast_id=0x{:08x}: already PA synced (state={})",
+                  broadcast_id, SinkStateToString(current_state));
+        return;
+      }
+      log::info("Updating existing broadcast_id=0x{:08x} (state={})",
+                broadcast_id, SinkStateToString(current_state));
     }
   }
 
@@ -693,7 +786,16 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
     auto& tracked_source = tracked_sources_[broadcast_id];
     if (tracked_source.state_machine) {
-      tracked_source.state_machine->OnSetupIsoDataPath(status, conn_handle);
+      /* For enhanced (enhanced broadcast) sources the state machine tracks the
+       * current direction internally via enhanced_iso_setup_index_.
+       * We always pass kIsoDataPathDirectionOut here; the state machine
+       * derives the actual next direction from its index.
+       */
+      uint8_t direction = bluetooth::hci::iso_manager::kIsoDataPathDirectionOut;
+      if (tracked_source.state_machine->IsEnhanced()) {
+        log::info("Enhanced source ISO data path callback: broadcast_id=0x{:08x}", broadcast_id);
+      }
+      tracked_source.state_machine->OnSetupIsoDataPath(status, conn_handle, direction);
     }
   }
 
@@ -773,6 +875,51 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     }
   }
 
+  /* ------------------------------------------------------------------
+   * DbigCallbacks implementation
+   *
+   * Called by IsoManager when a enhanced broadcast-related event arrives from the
+   * controller.  We handle kIsoEventDbigCreateCmpl to drive the
+   * enhanced (enhanced broadcast) source setup sequence.
+   * ------------------------------------------------------------------ */
+  void OnDbigEvent(uint8_t event, void* data) override {
+    switch (event) {
+      case bluetooth::hci::iso_manager::kIsoEventDbigCreateCmpl: {
+        auto* evt = static_cast<bluetooth::hci::iso_manager::dbig_create_cmpl_evt*>(data);
+        log::info("enhanced broadcast create complete: status=0x{:02x}, sub_opcode=0x{:02x}, "
+                  "dbig_handle={}", evt->status, evt->sub_opcode, evt->dbig_handle);
+
+        /* Find the state machine whose reg_id matches the dbig_handle */
+        BroadcastId broadcast_id = BroadcastIdFromBigHandle(evt->dbig_handle);
+        if (broadcast_id == bluetooth::le_audio::kBroadcastIdInvalid) {
+          log::warn("OnDbigEvent: no state machine found for dbig_handle={}",
+                    evt->dbig_handle);
+          return;
+        }
+
+        auto& tracked_source = tracked_sources_[broadcast_id];
+        if (tracked_source.state_machine) {
+          tracked_source.state_machine->OnDbigSetupComplete(evt->status);
+        }
+        break;
+      }
+
+      case bluetooth::hci::iso_manager::kIsoEventDbigUpdate: {
+        auto* evt = static_cast<bluetooth::hci::iso_manager::dbig_update_evt*>(data);
+        log::info("enhanced broadcast update: status=0x{:02x}, big_handle={}, bis_state={}, "
+                  "timing_source={}, local_bis_id={}",
+                  evt->status, evt->big_handle, evt->bis_state,
+                  evt->timing_source, evt->local_bis_id);
+        /* enhanced broadcast update events are informational; no state machine action needed */
+        break;
+      }
+
+      default:
+        log::warn("OnDbigEvent: unhandled event=0x{:02x}", event);
+        break;
+    }
+  }
+
   void OnBisEvent(uint8_t event, void* data) override {
     log::info("BIS event: event={}", event);
 
@@ -816,12 +963,203 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     log::info("Released PA sync reg_id={}", reg_id);
   }
 
+  /**
+   * Build a LeAudioCodecConfiguration from a BroadcastSinkConfiguration.
+   *
+   * The codec parameters are derived from the first subgroup's codec config.
+   * Defaults are used for fields that cannot be determined from the sink config.
+   */
+  bluetooth::le_audio::LeAudioCodecConfiguration BuildCodecConfiguration(
+      const BroadcastSinkConfiguration& sink_config) {
+    bluetooth::le_audio::LeAudioCodecConfiguration codec_config;
+
+    /* Codec ID from the ISO data path config */
+    codec_config.codec.coding_format =
+        static_cast<uint8_t>(sink_config.data_path.isoDataPathConfig.codecId.coding_format);
+    codec_config.codec.vendor_company_id =
+        static_cast<uint16_t>(sink_config.data_path.isoDataPathConfig.codecId.vendor_company_id);
+    codec_config.codec.vendor_codec_id =
+        static_cast<uint16_t>(sink_config.data_path.isoDataPathConfig.codecId.vendor_codec_id);
+
+    /* Derive audio parameters from the first subgroup if available.
+     * LTV types for Codec_Specific_Configuration (Bluetooth Assigned Numbers):
+     *   0x01 = Sampling_Frequency
+     *   0x02 = Frame_Duration
+     *   0x03 = Audio_Channel_Allocation
+     *   0x04 = Octets_per_Codec_Frame
+     *   0x05 = Codec_Frame_Blocks_Per_SDU
+     */
+    if (!sink_config.subgroups.empty()) {
+      const auto& sg = sink_config.subgroups[0];
+      const auto ltv_map = sg.GetCommonBisCodecSpecData();
+      const auto& params = ltv_map.Values();
+
+      /* Sampling frequency (LTV 0x01): value is a 1-byte index per spec */
+      auto it = params.find(0x01);
+      if (it != params.end() && !it->second.empty()) {
+        switch (it->second[0]) {
+          case 0x01: codec_config.sample_rate = 8000;  break;
+          case 0x03: codec_config.sample_rate = 16000; break;
+          case 0x05: codec_config.sample_rate = 24000; break;
+          case 0x06: codec_config.sample_rate = 32000; break;
+          case 0x07: codec_config.sample_rate = 44100; break;
+          case 0x08: codec_config.sample_rate = 48000; break;
+          default:   codec_config.sample_rate = 48000; break;
+        }
+      } else {
+        codec_config.sample_rate = 48000;  /* default */
+      }
+
+      /* Frame duration (LTV 0x02): 0x00 = 7.5ms, 0x01 = 10ms */
+      it = params.find(0x02);
+      if (it != params.end() && !it->second.empty()) {
+        codec_config.data_interval_us = (it->second[0] == 0x00) ? 7500 : 10000;
+      } else {
+        codec_config.data_interval_us = 10000;  /* default 10ms */
+      }
+
+      /* Octets per codec frame (LTV 0x04): 2-byte little-endian */
+      it = params.find(0x04);
+      if (it != params.end() && it->second.size() >= 2) {
+        codec_config.octets_per_codec_frame =
+            static_cast<uint16_t>(it->second[0] | (it->second[1] << 8));
+      } else {
+        codec_config.octets_per_codec_frame = 120;  /* default */
+      }
+
+      /* num_channels = total number of BISes being synced.
+       * Each BIS carries exactly 1 MONO channel (per-BIS ch=1).
+       * The audio channel allocation LTV (0x03) is often 0 (unspecified) for
+       * enhanced broadcast sources, so we cannot rely on popcount(alloc).
+       * Use bis_indices.size() which is always correct. */
+      if (!sink_config.bis_indices.empty()) {
+        codec_config.num_channels =
+                static_cast<uint8_t>(sink_config.bis_indices.size());
+        log::info("BuildCodecConfiguration: num_channels={} from bis_indices.size()",
+                  codec_config.num_channels);
+      } else {
+        /* Fallback: derive from audio channel allocation LTV (0x03) */
+        it = params.find(0x03);
+        if (it != params.end() && it->second.size() >= 4) {
+          uint32_t alloc = static_cast<uint32_t>(it->second[0]) |
+                           (static_cast<uint32_t>(it->second[1]) << 8) |
+                           (static_cast<uint32_t>(it->second[2]) << 16) |
+                           (static_cast<uint32_t>(it->second[3]) << 24);
+          codec_config.num_channels = static_cast<uint8_t>(__builtin_popcount(alloc));
+          if (codec_config.num_channels == 0) codec_config.num_channels = 1;
+        } else {
+          codec_config.num_channels = 2;  /* default stereo */
+        }
+      }
+    } else {
+      /* No subgroup info: use safe defaults */
+      codec_config.sample_rate        = 48000;
+      codec_config.data_interval_us   = 10000;
+      codec_config.octets_per_codec_frame = 120;
+      codec_config.num_channels       = 2;
+    }
+
+    codec_config.bits_per_sample = 16;  /* LC3 always uses 16-bit PCM */
+
+    log::info("Built codec config: format=0x{:02x}, sample_rate={}, channels={}, "
+              "interval_us={}, octets_per_frame={}",
+              codec_config.codec.coding_format, codec_config.sample_rate,
+              codec_config.num_channels, codec_config.data_interval_us,
+              codec_config.octets_per_codec_frame);
+    return codec_config;
+  }
+
+  /**
+   * Acquire and start the sink HAL client (RX/decoder side).
+   *
+   * Source HAL = TX/encoder: Source::SetPcmParameters() → is_encoder=true → encoder_channel_count
+   * Sink HAL   = RX/decoder: Sink::SetPcmParameters()   → is_encoder=false → decoder_channel_count
+   *
+   * The QTI HAL hardcodes NumStreamIDGroup=5 (1 TX + 4 RX) for the 4-BIS case.
+   * decoder_channel_count drives the number of RX streams.
+   * Sink HAL must be started with num_channels=N (all BISes) so that
+   * decoder_channel_count=N, giving N RX streams in the stream map.
+   */
+  bool StartSinkHalClient(const BroadcastSinkConfiguration& sink_config) {
+    if (le_audio_sink_hal_client_) {
+      log::info("Sink HAL client already active, stopping before re-start");
+      le_audio_sink_hal_client_->Stop();
+      le_audio_sink_hal_client_.reset();
+    }
+
+    le_audio_sink_hal_client_ = bluetooth::le_audio::LeAudioSinkAudioHalClient::AcquireUnicast();
+    if (!le_audio_sink_hal_client_) {
+      log::error("Failed to acquire sink HAL client");
+      return false;
+    }
+
+    // Sink HAL = RX/decoder: num_channels = N (all BISes) → decoder_channel_count = N
+    // The QTI HAL uses decoder_channel_count to build N RX streams in the stream map.
+    auto codec_config = BuildCodecConfiguration(sink_config);
+    log::info("StartSinkHalClient: num_channels={} for RX/decoder side (Sink HAL)",
+              codec_config.num_channels);
+
+    bool started = le_audio_sink_hal_client_->Start(codec_config, &audio_receiver_);
+    if (!started) {
+      log::error("Failed to start sink HAL client");
+      le_audio_sink_hal_client_.reset();
+      return false;
+    }
+    log::info("Sink HAL client acquired and started (RX/decoder, 2nd HIDL start)");
+    return true;
+  }
+
+  /**
+   * Acquire and start the source HAL client (TX/encoder side).
+   *
+   * Source HAL = TX/encoder: Source::SetPcmParameters() → is_encoder=true → encoder_channel_count
+   * Sink HAL   = RX/decoder: Sink::SetPcmParameters()   → is_encoder=false → decoder_channel_count
+   *
+   * The QTI HAL hardcodes 1 TX stream regardless of encoder_channel_count.
+   * Source HAL must be started with num_channels=1 so that encoder_channel_count=1.
+   * The 1st HIDL start (OnAudioResume on source HAL) will arrive after Start().
+   */
+  bool StartSourceHalClient(const BroadcastSinkConfiguration& sink_config) {
+    if (le_audio_source_hal_client_) {
+      log::info("Source HAL client already active, stopping before re-start");
+      le_audio_source_hal_client_->Stop();
+      le_audio_source_hal_client_.reset();
+    }
+
+    le_audio_source_hal_client_ =
+        bluetooth::le_audio::LeAudioSourceAudioHalClient::AcquireBroadcast();
+    if (!le_audio_source_hal_client_) {
+      log::error("Failed to acquire source HAL client");
+      return false;
+    }
+
+    // Source HAL = TX/encoder: num_channels=1 → encoder_channel_count=1
+    // The QTI HAL hardcodes 1 TX stream in the stream map regardless of encoder_channel_count.
+    auto codec_config = BuildCodecConfiguration(sink_config);
+    codec_config.num_channels = 1;  // TX/encoder: always 1 channel
+    log::info("StartSourceHalClient: overriding num_channels=1 for TX/encoder side (Source HAL), "
+              "sink has {} BISes", sink_config.bis_indices.size());
+
+    bool started = le_audio_source_hal_client_->Start(codec_config, &source_audio_receiver_);
+    if (!started) {
+      log::error("Failed to start source HAL client");
+      le_audio_source_hal_client_.reset();
+      return false;
+    }
+    log::info("Source HAL client acquired and started (TX/encoder, 1st HIDL start)");
+    return true;
+  }
+
   BroadcastSinkCallbacks* callbacks_;
   uint8_t max_source_capacity_;  // Maximum number of sources that can be PA synced simultaneously
   bool is_scanning_;
   std::set<uint32_t> pa_sync_reg_ids_;  // Set of allocated PA sync registration IDs
   std::map<uint32_t, TrackedSource> tracked_sources_;  // Keyed by broadcast_id
-  std::unique_ptr<bluetooth::le_audio::LeAudioSinkAudioHalClient> le_audio_sink_hal_client_;  // Audio HAL client for broadcast sink
+  std::unique_ptr<bluetooth::le_audio::LeAudioSinkAudioHalClient> le_audio_sink_hal_client_;    // Sink HAL client (RX, 2nd HIDL start)
+  std::unique_ptr<bluetooth::le_audio::LeAudioSourceAudioHalClient> le_audio_source_hal_client_; // Source HAL client (TX, 1st HIDL start)
+  bool pending_source_suspend_ = false;  // Set when source HAL OnAudioSuspend arrives (StopEnhancedBroadcastSink)
+  bool pending_sink_suspend_   = false;  // Set when sink   HAL OnAudioSuspend arrives (StopEnhancedBroadcastSink)
+  bool dbig_callbacks_registered_ = false;  // DBIG callbacks registered lazily in StartEnhancedBroadcastSink
 
   static BleScannerInterface* ble_scanner_;
 
@@ -891,6 +1229,13 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
         case SinkState::BIG_SYNCED:
           log::info("State machine transitioned to BIG_SYNCED for broadcast_id=0x{:06X}", broadcast_id);
+          /* For enhanced (enhanced broadcast) sources, acknowledge the 2nd HIDL
+           * start now that all RX ISO data paths have been configured. */
+          if (tracked_source.state_machine->IsEnhanced() && instance->le_audio_sink_hal_client_) {
+            log::info("Enhanced source BIG_SYNCED: acknowledging 2nd HIDL start for "
+                      "broadcast_id=0x{:06X}", broadcast_id);
+            instance->le_audio_sink_hal_client_->ConfirmStreamingRequest(false);
+          }
           break;
 
         case SinkState::DISABLING:
@@ -973,6 +1318,28 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       }
     }
 
+    void OnTxIsoPathsReady(uint32_t broadcast_id) override {
+      if (!instance) return;
+
+      log::info("OnTxIsoPathsReady: all TX ISO paths configured for enhanced source "
+                "broadcast_id=0x{:08x}", broadcast_id);
+
+      /* The sink HAL client (RX) was already started in JoinSource() together
+       * with the source HAL client so that the QTI HIDL could start the session
+       * (it requires both sides to be ready).  Do NOT re-start it here.
+       * Just ack the 1st HIDL start so the audio framework sends the 2nd start
+       * (OnAudioResume on sink HAL), which triggers RX ISO path setup. */
+
+      /* Acknowledge the 1st HIDL start on the source HAL client.
+       * The audio framework will then send a 2nd start on the sink HAL client,
+       * which triggers RX ISO data path setup via OnAudioStart(). */
+      if (instance->le_audio_source_hal_client_) {
+        log::info("OnTxIsoPathsReady: acknowledging 1st HIDL start on source HAL client "
+                  "for broadcast_id=0x{:08x}", broadcast_id);
+        instance->le_audio_source_hal_client_->ConfirmStreamingRequest(false);
+      }
+    }
+
     void OnBigSyncEstablished(uint32_t broadcast_id, uint8_t big_handle,
                              const std::vector<uint16_t>& bis_handles) override {
       if (!instance) {
@@ -980,6 +1347,14 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       }
       log::info("BIG sync established: broadcast_id=0x{:08x}, big_handle={}, num_bis={}",
                 broadcast_id, big_handle, bis_handles.size());
+
+      /* Forward BIG sync creation to Java layer.
+       * For enhanced sources this fires only after all TX+RX ISO data paths
+       * are configured (state machine reaches BIG_SYNCED).
+       * Java never sees intermediate enhanced broadcast or ISO data path events. */
+      if (instance->callbacks_) {
+        instance->callbacks_->OnBigSyncCreated(broadcast_id, big_handle, bis_handles);
+      }
     }
 
     void OnBigSyncLost(uint32_t broadcast_id, uint8_t big_handle, uint8_t reason) override {
@@ -1009,20 +1384,49 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         }
       }
 
-      // State machine will handle the transition and OnBroadcastSinkStateChanged will be called
-      // No need to call OnSourceLeft here
+      /* Forward BIG sync lost to Java layer. */
+      if (instance->callbacks_) {
+        instance->callbacks_->OnBigSyncLost(broadcast_id, big_handle, reason);
+      }
     }
 
     void OnBigSyncTerminated(uint32_t broadcast_id, uint8_t big_handle, uint8_t status) override {
-      if (!instance) {
-        return;
-      }
+      if (!instance) return;
 
-      log::info("BIG sync terminated (INTENTIONAL): broadcast_id=0x{:08x}, big_handle={}, status=0x{:02x}",
+      log::info("BIG sync terminated: broadcast_id=0x{:08x}, big_handle={}, status=0x{:02x}",
                 broadcast_id, big_handle, status);
 
-      // State machine will handle the transition and OnBroadcastSinkStateChanged will be called
-      // No need to call OnSourceLeft here
+      /* Ack source HAL suspend: TX paths removed + BIG terminated. */
+      if (instance->pending_source_suspend_ && instance->le_audio_source_hal_client_) {
+        log::info("OnBigSyncTerminated: acking source HAL suspend for broadcast_id=0x{:08x}",
+                  broadcast_id);
+        instance->le_audio_source_hal_client_->ConfirmSuspendRequest();
+        instance->pending_source_suspend_ = false;
+      }
+
+      /* Notify Java layer that BIG sync has been intentionally terminated
+       * (user-initiated StopEnhancedBroadcastSink).  Java handles onSinkStopped from this
+       * event rather than from the MSG_STOP handler. */
+      if (instance->callbacks_) {
+        log::info("OnBigSyncTerminated: notifying Java layer for broadcast_id=0x{:08x}",
+                  broadcast_id);
+        instance->callbacks_->OnBigSyncTerminated(broadcast_id, big_handle, status);
+      }
+    }
+
+    void OnRxIsoPathsRemoved(uint32_t broadcast_id) override {
+      if (!instance) return;
+
+      log::info("OnRxIsoPathsRemoved: all RX ISO paths removed for broadcast_id=0x{:08x}",
+                broadcast_id);
+
+      /* Ack sink HAL suspend: RX paths removed. */
+      if (instance->pending_sink_suspend_ && instance->le_audio_sink_hal_client_) {
+        log::info("OnRxIsoPathsRemoved: acking sink HAL suspend for broadcast_id=0x{:08x}",
+                  broadcast_id);
+        instance->le_audio_sink_hal_client_->ConfirmSuspendRequest();
+        instance->pending_sink_suspend_ = false;
+      }
     }
 
     void OnBigInfoReport(uint32_t broadcast_id, uint16_t sync_handle, bool encrypted) override {
@@ -1076,42 +1480,196 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         log::info("Source already notified for broadcast_id=0x{:08x}", broadcast_id);
       }
     }
+
+    /**
+     * Called by the state machine when BASE data parsing reveals that the
+     * broadcast source is an enhanced (enhanced broadcast) source, i.e. at
+     * least one subgroup carries >= 3 BISes.
+     *
+     * The upper layer should use StartEnhancedBroadcastSink() instead of
+     * JoinSource() for such sources so that bidirectional ISO data paths
+     * are configured correctly.
+     */
+    void OnEnhancedSourceDetected(uint32_t broadcast_id, uint8_t num_bis) override {
+      if (!instance) {
+        return;
+      }
+
+      log::info("Enhanced (enhanced broadcast) source detected: broadcast_id=0x{:08x}, "
+                "num_bis={} (>= 3 BISes in subgroup)", broadcast_id, num_bis);
+
+      if (instance->tracked_sources_.count(broadcast_id) == 0) {
+        log::warn("No tracked source for broadcast_id=0x{:08x}", broadcast_id);
+        return;
+      }
+
+      // Notify upper layer so it can present the correct join UI / API
+      if (instance->callbacks_) {
+        instance->callbacks_->OnEnhancedSourceDetected(broadcast_id, num_bis);
+      }
+    }
   } state_machine_callbacks_;
 
+  /* -----------------------------------------------------------------------
+   * Source HAL client callbacks (TX side, enhanced sources only).
+   *
+   * OnAudioResume() here is the 1st HIDL start.  It drives:
+   *   phase IDLE -> DBIG_SETUP -> (enhanced broadcast complete) -> BIG_CREATE_SYNC
+   *              -> BIG sync established -> TX ISO paths
+   *              -> OnTxIsoPathsReady -> ConfirmStreamingRequest (source)
+   * ----------------------------------------------------------------------- */
+  static class LeAudioSourceCallbacksImpl
+      : public bluetooth::le_audio::LeAudioSourceAudioHalClient::Callbacks {
+   public:
+    LeAudioSourceCallbacksImpl() = default;
+
+    void OnAudioServerRestart(void) override {
+      log::info("Source HAL: audio server restart");
+    }
+
+    void OnAudioSuspend(void) override {
+      log::info("Source HAL: suspend callback — sending REMOVE_TX_PATHS to state machine");
+      if (!instance) return;
+
+      /* Guard against duplicate suspend callbacks (e.g. both MSG_STOP from Java
+       * and native stopEnhancedBroadcastSink() Stop() triggering OnAudioSuspend). */
+      if (instance->pending_source_suspend_) {
+        log::warn("Source HAL: duplicate suspend callback, ignoring");
+        return;
+      }
+
+      /* Source HAL suspend: remove TX ISO paths, then terminate BIG sync.
+       * State machine calls OnBigSyncTerminated when done; BTA layer acks
+       * source HAL there via ConfirmSuspendRequest(). */
+      instance->pending_source_suspend_ = true;
+      for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
+        if (!tracked_source.state_machine) continue;
+        auto st = tracked_source.state_machine->GetState();
+        if (tracked_source.state_machine->IsEnhanced() &&
+            (st == SinkState::BIG_SYNCED || st == SinkState::DISABLING)) {
+          log::info("Source HAL suspend: REMOVE_TX_PATHS for broadcast_id=0x{:08x}", broadcast_id);
+          tracked_source.state_machine->ProcessMessage(
+              BroadcastSinkStateMachine::Message::REMOVE_TX_PATHS, nullptr);
+          break;
+        }
+      }
+    }
+
+    void OnAudioResume(void) override {
+      log::info("Source HAL: resume callback — 1st HIDL start for enhanced source");
+
+      if (!instance) return;
+
+      /* This is the 1st HIDL start (source HAL client).
+       * Forward to the enhanced state machine in BIG_SYNCING state so it
+       * sends the enhanced broadcast command (phase IDLE -> DBIG_SETUP). */
+      for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
+        if (!tracked_source.state_machine) continue;
+
+        auto state = tracked_source.state_machine->GetState();
+        if (tracked_source.state_machine->IsEnhanced() &&
+            state == SinkState::BIG_SYNCING) {
+          log::info("Source HAL OnAudioResume: forwarding 1st HIDL start to enhanced "
+                    "source broadcast_id=0x{:08x}", broadcast_id);
+          tracked_source.state_machine->OnAudioStart();
+          /* Only one enhanced source active at a time */
+          break;
+        }
+      }
+    }
+
+    void OnAudioDataReady(const std::vector<uint8_t>& data) override {
+      /* TX audio data from the audio framework for enhanced (enhanced broadcast) sources.
+       * TODO: forward to IsoManager::SendIsoData() for each TX BIS handle. */
+      log::verbose("Source HAL: audio data ready, size={}", data.size());
+    }
+
+    void OnAudioMetadataUpdate(
+        const std::vector<struct playback_track_metadata_v7> source_metadata,
+        DsaMode dsa_mode) override {
+      log::info("Source HAL: metadata update callback");
+    }
+  } source_audio_receiver_;
+
+  /* -----------------------------------------------------------------------
+   * Sink HAL client callbacks (RX side).
+   *
+   * For enhanced sources, OnAudioResume() here is the 2nd HIDL start.
+   * It drives: phase TX_DONE -> RX_SETUP -> RX ISO paths
+   *         -> BIG_SYNCED -> ConfirmStreamingRequest (sink)
+   *
+   * For standard sources, OnAudioResume() confirms streaming immediately.
+   * ----------------------------------------------------------------------- */
   static class LeAudioSinkCallbacksImpl : public bluetooth::le_audio::LeAudioSinkAudioHalClient::Callbacks {
    public:
     LeAudioSinkCallbacksImpl() = default;
 
     void OnAudioSuspend(void) override {
-      log::info("Audio HAL suspend callback");
+      log::info("Sink HAL: suspend callback — sending REMOVE_RX_PATHS to state machine");
+      if (!instance) return;
 
-      // Always confirm suspend request
-      if (instance && instance->le_audio_sink_hal_client_) {
-        log::info("Confirming suspend request");
-        instance->le_audio_sink_hal_client_->ConfirmSuspendRequest();
+      /* Guard against duplicate suspend callbacks (e.g. both MSG_STOP from Java
+       * and native stopEnhancedBroadcastSink() Stop() triggering OnAudioSuspend). */
+      if (instance->pending_sink_suspend_) {
+        log::warn("Sink HAL: duplicate suspend callback, ignoring");
+        return;
+      }
+
+      /* Sink HAL suspend: remove RX ISO paths.
+       * State machine calls OnRxIsoPathsRemoved when done; BTA layer acks
+       * sink HAL there via ConfirmSuspendRequest(). */
+      instance->pending_sink_suspend_ = true;
+      for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
+        if (!tracked_source.state_machine) continue;
+        auto st = tracked_source.state_machine->GetState();
+        if (tracked_source.state_machine->IsEnhanced() &&
+            (st == SinkState::BIG_SYNCED || st == SinkState::DISABLING)) {
+          log::info("Sink HAL suspend: REMOVE_RX_PATHS for broadcast_id=0x{:08x}", broadcast_id);
+          tracked_source.state_machine->ProcessMessage(
+              BroadcastSinkStateMachine::Message::REMOVE_RX_PATHS, nullptr);
+          break;
+        }
       }
     }
 
     void OnAudioResume(void) override {
-      log::info("Audio HAL resume callback");
+      log::info("Sink HAL: resume callback (HIDL start indication)");
 
-      // Confirm streaming request only if broadcast sink is in BIG_SYNCED state
-      if (instance && instance->le_audio_sink_hal_client_) {
+      if (!instance) return;
+
+      /* For enhanced sources this is the 2nd HIDL start (sink HAL client).
+       * Forward to the state machine in BIG_SYNCING state with phase TX_DONE
+       * so it starts RX ISO data path setup. */
+      bool handled_enhanced = false;
+      for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
+        if (!tracked_source.state_machine) continue;
+
+        auto state = tracked_source.state_machine->GetState();
+        if (tracked_source.state_machine->IsEnhanced() &&
+            state == SinkState::BIG_SYNCING) {
+          log::info("Sink HAL OnAudioResume: forwarding 2nd HIDL start to enhanced "
+                    "source broadcast_id=0x{:08x}", broadcast_id);
+          tracked_source.state_machine->OnAudioStart();
+          handled_enhanced = true;
+          break;
+        }
+      }
+
+      if (!handled_enhanced && instance->le_audio_sink_hal_client_) {
+        /* Standard source: confirm streaming if any source is streaming */
         bool is_streaming = instance->IsAnySinkStreaming();
-
         if (is_streaming) {
-          log::info("Broadcast sink is streaming, confirming streaming request");
+          log::info("Sink HAL OnAudioResume: standard source streaming, confirming");
           instance->le_audio_sink_hal_client_->ConfirmStreamingRequest(false);
         } else {
-          log::info("No streaming sources, not confirming streaming request");
+          log::info("Sink HAL OnAudioResume: no streaming sources");
         }
       }
     }
 
     void OnAudioMetadataUpdate(
             const std::vector<struct record_track_metadata_v7> sink_metadata) override {
-      log::info("Audio HAL metadata update callback");
-      // Handle metadata update if needed
+      log::info("Sink HAL: metadata update callback");
     }
   } audio_receiver_;
 
@@ -1197,6 +1755,31 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         log::warn("No state machine found for BIG info report: sync_handle=0x{:04X}", sync_handle);
       }
     }
+
+    /**
+     * Extended BIG info report — captures iso_interval and phy for DBIG setup.
+     * Called by le_periodic_sync_manager.h in addition to OnBigInfoReport.
+     * Passes the full controller parameters to the state machine so that
+     * SendDbigSetupCommand() can select the correct bis_control_event_interval.
+     */
+    void OnBigInfoReportFull(uint16_t sync_handle,
+                             uint16_t iso_interval,
+                             uint8_t  phy,
+                             uint8_t  num_bis,
+                             bool     encrypted) override {
+      if (!instance) return;
+
+      log::info("BIG info report (full): sync_handle=0x{:04X}, iso_interval={} ({}ms), "
+                "phy={}, num_bis={}, encrypted={}",
+                sync_handle, iso_interval,
+                static_cast<uint32_t>(iso_interval) * 125 / 100,
+                phy, num_bis, encrypted);
+
+      auto* state_machine = instance->FindStateMachineBySyncHandle(sync_handle);
+      if (state_machine) {
+        state_machine->SetBigInfoParams(iso_interval, phy, num_bis);
+      }
+    }
   } scanning_callbacks_;
 };
 
@@ -1208,6 +1791,8 @@ LeAudioBroadcastSinkImpl::BroadcastSinkScanningCallbacks
         LeAudioBroadcastSinkImpl::scanning_callbacks_;
 LeAudioBroadcastSinkImpl::LeAudioSinkCallbacksImpl
         LeAudioBroadcastSinkImpl::audio_receiver_;
+LeAudioBroadcastSinkImpl::LeAudioSourceCallbacksImpl
+        LeAudioBroadcastSinkImpl::source_audio_receiver_;
 
 }  // namespace
 

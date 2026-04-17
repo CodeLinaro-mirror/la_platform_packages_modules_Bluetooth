@@ -87,20 +87,24 @@ class LeAudioBroadcastSink {
                          bool is_public,
                          const std::vector<uint8_t>& public_metadata,
                          uint8_t public_features) = 0;
-
   /**
-   * Join a broadcast source (BIG sync)
-   * Starts receiving the broadcast audio from the specified source.
-   * This performs BIG sync. If the device has not synced to PA, this will fail.
+   * Join an enhanced (enhanced broadcast) broadcast source (BIG sync).
    *
-   * @param broadcast_id Unique identifier for the broadcast
-   * @param broadcast_code Optional broadcast code for encrypted broadcasts
-   * @param bis_indices Vector of BIS indices to sync to (empty means sync to all BISes)
+   * Intended for enhanced sources
+   * where at least one subgroup carries >= 3 BISes.  The state machine will
+   * configure bidirectional (RX + TX) ISO data paths for every BIS.
+   * Enhanced broadcast always syncs to all BISes in the BIG — no BIS
+   * selection is supported.
+   *
+   * The caller should invoke this method after receiving the
+   * BroadcastSinkCallbacks::OnEnhancedSourceDetected() callback.
+   *
+   * @param broadcast_id    Unique identifier for the broadcast
+   * @param broadcast_code  Optional broadcast code for encrypted broadcasts
    */
-  virtual void JoinSource(
+  virtual void StartEnhancedBroadcastSink(
       bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id,
-      const std::optional<bluetooth::le_audio::broadcast_sink::BroadcastCode>& broadcast_code,
-      const std::vector<uint8_t>& bis_indices) = 0;
+      const std::optional<bluetooth::le_audio::broadcast_sink::BroadcastCode>& broadcast_code) = 0;
 
   /**
    * Leave a broadcast source (stop BIG sync, keep PA sync)
@@ -108,7 +112,7 @@ class LeAudioBroadcastSink {
    *
    * @param broadcast_id Unique identifier for the broadcast
    */
-  virtual void LeaveSource(bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id) = 0;
+  virtual void StopEnhancedBroadcastSink(bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id) = 0;
 
   /**
    * Remove a broadcast source (stop PA sync)
@@ -127,16 +131,6 @@ class LeAudioBroadcastSink {
    * @param broadcast_id Unique identifier for the broadcast
    */
   virtual void DestroySource(bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id) = 0;
-
-  /**
-   * Get metadata for a specific broadcast source
-   * Triggers OnSourceMetadataChanged callback with the metadata
-   *
-   * @param broadcast_id Unique identifier for the broadcast
-   */
-  virtual void GetSourceMetadata(
-      bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id) = 0;
-
   /**
    * Update source metadata
    * Updates the broadcast name and public announcement metadata for a source

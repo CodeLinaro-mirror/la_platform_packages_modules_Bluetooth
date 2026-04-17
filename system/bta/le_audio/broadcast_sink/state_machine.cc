@@ -53,7 +53,17 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
         is_encrypted_(sm_config_.public_announcement.has_value() ?
                       (sm_config_.public_announcement->features & 0x01) != 0 : false),
         broadcast_code_(std::nullopt),
-        pa_sync_lost_(false) {
+        pa_sync_lost_(false),
+        is_enhanced_(false),
+        enhanced_iso_phase_(EnhancedIsoPhase::IDLE),
+        big_info_iso_interval_(8),   // default 10 ms (8 × 1.25 ms)
+        big_info_phy_(2),            // default LE2M
+        big_info_num_bis_(4),        // default 4 BISes
+        enhanced_iso_setup_index_(0),
+        pending_tx_teardown_(false),
+        pending_rx_teardown_(false),
+        tx_paths_removed_(false),
+        rx_paths_removed_(false) {
     stats_ = BroadcastSinkStats();
   }
 
@@ -61,7 +71,6 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     log::info("broadcast_id=0x{:x}, state={}, pa_sync_lost={}", GetBroadcastId(),
               SinkStateToString(GetState()), pa_sync_lost_);
 
-    // Clean up any active syncs
     if (GetState() == SinkState::BIG_SYNCED || GetState() == SinkState::BIG_SYNCING) {
       TerminateBigSync();
     }
@@ -72,11 +81,8 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     }
 
     if (callbacks_) {
-      // Determine reason code based on whether PA sync was lost
       uint8_t reason = pa_sync_lost_ ? kBroadcastSinkDestroyReasonPaSyncLost
                                      : kBroadcastSinkDestroyReasonNormal;
-      log::info("Notifying state machine destroyed with reason=0x{:02x} ({})",
-                reason, pa_sync_lost_ ? "PA sync lost" : "normal/user requested");
       callbacks_->OnStateMachineDestroyed(GetBroadcastId(), reason);
     }
   }
@@ -85,20 +91,15 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     log::info("broadcast_id=0x{:x}, address={}, adv_sid={}", GetBroadcastId(),
               sm_config_.address.ToString(), sm_config_.adv_sid);
 
-    // Initialize with default configuration
     sink_config_ = BroadcastSinkConfiguration();
-
-    // Start PA sync automatically during initialization
     SetState(SinkState::PA_SYNCING);
     if (callbacks_) {
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
     }
     StartPaSync();
-
     return true;
   }
 
-  // State machine configuration getters
   uint32_t GetRegId() const override { return sm_config_.reg_id; }
   uint32_t GetBroadcastId() const override { return sm_config_.broadcast_id; }
   const RawAddress& GetSourceAddress() const override { return sm_config_.address; }
@@ -108,7 +109,6 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   bool IsPublic() const override { return sm_config_.is_public; }
   uint16_t GetPaSyncTimeout() const override { return sm_config_.pa_sync_timeout; }
 
-  // Runtime state getters
   bool IsEncrypted() const override { return is_encrypted_; }
   const BroadcastSinkConfiguration& GetSinkConfiguration() const override { return sink_config_; }
   std::optional<BroadcastCode> GetBroadcastCode() const override { return broadcast_code_; }
@@ -118,55 +118,73 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   std::optional<bluetooth::le_audio::PublicBroadcastAnnouncementData> GetPublicAnnouncement() const override {
     return sm_config_.public_announcement;
   }
+  bool IsEnhanced() const override { return is_enhanced_; }
+
+  void OnAudioStart() override {
+    if (!is_enhanced_) return;
+
+    switch (enhanced_iso_phase_) {
+      case EnhancedIsoPhase::IDLE:
+        log::info("broadcast_id=0x{:x}, OnAudioStart [1st]: sending enhanced broadcast command", GetBroadcastId());
+        enhanced_iso_phase_ = EnhancedIsoPhase::DBIG_SETUP;
+        SendDbigSetupCommand();
+        break;
+      case EnhancedIsoPhase::TX_DONE:
+        if (!big_sync_info_.has_value() || big_sync_info_->bis_conn_handles.empty()) {
+          log::error("broadcast_id=0x{:x}, OnAudioStart [2nd]: no BIG sync info", GetBroadcastId());
+          return;
+        }
+        log::info("broadcast_id=0x{:x}, OnAudioStart [2nd]: starting RX ISO path setup", GetBroadcastId());
+        enhanced_iso_phase_ = EnhancedIsoPhase::RX_SETUP;
+        enhanced_iso_setup_index_ = 0;
+        TriggerIsoDatapathSetup(big_sync_info_->bis_conn_handles[0],
+            bluetooth::hci::iso_manager::kIsoDataPathDirectionOut /* RX */);
+        break;
+      default:
+        log::warn("broadcast_id=0x{:x}, OnAudioStart in unexpected phase={}", GetBroadcastId(),
+                  static_cast<int>(enhanced_iso_phase_));
+        break;
+    }
+  }
+
+  void OnDbigSetupComplete(uint8_t status) override {
+    if (!is_enhanced_ || enhanced_iso_phase_ != EnhancedIsoPhase::DBIG_SETUP) return;
+
+    if (status != 0x00) {
+      log::error("broadcast_id=0x{:x}, enhanced broadcast setup failed, status=0x{:02x}", GetBroadcastId(), status);
+      enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+      SetState(SinkState::PA_SYNCED);
+      if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      return;
+    }
+    log::info("broadcast_id=0x{:x}, enhanced broadcast setup complete, issuing BIG_CREATE_SYNC", GetBroadcastId());
+    CreateBigSync();
+  }
 
   void StartSync() override {
-    log::info("broadcast_id=0x{:x}, current_state={}", GetBroadcastId(), SinkStateToString(GetState()));
-    // StartSync() starts BIG sync (PA sync already started during Initialize)
     ProcessMessage(Message::START_BIG_SYNC, nullptr);
   }
 
   void StopSync() override {
-    log::info("broadcast_id=0x{:x}, current_state={}", GetBroadcastId(), SinkStateToString(GetState()));
     ProcessMessage(Message::STOP_SYNC, nullptr);
   }
 
   void UpdateBroadcastCode(const bluetooth::le_audio::BroadcastCode& code) override {
-    log::info("broadcast_id=0x{:x}, updating broadcast code", GetBroadcastId());
     broadcast_code_ = code;
-
-    // If we're already synced and have a broadcast code, we may need to re-establish BIG sync
-    // Note: Encryption status comes from BIGInfo report, not BASE data
-    if (GetState() == SinkState::PA_SYNCED && base_data_.has_value()) {
-      log::info("Broadcast code updated, may need to re-establish BIG sync if encrypted");
-      // BIG sync re-establishment will be triggered when needed
-    }
   }
 
-  void UpdatePublicAnnouncement(const std::string& broadcast_name, const bluetooth::le_audio::PublicBroadcastAnnouncementData& public_announcement) override {
-    log::info("broadcast_id=0x{:x}, updating broadcast name: '{}', public announcement with features: 0x{:02x}, metadata size: {}",
-             GetBroadcastId(), broadcast_name, public_announcement.features, public_announcement.metadata.size());
-
-    // Update the state machine configuration with new broadcast name and public announcement
+  void UpdatePublicAnnouncement(const std::string& broadcast_name,
+                                const bluetooth::le_audio::PublicBroadcastAnnouncementData& pa) override {
     sm_config_.broadcast_name = broadcast_name;
-    sm_config_.public_announcement = public_announcement;
-
-    log::debug("Broadcast name and public announcement updated successfully for broadcast_id=0x{:x}", GetBroadcastId());
+    sm_config_.public_announcement = pa;
   }
 
   void UpdateBisIndices(const std::vector<uint8_t>& bis_indices) override {
-    log::info("broadcast_id=0x{:x}, updating BIS indices", GetBroadcastId());
     sink_config_.bis_indices = bis_indices;
   }
 
   void UpdateSinkConfiguration(const BroadcastSinkConfiguration& config) override {
-    log::info("broadcast_id=0x{:x}, updating sink configuration", GetBroadcastId());
     sink_config_ = config;
-
-    // If we're in BIG_SYNCED state and configuration changed, we may need to re-establish BIG sync
-    if (GetState() == SinkState::BIG_SYNCED) {
-      log::info("Sink configuration updated while streaming, may need to re-establish BIG sync");
-      // Re-establishment logic can be added here if needed
-    }
   }
 
   bool IsStreaming() const override { return GetState() == SinkState::BIG_SYNCED; }
@@ -177,50 +195,88 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   }
 
   bool IsPaSyncLost() const override { return pa_sync_lost_; }
-
   std::optional<PaSyncInfo> GetPaSyncInfo() const override { return pa_sync_info_; }
-
   std::optional<BigSyncInfo> GetBigSyncInfo() const override { return big_sync_info_; }
-
   const BroadcastSinkStats& GetStats() const override { return stats_; }
 
   void ProcessMessage(Message msg, const void* data) override {
-    log::info("broadcast_id=0x{:x}, state={}, message={}", GetBroadcastId(), SinkStateToString(GetState()),
-              ToString(msg));
+    log::info("broadcast_id=0x{:x}, state={}, message={}", GetBroadcastId(),
+              SinkStateToString(GetState()), ToString(msg));
 
     switch (msg) {
       case Message::START_BIG_SYNC:
         start_big_sync_handlers[static_cast<uint8_t>(GetState())](data);
         break;
-      case Message::STOP_BIG_SYNC:
-        stop_big_sync_handlers[static_cast<uint8_t>(GetState())](data);
+
+      case Message::REMOVE_TX_PATHS:
+        /* Triggered by source HAL OnAudioSuspend.
+         * For enhanced sources: remove TX ISO paths, then terminate BIG sync.
+         * For standard sources: terminate BIG sync directly.
+         * BTA layer acks source HAL in OnBigSyncTerminated callback. */
+        REMOVE_TX_PATHS_handlers[static_cast<uint8_t>(GetState())](data);
         break;
+
+      case Message::REMOVE_RX_PATHS:
+        /* Triggered by sink HAL OnAudioSuspend.
+         * Remove RX ISO paths; when all done:
+         *   1. Ack sink HAL (OnRxIsoPathsRemoved).
+         *   2. If TX paths also removed → terminate BIG sync.
+         * If TX teardown (REMOVE_TX_PATHS) is already in progress, queue RX teardown. */
+        if (is_enhanced_) {
+          if (enhanced_iso_phase_ == EnhancedIsoPhase::TX_TEARDOWN) {
+            /* TX teardown in progress — queue RX teardown */
+            log::info("broadcast_id=0x{:x}, REMOVE_RX_PATHS: TX teardown in progress, queuing",
+                      GetBroadcastId());
+            pending_rx_teardown_ = true;
+          } else {
+            /* Start RX teardown immediately */
+            rx_paths_removed_ = false;
+            if (teardown_bis_handles_.empty() && big_sync_info_.has_value()) {
+              teardown_bis_handles_ = big_sync_info_->bis_conn_handles;
+            }
+            if (!teardown_bis_handles_.empty()) {
+              log::info("broadcast_id=0x{:x}, REMOVE_RX_PATHS: starting RX ISO path removal, "
+                        "num_bis=%zu", GetBroadcastId(), teardown_bis_handles_.size());
+              enhanced_iso_phase_ = EnhancedIsoPhase::RX_TEARDOWN;
+              enhanced_iso_setup_index_ = 0;
+              TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
+                  bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput /* RX */);
+            } else {
+              log::warn("broadcast_id=0x{:x}, REMOVE_RX_PATHS: no BIS handles, acking immediately",
+                        GetBroadcastId());
+              if (callbacks_) callbacks_->OnRxIsoPathsRemoved(GetBroadcastId());
+              rx_paths_removed_ = true;
+              if (tx_paths_removed_) TerminateBigSync();
+            }
+          }
+        } else {
+          log::warn("broadcast_id=0x{:x}, REMOVE_RX_PATHS for non-enhanced source", GetBroadcastId());
+        }
+        break;
+
       case Message::STOP_SYNC:
         stop_sync_handlers[static_cast<uint8_t>(GetState())](data);
         break;
+
       case Message::MESSAGE_COUNT:
         log::error("Invalid message type MESSAGE_COUNT");
         break;
     }
   }
 
-  // Scanning callbacks
   void OnSyncEstablished(uint8_t status, uint16_t sync_handle, uint8_t adv_sid,
                          uint8_t address_type, RawAddress address, uint8_t phy,
                          uint16_t interval) override {
-    log::info(
-        "broadcast_id=0x{:x}, status=0x{:02x}, sync_handle=0x{:04x}, adv_sid={}, address={}, phy={}, "
-        "interval={}",
-        GetBroadcastId(), status, sync_handle, adv_sid, address.ToString(), phy, interval);
+    log::info("broadcast_id=0x{:x}, status=0x{:02x}, sync_handle=0x{:04x}", GetBroadcastId(),
+              status, sync_handle);
 
     if (status != 0x00) {
-      log::error("PA sync failed for broadcast_id=0x{:x}, status=0x{:02x}", GetBroadcastId(), status);
+      log::error("PA sync failed, status=0x{:02x}", status);
       SetState(SinkState::IDLE);
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       return;
     }
 
-    // Store PA sync info
     PaSyncInfo info;
     info.sync_handle = sync_handle;
     info.adv_sid = adv_sid;
@@ -229,8 +285,6 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     info.phy = phy;
     info.interval = interval;
     pa_sync_info_ = info;
-
-    // Reset PA sync lost flag since we successfully established PA sync
     pa_sync_lost_ = false;
 
     SetState(SinkState::PA_SYNCED);
@@ -239,113 +293,84 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   }
 
   void OnSyncLost(uint16_t sync_handle) override {
-    log::warn("broadcast_id=0x{:x}, sync_handle=0x{:04x}, state={}", GetBroadcastId(), sync_handle,
-              SinkStateToString(GetState()));
+    log::warn("broadcast_id=0x{:x}, sync_handle=0x{:04x}", GetBroadcastId(), sync_handle);
 
-    if (!pa_sync_info_.has_value() || pa_sync_info_->sync_handle != sync_handle) {
-      log::warn("Sync lost for unknown sync_handle=0x{:04x}", sync_handle);
-      return;
-    }
+    if (!pa_sync_info_.has_value() || pa_sync_info_->sync_handle != sync_handle) return;
 
     stats_.sync_lost_count++;
-
-    // Set PA sync lost flag
     pa_sync_lost_ = true;
 
-    // Clean up
-    uint16_t lost_sync_handle = pa_sync_info_->sync_handle;
+    uint16_t lost_handle = pa_sync_info_->sync_handle;
     pa_sync_info_ = std::nullopt;
     base_data_ = std::nullopt;
 
-    // If we had BIG sync, it's also lost
     if (big_sync_info_.has_value()) {
       uint8_t big_handle = big_sync_info_->big_handle;
       big_sync_info_ = std::nullopt;
-      callbacks_->OnBigSyncLost(GetBroadcastId(), big_handle, 0x13 /* Connection Terminated */);
+      callbacks_->OnBigSyncLost(GetBroadcastId(), big_handle, 0x13);
     }
 
     SetState(SinkState::IDLE);
-    callbacks_->OnPaSyncLost(GetBroadcastId(), lost_sync_handle);
+    callbacks_->OnPaSyncLost(GetBroadcastId(), lost_handle);
     callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
   }
 
   void OnPeriodicScanResult(uint16_t sync_handle, int8_t tx_power, int8_t rssi, uint8_t status,
                             std::vector<uint8_t> data) override {
-    if (!pa_sync_info_.has_value() || pa_sync_info_->sync_handle != sync_handle) {
-      return;
-    }
+    if (!pa_sync_info_.has_value() || pa_sync_info_->sync_handle != sync_handle) return;
 
     stats_.last_rssi = rssi;
 
-    // Parse BASE data
     if (!data.empty()) {
       bluetooth::le_audio::BasicAudioAnnouncementData base;
       if (ParseBasicAudioAnnouncement(data, base)) {
-        // Check if BASE data changed
         bool changed = !base_data_.has_value() || !(base == *base_data_);
         base_data_ = base;
-
         if (changed) {
-          log::info("broadcast_id=0x{:x}, BASE data changed, presentation_delay={}us",
-                    GetBroadcastId(), base.presentation_delay_us);
           callbacks_->OnBaseDataReceived(GetBroadcastId(), base);
         }
-      } else {
-        log::warn("broadcast_id=0x{:x}, failed to parse BASE data", GetBroadcastId());
       }
     }
   }
 
   void OnBigInfoReport(uint16_t sync_handle, bool encrypted) override {
-    if (!pa_sync_info_.has_value() || pa_sync_info_->sync_handle != sync_handle) {
-      return;
-    }
+    if (!pa_sync_info_.has_value() || pa_sync_info_->sync_handle != sync_handle) return;
 
-    log::info("broadcast_id=0x{:x}, sync_handle=0x{:04x}, encrypted={}, state={}", GetBroadcastId(),
-              sync_handle, encrypted, SinkStateToString(GetState()));
-
-    // Store encryption status from BIG Info Report
     is_encrypted_ = encrypted;
-
     callbacks_->OnBigInfoReport(GetBroadcastId(), sync_handle, encrypted);
+  }
 
-    // If we're in PA_SYNCED state and have BASE data, we can proceed to BIG sync
-    if (GetState() == SinkState::PA_SYNCED && base_data_.has_value()) {
-      // Check if encryption matches our configuration
-      bool has_code = broadcast_code_.has_value();
-      if (encrypted && !has_code) {
-        log::warn("broadcast_id=0x{:x}, broadcast is encrypted but no code provided", GetBroadcastId());
-        return;
-      }
-
-      log::info("broadcast_id=0x{:x}, BIGInfo received, ready for BIG sync", GetBroadcastId());
-    }
+  void SetBigInfoParams(uint16_t iso_interval, uint8_t phy, uint8_t num_bis) override {
+    big_info_iso_interval_ = iso_interval;
+    big_info_phy_          = phy;
+    big_info_num_bis_      = num_bis;
+    log::info("broadcast_id=0x{:x}, SetBigInfoParams: iso_interval={} ({}ms), phy={}, num_bis={}",
+              GetBroadcastId(), iso_interval,
+              static_cast<uint32_t>(iso_interval) * 125 / 100,
+              phy, num_bis);
   }
 
   void HandleHciEvent(uint16_t event, void* data) override {
     switch (event) {
-      case HCI_BLE_BIG_SYNC_EST_EVT: {
-        auto* evt = static_cast<big_sync_established_evt*>(data);
-        OnBigSyncEstablished(evt);
-      } break;
-
-      case HCI_BLE_BIG_SYNC_LOST_EVT: {
-        auto* evt = static_cast<big_sync_lost_evt*>(data);
-        OnBigSyncLost(evt);
-      } break;
-
+      case HCI_BLE_BIG_SYNC_EST_EVT:
+        OnBigSyncEstablished(static_cast<big_sync_established_evt*>(data));
+        break;
+      case HCI_BLE_BIG_SYNC_LOST_EVT:
+        OnBigSyncLost(static_cast<big_sync_lost_evt*>(data));
+        break;
       default:
         log::warn("broadcast_id=0x{:x}, unknown HCI event=0x{:04x}", GetBroadcastId(), event);
         break;
     }
   }
 
-  void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle) override {
-    log::info("broadcast_id=0x{:x}, status=0x{:02x}, conn_handle=0x{:04x}", GetBroadcastId(), status,
-              conn_handle);
+  void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle, uint8_t direction) override {
+    log::info("broadcast_id=0x{:x}, status=0x{:02x}, conn_handle=0x{:04x}, direction={}",
+              GetBroadcastId(), status, conn_handle,
+              direction == bluetooth::hci::iso_manager::kIsoDataPathDirectionIn ? "TX" : "RX");
 
     if (!big_sync_info_.has_value()) {
-      log::error("OnSetupIsoDataPath called but no BIG sync info");
+      log::error("OnSetupIsoDataPath: no BIG sync info");
       return;
     }
 
@@ -356,45 +381,170 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       return;
     }
 
-    // Find next BIS handle to setup
-    auto& handles = big_sync_info_->bis_conn_handles;
-    auto it = std::find(handles.begin(), handles.end(), conn_handle);
-    if (it == handles.end()) {
-      log::error("Unknown conn_handle=0x{:04x}", conn_handle);
-      return;
-    }
+    if (is_enhanced_) {
+      auto& handles = big_sync_info_->bis_conn_handles;
+      enhanced_iso_setup_index_++;
 
-    it = std::next(it);
-    if (it == handles.end()) {
-      // All data paths setup - transition to BIG_SYNCED
-      log::info("broadcast_id=0x{:x}, all ISO data paths established", GetBroadcastId());
-      SetState(SinkState::BIG_SYNCED);
-      callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      if (enhanced_iso_phase_ == EnhancedIsoPhase::TX_SETUP) {
+        if (enhanced_iso_setup_index_ >= static_cast<int>(handles.size())) {
+          log::info("broadcast_id=0x{:x}, all TX ISO paths established", GetBroadcastId());
+          enhanced_iso_phase_ = EnhancedIsoPhase::TX_DONE;
+          enhanced_iso_setup_index_ = 0;
+          if (callbacks_) callbacks_->OnTxIsoPathsReady(GetBroadcastId());
+        } else {
+          TriggerIsoDatapathSetup(handles[enhanced_iso_setup_index_],
+              bluetooth::hci::iso_manager::kIsoDataPathDirectionIn /* TX */);
+        }
+      } else if (enhanced_iso_phase_ == EnhancedIsoPhase::RX_SETUP) {
+        if (enhanced_iso_setup_index_ >= static_cast<int>(handles.size())) {
+          log::info("broadcast_id=0x{:x}, all RX ISO paths established — enhanced source ready",
+                    GetBroadcastId());
+          enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+          enhanced_iso_setup_index_ = 0;
+          SetState(SinkState::BIG_SYNCED);
+          if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+        } else {
+          TriggerIsoDatapathSetup(handles[enhanced_iso_setup_index_],
+              bluetooth::hci::iso_manager::kIsoDataPathDirectionOut /* RX */);
+        }
+      } else {
+        log::warn("broadcast_id=0x{:x}, OnSetupIsoDataPath in unexpected phase={}",
+                  GetBroadcastId(), static_cast<int>(enhanced_iso_phase_));
+      }
     } else {
-      // Setup next data path
-      log::info("broadcast_id=0x{:x}, setting up next ISO data path", GetBroadcastId());
-      TriggerIsoDatapathSetup(*it);
+      auto& handles = big_sync_info_->bis_conn_handles;
+      auto it = std::find(handles.begin(), handles.end(), conn_handle);
+      if (it == handles.end()) {
+        log::error("Unknown conn_handle=0x{:04x}", conn_handle);
+        return;
+      }
+      it = std::next(it);
+      if (it == handles.end()) {
+        log::info("broadcast_id=0x{:x}, all ISO data paths established", GetBroadcastId());
+        SetState(SinkState::BIG_SYNCED);
+        callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      } else {
+        TriggerIsoDatapathSetup(*it, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut);
+      }
     }
   }
 
   void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle) override {
-    log::info("broadcast_id=0x{:x}, status=0x{:02x}, conn_handle=0x{:04x}", GetBroadcastId(), status,
-              conn_handle);
-
-    if (!big_sync_info_.has_value()) {
-      log::warn("OnRemoveIsoDataPath called but no BIG sync info");
-      return;
-    }
+    log::info("broadcast_id=0x{:x}, status=0x{:02x}, conn_handle=0x{:04x}", GetBroadcastId(),
+              status, conn_handle);
 
     if (status != 0x00) {
-      log::error("Failed to remove ISO data path, status=0x{:02x}, forcing BIG termination",
-                 status);
-      TerminateBigSync();
+      log::error("Failed to remove ISO data path, status=0x{:02x} — continuing teardown", status);
+    }
+
+    if (is_enhanced_ && (enhanced_iso_phase_ == EnhancedIsoPhase::TX_TEARDOWN ||
+                         enhanced_iso_phase_ == EnhancedIsoPhase::RX_TEARDOWN)) {
+      /* ---------------------------------------------------------------
+       * Enhanced source teardown — correct sequence per enhanced broadcast spec:
+       *
+       * RX_TEARDOWN (sink HAL suspend via REMOVE_RX_PATHS):
+       *   Remove RX paths (kRemoveIsoDataPathDirectionOutput) one by one.
+       *   When all done:
+       *     1. Ack sink HAL (OnRxIsoPathsRemoved).
+       *     2. Set rx_paths_removed_=true.
+       *     3. If tx_paths_removed_ → TerminateBigSync().
+       *        Else wait for TX teardown to complete.
+       *
+       * TX_TEARDOWN (source HAL suspend via REMOVE_TX_PATHS):
+       *   Remove TX paths (kRemoveIsoDataPathDirectionInput) one by one.
+       *   When all done:
+       *     1. Set tx_paths_removed_=true.
+       *     2. If pending_rx_teardown_ → start RX teardown now.
+       *        Else if rx_paths_removed_ → TerminateBigSync().
+       *        Else wait for RX teardown to complete.
+       *
+       * BIG sync is terminated only after BOTH TX and RX paths are removed.
+       * OnBigTerminateSyncComplete acks source HAL via OnBigSyncTerminated.
+       * --------------------------------------------------------------- */
+      enhanced_iso_setup_index_++;
+      bool is_tx = (enhanced_iso_phase_ == EnhancedIsoPhase::TX_TEARDOWN);
+      const char* phase_name = is_tx ? "TX" : "RX";
+
+      if (enhanced_iso_setup_index_ >= static_cast<int>(teardown_bis_handles_.size())) {
+        log::info("broadcast_id=0x{:x}, all %s ISO paths removed", GetBroadcastId(), phase_name);
+        enhanced_iso_setup_index_ = 0;
+
+        if (is_tx) {
+          /* All TX paths removed */
+          enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+          tx_paths_removed_ = true;
+
+          if (pending_rx_teardown_) {
+            /* RX teardown was queued — start it now */
+            pending_rx_teardown_ = false;
+            log::info("broadcast_id=0x{:x}, TX done, starting queued RX ISO path removal, "
+                      "num_bis=%zu", GetBroadcastId(), teardown_bis_handles_.size());
+            enhanced_iso_phase_ = EnhancedIsoPhase::RX_TEARDOWN;
+            enhanced_iso_setup_index_ = 0;
+            TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
+                bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput /* RX */);
+          } else if (rx_paths_removed_) {
+            /* RX already done — both paths removed, terminate BIG sync */
+            log::info("broadcast_id=0x{:x}, TX done, RX already done — terminating BIG sync",
+                      GetBroadcastId());
+            TerminateBigSync();
+          } else {
+            /* Waiting for RX teardown (REMOVE_RX_PATHS not yet received) */
+            log::info("broadcast_id=0x{:x}, TX done, waiting for RX teardown",
+                      GetBroadcastId());
+          }
+        } else {
+          /* All RX paths removed — ack sink HAL immediately */
+          enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+          if (callbacks_) callbacks_->OnRxIsoPathsRemoved(GetBroadcastId());
+          rx_paths_removed_ = true;
+
+          if (pending_tx_teardown_) {
+            /* TX teardown was queued — start it now */
+            pending_tx_teardown_ = false;
+            log::info("broadcast_id=0x{:x}, RX done, starting queued TX ISO path removal, "
+                      "num_bis=%zu", GetBroadcastId(), teardown_bis_handles_.size());
+            enhanced_iso_phase_ = EnhancedIsoPhase::TX_TEARDOWN;
+            enhanced_iso_setup_index_ = 0;
+            TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
+                bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput /* TX */);
+          } else if (tx_paths_removed_) {
+            /* TX already done — both paths removed, terminate BIG sync */
+            log::info("broadcast_id=0x{:x}, RX done, TX already done — terminating BIG sync",
+                      GetBroadcastId());
+            TerminateBigSync();
+          } else {
+            /* Waiting for TX teardown (REMOVE_TX_PATHS not yet received) */
+            log::info("broadcast_id=0x{:x}, RX done, waiting for TX teardown",
+                      GetBroadcastId());
+          }
+        }
+      } else {
+        uint8_t direction = is_tx
+            ? bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput   /* TX */
+            : bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput; /* RX */
+        log::info("broadcast_id=0x{:x}, removing %s ISO path [%d/%zu]",
+                  GetBroadcastId(), phase_name,
+                  enhanced_iso_setup_index_, teardown_bis_handles_.size());
+        TriggerIsoDatapathTeardown(teardown_bis_handles_[enhanced_iso_setup_index_], direction);
+      }
       return;
     }
 
-    // Find next BIS handle to teardown
-    auto& handles = big_sync_info_->bis_conn_handles;
+    /* Standard source teardown: use teardown_bis_handles_ or big_sync_info_ */
+    const std::vector<uint16_t>* handles_ptr = nullptr;
+    if (!teardown_bis_handles_.empty()) {
+      handles_ptr = &teardown_bis_handles_;
+    } else if (big_sync_info_.has_value()) {
+      handles_ptr = &big_sync_info_->bis_conn_handles;
+    }
+
+    if (!handles_ptr) {
+      log::warn("OnRemoveIsoDataPath: no BIS handles available");
+      return;
+    }
+
+    const auto& handles = *handles_ptr;
     auto it = std::find(handles.begin(), handles.end(), conn_handle);
     if (it == handles.end()) {
       log::error("Unknown conn_handle=0x{:04x}", conn_handle);
@@ -403,51 +553,46 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
 
     it = std::next(it);
     if (it == handles.end()) {
-      // All data paths removed - terminate BIG
-      log::info("broadcast_id=0x{:x}, all ISO data paths removed, terminating BIG", GetBroadcastId());
+      log::info("broadcast_id=0x{:x}, all ISO paths removed, terminating BIG sync", GetBroadcastId());
+      teardown_bis_handles_.clear();
       TerminateBigSync();
     } else {
-      // Remove next data path
-      log::info("broadcast_id=0x{:x}, removing next ISO data path", GetBroadcastId());
-      TriggerIsoDatapathTeardown(*it);
+      TriggerIsoDatapathTeardown(*it,
+          bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput /* RX */);
     }
   }
 
   void OnBigTerminateSyncComplete(uint8_t big_handle, uint8_t status) override {
-    log::info("broadcast_id=0x{:x}, big_handle={}, status=0x{:02x} - INTENTIONAL BIG TERMINATE COMPLETE",
-              GetBroadcastId(), big_handle, status);
+    log::info("broadcast_id=0x{:x}, big_handle={}, status=0x{:02x}", GetBroadcastId(),
+              big_handle, status);
 
-    if (status != HCI_SUCCESS) {
-      log::error("BIG terminate sync command failed, status=0x{:02x}", status);
-      // Even if terminate failed, clean up our state
-    }
-
-    // Clean up BIG sync info if we still have it
-    // Note: In normal flow, BIG Sync Lost event should arrive before this complete event
-    // and will have already cleaned up big_sync_info_. But handle both cases.
     if (big_sync_info_.has_value() && big_sync_info_->big_handle == big_handle) {
-      log::info("Cleaning up BIG sync info (not yet cleaned by BIG Sync Lost event)");
       big_sync_info_ = std::nullopt;
     }
 
-    // Notify upper layer about intentional termination (separate from unexpected loss)
+    /* BIG sync is terminated only after BOTH TX and RX ISO paths are removed.
+     * Notify upper layer — BTA layer acks source HAL in OnBigSyncTerminated. */
     callbacks_->OnBigSyncTerminated(GetBroadcastId(), big_handle, status);
 
-    // Determine next state based on current state
     if (GetState() == SinkState::DISABLING) {
-      // DISABLING state: Leave operation - keep PA sync, transition to PA_SYNCED
-      log::info("BIG terminate sync complete, transitioning to PA_SYNCED (Leave operation)");
+      /* Both TX and RX paths already removed before we got here.
+       * Reset teardown state and transition to PA_SYNCED. */
+      log::info("broadcast_id=0x{:x}, BIG terminated (all paths removed), transitioning to PA_SYNCED",
+                GetBroadcastId());
+      enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+      teardown_bis_handles_.clear();
+      tx_paths_removed_ = false;
+      rx_paths_removed_ = false;
+      pending_rx_teardown_ = false;
+      pending_tx_teardown_ = false;
       SetState(SinkState::PA_SYNCED);
-      if (callbacks_) {
-        callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-      }
+      if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
     } else if (GetState() == SinkState::STOPPING) {
-      // STOPPING state: Remove operation - terminate PA sync, transition to IDLE
-      log::info("BIG terminate sync complete, continuing with PA sync termination (Remove operation)");
+      log::info("broadcast_id=0x{:x}, BIG terminated, continuing PA sync termination", GetBroadcastId());
       TerminatePaSync();
     } else {
-      log::warn("Received BIG terminate sync complete in unexpected state: {}",
-                SinkStateToString(GetState()));
+      log::warn("broadcast_id=0x{:x}, BIG terminate complete in unexpected state={}",
+                GetBroadcastId(), SinkStateToString(GetState()));
     }
   }
 
@@ -455,44 +600,123 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   static BleScannerInterface* ble_scanner_;
 
  private:
-  BroadcastSinkStateMachineConfig sm_config_;  // State machine configuration (immutable)
-  BroadcastSinkConfiguration sink_config_;     // Sink configuration (codec, BIS, etc.)
+  BroadcastSinkStateMachineConfig sm_config_;
+  BroadcastSinkConfiguration sink_config_;
   std::optional<PaSyncInfo> pa_sync_info_;
   std::optional<BigSyncInfo> big_sync_info_;
   std::optional<bluetooth::le_audio::BasicAudioAnnouncementData> base_data_;
   BroadcastSinkStats stats_;
-  bool is_encrypted_;      // Encryption status from BIG Info Report
-  std::optional<BroadcastCode> broadcast_code_;  // Broadcast code for encrypted sources
-  bool pa_sync_lost_;      // Flag to track if PA sync was lost
+  bool is_encrypted_;
+  std::optional<BroadcastCode> broadcast_code_;
+  bool pa_sync_lost_;
+  bool is_enhanced_;
+
+  /**
+   * Phase of the enhanced (enhanced broadcast) ISO data path setup/teardown.
+   *
+   * Setup:
+   *   IDLE       -- waiting for 1st HIDL start.
+   *   DBIG_SETUP -- enhanced broadcast vendor HCI command sent.
+   *   TX_SETUP   -- BIG sync established; setting up TX paths.
+   *   TX_DONE    -- All TX paths configured; waiting for 2nd HIDL start.
+   *   RX_SETUP   -- Setting up RX paths (2nd HIDL start).
+   *
+   * Teardown:
+   *   TX_TEARDOWN -- Removing TX paths (source HAL suspend via REMOVE_TX_PATHS).
+   *                  When done → TerminateBigSync().
+   *   RX_TEARDOWN -- Removing RX paths (sink HAL suspend via REMOVE_RX_PATHS).
+   *                  When done → OnRxIsoPathsRemoved() → PA_SYNCED.
+   */
+  enum class EnhancedIsoPhase : uint8_t {
+    IDLE        = 0,
+    DBIG_SETUP  = 1,
+    TX_SETUP    = 2,
+    TX_DONE     = 3,
+    RX_SETUP    = 4,
+    TX_TEARDOWN = 5,
+    RX_TEARDOWN = 6,
+  };
+  EnhancedIsoPhase enhanced_iso_phase_;
+  int enhanced_iso_setup_index_;
+
+  /**
+   * BIS connection handles saved at the start of teardown.
+   * big_sync_info_ may be cleared by OnBigSyncLost before teardown completes.
+   */
+  std::vector<uint16_t> teardown_bis_handles_;
+
+  /**
+   * Set when REMOVE_RX_PATHS (sink HAL suspend) arrives while TX teardown
+   * (REMOVE_TX_PATHS) is already in progress.  RX teardown starts after TX
+   * teardown completes in OnRemoveIsoDataPath (TX_TEARDOWN case).
+   */
+  bool pending_rx_teardown_;
+
+  /**
+   * Set when REMOVE_TX_PATHS (source HAL suspend) arrives while RX teardown
+   * (REMOVE_RX_PATHS) is already in progress.  TX teardown starts after RX
+   * teardown completes in OnRemoveIsoDataPath (RX_TEARDOWN case).
+   */
+  bool pending_tx_teardown_;
+
+  /**
+   * Set when all TX ISO data paths have been removed.
+   * BIG sync is terminated only when both tx_paths_removed_ and
+   * rx_paths_removed_ are true.
+   */
+  bool tx_paths_removed_;
+
+  /**
+   * Set when all RX ISO data paths have been removed and sink HAL has been
+   * acknowledged (OnRxIsoPathsRemoved called).
+   * BIG sync is terminated only when both tx_paths_removed_ and
+   * rx_paths_removed_ are true.
+   */
+  bool rx_paths_removed_;
+
+  /**
+   * BIG info parameters captured from the controller BIG Info Report
+   * (via OnBigInfoReportFull → SetBigInfoParams).
+   * Used in SendDbigSetupCommand() to select the correct
+   * bis_control_event_interval from the parameter table.
+   *
+   * iso_interval: ISO interval in units of 1.25 ms (e.g. 8 = 10 ms)
+   * phy:          PHY: 1=LE1M, 2=LE2M, 3=Coded
+   * num_bis:      Number of BISes in the BIG
+   */
+  uint16_t big_info_iso_interval_;
+  uint8_t  big_info_phy_;
+  uint8_t  big_info_num_bis_;
 
   // Message handlers for each state
   typedef std::function<void(const void*)> msg_handler_t;
 
-  // START_BIG_SYNC message handlers
+  // START_BIG_SYNC handlers
   const std::array<msg_handler_t, static_cast<size_t>(SinkState::STATE_COUNT)>
       start_big_sync_handlers{
           /* IDLE */
           [this](const void*) {
-            log::warn("broadcast_id=0x{:x}, cannot start BIG sync from IDLE (PA sync not started)", GetBroadcastId());
+            log::warn("broadcast_id=0x{:x}, cannot start BIG sync from IDLE", GetBroadcastId());
           },
           /* PA_SYNCING */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, PA syncing in progress, wait for PA sync complete",
-                      GetBroadcastId());
+            log::info("broadcast_id=0x{:x}, PA syncing, wait for PA sync complete", GetBroadcastId());
           },
           /* PA_SYNCED */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, starting BIG sync", GetBroadcastId());
             if (!base_data_.has_value()) {
-              log::warn("broadcast_id=0x{:x}, no BASE data yet, cannot start BIG sync",
-                        GetBroadcastId());
+              log::warn("broadcast_id=0x{:x}, no BASE data, cannot start BIG sync", GetBroadcastId());
               return;
             }
             SetState(SinkState::BIG_SYNCING);
-            if (callbacks_) {
-              callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+            if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+            if (is_enhanced_) {
+              enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+              log::info("broadcast_id=0x{:x}, enhanced source: waiting for 1st HIDL start",
+                        GetBroadcastId());
+            } else {
+              CreateBigSync();
             }
-            CreateBigSync();
           },
           /* BIG_SYNCING */
           [this](const void*) {
@@ -512,9 +736,11 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           },
       };
 
-  // STOP_BIG_SYNC message handlers (stop BIG sync only, keep PA sync)
+  // REMOVE_TX_PATHS handlers — triggered by source HAL OnAudioSuspend
+  // Enhanced: remove TX ISO paths → TerminateBigSync → ack source HAL
+  // Standard: TerminateBigSync directly
   const std::array<msg_handler_t, static_cast<size_t>(SinkState::STATE_COUNT)>
-      stop_big_sync_handlers{
+      REMOVE_TX_PATHS_handlers{
           /* IDLE */
           [this](const void*) {
             log::info("broadcast_id=0x{:x}, no BIG sync to stop (IDLE)", GetBroadcastId());
@@ -530,17 +756,38 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           /* BIG_SYNCING */
           [this](const void*) {
             log::info("broadcast_id=0x{:x}, stopping BIG sync (BIG_SYNCING)", GetBroadcastId());
-            // BIG sync will fail and we'll transition back to PA_SYNCED in the event handler
           },
           /* STREAMING */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, stopping BIG sync only (keeping PA sync)", GetBroadcastId());
+            log::info("broadcast_id=0x{:x}, source HAL suspend (REMOVE_TX_PATHS): "
+                      "starting TX ISO path removal",
+                      GetBroadcastId());
             SetState(SinkState::DISABLING);
-            if (callbacks_) {
-              callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+            if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+            /* Preserve rx_paths_removed_ — RX teardown may have already completed
+             * (REMOVE_RX_PATHS arrived before REMOVE_TX_PATHS). */
+            tx_paths_removed_ = false;
+            pending_rx_teardown_ = false;
+            pending_tx_teardown_ = false;
+            /* Save BIS handles — big_sync_info_ may be cleared by OnBigSyncLost */
+            if (big_sync_info_.has_value()) {
+              teardown_bis_handles_ = big_sync_info_->bis_conn_handles;
+            } else {
+              teardown_bis_handles_.clear();
             }
-            if (big_sync_info_.has_value() && !big_sync_info_->bis_conn_handles.empty()) {
-              TriggerIsoDatapathTeardown(big_sync_info_->bis_conn_handles[0]);
+            if (is_enhanced_ && !teardown_bis_handles_.empty()) {
+              /* Start TX teardown immediately — no need to wait for RX teardown.
+               * TX and RX teardowns are independent; BIG sync is terminated only
+               * after BOTH tx_paths_removed_ and rx_paths_removed_ are true. */
+              log::info("broadcast_id=0x{:x}, REMOVE_TX_PATHS: starting TX ISO path removal, "
+                        "num_bis=%zu", GetBroadcastId(), teardown_bis_handles_.size());
+              enhanced_iso_phase_ = EnhancedIsoPhase::TX_TEARDOWN;
+              enhanced_iso_setup_index_ = 0;
+              TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
+                  bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput /* TX */);
+            } else {
+              /* Standard source or no handles: terminate BIG sync directly */
+              TerminateBigSync();
             }
           },
           /* DISABLING */
@@ -553,7 +800,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           },
       };
 
-  // STOP_SYNC message handlers
+  // STOP_SYNC handlers
   const std::array<msg_handler_t, static_cast<size_t>(SinkState::STATE_COUNT)>
       stop_sync_handlers{
           /* IDLE */
@@ -567,44 +814,34 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           /* PA_SYNCED */
           [this](const void*) {
             SetState(SinkState::STOPPING);
-            if (callbacks_) {
-              callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-            }
-            log::info("broadcast_id=0x{:x}, stopping PA sync", GetBroadcastId());
+            if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             TerminatePaSync();
           },
           /* BIG_SYNCING */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, stopping BIG sync", GetBroadcastId());
             SetState(SinkState::STOPPING);
-            if (callbacks_) {
-              callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-            }
-            // BIG sync will fail and we'll clean up in the event handler
+            if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
           },
           /* STREAMING */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, stopping stream", GetBroadcastId());
             SetState(SinkState::STOPPING);
-            if (callbacks_) {
-              callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-            }
+            if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             if (big_sync_info_.has_value() && !big_sync_info_->bis_conn_handles.empty()) {
-              TriggerIsoDatapathTeardown(big_sync_info_->bis_conn_handles[0]);
+              teardown_bis_handles_ = big_sync_info_->bis_conn_handles;
+              TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
+                  bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput);
+            } else {
+              TerminateBigSync();
             }
           },
           /* DISABLING */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, stopping both BIG and PA sync from DISABLING state", GetBroadcastId());
             SetState(SinkState::STOPPING);
-            if (callbacks_) {
-              callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-            }
-            // If still have BIG sync, teardown datapaths first
+            if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             if (big_sync_info_.has_value() && !big_sync_info_->bis_conn_handles.empty()) {
-              TriggerIsoDatapathTeardown(big_sync_info_->bis_conn_handles[0]);
+              TriggerIsoDatapathTeardown(big_sync_info_->bis_conn_handles[0],
+                  bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput);
             } else {
-              // No BIG sync, directly terminate PA sync
               TerminatePaSync();
             }
           },
@@ -615,106 +852,101 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       };
 
   void StartPaSync() {
-    log::info("reg_id={}, broadcast_id=0x{:x}, address={}, adv_sid={}", GetRegId(),
-              GetBroadcastId(), sm_config_.address.ToString(), sm_config_.adv_sid);
-
-    if (ble_scanner_ == nullptr) {
-      log::error("BLE scanner not initialized");
-      return;
-    }
-
-    // Use BLE Scanner interface to start PA sync with allocated reg_id
-    ble_scanner_->StartSync(
-        sm_config_.adv_sid, sm_config_.address, 0 /* skip */, sm_config_.pa_sync_timeout,
-        sm_config_.reg_id /* reg_id */, kScannerClientIdLeAudio);
+    if (!ble_scanner_) { log::error("BLE scanner not initialized"); return; }
+    ble_scanner_->StartSync(sm_config_.adv_sid, sm_config_.address, 0,
+                            sm_config_.pa_sync_timeout, sm_config_.reg_id,
+                            kScannerClientIdLeAudio);
   }
 
   void TerminatePaSync() {
     if (!pa_sync_info_.has_value()) {
-      log::warn("broadcast_id=0x{:x}, no PA sync to terminate", GetBroadcastId());
       SetState(SinkState::IDLE);
-      if (callbacks_) {
-        callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-      }
+      if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       return;
     }
-
-    log::info("broadcast_id=0x{:x}, sync_handle=0x{:04x}", GetBroadcastId(), pa_sync_info_->sync_handle);
-
-    if (ble_scanner_ == nullptr) {
-      log::error("BLE scanner not initialized");
-      return;
-    }
-
+    if (!ble_scanner_) { log::error("BLE scanner not initialized"); return; }
     ble_scanner_->StopSync(pa_sync_info_->sync_handle, kScannerClientIdLeAudio);
     SetState(SinkState::IDLE);
-    if (callbacks_) {
-      callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-    }
-    // Clean up will happen in OnSyncLost callback
+    if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
   }
 
   void CreateBigSync() {
-    if (!pa_sync_info_.has_value()) {
-      log::error("broadcast_id=0x{:x}, no PA sync established", GetBroadcastId());
+    if (!pa_sync_info_.has_value() || !base_data_.has_value()) {
+      log::error("broadcast_id=0x{:x}, cannot create BIG sync: missing PA sync or BASE data",
+                 GetBroadcastId());
       return;
     }
-
-    if (!base_data_.has_value()) {
-      log::error("broadcast_id=0x{:x}, no BASE data available", GetBroadcastId());
-      return;
-    }
-    log::info("broadcast_id=0x{:x}, pa_sync_handle=0x{:04x}, num_bis={}", GetBroadcastId(),
-              pa_sync_info_->sync_handle, sink_config_.bis_indices.size());
-
-    // Prepare BIG sync parameters
-    // Use encryption status from BIG Info Report
     bluetooth::hci::iso_manager::big_sync_params params = {
-        .sync_handle = pa_sync_info_->sync_handle,
-        .encryption = is_encrypted_ ? static_cast<uint8_t>(0x01) : static_cast<uint8_t>(0x00),
+        .sync_handle   = pa_sync_info_->sync_handle,
+        .encryption    = is_encrypted_ ? static_cast<uint8_t>(0x01) : static_cast<uint8_t>(0x00),
         .broadcast_code = broadcast_code_.value_or(std::array<uint8_t, 16>({0})),
-        .mse = sink_config_.mse,
+        .mse           = sink_config_.mse,
         .big_sync_timeout = sink_config_.big_sync_timeout,
-        .bis = sink_config_.bis_indices,
+        .bis           = sink_config_.bis_indices,
     };
-
-    log::info("broadcast_id=0x{:x}, encryption={}, has_broadcast_code={}", GetBroadcastId(),
-              is_encrypted_, broadcast_code_.has_value());
-
-    // Use reg_id as big_handle
-    uint8_t big_handle = sm_config_.reg_id;
-
-    IsoManager::GetInstance()->BigCreateSync(big_handle, std::move(params));
+    IsoManager::GetInstance()->BigCreateSync(static_cast<uint8_t>(sm_config_.reg_id),
+                                             std::move(params));
   }
 
   void TerminateBigSync() {
     if (!big_sync_info_.has_value()) {
-      log::warn("broadcast_id=0x{:x}, no BIG sync to terminate", GetBroadcastId());
-      // Handle based on current state
       if (GetState() == SinkState::DISABLING) {
-        // DISABLING: No BIG sync, just transition to PA_SYNCED
-        log::info("No BIG sync to terminate in DISABLING state, transitioning to PA_SYNCED");
         SetState(SinkState::PA_SYNCED);
-        if (callbacks_) {
-          callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-        }
+        if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       } else if (GetState() == SinkState::STOPPING) {
-        // STOPPING: No BIG sync, terminate PA sync
         TerminatePaSync();
       }
       return;
     }
-
-    log::info("broadcast_id=0x{:x}, big_handle={}", GetBroadcastId(), big_sync_info_->big_handle);
-
     IsoManager::GetInstance()->BigTerminateSync(big_sync_info_->big_handle);
+  }
 
-    // Clean up will happen in OnBigSyncLost callback
+  /**
+   * Select bis_control_event_interval from the parameter table:
+   *
+   *  ISO interval (1.25 ms units) | ISO interval | bis_control_event_interval
+   *  ─────────────────────────────┼──────────────┼───────────────────────────
+   *   ≤  6  ( 7.5 ms)             │  7.5 ms      │  12
+   *   ≤  8  (10   ms)             │ 10   ms      │   9
+   *   ≤ 16  (20   ms)             │ 20   ms      │   6
+   *   > 16  (30   ms)             │ 30   ms      │   4
+   *
+   * Both LE2M and Coded(S2) use the same mapping.
+   * iso_interval is in units of 1.25 ms (controller BIG Info Report field).
+   */
+  static uint8_t SelectBisControlEventInterval(uint16_t iso_interval_1_25ms) {
+    if (iso_interval_1_25ms <= 6)  return 12;  //  7.5 ms
+    if (iso_interval_1_25ms <= 8)  return 9;   // 10   ms
+    if (iso_interval_1_25ms <= 16) return 6;   // 20   ms
+    return 4;                                   // 30   ms
+  }
+
+  void SendDbigSetupCommand() {
+    uint8_t bis_ctrl_interval = SelectBisControlEventInterval(big_info_iso_interval_);
+
+    log::info("broadcast_id=0x{:x}, SendDbigSetupCommand: iso_interval={} ({}ms), "
+              "phy={}, num_bis={}, bis_control_event_interval={}",
+              GetBroadcastId(), big_info_iso_interval_,
+              static_cast<uint32_t>(big_info_iso_interval_) * 125 / 100,
+              big_info_phy_, big_info_num_bis_, bis_ctrl_interval);
+
+    bluetooth::hci::iso_manager::dbig_create_params params = {};
+    params.dbig_handle                = static_cast<uint8_t>(sm_config_.reg_id);
+    params.dbig_feature_set           = 0x03;  // Feature set: duplex TX+RX
+    params.bis_detection_attempts     = 0x0A;  // 10 detection attempts
+    params.max_payload_dbig_control   = 0x10;  // 16 bytes max payload
+    params.bis_control_event_interval = bis_ctrl_interval;
+    params.send_exit                  = 0x02;  // 2
+    params.pgp_timeout                = 0x0A;  // 10
+    params.pgo_timeout                = 0x0A;  // 10
+    params.sgo_timeout                = 0x06;  // 6
+    params.tx_power                   = 0x08;  // 8
+    IsoManager::GetInstance()->CreateDbig(params);
   }
 
   void OnBigSyncEstablished(big_sync_established_evt* evt) {
-    log::info("broadcast_id=0x{:x}, status=0x{:02x}, big_handle={}, num_bis={}", GetBroadcastId(),
-              evt->status, evt->big_handle, evt->conn_handles.size());
+    log::info("broadcast_id=0x{:x}, status=0x{:02x}, big_handle={}, num_bis={}",
+              GetBroadcastId(), evt->status, evt->big_handle, evt->conn_handles.size());
 
     if (evt->status != 0x00) {
       log::error("BIG sync failed, status=0x{:02x}", evt->status);
@@ -723,296 +955,192 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       return;
     }
 
-    // Store BIG sync info
     BigSyncInfo info;
-    info.big_handle = evt->big_handle;
-    info.pa_sync_handle = pa_sync_info_->sync_handle;
-    info.bis_conn_handles = evt->conn_handles;
+    info.big_handle           = evt->big_handle;
+    info.pa_sync_handle       = pa_sync_info_->sync_handle;
+    info.bis_conn_handles     = evt->conn_handles;
     info.transport_latency_us = evt->transport_latency_big;
-    info.nse = evt->nse;
-    info.bn = evt->bn;
-    info.pto = evt->pto;
-    info.irc = evt->irc;
-    info.max_pdu = evt->max_pdu;
-    info.iso_interval = evt->iso_interval;
-    info.num_bis = static_cast<uint8_t>(evt->conn_handles.size());
+    info.nse                  = evt->nse;
+    info.bn                   = evt->bn;
+    info.pto                  = evt->pto;
+    info.irc                  = evt->irc;
+    info.max_pdu              = evt->max_pdu;
+    info.iso_interval         = evt->iso_interval;
+    info.num_bis              = static_cast<uint8_t>(evt->conn_handles.size());
     big_sync_info_ = info;
 
     callbacks_->OnBigSyncEstablished(GetBroadcastId(), evt->big_handle, evt->conn_handles);
 
-    // Setup ISO data paths
-    if (!evt->conn_handles.empty()) {
-      TriggerIsoDatapathSetup(evt->conn_handles[0]);
-    } else {
+    if (evt->conn_handles.empty()) {
       log::error("No BIS connection handles in BIG sync established event");
+      return;
+    }
+
+    if (is_enhanced_) {
+      log::info("broadcast_id=0x{:x}, enhanced source: BIG sync established, starting TX ISO setup",
+                GetBroadcastId());
+      enhanced_iso_phase_ = EnhancedIsoPhase::TX_SETUP;
+      enhanced_iso_setup_index_ = 0;
+      TriggerIsoDatapathSetup(evt->conn_handles[0],
+          bluetooth::hci::iso_manager::kIsoDataPathDirectionIn /* TX */);
+    } else {
+      log::info("broadcast_id=0x{:x}, standard source: starting RX ISO setup", GetBroadcastId());
+      enhanced_iso_setup_index_ = 0;
+      TriggerIsoDatapathSetup(evt->conn_handles[0],
+          bluetooth::hci::iso_manager::kIsoDataPathDirectionOut /* RX */);
     }
   }
 
   void OnBigSyncLost(big_sync_lost_evt* evt) {
-    log::warn("broadcast_id=0x{:x}, big_handle={}, reason=0x{:02x} - UNEXPECTED BIG SYNC LOST",
+    log::warn("broadcast_id=0x{:x}, big_handle={}, reason=0x{:02x}",
               GetBroadcastId(), evt->big_handle, evt->reason);
 
-    if (!big_sync_info_.has_value() || big_sync_info_->big_handle != evt->big_handle) {
-      log::warn("BIG sync lost for unknown big_handle={}", evt->big_handle);
-      return;
-    }
+    if (!big_sync_info_.has_value() || big_sync_info_->big_handle != evt->big_handle) return;
 
     uint8_t big_handle = big_sync_info_->big_handle;
     big_sync_info_ = std::nullopt;
-
-    // This is an UNEXPECTED loss (not due to our terminate command)
-    // Notify upper layer with the reason
     callbacks_->OnBigSyncLost(GetBroadcastId(), big_handle, evt->reason);
 
-    // Transition based on current state
     if (GetState() == SinkState::DISABLING) {
-      // BIG sync lost during DISABLING - this is expected, transition to PA_SYNCED
-      log::info("BIG sync lost during DISABLING state, transitioning to PA_SYNCED");
       SetState(SinkState::PA_SYNCED);
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
     } else if (GetState() == SinkState::STOPPING) {
-      // BIG sync lost during STOPPING - continue with PA sync termination
-      log::info("BIG sync lost during STOPPING state, continuing with PA termination");
       TerminatePaSync();
     } else {
-      // Unexpected loss during normal operation - go back to PA_SYNCED
-      // Upper layer can decide whether to retry BIG sync
-      log::info("BIG sync lost unexpectedly, transitioning to PA_SYNCED");
       SetState(SinkState::PA_SYNCED);
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
     }
   }
 
-  void TriggerIsoDatapathSetup(uint16_t conn_handle) {
-    log::info("broadcast_id=0x{:x}, conn_handle=0x{:04x}", GetBroadcastId(), conn_handle);
-
+  void TriggerIsoDatapathSetup(uint16_t conn_handle, uint8_t direction) {
     if (!base_data_.has_value()) {
-      log::error("No BASE data available for ISO data path setup");
+      log::error("No BASE data for ISO data path setup");
       return;
     }
-
-    /* Note: If coding format is transparent, 'codec_id_company' and
-     * 'codec_id_vendor' shall be ignored.
-     */
-    auto& iso_datapath_config = sink_config_.data_path.isoDataPathConfig;
+    auto& cfg = sink_config_.data_path.isoDataPathConfig;
     bluetooth::hci::iso_manager::iso_data_path_params params = {
-        .data_path_dir = bluetooth::hci::iso_manager::kIsoDataPathDirectionOut,
-        .data_path_id = static_cast<uint8_t>(sink_config_.data_path.dataPathId),
+        .data_path_dir  = direction,
+        .data_path_id   = static_cast<uint8_t>(sink_config_.data_path.dataPathId),
         .codec_id_format = static_cast<uint8_t>(
-                iso_datapath_config.isTransparent ? bluetooth::hci::kIsoCodingFormatTransparent
-                                                  : iso_datapath_config.codecId.coding_format),
-        .codec_id_company =
-                static_cast<uint16_t>(iso_datapath_config.isTransparent
-                                              ? 0x0000
-                                              : iso_datapath_config.codecId.vendor_company_id),
-        .codec_id_vendor =
-                static_cast<uint16_t>(iso_datapath_config.isTransparent
-                                              ? 0x0000
-                                              : iso_datapath_config.codecId.vendor_codec_id),
-        .controller_delay = iso_datapath_config.controllerDelayUs,
-        .codec_conf = iso_datapath_config.configuration,
+                cfg.isTransparent ? bluetooth::hci::kIsoCodingFormatTransparent
+                                  : cfg.codecId.coding_format),
+        .codec_id_company = static_cast<uint16_t>(
+                cfg.isTransparent ? 0x0000 : cfg.codecId.vendor_company_id),
+        .codec_id_vendor  = static_cast<uint16_t>(
+                cfg.isTransparent ? 0x0000 : cfg.codecId.vendor_codec_id),
+        .controller_delay = cfg.controllerDelayUs,
+        .codec_conf       = cfg.configuration,
     };
-
     IsoManager::GetInstance()->SetupIsoDataPath(conn_handle, std::move(params));
   }
 
-  void TriggerIsoDatapathTeardown(uint16_t conn_handle) {
-    log::info("broadcast_id=0x{:x}, conn_handle=0x{:04x}", GetBroadcastId(), conn_handle);
-
-    IsoManager::GetInstance()->RemoveIsoDataPath(
-        conn_handle, bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput);
+  void TriggerIsoDatapathTeardown(
+      uint16_t conn_handle,
+      uint8_t direction = bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput) {
+    log::info("broadcast_id=0x{:x}, conn_handle=0x{:04x}, direction={}",
+              GetBroadcastId(), conn_handle,
+              direction == bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput
+                  ? "TX" : "RX");
+    IsoManager::GetInstance()->RemoveIsoDataPath(conn_handle, direction);
   }
 
   bool ParseBasicAudioAnnouncement(const std::vector<uint8_t>& data,
                                    bluetooth::le_audio::BasicAudioAnnouncementData& base) {
-    // AD format: [Length][AD Type][Service UUID (2 bytes)][BASE Data...]
-    // BASE Data: [Presentation Delay (3 bytes)][Num Subgroups][Subgroups...]
-    // Minimum: 1 + 1 + 2 + 3 + 1 = 8 bytes
-    if (data.size() < 8) {
-      log::error("BASE data too short: {} bytes", data.size());
-      return false;
-    }
+    if (data.size() < 8) { log::error("BASE data too short: {} bytes", data.size()); return false; }
 
     size_t offset = 0;
     const uint8_t* p = data.data();
 
-    // Parse AD Length (1 byte) and AD Type (1 byte)
     uint8_t ad_length = p[offset++];
-    uint8_t ad_type = p[offset++];
-
-    // Parse Basic Audio Announcement Service UUID (2 bytes)
+    uint8_t ad_type   = p[offset++];
     uint16_t service_uuid = p[offset] | (p[offset + 1] << 8);
     offset += 2;
+    log::info("AD: length={}, type=0x{:02x}, uuid=0x{:04x}", ad_length, ad_type, service_uuid);
 
-    log::info("AD format: length={}, type=0x{:02x}, service_uuid=0x{:04x}",
-              ad_length, ad_type, service_uuid);
-
-    // Parse presentation delay (3 bytes, 24-bit value in microseconds)
-    const uint8_t* base_data = p + offset;
-    STREAM_TO_UINT24(base.presentation_delay_us, base_data);
+    const uint8_t* base_ptr = p + offset;
+    STREAM_TO_UINT24(base.presentation_delay_us, base_ptr);
     offset += 3;
 
-    // Parse number of subgroups (1 byte)
     uint8_t num_subgroups = p[offset++];
-    if (num_subgroups == 0) {
-      log::error("BASE has no subgroups");
-      return false;
-    }
+    if (num_subgroups == 0) { log::error("BASE has no subgroups"); return false; }
 
-    log::info("Parsing BASE: presentation_delay={}us, num_subgroups={}",
-              base.presentation_delay_us, num_subgroups);
-
-    // Parse each subgroup
     for (uint8_t sg = 0; sg < num_subgroups; sg++) {
-      if (offset >= data.size()) {
-        log::error("Unexpected end of BASE data at subgroup {}", sg);
-        return false;
-      }
+      if (offset >= data.size()) { log::error("Unexpected end at subgroup {}", sg); return false; }
 
       bluetooth::le_audio::BasicAudioAnnouncementSubgroup subgroup;
-
-      // Parse number of BIS in this subgroup (1 byte)
       uint8_t num_bis = p[offset++];
-      if (num_bis == 0) {
-        log::error("Subgroup {} has no BIS", sg);
-        return false;
-      }
+      if (num_bis == 0) { log::error("Subgroup {} has no BIS", sg); return false; }
 
-      // Parse Codec ID (5 bytes)
-      if (offset + 5 > data.size()) {
-        log::error("Not enough data for codec ID in subgroup {}", sg);
-        return false;
-      }
-
+      if (offset + 5 > data.size()) { log::error("Not enough data for codec ID"); return false; }
       subgroup.codec_config.codec_id = p[offset++];
-      const uint8_t* temp_p = p + offset;
-      STREAM_TO_UINT16(subgroup.codec_config.vendor_company_id, temp_p);
-      offset += 2;
-      temp_p = p + offset;
-      STREAM_TO_UINT16(subgroup.codec_config.vendor_codec_id, temp_p);
-      offset += 2;
+      const uint8_t* tp = p + offset;
+      STREAM_TO_UINT16(subgroup.codec_config.vendor_company_id, tp); offset += 2;
+      tp = p + offset;
+      STREAM_TO_UINT16(subgroup.codec_config.vendor_codec_id, tp);   offset += 2;
 
-      log::info("Subgroup {}: num_bis={}, codec_id=0x{:02x}, vendor_company=0x{:04x}, vendor_codec=0x{:04x}",
-                sg, num_bis, subgroup.codec_config.codec_id,
-                subgroup.codec_config.vendor_company_id, subgroup.codec_config.vendor_codec_id);
-
-      // Parse Codec Specific Configuration Length (1 byte)
-      if (offset >= data.size()) {
-        log::error("Not enough data for codec config length in subgroup {}", sg);
-        return false;
-      }
-      uint8_t codec_config_len = p[offset++];
-
-      // Parse Codec Specific Configuration (LTV format)
-      if (offset + codec_config_len > data.size()) {
-        log::error("Not enough data for codec config in subgroup {}", sg);
-        return false;
-      }
-
-      if (codec_config_len > 0) {
-        size_t ltv_offset = 0;
-        while (ltv_offset < codec_config_len) {
-          uint8_t ltv_len = p[offset + ltv_offset++];
-          if (ltv_len == 0 || ltv_offset + ltv_len > codec_config_len) {
-            log::warn("Invalid LTV length in codec config");
-            break;
-          }
-          uint8_t ltv_type = p[offset + ltv_offset++];
-          std::vector<uint8_t> ltv_value(p + offset + ltv_offset,
-                                         p + offset + ltv_offset + ltv_len - 1);
-          subgroup.codec_config.codec_specific_params[ltv_type] = ltv_value;
-          ltv_offset += (ltv_len - 1);
+      if (offset >= data.size()) return false;
+      uint8_t cc_len = p[offset++];
+      if (offset + cc_len > data.size()) return false;
+      if (cc_len > 0) {
+        size_t lo = 0;
+        while (lo < cc_len) {
+          uint8_t ll = p[offset + lo++];
+          if (ll == 0 || lo + ll > cc_len) break;
+          uint8_t lt = p[offset + lo++];
+          subgroup.codec_config.codec_specific_params[lt] =
+              std::vector<uint8_t>(p + offset + lo, p + offset + lo + ll - 1);
+          lo += (ll - 1);
         }
-        offset += codec_config_len;
+        offset += cc_len;
       }
 
-      // Parse Metadata Length (1 byte)
-      if (offset >= data.size()) {
-        log::error("Not enough data for metadata length in subgroup {}", sg);
-        return false;
-      }
-      uint8_t metadata_len = p[offset++];
-
-      // Parse Metadata (LTV format)
-      if (offset + metadata_len > data.size()) {
-        log::error("Not enough data for metadata in subgroup {}", sg);
-        return false;
-      }
-
-      if (metadata_len > 0) {
-        size_t ltv_offset = 0;
-        while (ltv_offset < metadata_len) {
-          uint8_t ltv_len = p[offset + ltv_offset++];
-          if (ltv_len == 0 || ltv_offset + ltv_len > metadata_len) {
-            log::warn("Invalid LTV length in metadata");
-            break;
-          }
-          uint8_t ltv_type = p[offset + ltv_offset++];
-          std::vector<uint8_t> ltv_value(p + offset + ltv_offset,
-                                         p + offset + ltv_offset + ltv_len - 1);
-          subgroup.metadata[ltv_type] = ltv_value;
-          ltv_offset += (ltv_len - 1);
+      if (offset >= data.size()) return false;
+      uint8_t meta_len = p[offset++];
+      if (offset + meta_len > data.size()) return false;
+      if (meta_len > 0) {
+        size_t lo = 0;
+        while (lo < meta_len) {
+          uint8_t ll = p[offset + lo++];
+          if (ll == 0 || lo + ll > meta_len) break;
+          uint8_t lt = p[offset + lo++];
+          subgroup.metadata[lt] =
+              std::vector<uint8_t>(p + offset + lo, p + offset + lo + ll - 1);
+          lo += (ll - 1);
         }
-        offset += metadata_len;
+        offset += meta_len;
       }
 
-      // Parse BIS configurations
       for (uint8_t bis = 0; bis < num_bis; bis++) {
-        if (offset >= data.size()) {
-          log::error("Not enough data for BIS {} in subgroup {}", bis, sg);
-          return false;
-        }
-
-        bluetooth::le_audio::BasicAudioAnnouncementBisConfig bis_config;
-
-        // Parse BIS Index (1 byte)
-        bis_config.bis_index = p[offset++];
-
-        // Parse Codec Specific Configuration Length (1 byte)
-        if (offset >= data.size()) {
-          log::error("Not enough data for BIS codec config length");
-          return false;
-        }
-        uint8_t bis_codec_config_len = p[offset++];
-
-        // Parse BIS Codec Specific Configuration (LTV format)
-        if (offset + bis_codec_config_len > data.size()) {
-          log::error("Not enough data for BIS codec config");
-          return false;
-        }
-
-        if (bis_codec_config_len > 0) {
-          size_t ltv_offset = 0;
-          while (ltv_offset < bis_codec_config_len) {
-            uint8_t ltv_len = p[offset + ltv_offset++];
-            if (ltv_len == 0 || ltv_offset + ltv_len > bis_codec_config_len) {
-              log::warn("Invalid LTV length in BIS codec config");
-              break;
-            }
-            uint8_t ltv_type = p[offset + ltv_offset++];
-            std::vector<uint8_t> ltv_value(p + offset + ltv_offset,
-                                           p + offset + ltv_offset + ltv_len - 1);
-            bis_config.codec_specific_params[ltv_type] = ltv_value;
-            ltv_offset += (ltv_len - 1);
+        if (offset >= data.size()) return false;
+        bluetooth::le_audio::BasicAudioAnnouncementBisConfig bc;
+        bc.bis_index = p[offset++];
+        if (offset >= data.size()) return false;
+        uint8_t bcc_len = p[offset++];
+        if (offset + bcc_len > data.size()) return false;
+        if (bcc_len > 0) {
+          size_t lo = 0;
+          while (lo < bcc_len) {
+            uint8_t ll = p[offset + lo++];
+            if (ll == 0 || lo + ll > bcc_len) break;
+            uint8_t lt = p[offset + lo++];
+            bc.codec_specific_params[lt] =
+                std::vector<uint8_t>(p + offset + lo, p + offset + lo + ll - 1);
+            lo += (ll - 1);
           }
-          offset += bis_codec_config_len;
+          offset += bcc_len;
         }
+        subgroup.bis_configs.push_back(std::move(bc));
+      }
 
-        log::info("  BIS {}: index={}", bis, bis_config.bis_index);
-        subgroup.bis_configs.push_back(std::move(bis_config));
+      if (num_bis >= 3 && !is_enhanced_) {
+        is_enhanced_ = true;
+        log::info("broadcast_id=0x{:x}, subgroup {} has {} BISes: enhanced source detected",
+                  GetBroadcastId(), sg, num_bis);
+        if (callbacks_) callbacks_->OnEnhancedSourceDetected(GetBroadcastId(), num_bis);
       }
 
       base.subgroup_configs.push_back(std::move(subgroup));
     }
-
-    if (offset != data.size()) {
-      log::warn("BASE parsing completed but {} bytes remain", data.size() - offset);
-    }
-
-    log::info("BASE parsing successful: {} subgroups, {} total BIS",
-              base.subgroup_configs.size(),
-              std::accumulate(base.subgroup_configs.begin(), base.subgroup_configs.end(), 0,
-                            [](int sum, const auto& sg) { return sum + sg.bis_configs.size(); }));
 
     return true;
   }
@@ -1032,32 +1160,23 @@ void BroadcastSinkStateMachine::Initialize(IBroadcastSinkStateMachineCallbacks* 
                                            BleScannerInterface* ble_scanner) {
   BroadcastSinkStateMachineImpl::callbacks_ = callbacks;
   BroadcastSinkStateMachineImpl::ble_scanner_ = ble_scanner;
-  log::info("Broadcast sink state machine initialized with ble_scanner={}",
-            static_cast<void*>(ble_scanner));
 }
 
 namespace bluetooth::le_audio::broadcast_sink {
 
 std::ostream& operator<<(std::ostream& os, const BroadcastSinkStateMachine::Message& msg) {
-  static const char* msg_strings[] = {"START_BIG_SYNC", "STOP_BIG_SYNC", "STOP_SYNC"};
-  os << msg_strings[static_cast<uint8_t>(msg)];
+  static const char* names[] = {
+      "START_BIG_SYNC", "REMOVE_TX_PATHS", "REMOVE_RX_PATHS", "STOP_SYNC"};
+  os << names[static_cast<uint8_t>(msg)];
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os, const BroadcastSinkStateMachine& machine) {
-  os << "BroadcastSinkStateMachine{";
-  os << "broadcast_id=0x" << std::hex << machine.GetBroadcastId() << std::dec;
-  os << ", state=" << machine.GetState();
-  os << ", config=" << machine.GetSinkConfiguration();
-
-  if (machine.GetPaSyncInfo().has_value()) {
-    os << ", pa_sync=" << *machine.GetPaSyncInfo();
-  }
-
-  if (machine.GetBigSyncInfo().has_value()) {
-    os << ", big_sync=" << *machine.GetBigSyncInfo();
-  }
-
+std::ostream& operator<<(std::ostream& os, const BroadcastSinkStateMachine& m) {
+  os << "BroadcastSinkStateMachine{broadcast_id=0x" << std::hex << m.GetBroadcastId()
+     << std::dec << ", state=" << m.GetState()
+     << ", config=" << m.GetSinkConfiguration();
+  if (m.GetPaSyncInfo().has_value()) os << ", pa_sync=" << *m.GetPaSyncInfo();
+  if (m.GetBigSyncInfo().has_value()) os << ", big_sync=" << *m.GetBigSyncInfo();
   os << "}";
   return os;
 }

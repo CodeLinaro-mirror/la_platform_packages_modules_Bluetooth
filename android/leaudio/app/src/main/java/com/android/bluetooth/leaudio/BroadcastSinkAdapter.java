@@ -21,9 +21,9 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
 
     public interface OnBroadcastActionListener {
         void onAddSource(int broadcastId);
-        void onJoinSource(BroadcastSinkViewModel.FoundBroadcastItem item);
-        void onUpdateSource(BroadcastSinkViewModel.FoundBroadcastItem item);
-        void onLeaveSource(int broadcastId);
+        void onStartEnhancedBroadcastSink(BroadcastSinkViewModel.FoundBroadcastItem item);
+        void onBisAcquire(BroadcastSinkViewModel.FoundBroadcastItem item);
+        void onStopEnhancedBroadcastSink(int broadcastId);
         void onRemoveSource(int broadcastId);
     }
 
@@ -63,9 +63,9 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
         private final TextView mBroadcastIdText;
         private final TextView mBroadcastDetailsText;
         private final Button mAddSourceButton;
-        private final Button mJoinSourceButton;
-        private final Button mUpdateSourceButton;
-        private final Button mLeaveSourceButton;
+        private final Button mStartEnhancedBroadcastSinkButton;
+        private final Button mBisAcquireButton;
+        private final Button mStopEnhancedBroadcastSinkButton;
         private final Button mRemoveSourceButton;
 
         public BroadcastViewHolder(@NonNull View itemView) {
@@ -74,9 +74,9 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             mBroadcastIdText = itemView.findViewById(R.id.broadcast_id_text);
             mBroadcastDetailsText = itemView.findViewById(R.id.broadcast_details_text);
             mAddSourceButton = itemView.findViewById(R.id.add_source_button);
-            mJoinSourceButton = itemView.findViewById(R.id.join_source_button);
-            mUpdateSourceButton = itemView.findViewById(R.id.update_source_button);
-            mLeaveSourceButton = itemView.findViewById(R.id.leave_source_button);
+            mStartEnhancedBroadcastSinkButton = itemView.findViewById(R.id.start_enhanced_sink_button);
+            mBisAcquireButton = itemView.findViewById(R.id.bis_acquire_button);
+            mStopEnhancedBroadcastSinkButton = itemView.findViewById(R.id.stop_enhanced_sink_button);
             mRemoveSourceButton = itemView.findViewById(R.id.remove_source_button);
         }
 
@@ -93,16 +93,22 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             // Show PA sync status
             if (item.hasPASync()) {
                 details.append("PA Synced: Yes\n");
+                if (item.isEnhanced) {
+                    details.append("Type: Enhanced Broadcast\n");
+                }
                 details.append("Encrypted: ").append(item.isEncrypted() ? "Yes" : "No");
 
                 if (item.metadata != null) {
                     if (item.metadata.getSubgroups() != null && !item.metadata.getSubgroups().isEmpty()) {
                         details.append("\nSubgroups: ").append(item.metadata.getSubgroups().size());
+                        int totalBis = 0;
+                        for (android.bluetooth.BluetoothLeBroadcastSubgroup sg : item.metadata.getSubgroups()) {
+                            totalBis += sg.getChannels().size();
+                        }
+                        details.append(" (").append(totalBis).append(" BISes)");
                     }
-
-                    // Add presentation delay if available
                     if (item.metadata.getPresentationDelayMicros() != 0) {
-                        details.append("\nDelay: ").append(item.metadata.getPresentationDelayMicros()).append("μs");
+                        details.append("\nDelay: ").append(item.metadata.getPresentationDelayMicros()).append("µs");
                     }
                 }
             } else {
@@ -112,24 +118,26 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
 
             mBroadcastDetailsText.setText(details.toString());
 
-            // Set up button states and click listeners based on sync status
-            // Note: We don't have BIG sync state in FoundBroadcastItem, so we enable Leave/Join
-            // based on PA sync status. The actual state will be managed by the service.
+            // BIS acquire button label for enhanced sources
+            if (item.isEnhanced) {
+                mStartEnhancedBroadcastSinkButton.setText("Start Enhanced Sink");
+            } else {
+                mStartEnhancedBroadcastSinkButton.setText("Join");
+            }
 
             if (!item.hasPASync()) {
                 // Not PA synced yet - only "Add Source" is available
                 mAddSourceButton.setEnabled(true);
-                mJoinSourceButton.setEnabled(false);
-                mUpdateSourceButton.setEnabled(false);
-                mLeaveSourceButton.setEnabled(false);
+                mStartEnhancedBroadcastSinkButton.setEnabled(false);
+                mBisAcquireButton.setEnabled(false);
+                mStopEnhancedBroadcastSinkButton.setEnabled(false);
                 mRemoveSourceButton.setEnabled(false);
             } else {
-                // PA synced - "Join", "Update", "Leave", and "Remove" are available
-                // Note: In a real implementation, you'd track BIG sync state to enable/disable Leave/Update
+                // PA synced - "Join", "Leave", and "Remove" are available
                 mAddSourceButton.setEnabled(false);
-                mJoinSourceButton.setEnabled(true);
-                mUpdateSourceButton.setEnabled(true);  // Enable if BIG synced
-                mLeaveSourceButton.setEnabled(true);  // Enable if BIG synced
+                mStartEnhancedBroadcastSinkButton.setEnabled(true);
+                mBisAcquireButton.setEnabled(!item.isEnhanced); // Not applicable for enhanced
+                mStopEnhancedBroadcastSinkButton.setEnabled(true);
                 mRemoveSourceButton.setEnabled(true);
             }
 
@@ -140,21 +148,21 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
                 }
             });
 
-            mJoinSourceButton.setOnClickListener(v -> {
+            mStartEnhancedBroadcastSinkButton.setOnClickListener(v -> {
                 if (mActionListener != null) {
-                    mActionListener.onJoinSource(item);
+                    mActionListener.onStartEnhancedBroadcastSink(item);
                 }
             });
 
-            mUpdateSourceButton.setOnClickListener(v -> {
+            mBisAcquireButton.setOnClickListener(v -> {
                 if (mActionListener != null) {
-                    mActionListener.onUpdateSource(item);
+                    mActionListener.onBisAcquire(item);
                 }
             });
 
-            mLeaveSourceButton.setOnClickListener(v -> {
+            mStopEnhancedBroadcastSinkButton.setOnClickListener(v -> {
                 if (mActionListener != null) {
-                    mActionListener.onLeaveSource(item.broadcastId);
+                    mActionListener.onStopEnhancedBroadcastSink(item.broadcastId);
                 }
             });
 

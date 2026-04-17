@@ -121,10 +121,11 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
 
   // Messages that can be sent to the state machine
   enum class Message : uint8_t {
-    START_BIG_SYNC = 0, // Start BIG sync (requires PA sync established)
-    STOP_BIG_SYNC,      // Stop BIG sync only (keep PA sync)
-    STOP_SYNC,          // Stop both BIG and PA sync
-    MESSAGE_COUNT = 3,
+    START_BIG_SYNC  = 0, // Start BIG sync (requires PA sync established)
+    REMOVE_TX_PATHS,       // Triggered by source HAL suspend: remove TX ISO paths, terminate BIG sync
+    REMOVE_RX_PATHS,     // Triggered by sink HAL suspend: remove RX ISO paths, ack sink HAL
+    STOP_SYNC,           // Stop both BIG and PA sync (RemoveSource / full teardown)
+    MESSAGE_COUNT   = 4,
   };
 
   inline SinkState GetState(void) const {
@@ -150,6 +151,48 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
   virtual std::optional<BasicAudioAnnouncementData> GetBaseData() const = 0;
   virtual std::optional<PublicBroadcastAnnouncementData> GetPublicAnnouncement() const = 0;
 
+  /**
+   * Returns true when the broadcast source is an enhanced (enhanced broadcast)
+   * source, i.e. at least one subgroup carries ≥ 3 BISes.  For such sources
+   * the sink must set up bidirectional ISO data paths (TX first, then RX).
+   */
+  virtual bool IsEnhanced() const = 0;
+
+  /**
+   * Called when the audio HAL (HIDL) sends a start indication to the BTA layer.
+   *
+   * For enhanced (enhanced broadcast) sources this drives the full setup sequence:
+   *
+   *   1st call (phase IDLE):
+   *     → Sends the vendor enhanced broadcast setup HCI command.
+   *     → Phase transitions to DBIG_SETUP.
+   *     → On enhanced broadcast complete (OnDbigSetupComplete), BIG_CREATE_SYNC is issued.
+   *     → On BIG sync established, TX ISO paths are set up for all BISes.
+   *     → When all TX paths are ready, OnTxIsoPathsReady() fires so the BTA
+   *       layer can acknowledge the 1st start to the HAL.
+   *
+   *   2nd call (phase TX_DONE):
+   *     → Sets up RX ISO data paths for all BISes.
+   *     → When all RX paths are ready, the state machine transitions to
+   *       BIG_SYNCED and fires OnStateMachineEvent(BIG_SYNCED) so the BTA
+   *       layer can acknowledge the 2nd start to the HAL.
+   *
+   * For standard (non-enhanced) sources this method is a no-op; RX paths are
+   * set up automatically after BIG sync is established.
+   */
+  virtual void OnAudioStart() = 0;
+
+  /**
+   * Called when the vendor enhanced broadcast setup HCI command completes.
+   * Only relevant for enhanced (enhanced broadcast) sources.
+   *
+   * On success, issues BIG_CREATE_SYNC to establish BIG sync.
+   * On failure, transitions back to PA_SYNCED and fires OnStateMachineEvent().
+   *
+   * @param status  HCI status (0x00 = success)
+   */
+  virtual void OnDbigSetupComplete(uint8_t status) = 0;
+
   // Sync operations
   virtual void StartSync() = 0;
   virtual void StopSync() = 0;
@@ -170,7 +213,18 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
 
   // HCI event handlers
   virtual void HandleHciEvent(uint16_t event, void* data) = 0;
-  virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
+  /**
+   * Called when an ISO data path setup completes.
+   *
+   * @param status      HCI status (0x00 = success)
+   * @param conn_handle BIS connection handle
+   * @param direction   ISO data path direction:
+   *                    kIsoDataPathDirectionOut (0x00) = RX (sink receives)
+   *                    kIsoDataPathDirectionIn  (0x01) = TX (sink sends, enhanced only)
+   */
+  virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle,
+                                  uint8_t direction) = 0;
+
   virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
 
   // BIG terminate sync complete callback
@@ -185,6 +239,17 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
                                     uint8_t status, std::vector<uint8_t> data) = 0;
   virtual void OnBigInfoReport(uint16_t sync_handle, bool encrypted) = 0;
 
+  /**
+   * Store BIG info parameters received from the controller BIG Info Report.
+   * Called by broadcast_sink.cc via OnBigInfoReportFull() before JoinSource()
+   * so that SendDbigSetupCommand() can select the correct bis_control_event_interval.
+   *
+   * @param iso_interval  ISO interval in units of 1.25 ms (e.g. 8 = 10 ms)
+   * @param phy           PHY: 1=LE1M, 2=LE2M, 3=Coded
+   * @param num_bis       Number of BISes in the BIG
+   */
+  virtual void SetBigInfoParams(uint16_t iso_interval, uint8_t phy, uint8_t num_bis) = 0;
+
   // Message processing
   virtual void ProcessMessage(Message msg, const void* data = nullptr) = 0;
 
@@ -198,8 +263,8 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
   }
 };
 
-// Callbacks from state machine to broadcast sink manager
-class IBroadcastSinkStateMachineCallbacks {
+  // Callbacks from state machine to broadcast sink manager
+  class IBroadcastSinkStateMachineCallbacks {
  public:
   IBroadcastSinkStateMachineCallbacks() = default;
   virtual ~IBroadcastSinkStateMachineCallbacks() = default;
@@ -210,6 +275,17 @@ class IBroadcastSinkStateMachineCallbacks {
   virtual void OnStateMachineEvent(uint32_t broadcast_id, SinkState state,
                                    const void* data = nullptr) = 0;
 
+  /**
+   * Called when BASE data parsing reveals that the broadcast source is an
+   * enhanced (enhanced broadcast) source (at least one subgroup has ≥ 3 BISes).
+   * The upper layer should call StartEnhancedBroadcastSink() instead of JoinSource()
+   * for such sources.
+   *
+   * @param broadcast_id  Broadcast ID of the enhanced source
+   * @param num_bis       Total number of BISes detected in the subgroup
+   */
+  virtual void OnEnhancedSourceDetected(uint32_t broadcast_id, uint8_t num_bis) = 0;
+
   // PA sync events
   virtual void OnPaSyncEstablished(uint32_t broadcast_id, uint16_t pa_sync_handle, uint8_t adv_sid,
                                    RawAddress address, uint8_t address_type) = 0;
@@ -218,6 +294,27 @@ class IBroadcastSinkStateMachineCallbacks {
   // BASE data
   virtual void OnBaseDataReceived(uint32_t broadcast_id,
                                   const BasicAudioAnnouncementData& base_data) = 0;
+
+  /**
+   * Called by the state machine when all TX ISO data paths have been
+   * configured for an enhanced (enhanced broadcast) source.  The BTA layer
+   * should acknowledge the first HIDL start indication at this point
+   * (e.g. by calling LeAudioSinkAudioHalClient::ConfirmStreamingRequest).
+   *
+   * @param broadcast_id  Broadcast ID of the enhanced source
+   */
+  virtual void OnTxIsoPathsReady(uint32_t broadcast_id) = 0;
+
+  /**
+   * Called by the state machine when all RX ISO data paths have been removed
+   * for an enhanced (enhanced broadcast) source during teardown.
+   * Triggered by the sink HAL OnAudioSuspend path (REMOVE_RX_PATHS message).
+   * The BTA layer should acknowledge the sink HAL suspend at this point
+   * (e.g. by calling LeAudioSinkAudioHalClient::ConfirmSuspendRequest).
+   *
+   * @param broadcast_id  Broadcast ID of the enhanced source
+   */
+  virtual void OnRxIsoPathsRemoved(uint32_t broadcast_id) = 0;
 
   // BIG sync events
   virtual void OnBigSyncEstablished(uint32_t broadcast_id, uint8_t big_handle,

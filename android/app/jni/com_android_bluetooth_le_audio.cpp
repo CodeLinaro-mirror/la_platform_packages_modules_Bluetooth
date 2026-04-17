@@ -1362,7 +1362,6 @@ static void CreateBroadcastNative(JNIEnv* env, jobject /* object */, jboolean is
       return;
     }
 
-    // Padding with zeros on MSB positions if code is shorter than 16 octets
     env->GetByteArrayRegion(broadcast_code, 0, size, (jbyte*)code_array.data());
   }
 
@@ -1422,7 +1421,6 @@ static void CreateEnhancedBroadcastNative(JNIEnv* env, jobject /* object */,
       return;
     }
 
-    // Padding with zeros on MSB positions if code is shorter than 16 octets
     env->GetByteArrayRegion(broadcast_code, 0, size, (jbyte*)code_array.data());
   }
 
@@ -1620,13 +1618,17 @@ using bluetooth::le_audio::broadcast_sink::BroadcastSinkInterface;
 using bluetooth::le_audio::broadcast_sink::BroadcastSinkCallbacks;
 
 static jmethodID method_onSourceAddFailed;
-static jmethodID method_onSourceJoinFailed;
-static jmethodID method_onSourceLeaveFailed;
+static jmethodID method_onSinkStartFailed;
+static jmethodID method_onSinkStopFailed;
 static jmethodID method_onSourceRemoveFailed;
 static jmethodID method_onSourceDestroyed;
 static jmethodID method_onSourceMetadataChanged;
 static jmethodID method_onBroadcastSinkAudioSessionCreated;
 static jmethodID method_onBroadcastSinkStateChanged;
+static jmethodID method_onEnhancedSourceDetected;
+static jmethodID method_onBigSyncCreated;
+static jmethodID method_onBigSyncLost;
+static jmethodID method_onBigSyncTerminated;
 
 static BroadcastSinkInterface* sBroadcastSinkInterface = nullptr;
 static std::shared_timed_mutex sBroadcastSinkInterfaceMutex;
@@ -1638,6 +1640,10 @@ static std::shared_timed_mutex sBroadcastSinkCallbacksMutex;
 class BroadcastSinkCallbacksImpl : public BroadcastSinkCallbacks {
 public:
   ~BroadcastSinkCallbacksImpl() = default;
+
+  /* -----------------------------------------------------------------------
+   * Standard broadcast sink callbacks
+   * ----------------------------------------------------------------------- */
 
   void OnSourceAddFailed(bluetooth::le_audio::BroadcastId broadcast_id, uint8_t reason) override {
     log::info("broadcast_id=0x{:08x}, reason={}", broadcast_id, reason);
@@ -1659,7 +1665,7 @@ public:
       return;
     }
 
-    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceJoinFailed,
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSinkStartFailed,
                                  (jint)broadcast_id, (jint)reason);
   }
 
@@ -1670,7 +1676,7 @@ public:
     if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
       return;
     }
-    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceLeaveFailed,
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSinkStopFailed,
                                  (jint)broadcast_id, (jint)reason);
   }
 
@@ -1731,6 +1737,92 @@ public:
     }
     sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onBroadcastSinkStateChanged,
                                  (jint)broadcast_id, (jint)state);
+  }
+
+  /**
+   * Called when BASE data parsing reveals that the broadcast source is an
+   * enhanced (enhanced broadcast) source (at least one subgroup has >= 3 BISes).
+   * The Java layer should call startEnhancedBroadcastSinkNative() instead of
+   *
+   * @param broadcast_id  Broadcast ID of the enhanced source
+   * @param num_bis       Total number of BISes detected in the subgroup
+   */
+  void OnEnhancedSourceDetected(bluetooth::le_audio::BroadcastId broadcast_id,
+                                uint8_t num_bis) override {
+    log::info("broadcast_id=0x{:08x}, num_bis={}", broadcast_id, num_bis);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onEnhancedSourceDetected,
+                                 (jint)broadcast_id, (jint)num_bis);
+  }
+
+  /**
+   * Called when BIG sync is successfully established (all ISO data paths
+   * configured for enhanced sources).  Forwards broadcastId, bigHandle, and
+   * the array of BIS connection handles to Java.
+   */
+  void OnBigSyncCreated(bluetooth::le_audio::BroadcastId broadcast_id,
+                        uint8_t big_handle,
+                        const std::vector<uint16_t>& bis_handles) override {
+    log::info("broadcast_id=0x{:08x}, big_handle={}, num_bis={}", broadcast_id, big_handle,
+              bis_handles.size());
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+
+    // Convert std::vector<uint16_t> → Java int[]
+    ScopedLocalRef<jintArray> bis_handles_array(
+        sCallbackEnv.get(),
+        sCallbackEnv->NewIntArray(static_cast<jsize>(bis_handles.size())));
+    if (!bis_handles_array.get()) {
+      log::error("Failed to allocate jintArray for BIS handles");
+      return;
+    }
+    for (jsize i = 0; i < static_cast<jsize>(bis_handles.size()); ++i) {
+      jint handle = static_cast<jint>(bis_handles[i]);
+      sCallbackEnv->SetIntArrayRegion(bis_handles_array.get(), i, 1, &handle);
+    }
+
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onBigSyncCreated,
+                                 (jint)broadcast_id, (jint)big_handle,
+                                 bis_handles_array.get());
+  }
+
+  /**
+   * Called when BIG sync is lost (unexpected disconnection or controller
+   * termination).  Forwards broadcastId, bigHandle, and HCI reason to Java.
+   */
+  void OnBigSyncLost(bluetooth::le_audio::BroadcastId broadcast_id,
+                     uint8_t big_handle,
+                     uint8_t reason) override {
+    log::info("broadcast_id=0x{:08x}, big_handle={}, reason=0x{:02x}", broadcast_id, big_handle,
+              reason);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onBigSyncLost,
+                                 (jint)broadcast_id, (jint)big_handle, (jint)reason);
+  }
+
+  void OnBigSyncTerminated(bluetooth::le_audio::BroadcastId broadcast_id,
+                           uint8_t big_handle,
+                           uint8_t status) override {
+    log::info("broadcast_id=0x{:08x}, big_handle={}, status=0x{:02x}", broadcast_id, big_handle,
+              status);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onBigSyncTerminated,
+                                 (jint)broadcast_id, (jint)big_handle, (jint)status);
   }
 };
 
@@ -1837,47 +1929,36 @@ static void BroadcastSinkAddSourceNative(JNIEnv* env, jobject /* object */,
   }
 }
 
-// Join source - initiates BIG sync to receive audio
-static void BroadcastSinkJoinSourceNative(JNIEnv* env, jobject /* object */,
-                                          jint broadcastId, jbyteArray broadcastCode, jintArray bisIndices) {
-  log::info("");
-  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+// Join enhanced source - initiates BIG sync for an enhanced broadcast broadcast source
+// with bidirectional (RX + TX) ISO data paths.
+// Should be called after receiving the onEnhancedSourceDetected() callback.
+static void BroadcastSinkStartEnhancedBroadcastSinkNative(JNIEnv* env, jobject /* object */,
+                                                  jint broadcastId, jbyteArray broadcastCode) {
+  // Enhanced broadcast always syncs to all BISes — no BIS selection needed.
+  log::info("startEnhancedBroadcastSinkNative: broadcastId=0x{:08x}", broadcastId);
+
   if (!sBroadcastSinkInterface) {
-    log::error("Broadcast Sink interface not initialized");
+    log::error("sBroadcastSinkInterface is null");
     return;
   }
 
-  // Handle broadcast code if provided
   std::optional<std::array<uint8_t, 16>> code = std::nullopt;
   if (broadcastCode != nullptr) {
-    jsize codeLen = env->GetArrayLength(broadcastCode);
-    if (codeLen > 0 && codeLen <= 16) {
-      std::array<uint8_t, 16> codeArray{0};  // Initialize with zeros
-      // Padding with zeros on MSB positions if code is shorter than 16 octets
-      env->GetByteArrayRegion(broadcastCode, 0, codeLen, (jbyte*)codeArray.data());
-      code = codeArray;
+    jsize len = env->GetArrayLength(broadcastCode);
+    if (len == 16) {
+      std::array<uint8_t, 16> arr{};
+      env->GetByteArrayRegion(broadcastCode, 0, 16,
+                              reinterpret_cast<jbyte*>(arr.data()));
+      code = arr;
     }
   }
 
-  // Handle BIS indices if provided
-  jint* bis_indices_array = nullptr;
-  if (bisIndices) {
-    bis_indices_array = env->GetIntArrayElements(bisIndices, nullptr);
-  }
-
-  sBroadcastSinkInterface->JoinSource(
-          (bluetooth::le_audio::BroadcastId)broadcastId, code,
-          bis_indices_array ? std::vector<uint8_t>(bis_indices_array,
-                                                   bis_indices_array + env->GetArrayLength(bisIndices))
-                            : std::vector<uint8_t>());
-
-  if (bis_indices_array) {
-    env->ReleaseIntArrayElements(bisIndices, bis_indices_array, 0);
-  }
+  sBroadcastSinkInterface->StartEnhancedBroadcastSink(
+      (bluetooth::le_audio::BroadcastId)broadcastId, code);
 }
 
 // Leave source - terminates BIG sync but keeps PA sync
-static void BroadcastSinkLeaveSourceNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
+static void BroadcastSinkStopEnhancedBroadcastSinkNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
   if (!sBroadcastSinkInterface) {
@@ -1885,7 +1966,7 @@ static void BroadcastSinkLeaveSourceNative(JNIEnv* env, jobject /* object */, ji
     return;
   }
 
-  sBroadcastSinkInterface->LeaveSource((bluetooth::le_audio::BroadcastId)broadcastId);
+  sBroadcastSinkInterface->StopEnhancedBroadcastSink((bluetooth::le_audio::BroadcastId)broadcastId);
 }
 
 // Remove source - terminates both BIG and PA sync
@@ -1910,18 +1991,6 @@ static void BroadcastSinkDestroySourceNative(JNIEnv* env, jobject /* object */, 
   }
 
   sBroadcastSinkInterface->DestroySource((bluetooth::le_audio::BroadcastId)broadcastId);
-}
-
-// Get source metadata for a specific broadcast ID
-static void BroadcastSinkGetSourceMetadataNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
-  log::info("");
-  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
-  if (!sBroadcastSinkInterface) {
-    log::error("Broadcast Sink interface not initialized");
-    return;
-  }
-
-  sBroadcastSinkInterface->GetSourceMetadata((bluetooth::le_audio::BroadcastId)broadcastId);
 }
 
 // Notify that source metadata has changed
@@ -1967,13 +2036,12 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initializeNative", "(I)V", (void*)BroadcastSinkInitNative},
           {"cleanupNative", "()V", (void*)BroadcastSinkCleanupNative},
-          {"addSourceNative", "(Ljava/lang/String;IIIILjava/lang/String;Z[BI)V", (void*)BroadcastSinkAddSourceNative},
-          {"joinSourceNative", "(I[B[I)V", (void*)BroadcastSinkJoinSourceNative},
-          {"leaveSourceNative", "(I)V", (void*)BroadcastSinkLeaveSourceNative},
+          {"addSourceNative", "(Ljava/lang/String;IIIILjava/lang/String;Z[BI)V",
+           (void*)BroadcastSinkAddSourceNative},
+          {"startEnhancedBroadcastSinkNative", "(I[B)V", (void*)BroadcastSinkStartEnhancedBroadcastSinkNative},
+          {"stopEnhancedBroadcastSinkNative", "(I)V", (void*)BroadcastSinkStopEnhancedBroadcastSinkNative},
           {"removeSourceNative", "(I)V", (void*)BroadcastSinkRemoveSourceNative},
           {"destroySourceNative", "(I)V", (void*)BroadcastSinkDestroySourceNative},
-          {"getSourceMetadataNative", "(I)V",
-           (void*)BroadcastSinkGetSourceMetadataNative},
           {"sourcePublicMetadataChangedNative", "(ILjava/lang/String;[B)V",
            (void*)BroadcastSinkSourcePublicMetadataChangedNative},
   };
@@ -1985,17 +2053,24 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
   }
 
   const JNIJavaMethod javaMethods[] = {
+          /* Standard broadcast sink callbacks */
           {"onSourceAddFailed", "(II)V", &method_onSourceAddFailed},
-          {"onSourceJoinFailed", "(II)V", &method_onSourceJoinFailed},
-          {"onSourceLeaveFailed", "(II)V", &method_onSourceLeaveFailed},
+          {"onSinkStartFailed", "(II)V", &method_onSinkStartFailed},
+          {"onSinkStopFailed", "(II)V", &method_onSinkStopFailed},
           {"onSourceRemoveFailed", "(II)V", &method_onSourceRemoveFailed},
           {"onSourceDestroyed", "(II)V", &method_onSourceDestroyed},
           {"onSourceMetadataChanged", "(ILandroid/bluetooth/BluetoothLeBroadcastMetadata;)V",
            &method_onSourceMetadataChanged},
-          {"onBroadcastSinkAudioSessionCreated", "(Z)V", &method_onBroadcastSinkAudioSessionCreated},
+          {"onBroadcastSinkAudioSessionCreated", "(Z)V",
+           &method_onBroadcastSinkAudioSessionCreated},
           {"onBroadcastSinkStateChanged", "(II)V", &method_onBroadcastSinkStateChanged},
+          {"onEnhancedSourceDetected", "(II)V", &method_onEnhancedSourceDetected},
+          {"onBigSyncCreated", "(II[I)V", &method_onBigSyncCreated},
+          {"onBigSyncLost", "(III)V", &method_onBigSyncLost},
+          {"onBigSyncTerminated", "(III)V", &method_onBigSyncTerminated},
   };
-  GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface", javaMethods);
+  GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface",
+                   javaMethods);
 
   return 0;
 }

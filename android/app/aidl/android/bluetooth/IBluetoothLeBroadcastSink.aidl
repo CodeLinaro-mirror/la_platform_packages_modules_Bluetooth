@@ -34,19 +34,15 @@ interface IBluetoothLeBroadcastSink {
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void addSource(int broadcastId, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void joinSource(in BluetoothLeBroadcastMetadata metadata, in AttributionSource attributionSource);
+    void startEnhancedBroadcastSink(in BluetoothLeBroadcastMetadata metadata, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void leaveSource(int broadcastId, in AttributionSource attributionSource);
+    void stopEnhancedBroadcastSink(int broadcastId, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void removeSource(int broadcastId, in AttributionSource attributionSource);
-    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void updateSourceMetadata(in BluetoothLeBroadcastMetadata metadata, in AttributionSource attributionSource);
 
     // Query operations
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     List<BluetoothLeBroadcastSinkState> getAllSyncedSinkState(in AttributionSource attributionSource);
-    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    BluetoothLeBroadcastMetadata getSourceMetadata(int broadcastId, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     int getMaximumSourceCapacity(in AttributionSource attributionSource);
 }

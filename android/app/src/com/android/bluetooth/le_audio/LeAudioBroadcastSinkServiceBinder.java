@@ -136,27 +136,26 @@ class LeAudioBroadcastSinkServiceBinder extends IBluetoothLeBroadcastSink.Stub
         }
         service.addSource(broadcastId);
     }
-
     @Override
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void joinSource(BluetoothLeBroadcastMetadata metadata, AttributionSource source) {
+    public void startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata metadata, AttributionSource source) {
         LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
         if (service == null) {
             Log.e(TAG, "Service is null");
             return;
         }
-        service.joinSource(metadata);
+        service.startEnhancedBroadcastSink(metadata);
     }
 
     @Override
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void leaveSource(int broadcastId, AttributionSource source) {
+    public void stopEnhancedBroadcastSink(int broadcastId, AttributionSource source) {
         LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
         if (service == null) {
             Log.e(TAG, "Service is null");
             return;
         }
-        service.leaveSource(broadcastId);
+        service.stopEnhancedBroadcastSink(broadcastId);
     }
 
     @Override
@@ -172,18 +171,6 @@ class LeAudioBroadcastSinkServiceBinder extends IBluetoothLeBroadcastSink.Stub
 
     @Override
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void updateSourceMetadata(
-            BluetoothLeBroadcastMetadata metadata, AttributionSource source) {
-        LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
-        if (service == null) {
-            Log.e(TAG, "Service is null");
-            return;
-        }
-        service.updateSourceMetadata(metadata);
-    }
-
-    @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public List<BluetoothLeBroadcastSinkState> getAllSyncedSinkState(AttributionSource source) {
         LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
         if (service == null) {
@@ -191,18 +178,6 @@ class LeAudioBroadcastSinkServiceBinder extends IBluetoothLeBroadcastSink.Stub
             return new ArrayList<>();
         }
         return service.getAllSyncedSinkState();
-    }
-
-    @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public BluetoothLeBroadcastMetadata getSourceMetadata(
-            int broadcastId, AttributionSource source) {
-        LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
-        if (service == null) {
-            Log.e(TAG, "Service is null");
-            return null;
-        }
-        return service.getSourceMetadata(broadcastId);
     }
 
     @Override

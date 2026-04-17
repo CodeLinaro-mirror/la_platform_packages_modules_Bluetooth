@@ -11,6 +11,7 @@ import static android.Manifest.permission.BLUETOOTH_SCAN;
 
 import android.annotation.RequiresPermission;
 import android.annotation.SuppressLint;
+import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothLeBroadcastChannel;
@@ -44,8 +45,6 @@ import android.util.Log;
 
 import com.android.bluetooth.BluetoothMethodProxy;
 import com.android.bluetooth.Utils;
-import com.android.bluetooth.bass_client.BassUtils;
-import com.android.bluetooth.bass_client.PublicBroadcastData;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
@@ -58,7 +57,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -73,6 +71,14 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
     // Maximum number of BIG sync sources (sources that can be joined/receiving audio)
     private static final int MAX_BIG_SYNC_SOURCES = 1;
+
+    private static final int DEFAULT_VOLUME_LEVEL = 15;
+
+    // Handler message codes
+    private static final int MSG_START              = 1;
+    private static final int MSG_STOP               = 2;
+    /** Posted after MSG_STOP to clear the active broadcast device once teardown completes. */
+    private static final int MSG_REMOVE_ACTIVE_DEVICE = 3;
 
     // Service instance
     private static LeAudioBroadcastSinkService sLeAudioBroadcastSinkService;
@@ -90,6 +96,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     // AudioManager reference
     private final AudioManager mAudioManager;
 
+    // Dedicated background thread that owns the handler looper.
+    // Keeps all MSG_START / MSG_STOP setParameters() calls off the main service thread.
+    private final android.os.HandlerThread mHandlerThread;
+
     // Handler for processing stack events
     private final Handler mHandler;
 
@@ -97,8 +107,38 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private final AudioManagerAudioDeviceCallback mAudioManagerAudioDeviceCallback =
             new AudioManagerAudioDeviceCallback();
 
+    // AudioServer state callback for crash/recovery handling
+    private final AudioManager.AudioServerStateCallback mAudioServerStateCallback =
+            new AudioManager.AudioServerStateCallback() {
+                @Override
+                public void onAudioServerDown() {
+                    Log.w(TAG, "AudioServer down — AChat parameters will be re-applied on recovery");
+                }
+
+                @Override
+                public void onAudioServerUp() {
+                    Log.i(TAG, "AudioServer up — re-applying AChat parameters if streaming");
+                    if (mIsEnhancedStreaming) {
+                        Log.i(TAG, "AudioServer recovered: re-sending MSG_START for enhanced stream");
+                        mHandler.sendEmptyMessage(MSG_START);
+                    }
+                }
+            };
+
     // Active broadcast input device
     private volatile BluetoothDevice mActiveBroadcastInDevice;
+
+    // True while an enhanced (enhanced broadcast) broadcast session is actively streaming.
+    // Used to re-send MSG_START after an AudioServer restart.
+    private volatile boolean mIsEnhancedStreaming = false;
+
+    /**
+     * Source device pending active-device notification for enhanced broadcast sink.
+     * Set in startEnhancedBroadcastSink() and consumed in EVENT_TYPE_AUDIO_SESSION_CREATED
+     * so that MM audio is notified only after both HAL sessions are confirmed started
+     * (mirroring the broadcast source pattern).
+     */
+    private volatile BluetoothDevice mPendingEnhancedSourceDevice = null;
 
     // Callback management
     private final RemoteCallbackList<IBluetoothLeBroadcastSinkCallback> mCallbacks =
@@ -109,15 +149,18 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private boolean mSearchInProgress = false;
     private final Object mStateLock = new Object();
 
+    // enhanced broadcast default parameters are now managed entirely in the JNI C++ layer.
+
     /**
-     * Internal descriptor class for maintaining broadcast sink state and metadata
-     * Similar to LeAudioBroadcastDescriptor in LeAudioService
+     * Internal descriptor class for maintaining broadcast sink state and metadata.
+     * Extended with enhanced broadcast fields for enhanced broadcast support.
      */
     private static class LeAudioBroadcastSinkDescriptor {
         LeAudioBroadcastSinkDescriptor() {
             mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_IDLE;
             mMetadata = null;
             mIsSourceAddedNotified = false;
+            mIsEnhanced = false;
             mPendingMetadataUpdate = null;
             mBisIndices = new ArrayList<>();
         }
@@ -125,8 +168,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         public Integer mSinkState;
         public BluetoothLeBroadcastMetadata mMetadata;
         public boolean mIsSourceAddedNotified;
+        /** True when BASE data parsing revealed >= 3 BISes in at least one subgroup. */
+        public boolean mIsEnhanced;
         public BluetoothLeBroadcastMetadata mPendingMetadataUpdate;
-        public List<Integer> mBisIndices;
+        public final List<Integer> mBisIndices;
     }
 
     // Broadcast sink descriptors - maintains internal state and metadata for each broadcast
@@ -142,14 +187,67 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         mNativeInterface = LeAudioBroadcastSinkNativeInterface.getInstance();
         mAudioManager = getSystemService(AudioManager.class);
 
+        // Initialize a dedicated background thread for the handler so that
+        // AudioManager.setParameters() calls never block the main service thread.
+        mHandlerThread = new android.os.HandlerThread("LeAudioBroadcastSinkHandler");
+        mHandlerThread.start();
+
         // Initialize handler for processing stack events
-        mHandler = new Handler(Looper.getMainLooper());
+        mHandler = new Handler(mHandlerThread.getLooper()) {
+            @Override
+            public void handleMessage(android.os.Message msg) {
+                switch (msg.what) {
+                    case MSG_START:
+                        if (DBG) Log.d(TAG, "MSG_START: enabling AChat TX+RX");
+                        if (mAudioManager != null) {
+                            if (DBG) Log.d(TAG, "MSG_START: >>> setParameters(achat_tx_enable=true)");
+                            mAudioManager.setParameters("achat_tx_enable=true");
+                            if (DBG) Log.d(TAG, "MSG_START: <<< setParameters(achat_tx_enable=true) returned");
+                            if (DBG) Log.d(TAG, "MSG_START: >>> setParameters(achat_rx_enable=true)");
+                            mAudioManager.setParameters("achat_rx_enable=true");
+                            if (DBG) Log.d(TAG, "MSG_START: <<< setParameters(achat_rx_enable=true) returned");
+                        }
+                        break;
+
+                    case MSG_STOP:
+                        if (DBG) Log.d(TAG, "MSG_STOP: disabling AChat RX then TX");
+                        if (mAudioManager != null) {
+                            if (DBG) Log.d(TAG, "MSG_STOP: >>> setParameters(achat_rx_enable=false) [BLOCKS until sink HAL acked]");
+                            mAudioManager.setParameters("achat_rx_enable=false");
+                            if (DBG) Log.d(TAG, "MSG_STOP: <<< setParameters(achat_rx_enable=false) returned");
+                            if (DBG) Log.d(TAG, "MSG_STOP: >>> setParameters(achat_tx_enable=false) [BLOCKS until source HAL acked]");
+                            mAudioManager.setParameters("achat_tx_enable=false");
+                            if (DBG) Log.d(TAG, "MSG_STOP: <<< setParameters(achat_tx_enable=false) returned");
+                        }
+                        // BIG sync is now fully terminated (RX paths removed, TX paths removed,
+                        // BIG sync terminated). The onSinkStopped notification is sent from
+                        // EVENT_TYPE_BIG_SYNC_TERMINATED which is posted by the C++ layer
+                        // via OnBigSyncTerminated() → JNI → onBigSyncTerminated().
+                        break;
+                    case MSG_REMOVE_ACTIVE_DEVICE:
+                        // Runs after MSG_STOP has fully completed (handler is FIFO).
+                        // At this point all HAL teardown is done; safe to clear the active device.
+                        if (DBG) Log.d(TAG, "MSG_REMOVE_ACTIVE_DEVICE: clearing active broadcast device: "
+                                + mActiveBroadcastInDevice);
+                        if (mActiveBroadcastInDevice != null) {
+                            updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
+                        }
+                        break;
+                    default:
+                        super.handleMessage(msg);
+                        break;
+                }
+            }
+        };
 
         // Initialize native interface with max source capacity
         mNativeInterface.init(MAX_PA_SYNC_SOURCES);
 
         // Register audio device callback
         mAudioManager.registerAudioDeviceCallback(mAudioManagerAudioDeviceCallback, mHandler);
+
+        // Register audio server state callback for crash/recovery
+        mAudioManager.setAudioServerStateCallback(mHandler::post, mAudioServerStateCallback);
 
         // Set service instance
         setLeAudioBroadcastSinkService(this);
@@ -187,6 +285,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Unregister audio device callback
         mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
+
+        // Unregister audio server state callback
+        mAudioManager.clearAudioServerStateCallback();
+
+        // Shut down the handler thread gracefully
+        mHandlerThread.quitSafely();
 
         // Clear callbacks
         mCallbacks.kill();
@@ -305,105 +409,125 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             int advSid = result.getAdvertisingSid();
             int rssi = result.getRssi();
 
-            // Check if broadcast is public by looking for Public Broadcast Announcement service data
-            boolean isPublic = isPublicBroadcast(result.getScanRecord());
-
-            // Parse broadcast name only for public broadcasts (AD type 0x30)
-            String broadcastName = null;
-            byte[] publicMetadata = null;
-            int publicFeatures = 0;
-
-            if (isPublic) {
-                broadcastName = parseBroadcastName(result.getScanRecord());
-
-                // Extract public broadcast data (metadata and features)
-                PublicBroadcastData pbData = BassUtils.getPublicBroadcastData(result.getScanRecord());
-                if (pbData != null) {
-                    publicMetadata = pbData.getMetadata();
-                    // Combine audio config quality bits and encryption bit
-                    publicFeatures = pbData.getAudioConfigQuality() << 1;
-                    if (pbData.isEncrypted()) {
-                        publicFeatures |= 0x01; // Set encryption bit (bit 0)
-                    }
-                    if (DBG) Log.d(TAG, "addSource(): publicMetadata length=" +
-                                   (publicMetadata != null ? publicMetadata.length : 0) +
-                                   ", publicFeatures=0x" + Integer.toHexString(publicFeatures) +
-                                   ", isEncrypted=" + pbData.isEncrypted());
-                }
-            }
-
-            if (DBG) Log.d(TAG, "addSource(): broadcastName=" + broadcastName + ", isPublic=" + isPublic);
+            // Enhanced broadcast sources are not public sources.
+            // No public broadcast metadata handling needed.
+            if (DBG) Log.d(TAG, "addSource(): address=" + address + ", advSid=" + advSid);
 
             mNativeInterface.addSource(address, addressType, advSid, broadcastId, rssi,
-                                      broadcastName, isPublic, publicMetadata, publicFeatures);
+                                      null /* broadcastName */, false /* isPublic */,
+                                      null /* publicMetadata */, 0 /* publicFeatures */);
         }
     }
 
     /**
-     * Join a broadcast source (BIG sync, with PA sync if needed)
+     * Join an enhanced (enhanced broadcast) broadcast source.
+     *
+     * <p>The entire enhanced broadcast setup → BIG_CREATE_SYNC → serial ISO data path setup
+     * sequence is handled autonomously by the JNI C++ layer for <em>all</em>
+     * BISes in the BIG (no BIS selection filtering is applied).  Java receives
+     * {@link LeAudioBroadcastSinkStackEvent#EVENT_TYPE_STATE_CHANGED} with state
+     * {@link LeAudioBroadcastSinkStackEvent#SINK_STATE_BIG_SYNCED} only after
+     * every ISO data path has been configured.
+     *
+     * @param metadata {@link BluetoothLeBroadcastMetadata} of the enhanced broadcast source
      */
-    public void joinSource(BluetoothLeBroadcastMetadata metadata) {
-        if (DBG) Log.d(TAG, "joinSource(): " + metadata);
+    public void startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata metadata) {
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink(): " + metadata);
 
         if (metadata == null) {
-            Log.e(TAG, "joinSource(): metadata is null");
-            notifyOnSourceJoinFailed(-1, BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS);
+            Log.e(TAG, "startEnhancedBroadcastSink(): metadata is null");
+            notifyOnSinkStartFailed(-1, BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS);
             return;
         }
 
         int broadcastId = metadata.getBroadcastId();
 
-        // Check if source can be joined (including encryption validation)
+                        // Validate capacity and encryption
         int canJoinResult = canSourceBeJoined(broadcastId, metadata);
         if (canJoinResult != BluetoothStatusCodes.SUCCESS) {
-            notifyOnSourceJoinFailed(broadcastId, canJoinResult);
+            notifyOnSinkStartFailed(broadcastId, canJoinResult);
             return;
         }
 
-        if (mNativeInterface != null) {
-            // Extract broadcast_code from metadata
-            byte[] broadcastCode = metadata.getBroadcastCode();
-
-            // Extract BIS indices from selected channels
-            List<Integer> bisIndicesList = new ArrayList<>();
-            for (BluetoothLeBroadcastSubgroup subgroup : metadata.getSubgroups()) {
-                for (BluetoothLeBroadcastChannel channel : subgroup.getChannels()) {
-                    if (channel.isSelected()) {
-                        bisIndicesList.add(channel.getChannelIndex());
-                    }
-                }
-            }
-
-            // Convert to int array
-            int[] bisIndices = bisIndicesList.stream().mapToInt(Integer::intValue).toArray();
-
-            // Update descriptor metadata and store BIS indices
-            LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
-            if (descriptor == null) {
-                descriptor = new LeAudioBroadcastSinkDescriptor();
-                mBroadcastSinkDescriptors.put(broadcastId, descriptor);
-            }
-            descriptor.mMetadata = metadata;
-            descriptor.mBisIndices = bisIndicesList;
-            if (DBG) Log.d(TAG, "Updated descriptor metadata and bisIndices=" + bisIndicesList + " for broadcastId=" + broadcastId);
-
-            if (DBG) Log.d(TAG, "Calling native joinSource with broadcastId=" + broadcastId +
-                           ", broadcastCode=" + (broadcastCode != null ? "provided" : "null") +
-                           ", bisIndices=" + Arrays.toString(bisIndices));
-
-            mNativeInterface.joinSource(broadcastId, broadcastCode, bisIndices);
+        // Create or update descriptor
+        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
+        if (descriptor == null) {
+            descriptor = new LeAudioBroadcastSinkDescriptor();
+            mBroadcastSinkDescriptors.put(broadcastId, descriptor);
         }
+        descriptor.mMetadata = metadata;
+
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink(): broadcastId=" + broadcastId
+                + " — delegating full enhanced broadcast/ISO sequence to JNI C++ layer");
+
+        // Hand off to C++: enhanced broadcast setup → BIG_CREATE_SYNC → ISO data paths for ALL BISes.
+        // Pass null bisIndices so the native layer syncs to all BISes in the BIG.
+        if (mNativeInterface != null) {
+            mNativeInterface.startEnhancedBroadcastSink(broadcastId, metadata.getBroadcastCode());
+        }
+
+        // Store the source device so EVENT_TYPE_AUDIO_SESSION_CREATED can notify
+        // MM audio after both HAL sessions are confirmed started.
+        BluetoothDevice sourceDevice = metadata.getSourceDevice();
+        mPendingEnhancedSourceDevice = sourceDevice;
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink: stored pending source device: " + sourceDevice
+                + " — active device will be set after audio session created");
+
+        // Mark streaming state.
+        // MSG_START (achat_tx/rx_enable) is sent from onAudioDevicesAdded() when the
+        // AudioManager fires the A2DP device-added callback after updateBroadcastActiveInDevice().
+        mIsEnhancedStreaming = true;
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink: mIsEnhancedStreaming=true");
     }
-
     /**
-     * Leave a broadcast source (stop BIG sync but keep PA synced)
+     * Leave a broadcast source (stop BIG sync but keep PA synced).
+     *
+     * <p>{@link AudioManager#setParameters} is a <b>blocking</b> call.
+     * The teardown sequence for enhanced (enhanced broadcast) sources is:
+     * <ol>
+     *   <li>Call native {@code stopEnhancedBroadcastSink()} <em>directly</em> (before posting
+     *       {@code MSG_STOP}) so the state machine is still in {@code BIG_SYNCED}
+     *       when it validates the state and clears flags.  Native
+     *       {@code stopEnhancedBroadcastSink()} does <em>not</em> stop the HAL clients —
+     *       {@code MSG_STOP} does that.</li>
+     *   <li>Send {@code MSG_STOP} to {@code mHandler}.  The handler calls
+     *       {@code setParameters("achat_rx_enable=false")} which <b>blocks</b>
+     *       until the sink HAL {@code OnAudioSuspend} is fully acknowledged
+     *       (all RX ISO paths removed, {@code ConfirmSuspendRequest} called on
+     *       sink HAL).  Only after that returns does
+     *       {@code setParameters("achat_tx_enable=false")} execute, which
+     *       <b>blocks</b> until the source HAL {@code OnAudioSuspend} is fully
+     *       acknowledged (all TX ISO paths removed, BIG sync terminated,
+     *       {@code ConfirmSuspendRequest} called on source HAL).</li>
+     * </ol>
      */
-    public void leaveSource(int broadcastId) {
-        if (DBG) Log.d(TAG, "leaveSource(): broadcastId=" + broadcastId);
+    public void stopEnhancedBroadcastSink(int broadcastId) {
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink(): broadcastId=" + broadcastId);
 
+        // Step 1: Call native stopEnhancedBroadcastSink DIRECTLY (not via handler) so the
+        // state machine is still in BIG_SYNCED when it validates state and
+        // clears flags.  Native stopEnhancedBroadcastSink does NOT stop the HAL clients.
         if (mNativeInterface != null) {
-            mNativeInterface.leaveSource(broadcastId);
+            if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: calling native stopEnhancedBroadcastSink for broadcastId=" + broadcastId);
+            mNativeInterface.stopEnhancedBroadcastSink(broadcastId);
         }
+
+        // Step 2: Post MSG_STOP to mHandler.
+        // setParameters("achat_rx_enable=false") blocks until sink HAL acked.
+        // setParameters("achat_tx_enable=false") blocks until source HAL acked.
+        // onSinkStopped is notified from EVENT_TYPE_BIG_SYNC_TERMINATED (C++ callback),
+        // so broadcastId does not need to be passed to MSG_STOP.
+        mIsEnhancedStreaming = false;
+        if (DBG) Log.d(TAG, "leaveSource: sending MSG_STOP for broadcastId=" + broadcastId);
+        mHandler.sendEmptyMessage(MSG_STOP);
+
+        // Step 3: Post MSG_REMOVE_ACTIVE_DEVICE AFTER MSG_STOP.
+        // The handler processes messages in FIFO order, so MSG_REMOVE_ACTIVE_DEVICE
+        // will only execute after MSG_STOP has fully completed (including both
+        // blocking setParameters calls).  This guarantees the active device is
+        // cleared only after the full HAL teardown sequence is done.
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
+        mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
     }
 
     /**
@@ -430,43 +554,6 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             mNativeInterface.destroySource(broadcastId);
         }
     }
-
-    /**
-     * Update source metadata (change BIS selection).
-     * Leaves current source then rejoins with new metadata.
-     */
-    public void updateSourceMetadata(BluetoothLeBroadcastMetadata metadata) {
-        if (DBG) Log.d(TAG, "updateSourceMetadata(): " + metadata);
-
-        if (metadata == null) {
-            Log.e(TAG, "updateSourceMetadata(): metadata is null");
-            return;
-        }
-
-        int broadcastId = metadata.getBroadcastId();
-
-        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
-        if (descriptor == null) {
-            Log.e(TAG, "updateSourceMetadata(): No descriptor found for broadcastId=" + broadcastId);
-            notifyOnSourceMetadataUpdateFailed(broadcastId, metadata,
-                    BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS);
-            return;
-        }
-
-        if (descriptor.mSinkState != LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED) {
-            Log.e(TAG, "updateSourceMetadata(): Source not in BIG_SYNCED state, current state=" +
-                  LeAudioBroadcastSinkStackEvent.sinkStateToString(descriptor.mSinkState));
-            notifyOnSourceMetadataUpdateFailed(broadcastId, metadata,
-                    BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS);
-            return;
-        }
-
-        descriptor.mPendingMetadataUpdate = metadata;
-        if (DBG) Log.d(TAG, "Saved pending metadata update for broadcastId=" + broadcastId);
-
-        leaveSource(broadcastId);
-    }
-
     /**
      * Get all synced broadcast sink states
      */
@@ -482,17 +569,6 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         }
         return states;
     }
-
-    /**
-     * Get source metadata for a specific broadcast
-     */
-    public BluetoothLeBroadcastMetadata getSourceMetadata(int broadcastId) {
-        if (DBG) Log.d(TAG, "getSourceMetadata(): broadcastId=" + broadcastId);
-
-        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
-        return (descriptor != null) ? descriptor.mMetadata : null;
-    }
-
     /**
      * Helper function to generate BluetoothLeBroadcastSinkState from internal descriptor
      *
@@ -664,6 +740,9 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         // Post event to handler for processing on main thread
         mHandler.post(() -> {
             switch (event.type) {
+                // -----------------------------------------------------------------
+                // Broadcast sink events
+                // -----------------------------------------------------------------
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_ADD_FAILED:
                     if (DBG) Log.d(TAG, "Source add failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
 
@@ -673,32 +752,14 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_JOIN_FAILED:
                     if (DBG) Log.d(TAG, "Source join failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
 
-                    // Check if this was part of metadata update flow
-                    LeAudioBroadcastSinkDescriptor joinFailDescriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
-                    if (joinFailDescriptor != null && joinFailDescriptor.mPendingMetadataUpdate != null) {
-                        // Metadata update failed during rejoin
-                        notifyOnSourceMetadataUpdateFailed(event.broadcastId, joinFailDescriptor.mPendingMetadataUpdate,
-                            BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
-                        joinFailDescriptor.mPendingMetadataUpdate = null;
-                    } else {
-                        // Normal join failed
-                        notifyOnSourceJoinFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
-                    }
+                    // Normal join failed
+                    notifyOnSinkStartFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
                     break;
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_LEAVE_FAILED:
                     if (DBG) Log.d(TAG, "Source leave failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
 
-                    // Check if this was part of metadata update flow
-                    LeAudioBroadcastSinkDescriptor leaveFailDescriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
-                    if (leaveFailDescriptor != null && leaveFailDescriptor.mPendingMetadataUpdate != null) {
-                        // Metadata update failed during leave
-                        notifyOnSourceMetadataUpdateFailed(event.broadcastId, leaveFailDescriptor.mPendingMetadataUpdate,
-                            BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
-                        leaveFailDescriptor.mPendingMetadataUpdate = null;
-                    } else {
-                        // Normal leave failed
-                        notifyOnSourceLeaveFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
-                    }
+                    // Normal leave failed
+                    notifyOnSinkStopFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
                     break;
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_REMOVE_FAILED:
                     if (DBG) Log.d(TAG, "Source remove failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
@@ -735,28 +796,50 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_METADATA_CHANGED:
                     if (DBG) Log.d(TAG, "Source metadata changed: broadcastId=" + event.broadcastId);
 
-                    // Business logic: Update descriptor metadata
+                    // Business logic: Store metadata on first receipt (onSourceAdded).
+                    // Enhanced broadcast source metadata does not change after initial discovery,
+                    // so onSourceMetadataChanged is never called for subsequent events.
                     if (event.metadata != null) {
                         LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
                         if (descriptor == null) {
                             descriptor = new LeAudioBroadcastSinkDescriptor();
                             mBroadcastSinkDescriptors.put(event.broadcastId, descriptor);
                         }
+                        // Store metadata (only meaningful on first receipt; metadata is stable)
                         descriptor.mMetadata = event.metadata;
 
-                        // Call notifyOnSourceAdded if this is the first time metadata is received
                         if (!descriptor.mIsSourceAddedNotified) {
+                            // First time full metadata is received — notify app via onSourceAdded.
+                            // mIsEnhanced was set by EVENT_TYPE_ENHANCED_SOURCE_DETECTED which
+                            // fires before SOURCE_METADATA_CHANGED for the same PA sync cycle.
                             descriptor.mIsSourceAddedNotified = true;
-                            if (DBG) Log.d(TAG, "First metadata received, calling notifyOnSourceAdded for broadcastId=" + event.broadcastId);
-                            notifyOnSourceAdded(event.metadata);
-                        } else {
-                            notifyOnSourceMetadataChanged(event.broadcastId, event.metadata);
+                            if (DBG) Log.d(TAG, "Full metadata received, calling notifyOnSourceAdded"
+                                    + " for broadcastId=" + event.broadcastId
+                                    + ", isEnhanced=" + descriptor.mIsEnhanced);
+                            notifyOnSourceAdded(event.metadata, descriptor.mIsEnhanced);
                         }
+                        // No else: enhanced broadcast source metadata is stable after first receipt.
                     }
                     break;
-                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_AUDIO_SESSION_CREATED:
-                    if (DBG) Log.d(TAG, "Audio session created: success=" + (event.valueInt1 == 1));
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_AUDIO_SESSION_CREATED: {
+                    boolean sessionSuccess = (event.valueInt1 == 1);
+                    if (DBG) Log.d(TAG, "Audio session created: success=" + sessionSuccess);
+                    // Notify MM audio with active device change only after both HAL sessions
+                    // are confirmed started — mirrors the broadcast source pattern.
+                    if (sessionSuccess && mPendingEnhancedSourceDevice != null) {
+                        BluetoothDevice pendingDevice = mPendingEnhancedSourceDevice;
+                        mPendingEnhancedSourceDevice = null;
+                        if (DBG) Log.d(TAG, "Audio session created: notifying MM audio "
+                                + "with active device: " + pendingDevice);
+                        updateBroadcastActiveInDevice(pendingDevice, mActiveBroadcastInDevice, true);
+                    } else if (!sessionSuccess) {
+                        // Session failed — clear pending device and streaming flag
+                        mPendingEnhancedSourceDevice = null;
+                        mIsEnhancedStreaming = false;
+                        Log.w(TAG, "Audio session creation failed — cleared pending state");
+                    }
                     break;
+                }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_STATE_CHANGED:
                     // Get or create descriptor for this broadcast
                     LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
@@ -776,16 +859,8 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     switch (descriptor.mSinkState) {
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_IDLE:
                             if (DBG) Log.d(TAG, "Sink state: IDLE for broadcastId=" + event.broadcastId);
-                            // Only clear active device if it matches the source device from metadata
-                            if (mActiveBroadcastInDevice != null && descriptor.mMetadata != null) {
-                                BluetoothDevice sourceDevice = descriptor.mMetadata.getSourceDevice();
-                                if (sourceDevice != null && sourceDevice.equals(mActiveBroadcastInDevice)) {
-                                    if (DBG) Log.d(TAG, "Clearing active device as it matches source device: " + sourceDevice);
-                                    updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
-                                } else {
-                                    if (DBG) Log.d(TAG, "Active device does not match source device, not clearing");
-                                }
-                            }
+                            // Active device is cleared by MSG_REMOVE_ACTIVE_DEVICE posted in
+                            // stopEnhancedBroadcastSink() — no need to clear it here.
 
                             // Transition to IDLE - notification will be sent in SOURCE_DESTROYED event
                             // Destroy source resources when transitioning to IDLE
@@ -799,33 +874,22 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED:
                             if (DBG) Log.d(TAG, "Sink state: PA_SYNCED for broadcastId=" + event.broadcastId);
+                            // Active device is cleared by MSG_REMOVE_ACTIVE_DEVICE posted in
+                            // stopEnhancedBroadcastSink() — no need to clear it here.
 
-                            // Only clear active device if it matches the source device from metadata
-                            if (mActiveBroadcastInDevice != null && descriptor.mMetadata != null) {
-                                BluetoothDevice sourceDevice = descriptor.mMetadata.getSourceDevice();
-                                if (sourceDevice != null && sourceDevice.equals(mActiveBroadcastInDevice)) {
-                                    if (DBG) Log.d(TAG, "Clearing active device as it matches source device: " + sourceDevice);
-                                    updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
-                                }
-                            }
                             // Transition to PA_SYNCED - check if coming from DISABLING
                             if (previousState == LeAudioBroadcastSinkStackEvent.SINK_STATE_DISABLING) {
-                                // Check if this is part of updateSourceMetadata flow
-                                if (descriptor.mPendingMetadataUpdate != null) {
-                                    if (DBG) Log.d(TAG, "Rejoining source with updated metadata for broadcastId=" + event.broadcastId);
-                                    // Rejoin with the new metadata (don't notify onSourceLeft for metadata update)
-                                    joinSource(descriptor.mPendingMetadataUpdate);
-                                } else {
-                                    // Intentional leave (not metadata update)
-                                    notifyOnSourceLeft(event.broadcastId,
-                                        BluetoothLeBroadcastSinkState.REASON_LOCAL_APP_REQUEST);
-                                }
+                                // Intentional leave — notify app
+                                notifyOnSinkStopped(event.broadcastId,
+                                    BluetoothLeBroadcastSinkState.REASON_LOCAL_APP_REQUEST);
                             } else if (previousState == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED) {
-                                // BIG sync lost unexpectedly (BIG_SYNCED -> PA_SYNCED)
-                                notifyOnSourceLeft(event.broadcastId,
-                                    BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST);
-
-                                // Clear any pending metadata update since this was unexpected
+                                /* BIG sync lost unexpectedly (BIG_SYNCED → PA_SYNCED).
+                                 * Leave notification is sent from EVENT_TYPE_BIG_SYNC_LOST
+                                 * which carries bigHandle + HCI reason.
+                                 * Do NOT duplicate notifyOnSinkStopped here. */
+                                if (DBG) Log.d(TAG, "BIG_SYNCED→PA_SYNCED: leave notification "
+                                        + "deferred to EVENT_TYPE_BIG_SYNC_LOST for broadcastId="
+                                        + event.broadcastId);
                                 descriptor.mPendingMetadataUpdate = null;
                             }
                             break;
@@ -836,24 +900,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             break;
 
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED:
-                            if (DBG) Log.d(TAG, "Sink state: BIG_SYNCED for broadcastId=" + event.broadcastId);
-                            // BIG sync established, receiving broadcast audio
-                            // Update active broadcast input device using mSourceDevice from metadata
-                            if (descriptor.mMetadata != null && descriptor.mMetadata.getSourceDevice() != null) {
-                                BluetoothDevice sourceDevice = descriptor.mMetadata.getSourceDevice();
-                                if (DBG) Log.d(TAG, "Setting broadcast input active device from metadata: " + sourceDevice);
-                                updateBroadcastActiveInDevice(sourceDevice, mActiveBroadcastInDevice, true);
-                            }
-
-                            // Check if this was a rejoin after metadata update
-                            if (descriptor.mPendingMetadataUpdate != null) {
-                                // Metadata update completed successfully
-                                notifyOnSourceMetadataUpdated(event.broadcastId, descriptor.mMetadata);
-                                descriptor.mPendingMetadataUpdate = null;
-                            } else {
-                                // Normal join
-                                notifyOnSourceJoined(event.broadcastId);
-                            }
+                            if (DBG) Log.d(TAG, "Sink state: BIG_SYNCED for broadcastId=" + event.broadcastId
+                                    + " — join notification sent via EVENT_TYPE_BIG_SYNC_CREATED");
+                            /* Active-device update and join/metadata-update notification are
+                             * handled in EVENT_TYPE_BIG_SYNC_CREATED (carries bigHandle +
+                             * bisHandles).  Do NOT duplicate those calls here. */
                             break;
 
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_DISABLING:
@@ -871,6 +922,99 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             break;
                     }
                     break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_ENHANCED_SOURCE_DETECTED:
+                    // BASE data parsing revealed this is an enhanced (enhanced broadcast) source.
+                    // Store the flag in the descriptor; it will be passed to onSourceAdded()
+                    // when the first metadata arrives via EVENT_TYPE_SOURCE_METADATA_CHANGED.
+                    if (DBG) Log.d(TAG, "Enhanced source detected [internal]: broadcastId="
+                            + event.broadcastId + ", numBis=" + event.valueInt1);
+                    {
+                        LeAudioBroadcastSinkDescriptor enhDescriptor =
+                                mBroadcastSinkDescriptors.get(event.broadcastId);
+                        if (enhDescriptor == null) {
+                            enhDescriptor = new LeAudioBroadcastSinkDescriptor();
+                            mBroadcastSinkDescriptors.put(event.broadcastId, enhDescriptor);
+                        }
+                        enhDescriptor.mIsEnhanced = true;
+                        if (DBG) Log.d(TAG, "Marked broadcastId=" + event.broadcastId
+                                + " as enhanced (numBis=" + event.valueInt1 + ")");
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_FOUND:
+                    // Fired from NativeInterface.onSourceFound() (scan-time ScanResult).
+                    if (DBG) Log.d(TAG, "Source found event: broadcastId=" + event.broadcastId);
+                    if (event.scanResult != null) {
+                        notifyOnSourceFound(event.broadcastId, event.scanResult);
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_CREATED: {
+                    // BIG sync established — the only ISO-layer event forwarded to Java.
+                    // ISO data path completion and enhanced broadcast setup completion are handled
+                    // entirely inside the C++ layer and are NOT forwarded here.
+                    if (DBG) Log.d(TAG, "BIG sync created: broadcastId=" + event.broadcastId
+                            + ", bigHandle=" + event.valueInt1
+                            + ", numBis=" + event.valueInt2);
+                    LeAudioBroadcastSinkDescriptor bigCreatedDesc =
+                            mBroadcastSinkDescriptors.get(event.broadcastId);
+                    if (bigCreatedDesc == null) {
+                        bigCreatedDesc = new LeAudioBroadcastSinkDescriptor();
+                        mBroadcastSinkDescriptors.put(event.broadcastId, bigCreatedDesc);
+                    }
+                    bigCreatedDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED;
+
+                    // BIG sync established — stop scanning for sources and notify the app.
+                    synchronized (mStateLock) {
+                        if (mSearchInProgress) {
+                            if (DBG) Log.d(TAG, "BIG sync created: stopping scan");
+                            mScanCallback.stopScanAndUnregister();
+                            mSearchInProgress = false;
+                            notifyOnSearchStopped(
+                                    BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                        }
+                    }
+
+                    // Active-device update is done in startEnhancedBroadcastSink() for enhanced sources.
+                    // Always notify onSinkStarted when BIG sync is created.
+                    notifyOnSinkStarted(event.broadcastId);
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_TERMINATED: {
+                    // BIG sync intentionally terminated (user-initiated StopEnhancedBroadcastSink).
+                    // All TX and RX ISO data paths have been removed and the controller
+                    // has confirmed BIG termination. Notify application via onSinkStopped.
+                    if (DBG) Log.d(TAG, "BIG sync terminated: broadcastId=" + event.broadcastId
+                            + ", bigHandle=" + event.valueInt1
+                            + ", status=0x" + Integer.toHexString(event.reason));
+                    notifyOnSinkStopped(event.broadcastId,
+                            BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_LOST: {
+                    // BIG sync lost — the only ISO-layer loss event forwarded to Java.
+                    if (DBG) Log.d(TAG, "BIG sync lost: broadcastId=" + event.broadcastId
+                            + ", bigHandle=" + event.valueInt1
+                            + ", reason=0x" + Integer.toHexString(event.reason));
+                    LeAudioBroadcastSinkDescriptor bigLostDesc =
+                            mBroadcastSinkDescriptors.get(event.broadcastId);
+                    if (bigLostDesc != null) {
+                        bigLostDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
+                        // Clear any pending metadata update since this was unexpected
+                        bigLostDesc.mPendingMetadataUpdate = null;
+                    }
+
+                    // Stop source + sink audio sessions.
+                    mIsEnhancedStreaming = false;
+                    if (DBG) Log.d(TAG, "BIG sync lost: sending MSG_STOP");
+                    mHandler.sendEmptyMessage(MSG_STOP);
+                    // Post MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP so the active device
+                    // is cleared only after HAL teardown fully completes (FIFO handler).
+                    if (DBG) Log.d(TAG, "BIG sync lost: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
+                    mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
+
+                    notifyOnSinkStopped(event.broadcastId,
+                            BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST);
+                    break;
+                }
                 default:
                     Log.e(TAG, "Unknown stack event type: " + event.type);
                     break;
@@ -927,11 +1071,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         mCallbacks.finishBroadcast();
     }
 
-    private void notifyOnSourceAdded(BluetoothLeBroadcastMetadata metadata) {
+    private void notifyOnSourceAdded(BluetoothLeBroadcastMetadata metadata, boolean isEnhanced) {
         int callbackCount = mCallbacks.beginBroadcast();
         for (int i = 0; i < callbackCount; i++) {
             try {
-                mCallbacks.getBroadcastItem(i).onSourceAdded(metadata);
+                mCallbacks.getBroadcastItem(i).onSourceAdded(metadata, isEnhanced);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to call onSourceAdded", e);
             }
@@ -951,56 +1095,56 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         mCallbacks.finishBroadcast();
     }
 
-    private void notifyOnSourceJoined(int broadcastId) {
+    private void notifyOnSinkStarted(int broadcastId) {
         int callbackCount = mCallbacks.beginBroadcast();
         for (int i = 0; i < callbackCount; i++) {
             try {
-                mCallbacks.getBroadcastItem(i).onSourceJoined(broadcastId);
+                mCallbacks.getBroadcastItem(i).onSinkStarted(broadcastId);
             } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceJoined", e);
+                Log.e(TAG, "Failed to call onSinkStarted", e);
             }
         }
         mCallbacks.finishBroadcast();
     }
 
-    private void notifyOnSourceJoinFailed(int broadcastId, int reason) {
+    private void notifyOnSinkStartFailed(int broadcastId, int reason) {
         // Get metadata from descriptor
         LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
         BluetoothLeBroadcastMetadata metadata = (descriptor != null) ? descriptor.mMetadata : null;
         if (metadata == null) {
-            Log.w(TAG, "notifyOnSourceJoinFailed(): No metadata found for broadcastId=" + broadcastId);
+            Log.w(TAG, "notifyOnSinkStartFailed(): No metadata found for broadcastId=" + broadcastId);
         }
 
         int callbackCount = mCallbacks.beginBroadcast();
         for (int i = 0; i < callbackCount; i++) {
             try {
-                mCallbacks.getBroadcastItem(i).onSourceJoinFailed(metadata, reason);
+                mCallbacks.getBroadcastItem(i).onSinkStartFailed(metadata, reason);
             } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceJoinFailed", e);
+                Log.e(TAG, "Failed to call onSinkStartFailed", e);
             }
         }
         mCallbacks.finishBroadcast();
     }
 
-    private void notifyOnSourceLeft(int broadcastId, int reason) {
+    private void notifyOnSinkStopped(int broadcastId, int reason) {
         int callbackCount = mCallbacks.beginBroadcast();
         for (int i = 0; i < callbackCount; i++) {
             try {
-                mCallbacks.getBroadcastItem(i).onSourceLeft(broadcastId, reason);
+                mCallbacks.getBroadcastItem(i).onSinkStopped(broadcastId, reason);
             } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceLeft", e);
+                Log.e(TAG, "Failed to call onSinkStopped", e);
             }
         }
         mCallbacks.finishBroadcast();
     }
 
-    private void notifyOnSourceLeaveFailed(int broadcastId, int reason) {
+    private void notifyOnSinkStopFailed(int broadcastId, int reason) {
         int callbackCount = mCallbacks.beginBroadcast();
         for (int i = 0; i < callbackCount; i++) {
             try {
-                mCallbacks.getBroadcastItem(i).onSourceLeaveFailed(broadcastId, reason);
+                mCallbacks.getBroadcastItem(i).onSinkStopFailed(broadcastId, reason);
             } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceLeaveFailed", e);
+                Log.e(TAG, "Failed to call onSinkStopFailed", e);
             }
         }
         mCallbacks.finishBroadcast();
@@ -1029,43 +1173,6 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         }
         mCallbacks.finishBroadcast();
     }
-
-    private void notifyOnSourceMetadataChanged(int broadcastId, BluetoothLeBroadcastMetadata metadata) {
-        int callbackCount = mCallbacks.beginBroadcast();
-        for (int i = 0; i < callbackCount; i++) {
-            try {
-                mCallbacks.getBroadcastItem(i).onSourceMetadataChanged(broadcastId, metadata);
-            } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceMetadataChanged", e);
-            }
-        }
-        mCallbacks.finishBroadcast();
-    }
-
-    private void notifyOnSourceMetadataUpdated(int broadcastId, BluetoothLeBroadcastMetadata metadata) {
-        int callbackCount = mCallbacks.beginBroadcast();
-        for (int i = 0; i < callbackCount; i++) {
-            try {
-                mCallbacks.getBroadcastItem(i).onSourceMetadataUpdated(broadcastId, metadata);
-            } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceMetadataUpdated", e);
-            }
-        }
-        mCallbacks.finishBroadcast();
-    }
-
-    private void notifyOnSourceMetadataUpdateFailed(int broadcastId, BluetoothLeBroadcastMetadata metadata, int reason) {
-        int callbackCount = mCallbacks.beginBroadcast();
-        for (int i = 0; i < callbackCount; i++) {
-            try {
-                mCallbacks.getBroadcastItem(i).onSourceMetadataUpdateFailed(broadcastId, metadata, reason);
-            } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSourceMetadataUpdateFailed", e);
-            }
-        }
-        mCallbacks.finishBroadcast();
-    }
-
     /**
      * Helper method to check if a UUID is contained in the scan filters
      * Following the same pattern as BassClientService
@@ -1255,11 +1362,8 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 // Check if this broadcast has already been found
                 synchronized (mFoundSources) {
                     if (mFoundSources.containsKey(broadcastId)) {
-                        if (DBG) Log.d(TAG, "Broadcast already found, checking for metadata changes: broadcastId=0x" +
-                                       Integer.toHexString(broadcastId));
-
-                        // Check for public metadata changes in existing source
-                        checkAndNotifyPublicMetadataChanges(broadcastId, scanRecord);
+                        // Enhanced broadcast source metadata does not change after initial discovery.
+                        // No need to check for metadata changes.
                         return;
                     }
 
@@ -1269,7 +1373,9 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                    Integer.toHexString(broadcastId));
                 }
 
-                // Notify framework callbacks about the broadcast source found
+                // Notify callbacks with the raw ScanResult.
+                // Full metadata (with subgroups / BIS configs) arrives later via
+                // onSourceMetadataChanged after PA sync + BASE data parsing.
                 notifyOnSourceFound(broadcastId, result);
             }
         }
@@ -1358,94 +1464,23 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             return;
         }
 
-        /* LE_AUDIO_BROADCAST_SINK is still not supported in Audio framework,
-         * Skip update Bluetooth Active Device changed
-        mAudioManager.handleBluetoothActiveDeviceChanged(
-                newDevice, previousDevice, getBroadcastSinkProfile(suppressNoisyIntent));
-        */
-    }
 
-    /**
-     * Get broadcast sink profile connection info
-     *
-     * @param suppressNoisyIntent whether to suppress noisy intent
-     * @return BluetoothProfileConnectionInfo for broadcast sink
-     */
-    BluetoothProfileConnectionInfo getBroadcastSinkProfile(boolean suppressNoisyIntent) {
-        Parcel parcel = Parcel.obtain();
-        parcel.writeInt(BluetoothProfile.LE_AUDIO_BROADCAST_SINK);
-        parcel.writeBoolean(suppressNoisyIntent);
-        parcel.writeInt(-1); // Volume not applicable for broadcast sink
-        parcel.writeBoolean(false); // isLeOutput - false for sink (input)
-        parcel.setDataPosition(0);
-
-        BluetoothProfileConnectionInfo profileInfo =
-                BluetoothProfileConnectionInfo.CREATOR.createFromParcel(parcel);
-        parcel.recycle();
-        return profileInfo;
-    }
-
-    /**
-     * Helper method to handle broadcast input audio device added event
-     *
-     * @param device the broadcast input device that was added
-     * @param type the audio device type
-     * @param isSink whether the device is a sink
-     * @param isSource whether the device is a source
-     */
-    void handleBroadcastInDeviceAdded(
-            BluetoothDevice device, int type, boolean isSink, boolean isSource) {
-        if (DBG) {
-            Log.d(TAG, "handleBroadcastInDeviceAdded: device=" + device
-                    + ", type=" + type
-                    + ", isSink=" + isSink
-                    + ", isSource=" + isSource);
+        if (newDevice != null) {
+            mAudioManager.handleBluetoothActiveDeviceChanged(newDevice, previousDevice,
+                    BluetoothProfileConnectionInfo.createA2dpInfo(true, DEFAULT_VOLUME_LEVEL));
+        } else {
+            mAudioManager.handleBluetoothActiveDeviceChanged(newDevice, previousDevice,
+                    BluetoothProfileConnectionInfo.createA2dpInfo(true, -1));
         }
 
-        // Broadcast sink is an input device (not a sink from audio framework perspective)
-        if (isSink) {
-            Log.w(TAG, "handleBroadcastInDeviceAdded: ignoring sink device, expected source");
-            return;
-        }
-
-        // Check if this is the broadcast input device we're expecting
-        if (!device.equals(mActiveBroadcastInDevice)) {
-            Log.w(TAG, "handleBroadcastInDeviceAdded: device mismatch, expected="
-                    + mActiveBroadcastInDevice + ", got=" + device);
-            return;
-        }
-
-        if (DBG) {
-            Log.d(TAG, "Broadcast sink audio device added successfully: " + device);
-        }
-    }
-
-    /**
-     * Helper method to handle broadcast input audio device removed event
-     *
-     * @param device the broadcast input device that was removed
-     * @param type the audio device type
-     * @param isSink whether the device is a sink
-     * @param isSource whether the device is a source
-     */
-    void handleBroadcastInDeviceRemoved(
-            BluetoothDevice device, int type, boolean isSink, boolean isSource) {
-        if (DBG) {
-            Log.d(TAG, "handleBroadcastInDeviceRemoved: device=" + device
-                    + ", type=" + type
-                    + ", isSink=" + isSink
-                    + ", isSource=" + isSource);
-        }
-
-        // Broadcast sink is an input device (not a sink from audio framework perspective)
-        if (isSink) {
-            Log.w(TAG, "handleBroadcastInDeviceRemoved: ignoring sink device, expected source");
-            return;
-        }
-
-        if (DBG) {
-            Log.d(TAG, "Broadcast sink audio device removed: " + device);
-        }
+        // Broadcast ACTION_ACTIVE_DEVICE_CHANGED so that other system components
+        // (e.g. Settings, AudioService) are notified of the new A2DP active device.
+        Intent intent = new Intent(BluetoothA2dp.ACTION_ACTIVE_DEVICE_CHANGED);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, newDevice);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
+                | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+        sendBroadcast(intent, BLUETOOTH_CONNECT);
+        if (DBG) Log.d(TAG, "Sent ACTION_ACTIVE_DEVICE_CHANGED intent for device: " + newDevice);
     }
 
     /**
@@ -1459,26 +1494,34 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 return;
             }
 
+            if (addedDevices == null) {
+                if (DBG) Log.d(TAG, "onAudioDevicesAdded: addedDevices is null, ignoring");
+                return;
+            }
+
+            // Only process A2DP device-added events when an enhanced broadcast
+            // source join is in progress.  For standard (non-enhanced) sources
+            // MSG_START is not needed, so ignore the callback.
+            if (!mIsEnhancedStreaming) {
+                if (DBG) Log.d(TAG, "onAudioDevicesAdded: mIsEnhancedStreaming=false, ignoring");
+                return;
+            }
+
             for (AudioDeviceInfo deviceInfo : addedDevices) {
                 Log.d(TAG, "onAudioDevicesAdded: device type=" + deviceInfo.getType()
                         + ", isSink=" + deviceInfo.isSink()
                         + ", isSource=" + deviceInfo.isSource());
-
-                // Only handle TYPE_BLE_BROADCAST devices
-                if (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_BROADCAST) {
-                    continue;
-                }
 
                 String address = deviceInfo.getAddress();
                 if (address.equals("00:00:00:00:00:00")) {
                     continue;
                 }
 
-                byte[] addressBytes = Utils.getBytesFromAddress(address);
-                BluetoothDevice device = mAdapterService.getDeviceFromByte(addressBytes);
-
-                handleBroadcastInDeviceAdded(
-                        device, deviceInfo.getType(), deviceInfo.isSink(), deviceInfo.isSource());
+                if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+                    if (DBG) Log.d(TAG, "A2DP device added (enhanced streaming) — sending MSG_START");
+                    mHandler.sendEmptyMessage(MSG_START);
+                    break;
+                }
             }
         }
 
@@ -1494,102 +1537,8 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                         + ", isSink=" + deviceInfo.isSink()
                         + ", isSource=" + deviceInfo.isSource());
 
-                // Only handle TYPE_BLE_BROADCAST devices
-                if (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_BROADCAST) {
-                    continue;
+                if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
                 }
-
-                String address = deviceInfo.getAddress();
-                if (address.equals("00:00:00:00:00:00")) {
-                    continue;
-                }
-
-                byte[] addressBytes = Utils.getBytesFromAddress(address);
-                BluetoothDevice device = mAdapterService.getDeviceFromByte(addressBytes);
-
-                handleBroadcastInDeviceRemoved(
-                        device, deviceInfo.getType(), deviceInfo.isSink(), deviceInfo.isSource());
-            }
-        }
-    }
-
-    /**
-     * Parse broadcast name from scan record using BassUtils
-     *
-     * @param scanRecord The scan record to parse
-     * @return The broadcast name, or null if not found or invalid
-     */
-    private static String parseBroadcastName(ScanRecord scanRecord) {
-        return BassUtils.getBroadcastName(scanRecord);
-    }
-
-    /**
-     * Check if broadcast is public using BassUtils
-     *
-     * @param scanRecord The scan record to check
-     * @return true if broadcast is public, false otherwise
-     */
-    private static boolean isPublicBroadcast(ScanRecord scanRecord) {
-        return BassUtils.getPublicBroadcastData(scanRecord) != null;
-    }
-
-    /**
-     * Check for public metadata changes and notify native layer if changed
-     *
-     * @param broadcastId The broadcast ID to check
-     * @param scanRecord The new scan record to compare
-     */
-    private void checkAndNotifyPublicMetadataChanges(int broadcastId, ScanRecord scanRecord) {
-        if (DBG) Log.d(TAG, "checkAndNotifyPublicMetadataChanges: broadcastId=0x" +
-                       Integer.toHexString(broadcastId));
-
-        // Get the existing descriptor
-        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
-        if (descriptor == null || descriptor.mMetadata == null) {
-            if (DBG) Log.d(TAG, "checkAndNotifyPublicMetadataChanges: No existing metadata for broadcastId=0x" +
-                           Integer.toHexString(broadcastId));
-            return;
-        }
-
-        // Only check for public broadcasts
-        if (!isPublicBroadcast(scanRecord)) {
-            if (DBG) Log.d(TAG, "checkAndNotifyPublicMetadataChanges: Not a public broadcast, skipping");
-            return;
-        }
-
-        // Parse current scan record data
-        String broadcastName = parseBroadcastName(scanRecord);
-        String newBroadcastName =  (broadcastName != null) ? broadcastName : "";
-        byte[] newPublicMetadata = null;
-
-        PublicBroadcastData pbData = BassUtils.getPublicBroadcastData(scanRecord);
-        if (pbData != null) {
-            newPublicMetadata = pbData.getMetadata();
-        }
-
-        // Get existing data from metadata
-        String previousBroadcastName = descriptor.mMetadata.getBroadcastName();
-        byte[] previousPublicMetadata = descriptor.mMetadata.getPublicBroadcastMetadata().getRawMetadata();
-
-        // Compare broadcast name
-        boolean nameChanged = !Objects.equals(previousBroadcastName, newBroadcastName);
-
-        // Compare public metadata
-        boolean metadataChanged = !Arrays.equals(previousPublicMetadata, newPublicMetadata);
-
-        if (nameChanged || metadataChanged) {
-            if (DBG) Log.d(TAG, "checkAndNotifyPublicMetadataChanges: Changes detected for broadcastId=0x" +
-                           Integer.toHexString(broadcastId) +
-                           ", nameChanged=" + nameChanged +
-                           ", metadataChanged=" + metadataChanged +
-                           ", newBroadcastName=" + newBroadcastName +
-                           ", newPublicMetadata=" + (newPublicMetadata != null ? newPublicMetadata.length + " bytes" : "null"));
-
-            // Call the native interface to update public metadata
-            if (mNativeInterface != null) {
-                mNativeInterface.sourcePublicMetadataChanged(broadcastId,
-                                                           newBroadcastName,
-                                                           newPublicMetadata);
             }
         }
     }

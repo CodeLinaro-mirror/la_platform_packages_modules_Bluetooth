@@ -33,7 +33,7 @@ constexpr uint8_t kBroadcastSinkDestroyReasonPaSyncLost = 0x01; // PA sync lost
 // Default timeout and configuration values
 constexpr uint16_t kDefaultPaSyncTimeout = 0x00C8;   // 2000ms (in units of 10ms)
 constexpr uint16_t kDefaultBigSyncTimeout = 0x00C8;  // 2000ms (in units of 10ms)
-constexpr uint8_t kDefaultMse = 0x09;                // Maximum number of subevents
+constexpr uint8_t kDefaultMse = 0x06;                // Maximum number of subevents
 
 // Broadcast sink configuration (codec and BIS configuration)
 struct BroadcastSinkConfiguration {

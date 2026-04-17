@@ -52,6 +52,12 @@ static constexpr uint8_t kStateFlagsNone = 0x00;
 static constexpr uint8_t kStateFlagIsConnecting = 0x01;
 static constexpr uint8_t kStateFlagIsConnected = 0x02;
 static constexpr uint8_t kStateFlagHasDataPathSet = 0x04;
+/* Tracks TX (input) data path independently from kStateFlagHasDataPathSet.
+ * Used for enhanced broadcast sink where TX and RX data paths are set up
+ * independently on the same BIS connection handle.  kStateFlagHasDataPathSet
+ * is cleared when ANY direction's path is removed; this flag ensures TX path
+ * removal can still proceed after RX path removal has cleared the shared flag. */
+static constexpr uint8_t kStateFlagHasTxDataPathSet = 0x08;
 static constexpr uint8_t kStateFlagIsBroadcast = 0x10;
 static constexpr uint8_t kStateFlagIsCancelled = 0x20;
 static constexpr uint8_t kStateFlagIsBroadcastSync = 0x40;
@@ -354,7 +360,7 @@ struct iso_impl {
     return num_iso;
   }
 
-  void on_setup_iso_data_path(uint8_t* stream, uint16_t /* len */) {
+  void on_setup_iso_data_path(uint8_t data_path_dir, uint8_t* stream, uint16_t /* len */) {
     uint8_t status;
     uint16_t conn_handle;
 
@@ -378,6 +384,15 @@ struct iso_impl {
 
     if (status == HCI_SUCCESS) {
       iso->state_flags |= kStateFlagHasDataPathSet;
+      /* For enhanced broadcast sink (kStateFlagIsBroadcastSync), TX and RX
+       * data paths are set up independently on the same BIS connection handle.
+       * Track the TX path with a separate flag so that RX path removal does
+       * not prevent subsequent TX path removal.  This guard ensures no impact
+       * on CIS, BIG source, or standard broadcast sink use cases. */
+      if ((iso->state_flags & kStateFlagIsBroadcastSync) &&
+          (data_path_dir == kIsoDataPathDirectionIn)) {
+        iso->state_flags |= kStateFlagHasTxDataPathSet;
+      }
     }
     if (iso->state_flags & kStateFlagIsBroadcastSync) {
       log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
@@ -406,7 +421,8 @@ struct iso_impl {
             conn_handle, path_params.data_path_dir, path_params.data_path_id,
             path_params.codec_id_format, path_params.codec_id_company, path_params.codec_id_vendor,
             path_params.controller_delay, std::move(path_params.codec_conf),
-            base::BindOnce(&iso_impl::on_setup_iso_data_path, weak_factory_.GetWeakPtr()));
+            base::BindOnce(&iso_impl::on_setup_iso_data_path, weak_factory_.GetWeakPtr(),
+                           path_params.data_path_dir));
     BTM_LogHistory(kBtmLogTag, cis_hdl_to_addr[conn_handle], "Setup data path",
                    std::format("handle:0x{:04x}, dir:0x{:02x}, path_id:0x{:02x}, codec_id:0x{:02x}",
                                conn_handle, path_params.data_path_dir, path_params.data_path_id,
@@ -440,6 +456,15 @@ struct iso_impl {
 
     if (status == HCI_SUCCESS) {
       iso->state_flags &= ~kStateFlagHasDataPathSet;
+      /* Enhanced broadcast sink only: if TX path is still active
+       * (kStateFlagHasTxDataPathSet), re-set the shared kStateFlagHasDataPathSet
+       * flag so that subsequent TX path removal does not hit the
+       * "Data path not set" assertion.  Guarded by kStateFlagIsBroadcastSync
+       * to avoid any impact on CIS, BIG source, or standard broadcast sink. */
+      if ((iso->state_flags & kStateFlagIsBroadcastSync) &&
+          (iso->state_flags & kStateFlagHasTxDataPathSet)) {
+        iso->state_flags |= kStateFlagHasDataPathSet;
+      }
     }
 
     if (iso->state_flags & kStateFlagIsBroadcastSync) {
@@ -457,8 +482,27 @@ struct iso_impl {
   void remove_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir) {
     iso_base* iso = GetIsoIfKnown(iso_handle);
     log::assert_that(iso != nullptr, "No such iso connection: 0x{:x}", iso_handle);
-    log::assert_that((iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet,
-                     "Data path not set");
+    /* For enhanced broadcast sink (kStateFlagIsBroadcastSync), TX path removal
+     * may arrive after RX path removal has cleared kStateFlagHasDataPathSet.
+     * In that case, accept kStateFlagHasTxDataPathSet as evidence that the TX
+     * data path was set up and re-set the shared flag so the HCI command
+     * proceeds correctly.  Guarded by kStateFlagIsBroadcastSync to avoid any
+     * impact on CIS, BIG source, or standard broadcast sink use cases. */
+    bool has_path = (iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet;
+    if (!has_path &&
+        (iso->state_flags & kStateFlagIsBroadcastSync) &&
+        (data_path_dir == kIsoDataPathDirectionIn)) {
+      has_path = (iso->state_flags & kStateFlagHasTxDataPathSet) == kStateFlagHasTxDataPathSet;
+      if (has_path) {
+        iso->state_flags |= kStateFlagHasDataPathSet;
+      }
+    }
+    log::assert_that(has_path, "Data path not set");
+    /* Clear TX-specific flag when TX path is being removed (enhanced sink only). */
+    if ((iso->state_flags & kStateFlagIsBroadcastSync) &&
+        (data_path_dir == kIsoDataPathDirectionIn)) {
+      iso->state_flags &= ~kStateFlagHasTxDataPathSet;
+    }
 
     btsnd_hcic_remove_iso_data_path(
             iso_handle, data_path_dir,

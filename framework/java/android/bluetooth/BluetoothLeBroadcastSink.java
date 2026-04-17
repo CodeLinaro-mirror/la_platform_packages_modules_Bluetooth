@@ -116,13 +116,14 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
 
                 @Override
                 @RequiresNoPermission
-                public void onSourceAdded(BluetoothLeBroadcastMetadata metadata) {
+                public void onSourceAdded(BluetoothLeBroadcastMetadata metadata,
+                        boolean isEnhanced) {
                     for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
                             callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
                         BluetoothLeBroadcastSink.Callback callback =
                                 callbackExecutorEntry.getKey();
                         Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(() -> callback.onSourceAdded(metadata));
+                        executor.execute(() -> callback.onSourceAdded(metadata, isEnhanced));
                     }
                 }
 
@@ -140,49 +141,49 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
 
                 @Override
                 @RequiresNoPermission
-                public void onSourceJoined(int broadcastId) {
+                public void onSinkStarted(int broadcastId) {
                     for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
                             callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
                         BluetoothLeBroadcastSink.Callback callback =
                                 callbackExecutorEntry.getKey();
                         Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(() -> callback.onSourceJoined(broadcastId));
+                        executor.execute(() -> callback.onSinkStarted(broadcastId));
                     }
                 }
 
                 @Override
                 @RequiresNoPermission
-                public void onSourceJoinFailed(BluetoothLeBroadcastMetadata metadata, int reason) {
+                public void onSinkStartFailed(BluetoothLeBroadcastMetadata metadata, int reason) {
                     for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
                             callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
                         BluetoothLeBroadcastSink.Callback callback =
                                 callbackExecutorEntry.getKey();
                         Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(() -> callback.onSourceJoinFailed(metadata, reason));
+                        executor.execute(() -> callback.onSinkStartFailed(metadata, reason));
                     }
                 }
 
                 @Override
                 @RequiresNoPermission
-                public void onSourceLeft(int broadcastId, int reason) {
+                public void onSinkStopped(int broadcastId, int reason) {
                     for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
                             callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
                         BluetoothLeBroadcastSink.Callback callback =
                                 callbackExecutorEntry.getKey();
                         Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(() -> callback.onSourceLeft(broadcastId, reason));
+                        executor.execute(() -> callback.onSinkStopped(broadcastId, reason));
                     }
                 }
 
                 @Override
                 @RequiresNoPermission
-                public void onSourceLeaveFailed(int broadcastId, int reason) {
+                public void onSinkStopFailed(int broadcastId, int reason) {
                     for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
                             callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
                         BluetoothLeBroadcastSink.Callback callback =
                                 callbackExecutorEntry.getKey();
                         Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(() -> callback.onSourceLeaveFailed(broadcastId, reason));
+                        executor.execute(() -> callback.onSinkStopFailed(broadcastId, reason));
                     }
                 }
 
@@ -210,48 +211,6 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
                     }
                 }
 
-                @Override
-                @RequiresNoPermission
-                public void onSourceMetadataChanged(
-                        int broadcastId, BluetoothLeBroadcastMetadata metadata) {
-                    for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
-                            callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
-                        BluetoothLeBroadcastSink.Callback callback =
-                                callbackExecutorEntry.getKey();
-                        Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(
-                                () -> callback.onSourceMetadataChanged(broadcastId, metadata));
-                    }
-                }
-
-                @Override
-                @RequiresNoPermission
-                public void onSourceMetadataUpdated(
-                        int broadcastId, BluetoothLeBroadcastMetadata metadata) {
-                    for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
-                            callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
-                        BluetoothLeBroadcastSink.Callback callback =
-                                callbackExecutorEntry.getKey();
-                        Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(
-                                () -> callback.onSourceMetadataUpdated(broadcastId, metadata));
-                    }
-                }
-
-                @Override
-                @RequiresNoPermission
-                public void onSourceMetadataUpdateFailed(
-                        int broadcastId, BluetoothLeBroadcastMetadata metadata, int reason) {
-                    for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
-                            callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
-                        BluetoothLeBroadcastSink.Callback callback =
-                                callbackExecutorEntry.getKey();
-                        Executor executor = callbackExecutorEntry.getValue();
-                        executor.execute(
-                                () -> callback.onSourceMetadataUpdateFailed(
-                                        broadcastId, metadata, reason));
-                    }
-                }
             };
 
     /**
@@ -289,13 +248,23 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         void onSearchStopped(@BluetoothLeBroadcastSinkState.Reason int reason);
 
         /**
-         * Callback invoked when a new Broadcast Source is discovered during scanning.
+         * Callback invoked when a Broadcast Source is found.
          *
-         * <p>This provides basic information about the source. Full metadata will be available
-         * after PA sync via {@link #onSourceAdded(BluetoothLeBroadcastMetadata)}.
+         * <p>This is called in two situations:
+         * <ol>
+         *   <li><b>Scan time</b> â€" when the BLE scanner discovers a new source. The
+         *       {@code result} is the raw {@link ScanResult} from the BLE scanner, containing
+         *       the device address, RSSI, advertising SID, and full scan record.</li>
+         *   <li><b>Enhanced source detected</b> â€" after PA sync + BASE data parsing reveals
+         *       that the source is an enhanced (enhanced broadcast) duplex source (at least one
+         *       subgroup carries &ge; 3 BISes). The {@code result} is the original scan result
+         *       cached at scan time. The app should call
+         *       {@link BluetoothLeBroadcastSink#startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata)}
+         *       for such sources.</li>
+         * </ol>
          *
          * @param broadcastId The broadcast ID of the discovered source
-         * @param result {@link ScanResult} containing the scan data
+         * @param result      The {@link ScanResult} from the BLE scanner for this source
          * @hide
          */
         @SystemApi
@@ -307,11 +276,17 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
          * <p>This indicates that the device has successfully synchronized with the Periodic
          * Advertisements of the Broadcast Source and obtained its full metadata.
          *
-         * @param metadata {@link BluetoothLeBroadcastMetadata} of the added source
+         * <p>If {@code isEnhanced} is {@code true}, the source is an enhanced (enhanced broadcast)
+         * duplex source — at least one subgroup carries &ge; 3 BISes. The app should call
+         * {@link BluetoothLeBroadcastSink#startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata)}
+         * instead of the standard join API.
+         *
+         * @param metadata    {@link BluetoothLeBroadcastMetadata} of the added source
+         * @param isEnhanced  {@code true} if the source is an enhanced (enhanced broadcast) duplex source
          * @hide
          */
         @SystemApi
-        void onSourceAdded(@NonNull BluetoothLeBroadcastMetadata metadata);
+        void onSourceAdded(@NonNull BluetoothLeBroadcastMetadata metadata, boolean isEnhanced);
 
         /**
          * Callback invoked when adding a Broadcast Source failed (PA sync failed).
@@ -333,7 +308,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
          * @hide
          */
         @SystemApi
-        void onSourceJoined(int broadcastId);
+        void onSinkStarted(int broadcastId);
 
         /**
          * Callback invoked when joining a Broadcast Source failed (BIG sync failed).
@@ -343,7 +318,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
          * @hide
          */
         @SystemApi
-        void onSourceJoinFailed(
+        void onSinkStartFailed(
                 @NonNull BluetoothLeBroadcastMetadata metadata,
                 @BluetoothLeBroadcastSinkState.Reason int reason);
 
@@ -357,7 +332,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
          * @hide
          */
         @SystemApi
-        void onSourceLeft(int broadcastId, @BluetoothLeBroadcastSinkState.Reason int reason);
+        void onSinkStopped(int broadcastId, @BluetoothLeBroadcastSinkState.Reason int reason);
 
         /**
          * Callback invoked when leaving a Broadcast Source failed.
@@ -367,7 +342,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
          * @hide
          */
         @SystemApi
-        void onSourceLeaveFailed(
+        void onSinkStopFailed(
                 int broadcastId, @BluetoothLeBroadcastSinkState.Reason int reason);
 
         /**
@@ -391,45 +366,6 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         void onSourceRemoveFailed(
                 int broadcastId, @BluetoothLeBroadcastSinkState.Reason int reason);
 
-        /**
-         * Callback invoked when the metadata of a Broadcast Source has changed.
-         *
-         * <p>This is triggered by the Broadcast Source updating its metadata.
-         *
-         * @param broadcastId broadcast ID of the source
-         * @param metadata updated {@link BluetoothLeBroadcastMetadata}
-         * @hide
-         */
-        @SystemApi
-        void onSourceMetadataChanged(
-                int broadcastId, @NonNull BluetoothLeBroadcastMetadata metadata);
-
-        /**
-         * Callback invoked when the metadata of a Broadcast Source has been updated by the sink.
-         *
-         * <p>This is triggered by a successful call to {@link #updateSourceMetadata}.
-         *
-         * @param broadcastId broadcast ID of the source
-         * @param metadata updated {@link BluetoothLeBroadcastMetadata}
-         * @hide
-         */
-        @SystemApi
-        void onSourceMetadataUpdated(
-                int broadcastId, @NonNull BluetoothLeBroadcastMetadata metadata);
-
-        /**
-         * Callback invoked when updating the metadata of a Broadcast Source failed.
-         *
-         * @param broadcastId broadcast ID of the source
-         * @param metadata {@link BluetoothLeBroadcastMetadata} that was attempted to update
-         * @param reason reason code on why the update operation failed
-         * @hide
-         */
-        @SystemApi
-        void onSourceMetadataUpdateFailed(
-                int broadcastId,
-                @NonNull BluetoothLeBroadcastMetadata metadata,
-                @BluetoothLeBroadcastSinkState.Reason int reason);
     }
 
     private final CloseGuard mCloseGuard;
@@ -643,9 +579,14 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
      * <p>On success, {@link Callback#onSearchStarted(int)} will be called with reason code {@link
      * BluetoothLeBroadcastSinkState#REASON_LOCAL_APP_REQUEST}.
      *
-     * <p>Discovered sources will be reported via {@link Callback#onSourceFound(int, ScanResult)}.
-     * Once PA sync is established, full metadata will be available via
-     * {@link Callback#onSourceAdded(BluetoothLeBroadcastMetadata)}.
+     * <p>Discovered sources will be reported via
+     * {@link Callback#onSourceFound(int, ScanResult)} with the raw {@link ScanResult}
+     * at scan time.  Once PA sync is established, full metadata will be available via
+     * {@link Callback#onSourceAdded(BluetoothLeBroadcastMetadata, boolean)}.
+     * The {@code isEnhanced} flag in that callback indicates whether the source is an
+     * enhanced (enhanced broadcast) duplex source; if so, call
+     * {@link #startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata)} instead of
+     * the standard join API.
      *
      * <p>App must also have {@link android.Manifest.permission#ACCESS_FINE_LOCATION
      * ACCESS_FINE_LOCATION} permission in order to get results.
@@ -732,8 +673,9 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
      * <p>This performs PA sync only, without BIG sync. Use this when you want to obtain
      * the source's metadata without starting audio streaming.
      *
-     * <p>On success, {@link Callback#onSourceAdded(BluetoothLeBroadcastMetadata)} will be invoked
-     * with the full metadata.
+     * <p>On success, {@link Callback#onSourceAdded(BluetoothLeBroadcastMetadata, boolean)} will
+     * be invoked with the full metadata and an {@code isEnhanced} flag indicating whether the
+     * source is an enhanced (enhanced broadcast) duplex source.
      *
      * <p>On failure, {@link Callback#onSourceAddFailed(int)} will be invoked with reason code.
      *
@@ -768,28 +710,39 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
             }
         }
     }
-
     /**
-     * Join a Broadcast Source to receive its audio.
+     * Join an enhanced (enhanced broadcast) Broadcast Source to receive <em>and</em> transmit audio.
      *
-     * <p>This performs both PA sync and BIG sync. If the device has not yet synced to PA,
-     * this will perform PA sync first, then BIG sync. This can be used for joining via QR code.
+     * <p>This method performs the following
+     * sequence autonomously:
+     * <ol>
+     *   <li>Sends a vendor enhanced broadcast setup command to the controller.</li>
+     *   <li>On enhanced broadcast setup success, issues BIG_CREATE_SYNC to synchronize with the source.</li>
+     *   <li>Once BIG sync is established, sets up ISO data paths serially for each BIS:
+     *       BIS[0..1] with RX direction (receive audio from source) and
+     *       BIS[2..3] with TX direction (send audio to source).</li>
+     * </ol>
      *
-     * <p>On success, {@link Callback#onSourceJoined(int)} will be invoked.
+     * <p>On success, {@link Callback#onSinkStarted(int)} will be invoked after all ISO data
+     * paths have been configured.
      *
-     * <p>On failure, {@link Callback#onSourceJoinFailed(BluetoothLeBroadcastMetadata, int)}
-     * will be invoked with reason code.
+     * <p>On failure at any step, {@link Callback#onSinkStartFailed(BluetoothLeBroadcastMetadata,
+     * int)} will be invoked with an appropriate reason code.
      *
-     * @param metadata {@link BluetoothLeBroadcastMetadata} representing the Broadcast Source
-     * @throws NullPointerException when <var>metadata</var> is null
-     * @throws IllegalStateException if callback was not registered
+     * <p>The {@link BluetoothLeBroadcastMetadata} must have the desired BIS channels marked as
+     * selected via {@link android.bluetooth.BluetoothLeBroadcastChannel#isSelected()}.
+     *
+     * @param metadata {@link BluetoothLeBroadcastMetadata} representing the enhanced Broadcast
+     *                 Source; must have at least one selected channel
+     * @throws NullPointerException  when <var>metadata</var> is null
+     * @throws IllegalStateException if no callback is registered
      * @hide
      */
     @SystemApi
     @RequiresBluetoothConnectPermission
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void joinSource(@NonNull BluetoothLeBroadcastMetadata metadata) {
-        log("joinSource: " + metadata);
+    public void startEnhancedBroadcastSink(@NonNull BluetoothLeBroadcastMetadata metadata) {
+        log("startEnhancedBroadcastSink: " + metadata);
         requireNonNull(metadata);
         if (mCallback == null) {
             throw new IllegalStateException("No callback was ever registered");
@@ -807,7 +760,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (mBluetoothAdapter.isEnabled()) {
             try {
-                service.joinSource(metadata, mAttributionSource);
+                service.startEnhancedBroadcastSink(metadata, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
@@ -819,10 +772,10 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
      *
      * <p>This stops audio streaming but maintains the PA sync, allowing quick rejoin if needed.
      *
-     * <p>On success, {@link Callback#onSourceLeft(int, int)} will be invoked with reason code
+     * <p>On success, {@link Callback#onSinkStopped(int, int)} will be invoked with reason code
      * {@link BluetoothLeBroadcastSinkState#REASON_LOCAL_APP_REQUEST}.
      *
-     * <p>On failure, {@link Callback#onSourceLeaveFailed(int, int)} will be invoked with
+     * <p>On failure, {@link Callback#onSinkStopFailed(int, int)} will be invoked with
      * reason code.
      *
      * @param broadcastId broadcast ID of the source to leave
@@ -832,8 +785,8 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
     @SystemApi
     @RequiresBluetoothConnectPermission
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void leaveSource(int broadcastId) {
-        log("leaveSource: " + broadcastId);
+    public void stopEnhancedBroadcastSink(int broadcastId) {
+        log("stopEnhancedBroadcastSink: " + broadcastId);
         if (mCallback == null) {
             throw new IllegalStateException("No callback was ever registered");
         }
@@ -850,7 +803,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (mBluetoothAdapter.isEnabled()) {
             try {
-                service.leaveSource(broadcastId, mAttributionSource);
+                service.stopEnhancedBroadcastSink(broadcastId, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
@@ -899,57 +852,6 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
             }
         }
     }
-
-    /**
-     * Update the configuration for an ongoing broadcast session.
-     *
-     * <p>This method is used to modify the local sink's participation in a broadcast
-     * it is already synchronized with. The primary use case is to switch between different
-     * audio streams (BIS), such as different languages or content types.
-     *
-     * <p>The Bluetooth stack will use the broadcastId from the provided metadata to identify
-     * the session, then attempt to leave and rejoin the BIG using the new metadata.
-     *
-     * <p>On success, {@link Callback#onSourceMetadataUpdated(int, BluetoothLeBroadcastMetadata)}
-     * will be invoked.
-     *
-     * <p>On failure, {@link Callback#onSourceMetadataUpdateFailed(int,
-     * BluetoothLeBroadcastMetadata, int)} will be invoked with reason code.
-     *
-     * @param metadata updated {@link BluetoothLeBroadcastMetadata}
-     * @throws NullPointerException when <var>metadata</var> is null
-     * @throws IllegalStateException if callback was not registered
-     * @hide
-     */
-    @SystemApi
-    @RequiresBluetoothConnectPermission
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void updateSourceMetadata(@NonNull BluetoothLeBroadcastMetadata metadata) {
-        log("updateSourceMetadata: " + metadata);
-        requireNonNull(metadata);
-        if (mCallback == null) {
-            throw new IllegalStateException("No callback was ever registered");
-        }
-
-        synchronized (mCallbackExecutorMap) {
-            if (mCallbackExecutorMap.isEmpty()) {
-                throw new IllegalStateException("All callbacks are unregistered");
-            }
-        }
-
-        final IBluetoothLeBroadcastSink service = getService();
-        if (service == null) {
-            Log.w(TAG, "Proxy not attached to service");
-            if (DBG) log(Log.getStackTraceString(new Throwable()));
-        } else if (mBluetoothAdapter.isEnabled()) {
-            try {
-                service.updateSourceMetadata(metadata, mAttributionSource);
-            } catch (RemoteException e) {
-                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
-            }
-        }
-    }
-
     /**
      * Get all currently synced broadcast sink states.
      *
@@ -977,34 +879,6 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         }
         return defaultValue;
     }
-
-    /**
-     * Get the metadata of a specific broadcast source.
-     *
-     * @param broadcastId broadcast ID of the source
-     * @return the broadcast metadata for the given broadcastId, or null if not found
-     * @hide
-     */
-    @SystemApi
-    @RequiresBluetoothConnectPermission
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    @Nullable
-    public BluetoothLeBroadcastMetadata getSourceMetadata(int broadcastId) {
-        log("getSourceMetadata: " + broadcastId);
-        final IBluetoothLeBroadcastSink service = getService();
-        if (service == null) {
-            Log.w(TAG, "Proxy not attached to service");
-            if (DBG) log(Log.getStackTraceString(new Throwable()));
-        } else if (mBluetoothAdapter.isEnabled()) {
-            try {
-                return service.getSourceMetadata(broadcastId, mAttributionSource);
-            } catch (RemoteException e) {
-                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
-            }
-        }
-        return null;
-    }
-
     /**
      * Get the maximum number of broadcasts that can be PA synced simultaneously.
      *

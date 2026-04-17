@@ -830,31 +830,26 @@ package android.bluetooth {
     method public int getConnectionState(@Nullable android.bluetooth.BluetoothDevice);
     method @NonNull public java.util.List<android.bluetooth.BluetoothDevice> getDevicesMatchingConnectionStates(@Nullable int[]);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public int getMaximumSourceCapacity();
-    method @Nullable @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public android.bluetooth.BluetoothLeBroadcastMetadata getSourceMetadata(int);
-    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void joinSource(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
-    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void leaveSource(int);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void registerCallback(@NonNull java.util.concurrent.Executor, @NonNull android.bluetooth.BluetoothLeBroadcastSink.Callback);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void removeSource(int);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void startEnhancedBroadcastSink(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void startScanningForSources(@NonNull java.util.List<android.bluetooth.le.ScanFilter>, @NonNull android.bluetooth.le.ScanSettings);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void stopEnhancedBroadcastSink(int);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void stopScanningForSources();
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void unregisterCallback(@NonNull android.bluetooth.BluetoothLeBroadcastSink.Callback);
-    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void updateSourceMetadata(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
   }
 
   public static interface BluetoothLeBroadcastSink.Callback {
     method public void onSearchStartFailed(int);
     method public void onSearchStarted(int);
     method public void onSearchStopped(int);
+    method public void onSinkStartFailed(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata, int);
+    method public void onSinkStarted(int);
+    method public void onSinkStopFailed(int, int);
+    method public void onSinkStopped(int, int);
     method public void onSourceAddFailed(int, int);
-    method public void onSourceAdded(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
+    method public void onSourceAdded(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata, boolean);
     method public void onSourceFound(int, @NonNull android.bluetooth.le.ScanResult);
-    method public void onSourceJoinFailed(@NonNull android.bluetooth.BluetoothLeBroadcastMetadata, int);
-    method public void onSourceJoined(int);
-    method public void onSourceLeaveFailed(int, int);
-    method public void onSourceLeft(int, int);
-    method public void onSourceMetadataChanged(int, @NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
-    method public void onSourceMetadataUpdateFailed(int, @NonNull android.bluetooth.BluetoothLeBroadcastMetadata, int);
-    method public void onSourceMetadataUpdated(int, @NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
     method public void onSourceRemoveFailed(int, int);
     method public void onSourceRemoved(int, int);
   }

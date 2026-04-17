@@ -850,6 +850,28 @@ void BleScannerInterfaceImpl::OnBigInfoReport(uint16_t sync_handle, bool encrypt
   }
 }
 
+void BleScannerInterfaceImpl::OnBigInfoReportFull(uint16_t sync_handle,
+                                                  uint16_t iso_interval,
+                                                  uint8_t  phy,
+                                                  uint8_t  num_bis,
+                                                  bool     encrypted) {
+  // Find the sync info for this sync_handle
+  auto sync_it = active_syncs_.find(sync_handle);
+  if (sync_it == active_syncs_.end()) {
+    return;
+  }
+
+  // Forward full BIG info to native clients only (broadcast sink uses native path)
+  for (const auto& client_entry : sync_it->second.client_reg_ids) {
+    uint8_t client_id = client_entry.first;
+    if (client_id != kScannerClientIdJni) {
+      do_in_main_thread(base::Bind(&ScanningCallbacks::OnBigInfoReportFull,
+                                   base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                   sync_handle, iso_interval, phy, num_bis, encrypted));
+    }
+  }
+}
+
 void BleScannerInterfaceImpl::OnTimeout() {}
 void BleScannerInterfaceImpl::OnFilterEnable(bluetooth::hci::Enable /* enable */,
                                              uint8_t /* status */) {}

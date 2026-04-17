@@ -1767,7 +1767,7 @@ private:
        * (BIDIRECTIONAL), confirm immediately to sink_hal_client.
        * Otherwise send START so the state machine sets up the RX ISO
        * data path; ConfirmStreamingRequest will be sent from
-       * OnStateMachineEvent(STREAMING) once IsRxStreaming() is true. */
+       * OnStateMachineEvent(STREAMING) once bluetooth::le_audio::broadcaster::IsRxStreaming() is true. */
       for (auto& broadcast_pair : instance->broadcasts_) {
         auto& broadcast = broadcast_pair.second;
         if (broadcast->GetBroadcastMode() ==

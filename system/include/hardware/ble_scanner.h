@@ -76,6 +76,17 @@ public:
   virtual void OnPeriodicSyncLost(uint16_t sync_handle) = 0;
   virtual void OnPeriodicSyncTransferred(int pa_source, uint8_t status, RawAddress address) = 0;
   virtual void OnBigInfoReport(uint16_t sync_handle, bool encrypted) = 0;
+
+  /**
+   * Extended BIG info report — passes the full controller parameters.
+   * Default implementation is empty so existing subclasses are not broken.
+   * Override in broadcast sink to capture iso_interval and phy for DBIG setup.
+   */
+  virtual void OnBigInfoReportFull(uint16_t sync_handle,
+                                   uint16_t iso_interval,
+                                   uint8_t  phy,
+                                   uint8_t  num_bis,
+                                   bool     encrypted) {}
 };
 
 class BleScannerInterface {
