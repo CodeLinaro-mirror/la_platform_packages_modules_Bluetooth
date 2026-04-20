@@ -105,7 +105,7 @@ bool init(bluetooth::common::MessageLoopThread* message_loop,
     return aidl::a2dp::init(message_loop, stream_callbacks, offload_enabled);
   } else if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::QTI_HIDL) {
     LOG(INFO) << __func__ << ": qti_hidl init";
-    return qti_hidl::a2dp::init(message_loop);
+    return qti_hidl::a2dp::init(message_loop, stream_callbacks);
   }
   return false;
 }

@@ -140,7 +140,14 @@ bool BtaAvCo::IsSupportedCodec(btav_a2dp_codec_index_t codec_index) {
 A2dpCodecConfig* BtaAvCo::GetActivePeerCurrentCodec() {
   std::lock_guard<std::recursive_mutex> lock(peer_cache_->codec_lock_);
 
+  // Try to get the active source peer first
   BtaAvCoPeer* active_peer = bta_av_source_state_.getActivePeer();
+
+  // Fallback to active sink peer if no source peer is active
+  if (active_peer == nullptr) {
+    active_peer = bta_av_sink_state_.getActivePeer();
+  }
+
   if (active_peer == nullptr || active_peer->GetCodecs() == nullptr) {
     return nullptr;
   }

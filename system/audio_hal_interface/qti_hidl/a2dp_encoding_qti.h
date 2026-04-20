@@ -99,7 +99,7 @@ enum class BluetoothAudioHalVersion : uint8_t {
 };
 
 // Initialize BluetoothAudio HAL: openProvider
-bool init(bluetooth::common::MessageLoopThread* message_loop);
+bool init(bluetooth::common::MessageLoopThread* message_loop, bluetooth::audio::a2dp::StreamCallbacks const* stream_callbacks);
 // Set up the codec into BluetoothAudio HAL
 bool setup_codec(A2dpCodecConfig* a2dp_config);
 
