@@ -110,6 +110,8 @@ class ScanningCallbacks {
   virtual void OnPeriodicSyncTransferred(int pa_source, uint8_t status,
                                          RawAddress address) = 0;
   virtual void OnBigInfoReport(uint16_t sync_handle, bool encrypted) = 0;
+  virtual void OnEnhancedBigInfoReport(uint16_t sync_handle, bool encrypted,
+                                       uint16_t iso_interval) {}
 };
 
 class BleScannerInterface {
@@ -213,11 +215,18 @@ class BleScannerInterface {
                           uint8_t status, std::vector<uint8_t> data)>;
   using SyncLostCb = base::Callback<void(uint16_t sync_handle)>;
   using BigInfoReportCb = base::Callback<void(uint16_t sync_handle, bool encrypted)>;
+  using EnhancedBigInfoReportCb = base::Callback<void(uint16_t sync_handle, bool encrypted, uint16_t iso_interval)>;
 
   virtual void StartSync(uint8_t sid, RawAddress address, uint16_t skip,
                          uint16_t timeout, StartSyncCb start_cb,
                          SyncReportCb report_cb, SyncLostCb lost_cb,
                          BigInfoReportCb biginfo_report_cb) = 0;
+
+  virtual void StartSync(uint8_t sid, RawAddress address, uint16_t skip,
+                       uint16_t timeout, StartSyncCb start_cb,
+                       SyncReportCb report_cb, SyncLostCb lost_cb,
+                       BigInfoReportCb biginfo_report_cb,
+                       EnhancedBigInfoReportCb enhanced_biginfo_report_cb) {}
 
   virtual void StartSync(uint8_t sid, RawAddress address, uint16_t skip,
                          uint16_t timeout, int reg_id) = 0;
