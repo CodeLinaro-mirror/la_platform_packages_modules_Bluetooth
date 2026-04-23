@@ -407,7 +407,7 @@ public class ContextMap<C extends IInterface> {
         List<Connection> currentConnections = new ArrayList<>();
         synchronized (mConnectionsLock) {
             for (Connection connection : mConnections) {
-                if ( connection.appId == appId) {
+                if ( connection.appId == appId && (device != null && device.getAddress().equals(connection.address))) {
                     currentConnections.add(connection);
                 }
             }
