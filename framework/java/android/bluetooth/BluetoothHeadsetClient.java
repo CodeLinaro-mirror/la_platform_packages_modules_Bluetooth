@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
@@ -1118,6 +1123,39 @@ public final class BluetoothHeadsetClient implements BluetoothProfile, AutoClose
         } else if (isEnabled() && isValidDevice(device)) {
             try {
                 return service.terminateCall(device, call, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Releases a specified call.
+     *
+     * <p>Works only when Extended Call Control is supported by Audio Gateway.
+     *
+     * @param device remote device
+     * @param index index of the call to be released
+     * @return <code>true</code> if command has been issued successfully; <code>false</code>
+     *     otherwise; upon completion HFP sends {@link #ACTION_CALL_CHANGED} intent.
+     *     <p>Feature required for successful execution is being reported by: {@link
+     *     #EXTRA_AG_FEATURE_ECC}. This method invocation will fail silently when feature is not
+     *     supported.
+     * @hide
+
+     */
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    public boolean releaseCall(BluetoothDevice device, int index) {
+        log("releaseCall()");
+        final IBluetoothHeadsetClient service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled() && isValidDevice(device)) {
+            try {
+                return service.releaseCall(device, index, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }

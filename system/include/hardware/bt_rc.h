@@ -16,7 +16,7 @@
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #ifndef ANDROID_INCLUDE_BT_RC_H
@@ -303,6 +303,14 @@ typedef void (*btrc_ctrl_get_cover_art_psm_callback)(const RawAddress& bd_addr, 
 typedef void (*btrc_ctrl_search_rsp_callback)(const RawAddress& bd_addr, uint8_t status,
                                               uint16_t uid_counter, uint32_t num_items);
 
+typedef void (* btrc_ctrl_add_to_now_playing_rsp_callback)(
+    const RawAddress&, uint8_t status);
+
+typedef void (* btrc_ctrl_uids_changed_callback)(
+    const RawAddress& bd_addr, uint16_t uid_counter);
+
+typedef btrc_ctrl_track_changed_callback btrc_ctrl_item_attr_rsp_callback;
+
 /** BT-RC Controller callback structure. */
 typedef struct {
   /** set to sizeof(BtRcCallbacks) */
@@ -323,11 +331,14 @@ typedef struct {
   btrc_ctrl_change_path_callback change_folder_path_cb;
   btrc_ctrl_set_browsed_player_callback set_browsed_player_cb;
   btrc_ctrl_set_addressed_player_callback set_addressed_player_cb;
+  btrc_ctrl_add_to_now_playing_rsp_callback add_to_now_playing_cb;
   btrc_ctrl_addressed_player_changed_callback addressed_player_changed_cb;
   btrc_ctrl_now_playing_contents_changed_callback now_playing_contents_changed_cb;
   btrc_ctrl_available_player_changed_callback available_player_changed_cb;
   btrc_ctrl_get_cover_art_psm_callback get_cover_art_psm_cb;
+  btrc_ctrl_uids_changed_callback uids_changed_cb;
   btrc_ctrl_search_rsp_callback search_rsp_cb;
+  btrc_ctrl_item_attr_rsp_callback item_attr_rsp_cb;
 } btrc_ctrl_callbacks_t;
 
 /** Represents the standard BT-RC AVRCP Controller interface. */
@@ -371,7 +382,8 @@ typedef struct {
   bt_status_t (*get_player_list_cmd)(const RawAddress& bd_addr, uint32_t start, uint32_t end);
 
   /** change the folder path */
-  bt_status_t (*change_folder_path_cmd)(const RawAddress& bd_addr, uint8_t direction, uint8_t* uid);
+  bt_status_t (*change_folder_path_cmd)(const RawAddress& bd_addr, uint16_t uid_counter,
+                                        uint8_t direction, uint8_t* uid);
 
   /** set browsed player */
   bt_status_t (*set_browsed_player_cmd)(const RawAddress& bd_addr, uint16_t player_id);
@@ -386,6 +398,9 @@ typedef struct {
   /** Get the search list */
   bt_status_t (*get_search_list_cmd)(const RawAddress& bd_addr, uint32_t start,
                                      uint32_t items);
+  /** Add to now playing */
+  bt_status_t (*add_to_now_playing_cmd)(const RawAddress& bd_addr, uint8_t scope,
+                                        uint8_t *uid, uint16_t uid_counter);
 
   /** send rsp to set_abs_vol received from target */
   bt_status_t (*set_volume_rsp)(const RawAddress& bd_addr, uint8_t abs_vol, uint8_t label);
@@ -393,6 +408,24 @@ typedef struct {
   /** send notificaiton rsp for abs vol to target */
   bt_status_t (*register_abs_vol_rsp)(const RawAddress& bd_addr, btrc_notification_type_t rsp_type,
                                       uint8_t abs_vol, uint8_t label);
+
+  /** Get folder items */
+  bt_status_t (*get_folder_items_vendor_cmd)(const RawAddress& bd_addr, uint8_t scope,
+                                             uint8_t start, uint8_t end,
+                                             uint8_t numAttr, uint32_t *attr);
+
+  /** Request for continuing response */
+  bt_status_t (*request_continuing_response_cmd)(const RawAddress& bd_addr, uint8_t pdu_id);
+
+  /** Abort continuing response */
+  bt_status_t (*abort_continuing_response_cmd)(const RawAddress& bd_addr, uint8_t pdu_id);
+
+    /** Get item attributes */
+  bt_status_t (*get_item_attribute_cmd)(const RawAddress& bd_addr, uint8_t scope, uint8_t* uid,
+                                   uint16_t uid_counter, uint8_t num_attr, uint32_t *attr_id);
+
+  /** Get element attributes */
+  bt_status_t (*get_element_attribute_cmd)(const RawAddress& bd_addr, uint8_t numAttr, uint32_t *attr);
 
   /** Closes the interface. */
   void (*cleanup)(void);

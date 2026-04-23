@@ -22,6 +22,7 @@ import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.IBluetoothAvrcpController;
+import android.bluetooth.BluetoothAvrcpController;
 import android.content.AttributionSource;
 
 import com.android.bluetooth.Utils;
@@ -88,5 +89,25 @@ class AvrcpControllerServiceBinder extends IBluetoothAvrcpController.Stub
             return STATE_DISCONNECTED;
         }
         return service.getConnectionState(device);
+    }
+
+    @Override
+    public int getSupportedFeatures(BluetoothDevice device,
+            AttributionSource source) {
+        AvrcpControllerService service = getService(source);
+        if (service == null) {
+            return BluetoothAvrcpController.BTRC_FEAT_NONE;
+        }
+        return service.getSupportedFeatures(device);
+    }
+
+    @Override
+    public void startFetchingAlbumArt(BluetoothDevice device, String type, String scheme,
+            String mimeType, int height, int width, int maxSize, AttributionSource source) {
+        AvrcpControllerService service = getService(source);
+        if (service != null) {
+            service.startFetchingAlbumArt(device, type, scheme, mimeType,
+                    height, width, maxSize);
+        }
     }
 }

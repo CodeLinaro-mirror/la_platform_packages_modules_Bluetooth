@@ -16,7 +16,7 @@
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 // Bluetooth Headset Client State Machine
@@ -125,6 +125,7 @@ public class HeadsetClientStateMachine extends StateMachine {
     public static final int SEND_VENDOR_AT_COMMAND = 21;
     public static final int SEND_BIEV = 22;
     public static final int SEND_ANDROID_AT_COMMAND = 23;
+    public static final int RELEASE_CALL = 24;
 
     // internal actions
     @VisibleForTesting static final int QUERY_CURRENT_CALLS = 50;
@@ -767,6 +768,24 @@ public class HeadsetClientStateMachine extends StateMachine {
             addQueuedAction(ENTER_PRIVATE_MODE, c);
         } else {
             error("ERROR: Couldn't enter private id:" + idx);
+        }
+    }
+
+    @VisibleForTesting
+    private void releaseCall(int idx) {
+        debug("releaseCall: " + idx);
+
+        HfpClientCall c = mCalls.get(idx);
+
+        if (c == null || c.getState() != HfpClientCall.CALL_STATE_ACTIVE) {
+            return;
+        }
+
+        if (mNativeInterface.handleCallAction(
+                mCurrentDevice, HeadsetClientHalConstants.CALL_ACTION_CHLD_1X, idx)) {
+            addQueuedAction(RELEASE_CALL, c);
+        } else {
+            error("ERROR: Couldn't release call " + " id:" + idx);
         }
     }
 
@@ -1492,6 +1511,7 @@ public class HeadsetClientStateMachine extends StateMachine {
                 case HOLD_CALL -> holdCall();
                 case TERMINATE_CALL -> terminateCall();
                 case ENTER_PRIVATE_MODE -> enterPrivateMode(message.arg1);
+                case RELEASE_CALL -> releaseCall(message.arg1);
                 case EXPLICIT_CALL_TRANSFER -> explicitCallTransfer();
                 case SEND_DTMF -> {
                     if (mNativeInterface.sendDtmf(mCurrentDevice, (byte) message.arg1)) {
@@ -1675,6 +1695,19 @@ public class HeadsetClientStateMachine extends StateMachine {
                                             + event.valueInt
                                             + " queuedAction: "
                                             + queuedAction.first);
+
+                            if (event.valueInt != BluetoothHeadsetClient.ACTION_RESULT_OK) {
+                                intent = new Intent(BluetoothHeadsetClient.ACTION_RESULT);
+                                intent.putExtra(BluetoothHeadsetClient.EXTRA_RESULT_CODE,
+                                        event.valueInt);
+                                if (event.valueInt
+                                            == BluetoothHeadsetClient.ACTION_RESULT_ERROR_CME) {
+                                    intent.putExtra(BluetoothHeadsetClient.EXTRA_CME_CODE,
+                                            event.valueInt2);
+                                }
+                                mService.sendBroadcast(
+                                        intent, BLUETOOTH_CONNECT, Utils.getTempBroadcastBundle());
+                            }
 
                             switch (queuedAction.first) {
                                 case QUERY_CURRENT_CALLS -> queryCallsDone();

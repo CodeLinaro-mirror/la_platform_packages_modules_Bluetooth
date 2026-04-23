@@ -250,6 +250,18 @@ class HeadsetClientServiceBinder extends IBluetoothHeadsetClient.Stub
     }
 
     @Override
+    public boolean releaseCall(
+            BluetoothDevice device, int index, AttributionSource source) {
+        HeadsetClientService service = getService(source);
+        if (service == null) {
+            Log.w(TAG, "service is null");
+            return false;
+        }
+
+        return service.releaseCall(device, index);
+    }
+
+    @Override
     public boolean explicitCallTransfer(BluetoothDevice device, AttributionSource source) {
         HeadsetClientService service = getService(source);
         if (service == null) {

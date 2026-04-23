@@ -235,8 +235,8 @@ public class AvrcpTargetService extends ProfileService {
             mNativeInterface.sendFolderUpdate(availablePlayers, addressedPlayers, uids);
         }
 
-        public void sendVolumeChanged(BluetoothDevice device, int volume, int maxVolume) {
-            sendVolumeChangedExt(device, volume, maxVolume);
+        public void sendVolumeChanged(BluetoothDevice device, int volume) {
+            sendVolumeChangedExt(device, volume);
         }
     }
 
@@ -427,14 +427,12 @@ public class AvrcpTargetService extends ProfileService {
      * Set the volume on the remote device. Does nothing if the device doesn't support absolute
      * volume.
      */
-    public void sendVolumeChangedExt(BluetoothDevice device, int deviceVolume, int maxVolume) {
-        int avrcpVolume =
-                (int) Math.floor((double) deviceVolume * AvrcpVolumeManager.AVRCP_MAX_VOL / maxVolume);
-        if (avrcpVolume > AvrcpVolumeManager.AVRCP_MAX_VOL) avrcpVolume = AvrcpVolumeManager.AVRCP_MAX_VOL;
-        Log.d(TAG, "SendVolumeChangedExt: avrcpVolume=" + avrcpVolume
-                + " deviceVolume=" + deviceVolume
-                + " maxVolume=" + maxVolume);
-        mNativeInterface.sendVolumeChanged(device, avrcpVolume);
+    public void sendVolumeChangedExt(BluetoothDevice device, int deviceVolume) {
+        Log.d(TAG, "SendVolumeChangedExt: "
+                + " device " + device
+                + " deviceVolume=" + deviceVolume);
+        // System volume is transfered to AVRCP volume in sendVolumeChanged
+        mVolumeManager.sendVolumeChanged(device, deviceVolume);
     }
 
     public void setActivePlayerExt(String packagename, BluetoothDevice device) {

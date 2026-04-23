@@ -723,6 +723,24 @@ public class HeadsetClientService extends ConnectableProfile {
         return true;
     }
 
+    public boolean releaseCall(BluetoothDevice device, int index) {
+        HeadsetClientStateMachine sm = getStateMachine(device);
+        if (sm == null) {
+            Log.e(TAG, "SM does not exist for device " + device);
+            return false;
+        }
+
+        int connectionState = sm.getConnectionState(device);
+        if (connectionState != STATE_CONNECTED && connectionState != STATE_CONNECTING) {
+            return false;
+        }
+
+        Message msg = sm.obtainMessage(HeadsetClientStateMachine.RELEASE_CALL);
+        msg.arg1 = index;
+        sm.sendMessage(msg);
+        return true;
+    }
+
     boolean enterPrivateMode(BluetoothDevice device, int index) {
         HeadsetClientStateMachine sm = getStateMachine(device);
         if (sm == null) {

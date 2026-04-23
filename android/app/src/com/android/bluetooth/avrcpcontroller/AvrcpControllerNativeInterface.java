@@ -97,8 +97,8 @@ public class AvrcpControllerNativeInterface {
         getPlayerListNative(address, start, end);
     }
 
-    void changeFolderPath(byte[] address, byte direction, long uid) {
-        changeFolderPathNative(address, direction, uid);
+    void changeFolderPath(byte[] address, int uidCounter, byte direction, long uid) {
+        changeFolderPathNative(address, uidCounter, direction, uid);
     }
 
     void playItem(byte[] address, byte scope, long uid, int uidCounter) {
@@ -115,6 +115,28 @@ public class AvrcpControllerNativeInterface {
 
     void getSearchList(byte[] address, int start, int end) {
         getSearchListNative(address, start, end);
+    }
+
+    void getItemAttributes(byte[] address, byte scope, long uid,
+                           int uidCounter, byte numAttributes, int[] attribIds) {
+        getItemAttributesNative(address, scope, uid, uidCounter, numAttributes, attribIds);
+    }
+
+    void getFolderItems(byte[] address, byte scope, byte start, byte end,
+                        byte numAttributes, int[] attribIds) {
+        getFolderItemsNative(address, scope, start, end, numAttributes, attribIds);
+    }
+
+    void addToNowPlaying(byte[] address, byte scope, long uid, int uidCounter) {
+        addToNowPlayingNative(address, scope, uid, uidCounter);
+    }
+
+    void setAddressedPlayer(byte[] address, int playerId) {
+        setAddressedPlayerNative(address, playerId);
+    }
+
+    void getElementAttributes(byte[] address, byte numAttributes, int[] attribIds) {
+        getElementAttributesNative(address, numAttributes, attribIds);
     }
 
     /**********************************************************************************************/
@@ -134,6 +156,14 @@ public class AvrcpControllerNativeInterface {
 
         mAvrcpController.onConnectionStateChanged(
                 remoteControlConnected, browsingConnected, device);
+    }
+ 
+    // Called by JNI to notify Avrcp of a remote device's Supported features
+    @VisibleForTesting
+    void getRcFeatures(byte[] address, int features) {
+        BluetoothDevice device = mAdapterService.getRemoteDevice(getAddressStringFromByte(address));
+        Log.d(TAG, "getRcFeatures: device=" + device + " features=" + features);
+        mAvrcpController.getRcFeatures(device, features);
     }
 
     // Called by JNI to notify Avrcp of a remote device's Cover Art PSM
@@ -159,6 +189,14 @@ public class AvrcpControllerNativeInterface {
         Log.d(TAG, "onPlayerAppSettingChanged: device=" + device);
 
         mAvrcpController.onPlayerAppSettingChanged(device, playerAttribRsp, rspLen);
+    }
+
+    @VisibleForTesting
+    void onUidsChanged(byte[] address, int uidCounter) {
+        Log.d(TAG, "onUidsChanged uidCounter: " + uidCounter);
+        BluetoothDevice device = mAdapterService.getRemoteDevice(getAddressStringFromByte(address));
+
+        mAvrcpController.onUidsChanged(device, uidCounter);
     }
 
     // Called by JNI when remote wants to set absolute volume.
@@ -474,10 +512,12 @@ public class AvrcpControllerNativeInterface {
     /**
      * Change the current browsed folder
      *
-     * @param direction up/down
-     * @param uid folder unique id
+     * @param uidCounter uid counter
+     * @param direction  up/down
+     * @param uid        folder unique id
      */
-    private native void changeFolderPathNative(byte[] address, byte direction, long uid);
+    private native void changeFolderPathNative(byte[] address, int uidCounter,
+                                               byte direction, long uid);
 
     /**
      * Play item with provided uid
@@ -518,4 +558,63 @@ public class AvrcpControllerNativeInterface {
      * @param end          end
      */
     public native static void getSearchListNative(byte[] address, int start, int end);
+
+    /**
+     * Get item attributes with provided uid
+     *
+     * @param scope          scope of item to played
+     * @param uid            song unique id
+     * @param uidCounter     counter
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getItemAttributesNative(byte[] address, byte scope,
+                                                      long uid, int uidCounter,
+                                                      byte numAttributes, int[] attribIds);
+
+    /**
+     * Get folder items with specified range
+     *
+     * @param scope          scope of item to played
+     * @param start          start of range
+     * @param end            end of range
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getFolderItemsNative(byte[] address, byte scope, byte start,
+                                                   byte end, byte numAttributes, int[] attribIds);
+
+    /**
+     * add folder into now playing list
+     *
+     * @param scope          scope of item to played
+     * @param uid            song unique id
+     * @param uidCounter     counter
+     */
+    public native static void addToNowPlayingNative(byte[] address, byte scope, long uid,
+                                                    int uidCounter);
+
+    /**
+     * Request for continuing response
+     *
+     * @param pduId  ID of PDU data packet
+     */
+    public native static void requestContinuingResponseNative(byte[] address, byte pduId);
+
+    /**
+     * Abort continuing response
+     *
+     * @param pduId  ID of PDU data packet
+     */
+    public native static void abortContinuingResponseNative(byte[] address, byte pduId);
+
+    /**
+     * Get element attributes
+     *
+     * @param numAttributes  number of attributes
+     * @param attribIds      list of attributes
+     */
+    public native static void getElementAttributesNative(byte[] address, byte numAttributes,
+                                                         int[] attribIds);
+
 }

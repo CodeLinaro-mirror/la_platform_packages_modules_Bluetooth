@@ -718,6 +718,7 @@ public:
       if (!bta_av_co_set_active_sink_peer(peer_address)) {
         log::warn("unable to set active peer to empty in BtaAvCo");
       }
+      btif_a2dp_sink_on_idle();
       btif_a2dp_sink_end_session(active_peer_);
       btif_a2dp_sink_shutdown();
       active_peer_ = peer_address;
@@ -3681,27 +3682,30 @@ bt_status_t btif_av_source_set_codec_config_preference(
     return BT_STATUS_PARM_INVALID;
   }
 
+  if (IsSupportDualA2dpSource()) {
+    log::warn("Don't reconfig stream for dual A2DP source");
+    return BT_STATUS_UNSUPPORTED;
+  }
+
   std::promise<void> peer_ready_promise;
   std::future<void> peer_ready_future = peer_ready_promise.get_future();
   bt_status_t status = BT_STATUS_FAIL;
 
-  if (!IsSupportDualA2dpSource()) {
-    status = btif_av_source.SetPeerReconfigureStreamData(peer_address, codec_preferences,
-                                                         std::move(peer_ready_promise));
-    if (status != BT_STATUS_SUCCESS) {
-      log::error("SetPeerReconfigureStreamData failed, status: {}", status);
-      return status;
-    }
+  status = btif_av_source.SetPeerReconfigureStreamData(peer_address, codec_preferences,
+                                                        std::move(peer_ready_promise));
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("SetPeerReconfigureStreamData failed, status: {}", status);
+    return status;
+  }
 
-    BtifAvEvent btif_av_event(BTIF_AV_RECONFIGURE_REQ_EVT, nullptr, 0);
-    status = do_in_main_thread(base::BindOnce(&btif_av_handle_event,
-                                              AVDT_TSEP_SNK,  // peer_sep
-                                              peer_address, kBtaHandleUnknown, btif_av_event));
+  BtifAvEvent btif_av_event(BTIF_AV_RECONFIGURE_REQ_EVT, nullptr, 0);
+  status = do_in_main_thread(base::BindOnce(&btif_av_handle_event,
+                                            AVDT_TSEP_SNK,  // peer_sep
+                                            peer_address, kBtaHandleUnknown, btif_av_event));
 
-    if (status != BT_STATUS_SUCCESS) {
-      log::error("do_in_main_thread failed, status: {}", status);
-      return status;
-    }
+  if (status != BT_STATUS_SUCCESS) {
+    log::error("do_in_main_thread failed, status: {}", status);
+    return status;
   }
 
   if (peer_ready_future.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {

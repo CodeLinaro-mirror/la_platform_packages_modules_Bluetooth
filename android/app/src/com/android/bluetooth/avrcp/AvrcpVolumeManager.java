@@ -33,6 +33,7 @@ import android.media.AudioManager;
 import android.os.SystemProperties;
 import android.util.Log;
 
+import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.BluetoothEventLogger;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
@@ -172,18 +173,18 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
         } else {
             deviceVolumeBehavior = AudioManager.DEVICE_VOLUME_BEHAVIOR_VARIABLE;
         }
-
-        CompletableFuture.runAsync(
-                        () ->
-                                mAudioManager.setDeviceVolumeBehavior(
-                                        deviceAttributes, deviceVolumeBehavior),
-                        Utils.BackgroundExecutor)
-                .exceptionally(
-                        e -> {
-                            Log.e(TAG, "switchVolumeDevice has thrown an Exception", e);
-                            return null;
-                        });
-
+        if (!A2dpService.isDualA2dp()) {
+            CompletableFuture.runAsync(
+                            () ->
+                                    mAudioManager.setDeviceVolumeBehavior(
+                                            deviceAttributes, deviceVolumeBehavior),
+                            Utils.BackgroundExecutor)
+                    .exceptionally(
+                            e -> {
+                                Log.e(TAG, "switchVolumeDevice has thrown an Exception", e);
+                                return null;
+                            });
+        }
         // Get the current system volume and try to get the preference volume
         int savedVolume = getVolume(device, mNewDeviceVolume);
 

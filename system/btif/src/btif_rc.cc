@@ -16,7 +16,7 @@
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /*****************************************************************************
@@ -224,6 +224,7 @@ typedef struct {
   uint64_t rc_playing_uid;
   bool rc_procedure_complete;
   rc_transaction_set_t transaction_set;
+  uint16_t uid_counter;
   tBTA_AV_FEAT peer_ct_features;
   tBTA_AV_FEAT peer_tg_features;
   uint8_t launch_cmd_pending; /* true: getcap/regvolume */
@@ -282,6 +283,8 @@ static void cleanup_btrc_folder_items(btrc_folder_items_t* btrc_items, uint8_t i
 static void handle_get_metadata_attr_response(tBTA_AV_META_MSG* pmeta_msg,
                                               tAVRC_GET_ATTRS_RSP* p_rsp);
 static void handle_set_app_attr_val_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_RSP* p_rsp);
+static void handle_add_to_now_playing_response(tBTA_AV_META_MSG* pmeta_msg,
+                                             tAVRC_RSP* p_rsp);
 static bt_status_t get_play_status_cmd(btif_rc_device_cb_t* p_dev);
 static bt_status_t get_player_app_setting_attr_text_cmd(uint8_t* attrs, uint8_t num_attrs,
                                                         btif_rc_device_cb_t* p_dev);
@@ -289,12 +292,17 @@ static bt_status_t get_player_app_setting_value_text_cmd(uint8_t* vals, uint8_t 
                                                          btif_rc_device_cb_t* p_dev);
 static bt_status_t register_notification_cmd(uint8_t event_id, uint32_t event_value,
                                              btif_rc_device_cb_t* p_dev);
-static bt_status_t get_metadata_attribute_cmd(uint8_t num_attribute, const uint32_t* p_attr_ids,
-                                              btif_rc_device_cb_t* p_dev);
-static bt_status_t get_element_attribute_cmd(uint8_t num_attribute, const uint32_t* p_attr_ids,
-                                             btif_rc_device_cb_t* p_dev);
-static bt_status_t get_item_attribute_cmd(uint64_t uid, int scope, uint8_t num_attribute,
-                                          const uint32_t* p_attr_ids, btif_rc_device_cb_t* p_dev);
+static bt_status_t get_metadata_attribute_cmd(const RawAddress& bd_addr,
+                                              uint8_t num_attribute,
+                                              uint32_t* p_attr_ids);
+static bt_status_t get_element_attribute_cmd(const RawAddress& bd_addr,
+                                             uint8_t num_attribute,
+                                             uint32_t* p_attr_ids);
+static bt_status_t get_item_attribute_cmd(const RawAddress& bd_addr,
+                                          uint8_t scope, uint8_t* uid,
+                                          uint16_t uid_counter,
+                                          uint8_t num_attribute,
+                                          uint32_t* p_attr_ids);
 static bt_status_t getcapabilities_cmd(uint8_t cap_id, btif_rc_device_cb_t* p_dev);
 static bt_status_t list_player_app_setting_attrib_cmd(btif_rc_device_cb_t* p_dev);
 static bt_status_t list_player_app_setting_value_cmd(uint8_t attrib_id, btif_rc_device_cb_t* p_dev);
@@ -317,7 +325,7 @@ static rc_cb_t btif_rc_cb;
 static btrc_ctrl_callbacks_t* bt_rc_ctrl_callbacks = NULL;
 
 // List of desired media attribute keys to request by default
-static const uint32_t media_attr_list[] = {
+static uint32_t media_attr_list[] = {
         AVRC_MEDIA_ATTR_ID_TITLE,        AVRC_MEDIA_ATTR_ID_ARTIST,
         AVRC_MEDIA_ATTR_ID_ALBUM,        AVRC_MEDIA_ATTR_ID_TRACK_NUM,
         AVRC_MEDIA_ATTR_ID_NUM_TRACKS,   AVRC_MEDIA_ATTR_ID_GENRE,
@@ -326,7 +334,7 @@ static const uint8_t media_attr_list_size = sizeof(media_attr_list) / sizeof(uin
 
 // List of desired media attribute keys to request if cover artwork is not a
 // supported feature
-static const uint32_t media_attr_list_no_cover_art[] = {
+static uint32_t media_attr_list_no_cover_art[] = {
         AVRC_MEDIA_ATTR_ID_TITLE,       AVRC_MEDIA_ATTR_ID_ARTIST,     AVRC_MEDIA_ATTR_ID_ALBUM,
         AVRC_MEDIA_ATTR_ID_TRACK_NUM,   AVRC_MEDIA_ATTR_ID_NUM_TRACKS, AVRC_MEDIA_ATTR_ID_GENRE,
         AVRC_MEDIA_ATTR_ID_PLAYING_TIME};
@@ -403,6 +411,7 @@ static void initialize_device(btif_rc_device_cb_t* p_dev) {
   p_dev->peer_ct_features = 0;
   p_dev->peer_tg_features = 0;
   p_dev->launch_cmd_pending = 0;
+  p_dev->uid_counter = 0;
 
   // Reset the transaction set for this device. If this initialize_device() call
   // is made due to a disconnect event, this cancels any pending timers too.
@@ -449,7 +458,7 @@ static btif_rc_device_cb_t* btif_rc_get_device_by_handle(uint8_t handle) {
   return NULL;
 }
 
-static const uint32_t* get_requested_attributes_list(btif_rc_device_cb_t* p_dev) {
+static uint32_t* get_requested_attributes_list(btif_rc_device_cb_t* p_dev) {
   return p_dev->rc_features & BTA_AV_FEAT_COVER_ARTWORK ? media_attr_list
                                                         : media_attr_list_no_cover_art;
 }
@@ -1087,9 +1096,9 @@ static void rc_ctrl_procedure_complete(btif_rc_device_cb_t* p_dev) {
     return;
   }
   p_dev->rc_procedure_complete = true;
-  const uint32_t* attr_list = get_requested_attributes_list(p_dev);
+  uint32_t* attr_list = get_requested_attributes_list(p_dev);
   const uint8_t attr_list_size = get_requested_attributes_list_size(p_dev);
-  get_metadata_attribute_cmd(attr_list_size, attr_list, p_dev);
+  get_metadata_attribute_cmd(p_dev->rc_addr, attr_list_size, attr_list);
 }
 
 /***************************************************************************
@@ -1364,6 +1373,11 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_GE
   int xx = 0;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
 
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return;
+  }
+
   /* Todo: Do we need to retry on command timeout */
   if (p_rsp->status != AVRC_STS_NO_ERROR) {
     log::error("Error capability response: 0x{:02X}", p_rsp->status);
@@ -1375,6 +1389,11 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_GE
 
     /* Todo: Check if list can be active when we hit here */
     p_dev->rc_supported_event_list = list_new(osi_free);
+    if (p_dev->rc_supported_event_list == NULL) {
+      log::error("Failed to allocate memory");
+      return;
+    }
+
     for (xx = 0; xx < p_rsp->count; xx++) {
       /* Skip registering for Play position change notification */
       if ((p_rsp->param.event_id[xx] == AVRC_EVT_PLAY_STATUS_CHANGE) ||
@@ -1459,7 +1478,7 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
     return;
   }
 
-  const uint32_t* attr_list = get_requested_attributes_list(p_dev);
+  uint32_t* attr_list = get_requested_attributes_list(p_dev);
   const uint8_t attr_list_size = get_requested_attributes_list_size(p_dev);
 
   if (pmeta_msg->code == AVRC_RSP_INTERIM) {
@@ -1496,7 +1515,7 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
           if (p_dev->rc_supported_play_pos_changed == true) {
             get_play_status_cmd(p_dev);
           }
-          get_metadata_attribute_cmd(attr_list_size, attr_list, p_dev);
+          get_metadata_attribute_cmd(p_dev->rc_addr, attr_list_size, attr_list);
         }
         break;
 
@@ -1525,6 +1544,11 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
 
         break;
       case AVRC_EVT_UIDS_CHANGE:
+        // UIDS_CHANGED_EVENT should be handled on Interim. Otherwise, UID counter
+        // maintained in CT can't be intialized and synchronized correctly
+        do_in_jni_thread(
+            base::Bind(bt_rc_ctrl_callbacks->uids_changed_cb,
+                       p_dev->rc_addr, p_rsp->param.uid_counter));
         break;
 
       case AVRC_EVT_TRACK_REACHED_END:
@@ -1593,7 +1617,7 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
              */
              rc_start_play_status_timer(p_dev);
           }
-          get_element_attribute_cmd(AVRC_MAX_NUM_MEDIA_ATTR_ID, attr_list, p_dev);
+          get_metadata_attribute_cmd(p_dev->rc_addr, attr_list_size, attr_list);
         } else {
           rc_stop_play_status_timer(p_dev);
         }
@@ -1608,7 +1632,7 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
         } else {
           uint8_t* p_data = p_rsp->param.track;
           BE_STREAM_TO_UINT64(p_dev->rc_playing_uid, p_data);
-          get_metadata_attribute_cmd(attr_list_size, attr_list, p_dev);
+          get_metadata_attribute_cmd(p_dev->rc_addr, attr_list_size, attr_list);
         }
         break;
 
@@ -2044,6 +2068,31 @@ static void handle_set_app_attr_val_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_
 
 /***************************************************************************
  *
+ * Function         handle_add_to_now_playing_response
+ *
+ * Description      handles the add to now playing response, calls
+ *                  HAL callback
+ * Returns          None
+ *
+ **************************************************************************/
+static void handle_add_to_now_playing_response(tBTA_AV_META_MSG* pmeta_msg,
+                                               tAVRC_RSP* p_rsp) {
+
+  btif_rc_device_cb_t* p_dev =
+      btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
+
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return;
+  }
+
+  do_in_jni_thread(
+      base::Bind(bt_rc_ctrl_callbacks->add_to_now_playing_cb,
+                 p_dev->rc_addr,  p_rsp->status));
+}
+
+/***************************************************************************
+ *
  * Function         handle_get_metadata_attr_response
  *
  * Description      handles the the element attributes response, calls
@@ -2082,9 +2131,9 @@ static void handle_get_metadata_attr_response(tBTA_AV_META_MSG* pmeta_msg,
     /* Retry for timeout case, this covers error handling
      * for continuation failure also.
      */
-    const uint32_t* attr_list = get_requested_attributes_list(p_dev);
+    uint32_t* attr_list = get_requested_attributes_list(p_dev);
     const uint8_t attr_list_size = get_requested_attributes_list_size(p_dev);
-    get_metadata_attribute_cmd(attr_list_size, attr_list, p_dev);
+    get_metadata_attribute_cmd(p_dev->rc_addr, attr_list_size, attr_list);
   } else {
     log::error("Error in get element attr procedure: {}", p_rsp->status);
   }
@@ -2579,6 +2628,14 @@ static void handle_avk_rc_metamsg_rsp(tBTA_AV_META_MSG* pmeta_msg) {
       case AVRC_PDU_SET_ADDRESSED_PLAYER:
         handle_set_addressed_player_response(pmeta_msg, &avrc_response.rsp);
         break;
+
+      case AVRC_PDU_ADD_TO_NOW_PLAYING:
+        handle_add_to_now_playing_response(pmeta_msg, &avrc_response.add_to_play);
+        break;
+
+      default:
+        log::error("cannot handle vendor pdu {}", pmeta_msg->p_msg->hdr.opcode);
+	    break;
     }
   } else if (AVRC_OP_BROWSE == pmeta_msg->p_msg->hdr.opcode) {
     log::verbose("AVRC_OP_BROWSE pdu {}", avrc_response.pdu);
@@ -2808,9 +2865,9 @@ static bt_status_t get_current_metadata_cmd(const RawAddress& bd_addr) {
     log::error("p_dev NULL");
     return BT_STATUS_DEVICE_NOT_FOUND;
   }
-  const uint32_t* attr_list = get_requested_attributes_list(p_dev);
+  uint32_t* attr_list = get_requested_attributes_list(p_dev);
   const uint8_t attr_list_size = get_requested_attributes_list_size(p_dev);
-  return get_metadata_attribute_cmd(attr_list_size, attr_list, p_dev);
+  return get_metadata_attribute_cmd(bd_addr, attr_list_size, attr_list);
 }
 
 /***************************************************************************
@@ -2854,24 +2911,34 @@ static bt_status_t get_now_playing_list_cmd(const RawAddress& bd_addr, uint32_t 
  *
  * Description      Fetch the item attributes for a given uid.
  *
- * Parameters       uid: Track UID you want attributes for
+ * Parameters       bd_addr: address of device control block
  *                  scope: Constant representing which scope you're querying
  *                         (i.e AVRC_SCOPE_FILE_SYSTEM)
- *                  p_dev: Device control block
+ *                  uid: Track UID you want attributes for
  *
  * Returns          BT_STATUS_SUCCESS if command is issued successfully
  *                  otherwise BT_STATUS_FAIL
  *
  **************************************************************************/
-static bt_status_t get_item_attribute_cmd(uint64_t uid, int scope, uint8_t /*num_attribute*/,
-                                          const uint32_t* /*p_attr_ids*/,
-                                          btif_rc_device_cb_t* p_dev) {
+static bt_status_t get_item_attribute_cmd(const RawAddress& bd_addr,
+                                           uint8_t scope, uint8_t* uid,
+                                           uint16_t uid_counter,
+                                           uint8_t num_attribute,
+                                           uint32_t* p_attr_ids) {
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev NULL");
+    return BT_STATUS_FAIL;
+  }
+
   tAVRC_COMMAND avrc_cmd = {0};
   avrc_cmd.pdu = AVRC_PDU_GET_ITEM_ATTRIBUTES;
   avrc_cmd.get_attrs.scope = scope;
-  memcpy(avrc_cmd.get_attrs.uid, &uid, 8);
-  avrc_cmd.get_attrs.uid_counter = 0;
-  avrc_cmd.get_attrs.attr_count = 0;
+  memcpy(avrc_cmd.get_attrs.uid, uid, AVRC_UID_SIZE);
+
+  avrc_cmd.get_attrs.uid_counter = uid_counter;
+  avrc_cmd.get_attrs.attr_count = num_attribute;
+  avrc_cmd.get_attrs.p_attr_list = p_attr_ids;
 
   return build_and_send_browsing_cmd(&avrc_cmd, p_dev);
 }
@@ -2929,10 +2996,14 @@ static bt_status_t get_player_list_cmd(const RawAddress& bd_addr, uint32_t start
  *                  BT_STATUS_FAIL.
  *
  **************************************************************************/
-static bt_status_t change_folder_path_cmd(const RawAddress& bd_addr, uint8_t direction,
-                                          uint8_t* uid) {
-  log::verbose("direction {}", direction);
+static bt_status_t change_folder_path_cmd(const RawAddress& bd_addr, uint16_t uid_counter,
+                                          uint8_t direction, uint8_t* uid) {
+  log::debug("uid_counter {} direction {}", uid_counter, direction);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -2941,7 +3012,7 @@ static bt_status_t change_folder_path_cmd(const RawAddress& bd_addr, uint8_t dir
   avrc_cmd.chg_path.pdu = AVRC_PDU_CHANGE_PATH;
   avrc_cmd.chg_path.status = AVRC_STS_NO_ERROR;
   // TODO(sanketa): Improve for database aware clients.
-  avrc_cmd.chg_path.uid_counter = 0;
+  avrc_cmd.chg_path.uid_counter = uid_counter;
   avrc_cmd.chg_path.direction = direction;
 
   memset(avrc_cmd.chg_path.folder_uid, 0, AVRC_UID_SIZE * sizeof(uint8_t));
@@ -3108,6 +3179,122 @@ static bt_status_t get_search_list_cmd(const RawAddress &bd_addr, uint32_t start
                               num_items);
 }
 
+static bt_status_t get_folder_items_vendor_cmd(const RawAddress& bd_addr, uint8_t scope,
+                                               uint8_t start_item, uint8_t end_item,
+                                               uint8_t numAttr, uint32_t* attr) {
+    /* Check that both avrcp and browse channel are connected. */
+    btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+    if (p_dev == NULL) {
+      log::error("p_dev is NULL");
+      return BT_STATUS_FAIL;
+    }
+    log::debug("");
+    CHECK_RC_CONNECTED(p_dev);
+    CHECK_BR_CONNECTED(p_dev);
+
+    tAVRC_COMMAND avrc_cmd = {0};
+
+    /* Set the layer specific to point to browse although this should really
+     * be done by lower layers and looking at the PDU
+     */
+    avrc_cmd.get_items.pdu = AVRC_PDU_GET_FOLDER_ITEMS;
+    avrc_cmd.get_items.status = AVRC_STS_NO_ERROR;
+    avrc_cmd.get_items.scope = scope;
+    avrc_cmd.get_items.start_item = start_item;
+    avrc_cmd.get_items.end_item = end_item;
+    avrc_cmd.get_items.attr_count = numAttr;
+    avrc_cmd.get_items.p_attr_list = attr;
+
+    return build_and_send_browsing_cmd(&avrc_cmd, p_dev);
+}
+
+/***************************************************************************
+ *
+ * Function         add_to_now_playing_cmd
+ *
+ * Description      Send add to now playing command
+ *
+ * Returns          BT_STATUS_SUCCESS if command issued successfully otherwise
+ *                  BT_STATUS_FAIL.
+ *
+ **************************************************************************/
+static bt_status_t add_to_now_playing_cmd(const RawAddress& bd_addr, uint8_t scope, uint8_t* uid,
+                                   uint16_t uid_counter) {
+  log::debug("scope {} uid_counter {}", scope, uid_counter);
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return BT_STATUS_FAIL;
+  }
+  CHECK_RC_CONNECTED(p_dev);
+  CHECK_BR_CONNECTED(p_dev);
+
+  tAVRC_COMMAND avrc_cmd = {0};
+  avrc_cmd.pdu = AVRC_PDU_ADD_TO_NOW_PLAYING;
+  avrc_cmd.add_to_play.opcode = AVRC_OP_VENDOR;
+  avrc_cmd.add_to_play.status = AVRC_STS_NO_ERROR;
+  avrc_cmd.add_to_play.scope = scope;
+  memcpy(avrc_cmd.add_to_play.uid, uid, AVRC_UID_SIZE);
+  avrc_cmd.add_to_play.uid_counter = uid_counter;
+
+  return build_and_send_vendor_cmd(&avrc_cmd, AVRC_CMD_CTRL, p_dev);
+}
+
+/***************************************************************************
+ *
+ * Function         request_continuing_response_cmd
+ *
+ * Description      Request for continuing response
+ *
+ * Returns          void
+ *
+ **************************************************************************/
+static bt_status_t request_continuing_response_cmd(const RawAddress& bd_addr, uint8_t pdu_id) {
+  log::debug("pdu_id={}", pdu_id);
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return BT_STATUS_FAIL;
+  }
+  CHECK_RC_CONNECTED(p_dev);
+
+  tAVRC_COMMAND avrc_cmd = {0};
+  avrc_cmd.pdu = AVRC_PDU_REQUEST_CONTINUATION_RSP;
+  avrc_cmd.continu.opcode = AVRC_OP_VENDOR;
+  avrc_cmd.continu.status = AVRC_STS_NO_ERROR;
+  avrc_cmd.continu.target_pdu = pdu_id;
+
+  return build_and_send_vendor_cmd(&avrc_cmd, AVRC_CMD_CTRL, p_dev);
+}
+
+/***************************************************************************
+ *
+ * Function         abort_continuing_response_cmd
+ *
+ * Description      Abort continuing response
+ *
+ * Returns          void
+ *
+ **************************************************************************/
+static bt_status_t abort_continuing_response_cmd(const RawAddress& bd_addr, uint8_t pdu_id) {
+  log::debug("pdu_id={}", pdu_id);
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev is NULL");
+    return BT_STATUS_FAIL;
+  }
+  CHECK_RC_CONNECTED(p_dev);
+
+  tAVRC_COMMAND avrc_cmd = {0};
+  avrc_cmd.pdu = AVRC_PDU_ABORT_CONTINUATION_RSP;
+  avrc_cmd.continu.opcode = AVRC_OP_VENDOR;
+  avrc_cmd.continu.status = AVRC_STS_NO_ERROR;
+  avrc_cmd.continu.target_pdu = pdu_id;
+
+  return build_and_send_vendor_cmd(&avrc_cmd, AVRC_CMD_CTRL, p_dev);
+}
+
+
 /***************************************************************************
  *
  * Function         change_player_app_setting
@@ -3255,18 +3442,30 @@ static bt_status_t register_notification_cmd(uint8_t event_id, uint32_t event_va
  *                  otherwise BT_STATUS_FAIL
  *
  **************************************************************************/
-static bt_status_t get_metadata_attribute_cmd(uint8_t num_attribute, const uint32_t* p_attr_ids,
-                                              btif_rc_device_cb_t* p_dev) {
-  log::verbose("num_attribute: {} attribute_id: {}", num_attribute, p_attr_ids[0]);
+static bt_status_t get_metadata_attribute_cmd(const RawAddress& bd_addr,
+                                              uint8_t num_attribute,
+                                              uint32_t* p_attr_ids) {
+  log::verbose("num_attribute: {} attribute_id {}", num_attribute, p_attr_ids[0]);
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev NULL");
+    return BT_STATUS_FAIL;
+  }
 
   // If browsing is connected then send the command out that channel
+  uint8_t uid[AVRC_UID_SIZE] = {0};
+  uint8_t* uid_p = uid;
+  UINT64_TO_BE_STREAM(uid_p, p_dev->rc_playing_uid);
   if (p_dev->br_connected) {
-    return get_item_attribute_cmd(p_dev->rc_playing_uid, AVRC_SCOPE_NOW_PLAYING, num_attribute,
-                                  p_attr_ids, p_dev);
+    return get_item_attribute_cmd(bd_addr, AVRC_SCOPE_NOW_PLAYING,
+                                  uid_p,
+                                  p_dev->uid_counter,
+                                  num_attribute,
+                                  p_attr_ids);
   }
 
   // Otherwise, default to the control channel
-  return get_element_attribute_cmd(num_attribute, p_attr_ids, p_dev);
+  return get_element_attribute_cmd(bd_addr, num_attribute, p_attr_ids);
 }
 
 /***************************************************************************
@@ -3278,10 +3477,35 @@ static bt_status_t get_metadata_attribute_cmd(uint8_t num_attribute, const uint3
  * Returns          void
  *
  **************************************************************************/
-static bt_status_t get_element_attribute_cmd(uint8_t num_attribute, const uint32_t* p_attr_ids,
-                                             btif_rc_device_cb_t* p_dev) {
-  log::verbose("num_attribute: {} attribute_id: {}", num_attribute, p_attr_ids[0]);
+static bt_status_t get_element_attribute_cmd(const RawAddress& bd_addr,
+                                             uint8_t num_attribute,
+                                             uint32_t* p_attr_ids) {
+  log::verbose("num_attribute: {}", num_attribute);
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    log::error("p_dev NULL");
+    return BT_STATUS_FAIL;
+  }
+
   CHECK_RC_CONNECTED(p_dev);
+
+  // For IOP Issue
+  // Few peer devices without CA featue forcibly restart BT
+  // when it receives request to retrieve value of attribute
+  // AVRC_MEDIA_ATTR_ID_COVER_ART.
+  uint32_t attr_list[] = {
+    AVRC_MEDIA_ATTR_ID_TITLE,       AVRC_MEDIA_ATTR_ID_ARTIST,
+    AVRC_MEDIA_ATTR_ID_ALBUM,       AVRC_MEDIA_ATTR_ID_TRACK_NUM,
+    AVRC_MEDIA_ATTR_ID_NUM_TRACKS,  AVRC_MEDIA_ATTR_ID_GENRE,
+    AVRC_MEDIA_ATTR_ID_PLAYING_TIME
+  };
+
+  if (!(p_dev->rc_features & BTA_AV_FEAT_COVER_ARTWORK) &&
+    num_attribute == AVRC_MAX_NUM_MEDIA_ATTR_ID) {
+    p_attr_ids = attr_list;
+    num_attribute = sizeof(attr_list)/sizeof(attr_list[0]);
+  }
+
   tAVRC_COMMAND avrc_cmd = {0};
   avrc_cmd.get_elem_attrs.opcode = AVRC_OP_VENDOR;
   avrc_cmd.get_elem_attrs.status = AVRC_STS_NO_ERROR;
@@ -3509,8 +3733,14 @@ static const btrc_ctrl_interface_t bt_rc_ctrl_interface = {
         set_addressed_player_cmd,
         search_cmd,
         get_search_list_cmd,
+        add_to_now_playing_cmd,
         set_volume_rsp,
         volume_change_notification_rsp,
+        get_folder_items_vendor_cmd,
+        request_continuing_response_cmd,
+        abort_continuing_response_cmd,
+        get_item_attribute_cmd,
+        get_element_attribute_cmd,
         cleanup_ctrl,
 };
 
