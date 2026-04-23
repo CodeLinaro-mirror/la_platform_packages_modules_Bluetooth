@@ -486,6 +486,18 @@ static void cl_op_cmpl(tGAP_CLCB& clcb, bool status, uint16_t len, uint8_t* p_na
   }
 }
 
+static void call_pending_gap_name_callback(tGAP_CLCB& clcb, bool status, uint16_t len, uint8_t* p_name) {
+  while (!clcb.requests.empty()) {
+    tGAP_REQUEST req = clcb.requests.front();
+    clcb.requests.pop();
+
+    if (req.uuid == GATT_UUID_GAP_DEVICE_NAME && req.p_cback && req.op) {
+      log::info("bda={}", clcb.bda);
+      (*(req.p_cback))(status, clcb.bda, len, (char*)p_name);
+    }
+  }
+}
+
 /** Client connection callback */
 static void client_connect_cback(tGATT_IF, const RawAddress& bda, tCONN_ID conn_id, bool connected,
                                  tGATT_DISCONN_REASON /* reason */, tBT_TRANSPORT) {
@@ -510,6 +522,7 @@ static void client_connect_cback(tGATT_IF, const RawAddress& bda, tCONN_ID conn_
     log::warn("Disconnected GAP from remote device");
     p_clcb->connected = false;
     cl_op_cmpl(*p_clcb, false, 0, NULL);
+    call_pending_gap_name_callback(*p_clcb, false, 0, NULL);
     /* clean up clcb */
     clcb_dealloc(*p_clcb);
   }

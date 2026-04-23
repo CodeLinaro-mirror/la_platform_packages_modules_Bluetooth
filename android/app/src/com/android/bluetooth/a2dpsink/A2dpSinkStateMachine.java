@@ -57,6 +57,10 @@ class A2dpSinkStateMachine extends StateMachine {
 
     static final int CONNECT_TIMEOUT_MS = 10000;
 
+    public static final int EVENT_AVRCP_TG_PLAY = 303;
+    public static final int EVENT_AVRCP_TG_PAUSE = 304;
+    public static final int EVENT_RELEASE_FOCUS = 306;
+
     protected final BluetoothDevice mDevice;
     protected final byte[] mDeviceAddress;
     protected final A2dpSinkService mService;
@@ -66,6 +70,7 @@ class A2dpSinkStateMachine extends StateMachine {
     protected final Connected mConnected;
     protected final Disconnecting mDisconnecting;
 
+    private boolean mIsPlaying = false;
     protected int mMostRecentState = STATE_DISCONNECTED;
     protected BluetoothAudioConfig mAudioConfig = null;
 
@@ -109,6 +114,10 @@ class A2dpSinkStateMachine extends StateMachine {
         return mAudioConfig;
     }
 
+    boolean isPlaying(BluetoothDevice device) {
+        return mIsPlaying;
+    }
+
     /**
      * Get the underlying device tracked by this state machine
      *
@@ -141,6 +150,7 @@ class A2dpSinkStateMachine extends StateMachine {
     public void dump(StringBuilder sb) {
         ProfileService.println(
                 sb, "mDevice: " + mDevice + "(" + Utils.getName(mDevice) + ") " + this.toString());
+        ProfileService.println(sb, "mIsPlaying: " + mIsPlaying);
     }
 
     @Override
@@ -159,6 +169,10 @@ class A2dpSinkStateMachine extends StateMachine {
         @Override
         public void enter() {
             Log.d(TAG, "[" + mDevice + "] Enter Disconnected");
+            if (mIsPlaying) {
+                Log.i(TAG, "Disconnected: stopped playing: " + mDevice);
+                mIsPlaying = false;
+            }
             if (mMostRecentState != STATE_DISCONNECTED) {
                 sendMessage(CLEANUP);
             }
@@ -298,6 +312,23 @@ class A2dpSinkStateMachine extends StateMachine {
                                     event.mChannelCount,
                                     AudioFormat.ENCODING_PCM_16BIT);
                 }
+                case StackEvent.EVENT_TYPE_AUDIO_STATE_CHANGED -> {
+                    processAudioStateEvent(event.mState);
+                }
+            }
+        }
+
+        private void processAudioStateEvent(int state) {
+            switch (state) {
+                case StackEvent.AUDIO_STATE_STARTED:
+                    mIsPlaying = true;
+                    break;
+                case StackEvent.AUDIO_STATE_REMOTE_SUSPEND:
+                case StackEvent.AUDIO_STATE_STOPPED:
+                    mIsPlaying = false;
+                    break;
+                default:
+                    Log.e(TAG, "Audio State Device: " + mDevice + " bad state: " + state);
             }
         }
     }

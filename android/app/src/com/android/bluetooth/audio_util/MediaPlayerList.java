@@ -570,8 +570,26 @@ public class MediaPlayerList {
     public PlaybackState getCurrentPlayStatus() {
         final MediaPlayerWrapper player = getActivePlayer();
         if (player == null && !mAudioPlaybackIsActive) return null;
-
         PlaybackState state = player == null ? null : player.getPlaybackState();
+        Log.d(TAG, "Player state in whole" + state);
+
+        if (mCurrMediaData != null) {
+            Log.d(TAG, "CurrMediaData state in whole " + mCurrMediaData.state);
+            PlaybackState currMediaDataState = mCurrMediaData.state;
+            if (currMediaDataState != null) {
+                if (currMediaDataState.getState() == PlaybackState.STATE_FAST_FORWARDING
+                        || currMediaDataState.getState() == PlaybackState.STATE_REWINDING) {
+                    Log.d(TAG, "CurrMediaData state is " + currMediaDataState.getState());
+                    return new PlaybackState.Builder()
+                            .setState(
+                                    currMediaDataState.getState(),
+                                    state == null ? 0 : state.getPosition(),
+                                    state == null ? 1.0f : state.getPlaybackSpeed()
+                            )
+                            .build();
+                }
+            }
+        }
         if (mAudioPlaybackIsActive
                 && (state == null || state.getState() != PlaybackState.STATE_PLAYING)) {
             return new PlaybackState.Builder()
