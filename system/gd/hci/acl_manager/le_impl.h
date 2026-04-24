@@ -885,17 +885,9 @@ public:
 #endif
     accept_list.erase(address_with_type);
     connecting_le_.erase(address_with_type);
-#ifdef TARGET_QCOM_IOT_BT_EXT
-    if (subevent == PAWR_INVALID_SUBEVENT) {
-        register_with_address_manager();
-        le_address_manager_->RemoveDeviceFromFilterAcceptList(
-            address_with_type.ToFilterAcceptListAddressType(), address_with_type.GetAddress());
-    }
-#else
     register_with_address_manager();
     le_address_manager_->RemoveDeviceFromFilterAcceptList(
             address_with_type.ToFilterAcceptListAddressType(), address_with_type.GetAddress());
-#endif
   }
 
   void clear_filter_accept_list() {
