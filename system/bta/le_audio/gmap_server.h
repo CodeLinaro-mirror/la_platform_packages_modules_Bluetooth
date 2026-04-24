@@ -71,15 +71,6 @@ public:
   constexpr static uint16_t kGmapRoleLen = 1;
   constexpr static uint16_t kGmapUGGFeatureLen = 1;
 
-  static void OnGattConn(tGATT_IF server_if, const RawAddress& remote_bda, tCONN_ID conn_id,
-                         bool connected, tGATT_DISCONN_REASON reason, tBT_TRANSPORT transport);
-
-  static void OnGattServerRegister(tGATT_STATUS status, tGATT_IF server_if,
-                                   const bluetooth::Uuid& uuid);
-
-  static void OnServiceAdded(tGATT_STATUS status, int server_if,
-                             std::vector<btgatt_db_element_t> services);
-
   static void OnReadCharacteristic(tCONN_ID conn_id, uint32_t trans_id,
                                    const RawAddress& remote_bda, uint16_t handle, uint16_t offset,
                                    bool is_long);

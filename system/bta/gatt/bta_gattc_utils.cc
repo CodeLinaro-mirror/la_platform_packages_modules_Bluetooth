@@ -288,7 +288,7 @@ void bta_gattc_clcb_dealloc(tBTA_GATTC_CLCB* p_clcb) {
   p_clcb->auto_update = 0;
   p_clcb->disc_active = 0;
   p_clcb->in_use = 0;
-  p_clcb->state = BTA_GATTC_IDLE_ST;
+  p_clcb->state = BTA_GATTC_CONN_ST;
   p_clcb->status = GATT_SUCCESS;
   p_clcb->reported_mtu = 0;
   // in bta_gattc_sm_execute(), p_clcb is accessed again so we dealloc clcb later.
@@ -674,45 +674,6 @@ bool bta_gattc_check_bg_conn(tGATT_IF client_if, const RawAddress& remote_bda, u
     }
   }
   return is_bg_conn;
-}
-/*******************************************************************************
- *
- * Function         bta_gattc_send_open_cback
- *
- * Description      send open callback
- *
- * Returns
- *
- ******************************************************************************/
-void bta_gattc_send_open_cback(tBTA_GATTC_RCB* p_clreg, tGATT_STATUS status,
-                               const RawAddress& remote_bda, tCONN_ID conn_id,
-                               tBT_TRANSPORT transport, uint16_t mtu) {
-  tBTA_GATTC cb_data;
-
-  if (p_clreg->p_cback) {
-    memset(&cb_data, 0, sizeof(tBTA_GATTC));
-
-    cb_data.open.status = status;
-    cb_data.open.client_if = p_clreg->client_if;
-    cb_data.open.conn_id = conn_id;
-    cb_data.open.mtu = mtu;
-    cb_data.open.transport = transport;
-    cb_data.open.remote_bda = remote_bda;
-
-    (*p_clreg->p_cback)(BTA_GATTC_OPEN_EVT, &cb_data);
-
-    if (com_android_bluetooth_flags_gatt_conn_settings()) {
-      if (GATT_DEF_BLE_MTU_SIZE != cb_data.open.mtu && cb_data.open.mtu) {
-        tBTA_GATTC mtu_cb_data;
-        mtu_cb_data.cfg_mtu.conn_id = conn_id;
-        mtu_cb_data.cfg_mtu.status = status;
-        mtu_cb_data.cfg_mtu.mtu = mtu;
-
-        (*p_clreg->p_cback)(BTA_GATTC_CFG_MTU_EVT, &mtu_cb_data);
-        bta_gattc_cl_set_reported_mtu(p_clreg->client_if, mtu);
-      }
-    }
-  }
 }
 /*******************************************************************************
  *

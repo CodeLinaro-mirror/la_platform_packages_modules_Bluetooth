@@ -24,7 +24,7 @@
 
 #include "ascs/ascs_packets.h"
 #include "ascs_types.h"
-#include "bta_gatt_api_mock.h"
+#include "bta/mock/bta_gatt_api_mock.h"
 #include "btm_api_mock.h"
 #include "stack/include/btm_client_interface.h"
 
@@ -33,6 +33,7 @@ using ::testing::DoAll;
 using ::testing::InSequence;
 using ::testing::Mock;
 using ::testing::NiceMock;
+using ::testing::Return;
 using ::testing::SaveArg;
 
 namespace bluetooth::le_audio::test {
@@ -76,6 +77,8 @@ public:
     };
 
     gatt::SetMockBtaGattServerInterface(&gatt_server_interface_);
+    ON_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, _))
+            .WillByDefault(Return(GATT_SUCCESS));
     ascs_ = InstantiateAscs();
   }
 
@@ -97,25 +100,21 @@ TEST_F(AscsTestsBase, InstantiateRelease) {
 }
 
 TEST_F(AscsTestsBase, RegisterCallbacks) {
-  const tBTA_GATTS_CBACK* p_gatt_event_source_cb = nullptr;
+  const stack::tGATT_CBACK* p_gatt_event_source_cb = nullptr;
   bluetooth::Uuid uuid;
 
   // Check GATT server app registration
   Ascs::ServiceDescriptor service_descriptor;
-  void (*p_reg_cb)(tGATT_STATUS status, tGATT_IF server_if, const bluetooth::Uuid& uuid);
-  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kAudioStreamControlServiceUuid, _, _, _))
-          .WillOnce(DoAll(SaveArg<0>(&uuid), SaveArg<1>(&p_gatt_event_source_cb),
-                          SaveArg<3>(&p_reg_cb)));
+  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kAudioStreamControlServiceUuid, _, _))
+          .WillOnce(DoAll(SaveArg<0>(&uuid), SaveArg<1>(&p_gatt_event_source_cb), Return(0xDE)));
+  EXPECT_CALL(gatt_server_interface_, AddService(_, _)).WillOnce(Return(GATT_SERVICE_STARTED));
   ascs_->RegisterGattService(service_descriptor, &asc_callbacks_);
   ASSERT_NE(nullptr, p_gatt_event_source_cb);
   ASSERT_EQ(uuid::kAudioStreamControlServiceUuid, uuid);
   Mock::VerifyAndClearExpectations(&gatt_server_interface_);
 
-  // Inject the registration success event
-  p_reg_cb(tGATT_STATUS::GATT_SUCCESS, 0xDE, uuid);
-
   // Ignore second call to register
-  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kAudioStreamControlServiceUuid, _, _, _))
+  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kAudioStreamControlServiceUuid, _, _))
           .Times(0);
   ascs_->RegisterGattService(service_descriptor, &asc_callbacks_);
 
@@ -163,7 +162,7 @@ public:
            }},
   });
 
-  const tBTA_GATTS_CBACK* p_gatt_event_source_cb_ = nullptr;
+  const stack::tGATT_CBACK* p_gatt_event_source_cb_ = nullptr;
   std::vector<btgatt_db_element_t> service_db_;
   tGATT_IF server_if_;
 
@@ -186,31 +185,22 @@ public:
     AscsTestsBase::SetUp();
 
     // Mock GATT application registration success
-    EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kAudioStreamControlServiceUuid, _, _, _))
-            .WillRepeatedly(DoAll(SaveArg<1>(&p_gatt_event_source_cb_),
-                                  [](const bluetooth::Uuid& app_uuid,
-                                     const tBTA_GATTS_CBACK* /*p_cback*/, bool /* eatt_support */,
-                                     void (*p_reg_cb)(tGATT_STATUS status, tGATT_IF server_if,
-                                                      const bluetooth::Uuid& uuid)) {
-                                    if (p_reg_cb) {
-                                      p_reg_cb(tGATT_STATUS::GATT_SUCCESS, 0xDE, app_uuid);
-                                    }
-                                  }));
+    EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kAudioStreamControlServiceUuid, _, _))
+            .WillRepeatedly(DoAll(SaveArg<1>(&p_gatt_event_source_cb_), Return(0xDE)));
 
     // Mock GATT service registration success
-    EXPECT_CALL(gatt_server_interface_, AddService(0xDE, _, _))
+    EXPECT_CALL(gatt_server_interface_, AddService(0xDE, _))
             .WillOnce(DoAll(SaveArg<0>(&server_if_),
-                            [this](tGATT_IF server_if, std::vector<btgatt_db_element_t> service,
-                                   BTA_GATTS_AddServiceCb cb) {
+                            [this](tGATT_IF /*server_if*/,
+                                   std::vector<btgatt_db_element_t>* service) -> tGATT_STATUS {
                               // Assign some ATT handles
                               uint16_t handle_idx = 0x2000;
-                              service_db_ = service;  // Store for using it by mock GATT layer
-                              for (auto& el : service_db_) {
+                              for (auto& el : *service) {
                                 el.attribute_handle = handle_idx++;
                               }
-                              auto status = service.empty() ? tGATT_STATUS::GATT_ERROR
-                                                            : tGATT_STATUS::GATT_SUCCESS;
-                              std::move(cb).Run(status, server_if, service_db_);
+                              service_db_ = *service;  // Store for using it by mock GATT layer
+                              return service->empty() ? tGATT_STATUS::GATT_ERROR
+                                                      : tGATT_STATUS::GATT_SERVICE_STARTED;
                             }));
 
     // Register GATT service instance providing the service descriptor
@@ -280,8 +270,8 @@ public:
 
     auto conn_id = conn_id_by_address_.at(address);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      p_gatt_event_source_cb_->server_cbacks->read_characteristic_cb(conn_id, gatt_trans_id_++,
-                                                                     address, handle, 0, false);
+      p_gatt_event_source_cb_->p_req_cb->read_characteristic_cb(conn_id, gatt_trans_id_++, address,
+                                                                handle, 0, false);
     }
   }
 
@@ -322,7 +312,7 @@ public:
       uint8_t* pp = value;
       UINT16_TO_STREAM(pp, cccd_value);
 
-      p_gatt_event_source_cb_->server_cbacks->write_descriptor_cb(
+      p_gatt_event_source_cb_->p_req_cb->write_descriptor_cb(
               conn_id, gatt_trans_id_++, address, handle, 0, true, false, value, sizeof(value));
     }
   }
@@ -344,7 +334,7 @@ public:
 
     auto conn_id = conn_id_by_address_.at(address);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      p_gatt_event_source_cb_->server_cbacks->write_characteristic_cb(
+      p_gatt_event_source_cb_->p_req_cb->write_characteristic_cb(
               conn_id, gatt_trans_id_++, address, handle, 0, with_rsp, false,
               (uint8_t*)value.data(), value.size());
     }
@@ -778,7 +768,7 @@ TEST_F(AscsTests, RemoteWriteAseCtpConfigCodec) {
   // Expect a notification on the control point
   std::vector<uint8_t> notified_value;
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, _))
-          .WillOnce(SaveArg<2>(&notified_value));
+          .WillOnce(DoAll(SaveArg<2>(&notified_value), Return(GATT_SUCCESS)));
   ascs_->AseCtpRequestResponse(test_dev, response);
 
   // Verify the notification
@@ -818,7 +808,7 @@ TEST_F(AscsTests, UpdateAseStateNotifies) {
   // Expect a notification on the ASE characteristic
   std::vector<uint8_t> notified_value;
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, _))
-          .WillOnce(SaveArg<2>(&notified_value));
+          .WillOnce(DoAll(SaveArg<2>(&notified_value), Return(GATT_SUCCESS)));
   ascs_->UpdateAseState(test_dev, sink_ase_id, new_state);
 
   // Verify the notification

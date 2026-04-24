@@ -33,6 +33,7 @@ import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.util.Log
+import com.android.bluetooth.R
 import com.android.bluetooth.flags.Flags
 
 /**
@@ -79,15 +80,15 @@ class NfcAuracastActivity : Activity() {
                 val payload = String(record.payload, Charsets.UTF_8)
                 if (payload.contains(AuracastUtils.AURACAST_PREFIX)) {
                     val startIndex = payload.indexOf(AuracastUtils.AURACAST_PREFIX)
-                    processMetadata(payload.substring(startIndex))
+                    processUri(payload.substring(startIndex))
                     return
                 }
             }
         }
     }
 
-    private fun processMetadata(metadataStr: String) {
-        val info = AuracastUtils.parseBroadcastNameAndCode(metadataStr)
+    private fun processUri(uriString: String) {
+        val info = AuracastUtils.parseBroadcastURI(uriString)
         val streamName = info?.name
 
         if (streamName.isNullOrBlank()) {
@@ -95,20 +96,20 @@ class NfcAuracastActivity : Activity() {
             return
         }
 
-        showJoinPromptNotificationAsync(metadataStr, streamName)
+        showJoinPromptNotificationAsync(uriString, streamName)
     }
 
-    private fun showJoinPromptNotificationAsync(metadataStr: String, streamName: String) {
+    private fun showJoinPromptNotificationAsync(uriString: String, streamName: String) {
         val appContext = applicationContext
 
         // Check if Bluetooth is missing or turned off
         if (bluetoothAdapter == null || !bluetoothAdapter!!.isEnabled) {
             Log.w(TAG, "BluetoothAdapter is null or disabled. Posting fallback notification.")
-            postNotification(appContext, metadataStr, streamName, null)
+            postNotification(appContext, uriString, streamName, null)
             return
         }
 
-        val listener = ProxyListener(metadataStr, streamName)
+        val listener = ProxyListener(uriString, streamName)
 
         val success =
             bluetoothAdapter!!.getProfileProxy(
@@ -119,12 +120,12 @@ class NfcAuracastActivity : Activity() {
 
         if (!success) {
             Log.w(TAG, "Failed to get BASS profile proxy")
-            postNotification(appContext, metadataStr, streamName, null)
+            postNotification(appContext, uriString, streamName, null)
         }
     }
 
     private inner class ProxyListener(
-        private val metadataStr: String,
+        private val uriString: String,
         private val streamName: String,
     ) : BluetoothProfile.ServiceListener {
 
@@ -135,8 +136,10 @@ class NfcAuracastActivity : Activity() {
                 val connectedDevice = assistant.connectedDevices.firstOrNull()
                 // If no connected device, deviceName is null.
                 // If device exists, it resolves the alias, name, or falls back to "devices".
-                val deviceName = connectedDevice?.let { it.alias ?: it.name ?: "devices" }
-                postNotification(applicationContext, metadataStr, streamName, deviceName)
+                val defaultDeviceName =
+                    applicationContext.getString(R.string.auracast_default_device_name)
+                val deviceName = connectedDevice?.let { it.alias ?: it.name ?: defaultDeviceName }
+                postNotification(applicationContext, uriString, streamName, deviceName)
 
                 bluetoothAdapter?.closeProfileProxy(
                     BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
@@ -152,24 +155,26 @@ class NfcAuracastActivity : Activity() {
 
     private fun postNotification(
         context: Context,
-        metadataStr: String,
+        uriString: String,
         streamName: String,
         deviceName: String?,
     ) {
         val nm = notificationManagerProvider(context)
 
+        val channelName = context.getString(R.string.auracast_notification_channel)
         val channel =
             NotificationChannel(
                 AuracastUtils.CHANNEL_ID,
-                "Auracast",
+                channelName,
                 NotificationManager.IMPORTANCE_HIGH,
             )
         nm.createNotificationChannel(channel)
 
+        val title = context.getString(R.string.auracast_notification_title, streamName)
         if (deviceName == null) {
             // No device connected: Pass the testable 'nm' and null for the pending intent
-            val message = "Connect an LE Audio device to start listening"
-            AuracastUtils.showNotification(context, nm, streamName, message, null)
+            val message = context.getString(R.string.auracast_connect_device_message)
+            AuracastUtils.showNotification(context, nm, title, message, null)
             return
         }
 
@@ -177,7 +182,7 @@ class NfcAuracastActivity : Activity() {
         val connectIntent =
             Intent(AuracastUtils.ACTION_CONNECT_STREAM).apply {
                 setPackage(context.packageName)
-                putExtra(AuracastUtils.EXTRA_METADATA, metadataStr)
+                putExtra(AuracastUtils.EXTRA_METADATA, uriString)
             }
 
         val connectPending =
@@ -188,8 +193,9 @@ class NfcAuracastActivity : Activity() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
 
-        val message = "Listen to $streamName audio stream on your $deviceName"
-        AuracastUtils.showNotification(context, nm, streamName, message, connectPending)
+        val message =
+            context.getString(R.string.auracast_listen_on_device_message, streamName, deviceName)
+        AuracastUtils.showNotification(context, nm, title, message, connectPending)
     }
 
     companion object {

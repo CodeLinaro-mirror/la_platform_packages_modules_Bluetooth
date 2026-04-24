@@ -37,28 +37,8 @@ class RawAddress;
 
 #define RC_INVALID_TRACK_ID (0xFFFFFFFFFFFFFFFFULL)
 
-/* cod value for Headsets */
-#define COD_AV_HEADSETS 0x0404
 /* for AVRC 1.4 need to change this */
 #define MAX_RC_NOTIFICATIONS AVRC_EVT_VOLUME_CHANGE
-
-#define IDX_GET_PLAY_STATUS_RSP 0
-#define IDX_LIST_APP_ATTR_RSP 1
-#define IDX_LIST_APP_VALUE_RSP 2
-#define IDX_GET_CURR_APP_VAL_RSP 3
-#define IDX_SET_APP_VAL_RSP 4
-#define IDX_GET_APP_ATTR_TXT_RSP 5
-#define IDX_GET_APP_VAL_TXT_RSP 6
-#define IDX_GET_ELEMENT_ATTR_RSP 7
-#define IDX_SET_ADDR_PLAYER_RSP 8
-#define IDX_SET_BROWSED_PLAYER_RSP 9
-#define IDX_GET_FOLDER_ITEMS_RSP 10
-#define IDX_CHG_PATH_RSP 11
-#define IDX_GET_ITEM_ATTR_RSP 12
-#define IDX_PLAY_ITEM_RSP 13
-#define IDX_GET_TOTAL_NUM_OF_ITEMS_RSP 14
-#define IDX_SEARCH_RSP 15
-#define IDX_ADD_TO_NOW_PLAYING_RSP 16
 
 /* Update MAX value whenever IDX will be changed */
 #define MAX_CMD_QUEUE_LEN 17
@@ -66,7 +46,6 @@ class RawAddress;
 #define MAX_VOLUME 128
 #define MAX_LABEL 16
 #define MAX_TRANSACTIONS_PER_SESSION 16
-#define PLAY_STATUS_PLAYING 1
 #define BTIF_RC_NUM_CONN BT_RC_NUM_APP
 
 /* Configurable playback_position_changed_update interval */
@@ -75,37 +54,25 @@ class RawAddress;
 // Default interval associated with AVRC_EVT_PLAY_POS_CHANGED
 #define DEFAULT_PLAY_POS_UPDATE_INTERVAL_SEC 2
 
-#define CHECK_RC_CONNECTED(p_dev)                              \
-  do {                                                         \
-    if ((p_dev) == NULL || !(p_dev)->rc_connected) {           \
-      bluetooth::log::warn("called when RC is not connected"); \
-      return BtifStatus(NOT_READY);                            \
-    }                                                          \
+#define CHECK_RC_CONNECTED(p_dev)                                                  \
+  do {                                                                             \
+    if ((p_dev) == NULL || (p_dev)->rc_state != BTRC_CONNECTION_STATE_CONNECTED) { \
+      bluetooth::log::warn("called when RC is not connected");                     \
+      return BtifStatus(NOT_READY);                                                \
+    }                                                                              \
   } while (0)
 
-#define CHECK_BR_CONNECTED(p_dev)                              \
-  do {                                                         \
-    if ((p_dev) == NULL || !(p_dev)->br_connected) {           \
-      bluetooth::log::warn("called when BR is not connected"); \
-      return BtifStatus(NOT_READY);                            \
-    }                                                          \
+#define CHECK_BR_CONNECTED(p_dev)                                                  \
+  do {                                                                             \
+    if ((p_dev) == NULL || (p_dev)->br_state != BTRC_CONNECTION_STATE_CONNECTED) { \
+      bluetooth::log::warn("called when BR is not connected");                     \
+      return BtifStatus(NOT_READY);                                                \
+    }                                                                              \
   } while (0)
 
 /*****************************************************************************
  *  Type definitions
  *****************************************************************************/
-
-struct btif_rc_reg_notifications_t {
-  uint8_t bNotify;
-  uint8_t label;
-};
-
-struct btif_rc_cmd_ctxt_t {
-  uint8_t label;
-  uint8_t ctype;
-  bool is_rsp_pending;
-};
-
 /* 2 second timeout to get command response, then we free label */
 #define BTIF_RC_TIMEOUT_MS (2 * 1000)
 
@@ -177,18 +144,13 @@ struct rc_transaction_set_t {
   rc_transaction_t transaction[MAX_TRANSACTIONS_PER_SESSION];
 };
 
-/* TODO : Merge btif_rc_reg_notifications_t and btif_rc_cmd_ctxt_t to a single
- * struct */
 struct btif_rc_device_cb_t {
-  bool rc_connected;
-  bool br_connected;  // Browsing channel.
   uint8_t rc_handle;
   tBTA_AV_FEAT rc_features;
   uint16_t rc_cover_art_psm;  // AVRCP-BIP psm
   btrc_connection_state_t rc_state;
+  btrc_connection_state_t br_state;  // Browsing channel state.
   RawAddress rc_addr;
-  btif_rc_cmd_ctxt_t rc_pdu_info[MAX_CMD_QUEUE_LEN];
-  btif_rc_reg_notifications_t rc_notif[MAX_RC_NOTIFICATIONS];
   unsigned int rc_volume;
   uint8_t rc_vol_label;
   list_t* rc_supported_event_list;
@@ -211,12 +173,6 @@ struct rc_cb_t {
   std::mutex lock;
   btif_rc_device_cb_t rc_multi_cb[BTIF_RC_NUM_CONN];
 };
-
-struct btif_rc_handle_t {
-  uint8_t handle;
-};
-
-#define BTIF_STS_GEN_ERROR 0x06
 
 /*****************************************************************************
  *  Function declarations
@@ -336,6 +292,7 @@ struct btif_rc_interface {
    * Focus: Lifecycle management of device control blocks and AVRCP
    * transaction state. Heavy usage of label and RawAddress parameters.
    *************************************************************************/
+  [[nodiscard]] btif_rc_device_cb_t* (*get_device_cb)(unsigned index);
   [[nodiscard]] btif_rc_device_cb_t* (*alloc_device)();
   [[nodiscard]] btif_rc_device_cb_t* (*btif_rc_get_device_by_bda)(const RawAddress& bd_addr);
   [[nodiscard]] btif_rc_device_cb_t* (*btif_rc_get_device_by_handle)(uint8_t handle);

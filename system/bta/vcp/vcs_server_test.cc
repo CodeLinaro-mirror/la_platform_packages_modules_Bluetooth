@@ -22,7 +22,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "bta_gatt_api_mock.h"
+#include "bta/mock/bta_gatt_api_mock.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_client_interface.h"
 
@@ -30,6 +30,7 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Mock;
 using ::testing::NiceMock;
+using ::testing::Return;
 using ::testing::SaveArg;
 
 namespace bluetooth::vcs {
@@ -72,6 +73,8 @@ public:
     };
 
     gatt::SetMockBtaGattServerInterface(&gatt_server_interface_);
+    ON_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, _))
+            .WillByDefault(Return(GATT_SUCCESS));
     vcs_ = InstantiateVcsServer();
   }
 
@@ -97,7 +100,7 @@ TEST_F(VcsTestBase, InstantiateRelease) {
 }
 
 TEST_F(VcsTestBase, RegisterGattService) {
-  const tBTA_GATTS_CBACK* p_gatt_event_source_cb = nullptr;
+  const stack::tGATT_CBACK* p_gatt_event_source_cb = nullptr;
   bluetooth::Uuid uuid;
 
   // Check GATT server app registration
@@ -106,20 +109,17 @@ TEST_F(VcsTestBase, RegisterGattService) {
           .initial_volume = 0,
           .initial_mute_state = MuteState::kNotMuted,
           .initial_volume_setting_persisted = VolumeSettingPersisted::kResetVolumeSetting};
-  void (*p_reg_cb)(tGATT_STATUS status, tGATT_IF server_if, const bluetooth::Uuid& uuid);
-  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kVolumeControlServiceUuid, _, false, _))
+  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kVolumeControlServiceUuid, _, false))
           .WillOnce(DoAll(SaveArg<0>(&uuid), testing::SaveArg<1>(&p_gatt_event_source_cb),
-                          SaveArg<3>(&p_reg_cb)));
+                          Return(0xDE)));
+  EXPECT_CALL(gatt_server_interface_, AddService(_, _)).WillOnce(Return(GATT_SERVICE_STARTED));
   vcs_->RegisterGattService(service_descriptor, &vcs_callbacks_);
   ASSERT_NE(nullptr, p_gatt_event_source_cb);
   ASSERT_EQ(uuid::kVolumeControlServiceUuid, uuid);
   Mock::VerifyAndClearExpectations(&gatt_server_interface_);
 
-  // Inject the registration success event
-  p_reg_cb(tGATT_STATUS::GATT_SUCCESS, 0xDE, uuid);
-
   // Ignore second call to register
-  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kVolumeControlServiceUuid, _, false, _))
+  EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kVolumeControlServiceUuid, _, false))
           .Times(0);
   vcs_->RegisterGattService(service_descriptor, &vcs_callbacks_);
 
@@ -129,7 +129,7 @@ TEST_F(VcsTestBase, RegisterGattService) {
 
 class VcsTest : public VcsTestBase {
 public:
-  const tBTA_GATTS_CBACK* p_gatt_event_source_cb_ = nullptr;
+  const stack::tGATT_CBACK* p_gatt_event_source_cb_ = nullptr;
   std::vector<btgatt_db_element_t> service_db_;
   tGATT_IF server_if_;
 
@@ -146,32 +146,23 @@ public:
     VcsTestBase::SetUp();
 
     // Mock GATT application registration success
-    EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kVolumeControlServiceUuid, _, false, _))
-            .WillRepeatedly(DoAll(SaveArg<1>(&p_gatt_event_source_cb_),
-                                  [](const bluetooth::Uuid& app_uuid,
-                                     const tBTA_GATTS_CBACK* /*p_cback*/, bool /* eatt_support */,
-                                     void (*p_reg_cb)(tGATT_STATUS status, tGATT_IF server_if,
-                                                      const bluetooth::Uuid& uuid)) {
-                                    if (p_reg_cb) {
-                                      p_reg_cb(tGATT_STATUS::GATT_SUCCESS, 0xDE, app_uuid);
-                                    }
-                                  }));
+    EXPECT_CALL(gatt_server_interface_, AppRegister(uuid::kVolumeControlServiceUuid, _, false))
+            .WillRepeatedly(DoAll(SaveArg<1>(&p_gatt_event_source_cb_), Return(0xDE)));
 
     // Mock GATT service registration success
-    EXPECT_CALL(gatt_server_interface_, AddService(0xDE, _, _))
-            .WillOnce(DoAll(SaveArg<0>(&server_if_),
-                            [this](tGATT_IF server_if, std::vector<btgatt_db_element_t> service,
-                                   BTA_GATTS_AddServiceCb cb) {
-                              // Assign some ATT handles
-                              uint16_t handle_idx = 0x2000;
-                              service_db_ = service;  // Store for using it by mock GATT layer
-                              for (auto& el : service_db_) {
-                                el.attribute_handle = handle_idx++;
-                              }
-                              auto status = service.empty() ? tGATT_STATUS::GATT_ERROR
-                                                            : tGATT_STATUS::GATT_SUCCESS;
-                              std::move(cb).Run(status, server_if, service_db_);
-                            }));
+    EXPECT_CALL(gatt_server_interface_, AddService(0xDE, _))
+            .WillOnce(DoAll(
+                    SaveArg<0>(&server_if_),
+                    [this](tGATT_IF /*server_if*/, std::vector<btgatt_db_element_t>* service) {
+                      // Assign some ATT handles
+                      uint16_t handle_idx = 0x2000;
+                      for (auto& el : *service) {
+                        el.attribute_handle = handle_idx++;
+                      }
+                      service_db_ = *service;  // Store for using it by mock GATT layer
+                      return service->empty() ? tGATT_STATUS::GATT_ERROR
+                                              : tGATT_STATUS::GATT_SERVICE_STARTED;
+                    }));
 
     // Register GATT service instance
     EXPECT_CALL(vcs_callbacks_, OnVcsServerRegistered());
@@ -223,8 +214,8 @@ public:
 
     auto conn_id = conn_id_by_address_.at(address);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      p_gatt_event_source_cb_->server_cbacks->read_characteristic_cb(conn_id, gatt_trans_id_++,
-                                                                     address, handle, 0, false);
+      p_gatt_event_source_cb_->p_req_cb->read_characteristic_cb(conn_id, gatt_trans_id_++, address,
+                                                                handle, 0, false);
     }
   }
 
@@ -246,7 +237,7 @@ public:
 
     auto conn_id = conn_id_by_address_.at(address);
     if (conn_id != GATT_INVALID_CONN_ID) {
-      p_gatt_event_source_cb_->server_cbacks->write_characteristic_cb(
+      p_gatt_event_source_cb_->p_req_cb->write_characteristic_cb(
               conn_id, gatt_trans_id_++, address, handle, 0, with_response, false,
               (uint8_t*)value.data(), value.size());
     }
@@ -284,7 +275,7 @@ public:
       uint8_t* pp = value;
       UINT16_TO_STREAM(pp, cccd_value);
 
-      p_gatt_event_source_cb_->server_cbacks->write_descriptor_cb(
+      p_gatt_event_source_cb_->p_req_cb->write_descriptor_cb(
               conn_id, gatt_trans_id_++, address, handle, 0, true, false, value, sizeof(value));
     }
   }
@@ -535,7 +526,7 @@ TEST_F(VcsTest, RemoteReadInvalidHandle) {
 
   EXPECT_CALL(gatt_server_interface_, SendRsp(_, _, GATT_INVALID_HANDLE, _));
 
-  p_gatt_event_source_cb_->server_cbacks->read_characteristic_cb(
+  p_gatt_event_source_cb_->p_req_cb->read_characteristic_cb(
           conn_id_by_address_.at(test_dev), gatt_trans_id_++, test_dev, invalid_handle, 0, false);
 }
 
@@ -561,11 +552,13 @@ TEST_F(VcsTest, UpdateVolumeStateNotifies) {
   // current value.
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
           .WillOnce([this](uint16_t /* conn_id */, uint16_t /* handle */,
-                           const std::vector<uint8_t>& value, bool /* indicated */) {
-            ASSERT_EQ(value.size(), 3u);
-            ASSERT_EQ(value[0], svc_desc_.initial_volume);
-            ASSERT_EQ(value[1], static_cast<uint8_t>(svc_desc_.initial_mute_state));
-            ASSERT_EQ(value[2], 0);  // Initial counter
+                           const std::vector<uint8_t>& value,
+                           bool /* indicated */) -> tGATT_STATUS {
+            EXPECT_EQ(value.size(), 3u);
+            EXPECT_EQ(value[0], svc_desc_.initial_volume);
+            EXPECT_EQ(value[1], static_cast<uint8_t>(svc_desc_.initial_mute_state));
+            EXPECT_EQ(value[2], 0);  // Initial counter
+            return GATT_SUCCESS;
           });
   // Client subscribes to notifications
   InjectCccDescriptorWriteRequest(test_dev, uuid::kVolumeStateUuid, GATT_CLT_CONFIG_NOTIFICATION);
@@ -574,7 +567,7 @@ TEST_F(VcsTest, UpdateVolumeStateNotifies) {
   // Server updates mute state - expect notification
   std::vector<uint8_t> notified_value;
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
-          .WillOnce(SaveArg<2>(&notified_value));
+          .WillOnce(DoAll(SaveArg<2>(&notified_value), Return(GATT_SUCCESS)));
   vcs_->UpdateVolumeState(100, MuteState::kMuted);
 
   ASSERT_EQ(notified_value.size(), 3u);
@@ -594,11 +587,13 @@ TEST_F(VcsTest, UpdateVolumeStateSameValue) {
   // current value.
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
           .WillOnce([this](uint16_t /* conn_id */, uint16_t /* handle */,
-                           const std::vector<uint8_t>& value, bool /* indicated */) {
-            ASSERT_EQ(value.size(), 3u);
-            ASSERT_EQ(value[0], svc_desc_.initial_volume);
-            ASSERT_EQ(value[1], static_cast<uint8_t>(svc_desc_.initial_mute_state));
-            ASSERT_EQ(value[2], 0);  // Initial counter
+                           const std::vector<uint8_t>& value,
+                           bool /* indicated */) -> tGATT_STATUS {
+            EXPECT_EQ(value.size(), 3u);
+            EXPECT_EQ(value[0], svc_desc_.initial_volume);
+            EXPECT_EQ(value[1], static_cast<uint8_t>(svc_desc_.initial_mute_state));
+            EXPECT_EQ(value[2], 0);  // Initial counter
+            return GATT_SUCCESS;
           });
   // Client subscribes to notifications
   InjectCccDescriptorWriteRequest(test_dev, uuid::kVolumeStateUuid, GATT_CLT_CONFIG_NOTIFICATION);
@@ -612,7 +607,7 @@ TEST_F(VcsTest, UpdateVolumeStateSameValue) {
   // 2. Update with same volume, different mute state - expect notification and counter increment
   std::vector<uint8_t> notified_value;
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
-          .WillOnce(SaveArg<2>(&notified_value));
+          .WillOnce(DoAll(SaveArg<2>(&notified_value), Return(GATT_SUCCESS)));
   vcs_->UpdateVolumeState(svc_desc_.initial_volume, MuteState::kMuted);
 
   ASSERT_EQ(notified_value.size(), 3u);
@@ -624,7 +619,7 @@ TEST_F(VcsTest, UpdateVolumeStateSameValue) {
   // 3. Update with different volume, same mute state - expect notification and counter increment
   uint8_t new_volume = svc_desc_.initial_volume + 1;
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
-          .WillOnce(SaveArg<2>(&notified_value));
+          .WillOnce(DoAll(SaveArg<2>(&notified_value), Return(GATT_SUCCESS)));
   vcs_->UpdateVolumeState(new_volume, MuteState::kMuted);
 
   ASSERT_EQ(notified_value.size(), 3u);
@@ -724,9 +719,10 @@ TEST_F(VcsTest, UpdateVolumeFlagsNotifies) {
   // current value (default is false).
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
           .WillOnce([](uint16_t /* conn_id */, uint16_t /* handle */,
-                       const std::vector<uint8_t>& value, bool /* indicated */) {
-            ASSERT_EQ(value.size(), 1u);
-            ASSERT_EQ(value[0], 0);  // false
+                       const std::vector<uint8_t>& value, bool /* indicated */) -> tGATT_STATUS {
+            EXPECT_EQ(value.size(), 1u);
+            EXPECT_EQ(value[0], 0);  // false
+            return GATT_SUCCESS;
           });
   // Client subscribes to notifications
   InjectCccDescriptorWriteRequest(test_dev, uuid::kVolumeFlagsUuid, GATT_CLT_CONFIG_NOTIFICATION);
@@ -735,7 +731,7 @@ TEST_F(VcsTest, UpdateVolumeFlagsNotifies) {
   // Server updates flags to true - expect notification
   std::vector<uint8_t> notified_value;
   EXPECT_CALL(gatt_server_interface_, HandleValueIndication(_, _, _, false))
-          .WillOnce(SaveArg<2>(&notified_value));
+          .WillOnce(DoAll(SaveArg<2>(&notified_value), Return(GATT_SUCCESS)));
   VolumeFlags flags;
   flags.bits.volume_setting_persisted = VolumeSettingPersisted::kUserSetVolumeSetting;
   vcs_->UpdateVolumeFlags(flags);

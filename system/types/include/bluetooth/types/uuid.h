@@ -101,6 +101,9 @@ public:
     };
   }
 
+  // Constructor from MSB/LSB
+  Uuid(uint64_t msb, uint64_t lsb);
+
   // Returns the shortest possible representation of this UUID in bytes. Either
   // kNumBytes16, kNumBytes32, or kNumBytes128
   size_t GetShortestRepresentationSize() const;
@@ -116,13 +119,25 @@ public:
   // GetShortestRepresentationSize() before using this method.
   uint32_t As32Bit() const;
 
+  // Returns the most significant 64 bits of this UUID
+  uint64_t msb() const;
+
+  // Returns the least significant 64 bits of this UUID
+  uint64_t lsb() const;
+
   // Converts string representing 128, 32, or 16 bit UUID in
   // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, xxxxxxxx, or xxxx format to UUID.
   // Returns std::nullopt is the input string is invalid.
   static std::optional<Uuid> FromString(const std::string& uuid);
 
   // Converts 16bit Little Endian representation of UUID to UUID
-  static Uuid From16Bit(uint16_t uuid16bit);
+  static constexpr Uuid From16Bit(uint16_t uuid16bit) {
+    Uuid u = From128BitBE({0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80,
+                           0x5f, 0x9b, 0x34, 0xfb});
+    u.uu[2] = (uint8_t)((0xFF00 & uuid16bit) >> 8);
+    u.uu[3] = (uint8_t)(0x00FF & uuid16bit);
+    return u;
+  }
 
   // Converts 32bit Little Endian representation of UUID to UUID
   static Uuid From32Bit(uint32_t uuid32bit);

@@ -808,36 +808,28 @@ static void btif_av_sink_initiate_av_open_timer_timeout(void* data);
 static void bta_av_sink_media_callback(const RawAddress& peer_address, tBTA_AV_EVT event,
                                        tBTA_AV_MEDIA* p_data);
 
-static BtifAvPeer* btif_av_source_find_peer(const RawAddress& peer_address) {
-  return btif_av_source.FindPeer(peer_address);
-}
-
-static BtifAvPeer* btif_av_sink_find_peer(const RawAddress& peer_address) {
-  return btif_av_sink.FindPeer(peer_address);
-}
-
 static BtifAvPeer* btif_av_find_peer(const RawAddress& peer_address,
                                      const A2dpType local_a2dp_type) {
   if (btif_av_source.Enabled() && local_a2dp_type == A2dpType::kSource) {
-    BtifAvPeer* sourcePeer = btif_av_source_find_peer(peer_address);
+    BtifAvPeer* sourcePeer = btif_av_source.FindPeer(peer_address);
     if (sourcePeer != nullptr) {
       return sourcePeer;
     }
   }
   if (btif_av_sink.Enabled() && local_a2dp_type == A2dpType::kSink) {
-    BtifAvPeer* sinkPeer = btif_av_sink_find_peer(peer_address);
+    BtifAvPeer* sinkPeer = btif_av_sink.FindPeer(peer_address);
     if (sinkPeer != nullptr) {
       return sinkPeer;
     }
   }
   if (btif_av_source.Enabled()) {
-    BtifAvPeer* sourcePeer = btif_av_source_find_peer(peer_address);
+    BtifAvPeer* sourcePeer = btif_av_source.FindPeer(peer_address);
     if (sourcePeer != nullptr) {
       return sourcePeer;
     }
   }
   if (btif_av_sink.Enabled()) {
-    BtifAvPeer* sinkPeer = btif_av_sink_find_peer(peer_address);
+    BtifAvPeer* sinkPeer = btif_av_sink.FindPeer(peer_address);
     if (sinkPeer != nullptr) {
       return sinkPeer;
     }
@@ -848,10 +840,10 @@ static BtifAvPeer* btif_av_find_peer(const RawAddress& peer_address,
 
 static BtifAvPeer* btif_av_find_active_peer(const A2dpType local_a2dp_type) {
   if (btif_av_source.Enabled() && local_a2dp_type == A2dpType::kSource) {
-    return btif_av_source_find_peer(btif_av_source.ActivePeer());
+    return btif_av_source.FindPeer(btif_av_source.ActivePeer());
   }
   if (btif_av_sink.Enabled() && local_a2dp_type == A2dpType::kSink) {
-    return btif_av_sink_find_peer(btif_av_sink.ActivePeer());
+    return btif_av_sink.FindPeer(btif_av_sink.ActivePeer());
   }
   return nullptr;
 }
@@ -1883,10 +1875,6 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
       }
     } break;
 
-    case BTA_AV_RC_BROWSE_OPEN_EVT:
-      btif_rc_handler(event, reinterpret_cast<tBTA_AV*>(p_data));
-      break;
-
     // In case Signalling channel is not down and remote started Streaming
     // Procedure, we have to handle Config and Open event in Idle state.
     // We hit these scenarios while running PTS test case for AVRCP Controller.
@@ -1982,6 +1970,7 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
       btif_queue_advance();
     } break;
 
+    case BTA_AV_RC_BROWSE_OPEN_EVT:
     case BTA_AV_REMOTE_CMD_EVT:
     case BTA_AV_VENDOR_CMD_EVT:
     case BTA_AV_META_MSG_EVT:
@@ -2060,6 +2049,11 @@ bool BtifAvStateMachine::StateOpening::ProcessEvent(uint32_t event, void* p_data
       log::warn("Peer {} : event={}: transitioning to Idle due to ACL Disconnect",
                 peer_.PeerAddress(), BtifAvEvent::EventName(event));
       bluetooth::metrics::Counter(bluetooth::metrics::CounterKey::A2DP_CONNECTION_ACL_DISCONNECTED);
+      if (com_android_bluetooth_flags_a2dp_cleanup_on_acl_disconnect()) {
+        if (peer_.BtaHandle() != kBtaHandleUnknown) {
+          BTA_AvClose(peer_.BtaHandle());
+        }
+      }
       btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_DISCONNECTED,
                                    BtifStatus(FAIL), BTA_AV_FAIL,
                                    peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
@@ -2363,16 +2357,14 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
 
         // Invoke the started handler only when initiator.
         log::info("Peer should suspend: {}", should_suspend);
-
-        if (!should_suspend &&
-            btif_a2dp_on_started(peer_.PeerAddress(), &p_av->start, A2dpType::kSource)) {
-          // Only clear pending flag after acknowledgement
-          peer_.ClearFlags(BtifAvPeer::kFlagPendingStart);
-        }
       }
 
       // Remain in Open state if status failed
       if (p_av->start.status != BTA_AV_SUCCESS) {
+        if (peer_.IsSink() && !should_suspend &&
+            btif_a2dp_on_started(peer_.PeerAddress(), &p_av->start, A2dpType::kSource)) {
+          peer_.ClearFlags(BtifAvPeer::kFlagPendingStart);
+        }
         return false;
       }
 
@@ -2395,6 +2387,10 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
       }
 
       peer_.StateMachine().TransitionTo(BtifAvStateMachine::kStateStarted);
+
+      if (peer_.IsSink() && !should_suspend) {
+        btif_a2dp_on_started(peer_.PeerAddress(), &p_av->start, A2dpType::kSource);
+      }
       break;
     }
 
@@ -2879,12 +2875,7 @@ bool BtifAvStateMachine::StateClosing::ProcessEvent(uint32_t event, void* p_data
       peer_.StateMachine().TransitionTo(BtifAvStateMachine::kStateIdle);
       break;
 
-    // Handle the RC_CLOSE event for the cleanup
     case BTA_AV_RC_CLOSE_EVT:
-      btif_rc_handler(event, reinterpret_cast<tBTA_AV*>(p_data));
-      break;
-
-    // Handle the RC_BROWSE_CLOSE event for testing
     case BTA_AV_RC_BROWSE_CLOSE_EVT:
       btif_rc_handler(event, reinterpret_cast<tBTA_AV*>(p_data));
       break;
@@ -3482,7 +3473,7 @@ static void bta_av_sink_media_callback(const RawAddress& peer_address, tBTA_AV_E
 
   switch (event) {
     case BTA_AV_SINK_MEDIA_DATA_EVT: {
-      BtifAvPeer* peer = btif_av_sink_find_peer(peer_address);
+      BtifAvPeer* peer = btif_av_sink.FindPeer(peer_address);
       if (peer != nullptr && peer->IsActivePeer()) {
         int state = peer->StateMachine().StateId();
         if ((state == BtifAvStateMachine::kStateStarted) ||
@@ -4255,7 +4246,7 @@ bool btif_av_is_connected_addr(const RawAddress& peer_address, const A2dpType lo
 }
 
 bool btif_av_peer_is_connected_sink(const RawAddress& peer_address) {
-  BtifAvPeer* peer = btif_av_source_find_peer(peer_address);
+  BtifAvPeer* peer = btif_av_source.FindPeer(peer_address);
   if (peer == nullptr) {
     log::warn("No active peer found");
     return false;
@@ -4267,7 +4258,7 @@ bool btif_av_peer_is_connected_sink(const RawAddress& peer_address) {
 }
 
 bool btif_av_peer_is_connected_source(const RawAddress& peer_address) {
-  BtifAvPeer* peer = btif_av_sink_find_peer(peer_address);
+  BtifAvPeer* peer = btif_av_sink.FindPeer(peer_address);
   if (peer == nullptr) {
     log::warn("No active peer found");
     return false;
@@ -4279,7 +4270,7 @@ bool btif_av_peer_is_connected_source(const RawAddress& peer_address) {
 }
 
 bool btif_av_peer_is_sink(const RawAddress& peer_address) {
-  BtifAvPeer* peer = btif_av_source_find_peer(peer_address);
+  BtifAvPeer* peer = btif_av_source.FindPeer(peer_address);
   if (peer == nullptr) {
     log::warn("No active peer found");
     return false;
@@ -4289,7 +4280,7 @@ bool btif_av_peer_is_sink(const RawAddress& peer_address) {
 }
 
 bool btif_av_peer_is_source(const RawAddress& peer_address) {
-  BtifAvPeer* peer = btif_av_sink_find_peer(peer_address);
+  BtifAvPeer* peer = btif_av_sink.FindPeer(peer_address);
   if (peer == nullptr) {
     log::warn("No active peer found");
     return false;

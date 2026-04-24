@@ -32,7 +32,6 @@ using bluetooth::Uuid;
 
 namespace bluetooth::stack {
 
-inline constexpr tGATT_IF GATT_IF_INVALID = static_cast<tGATT_IF>(0);
 // 0xF1 ~ 0xFF are reserved for special use cases.
 inline constexpr tGATT_IF GATT_IF_MAX = static_cast<tGATT_IF>(0xf8);
 
@@ -53,7 +52,7 @@ static tGATT_IF FindNextFreeClRcbId();
  *                  with GATT
  *
  ******************************************************************************/
-tGATT_IF appRegister(const Uuid& app_uuid128, const std::string& name, tGATT_CBACK* p_cb_info,
+tGATT_IF appRegister(const Uuid& app_uuid128, const std::string& name, const tGATT_CBACK* p_cb_info,
                      bool eatt_support) {
   for (auto& [gatt_if, p_reg] : gatt_cb.cl_rcb_map) {
     if (p_reg->app_uuid128 == app_uuid128) {

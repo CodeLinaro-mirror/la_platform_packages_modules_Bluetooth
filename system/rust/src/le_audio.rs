@@ -18,4 +18,5 @@
 //!
 //! This module contains the core logic for LE Audio features.
 
-pub mod periodic_sync;
+pub mod iso_manager;
+pub mod periodic_advertising_sync;
