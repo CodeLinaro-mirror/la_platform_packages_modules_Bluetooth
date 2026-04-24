@@ -3016,6 +3016,14 @@ DEV_CLASS btif_dm_get_local_class_of_device() {
           "Check LE audio enabled status, update class of device to '0x{:x}, "
           "0x{:x}, 0x{:x}'",
           device_class[0], device_class[1], device_class[2]);
+  if(osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", true)) {
+    log::info("Changing COD for Sink device");
+    device_class[0] = 0x20; //Service class as Audio
+    device_class[1] = 0x04; // major dev class as Audio / Video
+    device_class[2] = 0x04; // minor dev class as Wearable headset device
+    log::debug("Updated class of device '0x{:x}, 0x{:x}, 0x{:x}' from CoD system property",
+             device_class[0], device_class[1], device_class[2]);
+  }
 #endif
   return device_class;
 }

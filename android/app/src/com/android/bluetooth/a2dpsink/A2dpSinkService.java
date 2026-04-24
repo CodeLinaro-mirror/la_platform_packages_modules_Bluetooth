@@ -38,10 +38,13 @@ import android.os.SystemProperties;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 import android.content.Context;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Message;
 
 import com.android.bluetooth.avrcpcontroller.AvrcpControllerService;
+import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
@@ -79,6 +82,8 @@ public class A2dpSinkService extends ProfileService {
     private final A2dpSinkVendorService mA2dpSinkVendor;
     private final AudioManager mAudioManager;
     private boolean sAudioIsEnabled = false;
+    private boolean isPendingStart = false;
+
     @GuardedBy("sStateLock")
     protected static BluetoothDevice mHandOffPendingDevice = null;
     @GuardedBy("sStateLock")
@@ -95,6 +100,11 @@ public class A2dpSinkService extends ProfileService {
 
     @GuardedBy("mActiveDeviceLock")
     private BluetoothDevice mActiveDevice = null;
+
+    private BluetoothDevice mExposedActiveDevice;
+
+    private final AudioManagerAudioDeviceCallback mAudioManagerAudioDeviceCallback =
+    new AudioManagerAudioDeviceCallback();
 
     public A2dpSinkService(AdapterService adapterService) {
         this(adapterService, A2dpSinkNativeInterface.getInstance(), Looper.getMainLooper());
@@ -119,6 +129,12 @@ public class A2dpSinkService extends ProfileService {
         synchronized (mStreamHandlerLock) {
             mA2dpSinkStreamHandler = new A2dpSinkStreamHandler(mAdapterService, mNativeInterface);
         }
+        if (mAudioManager != null) {
+          //For cleanup
+          mAudioManager.setParameters("btsink_enable=false");
+          mAudioManager.registerAudioDeviceCallback(mAudioManagerAudioDeviceCallback
+                                                                     , mA2dpSinkStreamHandler);
+        }
 
         setA2dpSinkService(this);
     }
@@ -136,10 +152,18 @@ public class A2dpSinkService extends ProfileService {
             }
             sAudioIsEnabled = false;
         }
+
+        if (isPendingStart == true) {
+          isPendingStart = false;
+        }
+
         if (mA2dpSinkVendor != null) {
             mA2dpSinkVendor.cleanup();
         }
         setA2dpSinkService(null);
+
+        //Unregister Audio Device Callback
+        mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
         mNativeInterface.cleanup();
         synchronized (mDeviceStateMap) {
             for (A2dpSinkStateMachine stateMachine : mDeviceStateMap.values()) {
@@ -521,7 +545,17 @@ public class A2dpSinkService extends ProfileService {
                     Message msg =
                             mA2dpSinkStreamHandler.obtainMessage(A2dpSinkStreamHandler.SET_ACTIVE);
                     msg.obj = device;
-                    mA2dpSinkStreamHandler.sendMessage(msg);
+                    /* If mExposedActiveDevice is not null,
+                       wait for the previous disconnect event to finish,
+                       then inform connection to Audio Manager. */
+                    if (mExposedActiveDevice != null) {
+                        Log.d(TAG, "A2DP device still in AudioManager list"
+                                                      + ", waiting for disconnect to process");
+                        mA2dpSinkStreamHandler.sendMessageDelayed(msg, 1000);
+                    } else {
+                        mA2dpSinkStreamHandler.sendMessage(msg);
+                    }
+
                     AvrcpControllerService avrcpService =
                             AvrcpControllerService.getAvrcpControllerService();
                     if(getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
@@ -620,7 +654,17 @@ public class A2dpSinkService extends ProfileService {
                     return;
                 }
             }
+
             if (sAudioIsEnabled == false) {
+                if(mExposedActiveDevice == null ||
+                                     mA2dpSinkStreamHandler.hasMessages(
+                                                      A2dpSinkStreamHandler.SET_ACTIVE)) {
+                    Log.d(TAG, " onStartIndCallback: queing start request"
+                                         + " as connected device not informed to MM yet");
+                    isPendingStart = true;
+                    return;
+                }
+
                 mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.START_SINK);
                 sAudioIsEnabled = true;
             }
@@ -634,6 +678,94 @@ public class A2dpSinkService extends ProfileService {
             if(sAudioIsEnabled == true) {
               mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.STOP_SINK);
               sAudioIsEnabled = false;
+            }
+        }
+    }
+
+    /* Notifications of audio device connection/disconnection events. */
+    private class AudioManagerAudioDeviceCallback extends AudioDeviceCallback {
+        @Override
+        public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+            if (mAudioManager == null || mAdapterService == null) {
+                Log.e(TAG, "Callback called when A2dpSinkService is stopped");
+                return;
+            }
+
+            synchronized (mActiveDeviceLock) {
+                for (AudioDeviceInfo deviceInfo : addedDevices) {
+                    if (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                                                                   !deviceInfo.isSource()) {
+                        Log.d(TAG, " onAudioDevicesAdded: skipped device="
+                                           + deviceInfo.getAddress()
+                                           + " as not relavent");
+                        continue;
+                    }
+
+                    String address = deviceInfo.getAddress();
+                    if (address.equals("00:00:00:00:00:00")) {
+                        continue;
+                    }
+
+                    byte[] addressBytes = Utils.getBytesFromAddress(address);
+                    BluetoothDevice device = mAdapterService.getDeviceFromByte(addressBytes);
+
+                    Log.d(
+                            TAG,
+                            " onAudioDevicesAdded: "
+                                    + device
+                                    + ", device type: "
+                                    + deviceInfo.getType());
+
+                    /* Don't expose already exposed active device */
+                    if (device.equals(mExposedActiveDevice)) {
+                        Log.d(TAG, " onAudioDevicesAdded: " + device + " is already exposed");
+                        return;
+                    }
+
+                    mExposedActiveDevice = device;
+                    break;
+                }
+            }
+
+            if (mExposedActiveDevice != null) {
+                synchronized (mStreamHandlerLock) {
+                    if (isPendingStart) {
+                        Log.d(TAG, " onAudioDevicesAdded: sending setParameters for pending start");
+                        mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.START_SINK);
+                        sAudioIsEnabled = true;
+                        isPendingStart = false;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+            if (mAudioManager == null || mAdapterService == null) {
+                Log.e(TAG, "Callback called when A2dpSinkService is stopped");
+                return;
+            }
+            synchronized (mActiveDeviceLock) {
+                for (AudioDeviceInfo deviceInfo : removedDevices) {
+                    if (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+                        continue;
+                    }
+
+                    String address = deviceInfo.getAddress();
+                    if (address.equals("00:00:00:00:00:00")) {
+                        continue;
+                    }
+
+                    mExposedActiveDevice = null;
+                    Log.d(
+                            TAG,
+                            " onAudioDevicesRemoved: "
+                                    + address
+                                    + ", device type: "
+                                    + deviceInfo.getType()
+                                    + ", mActiveDevice: "
+                                    + mActiveDevice);
+                }
             }
         }
     }
