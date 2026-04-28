@@ -745,14 +745,22 @@ void smp_process_pairing_public_key(tSMP_CB* p_cb, tSMP_INT_DATA* p_data) {
   if (!memcmp(p_cb->peer_publ_key.x, p_cb->loc_publ_key.x, BT_OCTET32_LEN)) {
     log::warn("Remote and local public keys can't match");
     tSMP_INT_DATA smp;
-    smp.status = SMP_PAIR_AUTH_FAIL;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      smp.status = SMP_DHKEY_CHK_FAIL; // SM/CEN/KDU/BI-04-C requires to response the SMP_DHKEY_CHK_FAIL
+#else
+      smp.status = SMP_PAIR_AUTH_FAIL;
+#endif
     smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, &smp);
     return;
   }
 
   if (!ECC_ValidatePoint(pt)) {
     tSMP_INT_DATA smp;
-    smp.status = SMP_PAIR_AUTH_FAIL;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      smp.status = SMP_DHKEY_CHK_FAIL; // SM/CEN/KDU/BI-04-C requires to response the SMP_DHKEY_CHK_FAIL
+#else
+      smp.status = SMP_PAIR_AUTH_FAIL;
+#endif
     smp_sm_event(p_cb, SMP_AUTH_CMPL_EVT, &smp);
     return;
   }
