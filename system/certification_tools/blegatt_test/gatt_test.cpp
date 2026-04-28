@@ -1098,6 +1098,15 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
 
   printf("%s:: value size=%d, offset=%d is_prep:%d \n", __FUNCTION__, value_count, offset, is_prep);
 
+  if (fixed_len_char_handle != -1 &&
+      attr_handle == fixed_len_char_handle &&
+      value_count > (size_t)fixed_len_char_max_len && !need_rsp) {
+    printf("%s:: Invalid attribute value length for fixed char handle=%d and doesn't require to response. \n",
+            __FUNCTION__, attr_handle);
+    // GATT/SR/GAW/BI-39-C requires not change the characteristic value and response to PTS with ATT_Write_Cmd.
+    return;
+  }
+
   if (is_prep) {
     if ((value_count + offset) > len_long_char) {
       printf("%s:: Invalid attribute value length for long char/desc \n",
