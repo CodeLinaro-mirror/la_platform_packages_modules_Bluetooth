@@ -156,6 +156,7 @@
     <string name="toggle">Toggle:</string>
     <string name="telephone_bearer_service">Telephone Bearer Service</string>
     <string name="action_broadcast">Broadcast Audio</string>
+    <string name="action_broadcast_sink">Broadcast Sink</string>
     <string name="add_outgoing_incoming_call">Add outgoing/incoming call:</string>
     <string name="current_calls">Current calls:</string>
     <string name="uuid">UUID:</string>
@@ -163,4 +164,5 @@
     <string name="provider_name">Provider Name:</string>
     <string name="signal_strength">Signal Strength</string>
     <string name="not_provided_string"><![CDATA[<not provided>]]></string>
+    <string name="get_all_synced_states">Get All Synced States</string>
 </resources>

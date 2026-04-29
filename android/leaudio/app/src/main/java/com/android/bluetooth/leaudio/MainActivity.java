@@ -170,6 +170,18 @@ public class MainActivity extends AppCompatActivity {
                             .show();
                 }
                 return true;
+
+            case R.id.action_broadcast_sink:
+                if (leAudioViewModel.getBluetoothEnabledLive().getValue() == null
+                        || !leAudioViewModel.getBluetoothEnabledLive().getValue()) {
+                    Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                    startActivityForResult(enableBtIntent, 1);
+                } else {
+                    intent = new Intent(MainActivity.this, BroadcastSinkActivity.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    startActivity(intent);
+                }
+                return true;
             default:
                 // If we got here, the user's action was not recognized.
                 // Invoke the superclass to handle it.onCreate
