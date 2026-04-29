@@ -39,6 +39,9 @@
 #include "stack/include/btm_api_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/sdp_api.h"
+#include "osi/include/properties.h"
+#include "stack/include/acl_api.h"
+
 
 using namespace bluetooth::legacy::stack::sdp;
 using namespace bluetooth;
@@ -592,6 +595,42 @@ bool bta_hf_client_allocate_handle(const RawAddress& bd_addr, uint16_t* p_handle
   log::error("all control blocks in use!");
 }
 
+void bta_hf_client_switch_central_role(tBTA_HF_CLIENT_CB* p_scb) {
+    bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+    bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
+    if (is_ag_role_enabled && is_hf_client_enabled) {
+       tHCI_ROLE role;
+       if (get_btm_client_interface().link_policy.BTM_GetRole(p_scb->peer_addr, BT_TRANSPORT_BR_EDR, &role)
+               != tBTM_STATUS::BTM_SUCCESS) {
+          log::warn("Unable to find link role for device:{}", p_scb->peer_addr);
+          return;
+       }
+
+      if (role != HCI_ROLE_CENTRAL) {
+        const tBTM_STATUS status = 
+               get_btm_client_interface().link_policy.BTM_SwitchRoleToCentral(p_scb->peer_addr);
+        switch (status) {
+        case tBTM_STATUS::BTM_CMD_STARTED:
+              break;
+        case tBTM_STATUS::BTM_MODE_UNSUPPORTED:
+        case tBTM_STATUS::BTM_DEV_RESTRICT_LISTED:
+              // Role switch can never happen, but indicate to caller
+              // a result such that a timer will not start to repeatedly
+              // try something not possible.
+              log::error("Link can never role switch to central device:{}",
+                         p_scb->peer_addr);
+            break;
+            default:
+              /* can not switch role on SCB - start the timer on SCB */
+              log::error("Unable to switch role to central device:{} error:{}",
+                        p_scb->peer_addr, btm_status_text(status));
+           }
+       }
+    }
+    return;
+}
+
+
 /*******************************************************************************
  *
  * Function         bta_hf_client_app_callback
@@ -729,6 +768,7 @@ void bta_hf_client_sm_execute(uint16_t event, tBTA_HF_CLIENT_DATA* p_data) {
     } else if (client_cb->state == BTA_HF_CLIENT_OPEN_ST) {
       evt.open.handle = client_cb->handle;
       bta_hf_client_app_callback(BTA_HF_CLIENT_OPEN_EVT, &evt);
+      bta_hf_client_switch_central_role(client_cb);
     }
   }
 

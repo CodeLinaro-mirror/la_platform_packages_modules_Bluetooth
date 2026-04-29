@@ -26,7 +26,7 @@ import static android.bluetooth.BluetoothAdapter.SCAN_MODE_NONE;
 import static android.bluetooth.BluetoothAdapter.nameForState;
 import static android.bluetooth.BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
 import static android.bluetooth.BluetoothDevice.BOND_BONDED;
-import static android.bluetooth.BluetoothDevice.BOND_NONE;
+import static android.bluetooth.BluetoothDevice.BOND_BONDING;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_AUTO;
 import static android.bluetooth.BluetoothDevice.TRANSPORT_LE;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
@@ -367,7 +367,7 @@ public class AdapterService extends Service {
     private boolean mNativeAvailable;
     private boolean mCleaningUp;
     private boolean mQuietMode = false;
-    private final Map<String, CallerInfo> mBondAttemptCallerInfo = new HashMap<>();
+    private final Map<String, CallerInfo> mBondAttemptCallerInfo = new ConcurrentHashMap<>();
 
     private BatteryStatsManager mBatteryStatsManager;
     private PowerManager mPowerManager;
@@ -803,10 +803,6 @@ public class AdapterService extends Service {
         return mMetadataListeners;
     }
 
-    Map<String, CallerInfo> getBondAttemptCallerInfo() {
-        return mBondAttemptCallerInfo;
-    }
-
     public Optional<MediaAudioServer> getMediaAudioServer() {
         return mMediaAudioServer;
     }
@@ -999,10 +995,11 @@ public class AdapterService extends Service {
     }
 
     Optional<String> getCallingPackageName(String address) {
-        if (mBondAttemptCallerInfo.get(address) == null) {
+        CallerInfo info = mBondAttemptCallerInfo.get(address);
+        if (info == null) {
             return Optional.empty();
         }
-        return Optional.of(mBondAttemptCallerInfo.get(address).callerPackageName());
+        return Optional.of(info.callerPackageName());
     }
 
     /**
@@ -1119,9 +1116,8 @@ public class AdapterService extends Service {
                     SystemProperties.getBoolean(
                             AdapterSuspend.BLUETOOTH_SUSPEND_SCAN_MODE_NONE, false);
             var stopLeScan =
-                    Flags.stopLeScanSystemSuspend()
-                            && SystemProperties.getBoolean(
-                                    AdapterSuspend.BLUETOOTH_SUSPEND_STOP_LE_SCAN, false);
+                    SystemProperties.getBoolean(
+                            AdapterSuspend.BLUETOOTH_SUSPEND_STOP_LE_SCAN, false);
             var pauseAdvertisement =
                     SystemProperties.getBoolean(
                             AdapterSuspend.BLUETOOTH_SUSPEND_PAUSE_ADVERTISEMENT, false);
@@ -2323,7 +2319,7 @@ public class AdapterService extends Service {
     }
 
     /**
-     * Wrapper to provide the bons loss status directly through {@link
+     * Wrapper to provide the bond loss status directly through {@link
      * AdapterService#getKeyMissingCount}
      *
      * @param device is the remote device whose bond state we want to check
@@ -2939,12 +2935,9 @@ public class AdapterService extends Service {
     }
 
     /**
-     * Same as API method {@link BluetoothAdapter#getBondedDevices()}
-     *
-     * @return array of bonded {@link BluetoothDevice}
+     * @return set of bonded {@link BluetoothDevice}
      */
-    @NonNull
-    public BluetoothDevice[] getBondedDevices() {
+    public @NonNull Set<BluetoothDevice> getBondedDevices() {
         return mAdapterProperties.getBondedDevices();
     }
 
@@ -3184,7 +3177,7 @@ public class AdapterService extends Service {
         }
 
         for (BluetoothDevice dev : devices) {
-            getBondAttemptCallerInfo().remove(dev.getAddress());
+            mBondAttemptCallerInfo.remove(dev.getAddress());
             getStartedConnectableProfiles()
                     .filter(p -> p.getConnectionPolicy(dev) == CONNECTION_POLICY_ALLOWED)
                     .forEach(
@@ -3268,8 +3261,7 @@ public class AdapterService extends Service {
 
     private void refreshBondedDeviceUuids() {
         Log.d(TAG, "refreshBondedDeviceUuids() - Retrieving UUIDs for bonded devices");
-        BluetoothDevice[] bondedDevices = getBondedDevices();
-        for (BluetoothDevice device : bondedDevices) {
+        for (BluetoothDevice device : getBondedDevices()) {
             mRemoteDevices.triggerUuidNotification(device);
         }
     }
@@ -3387,6 +3379,7 @@ public class AdapterService extends Service {
          * LeAudio shall be automatically connected to Audio Framework when
          * 1. Remote device expects that - Targeted Announcements are used
          * 2. User is connecting device from Settings application.
+         * 3. Device has been just bonded.
          *
          * Above conditions are tracked by LeAudioService. In here, there is need to notify
          * LeAudioService that connection is made for GATT purposes, so LeAudioService can
@@ -3631,13 +3624,12 @@ public class AdapterService extends Service {
      * @return true if it was recently associated and we can bypass the dialog, false otherwise
      */
     public boolean canBondWithoutDialog(BluetoothDevice device) {
-        if (mBondAttemptCallerInfo.containsKey(device.getAddress())) {
-            CallerInfo bondCallerInfo = mBondAttemptCallerInfo.get(device.getAddress());
-
-            return mCompanionDeviceManager.canPairWithoutPrompt(
-                    bondCallerInfo.callerPackageName, device.getAddress(), bondCallerInfo.user);
+        CallerInfo info = mBondAttemptCallerInfo.get(device.getAddress());
+        if (info == null) {
+            return false;
         }
-        return false;
+        return mCompanionDeviceManager.canPairWithoutPrompt(
+                info.callerPackageName(), device.getAddress(), info.user());
     }
 
     /**
@@ -3650,7 +3642,7 @@ public class AdapterService extends Service {
         if (info == null) {
             return null;
         }
-        return info.callerPackageName;
+        return info.callerPackageName();
     }
 
     /**
@@ -4609,15 +4601,15 @@ public class AdapterService extends Service {
         handleBondStateChange(BluetoothProfile.PBAP, device, fromState, toState);
         handleBondStateChange(BluetoothProfile.CSIP_SET_COORDINATOR, device, fromState, toState);
         handleBondStateChange(BluetoothProfile.MCP_CLIENT, device, fromState, toState);
-        if (toState == BOND_NONE) {
-            mStorage.removeDevice(device);
-        }
 
-        if (toState == BOND_NONE || fromState == BOND_BONDED) {
-            // Remove the permissions for unbonded devices
-            setMessageAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);
-            setPhonebookAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);
-            setSimAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);
+        mStorage.onBondStateChanged(device, fromState, toState);
+
+        // Remove the bond caller info when bonding is concluded
+        if (Flags.removeBondCallerInfo() && toState != BOND_BONDING) {
+            CallerInfo callerInfo = mBondAttemptCallerInfo.remove(device.getAddress());
+            if (callerInfo != null) {
+                Log.d(TAG, "Removed bond caller info for device: " + device);
+            }
         }
     }
 

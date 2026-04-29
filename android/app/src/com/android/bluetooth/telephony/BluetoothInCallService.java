@@ -962,6 +962,12 @@ public class BluetoothInCallService extends InCallService {
                 Log.w(TAG, "sendDtmf(" + dtmf + ") null call");
                 return false;
             }
+            BluetoothCall conferenceCall = getBluetoothCallById(call.getParentId());
+            if (!mCallInfo.isNullCall(conferenceCall)
+                    && conferenceCall.getState() == Call.STATE_ACTIVE) {
+                Log.i(TAG, "BT - sending DTMF to conference call instead of child");
+                call = conferenceCall;
+            }
             Log.i(TAG, "sendDtmf(" + dtmf + ") " + call);
             // TODO: Consider making this a queue instead of starting/stopping in quick succession.
             call.playDtmfTone((char) dtmf);

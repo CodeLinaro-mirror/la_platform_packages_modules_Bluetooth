@@ -31,6 +31,8 @@
 // Generated packet headers:
 #include "ascs/ascs_packets.h"
 
+using bluetooth::stack::tGATT_REQ_CBACK;
+
 namespace bluetooth::le_audio {
 
 static const uint8_t kInvalidAseId = 0x00;
@@ -158,37 +160,104 @@ struct Ascs::service_impl {
 
     callbacks_ = callbacks;
 
-    static const tBTA_GATTS_CBACK ascs_ops = {
-            .p_reg_cb = OnGattRegisterStatic,
-            .p_connect_cb = OnGattConnectStatic,
-            .p_disconnect_cb = OnGattDisconnectStatic,
-            .p_read_characteristic_cb = OnGattReadCharacteristicStatic,
-            .p_read_descriptor_cb = OnGattReadDescriptorStatic,
-            .p_write_characteristic_cb = OnGattWriteCharacteristicStatic,
-            .p_write_descriptor_cb = OnGattWriteDescriptorStatic,
+    static bluetooth::stack::tGATT_REQ_CBACK ascs_req_cb = {
+            .read_characteristic_cb = OnGattReadCharacteristicStatic,
+            .read_descriptor_cb = OnGattReadDescriptorStatic,
+            .write_characteristic_cb = OnGattWriteCharacteristicStatic,
+            .write_descriptor_cb = OnGattWriteDescriptorStatic,
+            .exec_write_cb = tGATT_REQ_CBACK::do_nothing,
+            .mtu_changed_cb = tGATT_REQ_CBACK::do_nothing,
+            .conf_cb = tGATT_REQ_CBACK::do_nothing,
+    };
+    static const stack::tGATT_CBACK ascs_ops = {
+            .p_conn_cb = OnGattConnStatic,
+            .p_req_cb = &ascs_req_cb,
     };
 
-    BTA_GATTS_AppRegister(uuid::kAudioStreamControlServiceUuid, &ascs_ops, false);
-  }
+    server_if_ = BTA_GATTS_AppRegister(uuid::kAudioStreamControlServiceUuid, &ascs_ops, false);
+    log::assert_that(server_if_ != stack::GATT_IF_INVALID, "Failed to register GATT Server");
+    log::info("GATT Server Registered with server_if: {}", server_if_);
 
-  static void OnGattRegisterStatic(tGATT_STATUS status, tGATT_IF server_if,
-                                   const bluetooth::Uuid& uuid) {
-    if (instance) {
-      instance->service_impl_->OnGattServerAppRegistered(status, server_if, uuid);
+    auto gatt_db = BuildGattDatabase(service_descriptor_);
+
+    log::info("Adding LE Audio Service {} service to GATT database.", gatt_db.begin()->uuid);
+    auto status = BTA_GATTS_AddService(server_if_, &gatt_db);
+    log::info("GATT Service Add status: {}, server_if: {}", gatt_status_text(status), server_if_);
+    event_tracker_->OnEvent(EVT_LOG_TAG, LeAudioEventTracker::EventType::POINT,
+                            "GATT Service Add status: {}, server_if: {}", gatt_status_text(status),
+                            server_if_);
+
+    log::assert_that(status == GATT_SERVICE_STARTED, "Unable to add GATT service");
+    log::assert_that(gatt_db.size() != 0, "Service is empty");
+    log::assert_that(gatt_db.begin()->uuid == uuid::kAudioStreamControlServiceUuid,
+                     "Service not mine!");
+
+    AscCharacteristicMetadata* last_char_metadata = nullptr;
+    uint8_t ase_id = 0x01;
+
+    std::set<uint8_t> sink_ases;
+    std::set<uint8_t> source_ases;
+
+    for (const auto& element : gatt_db) {
+      if (element.type == BTGATT_DB_CHARACTERISTIC) {
+        log::info("Characteristic added: UUID {}, handle:0x{:04x}", element.uuid.ToString(),
+                  element.attribute_handle);
+        char_metadata_by_value_handle_[element.attribute_handle] = {.uuid = element.uuid};
+        // Keep the pointer to the last discovered characteristic metadata to add CCCD handle info
+        last_char_metadata = &char_metadata_by_value_handle_.at(element.attribute_handle);
+
+        if (element.uuid == uuid::kAudioStreamEndpointControlPointCharacteristicUuid) {
+          ase_ctp_characteristic_handle_ = element.attribute_handle;
+
+        } else {
+          // Assign ASE IDs
+          if (element.uuid == uuid::kSinkAudioStreamEndpointUuid) {
+            sink_ases.insert(ase_id);
+            last_char_metadata->svc_data.ase_id = ase_id++;
+            ase_char_handle_by_id_[last_char_metadata->svc_data.ase_id] = element.attribute_handle;
+
+          } else if (element.uuid == uuid::kSourceAudioStreamEndpointUuid) {
+            source_ases.insert(ase_id);
+            last_char_metadata->svc_data.ase_id = ase_id++;
+            ase_char_handle_by_id_[last_char_metadata->svc_data.ase_id] = element.attribute_handle;
+
+          } else {
+            log::assert_that(false, "Unknown characteristic uuid: {} found",
+                             element.uuid.ToString());
+            continue;
+          }
+        }
+
+      } else if (element.type == BTGATT_DB_DESCRIPTOR) {
+        log::assert_that(element.uuid == Uuid::From16Bit(kClientCharacteristicDescriptorUuidU16),
+                         "Unknown descriptor uuid: {} found at handle: 0x{:04x}",
+                         element.uuid.ToString(), element.attribute_handle);
+
+        // Match the descriptor with the previous characteristic declaration
+        log::assert_that(last_char_metadata, "No known characteristic for the added descriptor");
+        last_char_metadata->cccd_handle = element.attribute_handle;
+
+      } else if (element.type == BTGATT_DB_PRIMARY_SERVICE) {
+        log::info("Service handle:0x{:04x}, UUID: {}", element.attribute_handle,
+                  element.uuid.ToString());
+        if (element.uuid == uuid::kAudioStreamControlServiceUuid) {
+          service_handle_ = element.attribute_handle;
+        }
+      }
     }
+
+    callbacks_->OnAscsRegistered(sink_ases, source_ases);
   }
 
-  static void OnGattConnectStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
-                                  tCONN_ID conn_id, tBT_TRANSPORT transport) {
+  static void OnGattConnStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
+                               tCONN_ID conn_id, bool connected, tGATT_DISCONN_REASON /*reason*/,
+                               tBT_TRANSPORT transport) {
     if (instance) {
-      instance->service_impl_->OnGattConnect(remote_bda, conn_id, transport);
-    }
-  }
-
-  static void OnGattDisconnectStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
-                                     tCONN_ID conn_id, tBT_TRANSPORT /*transport*/) {
-    if (instance) {
-      instance->service_impl_->OnGattDisconnect(remote_bda, conn_id);
+      if (connected) {
+        instance->service_impl_->OnGattConnect(remote_bda, conn_id, transport);
+      } else {
+        instance->service_impl_->OnGattDisconnect(remote_bda, conn_id);
+      }
     }
   }
 
@@ -290,91 +359,6 @@ struct Ascs::service_impl {
     ascs_service_db.push_back(ase_control_point_cccd);
 
     return ascs_service_db;
-  }
-
-  void OnGattServerAppRegistered(tGATT_STATUS status, tGATT_IF server_if,
-                                 const bluetooth::Uuid& /*uuid*/) {
-    log::assert_that(status == tGATT_STATUS::GATT_SUCCESS,
-                     "Failed to register GATT Server, status: {}", gatt_status_text(status));
-
-    server_if_ = server_if;
-    log::info("GATT Server Registered with server_if: {}", server_if_);
-
-    auto gatt_db = BuildGattDatabase(service_descriptor_);
-
-    log::info("Adding LE Audio Service {} service to GATT database.", gatt_db.begin()->uuid);
-    BTA_GATTS_AddService(server_if_, gatt_db,
-                         base::BindRepeating(&Ascs::service_impl::OnGattServiceAdded,
-                                             weak_factory_.GetWeakPtr()));
-  }
-
-  void OnGattServiceAdded(tGATT_STATUS status, int server_if,
-                          std::vector<btgatt_db_element_t> service_elements) {
-    log::info("GATT Service Add status: {}, server_if: {}", gatt_status_text(status), server_if);
-    event_tracker_->OnEvent(EVT_LOG_TAG, LeAudioEventTracker::EventType::POINT,
-                            "GATT Service Add status: {}, server_if: {}", gatt_status_text(status),
-                            server_if);
-
-    log::assert_that(status == GATT_SUCCESS, "Unable to add GATT service");
-    log::assert_that(service_elements.size() != 0, "Service is empty");
-    log::assert_that(service_elements.begin()->uuid == uuid::kAudioStreamControlServiceUuid,
-                     "Service not mine!");
-
-    AscCharacteristicMetadata* last_char_metadata = nullptr;
-    uint8_t ase_id = 0x01;
-
-    std::set<uint8_t> sink_ases;
-    std::set<uint8_t> source_ases;
-
-    for (const auto& element : service_elements) {
-      if (element.type == BTGATT_DB_CHARACTERISTIC) {
-        log::info("Characteristic added: UUID {}, handle:0x{:04x}", element.uuid.ToString(),
-                  element.attribute_handle);
-        char_metadata_by_value_handle_[element.attribute_handle] = {.uuid = element.uuid};
-        // Keep the pointer to the last discovered characteristic metadata to add CCCD handle info
-        last_char_metadata = &char_metadata_by_value_handle_.at(element.attribute_handle);
-
-        if (element.uuid == uuid::kAudioStreamEndpointControlPointCharacteristicUuid) {
-          ase_ctp_characteristic_handle_ = element.attribute_handle;
-
-        } else {
-          // Assign ASE IDs
-          if (element.uuid == uuid::kSinkAudioStreamEndpointUuid) {
-            sink_ases.insert(ase_id);
-            last_char_metadata->svc_data.ase_id = ase_id++;
-            ase_char_handle_by_id_[last_char_metadata->svc_data.ase_id] = element.attribute_handle;
-
-          } else if (element.uuid == uuid::kSourceAudioStreamEndpointUuid) {
-            source_ases.insert(ase_id);
-            last_char_metadata->svc_data.ase_id = ase_id++;
-            ase_char_handle_by_id_[last_char_metadata->svc_data.ase_id] = element.attribute_handle;
-
-          } else {
-            log::assert_that(false, "Unknown characteristic uuid: {} found",
-                             element.uuid.ToString());
-            continue;
-          }
-        }
-
-      } else if (element.type == BTGATT_DB_DESCRIPTOR) {
-        log::assert_that(element.uuid == Uuid::From16Bit(kClientCharacteristicDescriptorUuidU16),
-                         "Unknown descriptor uuid: {} found at handle: 0x{:04x}",
-                         element.uuid.ToString(), element.attribute_handle);
-
-        // Match the descriptor with the previous characteristic declaration
-        log::assert_that(last_char_metadata, "No known characteristic for the added descriptor");
-        last_char_metadata->cccd_handle = element.attribute_handle;
-
-      } else if (element.type == BTGATT_DB_PRIMARY_SERVICE) {
-        log::info("Service handle:0x{:04x}, UUID: {}", element.attribute_handle,
-                  element.uuid.ToString());
-        if (element.uuid == uuid::kAudioStreamControlServiceUuid) {
-          service_handle_ = element.attribute_handle;
-        }
-      }
-    }
-
-    callbacks_->OnAscsRegistered(sink_ases, source_ases);
   }
 
   static std::vector<uint8_t> BuildAseStateCharValue(uint8_t ase_id,

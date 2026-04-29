@@ -37,18 +37,10 @@ using namespace bluetooth;
 
 /* state machine action enumeration list */
 enum {
-  BTA_GATTC_OPEN,
-  BTA_GATTC_OPEN_FAIL,
-  BTA_GATTC_OPEN_ERROR,
-  BTA_GATTC_CANCEL_OPEN,
-  BTA_GATTC_CANCEL_OPEN_OK,
-  BTA_GATTC_CANCEL_OPEN_ERROR,
-  BTA_GATTC_CONN,
   BTA_GATTC_START_DISCOVER,
   BTA_GATTC_DISC_CMPL,
   BTA_GATTC_Q_CMD,
   BTA_GATTC_CLOSE,
-  BTA_GATTC_CLOSE_FAIL,
   BTA_GATTC_READ,
   BTA_GATTC_WRITE,
   BTA_GATTC_OP_CMPL,
@@ -69,18 +61,10 @@ typedef void (*tBTA_GATTC_ACTION)(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA
 
 /* action function list */
 const tBTA_GATTC_ACTION bta_gattc_action[] = {
-        bta_gattc_open,                     /* BTA_GATTC_OPEN */
-        bta_gattc_open_fail,                /* BTA_GATTC_OPEN_FAIL */
-        bta_gattc_open_error,               /* BTA_GATTC_OPEN_ERROR */
-        bta_gattc_cancel_open,              /* BTA_GATTC_CANCEL_OPEN */
-        bta_gattc_cancel_open_ok,           /* BTA_GATTC_CANCEL_OPEN_OK */
-        bta_gattc_cancel_open_error,        /* BTA_GATTC_CANCEL_OPEN_ERROR */
-        bta_gattc_conn,                     /* BTA_GATTC_CONN */
         bta_gattc_start_discover,           /* BTA_GATTC_START_DISCOVER */
         bta_gattc_disc_cmpl,                /* BTA_GATTC_DISC_CMPL */
         bta_gattc_q_cmd,                    /* BTA_GATTC_Q_CMD */
         bta_gattc_close,                    /* BTA_GATTC_CLOSE */
-        bta_gattc_close_fail,               /* BTA_GATTC_CLOSE_FAIL */
         bta_gattc_read,                     /* BTA_GATTC_READ */
         bta_gattc_write,                    /* BTA_GATTC_WRITE */
         bta_gattc_op_cmpl,                  /* BTA_GATTC_OP_CMPL */
@@ -100,93 +84,29 @@ const tBTA_GATTC_ACTION bta_gattc_action[] = {
 #define BTA_GATTC_NEXT_STATE 1 /* position of next state */
 #define BTA_GATTC_NUM_COLS 2   /* number of columns in state tables */
 
-/* state table for idle state */
-static const uint8_t bta_gattc_st_idle[][BTA_GATTC_NUM_COLS] = {
-        /* Event                            Action 1                  Next state */
-        /* BTA_GATTC_API_OPEN_EVT           */ {BTA_GATTC_OPEN, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_INT_OPEN_FAIL_EVT      */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_CANCEL_OPEN_EVT    */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_INT_CANCEL_OPEN_OK_EVT */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-
-        /* BTA_GATTC_API_READ_EVT           */ {BTA_GATTC_FAIL, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_WRITE_EVT          */ {BTA_GATTC_FAIL, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_EXEC_EVT           */ {BTA_GATTC_FAIL, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_CFG_MTU_EVT        */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-
-        /* BTA_GATTC_API_CLOSE_EVT          */ {BTA_GATTC_CLOSE_FAIL, BTA_GATTC_IDLE_ST},
-
-        /* BTA_GATTC_API_SEARCH_EVT         */ {BTA_GATTC_FAIL, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_CONFIRM_EVT        */ {BTA_GATTC_FAIL, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_READ_MULTI_EVT     */ {BTA_GATTC_FAIL, BTA_GATTC_IDLE_ST},
-
-        /* BTA_GATTC_INT_CONN_EVT           */ {BTA_GATTC_CONN, BTA_GATTC_CONN_ST},
-        /* BTA_GATTC_INT_DISCOVER_EVT       */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_DISCOVER_CMPL_EVT      */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_OP_CMPL_EVT            */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_INT_DISCONN_EVT       */ {BTA_GATTC_IGNORE, BTA_GATTC_IDLE_ST},
-};
-
-/* state table for wait for open state */
-static const uint8_t bta_gattc_st_w4_conn[][BTA_GATTC_NUM_COLS] = {
-        /* Event                            Action 1 Next state */
-        /* BTA_GATTC_API_OPEN_EVT           */ {BTA_GATTC_OPEN, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_INT_OPEN_FAIL_EVT      */ {BTA_GATTC_OPEN_FAIL, BTA_GATTC_IDLE_ST},
-        /* BTA_GATTC_API_CANCEL_OPEN_EVT    */ {BTA_GATTC_CANCEL_OPEN, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_INT_CANCEL_OPEN_OK_EVT */ {BTA_GATTC_CANCEL_OPEN_OK, BTA_GATTC_IDLE_ST},
-
-        /* BTA_GATTC_API_READ_EVT           */ {BTA_GATTC_FAIL, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_API_WRITE_EVT          */ {BTA_GATTC_FAIL, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_API_EXEC_EVT           */ {BTA_GATTC_FAIL, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_API_CFG_MTU_EVT        */ {BTA_GATTC_IGNORE, BTA_GATTC_W4_CONN_ST},
-
-        /* BTA_GATTC_API_CLOSE_EVT          */ {BTA_GATTC_CANCEL_OPEN, BTA_GATTC_W4_CONN_ST},
-
-        /* BTA_GATTC_API_SEARCH_EVT         */ {BTA_GATTC_FAIL, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_API_CONFIRM_EVT        */ {BTA_GATTC_FAIL, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_API_READ_MULTI_EVT     */ {BTA_GATTC_FAIL, BTA_GATTC_W4_CONN_ST},
-
-        /* BTA_GATTC_INT_CONN_EVT           */ {BTA_GATTC_CONN, BTA_GATTC_CONN_ST},
-        /* BTA_GATTC_INT_DISCOVER_EVT       */ {BTA_GATTC_IGNORE, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_DISCOVER_CMPL_EVT       */ {BTA_GATTC_IGNORE, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_OP_CMPL_EVT            */ {BTA_GATTC_IGNORE, BTA_GATTC_W4_CONN_ST},
-        /* BTA_GATTC_INT_DISCONN_EVT      */ {BTA_GATTC_OPEN_FAIL, BTA_GATTC_IDLE_ST},
-};
-
 /* state table for open state */
 static const uint8_t bta_gattc_st_connected[][BTA_GATTC_NUM_COLS] = {
         /* Event                            Action 1 Next state */
-        /* BTA_GATTC_API_OPEN_EVT           */ {BTA_GATTC_OPEN, BTA_GATTC_CONN_ST},
-        /* BTA_GATTC_INT_OPEN_FAIL_EVT      */ {BTA_GATTC_IGNORE, BTA_GATTC_CONN_ST},
-        /* BTA_GATTC_API_CANCEL_OPEN_EVT    */ {BTA_GATTC_CANCEL_OPEN_ERROR, BTA_GATTC_CONN_ST},
-        /* BTA_GATTC_INT_CANCEL_OPEN_OK_EVT */ {BTA_GATTC_IGNORE, BTA_GATTC_CONN_ST},
-
         /* BTA_GATTC_API_READ_EVT           */ {BTA_GATTC_READ, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_API_WRITE_EVT          */ {BTA_GATTC_WRITE, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_API_EXEC_EVT           */ {BTA_GATTC_EXEC, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_API_CFG_MTU_EVT        */ {BTA_GATTC_CFG_MTU, BTA_GATTC_CONN_ST},
 
-        /* BTA_GATTC_API_CLOSE_EVT          */ {BTA_GATTC_CLOSE, BTA_GATTC_IDLE_ST},
+        /* CLCB will be deleted, next state is not important*/
+        /* BTA_GATTC_API_CLOSE_EVT          */ {BTA_GATTC_CLOSE, BTA_GATTC_CONN_ST},
 
         /* BTA_GATTC_API_SEARCH_EVT         */ {BTA_GATTC_SEARCH, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_API_CONFIRM_EVT        */ {BTA_GATTC_CONFIRM, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_API_READ_MULTI_EVT     */ {BTA_GATTC_READ_MULTI, BTA_GATTC_CONN_ST},
 
-        /* BTA_GATTC_INT_CONN_EVT           */ {BTA_GATTC_IGNORE, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_INT_DISCOVER_EVT       */ {BTA_GATTC_START_DISCOVER, BTA_GATTC_DISCOVER_ST},
         /* BTA_GATTC_DISCOVER_CMPL_EVT       */ {BTA_GATTC_IGNORE, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_OP_CMPL_EVT            */ {BTA_GATTC_OP_CMPL, BTA_GATTC_CONN_ST},
-
-        /* BTA_GATTC_INT_DISCONN_EVT        */ {BTA_GATTC_CLOSE, BTA_GATTC_IDLE_ST},
 };
 
 /* state table for discover state */
 static const uint8_t bta_gattc_st_discover[][BTA_GATTC_NUM_COLS] = {
         /* Event                            Action 1 Next state */
-        /* BTA_GATTC_API_OPEN_EVT           */ {BTA_GATTC_OPEN, BTA_GATTC_DISCOVER_ST},
-        /* BTA_GATTC_INT_OPEN_FAIL_EVT      */ {BTA_GATTC_IGNORE, BTA_GATTC_DISCOVER_ST},
-        /* BTA_GATTC_API_CANCEL_OPEN_EVT    */ {BTA_GATTC_CANCEL_OPEN_ERROR, BTA_GATTC_DISCOVER_ST},
-        /* BTA_GATTC_INT_CANCEL_OPEN_OK_EVT */ {BTA_GATTC_FAIL, BTA_GATTC_DISCOVER_ST},
-
         /* BTA_GATTC_API_READ_EVT           */ {BTA_GATTC_Q_CMD, BTA_GATTC_DISCOVER_ST},
         /* BTA_GATTC_API_WRITE_EVT          */ {BTA_GATTC_Q_CMD, BTA_GATTC_DISCOVER_ST},
         /* BTA_GATTC_API_EXEC_EVT           */ {BTA_GATTC_Q_CMD, BTA_GATTC_DISCOVER_ST},
@@ -198,12 +118,10 @@ static const uint8_t bta_gattc_st_discover[][BTA_GATTC_NUM_COLS] = {
         /* BTA_GATTC_API_CONFIRM_EVT        */ {BTA_GATTC_CONFIRM, BTA_GATTC_DISCOVER_ST},
         /* BTA_GATTC_API_READ_MULTI_EVT     */ {BTA_GATTC_Q_CMD, BTA_GATTC_DISCOVER_ST},
 
-        /* BTA_GATTC_INT_CONN_EVT           */ {BTA_GATTC_CONN, BTA_GATTC_DISCOVER_ST},
         /* BTA_GATTC_INT_DISCOVER_EVT       */ {BTA_GATTC_RESTART_DISCOVER, BTA_GATTC_DISCOVER_ST},
         /* BTA_GATTC_DISCOVER_CMPL_EVT      */ {BTA_GATTC_DISC_CMPL, BTA_GATTC_CONN_ST},
         /* BTA_GATTC_OP_CMPL_EVT            */
         {BTA_GATTC_OP_CMPL_DURING_DISCOVERY, BTA_GATTC_DISCOVER_ST},
-        /* BTA_GATTC_INT_DISCONN_EVT        */ {BTA_GATTC_CLOSE, BTA_GATTC_IDLE_ST},
 };
 
 /* type for state table */
@@ -211,8 +129,6 @@ typedef const uint8_t (*tBTA_GATTC_ST_TBL)[BTA_GATTC_NUM_COLS];
 
 /* state table */
 const tBTA_GATTC_ST_TBL bta_gattc_st_tbl[] = {
-        bta_gattc_st_idle,      /* BTA_GATTC_IDLE_ST */
-        bta_gattc_st_w4_conn,   /* BTA_GATTC_W4_CONN_ST */
         bta_gattc_st_connected, /* BTA_GATTC_CONN_ST */
         bta_gattc_st_discover   /* BTA_GATTC_DISCOVER_ST */
 };
@@ -287,63 +203,16 @@ bool bta_gattc_sm_execute(tBTA_GATTC_CLCB* p_clcb, uint16_t event, const tBTA_GA
 bool bta_gattc_hdl_event(const BT_HDR_RIGID* p_msg) {
   tBTA_GATTC_CLCB* p_clcb = NULL;
   bool rt = true;
-
   const auto p = (tBTA_GATTC_DATA*)p_msg;
 
-  switch (p_msg->event) {
-    case BTA_GATTC_API_OPEN_EVT:
-      log::verbose("Event:{}, addr: ", bta_gattc_evt_code_text(p_msg->event),
-                   p->api_conn.remote_bda);
-      bta_gattc_process_api_open(p);
+  log::verbose("Event:{}, conn_id: {:#x} ", bta_gattc_evt_code_text(p_msg->event),
+               p->int_conn.hdr.layer_specific);
+  p_clcb = bta_gattc_find_clcb_by_conn_id(static_cast<tCONN_ID>(p_msg->layer_specific));
 
-      break;
-
-    case BTA_GATTC_API_CANCEL_OPEN_EVT:
-      log::verbose("Event:{}, addr: ", bta_gattc_evt_code_text(p_msg->event),
-                   p->api_cancel_conn.remote_bda);
-      bta_gattc_process_api_open_cancel(p);
-      break;
-
-    default:
-      if (p_msg->event == BTA_GATTC_INT_CONN_EVT) {
-        log::verbose("Event:{}, addr: ", bta_gattc_evt_code_text(p_msg->event),
-                     p->int_conn.remote_bda);
-        p_clcb = bta_gattc_find_int_conn_clcb(p);
-      } else if (p_msg->event == BTA_GATTC_INT_DISCONN_EVT) {
-        log::verbose("Event:{}, conn_id: {:#x} ", bta_gattc_evt_code_text(p_msg->event),
-                     p->int_conn.hdr.layer_specific);
-        p_clcb = bta_gattc_find_int_disconn_clcb(p);
-      } else {
-        log::verbose("Event:{}, conn_id: {:#x} ", bta_gattc_evt_code_text(p_msg->event),
-                     p->int_conn.hdr.layer_specific);
-        p_clcb = bta_gattc_find_clcb_by_conn_id(static_cast<tCONN_ID>(p_msg->layer_specific));
-      }
-
-      if (p_clcb != nullptr) {
-        rt = bta_gattc_sm_execute(p_clcb, p_msg->event, p);
-      } else {
-        if ((p_clcb == nullptr) && (p_msg->event == BTA_GATTC_INT_DISCONN_EVT)) {
-          tBTA_GATTC_DATA* p_data = (tBTA_GATTC_DATA*)p_msg;
-          //If BG Connection fails then inform the particular APP
-          if (p_data) {
-            tBTA_GATTC_RCB* p_clreg = bta_gattc_cl_get_regcb(p_data->int_conn.client_if);
-            if (p_clreg != nullptr) {
-              log::info("Sending Conn failed to establish for conn_id: {}",
-                          p_msg->layer_specific);
-              tGATT_STATUS status = (tGATT_STATUS)p_data->int_conn.reason;
-              bta_gattc_send_open_cback(p_clreg, status,
-                              p_data->int_conn.remote_bda, p_msg->layer_specific,
-                              p_data->int_conn.transport, 0);
-            }
-          } else {
-            log::error("Ignore unknown conn ID: {}", p_msg->layer_specific);
-          }
-        } else {
-          log::error("Ignore unknown conn ID: {}", p_msg->layer_specific);
-        }
-      }
-
-      break;
+  if (p_clcb != nullptr) {
+    rt = bta_gattc_sm_execute(p_clcb, p_msg->event, p);
+  } else {
+    log::error("Ignore unknown conn ID: {}", p_msg->layer_specific);
   }
 
   return rt;

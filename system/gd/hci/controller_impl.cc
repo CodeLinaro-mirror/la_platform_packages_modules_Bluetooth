@@ -92,11 +92,6 @@ struct ControllerImpl::impl {
                     this, &ControllerImpl::impl::read_local_supported_commands_complete_handler));
 
     hci_->EnqueueCommand(
-            LeReadLocalSupportedFeaturesBuilder::Create(),
-            handler_->BindOnceOn(this,
-                                 &ControllerImpl::impl::le_read_local_supported_features_handler));
-
-    hci_->EnqueueCommand(
             LeReadSupportedStatesBuilder::Create(),
             handler_->BindOnceOn(this, &ControllerImpl::impl::le_read_supported_states_handler));
 
@@ -407,6 +402,18 @@ struct ControllerImpl::impl {
         set_event_mask_page_2(kDefaultEventMaskPage2);
       }
     }
+
+    if (is_supported(OpCode::LE_READ_ALL_LOCAL_SUPPORTED_FEATURES)) {
+      hci_->EnqueueCommand(
+            LeReadAllLocalSupportedFeaturesBuilder::Create(),
+            handler_->BindOnceOn(this,
+                    &ControllerImpl::impl::le_read_all_local_supported_features_handler));
+    } else {
+      hci_->EnqueueCommand(
+            LeReadLocalSupportedFeaturesBuilder::Create(),
+            handler_->BindOnceOn(this,
+                    &ControllerImpl::impl::le_read_local_supported_features_handler));
+    }
   }
 
   void read_local_extended_features_complete_handler(std::promise<void> promise,
@@ -582,6 +589,14 @@ struct ControllerImpl::impl {
     le_local_supported_features_ = complete_view.GetLeFeatures();
   }
 
+  void le_read_all_local_supported_features_handler(CommandCompleteView view) {
+    auto complete_view = LeReadAllLocalSupportedFeaturesCompleteView::Create(view);
+    log::assert_that(complete_view.IsValid(), "Complete view is invalid");
+    ErrorCode status = complete_view.GetStatus();
+    log::assert_that(status == ErrorCode::SUCCESS, "Status {}", status, ErrorCodeText(status));
+    le_all_local_supported_features_ = complete_view.GetLeFeatures();
+  }
+
   void le_read_supported_states_handler(CommandCompleteView view) {
     auto complete_view = LeReadSupportedStatesCompleteView::Create(view);
     log::assert_that(complete_view.IsValid(), "Complete view is invalid");
@@ -694,6 +709,7 @@ struct ControllerImpl::impl {
     vendor_capabilities_.big_set_channel_map_classification_support_ = 0x0000;
     vendor_capabilities_.vendor_connection_handle_min_ = 0x0000;
     vendor_capabilities_.vendor_connection_handle_max_ = 0x0000;
+    vendor_capabilities_.connection_proximity_threshold_support_ = 0x00;
 
     if (!complete_view.IsValid()) {
       vendor_promise.set_value();
@@ -800,6 +816,8 @@ struct ControllerImpl::impl {
         vendor_capabilities_.vendor_connection_handle_min_ = v106.GetVendorConnectionHandleMin();
         vendor_capabilities_.vendor_connection_handle_max_ = v106.GetVendorConnectionHandleMax();
       }
+      vendor_capabilities_.connection_proximity_threshold_support_ =
+              v106.GetConnectionProximityThresholdSupport();
     }
 
     if (vendor_capabilities_.dynamic_audio_buffer_support_) {
@@ -1271,11 +1289,14 @@ struct ControllerImpl::impl {
       OP_CODE_MAPPING(LE_SET_DATA_RELATED_ADDRESS_CHANGES)
       OP_CODE_MAPPING(LE_SET_DEFAULT_SUBRATE)
       OP_CODE_MAPPING(LE_SUBRATE_REQUEST)
+      OP_CODE_MAPPING(LE_READ_ALL_LOCAL_SUPPORTED_FEATURES)
+      OP_CODE_MAPPING(LE_READ_ALL_REMOTE_FEATURES)
       OP_CODE_MAPPING(LE_START_ENCRYPTION_V2)
       OP_CODE_MAPPING(LE_SET_HDT_DEFAULT_PARAMETERS)
       OP_CODE_MAPPING(LE_SET_DATA_LENGTH_V2)
       OP_CODE_MAPPING(LE_READ_SUGGESTED_DEFAULT_DATA_LENGTH_V2)
       OP_CODE_MAPPING(LE_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH_V2)
+      OP_CODE_MAPPING(LE_SET_CIG_PARAMETERS_V2)
 
       // deprecated
       case OpCode::ADD_SCO_CONNECTION:
@@ -1306,6 +1327,8 @@ struct ControllerImpl::impl {
         return vendor_capabilities_.dynamic_audio_buffer_support_ > 0x00;
       case OpCode::LE_SET_BIG_CHANNEL_MAP_CLASSIFICATION:
         return vendor_capabilities_.big_set_channel_map_classification_support_ > 0x0000;
+      case OpCode::LE_ADD_DEVICE_TO_FILTER_ACCEPT_LIST_WITH_PROXIMITY_THRESHOLD:
+        return vendor_capabilities_.connection_proximity_threshold_support_ != 0x00;
       // Before MSFT extension is fully supported, return false for the following MSFT_OPCODE_XXXX
       // for now.
       case OpCode::MSFT_OPCODE_INTEL:
@@ -1367,6 +1390,7 @@ struct ControllerImpl::impl {
   std::vector<uint32_t> local_supported_vendor_codec_ids_{};
   LeBufferSize iso_buffer_size_{};
   uint64_t le_local_supported_features_{};
+  std::array<uint8_t, 248> le_all_local_supported_features_{};
   uint64_t le_supported_states_{};
   uint8_t le_accept_list_size_{};
   uint8_t le_resolving_list_size_{};
@@ -1442,7 +1466,7 @@ LOCAL_FEATURE_ACCESSOR(SupportsNonFlushablePb, 0, 54)
 LOCAL_FEATURE_ACCESSOR(SupportsSecureConnections, 2, 8)
 
 #define LOCAL_LE_FEATURE_ACCESSOR(name, bit) \
-  bool ControllerImpl::name() const { return GetLocalLeFeatures() & BIT(bit); }
+  bool ControllerImpl::name() const { return GetLocalLeFeatureBit(bit); }
 
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleEncryption, 0)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionParametersRequest, 1)
@@ -1485,7 +1509,7 @@ LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionSubrating, 37)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleConnectionSubratingHost, 38)
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleChannelSounding, 46)
 /* TODO: Decide and change bit number for HDT support, for testing keep this false since SoC support NA */
-LOCAL_LE_FEATURE_ACCESSOR(SupportsBleHDTPhy, 47)
+LOCAL_LE_FEATURE_ACCESSOR(SupportsBleHDTPhy, 1982)
 // TODO(b/455578977): Update the bit later, bit 56 is reserved for furture use in spec
 LOCAL_LE_FEATURE_ACCESSOR(SupportsBleHighDataThroughputPhy, 56)
 
@@ -1583,6 +1607,23 @@ void ControllerImpl::LeSetEventMask(uint64_t le_event_mask) {
 LeBufferSize ControllerImpl::GetLeBufferSize() const { return impl_->le_buffer_size_; }
 
 uint64_t ControllerImpl::GetLocalLeFeatures() const { return impl_->le_local_supported_features_; }
+
+bool ControllerImpl::GetLocalLeFeatureBit(uint16_t bit) const {
+  if (IsSupported(OpCode::LE_READ_ALL_LOCAL_SUPPORTED_FEATURES)) {
+    size_t total_bits = impl_->le_all_local_supported_features_.size() * 8;
+    if (bit >= total_bits) {
+      return false;
+    }
+    size_t byte_index = bit / 8;
+    uint8_t bit_index = static_cast<uint8_t>(bit % 8);
+    uint8_t byte = impl_->le_all_local_supported_features_[byte_index];
+    return ((byte >> bit_index) & 0x01) != 0;
+  }
+  if (bit >= 64) {
+    return false;
+  }
+  return (impl_->le_local_supported_features_ & BIT(bit)) != 0;
+}
 
 LeBufferSize ControllerImpl::GetControllerIsoBufferSize() const { return impl_->iso_buffer_size_; }
 

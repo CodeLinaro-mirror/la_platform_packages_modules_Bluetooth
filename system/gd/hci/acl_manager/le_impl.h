@@ -237,6 +237,9 @@ struct le_impl : public bluetooth::hci::LeAddressManagerCallback {
       case SubeventCode::DATA_LENGTH_CHANGE_V2:
         on_data_length_change_v2(event_packet);
         break;
+      case SubeventCode::LE_READ_ALL_REMOTE_FEATURES_COMPLETE:
+        on_le_read_all_remote_features_complete(event_packet);
+        break;
       case SubeventCode::LE_TEST_REPORT_HDT_LINK_QUALITY:
         // Need to implement
         break;
@@ -758,6 +761,20 @@ public:
               data_length_v2_view.GetMaxTxOctets(), data_length_v2_view.GetMaxTxTime(),
               data_length_v2_view.GetMaxRxOctets(), data_length_v2_view.GetMaxRxTime(),
               data_length_v2_view.GetPhys());
+    });
+  }
+
+  void on_le_read_all_remote_features_complete(LeMetaEventView view) {
+    auto complete_view = LeReadAllRemoteFeaturesCompleteView::Create(view);
+    if (!complete_view.IsValid()) {
+      log::error("Invalid packet");
+      return;
+    }
+    uint16_t handle = complete_view.GetConnectionHandle();
+    connections.execute(handle, [=](LeConnectionManagementCallbacks* callbacks) {
+      callbacks->OnLeReadAllRemoteFeaturesComplete(
+              complete_view.GetStatus(), complete_view.GetMaxRemotePage(),
+              complete_view.GetMaxValidPage(), complete_view.GetLeFeatures());
     });
   }
 

@@ -33,12 +33,26 @@
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_status.h"
 #include "stack/include/hci_error_code.h"
+#include "osi/include/properties.h"
+#include "bta/ag/bta_ag_int.h"
+#include "stack/include/acl_api.h"
+
 
 #define BTA_HF_CLIENT_NO_EDR_ESCO                                                               \
   (ESCO_PKT_TYPES_MASK_NO_2_EV3 | ESCO_PKT_TYPES_MASK_NO_3_EV3 | ESCO_PKT_TYPES_MASK_NO_2_EV5 | \
    ESCO_PKT_TYPES_MASK_NO_3_EV5)
 
 using namespace bluetooth;
+bool mHfClientDeviceScoConnected = false;
+using bluetooth::legacy::hci::GetInterface;
+
+constexpr int mClientScoDataPathId = 0x04;
+constexpr uint8_t LTV_LEN_SCO_DATAPATH       =  0x02;
+constexpr uint8_t LTV_TYPE_SCO_DATA_PATH     =  0x011;
+
+constexpr uint8_t LTV_LEN_SCO_RELAY_MODE     =  0x02;
+constexpr uint8_t LTV_TYPE_SCO_RELAY_MODE    =  0x012;
+
 
 enum {
   BTA_HF_CLIENT_SCO_LISTEN_E,
@@ -48,6 +62,33 @@ enum {
   BTA_HF_CLIENT_SCO_CONN_OPEN_E,  /* SCO opened */
   BTA_HF_CLIENT_SCO_CONN_CLOSE_E, /* SCO closed */
 };
+
+/*******************************************************************************
+ *
+ * function         PrepareVendorConfigScoData
+ *
+ *
+ ******************************************************************************/
+
+static std::vector<uint8_t> PrepareVendorConfigScoData() {
+    std::vector<uint8_t> vendor_sco_datapath_config;
+    uint8_t len = LTV_LEN_SCO_DATAPATH;
+    uint8_t type = LTV_TYPE_SCO_DATA_PATH;
+    uint8_t sco_path = 0; //transport type is sco
+
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &len, &len + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &type, &type + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &sco_path, &sco_path + 1);
+
+    len =  LTV_LEN_SCO_RELAY_MODE;
+    type = LTV_TYPE_SCO_RELAY_MODE;
+    uint8_t relay_mode = 0; //disable relay mode
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &len, &len + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &type, &type + 1);
+    vendor_sco_datapath_config.insert(vendor_sco_datapath_config.end(), &relay_mode, &relay_mode + 1);
+
+    return vendor_sco_datapath_config;
+}
 
 /*******************************************************************************
  *
@@ -113,6 +154,8 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
                                        tBTM_ESCO_CONN_REQ_EVT_DATA* p_data) {
   enh_esco_params_t resp;
   tHCI_STATUS hci_status = HCI_SUCCESS;
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+  bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
 
   log::verbose("");
 
@@ -134,11 +177,32 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
       resp = esco_parameters_for_codec(ESCO_CODEC_CVSD_S3, true);
     }
 
+    if (is_hf_client_enabled && is_ag_role_enabled) {
+      resp.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+                 ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
+
+      //exit sniff mode on receiving sco conn request.
+      tBTM_PM_MODE mode;
+      if (BTM_ReadPowerMode(client_cb->peer_addr, &mode) &&
+         mode == BTM_PM_STS_SNIFF) {
+         bta_sys_busy(BTA_ID_HS, 1, client_cb->peer_addr);
+      }
+    }
+
     /* tell sys to stop av if any */
     bta_sys_sco_use(BTA_ID_HS, 1, client_cb->peer_addr);
   } else {
     hci_status = HCI_ERR_HOST_REJECT_DEVICE;
   }
+
+  std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
+  GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
+                                mClientScoDataPathId, sco_vendor_config_data);
+  GetInterface().ConfigureDataPath(hci_data_direction_t::CONTROLLER_TO_HOST,
+                                mClientScoDataPathId, sco_vendor_config_data);
+
+  resp.input_data_path = mClientScoDataPathId;
+  resp.output_data_path = mClientScoDataPathId;
 
   get_btm_client_interface().sco.BTM_EScoConnRsp(p_data->sco_inx, hci_status, &resp);
 }
@@ -234,6 +298,8 @@ static void bta_hf_client_sco_disc_cback(uint16_t sco_idx,
  ******************************************************************************/
 static void bta_hf_client_sco_create(tBTA_HF_CLIENT_CB* client_cb, bool is_orig) {
   tBTM_STATUS status;
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+  bool is_ag_role_enabled = osi_property_get_bool("bluetooth.profile.hfp.ag.enabled", false);
 
   log::verbose("{}", is_orig);
 
@@ -265,6 +331,26 @@ static void bta_hf_client_sco_create(tBTA_HF_CLIENT_CB* client_cb, bool is_orig)
     /* tell sys to stop av if any */
     bta_sys_sco_use(BTA_ID_HS, 1, client_cb->peer_addr);
   }
+
+  
+  if (is_hf_client_enabled && is_ag_role_enabled) {
+     log::warn("use only 2EV3 packets ");
+     params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+                ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
+     //exit sniff mode on receiving sco conn request.
+     tBTM_PM_MODE mode;
+     if (BTM_ReadPowerMode(client_cb->peer_addr, &mode) &&
+        mode == BTM_PM_STS_SNIFF) {
+        log::warn("exiting sniff mode before sco");
+        bta_sys_busy(BTA_ID_HS, 1, client_cb->peer_addr);
+     }
+  }
+
+  std::vector<uint8_t> sco_vendor_config_data = PrepareVendorConfigScoData();
+  GetInterface().ConfigureDataPath(hci_data_direction_t::HOST_TO_CONTROLLER,
+                               mClientScoDataPathId, sco_vendor_config_data);
+  GetInterface().ConfigureDataPath(hci_data_direction_t::CONTROLLER_TO_HOST,
+                               mClientScoDataPathId, sco_vendor_config_data);
 
   status = get_btm_client_interface().sco.BTM_CreateSco(
           &client_cb->peer_addr, is_orig, params.packet_types, &client_cb->sco_idx,
@@ -549,6 +635,19 @@ void bta_hf_client_sco_shutdown(tBTA_HF_CLIENT_CB* client_cb) {
 }
 
 /*******************************************************************************
+ *  Functions
+ ******************************************************************************/
+
+bool bta_get_ag_sco_connection_status() {
+   return bta_ag_is_ag_device_sco_connected();
+}
+
+bool bta_is_hf_client_device_sco_connected() {
+  log::verbose("hf_client device connection status is", mHfClientDeviceScoConnected);
+  return mHfClientDeviceScoConnected;
+}
+
+/*******************************************************************************
  *
  * Function         bta_hf_client_sco_conn_open
  *
@@ -578,6 +677,7 @@ void bta_hf_client_sco_conn_open(tBTA_HF_CLIENT_DATA* p_data) {
   } else {
     bta_hf_client_cback_sco(client_cb, BTA_HF_CLIENT_AUDIO_OPEN_EVT);
   }
+  mHfClientDeviceScoConnected = true;
 }
 
 /*******************************************************************************
@@ -607,6 +707,8 @@ void bta_hf_client_sco_conn_close(tBTA_HF_CLIENT_DATA* p_data) {
   bta_sys_sco_close(BTA_ID_HS, 1, client_cb->peer_addr);
 
   bta_sys_sco_unuse(BTA_ID_HS, 1, client_cb->peer_addr);
+
+   mHfClientDeviceScoConnected = false;
 
   /* call app callback */
   bta_hf_client_cback_sco(client_cb, BTA_HF_CLIENT_AUDIO_CLOSE_EVT);

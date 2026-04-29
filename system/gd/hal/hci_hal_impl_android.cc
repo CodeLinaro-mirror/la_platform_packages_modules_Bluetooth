@@ -87,27 +87,43 @@ public:
       return;
     }
     std::chrono::milliseconds start_timeout;
+    uint32_t hw_timeout_multiplier = os::GetSystemPropertyUint32("ro.hw_timeout_multiplier", 1);
     if (android::sysprop::bluetooth::Hardware::degraded_performance_mode() ||
-        os::GetSystemPropertyUint32("ro.hw_timeout_multiplier", 1) != 1) {
+        hw_timeout_multiplier != 1) {
       log::warn("Running in degraded performance mode due to slow hardware");
-      start_timeout = std::chrono::milliseconds(8000);
+      start_timeout = std::chrono::milliseconds(8000) * hw_timeout_multiplier;
     } else if (bluetooth::os::GetSystemPropertyUint32("ro.build.version.sdk", 99) < 37) {
       start_timeout = std::chrono::milliseconds(
-              os::GetSystemPropertyUint32("bluetooth.gd.start_timeout", 3000));
+              os::GetSystemPropertyUint32("bluetooth.gd.start_timeout", 8000));
     } else {
-      start_timeout = std::chrono::milliseconds(3000);
+      start_timeout = std::chrono::milliseconds(8000);
     }
 
     auto init_status = init_promise_.get_future().wait_for(start_timeout);
-    log::assert_that(init_status == std::future_status::ready, "Can't start HAL");
+    if (init_status != std::future_status::ready) {
+      log::warn("Can't start HAL, kill process");
+      kill(getpid(), SIGKILL);
+    }
   }
 
   void hciEventReceived(const std::vector<uint8_t>& packet) override {
     common::StopWatch stop_watch(common::StopWatch::hciHalRxBuffer_,
                                  GetTimerText(__func__, packet));
     link_clocker_.OnHciEvent(packet);
+
+    auto start_time = std::chrono::steady_clock::now();
     btsnoop_logger_->Capture(packet, SnoopLogger::Direction::INCOMING,
                              SnoopLogger::PacketType::EVT);
+    auto end_time = std::chrono::steady_clock::now();
+    auto snoop_duration =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    // TODO(b/493507987): Remove this log after debugging.
+    if (snoop_duration >= std::chrono::milliseconds(500)) {
+      log::error("Snoop logger capture took too long: {}ms for packet: {}", snoop_duration.count(),
+                 GetTimerText(__func__, packet));
+      common::StopWatch::DumpStopWatchLog();
+    }
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
       callback_->hciEventReceived(packet);

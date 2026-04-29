@@ -32,6 +32,7 @@
 #define MAX_UINT16 ((uint16_t)0xffff)
 
 using namespace testing;
+using stack::tGATT_REQ_CBACK;
 
 tGATT_CB gatt_cb;
 

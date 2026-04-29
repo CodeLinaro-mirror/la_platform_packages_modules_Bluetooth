@@ -22,6 +22,7 @@ import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
 import static android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+import static android.bluetooth.BluetoothProfile.STATE_CONNECTING;
 import static android.bluetooth.BluetoothProfile.STATE_DISCONNECTED;
 import static android.bluetooth.IBluetoothLeAudio.LE_AUDIO_GROUP_ID_INVALID;
 
@@ -1162,12 +1163,53 @@ public class LeAudioService extends ConnectableProfile {
         return getLeadDeviceForTheGroup(groupId);
     }
 
+    boolean isGroupConnectingOrConnected(int groupId) {
+        Log.d(TAG, "isGroupConnectingOrConnected: " + groupId);
+        mGroupReadLock.lock();
+        try {
+            LeAudioGroupDescriptor groupDescriptor = getGroupDescriptor(groupId);
+            if (groupDescriptor == null) {
+                Log.e(TAG, "Group " + groupId + " does not exist");
+                return false;
+            }
+
+            // If group is not connected, check if any device from the group is connecting or
+            // connected
+            for (Map.Entry<BluetoothDevice, LeAudioDeviceDescriptor> deviceEntry :
+                    mDeviceDescriptors.entrySet()) {
+                LeAudioDeviceDescriptor deviceDescriptor = deviceEntry.getValue();
+                if (deviceDescriptor.mGroupId != groupId) {
+                    continue;
+                }
+
+                if (deviceDescriptor.mStateMachine == null) {
+                    /* Lack of state machine means device is not connecting. */
+                    continue;
+                }
+
+                int connectionState = deviceDescriptor.mStateMachine.getConnectionState();
+                if (connectionState == STATE_CONNECTING || connectionState == STATE_CONNECTED) {
+                    Log.d(
+                            TAG,
+                            "isGroupConnectingOrConnected: group: "
+                                    + groupId
+                                    + " is connecting/connected. Device:"
+                                    + deviceEntry.getKey());
+                    return true;
+                }
+            }
+        } finally {
+            mGroupReadLock.unlock();
+        }
+        return false;
+    }
+
     List<BluetoothDevice> getDevicesMatchingConnectionStates(int[] states) {
         ArrayList<BluetoothDevice> devices = new ArrayList<>();
         if (states == null) {
             return devices;
         }
-        final BluetoothDevice[] bondedDevices = getAdapterService().getBondedDevices();
+        final var bondedDevices = getAdapterService().getBondedDevices();
         mGroupReadLock.lock();
         try {
             for (BluetoothDevice device : bondedDevices) {
@@ -1385,6 +1427,15 @@ public class LeAudioService extends ConnectableProfile {
     public void createBroadcast(BluetoothLeBroadcastSettings broadcastSettings) {
         if (mLeAudioBroadcasterNativeInterface.isEmpty()) {
             Log.w(TAG, "Native interface not available.");
+            return;
+        }
+
+        if (mInCall || !isBroadcastAllowedToActivateInCurrentMode()) {
+            Log.w(TAG, "Call is ongoing, skip broadcast creation.");
+            mHandler.post(
+                        () ->
+                            notifyBroadcastStartFailed(
+                                    BluetoothStatusCodes.ERROR_LOCAL_NOT_ENOUGH_RESOURCES));
             return;
         }
 
@@ -2588,7 +2639,8 @@ public class LeAudioService extends ConnectableProfile {
 
             for (AudioDeviceInfo deviceInfo : addedDevices) {
                 if ((deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_HEADSET)
-                        && (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_SPEAKER)) {
+                        && (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_SPEAKER)
+                        && (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_HEARING_AID)) {
                     continue;
                 }
 
@@ -2629,7 +2681,8 @@ public class LeAudioService extends ConnectableProfile {
                 }
 
                 if ((deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_HEADSET)
-                        && (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_SPEAKER)) {
+                        && (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_SPEAKER)
+                        && (deviceInfo.getType() != AudioDeviceInfo.TYPE_BLE_HEARING_AID)) {
                     continue;
                 }
 
@@ -5336,12 +5389,21 @@ public class LeAudioService extends ConnectableProfile {
                 return false;
             }
 
+            if (descriptor.mAutoActiveModeEnabled == enabled) {
+                // Nothing has changed.
+                return true;
+            }
+
+            boolean isGroupConnectingOrConnected = isGroupConnectingOrConnected(groupId);
+
             /* Disabling Auto Active Mode is allowed only when all the devices from the group
-             * are disconnected */
-            if (!enabled && descriptor.mIsConnected) {
+             * are disconnected or disconnecting */
+            if (!enabled && isGroupConnectingOrConnected) {
                 Log.i(
                         TAG,
-                        "setAutoActiveModeState: GroupId: " + groupId + " is already connected ");
+                        "setAutoActiveModeState: GroupId: "
+                                + groupId
+                                + " is already connected or connecting");
                 return false;
             }
 

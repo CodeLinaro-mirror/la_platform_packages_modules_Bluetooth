@@ -15,7 +15,6 @@
  */
 
 #include "hci/acl_manager/round_robin_scheduler.h"
-#include "main/shim/acl_interface.h"
 
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
@@ -181,11 +180,6 @@ void RoundRobinScheduler::buffer_packet(uint16_t acl_handle) {
   log::assert_that(packet != nullptr, "assert failed: packet != nullptr");
 
   ConnectionType connection_type = acl_queue_handler->second.connection_type_;
-  uint16_t tx_data_len = shim::GetAclInterface().link.le.read_tx_data_length(acl_handle);
-  bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
-  if (hdt_enabled && controller_.SupportsBleHDTPhy() && tx_data_len > le_hci_mtu_){
-    le_hci_mtu_ = tx_data_len;
-  }
   size_t mtu = connection_type == ConnectionType::CLASSIC ? hci_mtu_ : le_hci_mtu_;
   PacketBoundaryFlag packet_boundary_flag =
           (packet->IsFlushable()) ? PacketBoundaryFlag::FIRST_AUTOMATICALLY_FLUSHABLE

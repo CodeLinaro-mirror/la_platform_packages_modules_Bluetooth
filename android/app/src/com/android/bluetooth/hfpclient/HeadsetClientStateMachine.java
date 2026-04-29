@@ -62,6 +62,8 @@ import android.os.SystemProperties;
 import android.util.Log;
 import android.util.Pair;
 
+import com.android.bluetooth.agClient.BluetoothAgClientService;
+
 import com.android.bluetooth.BluetoothStatsLog;
 import com.android.bluetooth.R;
 import com.android.bluetooth.Util;
@@ -1175,15 +1177,20 @@ public class HeadsetClientStateMachine extends StateMachine {
                                 StackEvent.EVENT_TYPE_ROAMING_STATE,
                                 StackEvent.EVENT_TYPE_NETWORK_SIGNAL,
                                 StackEvent.EVENT_TYPE_BATTERY_LEVEL,
-                                StackEvent.EVENT_TYPE_CALL,
-                                StackEvent.EVENT_TYPE_CALLSETUP,
-                                StackEvent.EVENT_TYPE_CALLHELD,
                                 StackEvent.EVENT_TYPE_RESP_AND_HOLD,
                                 StackEvent.EVENT_TYPE_CLIP,
                                 StackEvent.EVENT_TYPE_CALL_WAITING,
                                 StackEvent.EVENT_TYPE_VOLUME_CHANGED,
-                                StackEvent.EVENT_TYPE_IN_BAND_RINGTONE ->
+                                StackEvent.EVENT_TYPE_IN_BAND_RINGTONE -> {
                                 deferMessage(message);
+                        }
+                        case StackEvent.EVENT_TYPE_CALL,
+                                StackEvent.EVENT_TYPE_CALLSETUP,
+                                StackEvent.EVENT_TYPE_CALLHELD -> {
+                                debug("Connecting: event type: call states during slc ");
+                                mService.CallStatesDuringSlc(event.device, event.type, event.valueInt);
+                                deferMessage(message);
+                        }
                         case StackEvent.EVENT_TYPE_CMD_RESULT -> {
                             debug(
                                     "Connecting: CMD_RESULT valueInt:"
@@ -2185,6 +2192,10 @@ public class HeadsetClientStateMachine extends StateMachine {
 
     public List<HfpClientCall> getCurrentCalls() {
         return new ArrayList<>(mCalls.values());
+    }
+
+    public List<HfpClientCall> getCurrentHFCalls() {
+        return new ArrayList<HfpClientCall>(mCallsUpdate.values());
     }
 
     public Bundle getCurrentAgEvents() {

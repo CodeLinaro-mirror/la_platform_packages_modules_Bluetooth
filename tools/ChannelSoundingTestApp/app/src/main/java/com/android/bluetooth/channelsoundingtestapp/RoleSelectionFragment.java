@@ -24,6 +24,7 @@ import android.widget.Button;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
+import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
 
 /** Fragment to select the device role of channel sounding. */
@@ -49,18 +50,28 @@ public class RoleSelectionFragment extends Fragment {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        NavHostFragment.findNavController(RoleSelectionFragment.this)
-                                .navigate(R.id.action_RoleSelectionFragment_to_InitiatorFragment);
+                        navigateIfCurrentDestination(
+                                R.id.role_selection_fragment,
+                                R.id.action_RoleSelectionFragment_to_InitiatorFragment);
                     }
                 });
         mButtonReflector.setOnClickListener(
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        NavHostFragment.findNavController(RoleSelectionFragment.this)
-                                .navigate(R.id.action_RoleSelectionFragment_to_ReflectorFragment);
+                        navigateIfCurrentDestination(
+                                R.id.role_selection_fragment,
+                                R.id.action_RoleSelectionFragment_to_ReflectorFragment);
                     }
                 });
+    }
+
+    private void navigateIfCurrentDestination(int currentDestinationId, int actionId) {
+        NavController navController = NavHostFragment.findNavController(this);
+        if (navController.getCurrentDestination() != null
+                && navController.getCurrentDestination().getId() == currentDestinationId) {
+            navController.navigate(actionId);
+        }
     }
 
     @Override

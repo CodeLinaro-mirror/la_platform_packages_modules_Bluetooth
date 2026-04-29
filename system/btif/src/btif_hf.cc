@@ -76,6 +76,7 @@ namespace {
 constexpr char kBtmLogTag[] = "HFP";
 }
 
+extern bool is_hf_client_device_connected();
 namespace bluetooth::headset {
 
 /*******************************************************************************
@@ -105,6 +106,7 @@ static uint32_t btif_hf_features = get_hf_features();
 /* Max HF clients supported from App */
 static int btif_max_hf_clients = 1;
 static RawAddress active_bda = {};
+bool mAgDeviceConnected = false;
 
 /*******************************************************************************
  *  Static variables
@@ -344,6 +346,19 @@ static bool is_other_hfp_connection_active(int current_idx, const RawAddress& bd
   return false;
 }
 
+/**
+ * Check if any of the device has a connection
+ *
+ */
+bool IsAgDeviceConnected() {
+  log::info("AG device connection status is", mAgDeviceConnected);
+  return mAgDeviceConnected;
+}
+
+bool getHfClientConnectionStatus() {
+   return is_hf_client_device_connected();
+}
+
 /*******************************************************************************
  *
  * Function         btif_hf_upstreams_evt
@@ -561,6 +576,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
       btif_hf_cb[idx].state = BTHF_CONNECTION_STATE_SLC_CONNECTED;
       bt_hf_callbacks->ConnectionStateCallback(btif_hf_cb[idx].state, btif_hf_cb[idx].connected_bda,
                                                BTA_AG_SUCCESS);
+      mAgDeviceConnected = true;
       if (btif_hf_cb[idx].is_initiator) {
         btif_queue_advance();
       }
@@ -581,6 +597,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
       DEVICE_IOT_CONFIG_ADDR_INT_ADD_ONE(btif_hf_cb[idx].connected_bda,
                                          IOT_CONF_KEY_HFP_SCO_CONN_FAIL_COUNT);
 
+      mAgDeviceConnected = false;
       btif_hf_cb[idx].audio_state = BTHF_AUDIO_STATE_DISCONNECTED;
       bt_hf_callbacks->AudioStateCallback(BTHF_AUDIO_STATE_DISCONNECTED,
                                           btif_hf_cb[idx].connected_bda, p_data->hdr.reason);
@@ -867,7 +884,7 @@ static BtStatus connect_int(const RawAddress bd_addr, uint16_t /*uuid*/) {
     // control block should be in connecting state
     // Crash here to prevent future code changes from breaking this mechanism
     if (btif_hf_cb[i].state == BTHF_CONNECTION_STATE_CONNECTING) {
-      log::fatal("{}, handle {}, is still in connecting state {}", btif_hf_cb[i].connected_bda,
+      log::error("{}, handle {}, is still in connecting state {}", btif_hf_cb[i].connected_bda,
                  btif_hf_cb[i].handle, btif_hf_cb[i].state);
     }
   }

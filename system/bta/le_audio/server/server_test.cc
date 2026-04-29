@@ -25,7 +25,7 @@
 #include "bta/le_audio/test/mock_ase_manager.h"
 #include "bta/le_audio/test/mock_le_audio_server_config_manager.h"
 #include "bta/le_audio/test/mock_pacs.h"
-#include "bta_gatt_api_mock.h"
+#include "bta/mock/bta_gatt_api_mock.h"
 #include "bta_le_audio_api.h"
 #include "bta_le_audio_server_api.h"
 #include "hardware/bt_le_audio.h"
@@ -351,7 +351,6 @@ TEST_F(LeAudioServerTest, OnClientConnected_AsCentralFails) {
   EXPECT_CALL(*mock_ase_manager_, IsKnownPeerDevice(addr)).WillOnce(Return(true));
   ON_CALL(*mock_ascs_, GetConnectionId(addr)).WillByDefault(Return(1));
   EXPECT_CALL(mock_callbacks_, OnConnectionStateChanged(addr, _)).Times(0);
-  EXPECT_CALL(mock_gatt_server_if_, Close(1));
 
   ase_manager_callbacks_->OnClientConnected(addr);
 }

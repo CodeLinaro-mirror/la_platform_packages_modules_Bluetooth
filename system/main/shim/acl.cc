@@ -748,6 +748,13 @@ public:
     TRY_POSTING_ON_MAIN(interface_.on_data_length_change, handle_, max_tx_octets, max_tx_time,
                         max_rx_octets, max_rx_time, phys);
   }
+  void OnLeReadAllRemoteFeaturesComplete(hci::ErrorCode hci_status, uint8_t max_remote_page,
+                                        uint8_t max_valid_page,
+                                        std::array<uint8_t, 248> le_features) {
+    TRY_POSTING_ON_MAIN(interface_.on_le_read_all_remote_features_complete, handle_,
+                        ToLegacyHciErrorCode(hci_status), max_remote_page, max_valid_page,
+                        le_features);
+  }
   void OnLeSubrateChange(hci::ErrorCode hci_status, uint16_t subrate_factor,
                          uint16_t peripheral_latency, uint16_t continuation_number,
                          uint16_t supervision_timeout) {

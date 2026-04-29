@@ -497,6 +497,10 @@ void bta_ag_send_ring(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data);
 void bta_ag_handle_collision(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data);
 size_t bta_ag_sco_write(const uint8_t* p_buf, uint32_t len);
 size_t bta_ag_sco_read(uint8_t* p_buf, uint32_t len);
+bool bta_ag_is_ag_device_connected();
+bool bta_ag_is_ag_device_sco_connected();
+uint16_t fetch_remote_supported_codecs();
+
 
 /* Internal utility functions */
 void bta_ag_release_hfp_client_interface();

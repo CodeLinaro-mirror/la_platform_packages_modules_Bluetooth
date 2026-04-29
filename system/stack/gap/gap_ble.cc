@@ -31,7 +31,7 @@
 #include <array>
 #include <queue>
 
-#include "bta_gatt_api.h"
+#include "bta/include/bta_gatt_api.h"
 #include "btif/include/btif_config.h"
 #include "btif/include/btif_storage.h"
 #include "btm_dev.h"
@@ -58,6 +58,7 @@
 
 using bluetooth::Uuid;
 using namespace bluetooth;
+using stack::tGATT_REQ_CBACK;
 extern tBTM_CB btm_cb;
 
 void btm_ble_read_enc_key_cmpl(bool status, const RawAddress& bda, uint16_t length, char* p_data);

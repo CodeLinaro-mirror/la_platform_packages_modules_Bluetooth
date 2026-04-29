@@ -59,3 +59,6 @@ void btm_pm_on_sniff_subrating(tHCI_STATUS status, uint16_t handle,
                                uint16_t maximum_transmit_latency, uint16_t maximum_receive_latency,
                                uint16_t minimum_remote_timeout, uint16_t minimum_local_timeout);
 void btm_notify_ssr_trigger(void);
+void btm_ble_read_all_remote_features_complete(uint16_t handle, tHCI_STATUS hci_status,
+                                               uint8_t max_remote_page, uint8_t max_valid_page,
+                                               std::array<uint8_t, 248> le_features);

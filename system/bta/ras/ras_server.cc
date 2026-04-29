@@ -51,6 +51,7 @@ using namespace bluetooth;
 using namespace ::ras;
 using namespace ::ras::uuid;
 using bluetooth::ras::VendorSpecificCharacteristic;
+using bluetooth::stack::tGATT_REQ_CBACK;
 
 namespace {
 
@@ -99,24 +100,15 @@ public:
     do_in_main_thread(base::BindOnce(&RasServerImpl::do_initialize, base::Unretained(this)));
   }
 
-  static void OnGattRegisterStatic(tGATT_STATUS status, tGATT_IF server_if,
-                                   const bluetooth::Uuid& /*uuid*/) {
+  static void OnGattConnStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
+                               tCONN_ID conn_id, bool connected, tGATT_DISCONN_REASON /*reason*/,
+                               tBT_TRANSPORT transport) {
     if (instance) {
-      instance->OnGattServerRegister(status, server_if);
-    }
-  }
-
-  static void OnGattConnectStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
-                                  tCONN_ID conn_id, tBT_TRANSPORT transport) {
-    if (instance) {
-      instance->OnGattConnect(remote_bda, conn_id, transport);
-    }
-  }
-
-  static void OnGattDisconnectStatic(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
-                                     tCONN_ID conn_id, tBT_TRANSPORT /*transport*/) {
-    if (instance) {
-      instance->OnGattDisconnect(remote_bda, conn_id);
+      if (connected) {
+        instance->OnGattConnect(remote_bda, conn_id, transport);
+      } else {
+        instance->OnGattDisconnect(remote_bda, conn_id);
+      }
     }
   }
 
@@ -172,18 +164,118 @@ public:
     app_uuid_ = uuid;
     log::info("Register server with uuid:{}", app_uuid_.ToString());
 
-    static const tBTA_GATTS_CBACK ras_ops = {
-            .p_reg_cb = OnGattRegisterStatic,
-            .p_connect_cb = OnGattConnectStatic,
-            .p_disconnect_cb = OnGattDisconnectStatic,
-            .p_read_characteristic_cb = OnGattReadCharacteristicStatic,
-            .p_read_descriptor_cb = OnGattReadDescriptorStatic,
-            .p_write_characteristic_cb = OnGattWriteCharacteristicStatic,
-            .p_write_descriptor_cb = OnGattWriteDescriptorStatic,
-            .p_mtu_changed_cb = OnGattMtuChangedStatic,
+    static bluetooth::stack::tGATT_REQ_CBACK ras_p_req_cb = {
+            .read_characteristic_cb = OnGattReadCharacteristicStatic,
+            .read_descriptor_cb = OnGattReadDescriptorStatic,
+            .write_characteristic_cb = OnGattWriteCharacteristicStatic,
+            .write_descriptor_cb = OnGattWriteDescriptorStatic,
+            .exec_write_cb = tGATT_REQ_CBACK::do_nothing,
+            .mtu_changed_cb = OnGattMtuChangedStatic,
+            .conf_cb = tGATT_REQ_CBACK::do_nothing,
     };
 
-    BTA_GATTS_AppRegister(app_uuid_, &ras_ops, false);
+    static const stack::tGATT_CBACK ras_ops = {
+            .p_conn_cb = OnGattConnStatic,
+            .p_req_cb = &ras_p_req_cb,
+    };
+
+    server_if_ = BTA_GATTS_AppRegister(app_uuid_, &ras_ops, false);
+    log::info("server_if: {}", server_if_);
+
+    if (server_if_ == stack::GATT_IF_INVALID) {
+      log::warn("Register Server fail");
+      return;
+    }
+
+    constexpr uint16_t key_mask = ((16 - 7) << 12);
+    std::vector<btgatt_db_element_t> service = {
+            // RAS service
+            btgatt_db_element_t{.uuid = kRangingService, .type = BTGATT_DB_PRIMARY_SERVICE},
+            // RAS Features
+            btgatt_db_element_t{.uuid = kRasFeaturesCharacteristic,
+                                .type = BTGATT_DB_CHARACTERISTIC,
+                                .properties = GATT_CHAR_PROP_BIT_READ,
+                                .permissions = GATT_PERM_READ_ENCRYPTED | key_mask},
+
+            // Real-time Ranging Data (Optional)
+            btgatt_db_element_t{
+                    .uuid = kRasRealTimeRangingDataCharacteristic,
+                    .type = BTGATT_DB_CHARACTERISTIC,
+                    .properties = GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE,
+                    .permissions = GATT_PERM_READ_ENCRYPTED | key_mask},
+            btgatt_db_element_t{.uuid = kClientCharacteristicConfiguration,
+                                .type = BTGATT_DB_DESCRIPTOR,
+                                .permissions = GATT_PERM_WRITE | GATT_PERM_READ | key_mask},
+
+            // On-demand Ranging Data
+            btgatt_db_element_t{
+                    .uuid = kRasOnDemandDataCharacteristic,
+                    .type = BTGATT_DB_CHARACTERISTIC,
+                    .properties = GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE,
+                    .permissions = GATT_PERM_READ_ENCRYPTED | key_mask},
+            btgatt_db_element_t{.uuid = kClientCharacteristicConfiguration,
+                                .type = BTGATT_DB_DESCRIPTOR,
+                                .permissions = GATT_PERM_WRITE | GATT_PERM_READ | key_mask},
+
+            // RAS Control Point (RAS-CP)
+            btgatt_db_element_t{
+                    .uuid = kRasControlPointCharacteristic,
+                    .type = BTGATT_DB_CHARACTERISTIC,
+                    .properties = GATT_CHAR_PROP_BIT_WRITE_NR | GATT_CHAR_PROP_BIT_INDICATE,
+                    .permissions = GATT_PERM_WRITE_ENCRYPTED | key_mask},
+            btgatt_db_element_t{.uuid = kClientCharacteristicConfiguration,
+                                .type = BTGATT_DB_DESCRIPTOR,
+                                .permissions = GATT_PERM_WRITE | GATT_PERM_READ | key_mask},
+
+            // Ranging Data Ready
+            btgatt_db_element_t{.uuid = kRasRangingDataReadyCharacteristic,
+                                .type = BTGATT_DB_CHARACTERISTIC,
+                                .properties = GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY |
+                                              GATT_CHAR_PROP_BIT_INDICATE,
+                                .permissions = GATT_PERM_READ_ENCRYPTED | key_mask},
+            btgatt_db_element_t{.uuid = kClientCharacteristicConfiguration,
+                                .type = BTGATT_DB_DESCRIPTOR,
+                                .permissions = GATT_PERM_WRITE | GATT_PERM_READ | key_mask},
+
+            // Ranging Data Overwritten
+            btgatt_db_element_t{.uuid = kRasRangingDataOverWrittenCharacteristic,
+                                .type = BTGATT_DB_CHARACTERISTIC,
+                                .properties = GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY |
+                                              GATT_CHAR_PROP_BIT_INDICATE,
+                                .permissions = GATT_PERM_READ_ENCRYPTED | key_mask},
+            btgatt_db_element_t{.uuid = kClientCharacteristicConfiguration,
+                                .type = BTGATT_DB_DESCRIPTOR,
+                                .permissions = GATT_PERM_WRITE | GATT_PERM_READ | key_mask}};
+
+    for (auto& vsc : vendor_specific_characteristics_) {
+      service.push_back(btgatt_db_element_t{
+              .uuid = vsc.characteristicUuid_,
+              .type = BTGATT_DB_CHARACTERISTIC,
+              .properties = GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_WRITE,
+              .permissions = GATT_PERM_READ_ENCRYPTED | GATT_PERM_WRITE_ENCRYPTED | key_mask});
+      log::info("Push vendor_specific_characteristics uuid {}", vsc.characteristicUuid_);
+    }
+
+    auto status = BTA_GATTS_AddService(server_if_, &service);
+    log::info("status: {}, server_if: {}", gatt_status_text(status), server_if_);
+    RasCharacteristic* current_characteristic;
+    for (uint16_t i = 0; i < service.size(); i++) {
+      uint16_t attribute_handle = service[i].attribute_handle;
+      Uuid uuid = service[i].uuid;
+      if (service[i].type == BTGATT_DB_CHARACTERISTIC) {
+        log::info("Characteristic uuid: 0x{:04x}, handle:0x{:04x}, {}", uuid.As16Bit(),
+                  attribute_handle, getUuidName(uuid));
+        characteristics_[attribute_handle].attribute_handle_ = attribute_handle;
+        characteristics_[attribute_handle].uuid_ = uuid;
+        current_characteristic = &characteristics_[attribute_handle];
+      } else if (service[i].type == BTGATT_DB_DESCRIPTOR) {
+        log::info("\tDescriptor uuid: 0x{:04x}, handle: 0x{:04x}, {}", uuid.As16Bit(),
+                  attribute_handle, getUuidName(uuid));
+        if (service[i].uuid == kClientCharacteristicConfiguration) {
+          current_characteristic->attribute_handle_ccc_ = attribute_handle;
+        }
+      }
+    }
   }
 
   void RegisterCallbacks(bluetooth::ras::RasServerCallbacks* callbacks) { callbacks_ = callbacks; }
@@ -325,103 +417,6 @@ public:
     btm_random_pseudo_to_identity_addr(&ble_identity_bd_addr.bda, &ble_identity_bd_addr.type);
 
     callbacks_->OnRasServerDisconnected(ble_identity_bd_addr.bda);
-  }
-
-  void OnGattServerRegister(tGATT_STATUS status, tGATT_IF server_if) {
-    log::info("status: {}", gatt_status_text(status));
-
-    if (status != tGATT_STATUS::GATT_SUCCESS) {
-      log::warn("Register Server fail");
-      return;
-    }
-    server_if_ = server_if;
-
-    uint16_t key_mask = ((16 - 7) << 12);
-    std::vector<btgatt_db_element_t> service;
-    // RAS service
-    btgatt_db_element_t ranging_service;
-    ranging_service.uuid = kRangingService;
-    ranging_service.type = BTGATT_DB_PRIMARY_SERVICE;
-    service.push_back(ranging_service);
-
-    // RAS Features
-    btgatt_db_element_t features_characteristic;
-    features_characteristic.uuid = kRasFeaturesCharacteristic;
-    features_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-    features_characteristic.properties = GATT_CHAR_PROP_BIT_READ;
-    features_characteristic.permissions = GATT_PERM_READ_ENCRYPTED | key_mask;
-    service.push_back(features_characteristic);
-
-    // Real-time Ranging Data (Optional)
-    btgatt_db_element_t real_time_ranging_data_characteristic;
-    real_time_ranging_data_characteristic.uuid = kRasRealTimeRangingDataCharacteristic;
-    real_time_ranging_data_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-    real_time_ranging_data_characteristic.properties =
-            GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE;
-    real_time_ranging_data_characteristic.permissions = GATT_PERM_READ_ENCRYPTED | key_mask;
-    service.push_back(real_time_ranging_data_characteristic);
-    btgatt_db_element_t ccc_descriptor;
-    ccc_descriptor.uuid = kClientCharacteristicConfiguration;
-    ccc_descriptor.type = BTGATT_DB_DESCRIPTOR;
-    ccc_descriptor.permissions = GATT_PERM_WRITE | GATT_PERM_READ | key_mask;
-    service.push_back(ccc_descriptor);
-
-    // On-demand Ranging Data
-    btgatt_db_element_t on_demand_ranging_data_characteristic;
-    on_demand_ranging_data_characteristic.uuid = kRasOnDemandDataCharacteristic;
-    on_demand_ranging_data_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-    on_demand_ranging_data_characteristic.properties =
-            GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE;
-    on_demand_ranging_data_characteristic.permissions = GATT_PERM_READ_ENCRYPTED | key_mask;
-    service.push_back(on_demand_ranging_data_characteristic);
-    service.push_back(ccc_descriptor);
-
-    // RAS Control Point (RAS-CP)
-    btgatt_db_element_t ras_control_point;
-    ras_control_point.uuid = kRasControlPointCharacteristic;
-    ras_control_point.type = BTGATT_DB_CHARACTERISTIC;
-    ras_control_point.properties = GATT_CHAR_PROP_BIT_WRITE_NR | GATT_CHAR_PROP_BIT_INDICATE;
-    ras_control_point.permissions = GATT_PERM_WRITE_ENCRYPTED | key_mask;
-    service.push_back(ras_control_point);
-    service.push_back(ccc_descriptor);
-
-    // Ranging Data Ready
-    btgatt_db_element_t ranging_data_ready_characteristic;
-    ranging_data_ready_characteristic.uuid = kRasRangingDataReadyCharacteristic;
-    ranging_data_ready_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-    ranging_data_ready_characteristic.properties =
-            GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE;
-    ranging_data_ready_characteristic.permissions = GATT_PERM_READ_ENCRYPTED | key_mask;
-    service.push_back(ranging_data_ready_characteristic);
-    service.push_back(ccc_descriptor);
-
-    // Ranging Data Overwritten
-    btgatt_db_element_t ranging_data_overwritten_characteristic;
-    ranging_data_overwritten_characteristic.uuid = kRasRangingDataOverWrittenCharacteristic;
-    ranging_data_overwritten_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-    ranging_data_overwritten_characteristic.properties =
-            GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_INDICATE;
-    ranging_data_overwritten_characteristic.permissions = GATT_PERM_READ_ENCRYPTED | key_mask;
-    service.push_back(ranging_data_overwritten_characteristic);
-    service.push_back(ccc_descriptor);
-
-    for (auto& vendor_specific_characteristics : vendor_specific_characteristics_) {
-      btgatt_db_element_t characteristics;
-      characteristics.uuid = vendor_specific_characteristics.characteristicUuid_;
-      characteristics.type = BTGATT_DB_CHARACTERISTIC;
-      characteristics.properties = GATT_CHAR_PROP_BIT_READ | GATT_CHAR_PROP_BIT_WRITE;
-      characteristics.permissions = GATT_PERM_READ_ENCRYPTED | GATT_PERM_WRITE_ENCRYPTED | key_mask;
-      service.push_back(characteristics);
-      log::info("Push vendor_specific_characteristics uuid {}", characteristics.uuid);
-    }
-
-    BTA_GATTS_AddService(server_if_, service,
-                         base::BindRepeating([](tGATT_STATUS status, int server_if,
-                                                std::vector<btgatt_db_element_t> service) {
-                           if (instance) {
-                             instance->OnServiceAdded(status, server_if, service);
-                           }
-                         }));
   }
 
   void OnReadCharacteristic(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
@@ -742,29 +737,6 @@ public:
             tracker->conn_id_, GetCharacteristic(kRasControlPointCharacteristic)->attribute_handle_,
             response, true);
     tracker->handling_control_point_command_ = false;
-  }
-
-  void OnServiceAdded(tGATT_STATUS status, int server_if,
-                      std::vector<btgatt_db_element_t> service) {
-    log::info("status: {}, server_if: {}", gatt_status_text(status), server_if);
-    RasCharacteristic* current_characteristic;
-    for (uint16_t i = 0; i < service.size(); i++) {
-      uint16_t attribute_handle = service[i].attribute_handle;
-      Uuid uuid = service[i].uuid;
-      if (service[i].type == BTGATT_DB_CHARACTERISTIC) {
-        log::info("Characteristic uuid: 0x{:04x}, handle:0x{:04x}, {}", uuid.As16Bit(),
-                  attribute_handle, getUuidName(uuid));
-        characteristics_[attribute_handle].attribute_handle_ = attribute_handle;
-        characteristics_[attribute_handle].uuid_ = uuid;
-        current_characteristic = &characteristics_[attribute_handle];
-      } else if (service[i].type == BTGATT_DB_DESCRIPTOR) {
-        log::info("\tDescriptor uuid: 0x{:04x}, handle: 0x{:04x}, {}", uuid.As16Bit(),
-                  attribute_handle, getUuidName(uuid));
-        if (service[i].uuid == kClientCharacteristicConfiguration) {
-          current_characteristic->attribute_handle_ccc_ = attribute_handle;
-        }
-      }
-    }
   }
 
   RasCharacteristic* GetCharacteristic(Uuid uuid) {

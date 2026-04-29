@@ -37,6 +37,7 @@ typedef void(tGATT_CMPL_CBACK)(tCONN_ID conn_id, tGATTC_OPTYPE op, tGATT_STATUS 
 typedef void(tGATT_CONN_CBACK)(tGATT_IF gatt_if, const RawAddress& bda, tCONN_ID conn_id,
                                bool connected, tGATT_DISCONN_REASON reason,
                                tBT_TRANSPORT transport);
+
 /* attribute request callback for ATT server */
 struct tGATT_REQ_CBACK {
   void (&read_characteristic_cb)(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda,
@@ -53,6 +54,10 @@ struct tGATT_REQ_CBACK {
                         tGATT_EXEC_FLAG exec_write);
   void (&mtu_changed_cb)(tCONN_ID conn_id, const RawAddress& remote_bda, uint16_t mtu);
   void (&conf_cb)(tCONN_ID conn_id, uint32_t trans_id, const RawAddress& remote_bda);
+
+  /* in case your server implementation needs to do nothing... */
+  template <typename... Args>
+  static void do_nothing(Args...) noexcept {}
 };
 /* channel congestion/uncongestion callback */
 typedef void(tGATT_CONGESTION_CBACK)(tCONN_ID conn_id, bool congested);
@@ -94,6 +99,8 @@ typedef struct {
   tGATT_OFFLOADED_SERVICE_CHG_CB* p_offloaded_service_chg_cb{nullptr};
 } tGATT_CBACK;
 
+inline constexpr tGATT_IF GATT_IF_INVALID = static_cast<tGATT_IF>(0);
+
 /*******************************************************************************
  *
  * Function         stack::appRegister
@@ -105,12 +112,12 @@ typedef struct {
  *                  p_cb_info: callback functions.
  *                  eatt_support: set support for eatt
  *
- * Returns          0 for error, otherwise the index of the client registered
+ * Returns          GATT_IF_INVALID for error, otherwise the index of the client registered
  *                  with GATT
  *
  ******************************************************************************/
 [[nodiscard]] tGATT_IF appRegister(const bluetooth::Uuid& p_app_uuid128, const std::string& name,
-                                   tGATT_CBACK* p_cb_info, bool eatt_support);
+                                   const tGATT_CBACK* p_cb_info, bool eatt_support);
 
 /*******************************************************************************
  *

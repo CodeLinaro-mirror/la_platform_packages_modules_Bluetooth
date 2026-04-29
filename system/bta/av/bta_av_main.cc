@@ -1320,6 +1320,8 @@ const char* bta_av_evt_code(uint16_t evt_code) {
       return "ROLE_CHANGE";
     case BTA_AV_AVDT_DELAY_RPT_EVT:
       return "AVDT_DELAY_RPT";
+    case BTA_AV_AVDT_DELAY_RPT_CFM_EVT:
+      return "AVDT_DELAY_RPT_CFM";
     case BTA_AV_ACP_CONNECT_EVT:
       return "ACP_CONNECT";
     case BTA_AV_API_OFFLOAD_START_EVT:
@@ -1355,6 +1357,8 @@ const char* bta_av_evt_code(uint16_t evt_code) {
       return "DEREG_COMP";
     case BTA_AV_AVDT_RPT_CONN_EVT:
       return "RPT_CONN";
+    case BTA_AV_API_PEER_SEP_EVT:
+      return "API_PEER_SEP";
     case BTA_AV_API_SET_LATENCY_EVT:
       return "API_SET_LATENCY";
     case BTA_AV_SET_CODEC_MODE_EVT:

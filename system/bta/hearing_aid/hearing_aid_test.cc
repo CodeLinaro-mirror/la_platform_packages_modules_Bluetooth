@@ -30,7 +30,8 @@
 #include <variant>
 
 #include "bta/le_audio/le_audio_types.h"
-#include "bta_gatt_api_mock.h"
+#include "bta/mock/bta_gatt_api_mock.h"
+#include "bta/mock/mock_bta_hearing_aid_audio_source.h"
 #include "bta_gatt_queue_mock.h"
 #include "bta_hearing_aid_api.h"
 #include "btif_status.h"
@@ -47,7 +48,6 @@
 #include "stack/mock/mock_stack_l2cap_interface.h"
 #include "stack/mock/mock_stack_security_client_interface.h"
 #include "test/common/mock_functions.h"
-#include "test/mock/mock_bta_hearing_aid_audio_source.h"
 #include "test/mock/mock_main_shim_entry.h"
 
 static std::map<const char*, bool> fake_osi_bool_props;
@@ -257,7 +257,7 @@ protected:
                       return nullptr;
                     }));
 
-    ON_CALL(gatt_interface, ServiceSearchRequest(_, _))
+    ON_CALL(gatt_interface, ServiceSearchRequest(_))
             .WillByDefault(WithArg<0>(
                     Invoke([&](uint16_t conn_id) { InjectSearchCompleteEvent(conn_id); })));
 

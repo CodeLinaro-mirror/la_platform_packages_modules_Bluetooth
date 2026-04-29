@@ -614,8 +614,7 @@ where they are handled will be finalized once event codes are finalized*/
 #define HCI_BLE_SCAN_REQ_RX_EVT 0x13
 #define HCI_BLE_CIS_EST_EVT 0x19
 #define HCI_BLE_CIS_EST_EVT_V2 0x2A
-#define HCI_BLE_CIS_EST_EVT_V3 0x2B // Need to change
-#define HCI_BLE_CIS_EST_EVT_V4 0xF5 // Need to change
+#define HCI_BLE_CIS_EST_EVT_V3 0xF5
 #define HCI_BLE_CIS_REQ_EVT 0x1a
 #define HCI_BLE_CREATE_BIG_CPL_EVT 0x1b
 #define HCI_BLE_TERM_BIG_CPL_EVT 0x1c
@@ -1077,7 +1076,7 @@ typedef struct {
 #define HCI_LE_2M_PHY_SUPPORTED(x) ((x)[1] & 0x01)
 #define HCI_LE_CODED_PHY_SUPPORTED(x) ((x)[1] & 0x08)
 /* TODO: Decide and change bit number for HDT support */
-#define HCI_LE_HDT_PHY_SUPPORTED(x) ((x)[1] & 0x01)
+#define HCI_LE_HDT_PHY_SUPPORTED(x) ((x)[247] & 0x01)
 #define HCI_LE_EXTENDED_ADVERTISING_SUPPORTED(x) ((x)[1] & 0x10)
 #define HCI_LE_PERIODIC_ADVERTISING_SUPPORTED(x) ((x)[1] & 0x20)
 #define HCI_LE_PERIODIC_ADVERTISING_SYNC_TRANSFER_SENDER(x) ((x)[3] & 0x01)

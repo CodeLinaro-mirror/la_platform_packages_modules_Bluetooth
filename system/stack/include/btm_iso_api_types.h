@@ -34,6 +34,7 @@ constexpr uint8_t kIsoCodingFormatVendorSpecific = 0xFF;
 namespace qcom {
 constexpr uint16_t kIsoCodingFormatAptxLe = 0x0001;
 constexpr uint16_t kIsoCodingFormatAptxLeX = 0x01AD;
+constexpr uint16_t kIsoCodingFormatAptxPlus = 0x05AD;
 }  // namespace qcom
 
 constexpr uint8_t kIsoCigPackingSequential = 0x00;

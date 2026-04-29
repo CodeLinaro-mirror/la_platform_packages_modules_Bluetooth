@@ -500,7 +500,6 @@ class GattServerManager(
     }
 
     fun registerServer(
-        uuid: UUID,
         callback: IBluetoothGattServerCallback,
         eattSupport: Boolean,
         transport: Int,
@@ -517,15 +516,12 @@ class GattServerManager(
             name = "$name[$tag]"
         }
 
+        val uuid = UUID.randomUUID()
         Log.d(TAG, "registerServer(): UUID=$uuid, name=$name, ${Transport(transport)}")
         val uid = if (Flags.gattThread()) source.uid else Binder.getCallingUid()
         val appName = adapterService.appNameOrUnknown(uid)
         serverMap.add(uid, appName, uuid, callback, transport, tag)
-        nativeInterface.gattServerRegisterApp(
-            uuid.leastSignificantBits,
-            uuid.mostSignificantBits,
-            eattSupport,
-        )
+        nativeInterface.gattServerRegisterApp(uuid, eattSupport)
     }
 
     fun unregisterServer(callback: IBluetoothGattServerCallback) {

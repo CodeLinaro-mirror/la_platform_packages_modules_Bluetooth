@@ -57,6 +57,16 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
 
     @RequiresPermission(BLUETOOTH_CONNECT)
     private HeadsetService getService(AttributionSource source) {
+        return getServiceInternal(source, false);
+    }
+
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    private HeadsetService getServiceAllowPcc(AttributionSource source) {
+        return getServiceInternal(source, true);
+    }
+
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    private HeadsetService getServiceInternal(AttributionSource source, boolean allowPccBypass) {
         if (source == null) {
             Log.w(TAG, "getService received a null source");
             return null;
@@ -69,7 +79,8 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
 
         if (!Util.checkProfileAvailable(service, TAG)
                 || !Util.checkCallerIsSystemOrActiveOrManagedUser(service, TAG)
-                || !Util.enforceConnectPermissionForDataDelivery(service, source, TAG)) {
+                || !Util.enforceConnectPermissionForDataDelivery(
+                        service, source, TAG, null, allowPccBypass)) {
             return null;
         }
         return service;
@@ -97,7 +108,7 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
 
     @Override
     public List<BluetoothDevice> getConnectedDevices(AttributionSource source) {
-        HeadsetService service = getService(source);
+        HeadsetService service = getServiceAllowPcc(source);
         if (service == null) {
             return Collections.emptyList();
         }
@@ -300,7 +311,7 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
     @Override
     public BluetoothDevice getActiveDevice(AttributionSource source) {
         MetricsLogger.getInstance().count(BluetoothProtoEnums.HFP_GET_ACTIVE_DEVICE_CALLED, 1);
-        HeadsetService service = getService(source);
+        HeadsetService service = getServiceAllowPcc(source);
         if (service == null) {
             return null;
         }

@@ -331,3 +331,8 @@ void bta_hf_client_svc_conn_open(tBTA_HF_CLIENT_DATA* p_data);
 /* Commands handling functions */
 void bta_hf_client_dial(tBTA_HF_CLIENT_DATA* p_data);
 void bta_hf_client_send_at_cmd(tBTA_HF_CLIENT_DATA* p_data);
+bool bta_is_hf_client_device_connected();
+bool bta_is_hf_client_device_sco_connected();
+void update_remote_codecs(uint16_t peer_codecs);
+uint16_t fetch_client_negotiated_codec();
+

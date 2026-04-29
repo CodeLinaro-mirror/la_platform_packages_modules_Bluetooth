@@ -52,9 +52,8 @@ class CommandCompleteView;
  * data.
  */
 using tBTM_CMPL_CB = void(bluetooth::hci::CommandCompleteView view);
-using tBTM_READ_RSSI_CB = void(tBTM_STATUS status, uint8_t rssi, RawAddress addr);
-using tBTM_READ_AUTOMATIC_FLUSH_TIMEOUT_CB = void(bluetooth::hci::CommandCompleteView view,
-                                                  RawAddress addr);
+using tBTM_READ_RSSI_CB = void(tBTM_STATUS status, int8_t rssi, RawAddress addr);
+using tBTM_READ_AUTOMATIC_FLUSH_TIMEOUT_CB = void(RawAddress addr);
 
 typedef void(tBTM_NOTIFY_SSR_CB)(void);
 

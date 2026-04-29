@@ -41,6 +41,9 @@ public:
   virtual void OnLeSubrateChange(hci::ErrorCode hci_status, uint16_t subrate_factor,
                                  uint16_t peripheral_latency, uint16_t continuation_number,
                                  uint16_t supervision_timeout) = 0;
+  virtual void OnLeReadAllRemoteFeaturesComplete(hci::ErrorCode hci_status, uint8_t max_remote_page,
+                                                 uint8_t max_valid_page,
+                                                 std::array<uint8_t, 248> le_features) = 0;
 };
 
 }  // namespace acl_manager

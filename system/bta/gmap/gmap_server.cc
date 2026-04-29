@@ -44,6 +44,8 @@ using bluetooth::Uuid;
 using namespace bluetooth;
 using bluetooth::le_audio::GmapCharacteristic;
 using bluetooth::le_audio::GmapServer;
+using namespace bluetooth::le_audio::uuid;
+using bluetooth::stack::tGATT_REQ_CBACK;
 
 bool GmapServer::is_offloader_support_gmap_ = false;
 uint16_t GmapServer::server_if_ = 0;
@@ -115,22 +117,61 @@ void GmapServer::Initialize(std::bitset<8> UGG_feature) {
             UGG_feature.to_string());
   characteristics_.clear();
 
-  static const tBTA_GATTS_CBACK gmap_ops = {
-          .p_reg_cb = GmapServer::OnGattServerRegister,
-          .p_dereg_cb = GmapServer::OnGattServerDeregister,
-          .p_connect_cb = GmapServer::OnGattConnect,
-          .p_disconnect_cb = GmapServer::OnGattDisconnect,
-          .p_read_characteristic_cb = GmapServer::OnReadCharacteristic,
+  static bluetooth::stack::tGATT_REQ_CBACK gmap_req_cb = {
+          .read_characteristic_cb = GmapServer::OnReadCharacteristic,
+          .read_descriptor_cb = tGATT_REQ_CBACK::do_nothing,
+          .write_characteristic_cb = tGATT_REQ_CBACK::do_nothing,
+          .write_descriptor_cb = tGATT_REQ_CBACK::do_nothing,
+          .exec_write_cb = tGATT_REQ_CBACK::do_nothing,
+          .mtu_changed_cb = tGATT_REQ_CBACK::do_nothing,
+          .conf_cb = tGATT_REQ_CBACK::do_nothing,
   };
 
-  BTA_GATTS_AppRegister(bluetooth::le_audio::uuid::kGamingAudioServiceUuid, &gmap_ops, false);
+  static const stack::tGATT_CBACK gmap_ops = {
+          .p_req_cb = &gmap_req_cb,
+  };
+
+  server_if_ = BTA_GATTS_AppRegister(kGamingAudioServiceUuid, &gmap_ops, false);
+  log::info("server_if: {}", server_if_);
+
+  if (server_if_ == stack::GATT_IF_INVALID) {
+    log::warn("Register Server fail");
+    return;
+  }
+
+  std::vector service = {
+          btgatt_db_element_t{.uuid = kGamingAudioServiceUuid, .type = BTGATT_DB_PRIMARY_SERVICE},
+          btgatt_db_element_t{
+                  .uuid = kRoleCharacteristicUuid,
+                  .type = BTGATT_DB_CHARACTERISTIC,
+                  .properties = GATT_CHAR_PROP_BIT_READ,
+                  .permissions = GATT_PERM_READ,
+          },
+          btgatt_db_element_t{
+                  .uuid = kUnicastGameGatewayCharacteristicUuid,
+                  .type = BTGATT_DB_CHARACTERISTIC,
+                  .properties = GATT_CHAR_PROP_BIT_READ,
+                  .permissions = GATT_PERM_READ,
+          }};
+  log::info("add service");
+  auto status = BTA_GATTS_AddService(server_if_, &service);
+  log::info("status: {}, server_if: {}", gatt_status_text(status), server_if_);
+  for (const auto& el : service) {
+    uint16_t attribute_handle = el.attribute_handle;
+    Uuid uuid = el.uuid;
+    if (el.type == BTGATT_DB_CHARACTERISTIC) {
+      log::info("Characteristic uuid: 0x{:04x}, handle:0x{:04x}", uuid.As16Bit(), attribute_handle);
+      GmapCharacteristic characteristic{.uuid_ = uuid, .attribute_handle_ = attribute_handle};
+      characteristics_[attribute_handle] = characteristic;
+    }
+  }
 }
 
 std::bitset<8> GmapServer::GetRole() { return GmapServer::role_; }
 
 uint16_t GmapServer::GetRoleHandle() {
-  for (auto &[attribute_handle, characteristic] : characteristics_) {
-    if (characteristic.uuid_ == bluetooth::le_audio::uuid::kRoleCharacteristicUuid) {
+  for (auto& [attribute_handle, characteristic] : characteristics_) {
+    if (characteristic.uuid_ == kRoleCharacteristicUuid) {
       return attribute_handle;
     }
   }
@@ -141,8 +182,8 @@ uint16_t GmapServer::GetRoleHandle() {
 std::bitset<8> GmapServer::GetUGGFeature() { return GmapServer::UGG_feature_; }
 
 uint16_t GmapServer::GetUGGFeatureHandle() {
-  for (auto &[attribute_handle, characteristic] : characteristics_) {
-    if (characteristic.uuid_ == bluetooth::le_audio::uuid::kUnicastGameGatewayCharacteristicUuid) {
+  for (auto& [attribute_handle, characteristic] : characteristics_) {
+    if (characteristic.uuid_ == kUnicastGameGatewayCharacteristicUuid) {
       return attribute_handle;
     }
   }
@@ -150,87 +191,8 @@ uint16_t GmapServer::GetUGGFeatureHandle() {
   return 0;
 }
 
-std::unordered_map<uint16_t, GmapCharacteristic> &GmapServer::GetCharacteristics() {
+std::unordered_map<uint16_t, GmapCharacteristic>& GmapServer::GetCharacteristics() {
   return GmapServer::characteristics_;
-}
-
-void GmapServer::OnGattConnect(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
-                               tCONN_ID conn_id, tBT_TRANSPORT transport) {
-  log::info("Address: {}, conn_id:{}", remote_bda, conn_id);
-  if (transport == BT_TRANSPORT_BR_EDR) {
-    log::warn("Skip BE/EDR connection");
-    return;
-  }
-}
-
-void GmapServer::OnGattDisconnect(tGATT_IF /*server_if*/, const RawAddress& remote_bda,
-                                  tCONN_ID conn_id, tBT_TRANSPORT /*transport*/) {
-  log::info("Address: {}, conn_id:{}", remote_bda, conn_id);
-}
-
-void GmapServer::OnGattServerDeregister(tGATT_STATUS status, tGATT_IF /*server_if*/) {
-  if (status != GATT_SUCCESS) {
-    log::warn("Deregister Server fail");
-    return;
-  }
-  BTA_GATTS_AppDeregister(server_if_);
-}
-
-void GmapServer::OnGattServerRegister(tGATT_STATUS status, tGATT_IF server_if,
-                                      const bluetooth::Uuid& /*uuid*/) {
-  log::info("status: {}", gatt_status_text(status));
-
-  if (status != tGATT_STATUS::GATT_SUCCESS) {
-    log::warn("Register Server fail");
-    return;
-  }
-  server_if_ = server_if;
-
-  std::vector<btgatt_db_element_t> service;
-
-  // GMAP service
-  btgatt_db_element_t gmap_service;
-  gmap_service.uuid = bluetooth::le_audio::uuid::kGamingAudioServiceUuid;
-  gmap_service.type = BTGATT_DB_PRIMARY_SERVICE;
-  service.push_back(gmap_service);
-
-  // GMAP role
-  btgatt_db_element_t role_characteristic;
-  role_characteristic.uuid = bluetooth::le_audio::uuid::kRoleCharacteristicUuid;
-  role_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-  role_characteristic.properties = GATT_CHAR_PROP_BIT_READ;
-  role_characteristic.permissions = GATT_PERM_READ;
-  service.push_back(role_characteristic);
-
-  // GMAP UGG feature
-  btgatt_db_element_t UGG_feature_characteristic;
-  UGG_feature_characteristic.uuid =
-          bluetooth::le_audio::uuid::kUnicastGameGatewayCharacteristicUuid;
-  UGG_feature_characteristic.type = BTGATT_DB_CHARACTERISTIC;
-  UGG_feature_characteristic.properties = GATT_CHAR_PROP_BIT_READ;
-  UGG_feature_characteristic.permissions = GATT_PERM_READ;
-  service.push_back(UGG_feature_characteristic);
-
-  log::info("add service");
-  BTA_GATTS_AddService(server_if_, service,
-                       base::BindOnce([](tGATT_STATUS status, int server_if,
-                                         std::vector<btgatt_db_element_t> service) {
-                         OnServiceAdded(status, server_if, service);
-                       }));
-}
-
-void GmapServer::OnServiceAdded(tGATT_STATUS status, int server_if,
-                                std::vector<btgatt_db_element_t> services) {
-  log::info("status: {}, server_if: {}", gatt_status_text(status), server_if);
-  for (const auto &service : services) {
-    uint16_t attribute_handle = service.attribute_handle;
-    Uuid uuid = service.uuid;
-    if (service.type == BTGATT_DB_CHARACTERISTIC) {
-      log::info("Characteristic uuid: 0x{:04x}, handle:0x{:04x}", uuid.As16Bit(), attribute_handle);
-      GmapCharacteristic characteristic{.uuid_ = uuid, .attribute_handle_ = attribute_handle};
-      characteristics_[attribute_handle] = characteristic;
-    }
-  }
 }
 
 void GmapServer::OnReadCharacteristic(tCONN_ID conn_id, uint32_t trans_id,
@@ -251,11 +213,11 @@ void GmapServer::OnReadCharacteristic(tCONN_ID conn_id, uint32_t trans_id,
 
   log::info("Read uuid, 0x{:04x}", uuid.As16Bit());
   // Check Characteristic UUID
-  if (bluetooth::le_audio::uuid::kRoleCharacteristicUuid == uuid) {
+  if (kRoleCharacteristicUuid == uuid) {
     p_msg->attr_value.len = GmapServer::kGmapRoleLen;
     auto role = GmapServer::GetRole();
     p_msg->attr_value.value[0] = static_cast<uint8_t>(role.to_ulong());
-  } else if (bluetooth::le_audio::uuid::kUnicastGameGatewayCharacteristicUuid == uuid) {
+  } else if (kUnicastGameGatewayCharacteristicUuid == uuid) {
     p_msg->attr_value.len = GmapServer::kGmapUGGFeatureLen;
     auto UGGFeature = GmapServer::GetUGGFeature();
     p_msg->attr_value.value[0] = static_cast<uint8_t>(UGGFeature.to_ulong());

@@ -29,8 +29,6 @@ import android.util.ArrayMap;
 import android.util.Log;
 import android.util.SparseArray;
 
-import com.android.bluetooth.flags.Flags;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.nio.ByteBuffer;
@@ -424,10 +422,6 @@ public final class ScanRecord {
      */
     @Nullable
     List<Integer> getManufacturerDataBlockStartIndices(int manufacturerId) {
-        if (!Flags.useFilterForEachManufacturerDataBlock()) {
-            return null;
-        }
-
         if (mManufacturerDataBlockStartIndices == null) {
             return null;
         }
@@ -689,21 +683,17 @@ public final class ScanRecord {
                             buffer.put(manufacturerDataBytes);
                             manufacturerData.put(manufacturerId, buffer.array());
 
-                            if (Flags.useFilterForEachManufacturerDataBlock()) {
-                                // Store the starting indices of each manufacturer data block.
-                                List<Integer> dataBlockStartIndices =
-                                        manufacturerDataBlockStartIndices.get(manufacturerId);
-                                dataBlockStartIndices.add(firstValue.length);
-                            }
+                            // Store the starting indices of each manufacturer data block.
+                            List<Integer> dataBlockStartIndices =
+                                    manufacturerDataBlockStartIndices.get(manufacturerId);
+                            dataBlockStartIndices.add(firstValue.length);
                         } else {
                             manufacturerData.put(manufacturerId, manufacturerDataBytes);
 
-                            if (Flags.useFilterForEachManufacturerDataBlock()) {
-                                List<Integer> dataBlockStartIndices = new ArrayList<>();
-                                dataBlockStartIndices.add(0);
-                                manufacturerDataBlockStartIndices.put(
-                                        manufacturerId, dataBlockStartIndices);
-                            }
+                            List<Integer> dataBlockStartIndices = new ArrayList<>();
+                            dataBlockStartIndices.add(0);
+                            manufacturerDataBlockStartIndices.put(
+                                    manufacturerId, dataBlockStartIndices);
                         }
                     }
                     case DATA_TYPE_TRANSPORT_DISCOVERY_DATA -> {

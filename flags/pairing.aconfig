@@ -24,7 +24,7 @@ flag {
 flag {
     name: "fix_ongoing_rnr_while_bonding"
     namespace: "bluetooth"
-    description: "Fix pairing failure when RNR onging"
+    description: "Fix pairing failure when RNR ongoing"
     bug: "430623282"
     metadata {
         purpose: PURPOSE_BUGFIX
@@ -227,6 +227,17 @@ flag {
     namespace: "bluetooth"
     description: "Remove bond without transitioning BondStateMachine to bonding state"
     bug: "489217572"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+
+flag {
+    name: "remove_bond_caller_info"
+    namespace: "bluetooth"
+    description: "Remove bond caller information when bonding is concluded"
+    bug: "492665910"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

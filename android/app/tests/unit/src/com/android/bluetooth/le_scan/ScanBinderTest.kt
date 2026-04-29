@@ -16,6 +16,7 @@
 
 package com.android.bluetooth.le_scan
 
+import android.Manifest.permission.ACCESS_FINE_LOCATION
 import android.Manifest.permission.BLUETOOTH_PRIVILEGED
 import android.app.PendingIntent
 import android.bluetooth.BluetoothStatusCodes
@@ -23,18 +24,30 @@ import android.bluetooth.State
 import android.bluetooth.le.IPeriodicAdvertisingCallback
 import android.bluetooth.le.IScannerCallback
 import android.bluetooth.le.ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED
+import android.bluetooth.le.ScanCallback.SCAN_FAILED_INTERNAL_ERROR
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.bluetooth.le.TransportBlockFilter
 import android.content.AttributionSource
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.WorkSource
+import android.permission.PermissionManager
+import android.permission.PermissionManager.PERMISSION_GRANTED
+import android.permission.PermissionManager.PERMISSION_SOFT_DENIED
+import android.platform.test.annotations.DisableFlags
+import android.platform.test.annotations.EnableFlags
+import android.platform.test.flag.junit.SetFlagsRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.bluetooth.btservice.AdapterService
+import com.android.bluetooth.flags.Flags
 import com.android.bluetooth.getTestDevice
+import com.android.bluetooth.mockGetSystemService
+import com.android.bluetooth.mockPackageManager
 import com.android.tests.bluetooth.MockitoRule
 import java.util.function.Supplier
 import org.junit.Assert.assertThrows
@@ -57,8 +70,11 @@ import org.mockito.kotlin.whenever
 @RunWith(AndroidJUnit4::class)
 class ScanBinderTest {
     @get:Rule val mockitoRule = MockitoRule()
+    @get:Rule val setFlagsRule = SetFlagsRule()
 
     @Mock private lateinit var source: AttributionSource
+    @Mock private lateinit var locationManager: LocationManager
+    @Mock private lateinit var permissionManager: PermissionManager
     @Mock private lateinit var adapterService: AdapterService
     @Mock private lateinit var scanController: ScanController
 
@@ -69,6 +85,18 @@ class ScanBinderTest {
 
     @Before
     fun setUp() {
+        adapterService.mockPackageManager(context.packageManager)
+        doReturn(adapterService)
+            .whenever(adapterService)
+            .createPackageContextAsUser(any(), any(), any())
+        doReturn(context.attributionSource).whenever(adapterService).attributionSource
+        doReturn(context.packageName).whenever(source).packageName
+        adapterService.mockGetSystemService(locationManager)
+        doReturn(true).whenever(locationManager).isLocationEnabledForUser(any())
+        adapterService.mockGetSystemService(permissionManager)
+        doReturn(PackageManager.PERMISSION_GRANTED)
+            .whenever(permissionManager)
+            .checkPermissionForDataDeliveryFromDataSource(eq(ACCESS_FINE_LOCATION), any(), any())
         doAnswer { invocation ->
                 (invocation.getArgument(0) as Runnable).run()
                 null
@@ -82,21 +110,18 @@ class ScanBinderTest {
             .whenever(scanController)
             .fetchOnScanThread<Any>(any(), any())
         doReturn(State.ON).whenever(adapterService).state
-        binder = ScanBinder(adapterService, scanController)
+        binder = ScanBinder(adapterService, scanController, testModeEnabled = false)
     }
 
     @Test
     fun registerAndStartScan() {
-        // Setup: Create mock objects for the call
         val callback = mock<IScannerCallback>()
         val settings = ScanSettings.Builder().build()
         val filters = listOf<ScanFilter>()
         val workSource = mock<WorkSource>()
 
-        // Action: Call the method to be tested
         binder.registerAndStartScan(callback, settings, filters, workSource, source)
 
-        // Verification: Ensure the call is forwarded to the scanController
         verify(scanController)
             .registerAndStartScan(callback, workSource, source, true, settings, filters)
         // The callback should not be invoked directly by the binder in the success path
@@ -104,21 +129,47 @@ class ScanBinderTest {
     }
 
     @Test
+    @DisableFlags(Flags.FLAG_EARLY_REJECT_UNAUTHORIZED_SCANS)
+    fun registerAndStartScan_doesNotFailEarly() {
+        doReturn(false).whenever(locationManager).isLocationEnabledForUser(any())
+        val callback = mock<IScannerCallback>()
+        val settings = ScanSettings.Builder().build()
+        val filters = listOf<ScanFilter>()
+        val workSource = mock<WorkSource>()
+        binder.registerAndStartScan(callback, settings, filters, workSource, source)
+
+        verify(scanController)
+            .registerAndStartScan(callback, workSource, source, true, settings, filters)
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_EARLY_REJECT_UNAUTHORIZED_SCANS)
+    fun registerAndStartScan_withoutLocationPermission_failsEarly() {
+        doReturn(false).whenever(locationManager).isLocationEnabledForUser(any())
+        val callback = mock<IScannerCallback>()
+        val settings = ScanSettings.Builder().build()
+        val filters = listOf<ScanFilter>()
+        val workSource = mock<WorkSource>()
+        binder.registerAndStartScan(callback, settings, filters, workSource, source)
+
+        // Ensure we fast-fail and invoke the callback without calling registerAndStartScan
+        verify(callback).onScannerRegistered(SCAN_FAILED_APPLICATION_REGISTRATION_FAILED, -1)
+        verify(scanController, never())
+            .registerAndStartScan(any(), any(), any(), any(), any(), any())
+    }
+
+    @Test
     fun registerAndStartScan_afterCleanup_callsOnScannerRegisteredFailed() {
-        // Setup: Create mock objects and put the binder in a cleaned-up state
         val callback = mock<IScannerCallback>()
         val settings = ScanSettings.Builder().build()
         val filters = listOf<ScanFilter>()
         val workSource: WorkSource? = null
         binder.cleanup()
 
-        // Action: Call the method to be tested
         binder.registerAndStartScan(callback, settings, filters, workSource, source)
 
-        // Verification: Ensure the scanController is not called
         verify(scanController, never())
             .registerAndStartScan(any(), any(), any(), eq(true), any(), any())
-        // Verification: Ensure the failure callback is invoked with the correct error code
         verify(callback).onScannerRegistered(SCAN_FAILED_APPLICATION_REGISTRATION_FAILED, -1)
     }
 
@@ -155,6 +206,9 @@ class ScanBinderTest {
     @Test
     fun registerAndStartScan_whenAdapterIsBleOn_enforcesPrivilegedPermission() {
         doReturn(State.BLE_ON).whenever(adapterService).state
+        doReturn(PERMISSION_GRANTED)
+            .whenever(adapterService)
+            .checkCallingOrSelfPermission(BLUETOOTH_PRIVILEGED)
         val callback = mock<IScannerCallback>()
         val settings = ScanSettings.Builder().build()
         val filters = listOf<ScanFilter>()
@@ -164,6 +218,25 @@ class ScanBinderTest {
         verify(adapterService).enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null)
         verify(scanController)
             .registerAndStartScan(callback, workSource, source, true, settings, filters)
+    }
+
+    @Test
+    fun registerAndStartScan_whenAdapterIsBleOn_failsWithoutPrivilegedPermission() {
+        doReturn(State.BLE_ON).whenever(adapterService).state
+        doReturn(PERMISSION_SOFT_DENIED)
+            .whenever(adapterService)
+            .checkCallingOrSelfPermission(BLUETOOTH_PRIVILEGED)
+        val callback = mock<IScannerCallback>()
+        val settings = ScanSettings.Builder().build()
+        val filters = listOf<ScanFilter>()
+        val workSource: WorkSource? = null
+
+        binder.registerAndStartScan(callback, settings, filters, workSource, source)
+        verify(callback).onScannerRegistered(SCAN_FAILED_INTERNAL_ERROR, -1)
+        verify(adapterService, never())
+            .enforceCallingOrSelfPermission(eq(BLUETOOTH_PRIVILEGED), any())
+        verify(scanController, never())
+            .registerAndStartScan(any(), any(), any(), any(), any(), any())
     }
 
     @Test

@@ -31,6 +31,7 @@ import android.text.TextUtils
 import android.util.Log
 import com.android.bluetooth.btservice.AdapterService
 import com.android.bluetooth.le_audio.ContentControlIdKeeper
+import com.android.bluetooth.le_audio.LeAudioService
 import com.android.bluetooth.profile.ProfileService
 import com.android.internal.annotations.VisibleForTesting
 import java.util.Objects
@@ -182,6 +183,22 @@ constructor(
      */
     fun onStartVaSession(device: BluetoothDevice) {
         Log.d(TAG, "start VA session by remote Headset:$device")
+
+        // Ensure the remote device is the active LE Audio device before activating VA
+        val leAudioService: LeAudioService? = adapterService.getLeAudioService().orElse(null)
+        if (leAudioService != null) {
+            val activeDevices: List<BluetoothDevice?> = leAudioService.getActiveDevices()
+            val isActive = activeDevices.contains(device)
+            if (!isActive) {
+                Log.d(TAG, "Device $device is not the active LE Audio device, setting it active")
+                leAudioService.setActiveDevice(device)
+            } else {
+                Log.d(TAG, "Device $device is already the active LE Audio device")
+            }
+        } else {
+            Log.w(TAG, "LeAudioService not available, skipping active device check for $device")
+        }
+
         if (!activateVoiceRecognition(device)) {
             Log.w(TAG, "start VA session by remote Headset: failed request from $device")
         }

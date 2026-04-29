@@ -59,7 +59,6 @@ struct l2c_ble_link_adjust_allocation l2c_ble_link_adjust_allocation;
 struct l2cble_process_rc_param_request_evt l2cble_process_rc_param_request_evt;
 struct l2cble_update_data_length l2cble_update_data_length;
 struct l2cble_process_data_length_change_event l2cble_process_data_length_change_event;
-struct l2cble_read_tx_data_length l2cble_read_tx_data_length;
 struct l2cble_credit_based_conn_req l2cble_credit_based_conn_req;
 struct l2cble_credit_based_conn_res l2cble_credit_based_conn_res;
 struct l2cble_send_flow_control_credit l2cble_send_flow_control_credit;
@@ -167,10 +166,6 @@ void l2cble_process_data_length_change_event(uint16_t handle, uint16_t tx_data_l
   inc_func_call_count(__func__);
   test::mock::stack_l2cap_ble::l2cble_process_data_length_change_event(handle, tx_data_len,
                                                                        rx_data_len);
-}
-uint16_t l2cble_read_tx_data_length(uint16_t handle) {
-  inc_func_call_count(__func__);
-  return test::mock::stack_l2cap_ble::l2cble_read_tx_data_length(handle);
 }
 void l2cble_credit_based_conn_req(tL2C_CCB* p_ccb) {
   inc_func_call_count(__func__);

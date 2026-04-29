@@ -107,7 +107,7 @@ public final class BluetoothDatabaseU2VMigration {
             return;
         }
 
-        MetadataDatabase database = MetadataDatabase.createDatabaseWithoutMigration(ctx);
+        MetadataDatabase database = MetadataDatabase.createDatabase(ctx);
         if (database == null) {
             Log.d(TAG, "doU2VMigration: failed to open roomdatabase");
             return;
@@ -263,6 +263,7 @@ public final class BluetoothDatabaseU2VMigration {
         metadata.a2dpOptionalCodecsEnabled = value.get();
     }
 
+    @SuppressWarnings("unused")
     private static void migrate_connectionPolicy(Cursor cursor,
             Metadata metadata) {
         final List<Integer> allowedValue =  new ArrayList<>(Arrays.asList(
@@ -272,18 +273,19 @@ public final class BluetoothDatabaseU2VMigration {
         for (Pair<Integer, String> p : CONNECTION_POLICIES) {
             final Optional<Integer> policy = fetchInt(cursor, p.second);
             if (policy.isPresent() && allowedValue.contains(policy.get())) {
-                metadata.setProfileConnectionPolicy(p.first, policy.get());
+                // metadata.setProfileConnectionPolicy(p.first, policy.get());
             }
         }
     }
 
+    @SuppressWarnings("unused")
     private static void migrate_customizedMeta(Cursor cursor, Metadata metadata) {
         for (Pair<Integer, String> p : CUSTOMIZED_META_KEYS) {
             final int index = cursor.getColumnIndex(p.second);
             if (index >= 0) {
-                final byte[] blob = cursor.getBlob(index);
+                // final byte[] blob = cursor.getBlob(index);
                 // There is no specific pattern to check the custom meta data
-                metadata.setCustomizedMeta(p.first, blob);
+                // metadata.setCustomizedMeta(p.first, blob);
             }
         }
     }

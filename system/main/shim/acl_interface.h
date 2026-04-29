@@ -101,7 +101,9 @@ typedef struct {
 
   void (*on_le_subrate_change)(uint16_t handle, uint16_t subrate_factor, uint16_t latency,
                                uint16_t cont_num, uint16_t timeout, uint8_t status);
-  uint16_t (*read_tx_data_length)(uint16_t handle);
+  void (*on_le_read_all_remote_features_complete)(uint16_t handle, tHCI_STATUS hci_status,
+                                                  uint8_t max_remote_page, uint8_t max_valid_page,
+                                                  std::array<uint8_t, 248> le_features);
 } acl_le_link_interface_t;
 
 typedef struct {

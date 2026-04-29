@@ -34,6 +34,9 @@ import android.telecom.PhoneAccountHandle;
 import android.telecom.TelecomManager;
 import android.util.Log;
 
+import com.android.bluetooth.agClient.BluetoothAgClientService;
+import android.bluetooth.BluetoothProfile;
+
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -145,6 +148,12 @@ public class HfpClientConnectionService extends ConnectionService {
                 block.cleanup();
             }
         }
+        BluetoothAgClientService bluetoothAgClientService = 
+                                 BluetoothAgClientService.getBluetoothAgClientService();
+        if (bluetoothAgClientService != null) {
+            bluetoothAgClientService.UpdateProfileConnectionStatus(
+                                 device, BluetoothProfile.HEADSET_CLIENT, oldState, newState);
+        }
     }
 
     private void onCallChangedInternal(BluetoothDevice device, HfpClientCall call) {
@@ -166,6 +175,12 @@ public class HfpClientConnectionService extends ConnectionService {
             return;
         }
         block.onAudioStateChange(newState, oldState);
+        BluetoothAgClientService bluetoothAgClientService = 
+                               BluetoothAgClientService.getBluetoothAgClientService();
+        if (bluetoothAgClientService != null) {
+            bluetoothAgClientService.UpdateProfileAudioConnectionStatus(
+                              device, BluetoothProfile.HEADSET_CLIENT, oldState, newState);
+        }
     }
 
     // --------------------------------------------------------------------------------------------//

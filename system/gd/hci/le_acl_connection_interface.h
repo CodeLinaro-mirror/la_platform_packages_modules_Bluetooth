@@ -26,8 +26,9 @@ constexpr SubeventCode LeConnectionManagementEvents[] = {
         SubeventCode::CONNECTION_COMPLETE,        SubeventCode::ENHANCED_CONNECTION_COMPLETE,
         SubeventCode::CONNECTION_UPDATE_COMPLETE, SubeventCode::PHY_UPDATE_COMPLETE,
         SubeventCode::DATA_LENGTH_CHANGE,         SubeventCode::REMOTE_CONNECTION_PARAMETER_REQUEST,
-        SubeventCode::LE_SUBRATE_CHANGE,          SubeventCode::DATA_LENGTH_CHANGE_V2,
-        SubeventCode::LE_TEST_REPORT_HDT_LINK_QUALITY,
+        SubeventCode::LE_SUBRATE_CHANGE,
+        SubeventCode::LE_READ_ALL_REMOTE_FEATURES_COMPLETE,
+        SubeventCode::DATA_LENGTH_CHANGE_V2,      SubeventCode::LE_TEST_REPORT_HDT_LINK_QUALITY,
         // TODO implement callback for READ_REMOTE_FEATURES_COMPLETE
         // SubeventCode::READ_REMOTE_FEATURES_COMPLETE
 };

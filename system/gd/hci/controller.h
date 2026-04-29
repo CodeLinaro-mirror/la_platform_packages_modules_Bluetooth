@@ -30,7 +30,7 @@ public:
   static constexpr uint64_t kDefaultEventMask = 0x3dbfffffffffffff;
   static constexpr uint64_t kDefaultEventMaskPage2 = 0x0000000002000000;
   static constexpr uint64_t kHdtEventMaskPage2 = 0xc000000000000000;
-  static constexpr uint64_t kDefaultLeEventMask = 0x000000077f02fe7f;
+  static constexpr uint64_t kDefaultLeEventMask = 0x000004077f02fe7f;
   static constexpr uint64_t kLeCSEventMask = 0x0007f80000000000;
   static constexpr uint64_t kLeHDTEventMask = 0x4620000000000000;
 
@@ -219,6 +219,7 @@ public:
     uint16_t big_set_channel_map_classification_support_;
     uint16_t vendor_connection_handle_min_;
     uint16_t vendor_connection_handle_max_;
+    uint8_t connection_proximity_threshold_support_;
   };
 
   virtual uint32_t GetDabSupportedCodecs() const = 0;

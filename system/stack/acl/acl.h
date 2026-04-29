@@ -159,7 +159,7 @@ struct tACL_CONN {
 
   bool in_use{false};
 
-  BD_FEATURES peer_le_features;
+  BD_FEATURES peer_le_features = {0};
   bool peer_le_features_valid;
   BD_FEATURES peer_lmp_feature_pages[HCI_EXT_FEATURES_PAGE_MAX + 1];
   bool peer_lmp_feature_valid[HCI_EXT_FEATURES_PAGE_MAX + 1];

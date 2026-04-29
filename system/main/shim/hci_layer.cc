@@ -107,7 +107,7 @@ static bool register_subevent_code(bluetooth::hci::SubeventCode subevent_code) {
     case bluetooth::hci::SubeventCode::BIG_SYNC_LOST:
     case bluetooth::hci::SubeventCode::REQUEST_PEER_SCA_COMPLETE:
     case bluetooth::hci::SubeventCode::PATH_LOSS_THRESHOLD:
-    case bluetooth::hci::SubeventCode::LE_CIS_ESTABLISHED_V4:
+    case bluetooth::hci::SubeventCode::LE_CIS_ESTABLISHED_V3:
     case bluetooth::hci::SubeventCode::LE_CREATE_BIG_COMPLETE_V2:
       return true;
     default:

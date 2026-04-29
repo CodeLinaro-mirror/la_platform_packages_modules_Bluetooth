@@ -531,15 +531,10 @@ void check_return_status(bt_status_t status) {
 }
 
 static void adapter_state_changed(bt_state_t state) {
-  int V1 = 1000, V2 = 2;
-  bt_property_t property = {BT_PROPERTY_ADAPTER_DISCOVERABLE_TIMEOUT, 4, &V1};
-  bt_property_t property2 = {BT_PROPERTY_BDNAME, 6, (void*)"BT"};
   g_AdapterState = state;
 
   if (state == BT_STATE_ON) {
     sBtInterface->set_scan_mode(BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE);
-    status = (bt_status_t)sBtInterface->set_adapter_property(&property);
-    status = (bt_status_t)sBtInterface->set_adapter_property(&property2);
   }
 }
 

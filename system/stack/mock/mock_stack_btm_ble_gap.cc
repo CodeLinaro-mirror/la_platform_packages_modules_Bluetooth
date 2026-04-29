@@ -113,6 +113,11 @@ void btm_ble_process_adv_pkt_cont_for_inquiry(
 void btm_ble_read_remote_features_complete(uint8_t* /* p */, uint8_t /* length */) {
   inc_func_call_count(__func__);
 }
+void btm_ble_read_all_remote_features_complete(uint16_t /* handle */, tHCI_STATUS /* hci_status */,
+                                               uint8_t /* max_remote_page */, uint8_t /* max_valid_page */,
+                                               std::array<uint8_t, 248> /* le_features */) {
+  inc_func_call_count(__func__);
+}
 void btm_ble_stop_inquiry(void) { inc_func_call_count(__func__); }
 void btm_send_hci_set_scan_params(uint8_t /* scan_type */, uint16_t /* scan_int_1m */,
                                   uint16_t /* scan_win_1m */, uint16_t /* scan_int_coded */,

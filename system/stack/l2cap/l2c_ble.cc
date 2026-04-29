@@ -1275,11 +1275,6 @@ void l2cble_process_data_length_change_event(uint16_t handle, uint16_t tx_data_l
   /* ignore rx_data len for now */
 }
 
-uint16_t l2cble_read_tx_data_length(uint16_t handle) {
-  tL2C_LCB* p_lcb = l2cu_find_lcb_by_handle(handle);
-  return p_lcb->tx_data_len;
-}
-
 /*******************************************************************************
  *
  * Function         l2cble_credit_based_conn_req

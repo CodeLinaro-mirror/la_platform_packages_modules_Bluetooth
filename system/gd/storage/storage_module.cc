@@ -86,11 +86,13 @@ StorageModule::StorageModule(os::Handler* handler, std::string config_file_path,
       temp_devices_capacity_(temp_devices_capacity),
       is_restricted_mode_(is_restricted_mode),
       is_single_user_mode_(is_single_user_mode) {
-  log::assert_that(config_save_delay > kMinConfigSaveDelay,
-                   "Config save delay of {} ms is not enough, must be at least {} ms to avoid "
-                   "overwhelming the "
-                   "disk",
-                   config_save_delay_.count(), kMinConfigSaveDelay.count());
+
+  if (config_save_delay < kMinConfigSaveDelay) {
+    log::warn("Config save delay of {} ms is not enough, must be at least {} ms to avoid "
+              "overwhelming the "
+              "disk",
+              config_save_delay_.count(), kMinConfigSaveDelay.count());
+  }
 
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!is_config_checksum_pass(kConfigFileComparePass)) {
@@ -154,7 +156,7 @@ void StorageModule::SaveImmediately() {
     pimpl_->config_save_alarm_.Cancel();
     pimpl_->has_pending_config_save_ = false;
   }
-
+  auto start_time = std::chrono::steady_clock::now();
   if (!LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_)) {
     log::error("Unable to write config file to disk");
   }
@@ -163,6 +165,13 @@ void StorageModule::SaveImmediately() {
       bluetooth::os::ParameterProvider::IsCommonCriteriaMode()) {
     bluetooth::os::ParameterProvider::GetBtKeystoreInterface()->set_encrypt_key_or_remove_key(
             kConfigFilePrefix, kConfigFileHash);
+  }
+  auto end_time = std::chrono::steady_clock::now();
+  auto write_duration =
+          std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+  // TODO(b/493507987): Remove this log after debugging.
+  if (write_duration >= std::chrono::milliseconds(500)) {
+    log::error("Config write took too long: {}ms", write_duration.count());
   }
 }
 

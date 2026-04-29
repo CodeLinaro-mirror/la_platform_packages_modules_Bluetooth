@@ -218,6 +218,7 @@ public:
 private:
   virtual uint64_t GetLocalFeatures(uint8_t page_number) const;
   virtual uint64_t GetLocalLeFeatures() const;
+  bool GetLocalLeFeatureBit(uint16_t bit) const;
 
   struct impl;
   std::unique_ptr<impl> impl_;

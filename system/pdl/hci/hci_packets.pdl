@@ -432,6 +432,8 @@ enum OpCode : 16 {
   LE_SET_DATA_RELATED_ADDRESS_CHANGES = 0x207C,
   LE_SET_DEFAULT_SUBRATE = 0x207D,
   LE_SUBRATE_REQUEST = 0x207E,
+  LE_READ_ALL_LOCAL_SUPPORTED_FEATURES = 0x2087,
+  LE_READ_ALL_REMOTE_FEATURES = 0x2088,
   LE_CS_READ_LOCAL_SUPPORTED_CAPABILITIES = 0x2089,
   LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES = 0x208A,
   LE_CS_WRITE_CACHED_REMOTE_SUPPORTED_CAPABILITIES = 0x208B,
@@ -453,6 +455,7 @@ enum OpCode : 16 {
   LE_SET_DATA_LENGTH_V2 = 0xFBF4,
   LE_READ_SUGGESTED_DEFAULT_DATA_LENGTH_V2 = 0xFBF5,
   LE_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH_V2 = 0xFBF6,
+  LE_SET_CIG_PARAMETERS_V2 = 0xFBFE,
   // VENDOR_SPECIFIC
   // MSFT_OPCODE_xxxx below is needed for the tests.
   MSFT_OPCODE_INTEL = 0xFC1E,
@@ -468,6 +471,7 @@ enum OpCode : 16 {
   CONTROLLER_BQR = 0xFD5E,
   DYNAMIC_AUDIO_BUFFER = 0xFD5F,
   LE_SET_BIG_CHANNEL_MAP_CLASSIFICATION = 0xFD65,
+  LE_ADD_DEVICE_TO_FILTER_ACCEPT_LIST_WITH_PROXIMITY_THRESHOLD = 0xFD66,
   // MSFT_OPCODE_xxxx below are needed for the tests.
   MSFT_OPCODE_MEDIATEK = 0xFD30,
   MSFT_OPCODE_QUALCOMM = 0xFD70,
@@ -799,10 +803,13 @@ enum OpCodeIndex : 16 {
   SET_MIN_ENCRYPTION_KEY_SIZE = 457,
   LE_SET_DEFAULT_SUBRATE = 460,
   LE_SUBRATE_REQUEST = 461,
+  LE_READ_ALL_LOCAL_SUPPORTED_FEATURES = 472,
+  LE_READ_ALL_REMOTE_FEATURES = 473,
   LE_SET_RESOLVABLE_PRIVATE_ADDRESS_TIMEOUT_V2 = 482,
   LE_START_ENCRYPTION_V2 = 600,
   LE_READ_MAXIMUM_DATA_LENGTH_V2 = 617,
   LE_SET_DATA_LENGTH_V2 = 622,
+  LE_SET_CIG_PARAMETERS_V2 = 630,
   LE_SET_HDT_DEFAULT_PARAMETERS = 637,
   LE_READ_SUGGESTED_DEFAULT_DATA_LENGTH_V2 = 638,
   LE_WRITE_SUGGESTED_DEFAULT_DATA_LENGTH_V2 = 639,
@@ -936,6 +943,7 @@ enum SubeventCode : 8 {
   TRANSMIT_POWER_REPORTING = 0x21,
   BIG_INFO_ADVERTISING_REPORT = 0x22,
   LE_SUBRATE_CHANGE = 0x23,
+  LE_READ_ALL_REMOTE_FEATURES_COMPLETE = 0x2B,
   LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES_COMPLETE = 0x2C,
   LE_CS_READ_REMOTE_FAE_TABLE_COMPLETE = 0x2D,
   LE_CS_SECURITY_ENABLE_COMPLETE = 0x2E,
@@ -944,7 +952,7 @@ enum SubeventCode : 8 {
   LE_CS_SUBEVENT_RESULT = 0x31,
   LE_CS_SUBEVENT_RESULT_CONTINUE = 0x32,
   LE_CS_TEST_END_COMPLETE = 0x33,
-  LE_CIS_ESTABLISHED_V4 = 0xF5,
+  LE_CIS_ESTABLISHED_V3 = 0xF5,
   LE_CREATE_BIG_COMPLETE_V2 = 0xF9,
   DATA_LENGTH_CHANGE_V2 = 0xF8,
   LE_TEST_REPORT_HDT_LINK_QUALITY = 0xF3,
@@ -3956,7 +3964,7 @@ packet LeSetDefaultPhyComplete : CommandComplete (command_op_code = LE_SET_DEFAU
   status : ErrorCode,
 }
 
-enum PhyOptions : 8 {
+enum PhyOptions : 16 {
   NO_PREFERENCE = 0x00,
   S_2 = 0x01,
   S_8 = 0x02,
@@ -5013,6 +5021,24 @@ packet LeSubrateRequest : AclCommand (op_code = LE_SUBRATE_REQUEST) {
 packet LeSubrateRequestStatus : CommandStatus (command_op_code = LE_SUBRATE_REQUEST) {
 }
 
+packet LeReadAllLocalSupportedFeatures : Command (op_code = LE_READ_ALL_LOCAL_SUPPORTED_FEATURES) {  
+}
+
+packet LeReadAllLocalSupportedFeaturesComplete : CommandComplete (command_op_code = LE_READ_ALL_LOCAL_SUPPORTED_FEATURES) {
+  status : ErrorCode,
+  max_page : 8,
+  le_features : 8[248],
+}
+
+packet LeReadAllRemoteFeatures : Command (op_code = LE_READ_ALL_REMOTE_FEATURES) {
+  connection_handle : 12,
+  _reserved_ : 4,
+  pages_requested : 8,
+}
+
+packet LeReadAllRemoteFeaturesStatus : CommandStatus (command_op_code = LE_READ_ALL_REMOTE_FEATURES) {
+}
+
 packet LeCsReadLocalSupportedCapabilities : DistanceMeasurementCommand (op_code = LE_CS_READ_LOCAL_SUPPORTED_CAPABILITIES) {
 }
 
@@ -5475,6 +5501,7 @@ packet LeGetVendorCapabilitiesComplete106 : LeGetVendorCapabilitiesComplete105 {
   big_set_channel_map_classification_support : 16,
   vendor_connection_handle_min : 16,
   vendor_connection_handle_max : 16,
+  connection_proximity_threshold_support : 8,
   _payload_,
 }
 
@@ -6909,6 +6936,15 @@ packet LeSubrateChange : LeMetaEvent (subevent_code = LE_SUBRATE_CHANGE) {
   _reserved_ : 4,
 }
 
+packet LeReadAllRemoteFeaturesComplete : LeMetaEvent (subevent_code = LE_READ_ALL_REMOTE_FEATURES_COMPLETE) {
+  status : ErrorCode,
+  connection_handle : 12,
+  _reserved_ : 4,
+  max_remote_page : 8,
+  max_valid_page : 8,
+  le_features : 8[248],
+}
+
 packet LeCsReadRemoteSupportedCapabilitiesComplete : LeMetaEvent (subevent_code = LE_CS_READ_REMOTE_SUPPORTED_CAPABILITIES_COMPLETE) {
   status : ErrorCode,
   connection_handle : 12,
@@ -7675,10 +7711,20 @@ packet LeSetBigChannelMapClassificationComplete : CommandComplete(command_op_cod
   action: LeSetBigChannelMapClassificationAction,
   big_handle: 8,
 }
+packet LeAddDeviceToFilterAcceptListWithProximityThreshold : VendorCommand (op_code = LE_ADD_DEVICE_TO_FILTER_ACCEPT_LIST_WITH_PROXIMITY_THRESHOLD) {
+  address_type : FilterAcceptListAddressType,
+  address : Address,
+  connection_path_loss_threshold : 8,
+  connection_rssi_threshold : 8,
+}
+
+packet LeAddDeviceToFilterAcceptListWithProximityThresholdComplete : CommandComplete (command_op_code = LE_ADD_DEVICE_TO_FILTER_ACCEPT_LIST_WITH_PROXIMITY_THRESHOLD) {
+  status : ErrorCode,
+}
 
  // HDT Events
 
-packet LeCisEstablishedV4 : LeMetaEvent (subevent_code = LE_CIS_ESTABLISHED_V4) {
+packet LeCisEstablishedV3 : LeMetaEvent (subevent_code = LE_CIS_ESTABLISHED_V3) {
   status : ErrorCode,
   connection_handle : 12,
   _reserved_ : 4,

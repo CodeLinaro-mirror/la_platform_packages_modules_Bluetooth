@@ -1331,6 +1331,10 @@ static void GattReqConf_cb(tCONN_ID conn_id, uint32_t trans_id,
   printf("%s:: conn_id=%d, trans_id=%d\n", __FUNCTION__, conn_id, trans_id);
 }
 
+static void GattReqConfSendFail_cb(tCONN_ID conn_id, tGATT_STATUS status) {
+  printf("%s:: conn_id=%d, status=%d\n", __FUNCTION__, conn_id, status);
+}
+
 static bluetooth::stack::tGATT_REQ_CBACK sGattReqCB = {
     GattReqReadCharacteristic_cb,
     GattReqReadDescriptor_cb,
@@ -1338,7 +1342,8 @@ static bluetooth::stack::tGATT_REQ_CBACK sGattReqCB = {
     GattReqWriteDescriptor_cb,
     GattReqExecWrite_cb,
     GattReqMtuChanged_cb,
-    GattReqConf_cb
+    GattReqConf_cb,
+	GattReqConfSendFail_cb
 };
 
 static bluetooth::stack::tGATT_CBACK sGattCB = {
@@ -1863,7 +1868,7 @@ const t_cmd console_cmd_list[] = {
      ":: all_phys(hex), tx_phys(hex), rx_phys(hex)", 0},
     {"btsnd_hcic_refresh_enc_key_v2", do_send_refresh_enc_key_v2,
      ":: handle(hex), hdt_mic_length(hex)", 0},
-     {"btsnd_hcic_ble_set_data_length_v2", do_send_ble_set_data_length,
+     {"btsnd_hcic_ble_set_data_length_v2", do_send_ble_set_data_length_v2,
      ":: handle(hex) tx_pdu_length(hex) tx_time(hex) phys(hex)", 0},
      {"reset_rcv_iteration", reset_rcv_iteration,
      ":: ", 0},

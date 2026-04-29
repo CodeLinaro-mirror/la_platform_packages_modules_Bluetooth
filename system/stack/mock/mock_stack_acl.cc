@@ -67,6 +67,7 @@ struct acl_peer_supports_ble_connection_subrating_host
         acl_peer_supports_ble_connection_subrating_host;
 struct acl_refresh_remote_address acl_refresh_remote_address;
 struct acl_set_peer_le_features_from_handle acl_set_peer_le_features_from_handle;
+struct acl_set_all_peer_le_features_from_handle acl_set_all_peer_le_features_from_handle;
 struct btm_acl_for_bda btm_acl_for_bda;
 struct BTM_SetLinkSuperTout BTM_SetLinkSuperTout;
 struct btm_remove_acl btm_remove_acl;
@@ -194,6 +195,12 @@ bool acl_refresh_remote_address(const RawAddress& identity_address,
 bool acl_set_peer_le_features_from_handle(uint16_t hci_handle, const uint8_t* p) {
   inc_func_call_count(__func__);
   return test::mock::stack_acl::acl_set_peer_le_features_from_handle(hci_handle, p);
+}
+bool acl_set_all_peer_le_features_from_handle(uint16_t hci_handle,
+                                              const std::array<uint8_t, 248>& le_features) {
+  inc_func_call_count(__func__);
+  return test::mock::stack_acl::acl_set_all_peer_le_features_from_handle(hci_handle,
+                                                                         le_features);
 }
 void acl_send_data_packet_br_edr(const RawAddress& bd_addr, BT_HDR* p_buf) {
   inc_func_call_count(__func__);

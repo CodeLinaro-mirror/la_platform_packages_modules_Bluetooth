@@ -41,8 +41,12 @@
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/port_api.h"
 #include "stack/include/sdp_status.h"
+#include "bta/ag/bta_ag_int.h"
+
 
 using namespace bluetooth;
+bool mHfClientDeviceConnectionStatus = false;
+
 
 /*****************************************************************************
  *  Constants
@@ -408,6 +412,19 @@ void bta_hf_client_rfc_data(tBTA_HF_CLIENT_DATA* p_data) {
 }
 
 /*******************************************************************************
+  *  Functions
+ ******************************************************************************/
+ bool bta_is_hf_client_device_connected() {
+   log::verbose("hf_client device connection status is {}", mHfClientDeviceConnectionStatus);
+   return mHfClientDeviceConnectionStatus;
+ }
+ 
+ bool bta_get_ag_connection_status() {
+   return bta_ag_is_ag_device_connected();
+ }
+ 
+ /*******************************************************************************
+
  *
  * Function         bta_hf_client_svc_conn_open
  *
@@ -439,5 +456,6 @@ void bta_hf_client_svc_conn_open(tBTA_HF_CLIENT_DATA* p_data) {
     evt.conn.chld_feat = client_cb->chld_features;
 
     bta_hf_client_app_callback(BTA_HF_CLIENT_CONN_EVT, &evt);
+    mHfClientDeviceConnectionStatus = true;
   }
 }

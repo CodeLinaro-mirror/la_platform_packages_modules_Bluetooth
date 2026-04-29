@@ -19,7 +19,8 @@
 #include "stack/include/hcidefs.h"
 
 #define BD_FEATURES_LEN 8
-typedef uint8_t BD_FEATURES[BD_FEATURES_LEN]; /* LMP features supported by device */
+#define BD_ALL_FEATURES_LEN 248
+typedef uint8_t BD_FEATURES[BD_ALL_FEATURES_LEN]; /* LMP features supported by device */
 
 // Bit order [0]:0-7 [1]:8-15 ... [7]:56-63
 inline std::string bd_features_text(const BD_FEATURES& features) {

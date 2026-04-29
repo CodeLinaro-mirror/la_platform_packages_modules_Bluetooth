@@ -16,6 +16,7 @@
 
 #include "bta_ag_swb_aptx.h"
 
+#include <bluetooth/log.h>
 #include <android_bluetooth_sysprop.h>
 #include <bluetooth/log.h>
 #include <bluetooth/types/address.h>
@@ -34,10 +35,17 @@
 #include "hardware/bt_hf.h"
 #include "osi/include/alarm.h"
 #include "stack/include/btm_api_types.h"
+#include "osi/include/properties.h"
+
 
 using namespace bluetooth;
 
 bool is_hfp_aptx_voice_enabled() {
+  bool is_hf_client_enabled = osi_property_get_bool("bluetooth.profile.hfp.hf.enabled", false);
+  if (is_hf_client_enabled) {
+     log::error("hf client role is also enabled. Not enabling aptx voice");
+     return false;
+  }
   return android::sysprop::bluetooth::Hfp::codec_aptx_voice().value_or(false);
 }
 

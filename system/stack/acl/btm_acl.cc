@@ -58,7 +58,6 @@
 #include "os/parameter_provider.h"
 #include "osi/include/allocator.h"
 #include "osi/include/properties.h"
-#include "osi/include/stack_power_telemetry.h"
 #include "stack/acl/acl.h"
 #include "stack/acl/peer_packet_types.h"
 #include "stack/btm/btm_ble_int.h"
@@ -87,6 +86,8 @@
 #include "stack/include/l2cdefs.h"
 #include "stack/include/main_thread.h"
 #include "stack/l2cap/l2c_int.h"
+#include "hci/event_checkers.h"
+#include "hci/hci_interface.h"
 
 #ifndef PROPERTY_LINK_SUPERVISION_TIMEOUT
 #define PROPERTY_LINK_SUPERVISION_TIMEOUT "bluetooth.core.acl.link_supervision_timeout"
@@ -132,6 +133,7 @@ typedef struct {
 } __attribute__((packed)) acl_header_t;
 
 constexpr uint8_t BTM_MAX_SW_ROLE_FAILED_ATTEMPTS = 3;
+constexpr uint8_t LE_READ_REMOTE_FEATURES_MAX_PAGE = 10;
 
 /* Define masks for supported and exception 2.0 ACL packet types
  */
@@ -156,6 +158,7 @@ static void acl_write_automatic_flush_timeout(const RawAddress& bd_addr,
                                               uint16_t flush_timeout_in_ticks);
 static void btm_process_remote_ext_features(tACL_CONN* p_acl_cb, uint8_t max_page_number);
 static void btm_read_rssi_timeout(void* data);
+static void btm_set_link_policy(tACL_CONN* conn, const LinkPolicy& link_policy);
 static void btm_apply_link_policy(tACL_CONN* conn);
 static void sanitize_link_policy(LinkPolicy& link_policy);
 
@@ -187,6 +190,7 @@ void NotifyAclRoleSwitchComplete(const RawAddress& bda, tHCI_ROLE new_role,
 
 void NotifyAclFeaturesReadComplete(tACL_CONN& acl, uint8_t max_page_number) {
   btm_process_remote_ext_features(&acl, max_page_number);
+  btm_set_link_policy(&acl, kLinkPolicyDefault);
   int32_t flush_timeout = osi_property_get_int32(PROPERTY_AUTO_FLUSH_TIMEOUT, 0);
   if (bluetooth::shim::GetController()->SupportsNonFlushablePb() && flush_timeout != 0) {
     acl_write_automatic_flush_timeout(acl.link_spec.addrt.bda,
@@ -386,6 +390,9 @@ void btm_acl_created(const AclLinkSpec& link_spec, uint16_t hci_handle, tHCI_ROL
     p_acl->hci_handle = hci_handle;
     p_acl->link_role = link_role;
     p_acl->link_spec = link_spec;
+    if (link_spec.transport == BT_TRANSPORT_BR_EDR) {
+      btm_set_link_policy(p_acl, kLinkPolicyDefault);
+    }
     log::warn(
             "Unable to create duplicate acl when one already exists handle:{} "
             "role:{} link_spec:{}",
@@ -404,6 +411,7 @@ void btm_acl_created(const AclLinkSpec& link_spec, uint16_t hci_handle, tHCI_ROL
   p_acl->link_role = link_role;
   p_acl->link_up_issued = false;
   p_acl->link_spec = link_spec;
+  p_acl->link_policy = kLinkPolicyDefault;
   p_acl->sca = 0xFF;
   p_acl->switch_role_failed_attempts = 0;
   p_acl->switch_role_state_ = BtmAclSwitchKeyState::kIdle;
@@ -414,6 +422,7 @@ void btm_acl_created(const AclLinkSpec& link_spec, uint16_t hci_handle, tHCI_ROL
 
   if (p_acl->is_transport_br_edr()) {
     BTM_PM_OnConnected(hci_handle, link_spec.addrt.bda);
+    btm_set_link_policy(p_acl, kLinkPolicyDefault);
   }
 
   // save remote properties to iot conf file
@@ -425,7 +434,16 @@ void btm_acl_created(const AclLinkSpec& link_spec, uint16_t hci_handle, tHCI_ROL
 
     if (bluetooth::shim::GetController()->SupportsBlePeripheralInitiatedFeaturesExchange() ||
         link_role == HCI_ROLE_CENTRAL) {
-      btsnd_hcic_ble_read_remote_feat(p_acl->hci_handle);
+      if (bluetooth::shim::GetController()->IsSupported(
+                                            bluetooth::hci::OpCode::LE_READ_ALL_REMOTE_FEATURES)) {
+        bluetooth::shim::GetHciLayer()->EnqueueCommand(
+                bluetooth::hci::LeReadAllRemoteFeaturesBuilder::Create(p_acl->hci_handle,
+                                                       LE_READ_REMOTE_FEATURES_MAX_PAGE),
+                    get_main_thread()->BindOnce(
+                    bluetooth::hci::check_status<bluetooth::hci::LeReadAllRemoteFeaturesStatusView>));
+      } else {
+        btsnd_hcic_ble_read_remote_feat(p_acl->hci_handle);
+      }
     } else {
       internal_.btm_establish_continue(p_acl, locally_initiated);
     }
@@ -677,6 +695,11 @@ static void sanitize_link_policy(LinkPolicy& link_policy) {
   }
 }
 
+static void btm_set_link_policy(tACL_CONN* conn, const LinkPolicy& link_policy) {
+  conn->link_policy = link_policy;
+  btm_apply_link_policy(conn);
+}
+
 static void btm_apply_link_policy(tACL_CONN* conn) {
   sanitize_link_policy(conn->link_policy);
   if (conn->link_policy.role_switch &&
@@ -912,6 +935,7 @@ void StackAclBtmAcl::btm_establish_continue(tACL_CONN* p_acl, bool locally_initi
       log::error("Unable to change connection packet type types:{:04x} address:{}",
                  default_packet_type_mask, p_acl->RemoteAddress());
     }
+    btm_set_link_policy(p_acl, kLinkPolicyDefault);
   } else if (p_acl->is_transport_ble()) {
     btm_ble_connection_established(p_acl->link_spec.addrt.bda);
     locally_initiated = p_acl->link_role == HCI_ROLE_CENTRAL ? true : false;
@@ -1082,6 +1106,7 @@ bool BTM_IsPhy2mSupported(const RawAddress& remote_bda, tBT_TRANSPORT transport)
 
   if (!p->peer_le_features_valid) {
     log::warn("Checking remote features but remote feature read is incomplete");
+    return false;
   }
   return HCI_LE_2M_PHY_SUPPORTED(p->peer_le_features);
 }
@@ -1582,7 +1607,7 @@ void btm_read_rssi_complete(bluetooth::hci::CommandCompleteView view) {
     auto read_rssi_complete = bluetooth::hci::ReadRssiCompleteView::Create(view);
     RawAddress address = RawAddress::kEmpty;
     tBTM_STATUS status = tBTM_STATUS::BTM_SUCCESS;
-    uint8_t rssi = 0;
+    int8_t rssi = 0;
 
     if (read_rssi_complete.IsValid()) {
       if (read_rssi_complete.GetStatus() == bluetooth::hci::ErrorCode::SUCCESS) {
@@ -1591,7 +1616,7 @@ void btm_read_rssi_complete(bluetooth::hci::CommandCompleteView view) {
         if (p_acl_cb != nullptr) {
           address = p_acl_cb->link_spec.addrt.bda;
         }
-        rssi = read_rssi_complete.GetRssi();
+        rssi = static_cast<int8_t>(read_rssi_complete.GetRssi());
       } else {
         status = tBTM_STATUS::BTM_ERR_PROCESSING;
       }
@@ -1634,7 +1659,7 @@ void btm_read_automatic_flush_timeout_complete(bluetooth::hci::CommandCompleteVi
         }
       }
     }
-    (*p_cb)(view, address);
+    (*p_cb)(address);
   }
 }
 
@@ -1756,6 +1781,7 @@ bool acl_peer_supports_ble_connection_parameters_request(const RawAddress& remot
   }
   if (!p_acl->peer_le_features_valid) {
     log::warn("Checking remote features but remote feature read is incomplete");
+    return false;
   }
   return HCI_LE_CONN_PARAM_REQ_SUPPORTED(p_acl->peer_le_features);
 }
@@ -1788,6 +1814,7 @@ bool acl_peer_supports_ble_connection_subrating(const RawAddress& remote_bda) {
   }
   if (!p_acl->peer_le_features_valid) {
     log::warn("Checking remote features but remote feature read is incomplete");
+    return false;
   }
   return HCI_LE_CONN_SUBRATING_SUPPORT(p_acl->peer_le_features);
 }
@@ -1800,6 +1827,7 @@ bool acl_peer_supports_ble_connection_subrating_host(const RawAddress& remote_bd
   }
   if (!p_acl->peer_le_features_valid) {
     log::warn("Checking remote features but remote feature read is incomplete");
+    return false;
   }
   return HCI_LE_CONN_SUBRATING_HOST_SUPPORT(p_acl->peer_le_features);
 }
@@ -1916,6 +1944,7 @@ bool acl_peer_supports_ble_packet_extension(uint16_t hci_handle) {
   }
   if (!p_acl->peer_le_features_valid) {
     log::warn("Checking remote features but remote feature read is incomplete");
+    return false;
   }
   return HCI_LE_DATA_LEN_EXT_SUPPORTED(p_acl->peer_le_features);
 }
@@ -1927,6 +1956,7 @@ bool acl_peer_supports_ble_2m_phy(uint16_t hci_handle) {
   }
   if (!p_acl->peer_le_features_valid) {
     log::warn("Checking remote features but remote feature read is incomplete");
+    return false;
   }
   return HCI_LE_2M_PHY_SUPPORTED(p_acl->peer_le_features);
 }
@@ -1981,11 +2011,29 @@ bool acl_set_peer_le_features_from_handle(uint16_t hci_handle, const uint8_t* p)
   return true;
 }
 
+bool acl_set_all_peer_le_features_from_handle(uint16_t hci_handle, std::array<uint8_t, 248> le_features){
+  tACL_CONN* p_acl = internal_.acl_get_connection_from_handle(hci_handle);
+  if (p_acl == nullptr) {
+    return false;
+  }
+  for(int i=0; i<BD_ALL_FEATURES_LEN; i++){
+    p_acl->peer_le_features[i] = le_features[i];
+  }
+  p_acl->peer_le_features_valid = true;
+  log::debug("Completed le feature read request");
+
+  /* save LE remote supported features to iot conf file */
+  std::string key = IOT_CONF_KEY_RT_SUPP_FEATURES "_" + std::to_string(0);
+
+  DEVICE_IOT_CONFIG_ADDR_SET_BIN(p_acl->link_spec.addrt.bda, key, p_acl->peer_le_features,
+                                 BD_ALL_FEATURES_LEN);
+  return true;
+}
+
 void on_acl_br_edr_connected(const RawAddress& bda, uint16_t handle, uint8_t enc_mode,
                              bool locally_initiated, tHCI_ROLE role) {
   log::verbose("{}, handle:{}, role:{}, enc_mode:{}, locally_initiated:{}", bda, handle,
                hci_role_text(role), enc_mode, locally_initiated);
-  power_telemetry::GetInstance().LogLinkDetails(handle, bda, true, true);
 
   btm_sec_connected(bda, handle, HCI_SUCCESS, enc_mode, locally_initiated,
           locally_initiated ? HCI_ROLE_CENTRAL : HCI_ROLE_PERIPHERAL);
@@ -2024,7 +2072,7 @@ void btm_acl_disconnected(tHCI_STATUS status, uint16_t handle, tHCI_REASON reaso
   if (status != HCI_SUCCESS) {
     log::warn("Received disconnect with error:{}", hci_error_code_text(status));
   }
-  power_telemetry::GetInstance().LogLinkDetails(handle, RawAddress::kEmpty, false, true);
+
   /* There can be a case when we rejected PIN code authentication */
   /* otherwise save a new reason */
   if (btm_get_acl_disc_reason_code() != HCI_ERR_HOST_REJECT_SECURITY) {
@@ -2116,7 +2164,6 @@ void acl_send_data_packet_br_edr(const RawAddress& bd_addr, BT_HDR* p_buf) {
     osi_free(p_buf);
     return;
   }
-  power_telemetry::GetInstance().LogTxAclPktData(p_buf->len);
   return bluetooth::shim::ACL_WriteData(p_acl->hci_handle, p_buf);
 }
 
@@ -2127,7 +2174,6 @@ void acl_send_data_packet_ble(const RawAddress& bd_addr, BT_HDR* p_buf) {
     osi_free(p_buf);
     return;
   }
-  power_telemetry::GetInstance().LogTxAclPktData(p_buf->len);
   return bluetooth::shim::ACL_WriteData(p_acl->hci_handle, p_buf);
 }
 
@@ -2158,7 +2204,6 @@ void acl_rcv_acl_data(BT_HDR* p_msg) {
   STREAM_TO_UINT16(acl_header.handle, p);
   acl_header.handle = HCID_GET_HANDLE(acl_header.handle);
 
-  power_telemetry::GetInstance().LogRxAclPktData(p_msg->len);
   STREAM_TO_UINT16(acl_header.hci_len, p);
   if (acl_header.hci_len < L2CAP_PKT_OVERHEAD ||
       acl_header.hci_len != p_msg->len - sizeof(acl_header)) {

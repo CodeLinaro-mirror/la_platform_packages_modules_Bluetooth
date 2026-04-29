@@ -330,13 +330,7 @@ class GattServiceTest(flags: FlagsWrapper) {
         val transport = BluetoothDevice.TRANSPORT_LE
 
         service.registerClient(uuid, callback, eattSupport, transport, source)
-        verify(nativeInterface)
-            .gattClientRegisterApp(
-                uuid.leastSignificantBits,
-                uuid.mostSignificantBits,
-                context.packageName,
-                eattSupport,
-            )
+        verify(nativeInterface).gattClientRegisterApp(uuid, context.packageName, eattSupport)
     }
 
     @Test
@@ -351,8 +345,7 @@ class GattServiceTest(flags: FlagsWrapper) {
 
         service.registerClient(uuid, callback, eattSupport, transport, source)
         verify(clientMap, never()).add(any<Int>(), any(), any(), any(), any<Int>(), any<String>())
-        verify(nativeInterface, never())
-            .gattClientRegisterApp(any<Long>(), any<Long>(), any(), any<Boolean>())
+        verify(nativeInterface, never()).gattClientRegisterApp(any<UUID>(), any(), any<Boolean>())
     }
 
     @Test
@@ -647,9 +640,7 @@ class GattServiceTest(flags: FlagsWrapper) {
     fun clientGetDevicesMatchingConnectionStates() {
         val states = intArrayOf(BluetoothProfile.STATE_CONNECTED)
 
-        val testDevice = getTestDevice(90)
-        val bluetoothDevices = arrayOf<BluetoothDevice>(testDevice)
-        doReturn(bluetoothDevices).whenever(adapterService).bondedDevices
+        doReturn(setOf(getTestDevice(90))).whenever(adapterService).bondedDevices
 
         val connectedDevices = setOf(device)
         doReturn(connectedDevices).whenever(clientMap).getConnectedDevices()
@@ -828,8 +819,7 @@ class GattServiceTest(flags: FlagsWrapper) {
         verify(nativeInterface)
             .gattClientReadUsingCharacteristicUuid(
                 CLIENT_CONN_ID,
-                uuid.leastSignificantBits,
-                uuid.mostSignificantBits,
+                uuid,
                 startHandle,
                 endHandle,
                 authReq,

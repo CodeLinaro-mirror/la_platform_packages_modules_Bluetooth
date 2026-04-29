@@ -171,6 +171,12 @@
                 <action android:name="android.telecom.ConnectionService"/>
             </intent-filter>
         </service>
+        <service
+            android:name="com.android.bluetooth.agClient.BluetoothAgClientService"
+            android:process="@string/process"
+            android:enabled="true"
+            android:exported="true">
+        </service>
 
         <provider android:name="com.android.bluetooth.map.MmsFileProvider"
              android:authorities="com.android.bluetooth.map.MmsFileProvider"
@@ -307,6 +313,7 @@
         </receiver>
 
         <activity android:name="com.android.bluetooth.auracast.NfcAuracastActivity"
+                android:permission="android.permission.DISPATCH_NFC_MESSAGE"
                 android:theme="@android:style/Theme.NoDisplay"
                 android:exported="true"
                 android:excludeFromRecents="true"

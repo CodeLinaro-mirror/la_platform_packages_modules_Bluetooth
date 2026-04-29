@@ -239,14 +239,6 @@ struct l2cble_process_data_length_change_event {
   }
 };
 extern struct l2cble_process_data_length_change_event l2cble_process_data_length_change_event;
-//Name:l2cble_read_tx_data_length
-//Params: uint16_t handle
-//Returns: uint16_t
-struct l2cble_read_tx_data_length {
-  std::function<uint16_t(uint16_t handle)> body{[](uint16_t /* handle */) { return 0; }};
-  uint16_t operator()(uint16_t handle) { return body(handle); }
-};
-extern struct l2cble_read_tx_data_length l2cble_read_tx_data_length;
 // Name: l2cble_credit_based_conn_req
 // Params: tL2C_CCB* p_ccb
 // Returns: void

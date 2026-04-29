@@ -54,6 +54,10 @@ public:
               (hci::ErrorCode hci_status, uint16_t subrate_factor, uint16_t peripheral_latency,
                uint16_t continuation_number, uint16_t supervision_timeout),
               (override));
+  MOCK_METHOD(void, OnLeReadAllRemoteFeaturesComplete,
+              (hci::ErrorCode hci_status, uint8_t max_remote_page, uint8_t max_valid_page,
+               (std::array<uint8_t, 248>) le_features),
+              (override));
 };
 
 }  // namespace acl_manager

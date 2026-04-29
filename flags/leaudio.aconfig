@@ -119,7 +119,7 @@ flag {
 flag {
     name: "leaudio_fix_allocation_in_codec_config"
     namespace: "bluetooth"
-    description: "Fix not setting allocation LTV in CodecConfig for mono allication"
+    description: "Fix not setting allocation LTV in CodecConfig for mono allocation"
     bug: "454311602"
     metadata {
         purpose: PURPOSE_BUGFIX
@@ -445,6 +445,16 @@ flag {
     namespace: "bluetooth"
     description: "Extending Auracast credential sharing"
     bug: "490092067"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
+    name: "soft_leaudio_health_disable"
+    namespace: "bluetooth"
+    description: "Softly disable LE Audio upon health recommendation instead of setting policy to forbidden in storage"
+    bug: "494395176"
     metadata {
         purpose: PURPOSE_BUGFIX
     }

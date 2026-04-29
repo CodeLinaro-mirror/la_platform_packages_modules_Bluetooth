@@ -79,6 +79,13 @@ public:
     SAVE_OR_CALL(OnDataLengthChange, tx_octets, tx_time, rx_octets, rx_time, phys)
   }
 
+  void OnLeReadAllRemoteFeaturesComplete(hci::ErrorCode hci_status, uint8_t max_remote_page,
+                                        uint8_t max_valid_page,
+                                        std::array<uint8_t, 248> le_features) {
+    SAVE_OR_CALL(OnLeReadAllRemoteFeaturesComplete, hci_status, max_remote_page,
+                                                    max_valid_page, le_features);
+  }
+
   void OnReadRemoteVersionInformationComplete(hci::ErrorCode hci_status, uint8_t lmp_version,
                                               uint16_t manufacturer_name, uint16_t sub_version) {
     bluetooth::metrics::LogMetricRemoteVersionInfo(connection_handle_,

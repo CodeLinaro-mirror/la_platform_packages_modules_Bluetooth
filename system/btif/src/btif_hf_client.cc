@@ -63,6 +63,7 @@
 #include "btif_util.h"
 #include "osi/include/properties.h"
 #include "stack/include/bt_uuid16.h"
+#include "btif/include/btif_hf.h"
 
 /*******************************************************************************
  *  Constants & Macros
@@ -91,6 +92,8 @@ typedef struct {
 typedef struct {
   btif_hf_client_cb_t cb[HF_CLIENT_MAX_DEVICES];
 } btif_hf_client_cb_arr_t;
+
+bool mHfpClientDeviceConnected = false;
 
 /******************************************************************************
  * Local function declarations
@@ -188,6 +191,19 @@ static bool is_connected(const btif_hf_client_cb_t* cb) {
     return true;
   }
   return false;
+}
+
+
+/*******************************************************************************
+ *  Functions
+ ******************************************************************************/
+bool is_hf_client_device_connected() {
+  log::verbose("hf_client device connection status is", mHfpClientDeviceConnected);
+  return mHfpClientDeviceConnected;
+}
+
+bool getAgConnectionStatus() {
+   return bluetooth::headset::IsAgDeviceConnected();
 }
 
 /*******************************************************************************
@@ -489,9 +505,11 @@ static BtStatus dial(const RawAddress bd_addr, const char* number) {
   // Otherwise, send a BLDN command. This logic is needed because serialization
   // processes in JNI or protobuf can convert null arguments into empty strings,
   // which would prevent the 'BLDN' command from ever being executed.
-  if (number && *number != '\0') {
+  if (number && *number != '\0' && (strlen(number) > 0)) {
+    log::verbose("dial event for number. {}", number);
     BTA_HfClientSendAT(cb->handle, BTA_HF_CLIENT_AT_CMD_ATD, 0, 0, number);
   } else {
+    log::verbose("BLDN event");
     BTA_HfClientSendAT(cb->handle, BTA_HF_CLIENT_AT_CMD_BLDN, 0, 0, NULL);
   }
   return BtifStatus();
@@ -736,7 +754,7 @@ static void cleanup(void) {
   btif_queue_cleanup(UUID_SERVCLASS_HF_HANDSFREE);
   if (bt_hf_client_callbacks) {
     btif_disable_service(BTA_HFP_HS_SERVICE_ID);
-    bt_hf_client_callbacks = NULL;
+    do_in_jni_thread(base::BindOnce([]() { bt_hf_client_callbacks = NULL; }));
   }
 }
 
@@ -926,6 +944,7 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
       HAL_CBACK(bt_hf_client_callbacks, connection_state_cb, cb->peer_bda, cb->state, cb->peer_feat,
                 cb->chld_feat);
 
+      mHfpClientDeviceConnected = true;
       /* Inform the application about in-band ringtone */
       if (cb->peer_feat & BTA_HF_CLIENT_PEER_INBAND) {
         HAL_CBACK(bt_hf_client_callbacks, in_band_ring_tone_cb, cb->peer_bda,
@@ -942,6 +961,7 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
       cb->peer_feat = 0;
       cb->chld_feat = 0;
       cb->handle = 0;
+      mHfpClientDeviceConnected = false;
 
       /* Clean up any btif_hf_client_cb for the same disconnected bd_addr.
        * when there is an Incoming hf_client connection is in progress and

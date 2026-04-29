@@ -39,6 +39,7 @@ Interface* GetInterface();
 bool IsCallIdle();
 
 bool IsDuringVoiceRecognition(RawAddress bd_addr);
+bool IsAgDeviceConnected();
 
 /**
  * Start up or shutdown the service

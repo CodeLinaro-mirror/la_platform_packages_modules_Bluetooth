@@ -68,6 +68,7 @@ final class AvrcpCoverArtStorage {
         String hash = coverArt.getImageHash();
         if (hash == null) {
             error("Failed to get the hash of the image");
+            coverArt.recycle();
             return null;
         }
 
@@ -76,6 +77,7 @@ final class AvrcpCoverArtStorage {
                 debug("Already have image of hash '" + hash + "'");
                 imageHandle = mImageHandles.get(hash);
                 debug("Sending back existing handle '" + imageHandle + "'");
+                coverArt.recycle();
                 return imageHandle;
             } else {
                 debug("Got a new image, hash='" + hash + "'");
@@ -91,6 +93,7 @@ final class AvrcpCoverArtStorage {
                 mImages.put(imageHandle, coverArt);
                 trimToSize();
             } else {
+                coverArt.recycle();
                 error("Failed to store image. Could not get a handle.");
             }
         }
@@ -111,6 +114,7 @@ final class AvrcpCoverArtStorage {
     /** Clear out all stored images and image handles */
     public void clear() {
         synchronized (mImagesLock) {
+            mImages.values().forEach(CoverArt::recycle);
             mImages.clear();
             mImageHandles.clear();
         }
@@ -126,6 +130,7 @@ final class AvrcpCoverArtStorage {
                 debug("Evicting '" + imageHandle + "' -> " + coverArt);
                 mImages.remove(imageHandle);
                 mImageHandles.remove(coverArt.getImageHash());
+                coverArt.recycle();
             }
         }
     }

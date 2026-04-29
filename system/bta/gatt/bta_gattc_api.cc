@@ -93,7 +93,7 @@ void BTA_GATTC_AppRegister(const std::string& name, tBTA_GATTC_CBACK* p_client_c
                                    eatt_support));
 }
 
-static void app_deregister_impl(tGATT_IF client_if) {
+void BTA_GATTC_AppDeregister(tGATT_IF client_if) {
   tBTA_GATTC_RCB* p_clreg = bta_gattc_cl_get_regcb(client_if);
 
   if (p_clreg != nullptr) {
@@ -101,153 +101,6 @@ static void app_deregister_impl(tGATT_IF client_if) {
   } else {
     log::error("Unknown GATT ID: {}, state: {}", client_if, bta_gattc_cb.state);
   }
-}
-/*******************************************************************************
- *
- * Function         BTA_GATTC_AppDeregister
- *
- * Description      This function is called to deregister an application
- *                  from BTA GATTC module.
- *
- * Parameters       client_if - client interface identifier.
- *
- * Returns          None
- *
- ******************************************************************************/
-void BTA_GATTC_AppDeregister(tGATT_IF client_if) {
-  do_in_main_thread(base::BindOnce(&app_deregister_impl, client_if));
-}
-
-/*******************************************************************************
- *
- * Function         BTA_GATTC_Open
- *
- * Description      Open a direct connection or add a background auto connection
- *                  bd address
- *
- * Parameters       client_if: server interface.
- *                  remote_bda: remote device BD address.
- *                  connection_type: connection type used for the peer device
- *                  transport: Transport to be used for GATT connection
- *                             (BREDR/LE)
- *                  opportunistic: whether the connection shall be opportunistic and
- *                                 don't impact the disconnection timer
- *                  auto_mtu_enabled: triggers mtu exchange with default mtu on connection
- *
- ******************************************************************************/
-void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
-                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport,
-                    uint16_t preferred_mtu, bool prefer_relax_mode, bool auto_mtu_enabled) {
-  tBTA_GATTC_DATA data = {
-          .api_conn =
-                  {
-                          .hdr =
-                                  {
-                                          .event = BTA_GATTC_API_OPEN_EVT,
-                                  },
-                          .remote_bda = remote_bda,
-                          .client_if = client_if,
-                          .connection_type = connection_type,
-                          .transport = transport,
-                          .remote_addr_type = addr_type,
-                          .preferred_mtu = preferred_mtu,
-                          .prefer_relax_mode = prefer_relax_mode,
-                          .auto_mtu_enabled = auto_mtu_enabled,
-                  },
-  };
-
-  post_on_bt_main([data]() { bta_gattc_process_api_open(&data); });
-}
-
-/*******************************************************************************
- *
- * Function         BTA_GATTC_Open
- *
- * Description      Open a direct connection or add a background auto connection
- *                  bd address
- *
- * Parameters       client_if: server interface.
- *                  remote_bda: remote device BD address.
- *                  connection_type: connection type used for the peer device
- *                  transport: Transport to be used for GATT connection
- *                             (BREDR/LE)
- *                  initiating_phys: LE PHY to use, optional
- *
- ******************************************************************************/
-void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda, tBLE_ADDR_TYPE addr_type,
-                    tBTM_BLE_CONN_TYPE connection_type, tBT_TRANSPORT transport,
-                    uint16_t preferred_mtu, bool prefer_relax_mode) {
-  tBTA_GATTC_DATA data = {
-          .api_conn =
-                  {
-                          .hdr =
-                                  {
-                                          .event = BTA_GATTC_API_OPEN_EVT,
-                                  },
-                          .remote_bda = remote_bda,
-                          .client_if = client_if,
-                          .connection_type = connection_type,
-                          .transport = transport,
-                          .remote_addr_type = addr_type,
-                          .preferred_mtu = preferred_mtu,
-                          .prefer_relax_mode = prefer_relax_mode,
-                  },
-  };
-
-  post_on_bt_main([data]() { bta_gattc_process_api_open(&data); });
-}
-
-void BTA_GATTC_Open(tGATT_IF client_if, const RawAddress& remote_bda,
-                    tBTM_BLE_CONN_TYPE connection_type) {
-  BTA_GATTC_Open(client_if, remote_bda, BLE_ADDR_PUBLIC, connection_type, BT_TRANSPORT_LE, 0,
-                 false);
-}
-
-/*******************************************************************************
- *
- * Function         BTA_GATTC_CancelOpen
- *
- * Description      Cancel a direct open connection or remove a background auto
- *                  connection
- *                  bd address
- *
- * Parameters       client_if: server interface.
- *                  remote_bda: remote device BD address.
- *                  is_direct: direct connection or background auto connection
- *
- * Returns          void
- *
- ******************************************************************************/
-void BTA_GATTC_CancelOpen(tGATT_IF client_if, const RawAddress& remote_bda, bool is_direct) {
-  tBTA_GATTC_API_CANCEL_OPEN* p_buf =
-          (tBTA_GATTC_API_CANCEL_OPEN*)osi_malloc(sizeof(tBTA_GATTC_API_CANCEL_OPEN));
-
-  p_buf->hdr.event = BTA_GATTC_API_CANCEL_OPEN_EVT;
-  p_buf->client_if = client_if;
-  p_buf->is_direct = is_direct;
-  p_buf->remote_bda = remote_bda;
-
-  bta_sys_sendmsg(p_buf);
-}
-
-/*******************************************************************************
- *
- * Function         BTA_GATTC_Close
- *
- * Description      Close a connection to a GATT server.
- *
- * Parameters       conn_id: connection ID to be closed.
- *
- * Returns          void
- *
- ******************************************************************************/
-void BTA_GATTC_Close(tCONN_ID conn_id) {
-  BT_HDR_RIGID* p_buf = (BT_HDR_RIGID*)osi_malloc(sizeof(BT_HDR_RIGID));
-
-  p_buf->event = BTA_GATTC_API_CLOSE_EVT;
-  p_buf->layer_specific = static_cast<uint16_t>(conn_id);
-
-  bta_sys_sendmsg(p_buf);
 }
 
 /*******************************************************************************
@@ -282,25 +135,12 @@ void BTA_GATTC_ConfigureMTU(tCONN_ID conn_id, uint16_t mtu, GATT_CONFIGURE_MTU_O
   bta_sys_sendmsg(p_buf);
 }
 
-void BTA_GATTC_ServiceSearchAllRequest(tCONN_ID conn_id) {
+void BTA_GATTC_ServiceSearchRequest(tCONN_ID conn_id) {
   const size_t len = sizeof(tBTA_GATTC_API_SEARCH);
   tBTA_GATTC_API_SEARCH* p_buf = (tBTA_GATTC_API_SEARCH*)osi_calloc(len);
 
   p_buf->hdr.event = BTA_GATTC_API_SEARCH_EVT;
   p_buf->hdr.layer_specific = static_cast<uint16_t>(conn_id);
-  p_buf->p_srvc_uuid = NULL;
-
-  bta_sys_sendmsg(p_buf);
-}
-
-void BTA_GATTC_ServiceSearchRequest(tCONN_ID conn_id, Uuid p_srvc_uuid) {
-  const size_t len = sizeof(tBTA_GATTC_API_SEARCH) + sizeof(Uuid);
-  tBTA_GATTC_API_SEARCH* p_buf = (tBTA_GATTC_API_SEARCH*)osi_calloc(len);
-
-  p_buf->hdr.event = BTA_GATTC_API_SEARCH_EVT;
-  p_buf->hdr.layer_specific = static_cast<uint16_t>(conn_id);
-  p_buf->p_srvc_uuid = (Uuid*)(p_buf + 1);
-  *p_buf->p_srvc_uuid = p_srvc_uuid;
 
   bta_sys_sendmsg(p_buf);
 }

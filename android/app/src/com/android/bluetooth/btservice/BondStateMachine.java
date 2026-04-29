@@ -200,8 +200,8 @@ public final class BondStateMachine extends StateMachine {
                                 dev,
                                 transport,
                                 newState,
-                                0,
-                                0,
+                                null,
+                                null,
                                 AbstractionLayer.BT_PAIRING_INITIATOR_APP /* default */,
                                 reason,
                                 hciReason);
@@ -286,8 +286,15 @@ public final class BondStateMachine extends StateMachine {
                     int newState = msg.arg1;
                     int reason = convertBondStateChangeReason(msg.arg2);
                     int transport = msg.getData().getInt(KEY_BOND_TRANSPORT);
-                    int pairingAlgorithm = msg.getData().getInt(KEY_PAIRING_ALGORITHM);
-                    int pairingVariant = msg.getData().getInt(KEY_PAIRING_VARIANT);
+
+                    Integer pairingAlgorithm = null;
+                    Integer pairingVariant = null;
+                    if (msg.getData().containsKey(KEY_PAIRING_ALGORITHM)
+                            && msg.getData().containsKey(KEY_PAIRING_VARIANT)) {
+                        pairingAlgorithm = msg.getData().getInt(KEY_PAIRING_ALGORITHM);
+                        pairingVariant = msg.getData().getInt(KEY_PAIRING_VARIANT);
+                    }
+
                     int pairingInitiator = msg.getData().getInt(KEY_PAIRING_INITIATOR);
                     int bondingHciReason = msg.getData().getInt(KEY_HCI_REASON, 0);
 
@@ -519,33 +526,37 @@ public final class BondStateMachine extends StateMachine {
 
         if (!initiated) {
             logW("createBond: Failed to initiate pairing for " + dev);
-            BluetoothStatsLog.write(
-                    BluetoothStatsLog.BLUETOOTH_BOND_STATE_CHANGED,
-                    mAdapterService.obfuscateAddress(dev),
-                    transport,
-                    mRemoteDevices.getType(dev),
-                    BluetoothDevice.BOND_NONE,
-                    BluetoothProtoEnums.BOND_SUB_STATE_UNKNOWN,
-                    BluetoothDevice.UNBOND_REASON_REPEATED_ATTEMPTS);
-
-            // Using UNBOND_REASON_REMOVED for legacy reason
-            handleBondStateChanged(
-                    dev,
-                    BluetoothDevice.TRANSPORT_AUTO,
-                    BluetoothDevice.BOND_NONE,
-                    0,
-                    0,
-                    AbstractionLayer.BT_PAIRING_INITIATOR_APP /* default */,
-                    BluetoothDevice.UNBOND_REASON_REMOVED,
-                    -1);
 
             if (Utils.isAutonomousRepairingSupported() && mAdapterService.isBondLost(dev)) {
                 // If it's a bond-loss scenario, disconnect the ACL.
                 // TODO (b/440298497): It is possible that createBond() is called on the device by
                 // any 1P/3P app and the bond loss was already detected. In this case, we should not
                 // disconnect the ACL, fix this.
+                logD("createBond: Disconnecting ACL for " + dev + " due to re-pairing failure");
                 mAdapterService.getNative().disconnectAcl(dev, transport);
+            } else {
+                // Note: Do not change the state for if we are re-pairing.
+                BluetoothStatsLog.write(
+                        BluetoothStatsLog.BLUETOOTH_BOND_STATE_CHANGED,
+                        mAdapterService.obfuscateAddress(dev),
+                        transport,
+                        mRemoteDevices.getType(dev),
+                        BluetoothDevice.BOND_NONE,
+                        BluetoothProtoEnums.BOND_SUB_STATE_UNKNOWN,
+                        BluetoothDevice.UNBOND_REASON_REPEATED_ATTEMPTS);
+
+                // Using UNBOND_REASON_REMOVED for legacy reason
+                handleBondStateChanged(
+                        dev,
+                        BluetoothDevice.TRANSPORT_AUTO,
+                        BluetoothDevice.BOND_NONE,
+                        null,
+                        null,
+                        AbstractionLayer.BT_PAIRING_INITIATOR_APP /* default */,
+                        BluetoothDevice.UNBOND_REASON_REMOVED,
+                        -1);
             }
+
             return false;
         }
 
@@ -605,8 +616,8 @@ public final class BondStateMachine extends StateMachine {
             BluetoothDevice device,
             int transport,
             int newState,
-            int pairingAlgorithm,
-            int pairingVariant,
+            Integer pairingAlgorithm,
+            Integer pairingVariant,
             int pairingInitiator,
             int reason,
             int hciReason) {
@@ -813,24 +824,33 @@ public final class BondStateMachine extends StateMachine {
             logD("bondStateChangeCallback: Unknown device:" + device);
         }
 
-        int pairingAlgorithm = getPairingAlgorithm(transport, nativePairingAlgorithm);
-        int pairingVariant = getPairingVariant(transport, pairingAlgorithm, nativePairingVariant);
-
+        Integer pairingAlgorithm = null;
+        Integer pairingVariant = null;
         Message msg = obtainMessage(MESSAGE_BOND_STATE_CHANGE);
         msg.obj = device;
 
         // Convert from native bond state to Java bond state
         if (newState == AbstractionLayer.BT_BOND_STATE_BONDED) {
             msg.arg1 = BluetoothDevice.BOND_BONDED;
+            pairingAlgorithm = getPairingAlgorithm(transport, nativePairingAlgorithm);
+            pairingVariant = getPairingVariant(transport, pairingAlgorithm, nativePairingVariant);
         } else if (newState == AbstractionLayer.BT_BOND_STATE_BONDING) {
             msg.arg1 = BluetoothDevice.BOND_BONDING;
+            pairingAlgorithm = convertNativePairingAlgorithm(transport, nativePairingAlgorithm);
+            if (pairingAlgorithm != null) {
+                pairingVariant =
+                        convertNativePairingVariant(
+                                transport, pairingAlgorithm, nativePairingVariant);
+            }
         } else {
             msg.arg1 = BluetoothDevice.BOND_NONE;
         }
         msg.arg2 = status;
         msg.getData().putInt(KEY_BOND_TRANSPORT, transport);
-        msg.getData().putInt(KEY_PAIRING_ALGORITHM, pairingAlgorithm);
-        msg.getData().putInt(KEY_PAIRING_VARIANT, pairingVariant);
+        if (pairingAlgorithm != null && pairingVariant != null) {
+            msg.getData().putInt(KEY_PAIRING_ALGORITHM, pairingAlgorithm);
+            msg.getData().putInt(KEY_PAIRING_VARIANT, pairingVariant);
+        }
         msg.getData().putInt(KEY_PAIRING_INITIATOR, pairingInitiator);
         msg.getData().putInt(KEY_HCI_REASON, hciReason);
 
@@ -1068,24 +1088,17 @@ public final class BondStateMachine extends StateMachine {
     }
 
     /** Converts native pairing variant to Java pairing variant */
-    public static int getPairingVariant(
+    static Integer convertNativePairingVariant(
             int transport, int pairingAlgorithm, int nativePairingVariant) {
         if (transport == BluetoothDevice.TRANSPORT_BREDR
                 && pairingAlgorithm == BluetoothDevice.PAIRING_ALGORITHM_BREDR_LEGACY) {
-            if (nativePairingVariant == AbstractionLayer.BT_LEGACY_PAIRING_VARIANT_PIN) {
-                return BluetoothDevice.PAIRING_VARIANT_DISPLAY_PIN;
-            } else if (nativePairingVariant == AbstractionLayer.BT_LEGACY_PAIRING_VARIANT_PIN_16) {
-                return BluetoothDevice.PAIRING_VARIANT_PIN_16_DIGITS;
-            } else {
-                logE(
-                        "getPairingVariant: Unknown legacy pairing variant("
-                                + nativePairingVariant
-                                + ") for "
-                                + transport
-                                + " "
-                                + pairingAlgorithm);
-                return BluetoothDevice.PAIRING_VARIANT_DISPLAY_PIN;
-            }
+            return switch (nativePairingVariant) {
+                case AbstractionLayer.BT_LEGACY_PAIRING_VARIANT_PIN ->
+                        BluetoothDevice.PAIRING_VARIANT_DISPLAY_PIN;
+                case AbstractionLayer.BT_LEGACY_PAIRING_VARIANT_PIN_16 ->
+                        BluetoothDevice.PAIRING_VARIANT_PIN_16_DIGITS;
+                default -> null;
+            };
         }
 
         return switch (nativePairingVariant) {
@@ -1097,41 +1110,66 @@ public final class BondStateMachine extends StateMachine {
                     BluetoothDevice.PAIRING_VARIANT_PASSKEY;
             case AbstractionLayer.BT_PAIRING_VARIANT_PASSKEY_NOTIFICATION ->
                     BluetoothDevice.PAIRING_VARIANT_DISPLAY_PASSKEY;
-            default -> BluetoothDevice.PAIRING_VARIANT_CONSENT;
+            default -> null;
         };
     }
 
-    /** Converts native pairing algorithm to Java pairing algorithm */
-    public static int getPairingAlgorithm(int transport, int nativePairingAlgorithm) {
-        if (transport == BluetoothDevice.TRANSPORT_LE) {
-            Integer result =
-                    switch (nativePairingAlgorithm) {
-                        case AbstractionLayer.BT_PAIRING_ALGORITHM_LE_LEGACY ->
-                                BluetoothDevice.PAIRING_ALGORITHM_LE_LEGACY;
-                        case AbstractionLayer.BT_PAIRING_ALGORITHM_SC ->
-                                BluetoothDevice.PAIRING_ALGORITHM_SC;
-                        default -> null;
-                    };
-            if (result != null) {
-                return result;
-            }
-        } else if (transport == BluetoothDevice.TRANSPORT_BREDR) {
-            Integer result =
-                    switch (nativePairingAlgorithm) {
-                        case AbstractionLayer.BT_PAIRING_ALGORITHM_BREDR_LEGACY ->
-                                BluetoothDevice.PAIRING_ALGORITHM_BREDR_LEGACY;
-                        case AbstractionLayer.BT_PAIRING_ALGORITHM_SSP ->
-                                BluetoothDevice.PAIRING_ALGORITHM_BREDR_SSP;
-                        case AbstractionLayer.BT_PAIRING_ALGORITHM_SC ->
-                                BluetoothDevice.PAIRING_ALGORITHM_SC;
-                        default -> null;
-                    };
-            if (result != null) {
-                return result;
-            }
+    /** Converts native pairing variant to Java pairing variant */
+    public static int getPairingVariant(
+            int transport, int pairingAlgorithm, int nativePairingVariant) {
+        Integer variant =
+                convertNativePairingVariant(transport, pairingAlgorithm, nativePairingVariant);
+        if (variant != null) {
+            return variant;
         }
 
-        logE(
+        logW(
+                "getPairingVariant: Unknown pairing variant("
+                        + nativePairingVariant
+                        + ") for "
+                        + transport
+                        + " "
+                        + pairingAlgorithm);
+        if (transport == BluetoothDevice.TRANSPORT_BREDR
+                && pairingAlgorithm == BluetoothDevice.PAIRING_ALGORITHM_BREDR_LEGACY) {
+            return BluetoothDevice.PAIRING_VARIANT_DISPLAY_PIN;
+        }
+        return BluetoothDevice.PAIRING_VARIANT_CONSENT;
+    }
+
+    /** Converts native pairing algorithm to Java pairing algorithm */
+    static Integer convertNativePairingAlgorithm(int transport, int nativePairingAlgorithm) {
+        if (transport == BluetoothDevice.TRANSPORT_LE) {
+            return switch (nativePairingAlgorithm) {
+                case AbstractionLayer.BT_PAIRING_ALGORITHM_LE_LEGACY ->
+                        BluetoothDevice.PAIRING_ALGORITHM_LE_LEGACY;
+                case AbstractionLayer.BT_PAIRING_ALGORITHM_SC ->
+                        BluetoothDevice.PAIRING_ALGORITHM_SC;
+                default -> null;
+            };
+        } else if (transport == BluetoothDevice.TRANSPORT_BREDR) {
+            return switch (nativePairingAlgorithm) {
+                case AbstractionLayer.BT_PAIRING_ALGORITHM_BREDR_LEGACY ->
+                        BluetoothDevice.PAIRING_ALGORITHM_BREDR_LEGACY;
+                case AbstractionLayer.BT_PAIRING_ALGORITHM_SSP ->
+                        BluetoothDevice.PAIRING_ALGORITHM_BREDR_SSP;
+                case AbstractionLayer.BT_PAIRING_ALGORITHM_SC ->
+                        BluetoothDevice.PAIRING_ALGORITHM_SC;
+                default -> null;
+            };
+        }
+
+        return null;
+    }
+
+    /** Gets the pairing algorithm for the given transport and native pairing algorithm. */
+    public static int getPairingAlgorithm(int transport, int nativePairingAlgorithm) {
+        Integer algorithm = convertNativePairingAlgorithm(transport, nativePairingAlgorithm);
+
+        if (algorithm != null) {
+            return algorithm;
+        }
+        logW(
                 "getPairingAlgorithm: Incorrect transport or (native)pairing algorithm, transport: "
                         + transport
                         + " pairingAlgorithm: "

@@ -236,6 +236,19 @@ struct acl_set_peer_le_features_from_handle {
   bool operator()(uint16_t hci_handle, const uint8_t* p) { return body(hci_handle, p); }
 };
 extern struct acl_set_peer_le_features_from_handle acl_set_peer_le_features_from_handle;
+// Name: acl_set_all_peer_le_features_from_handle
+// Params: uint16_t hci_handle, const std::array<uint8_t, 248> le_features
+// Returns: bool
+struct acl_set_all_peer_le_features_from_handle {
+  std::function<bool(uint16_t hci_handle, const std::array<uint8_t, 248>& le_features)> body{
+          [](uint16_t /* hci_handle */, const std::array<uint8_t, 248>& /* le_features */) {
+            return false;
+          }};
+  bool operator()(uint16_t hci_handle, const std::array<uint8_t, 248>& le_features) {
+    return body(hci_handle, le_features);
+  }
+};
+extern struct acl_set_all_peer_le_features_from_handle acl_set_all_peer_le_features_from_handle;
 // Name: btm_acl_for_bda
 // Params: const RawAddress& bd_addr, tBT_TRANSPORT transport
 // Returns: tACL_CONN*

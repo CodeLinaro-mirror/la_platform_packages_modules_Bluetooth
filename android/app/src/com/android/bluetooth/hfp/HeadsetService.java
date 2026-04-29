@@ -82,6 +82,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import com.android.bluetooth.agClient.BluetoothAgClientService;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -191,6 +192,8 @@ public class HeadsetService extends ConnectableProfile {
     //ConcurrentLinkeQueue is used so that it is threadsafe
      private final ConcurrentLinkedQueue<HeadsetCallState> mDsDaDelayedCallStates =
                              new ConcurrentLinkedQueue<HeadsetCallState>();
+     private boolean mAgClientConnected = false;
+     private boolean mHfClientScoConnected = false;
     public HeadsetService(
             AdapterService adapterService,
             BluetoothStorageManager storage,
@@ -235,6 +238,10 @@ public class HeadsetService extends ConnectableProfile {
         }
         mStateMachinesThreadHandler = new Handler(mStateMachinesLooper);
         setComponentAvailable(HFP_AG_IN_CALL_SERVICE, true);
+        Log.i(TAG, "starting the AG client service from HS service: ");
+        // Start the Ag client service.
+         Intent startIntent = new Intent(this, BluetoothAgClientService.class);
+         startService(startIntent);
 
         // Step 3: Initialize system interface
         mSystemInterface =
@@ -392,6 +399,8 @@ public class HeadsetService extends ConnectableProfile {
 
         // Step 1: Clear
         setComponentAvailable(HFP_AG_IN_CALL_SERVICE, false);
+        Intent stopIntent = new Intent(this, BluetoothAgClientService.class);
+        stopService(stopIntent);
     }
 
     /**
@@ -784,7 +793,7 @@ public class HeadsetService extends ConnectableProfile {
             if (states == null) {
                 return devices;
             }
-            final BluetoothDevice[] bondedDevices = getAdapterService().getBondedDevices();
+            final var bondedDevices = getAdapterService().getBondedDevices();
             for (BluetoothDevice device : bondedDevices) {
                 final ParcelUuid[] featureUuids = getAdapterService().getRemoteUuids(device);
                 if (!BluetoothUuid.containsAnyUuid(featureUuids, HEADSET_UUIDS)) {
@@ -1341,6 +1350,24 @@ public class HeadsetService extends ConnectableProfile {
         }
     }
 
+    /**
+     * Set HF & AG client connection status.
+     *
+     * Set to true if both AG and Client are connected.
+     */
+
+    public void SetAGClientConnectionStatus(boolean status) {
+         mAgClientConnected = status;
+    }
+
+    public void SetHfClientScoConnectionStatus(boolean status) {
+          mHfClientScoConnected = status;
+    }
+
+    public boolean getAGClientConnectionStatus() {
+        return mAgClientConnected;
+    }
+
     public int connectAudio() {
         synchronized (mStateMachines) {
             BluetoothDevice device = mActiveDevice;
@@ -1348,7 +1375,14 @@ public class HeadsetService extends ConnectableProfile {
                 Log.w(TAG, "connectAudio: no active device, " + Util.getUidPidString());
                 return BluetoothStatusCodes.ERROR_NO_ACTIVE_DEVICES;
             }
-            return connectAudio(device);
+            if (mAgClientConnected && !mHfClientScoConnected) {
+              BluetoothAgClientService mBluetoothAgClientService = 
+                                              BluetoothAgClientService.getBluetoothAgClientService();
+              mBluetoothAgClientService.connectAgAudio(device);
+              return BluetoothStatusCodes.SUCCESS;      
+            } else {
+              return connectAudio(device);
+            }
         }
     }
 
@@ -1447,7 +1481,7 @@ public class HeadsetService extends ConnectableProfile {
         return devices;
     }
 
-    int disconnectAudio() {
+    public int disconnectAudio() {
         int disconnectResult = BluetoothStatusCodes.ERROR_NO_ACTIVE_DEVICES;
         synchronized (mStateMachines) {
             for (BluetoothDevice device : getNonIdleAudioDevices()) {
@@ -2294,6 +2328,13 @@ public class HeadsetService extends ConnectableProfile {
         getAdapterService()
                 .updateProfileConnectionAdapterProperties(
                         device, getProfileId(), toState, fromState);
+        BluetoothAgClientService mBluetoothAgClientService = 
+                                           BluetoothAgClientService.getBluetoothAgClientService();
+        if (mBluetoothAgClientService != null) {
+           Log.d(TAG," onConnectionStateChangedFromStateMachine: AgClientService is not null ");
+           mBluetoothAgClientService.UpdateProfileConnectionStatus(
+                      device, BluetoothProfile.HEADSET, fromState, toState);
+        }
     }
 
     /** Called from {@link HeadsetClientStateMachine} to update inband ringing status. */
@@ -2507,6 +2548,13 @@ public class HeadsetService extends ConnectableProfile {
                 wrapper.isCallIdleAndScoNotManagedbyHal =
                        (mSystemInterface.isCallIdle() && !mSystemInterface.isScoManagedByAudioEnabled());
             }
+            BluetoothAgClientService mBluetoothAgClientService = 
+                           BluetoothAgClientService.getBluetoothAgClientService();
+            if (mBluetoothAgClientService != null) {
+               Log.d(TAG," onAudioStateChangedFromStateMachine: FromState:" + fromState + "tostate:" + toState);
+               mBluetoothAgClientService.UpdateProfileAudioConnectionStatus(
+                          device, BluetoothProfile.HEADSET, fromState, toState);
+            }
         }
 
         Log.i(TAG, "isCallIdleAndScoNotManagedbyHal: " + wrapper.isCallIdleAndScoNotManagedbyHal);
@@ -2522,7 +2570,16 @@ public class HeadsetService extends ConnectableProfile {
                 }
 
             });
-        }
+        } else if (toState == BluetoothHeadset.STATE_AUDIO_CONNECTED && 
+                        fromState == BluetoothHeadset.STATE_AUDIO_CONNECTING) {
+            BluetoothAgClientService mBluetoothAgClientService = 
+                              BluetoothAgClientService.getBluetoothAgClientService();
+            if (mBluetoothAgClientService != null) {
+               Log.d(TAG," onAudioStateChangedFromStateMachine: FromState:" + fromState + "tostate:" + toState);
+               mBluetoothAgClientService.UpdateProfileAudioConnectionStatus(
+                           device, BluetoothProfile.HEADSET, fromState, toState);
+            }
+         }
         if (Flags.hfpAvoidDeadlock() && toState == BluetoothHeadset.STATE_AUDIO_DISCONNECTED) {
             // Resume A2DP when call ended and SCO is not connected
             if (mSystemInterface.isCallIdle() && !mSystemInterface.isScoManagedByAudioEnabled()) {

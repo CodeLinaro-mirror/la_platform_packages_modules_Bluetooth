@@ -18,8 +18,8 @@
 #include <gtest/gtest.h>
 
 #include "bta/include/bta_ras_api.h"
+#include "bta/mock/bta_gatt_api_mock.h"
 #include "bta/ras/ras_types.h"
-#include "bta/test/common/bta_gatt_api_mock.h"
 #include "btif_status.h"
 #include "btm_api_mock.h"
 #include "include/hardware/bluetooth.h"
@@ -55,9 +55,9 @@ using namespace bluetooth;
 
 static const uint16_t kVendorSpecificCharacteristic16Bit1 = 0x5566;
 static const uint16_t kVendorSpecificCharacteristic16Bit2 = 0x5567;
-static const bluetooth::Uuid kVendorSpecificCharacteristic1 =
+static constexpr bluetooth::Uuid kVendorSpecificCharacteristic1 =
         bluetooth::Uuid::From16Bit(kVendorSpecificCharacteristic16Bit1);
-static const bluetooth::Uuid kVendorSpecificCharacteristic2 =
+static constexpr bluetooth::Uuid kVendorSpecificCharacteristic2 =
         bluetooth::Uuid::From16Bit(kVendorSpecificCharacteristic16Bit2);
 
 static uint16_t GetCharacteristicHandle(const bluetooth::Uuid& uuid) {
@@ -88,12 +88,12 @@ static uint16_t GetDescriptorHandle(const bluetooth::Uuid& uuid) {
   return GetCharacteristicHandle(uuid) + 1;
 }
 
-static void UpdateTestServiceHandle(std::vector<btgatt_db_element_t>& service) {
-  for (uint16_t i = 0; i < service.size(); i++) {
-    service[i].attribute_handle = GetCharacteristicHandle(service[i].uuid);
+static void UpdateTestServiceHandle(std::vector<btgatt_db_element_t>* service) {
+  for (uint16_t i = 0; i < service->size(); i++) {
+    (*service)[i].attribute_handle = GetCharacteristicHandle((*service)[i].uuid);
     // Check if descriptor exist
-    if (i < service.size() - 1 && service[i + 1].type == BTGATT_DB_DESCRIPTOR) {
-      service[i + 1].attribute_handle = GetDescriptorHandle(service[i].uuid);
+    if (i < service->size() - 1 && (*service)[i + 1].type == BTGATT_DB_DESCRIPTOR) {
+      (*service)[i + 1].attribute_handle = GetDescriptorHandle((*service)[i].uuid);
       i++;
     }
   }
@@ -145,7 +145,7 @@ protected:
   std::vector<VendorSpecificCharacteristic> vendor_specific_characteristics_;
   RawAddress test_address_;
   uint16_t test_conn_id_ = 0x0001;
-  const tBTA_GATTS_CBACK* captured_gatt_callback_ = nullptr;
+  const stack::tGATT_CBACK* captured_gatt_callback_ = nullptr;
   gatt::MockBtaGattServerInterface mock_gatt_server_interface_;
   NiceMock<bluetooth::manager::MockBtmInterface> btm_interface_;
   MockRasServerCallbacks mock_ras_server_callbacks_;
@@ -157,7 +157,15 @@ protected:
     RasServerTestNoInit::SetUp();
     // AppRegister should be triggered when Initialize
     EXPECT_CALL(mock_gatt_server_interface_, AppRegister(_, _, _))
-            .WillOnce(testing::SaveArg<1>(&captured_gatt_callback_));
+            .WillOnce(DoAll(testing::SaveArg<1>(&captured_gatt_callback_), Return(1)));
+
+    EXPECT_CALL(mock_gatt_server_interface_, AddService(_, _))
+            .WillOnce([](tGATT_IF /*server_if*/, std::vector<btgatt_db_element_t>* service) {
+              // Update handle for testing
+              UpdateTestServiceHandle(service);
+              return GATT_SERVICE_STARTED;
+            });
+
     GetRasServer()->SetVendorSpecificCharacteristic(vendor_specific_characteristics_);
     GetRasServer()->Initialize();
     ASSERT_NE(captured_gatt_callback_, nullptr);
@@ -165,64 +173,36 @@ protected:
     // RegisterCallback
     GetRasServer()->RegisterCallbacks(&mock_ras_server_callbacks_);
 
-    // AddService should be triggered after receiving BTA_GATTS_REG_EVT
-    tGATT_IF captured_server_if;
-    std::vector<btgatt_db_element_t> captured_service;
-    BTA_GATTS_AddServiceCb captured_cb;
-    EXPECT_CALL(mock_gatt_server_interface_, AddService(_, _, _))
-            .WillOnce(testing::DoAll(
-                    testing::SaveArg<0>(&captured_server_if),
-                    testing::SaveArg<1>(&captured_service),
-                    testing::WithArg<2>([&](auto arg) { captured_cb = std::move(arg); })));
-
-    // Mock BTA_GATTS_REG_EVT
-    captured_gatt_callback_->p_reg_cb(GATT_SUCCESS, 1, bluetooth::Uuid::kEmpty);
-
-    // Update handle for testing
-    UpdateTestServiceHandle(captured_service);
-
-    // Run BTA_GATTS_AddServiceCb
-    std::move(captured_cb).Run(GATT_SUCCESS, captured_server_if, std::move(captured_service));
-
     // OnRasServerConnected should be triggered after receiving BTA_GATTS_CONNECT_EVT
     EXPECT_CALL(mock_ras_server_callbacks_, OnRasServerConnected(test_address_)).Times(1);
-    captured_gatt_callback_->p_connect_cb(1, test_address_, test_conn_id_, BT_TRANSPORT_LE);
+    captured_gatt_callback_->p_conn_cb(1, test_address_, test_conn_id_, true, GATT_CONN_OK,
+                                       BT_TRANSPORT_LE);
   }
 
   void TearDown() override {
-    captured_gatt_callback_->p_disconnect_cb(1, test_address_, test_conn_id_, BT_TRANSPORT_LE);
+    captured_gatt_callback_->p_conn_cb(1, test_address_, test_conn_id_, false, GATT_CONN_OK,
+                                       BT_TRANSPORT_LE);
     RasServerTestNoInit::TearDown();
   }
 };
 
 TEST_F(RasServerTestNoInit, InitializationSuccessful) {
   // AppRegister should be triggered when Initialize
+  void (*p_reg_cb)(tGATT_STATUS status, tGATT_IF server_if, const bluetooth::Uuid& uuid);
   EXPECT_CALL(mock_gatt_server_interface_, AppRegister(_, _, _))
-          .WillOnce(testing::SaveArg<1>(&captured_gatt_callback_));
+          .WillOnce(DoAll(testing::SaveArg<1>(&captured_gatt_callback_), Return(1)));
+
+  EXPECT_CALL(mock_gatt_server_interface_, AddService(_, _)).WillOnce(Return(GATT_SERVICE_STARTED));
+
   GetRasServer()->SetVendorSpecificCharacteristic(vendor_specific_characteristics_);
   GetRasServer()->Initialize();
   ASSERT_NE(captured_gatt_callback_, nullptr);
-
-  // AddService should be triggered after receiving BTA_GATTS_REG_EVT
-  tGATT_IF captured_server_if;
-  std::vector<btgatt_db_element_t> captured_service;
-  BTA_GATTS_AddServiceCb captured_cb;
-  EXPECT_CALL(mock_gatt_server_interface_, AddService(_, _, _))
-          .WillOnce(testing::DoAll(
-                  testing::SaveArg<0>(&captured_server_if), testing::SaveArg<1>(&captured_service),
-                  testing::WithArg<2>([&](auto arg) { captured_cb = std::move(arg); })));
-
-  // Mock BTA_GATTS_REG_EVT
-  captured_gatt_callback_->p_reg_cb(GATT_SUCCESS, 1, bluetooth::Uuid::kEmpty);
-
-  // Run BTA_GATTS_AddServiceCb
-  std::move(captured_cb).Run(GATT_SUCCESS, captured_server_if, std::move(captured_service));
 }
 
 TEST_F(RasServerTestNoInit, ConnectAndDisconnect) {
   // AppRegister should be triggered when Initialize
   EXPECT_CALL(mock_gatt_server_interface_, AppRegister(_, _, _))
-          .WillOnce(testing::SaveArg<1>(&captured_gatt_callback_));
+          .WillOnce(DoAll(SaveArg<1>(&captured_gatt_callback_), Return(GATT_SUCCESS)));
   GetRasServer()->Initialize();
   ASSERT_NE(captured_gatt_callback_, nullptr);
 
@@ -231,17 +211,19 @@ TEST_F(RasServerTestNoInit, ConnectAndDisconnect) {
 
   // OnRasServerConnected should be triggered after receiving BTA_GATTS_CONNECT_EVT
   EXPECT_CALL(mock_ras_server_callbacks_, OnRasServerConnected(test_address_)).Times(1);
-  captured_gatt_callback_->p_connect_cb(1, test_address_, test_conn_id_, BT_TRANSPORT_LE);
+  captured_gatt_callback_->p_conn_cb(1, test_address_, test_conn_id_, true, GATT_CONN_OK,
+                                     BT_TRANSPORT_LE);
 
   // OnRasServerDisconnected should be triggered after receiving BTA_GATTS_DISCONNECT_EVT
   EXPECT_CALL(mock_ras_server_callbacks_, OnRasServerDisconnected(test_address_)).Times(1);
-  captured_gatt_callback_->p_disconnect_cb(1, test_address_, test_conn_id_, BT_TRANSPORT_LE);
+  captured_gatt_callback_->p_conn_cb(1, test_address_, test_conn_id_, false, GATT_CONN_OK,
+                                     BT_TRANSPORT_LE);
 }
 
 TEST_F(RasServerTestNoInit, IgnoreBrEdr) {
   // AppRegister should be triggered when Initialize
   EXPECT_CALL(mock_gatt_server_interface_, AppRegister(_, _, _))
-          .WillOnce(testing::SaveArg<1>(&captured_gatt_callback_));
+          .WillOnce(DoAll(SaveArg<1>(&captured_gatt_callback_), Return(GATT_SUCCESS)));
   GetRasServer()->Initialize();
   ASSERT_NE(captured_gatt_callback_, nullptr);
 
@@ -250,7 +232,8 @@ TEST_F(RasServerTestNoInit, IgnoreBrEdr) {
 
   // OnRasServerConnected should be triggered after receiving BTA_GATTS_CONNECT_EVT
   EXPECT_CALL(mock_ras_server_callbacks_, OnRasServerConnected(test_address_)).Times(0);
-  captured_gatt_callback_->p_connect_cb(1, test_address_, test_conn_id_, BT_TRANSPORT_BR_EDR);
+  captured_gatt_callback_->p_conn_cb(1, test_address_, test_conn_id_, true, GATT_CONN_OK,
+                                     BT_TRANSPORT_BR_EDR);
 }
 
 TEST_F(RasServerTest, EmptyTest) {}
@@ -259,7 +242,7 @@ TEST_F(RasServerTest, GattMtuChanged) {
   uint16_t mtu = 512;
   // OnMtuChangedFromServer should be triggered after receiving BTA_GATTS_MTU_EVT
   EXPECT_CALL(mock_ras_server_callbacks_, OnMtuChangedFromServer(test_address_, mtu)).Times(1);
-  captured_gatt_callback_->p_mtu_changed_cb(1, test_address_, mtu);
+  captured_gatt_callback_->p_req_cb->mtu_changed_cb(1, test_address_, mtu);
 }
 
 TEST_F(RasServerTest, ReadCharacteristic) {
@@ -267,7 +250,7 @@ TEST_F(RasServerTest, ReadCharacteristic) {
   tGATT_STATUS captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasFeaturesCharacteristic), 0, false);
   EXPECT_EQ(GATT_SUCCESS, captured_status);
 
@@ -275,7 +258,7 @@ TEST_F(RasServerTest, ReadCharacteristic) {
   captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasRangingDataReadyCharacteristic), 0,
           false);
   EXPECT_EQ(GATT_SUCCESS, captured_status);
@@ -284,7 +267,7 @@ TEST_F(RasServerTest, ReadCharacteristic) {
   captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasRangingDataOverWrittenCharacteristic), 0,
           false);
   EXPECT_EQ(GATT_SUCCESS, captured_status);
@@ -293,7 +276,7 @@ TEST_F(RasServerTest, ReadCharacteristic) {
   captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kVendorSpecificCharacteristic1), 0, false);
   EXPECT_EQ(GATT_SUCCESS, captured_status);
 }
@@ -303,7 +286,7 @@ TEST_F(RasServerTest, ReadCharacteristicInvalid) {
   tGATT_STATUS captured_status = GATT_SUCCESS;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_characteristic_cb(1, 1, test_address_, 0x1234, 0, false);
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(1, 1, test_address_, 0x1234, 0, false);
   EXPECT_EQ(GATT_INVALID_HANDLE, captured_status);
 
   // Read invalid address
@@ -311,7 +294,7 @@ TEST_F(RasServerTest, ReadCharacteristicInvalid) {
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
   RawAddress invalid_address = RawAddress::FromString("11:22:33:44:55:77").value();
-  captured_gatt_callback_->p_read_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(
           1, 1, invalid_address, GetCharacteristicHandle(kRasRangingDataReadyCharacteristic), 0,
           false);
   bluetooth::log::info("captured_status");
@@ -321,7 +304,7 @@ TEST_F(RasServerTest, ReadCharacteristicInvalid) {
   captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->read_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasRealTimeRangingDataCharacteristic), 0,
           false);
   EXPECT_EQ(GATT_ILLEGAL_PARAMETER, captured_status);
@@ -333,7 +316,7 @@ TEST_F(RasServerTest, ReadWriteDescriptor) {
   tGATT_STATUS captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRangingDataReadyCharacteristic), 0, false,
           false, (uint8_t*)&ccc_value, sizeof(uint16_t));
   EXPECT_EQ(GATT_SUCCESS, captured_status);
@@ -342,7 +325,7 @@ TEST_F(RasServerTest, ReadWriteDescriptor) {
   captured_status = GATT_ERROR;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->read_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRangingDataReadyCharacteristic), 0, false);
   EXPECT_EQ(GATT_SUCCESS, captured_status);
 }
@@ -353,7 +336,7 @@ TEST_F(RasServerTest, ReadWriteDescriptorInvalid) {
   tGATT_STATUS captured_status = GATT_SUCCESS;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasRangingDataReadyCharacteristic), 0,
           false, false, (uint8_t*)&ccc_value, sizeof(uint16_t));
   EXPECT_EQ(GATT_INVALID_HANDLE, captured_status);
@@ -363,7 +346,7 @@ TEST_F(RasServerTest, ReadWriteDescriptorInvalid) {
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
   RawAddress invalid_address = RawAddress::FromString("11:22:33:44:55:77").value();
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, invalid_address, GetDescriptorHandle(kRasRangingDataReadyCharacteristic), 0, false,
           false, (uint8_t*)&ccc_value, sizeof(uint16_t));
   EXPECT_EQ(GATT_ILLEGAL_PARAMETER, captured_status);
@@ -371,14 +354,14 @@ TEST_F(RasServerTest, ReadWriteDescriptorInvalid) {
   // Check that On-demand and Real-time are not registered at the same time
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasOnDemandDataCharacteristic), 0, false, false,
           (uint8_t*)&ccc_value, sizeof(uint16_t));
   EXPECT_EQ(GATT_SUCCESS, captured_status);
 
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRealTimeRangingDataCharacteristic), 0, false,
           false, (uint8_t*)&ccc_value, sizeof(uint16_t));
   EXPECT_EQ(GATT_CCC_CFG_ERR, captured_status);
@@ -387,7 +370,7 @@ TEST_F(RasServerTest, ReadWriteDescriptorInvalid) {
   captured_status = GATT_SUCCESS;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_read_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->read_descriptor_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasRangingDataReadyCharacteristic), 0,
           false);
   EXPECT_EQ(GATT_INVALID_HANDLE, captured_status);
@@ -398,15 +381,15 @@ TEST_F(RasServerTest, WriteCharacteristicInalid) {
   tGATT_STATUS captured_status = GATT_SUCCESS;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_write_characteristic_cb(1, 1, test_address_, 0x3456, 0, false, false,
-                                                     nullptr, 0);
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(1, 1, test_address_, 0x3456, 0, false,
+                                                             false, nullptr, 0);
   EXPECT_EQ(GATT_INVALID_HANDLE, captured_status);
 
   // Invalid uuid
   captured_status = GATT_SUCCESS;
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasRangingDataReadyCharacteristic), 0,
           false, false, nullptr, 0);
   EXPECT_EQ(GATT_ILLEGAL_PARAMETER, captured_status);
@@ -416,7 +399,7 @@ TEST_F(RasServerTest, WriteCharacteristicInalid) {
   EXPECT_CALL(mock_gatt_server_interface_, SendRsp(_, _, _, _))
           .WillOnce(testing::SaveArg<2>(&captured_status));
   RawAddress invalid_address = RawAddress::FromString("11:22:33:44:55:77").value();
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           1, 1, invalid_address, GetCharacteristicHandle(kRasControlPointCharacteristic), 0, false,
           false, nullptr, 0);
   EXPECT_EQ(GATT_ILLEGAL_PARAMETER, captured_status);
@@ -428,7 +411,7 @@ TEST_F(RasServerTest, PushRealTimeData) {
 
   // Enable Real-time notifications
   uint16_t ccc_value = GATT_CLT_CONFIG_NOTIFICATION;
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRealTimeRangingDataCharacteristic), 0, false,
           false, (uint8_t*)&ccc_value, sizeof(uint16_t));
 
@@ -445,7 +428,7 @@ TEST_F(RasServerTest, PushOnDemandData) {
 
   // Enable data ready indications
   uint16_t ccc_value = GATT_CLT_CONFIG_INDICATION;
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRangingDataReadyCharacteristic), 0, false,
           false, (uint8_t*)&ccc_value, sizeof(uint16_t));
 
@@ -465,7 +448,7 @@ TEST_F(RasServerTest, DataOverwritten) {
 
   // Enable data overwritten indications
   uint16_t ccc_value = GATT_CLT_CONFIG_INDICATION;
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRangingDataOverWrittenCharacteristic), 0,
           false, false, (uint8_t*)&ccc_value, sizeof(uint16_t));
 
@@ -493,12 +476,12 @@ TEST_F(RasServerTest, WriteVendorSpecificCharacteristic) {
   EXPECT_CALL(mock_ras_server_callbacks_, OnVendorSpecificReply(test_address_, _)).Times(1);
 
   // Write the first characteristic
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           test_conn_id_, 1, test_address_, GetCharacteristicHandle(kVendorSpecificCharacteristic1),
           0, false, false, value1.data(), value1.size());
 
   // Write the second characteristic
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           test_conn_id_, 2, test_address_, GetCharacteristicHandle(kVendorSpecificCharacteristic2),
           0, false, false, value2.data(), value2.size());
 
@@ -526,7 +509,7 @@ TEST_F(RasServerTest, UnsupportedOpcode) {
           .Times(1);
 
   // Simulate a write to the RAS Control Point
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasControlPointCharacteristic), 0, true,
           false, command.data(), command.size());
 }
@@ -534,11 +517,11 @@ TEST_F(RasServerTest, UnsupportedOpcode) {
 TEST_F(RasServerTest, GetAckRangingData) {
   // Enable On-demand indications and data ready indications
   uint16_t ccc_value = GATT_CLT_CONFIG_INDICATION;
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasOnDemandDataCharacteristic), 0, false, false,
           (uint8_t*)&ccc_value, sizeof(uint16_t));
 
-  captured_gatt_callback_->p_write_descriptor_cb(
+  captured_gatt_callback_->p_req_cb->write_descriptor_cb(
           1, 1, test_address_, GetDescriptorHandle(kRasRangingDataReadyCharacteristic), 0, false,
           false, (uint8_t*)&ccc_value, sizeof(uint16_t));
 
@@ -574,7 +557,7 @@ TEST_F(RasServerTest, GetAckRangingData) {
           .Times(1);
 
   // Simulate a write to the RAS Control Point
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasControlPointCharacteristic), 0, true,
           false, get_command.data(), get_command.size());
 
@@ -597,7 +580,7 @@ TEST_F(RasServerTest, GetAckRangingData) {
           .Times(1);
 
   // Simulate a write to the RAS Control Point
-  captured_gatt_callback_->p_write_characteristic_cb(
+  captured_gatt_callback_->p_req_cb->write_characteristic_cb(
           1, 1, test_address_, GetCharacteristicHandle(kRasControlPointCharacteristic), 0, true,
           false, ack_command.data(), ack_command.size());
 }

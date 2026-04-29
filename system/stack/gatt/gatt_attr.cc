@@ -55,6 +55,7 @@
 
 using bluetooth::Uuid;
 using namespace bluetooth;
+using stack::tGATT_REQ_CBACK;
 
 const bool encrypted_advertising_data_supported_ = true;
 

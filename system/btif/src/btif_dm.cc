@@ -79,7 +79,6 @@
 #include "main/shim/le_advertising_manager.h"
 #include "os/system_properties.h"
 #include "osi/include/properties.h"
-#include "osi/include/stack_power_telemetry.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/btm/btm_sec_utils.h"
@@ -2900,7 +2899,6 @@ void btif_dm_start_discovery(void) {
   btif_dm_inquiry_in_progress = false;
   /* find nearby devices */
   BTA_DmSearch(btif_dm_search_devices_evt);
-  power_telemetry::GetInstance().LogScanStarted();
 }
 
 /*******************************************************************************
@@ -4188,7 +4186,7 @@ static void btif_dm_ble_passkey_req_evt(tBTA_DM_PIN_REQ* p_passkey_req) {
   bd_name_copy(bd_name.name, p_passkey_req->bd_name);
 
   pairing_cb.pairing_type = {.algorithm = p_passkey_req->pairing_algorithm,
-                             .variant = PairingVariant::PASSKEY_CONFIRMATION};
+                             .variant = PairingVariant::PASSKEY_ENTRY};
   bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_TRANSPORT_LE, BT_BOND_STATE_BONDING,
                      pairing_cb.pairing_type);
   pairing_cb.is_le_only = true;

@@ -36,7 +36,8 @@ Handler::Handler(Thread* thread)
   alarm_ = new Alarm(thread_, false);
   event_ = thread_->GetReactor()->NewEvent();
   reactable_ = thread_->GetReactor()->Register(
-          event_->Id(), base::BindRepeating(&Handler::handle_next_event, base::Unretained(this)),
+          event_->Id(),
+          base::BindRepeating(&Handler::handle_all_queued_events, base::Unretained(this)),
           base::RepeatingClosure());
 }
 
@@ -51,6 +52,7 @@ Handler::~Handler() {
 }
 
 std::optional<base::OnceClosure> Handler::Post(base::OnceClosure closure) {
+  bool should_notify = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (was_cleared()) {
@@ -59,8 +61,17 @@ std::optional<base::OnceClosure> Handler::Post(base::OnceClosure closure) {
       return std::move(closure);
     }
     tasks_->emplace(std::move(closure));
+    if (!is_active_) {
+      is_active_ = true;
+      should_notify = true;
+    }
   }
-  if (!thread_->IsSameThread()) {
+
+  // We only skip notification if we are currently inside the handle_all_queued_events
+  // loop for this specific handler.
+  // Otherwise, we must notify to ensure the Reactor triggers a new
+  // handle_all_queued_events turn.
+  if (should_notify) {
     event_->Notify();
   }
   return std::nullopt;
@@ -104,15 +115,17 @@ void Handler::WaitUntilStopped(std::chrono::milliseconds timeout) {
                    "assert failed: thread_->GetReactor()->WaitForUnregisteredReactable(timeout)");
 }
 
-void Handler::handle_next_event() {
+void Handler::handle_all_queued_events() {
   event_->Read();
   while (true) {
     base::OnceClosure closure;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (was_cleared() || tasks_->empty()) {
+        is_active_ = false;
         return;
       }
+      is_active_ = true;
 
       closure = std::move(tasks_->front());
       tasks_->pop();
