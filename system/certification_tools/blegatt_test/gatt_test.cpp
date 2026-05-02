@@ -1343,7 +1343,6 @@ static bluetooth::stack::tGATT_REQ_CBACK sGattReqCB = {
     GattReqExecWrite_cb,
     GattReqMtuChanged_cb,
     GattReqConf_cb,
-	GattReqConfSendFail_cb
 };
 
 static bluetooth::stack::tGATT_CBACK sGattCB = {
