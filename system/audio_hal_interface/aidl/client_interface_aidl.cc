@@ -194,7 +194,6 @@ void BluetoothAudioClientInterface::FetchAudioProvider() {
     if (!aidl_retval.isOk() || provider_ == nullptr) {
       log::error("BluetoothAudioHal::openProvider failure: {}, retry number {}",
                  aidl_retval.getDescription(), retry_no + 1);
-      return;
     } else {
       provider_factory_ = std::move(provider_factory);
       break;
