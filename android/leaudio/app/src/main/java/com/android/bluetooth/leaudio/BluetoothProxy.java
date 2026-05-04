@@ -1440,6 +1440,21 @@ public class BluetoothProxy {
         return true;
     }
 
+    public int getEnhancedBroadcastCap() {
+        if (mBluetoothLeBroadcast == null) return -1;
+        return mBluetoothLeBroadcast.getEnhancedBroadcastCap();
+    }
+
+    public int getEnhancedBroadcastSinkCap() {
+        if (mBluetoothLeBroadcastAssistant == null) return -1;
+        return mBluetoothLeBroadcastAssistant.getEnhancedBroadcastSinkCap();
+    }
+
+    public int getEnhancedBroadcastSourceCap() {
+        if (mBluetoothLeBroadcastAssistant == null) return -1;
+        return mBluetoothLeBroadcastAssistant.getEnhancedBroadcastSourceCap();
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         if (mBluetoothLeBroadcast == null) return false;
         mBluetoothLeBroadcast.stopBroadcast(broadcastId);

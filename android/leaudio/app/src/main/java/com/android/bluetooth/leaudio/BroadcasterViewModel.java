@@ -57,6 +57,10 @@ public class BroadcasterViewModel extends AndroidViewModel {
         return mBluetooth.setJoinControl(mode);
     }
 
+    public int getEnhancedBroadcastCap() {
+        return mBluetooth.getEnhancedBroadcastCap();
+    }
+
     public boolean stopEnhancedBroadcast(int broadcastId) {
         return mBluetooth.stopEnhancedBroadcast(broadcastId);
     }

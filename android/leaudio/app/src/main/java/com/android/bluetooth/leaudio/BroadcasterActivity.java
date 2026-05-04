@@ -90,6 +90,11 @@ public class BroadcasterActivity extends AppCompatActivity {
     /** True when this device already occupies a BIS (i.e. we are the source). */
     private boolean mLocalOccupyingBis = false;
 
+    /** Last known broadcast features – used to suppress duplicate DBIG info toasts. */
+    private int mLastBroadcastFeatures = -1;
+    /** Last known BIS DevID array – used to suppress duplicate DBIG info toasts. */
+    private int[] mLastBisDevIds = null;
+
     private AudioManager mAudioManager;
 
     /* --------------------------------------------------------------
@@ -121,6 +126,44 @@ public class BroadcasterActivity extends AppCompatActivity {
             Log.d(TAG, "Received broadcast action: " + action);
             if (BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED.equals(action)) {
                 int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                int[] bisDevIds = intent.getIntArrayExtra(
+                        "android.bluetooth.extra.DBIG_BIS_DEV_IDS");
+                int broadcastFeatures = intent.getIntExtra(
+                        "android.bluetooth.extra.DBIG_BROADCAST_FEATURES", 0);
+
+                int totalBis = (bisDevIds != null) ? bisDevIds.length : 0;
+                int occupiedCount = 0;
+                int availableCount = 0;
+                if (bisDevIds != null) {
+                    for (int devIdEntry : bisDevIds) {
+                        if (devIdEntry != 0) { // Non-zero means acquired/occupied BIS slot
+                            occupiedCount++;
+                        } else { // 0 means free BIS slot
+                            availableCount++;
+                        }
+                    }
+                }
+
+                Log.i(TAG, "DBIG: total BIS =" + totalBis
+                        + ", BIS occupied=" + occupiedCount
+                        + ", BIS available=" + availableCount
+                        + ", features=0x" + Integer.toHexString(broadcastFeatures)
+                        + ", bisDevIds=" + (bisDevIds != null
+                            ? java.util.Arrays.toString(bisDevIds) : "null"));
+
+                boolean featuresChanged = (broadcastFeatures != mLastBroadcastFeatures);
+                boolean bisDevIdsChanged = !java.util.Arrays.equals(bisDevIds, mLastBisDevIds);
+                if (featuresChanged || bisDevIdsChanged) {
+                    mLastBroadcastFeatures = broadcastFeatures;
+                    mLastBisDevIds = (bisDevIds != null) ? java.util.Arrays.copyOf(bisDevIds, bisDevIds.length) : null;
+                    Toast.makeText(context,
+                            "DBIG: totalBis=" + totalBis
+                                    + ", occupiedBis=" + occupiedCount
+                                    + ", availableBis=" + availableCount
+                                    + ", features=0x" + Integer.toHexString(broadcastFeatures),
+                            Toast.LENGTH_SHORT).show();
+                }
+
                 boolean newDeviceAdded = (status & 0x0100) != 0;
                 Log.d(TAG, "Device added bit"+ newDeviceAdded);
                 if (newDeviceAdded) {
@@ -241,6 +284,12 @@ public class BroadcasterActivity extends AppCompatActivity {
                 "Playing broadcast " + pair.second + ", reason " + pair.first,
                 Toast.LENGTH_SHORT).show();
         itemsAdapter.updateBroadcastPlayback(pair.second, true);
+
+        // Log Enhanced Broadcast Source capabilities when broadcast enters playing state
+        int enhancedCap = mViewModel.getEnhancedBroadcastCap();
+        Log.i(TAG, "getEnhancedBroadcastCap: 0x" + Integer.toHexString(enhancedCap)
+                + " [Terminate_in_PGO=" + ((enhancedCap & 0x01) != 0 ? "supported" : "not_supported")
+                + ", Remove_in_PGO=" + ((enhancedCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
 
         // Automatically enable DBIG Join Control when broadcast enters playing state
         Log.d(TAG, "Broadcast playing – auto-enabling Join Control");

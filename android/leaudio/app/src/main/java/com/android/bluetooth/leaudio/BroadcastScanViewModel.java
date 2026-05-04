@@ -187,4 +187,12 @@ public class BroadcastScanViewModel extends AndroidViewModel {
     public boolean setAttributes(int devId, byte[] name) {
         return mBluetooth.setAttributesForSink(devId, name);
     }
-}
+
+    public int getEnhancedBroadcastSinkCap() {
+        return mBluetooth.getEnhancedBroadcastSinkCap();
+    }
+
+    public int getEnhancedBroadcastSourceCap() {
+        return mBluetooth.getEnhancedBroadcastSourceCap();
+    }
+  }
