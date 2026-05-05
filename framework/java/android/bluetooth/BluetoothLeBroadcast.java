@@ -1057,10 +1057,10 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             android.Manifest.permission.BLUETOOTH_CONNECT,
             android.Manifest.permission.BLUETOOTH_PRIVILEGED,
     })
-    public void setAchatAttributes(int devId, @NonNull byte[] name) {
+    public void setAttributes(int devId, @NonNull byte[] name) {
         // Validate devId (12-bit, 0-4095)
         if (devId < 0 || devId > 4095) {
-            Log.e(TAG, "setAchatAttributes: invalid devId=" + devId + " (must be 0-4095)");
+            Log.e(TAG, "setAttributes: invalid devId=" + devId + " (must be 0-4095)");
             throw new IllegalArgumentException(
                     "Invalid devId: " + devId + ". Must be 0-4095 (12-bit)");
         }
@@ -1070,13 +1070,13 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
 
         // Validate name: must not be empty
         if (name.length == 0) {
-            Log.e(TAG, "setAchatAttributes: name is empty, ignoring request");
+            Log.e(TAG, "setAttributes: name is empty, ignoring request");
             return;
         }
 
         // Validate name: must not exceed 10 octets
         if (name.length > 10) {
-            Log.e(TAG, "setAchatAttributes: name length=" + name.length
+            Log.e(TAG, "setAttributes: name length=" + name.length
                     + " exceeds 10 octets, ignoring request");
             return;
         }
@@ -1084,18 +1084,18 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
         // Validate name: must not be all spaces and must not contain any space
         String nameStr = new String(name, java.nio.charset.StandardCharsets.UTF_8);
         if (nameStr.trim().isEmpty()) {
-            Log.e(TAG, "setAchatAttributes: name consists entirely of spaces, ignoring request");
+            Log.e(TAG, "setAttributes: name consists entirely of spaces, ignoring request");
             return;
         }
         if (nameStr.contains(" ")) {
-            Log.e(TAG, "setAchatAttributes: name contains space character(s): \""
+            Log.e(TAG, "setAttributes: name contains space character(s): \""
                     + nameStr + "\", ignoring request");
             return;
         }
 
         byte[] nameBytes = name;
 
-        if (DBG) Log.d(TAG, "setAchatAttributes: devId=" + devId
+        if (DBG) Log.d(TAG, "setAttributes: devId=" + devId
                 + ", name=\"" + nameStr + "\", nameLen=" + name.length);
         final IBluetoothLeAudio service = getService();
         if (service == null) {
@@ -1104,7 +1104,7 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
         } else if (isEnabled()) {
             try {
                 final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
-                service.setAchatAttributes(devId, nameBytes, mAttributionSource, recv);
+                service.setAttributes(devId, nameBytes, mAttributionSource, recv);
                 recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
             } catch (TimeoutException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
@@ -1130,8 +1130,8 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             android.Manifest.permission.BLUETOOTH_CONNECT,
             android.Manifest.permission.BLUETOOTH_PRIVILEGED,
     })
-    public void setDbigJoinControl(boolean mode) {
-        if (DBG) Log.d(TAG, "setDbigJoinControl: mode=" + mode);
+    public void setJoinControl(boolean mode) {
+        if (DBG) Log.d(TAG, "setJoinControl: mode=" + mode);
         final IBluetoothLeAudio service = getService();
         if (service == null) {
             Log.w(TAG, "Proxy not attached to service");
@@ -1139,7 +1139,7 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
         } else if (isEnabled()) {
             try {
                 final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
-                service.setDbigJoinControl(mode, mAttributionSource, recv);
+                service.setJoinControl(mode, mAttributionSource, recv);
                 recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
             } catch (TimeoutException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));

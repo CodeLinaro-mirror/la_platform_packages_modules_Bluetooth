@@ -1008,10 +1008,10 @@ public final class BluetoothLeBroadcastAssistant implements BluetoothProfile, Au
             android.Manifest.permission.BLUETOOTH_CONNECT,
             android.Manifest.permission.BLUETOOTH_PRIVILEGED,
     })
-    public void setAchatAttributes(int devId, @NonNull byte[] name) {
+    public void setAttributes(int devId, @NonNull byte[] name) {
         // Validate devId (12-bit, 0-4095)
         if (devId < 0 || devId > 4095) {
-            Log.e(TAG, "setAchatAttributes: invalid devId=" + devId + " (must be 0-4095)");
+            Log.e(TAG, "setAttributes: invalid devId=" + devId + " (must be 0-4095)");
             throw new IllegalArgumentException(
                     "Invalid devId: " + devId + ". Must be 0-4095 (12-bit)");
         }
@@ -1021,13 +1021,13 @@ public final class BluetoothLeBroadcastAssistant implements BluetoothProfile, Au
 
         // Validate name: must not be empty
         if (name.length == 0) {
-            Log.e(TAG, "setAchatAttributes: name is empty, ignoring request");
+            Log.e(TAG, "setAttributes: name is empty, ignoring request");
             return;
         }
 
         // Validate name: must not exceed 10 octets
         if (name.length > 10) {
-            Log.e(TAG, "setAchatAttributes: name length=" + name.length
+            Log.e(TAG, "setAttributes: name length=" + name.length
                     + " exceeds 10 octets, ignoring request");
             return;
         }
@@ -1035,16 +1035,16 @@ public final class BluetoothLeBroadcastAssistant implements BluetoothProfile, Au
         // Validate name: must not be all spaces and must not contain any space
         String nameStr = new String(name, java.nio.charset.StandardCharsets.UTF_8);
         if (nameStr.trim().isEmpty()) {
-            Log.e(TAG, "setAchatAttributes: name consists entirely of spaces, ignoring request");
+            Log.e(TAG, "setAttributes: name consists entirely of spaces, ignoring request");
             return;
         }
         if (nameStr.contains(" ")) {
-            Log.e(TAG, "setAchatAttributes: name contains space character(s): \""
+            Log.e(TAG, "setAttributes: name contains space character(s): \""
                     + nameStr + "\", ignoring request");
             return;
         }
 
-        if (DBG) log("setAchatAttributes: devId=" + devId
+        if (DBG) log("setAttributes: devId=" + devId
                 + ", name=\"" + nameStr + "\", nameLen=" + name.length);
         final IBluetoothLeBroadcastAssistant service = getService();
         if (service == null) {
@@ -1052,7 +1052,7 @@ public final class BluetoothLeBroadcastAssistant implements BluetoothProfile, Au
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (mBluetoothAdapter.isEnabled()) {
             try {
-                service.setAchatAttributes(devId, name);
+                service.setAttributes(devId, name);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }

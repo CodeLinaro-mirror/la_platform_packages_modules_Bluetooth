@@ -124,7 +124,7 @@ oneway interface IBluetoothLeAudio {
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT})")
     void getMaximumSubgroupsPerBroadcast(in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void setAchatAttributes(int devId, in byte[] name, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
+    void setAttributes(int devId, in byte[] name, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void setDbigJoinControl(boolean mode, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
+    void setJoinControl(boolean mode, in AttributionSource attributionSource, in SynchronousResultReceiver receiver);
 }
