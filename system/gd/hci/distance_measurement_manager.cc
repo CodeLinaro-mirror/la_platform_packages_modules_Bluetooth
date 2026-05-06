@@ -70,7 +70,7 @@ static constexpr uint8_t kTxPowerNotAvailable = 0xfe;
 static constexpr int8_t kRSSIDropOffAt1M = 41;
 static constexpr uint8_t kCsMaxTxPower = 20;  // 10 dBm
 static constexpr CsSyncAntennaSelection kCsSyncAntennaSelection =
-         CsSyncAntennaSelection::ANTENNAS_IN_ORDER;
+         CsSyncAntennaSelection::ANTENNA_1;
 static constexpr uint8_t kConfigId = 0x01;  // Use 0x01 to create config and enable procedure
 static constexpr uint8_t kMinMainModeSteps = 0x02;
 static constexpr uint8_t kMaxMainModeSteps = 0x05;
