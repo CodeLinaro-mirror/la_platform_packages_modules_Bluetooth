@@ -83,6 +83,10 @@ using namespace bluetooth;
 #define BTA_AV_ACCEPT_SIGNALLING_TIMEOUT_MS (2 * 1000) /* 2 seconds */
 #endif
 
+#ifndef AVRC_CONNECT_RETRY_DELAY_MS
+#define AVRC_CONNECT_RETRY_DELAY_MS 2000
+#endif
+
 static void bta_av_accept_signalling_timer_cback(void* data);
 
 #ifndef AVRC_MIN_META_CMD_LEN
@@ -2291,6 +2295,19 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
   }
 
   log::verbose("rc_handle {}", rc_handle);
+  if (rc_handle == BTA_AV_RC_HANDLE_NONE  && btif_av_is_a2dp_sink_offload_enabled())
+  {
+      log::debug("Wait for an incoming connection");
+      if (p_scb != NULL)
+      {
+          bta_sys_start_timer(p_scb->avrc_ct_timer, AVRC_CONNECT_RETRY_DELAY_MS,
+                                 BTA_AV_SDP_AVRC_DISC_EVT,p_scb->hndl);
+          log::debug("incoming connection in progress, reset sdp disc handle");
+          p_cb->disc = 0;
+          return;
+      }
+  }
+
   if (p_cb->sdp_a2dp_snk_handle) {
     /* This is Sink + CT + TG(Abs Vol) */
     peer_features = bta_avk_check_peer_features(UUID_SERVCLASS_AV_REM_CTRL_TARGET);
