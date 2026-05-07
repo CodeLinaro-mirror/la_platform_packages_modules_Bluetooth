@@ -2383,6 +2383,15 @@ void btif_dm_sec_evt(tBTA_DM_SEC_EVT event, tBTA_DM_SEC* p_data) {
   }
 }
 
+/*******************************************************************************
+ *
+ * Function         bte_dm_acl_evt
+ *
+ * Description      BTIF handler for ACL up/down, identity address report events
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
 void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
   RawAddress bd_addr;
 
@@ -2404,7 +2413,6 @@ void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
           is_device_le_audio_capable(bd_addr)) {
         stack::l2cap::get_interface().L2CA_LockBleConnParamsForProfileConnection(bd_addr, true);
       }
-
       break;
 
     case BTA_DM_LINK_UP_FAILED_EVT:
@@ -2972,6 +2980,14 @@ DEV_CLASS btif_dm_get_local_class_of_device() {
           "Check LE audio enabled status, update class of device to '0x{:x}, "
           "0x{:x}, 0x{:x}'",
           device_class[0], device_class[1], device_class[2]);
+  if(osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", true)) {
+    log::info("Changing COD for Sink device");
+    device_class[0] = 0x20; //Service class as Audio
+    device_class[1] = 0x04; // major dev class as Audio / Video
+    device_class[2] = 0x04; // minor dev class as Wearable headset device
+    log::debug("Updated class of device '0x{:x}, 0x{:x}, 0x{:x}' from CoD system property",
+             device_class[0], device_class[1], device_class[2]);
+  }
 #endif
   return device_class;
 }
