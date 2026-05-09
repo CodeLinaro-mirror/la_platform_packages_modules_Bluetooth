@@ -98,6 +98,9 @@ void bta_av_ssm_execute(tBTA_AV_SCB* p_scb, uint16_t event, tBTA_AV_DATA* p_data
         case BTA_AV_API_OFFLOAD_START_RSP_EVT:
           event_handler1 = &bta_av_offload_rsp;
           break;
+        case BTA_AV_SINK_API_OFFLOAD_STOP_EVT:
+          event_handler1 = &bta_av_sink_offload_stop_req;
+          break;
       }
       break;
     case BTA_AV_INCOMING_SST:
