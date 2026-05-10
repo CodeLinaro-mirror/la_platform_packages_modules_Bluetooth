@@ -26,9 +26,9 @@
 #include <vector>
 
 #include "bind_helpers.h"
+#include "bta/mock/bta_gatt_api_mock.h"
+#include "bta/mock/mock_bta_dm_api.h"
 #include "bta_csis_api.h"
-#include "bta_dm_api_mock.h"
-#include "bta_gatt_api_mock.h"
 #include "bta_gatt_queue_mock.h"
 #include "bta_le_audio_uuids.h"
 #include "btif/include/btif_profile_storage.h"
@@ -423,7 +423,7 @@ protected:
     set_com_android_bluetooth_flags_csis_quirk_for_single_device_with_sirk_all_zeros(true);
     set_com_android_bluetooth_flags_leaudio_csis_handle_misconfigured_sets(true);
     bluetooth::manager::SetMockBtmInterface(&btm_interface);
-    dm::SetMockBtaDmInterface(&dm_interface);
+    MockBtaDmApi::SetInstance(&dm_interface);
     gatt::SetMockBtaGattInterface(&gatt_interface);
     gatt::SetMockBtaGattQueue(&gatt_queue);
     SetMockCsisLockCallback(&csis_lock_cb);
@@ -495,6 +495,7 @@ protected:
     CsisClient::CleanUp();
     gatt::SetMockBtaGattInterface(nullptr);
     bluetooth::manager::SetMockBtmInterface(nullptr);
+    MockBtaDmApi::SetInstance(nullptr);
   }
 
   void TestAppRegister(void) {
@@ -690,7 +691,7 @@ protected:
   std::unique_ptr<MockCsisCallbacks> callbacks;
   std::unique_ptr<MockCsisCallbacks> lock_callback;
   bluetooth::manager::MockBtmInterface btm_interface;
-  dm::MockBtaDmInterface dm_interface;
+  MockBtaDmApi dm_interface;
   gatt::MockBtaGattInterface gatt_interface;
   gatt::MockBtaGattQueue gatt_queue;
   MockCsisLockCallback csis_lock_cb;
@@ -983,7 +984,7 @@ TEST_F(CsisClientTest, test_search_complete_before_encryption) {
   EXPECT_CALL(*callbacks, OnDeviceAvailable(test_address, _, _, _, _)).Times(1);
 
   ON_CALL(mock_btm_security_, BTM_IsEncrypted(test_address, _)).WillByDefault(DoAll(Return(true)));
-  EXPECT_CALL(gatt_interface, ServiceSearchRequest(_, _)).Times(1);
+  EXPECT_CALL(gatt_interface, ServiceSearchRequest(_)).Times(1);
 
   InjectEncryptionEvent(test_address, 1);
   GetSearchCompleteEvent(1);
@@ -1767,8 +1768,8 @@ TEST_F(CsisClientTest, test_database_out_of_sync) {
             }
           }));
 
-  ON_CALL(gatt_interface, ServiceSearchRequest(_, _)).WillByDefault(Return());
-  EXPECT_CALL(gatt_interface, ServiceSearchRequest(_, _));
+  ON_CALL(gatt_interface, ServiceSearchRequest(_)).WillByDefault(Return());
+  EXPECT_CALL(gatt_interface, ServiceSearchRequest(_));
   CsisClient::Get()->LockGroup(
           1, true, base::BindOnce([](int group_id, bool locked, CsisGroupLockStatus status) {
             csis_lock_callback_mock->CsisGroupLockCb(group_id, locked, status);

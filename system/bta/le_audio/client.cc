@@ -3000,8 +3000,7 @@ public:
       return;
     }
 
-    BTA_GATTC_ServiceSearchRequest(leAudioDevice->conn_id_,
-                                   bluetooth::le_audio::uuid::kPublishedAudioCapabilityServiceUuid);
+    BTA_GATTC_ServiceSearchRequest(leAudioDevice->conn_id_);
   }
 
   void checkGroupConnectionStateAfterMemberDisconnect(int group_id) {
@@ -3314,9 +3313,7 @@ public:
 
     btif_storage_leaudio_clear_service_data(leAudioDevice->address_);
     if (search_request) {
-      BTA_GATTC_ServiceSearchRequest(
-              leAudioDevice->conn_id_,
-              bluetooth::le_audio::uuid::kPublishedAudioCapabilityServiceUuid);
+      BTA_GATTC_ServiceSearchRequest(leAudioDevice->conn_id_);
     }
   }
 
@@ -3414,9 +3411,7 @@ public:
     }
 
     if (!leAudioDevice->known_service_handles_) {
-      BTA_GATTC_ServiceSearchRequest(
-              leAudioDevice->conn_id_,
-              bluetooth::le_audio::uuid::kPublishedAudioCapabilityServiceUuid);
+      BTA_GATTC_ServiceSearchRequest(leAudioDevice->conn_id_);
     }
   }
 
@@ -5981,12 +5976,17 @@ public:
     auto const is_missing_source_ase_context =
             remote_contexts.source.none() && has_source_ase_config;
 
-    is_configuration_changed = is_configuration_changed || is_missing_sink_ase_config ||
-                               is_missing_source_ase_config || is_missing_sink_ase_context ||
-                               is_missing_source_ase_context;
+    bool direction_misalignment = is_missing_sink_ase_config || is_missing_source_ase_config ||
+                                   is_missing_sink_ase_context || is_missing_source_ase_context;
+
+    is_configuration_changed = is_configuration_changed || direction_misalignment;
 
     // Clear DSA configuration cache when DSA mode has changed
-    if (is_configuration_changed || is_dsa_reconfig_needed) {
+    if ((!com_android_bluetooth_flags_leaudio_improve_configuration_caching() &&
+         is_configuration_changed) ||
+        (com_android_bluetooth_flags_leaudio_improve_configuration_caching() &&
+         direction_misalignment) ||
+        is_dsa_reconfig_needed) {
       group->InvalidateCachedConfigurations(new_configuration_context);
     }
 
@@ -6231,7 +6231,7 @@ public:
                                                                    conn_handle);
   }
 
-  void IsoLinkQualityReadCb(uint8_t conn_handle, uint8_t cig_id, uint32_t tx_unacked_packets,
+  void IsoLinkQualityReadCb(uint16_t conn_handle, uint8_t cig_id, uint32_t tx_unacked_packets,
                             uint32_t tx_flushed_packets, uint32_t tx_last_subevent_packets,
                             uint32_t retransmitted_packets, uint32_t crc_error_packets,
                             uint32_t rx_unreceived_packets, uint32_t duplicate_packets) {
@@ -7065,9 +7065,6 @@ void le_audio_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
   log::info("event = {}", gatt_client_event_text(event));
 
   switch (event) {
-    case BTA_GATTC_DEREG_EVT:
-      break;
-
     case BTA_GATTC_NOTIF_EVT:
       instance->LeAudioCharValueHandle(p_data->notify.conn_id, p_data->notify.handle,
                                        p_data->notify.len,
@@ -7155,7 +7152,7 @@ public:
     }
   }
 
-  void OnIsoLinkQualityRead(uint8_t conn_handle, uint8_t cig_id, uint32_t tx_unacked_packets,
+  void OnIsoLinkQualityRead(uint16_t conn_handle, uint8_t cig_id, uint32_t tx_unacked_packets,
                             uint32_t tx_flushed_packets, uint32_t tx_last_subevent_packets,
                             uint32_t retransmitted_packets, uint32_t crc_error_packets,
                             uint32_t rx_unreceived_packets, uint32_t duplicate_packets) {

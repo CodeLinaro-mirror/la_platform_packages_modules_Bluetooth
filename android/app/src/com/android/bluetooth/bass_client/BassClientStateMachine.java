@@ -827,7 +827,12 @@ class BassClientStateMachine extends StateMachine {
             return;
         }
 
-        Log.d(TAG, "processBroadcastReceiverState: Updated receiver state: " + recvState);
+        Log.d(
+                TAG,
+                "processBroadcastReceiverState: device="
+                        + mDevice
+                        + ", updated receiver state: "
+                        + recvState);
         mBluetoothLeBroadcastReceiveStates.put(characteristic.getInstanceId(), recvState);
         int sourceId = recvState.getSourceId();
 
@@ -2075,6 +2080,7 @@ class BassClientStateMachine extends StateMachine {
                 case START_SCAN_OFFLOAD,
                         STOP_SCAN_OFFLOAD,
                         ADD_BCAST_SOURCE,
+                        UPDATE_BCAST_SOURCE,
                         SET_BCAST_CODE,
                         REMOVE_BCAST_SOURCE,
                         SWITCH_BCAST_SOURCE,
