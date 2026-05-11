@@ -465,6 +465,7 @@ void readConfigs() {
     if (!ReadLocalConfigs()) {
       log::warn(
           "Failed to load local config, falling back to static tables.");
+      config_used = false;
       InitializeConfigs();
     }
   } else {

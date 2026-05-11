@@ -158,6 +158,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
     // If any subevent is received with a Subevent_Done_Status of 0x0 (All results complete for the
     // CS subevent)
     bool contains_complete_subevent_ = false;
+    bool contains_invalid_data_ = false;
     // RAS data
     SegmentationHeader segmentation_header_;
     RangingHeader ranging_header_;
@@ -893,10 +894,26 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      uint16_t min_period_time_ms = procedure_setting.min_period_between_proc;
      uint16_t max_period_time_ms = procedure_setting.max_period_between_proc;
 
-     uint16_t min_period_between_proc = static_cast<uint16_t>(std::round(
-         (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
-     uint16_t max_period_between_proc = static_cast<uint16_t>(std::round(
-         (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+     uint16_t min_period_between_proc;
+     uint16_t max_period_between_proc;
+     uint8_t tmp_tone_antenna_config_sel =  tone_antenna_config_selection;
+
+     if (config_used) {
+       min_period_between_proc = procedure_setting.min_period_between_proc;
+       max_period_between_proc = procedure_setting.max_period_between_proc;
+       tmp_tone_antenna_config_sel =  procedure_setting.tone_ant_cfg_selection;
+       log::info("Using local config: min_period_between_proc={}, max_period_between_proc={}, "
+                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel);
+     } else {
+       min_period_between_proc = static_cast<uint16_t>(std::round(
+           (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+       max_period_between_proc = static_cast<uint16_t>(std::round(
+           (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+       log::info("Using static config: min_period_between_proc={}, max_period_between_proc={}, "
+                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel);
+     }
 
      log::info("config_avb: conn_interval={}, min_period_time={}ms, max_period_time={}ms, "
                "min_period_between_proc={}, max_period_between_proc={}",
@@ -914,7 +931,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
             min_subevent_len,
 	    max_subevent_len,
            // kToneAntennaConfigSelection,
-	    procedure_setting.tone_ant_cfg_selection,
+            tmp_tone_antenna_config_sel,
             (CsPhy)procedure_setting.phy,
             procedure_setting.tx_pwr_delta,
             preferred_peer_antenna,
@@ -1501,17 +1518,19 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
 
     // Send data to RAS server
     if (subevent_done_status != CsSubeventDoneStatus::PARTIAL_RESULTS) {
-      procedure_data->ras_subevent_header_.ranging_done_status_ =
-              static_cast<RangingDoneStatus>(procedure_done_status);
-      procedure_data->ras_subevent_header_.subevent_done_status_ =
-              static_cast<SubeventDoneStatus>(subevent_done_status);
-      auto builder = RasSubeventBuilder::Create(procedure_data->ras_subevent_header_,
-                                                procedure_data->ras_subevent_data_);
-      auto subevent_raw = builder_to_bytes(std::move(builder));
-      append_vector(procedure_data->ras_raw_data_, subevent_raw);
-      // erase buffer
-      procedure_data->ras_subevent_data_.clear();
-      send_on_demand_data(live_tracker->address, procedure_data);
+        if (!procedure_data->contains_invalid_data_) {
+            procedure_data->ras_subevent_header_.ranging_done_status_ =
+                static_cast<RangingDoneStatus>(procedure_done_status);
+            procedure_data->ras_subevent_header_.subevent_done_status_ =
+                static_cast<SubeventDoneStatus>(subevent_done_status);
+            auto builder = RasSubeventBuilder::Create(procedure_data->ras_subevent_header_,
+                    procedure_data->ras_subevent_data_);
+            auto subevent_raw = builder_to_bytes(std::move(builder));
+            append_vector(procedure_data->ras_raw_data_, subevent_raw);
+            // erase buffer
+            procedure_data->ras_subevent_data_.clear();
+            send_on_demand_data(live_tracker->address, procedure_data);
+        }
       // remove procedure data sent previously
       if (procedure_done_status == CsProcedureDoneStatus::ALL_RESULTS_COMPLETE) {
         delete_consumed_procedure_data(live_tracker, live_tracker->procedure_counter);
@@ -1804,6 +1823,15 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
             } else {
               procedure_data->antenna_permutation_index_reflector.push_back(permutation_index);
             }
+
+            if (!is_valid_antenna_permutation_data(permutation_index, num_antenna_paths)) {
+              log::error(
+                      "Received invalid antenna permutation data (index: {}, paths: {}) for Mode 2 "
+                      "data",
+                      permutation_index, num_antenna_paths);
+              procedure_data->contains_invalid_data_ = true;
+              return;  // Skip following data
+            }
             // Parse in ascending order of antenna position with tone extension data at the end
             for (uint8_t k = 0; k < num_tone_data; k++) {
               uint8_t antenna_path =
@@ -1934,6 +1962,15 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
                 view_tone_data.insert(view_tone_data.end(), tone_data.begin(), tone_data.end());
               }
             }
+
+            if (!is_valid_antenna_permutation_data(permutation_index, num_antenna_paths)) {
+              log::error(
+                      "Received invalid antenna permutation data (index: {}, paths: {}) for Mode 3 "
+                      "data",
+                      permutation_index, num_antenna_paths);
+              procedure_data->contains_invalid_data_ = true;
+              return;  // Skip following data
+            }
             // Parse in ascending order of antenna position with tone extension data at the end
             for (uint16_t k = 0; k < num_tone_data; k++) {
               uint8_t antenna_path =
@@ -2058,7 +2095,7 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
                  (uint16_t)procedure_data->counter, (uint16_t)procedure_data->step_channel.size(),
                  (uint16_t)live_tracker->main_mode_type, (uint16_t)live_tracker->sub_mode_type);
 
-      if (ranging_hal_->IsBound()) {
+      if (ranging_hal_->IsBound() && !procedure_data->contains_invalid_data_) {
         // Use algorithm in the HAL
         bluetooth::hal::ChannelSoundingRawData raw_data;
         raw_data.procedure_counter_ = live_tracker->procedure_counter;
@@ -2297,7 +2334,16 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
             procedure_data.step_channel.push_back(step_channel);
           }
           auto tone_data = tone_data_view.tone_data_;
+          // Validate permutation index based on num_antenna_paths
           uint8_t permutation_index = tone_data_view.antenna_permutation_index_;
+          if (!is_valid_antenna_permutation_data(permutation_index, num_antenna_paths)) {
+            log::error(
+                    "Received invalid antenna permutation data (index: {}, paths: {}) for Mode 2 "
+                    "data",
+                    permutation_index, num_antenna_paths);
+            procedure_data.contains_invalid_data_ = true;
+            return;  // Skip following data
+          }
           if (role == CsRole::INITIATOR) {
             procedure_data.antenna_permutation_index_initiator.push_back(permutation_index);
           } else {
@@ -2404,6 +2450,17 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
               view_tone_data.insert(view_tone_data.end(), tone_data.begin(), tone_data.end());
             }
           }
+
+          // Validate permutation index based on num_antenna_paths
+          if (!is_valid_antenna_permutation_data(permutation_index, num_antenna_paths)) {
+            log::error(
+                    "Received invalid antenna permutation data (index: {}, paths: {}) for Mode 3 "
+                    "data",
+                    permutation_index, num_antenna_paths);
+            procedure_data.contains_invalid_data_ = true;
+            return;  // Skip following data
+          }
+
           // Parse in ascending order of antenna position with tone extension data at the end
           uint16_t num_tone_data = num_antenna_paths + 1;
           for (uint16_t k = 0; k < num_tone_data; k++) {
@@ -2432,6 +2489,14 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         }
       }
     }
+  }
+
+  bool is_valid_antenna_permutation_data(uint8_t permutation_index, uint8_t num_antenna_paths) {
+    if (num_antenna_paths < 1 || num_antenna_paths > 4) {
+      return false;
+    }
+    uint8_t max_valid_permutation_index = max_valid_permutation_index_table_[num_antenna_paths - 1];
+    return permutation_index <= max_valid_permutation_index;
   }
 
   double get_iq_value(uint16_t sample) {
@@ -2630,6 +2695,9 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           {0, 4, 5, 6}, {1, 7, 7, 7}, {2, 7, 7, 7}, {3, 7, 7, 7}};
   // A table that maps Antenna Configuration Index to Preferred Peer Antenna.
   uint8_t cs_preferred_peer_antenna_mapping_table_[8] = {1, 1, 1, 1, 3, 7, 15, 3};
+  // A table that maps the maximum valid permutation index based on num_antenna_paths.
+  // The total number of permutations for N items is N! (index start from 0).
+  uint8_t max_valid_permutation_index_table_[4] = {0, 1, 5, 23};
   // Antenna path permutations. See Channel Sounding CR_PR for the details.
   uint8_t cs_antenna_permutation_array_[24][4] = {
           {1, 2, 3, 4}, {2, 1, 3, 4}, {1, 3, 2, 4}, {3, 1, 2, 4}, {3, 2, 1, 4}, {2, 3, 1, 4},
