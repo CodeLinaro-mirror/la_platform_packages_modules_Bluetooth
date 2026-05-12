@@ -1215,6 +1215,17 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         }
         reset_tracker_on_stopped(it->second);
       }
+    } else if (enable == Enable::DISABLED && status == ErrorCode::CONTROLLER_BUSY) {
+      log::info("controller busy for procedure disable, schedule retry.");
+      procedure_disable_in_progress = false;
+      auto it = cs_requester_trackers_.find(connection_handle);
+      if (it != cs_requester_trackers_.end() && it->second.procedure_schedule_guard_alarm != nullptr) {
+        it->second.procedure_schedule_guard_alarm->Cancel();
+        it->second.procedure_schedule_guard_alarm->Schedule(
+                common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
+                             connection_handle, Enable::DISABLED),
+                std::chrono::milliseconds(kProcedureScheduleGuardMs));
+      }
     } else if (enable == Enable::ENABLED && status_view.GetStatus() != ErrorCode::SUCCESS) {
       if (cs_requester_trackers_.count(connection_handle) == 0) {
         log::error("Error code {} for connection_handle {}. No request tracker found.",
