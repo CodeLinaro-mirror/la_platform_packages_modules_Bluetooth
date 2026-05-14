@@ -2433,11 +2433,10 @@ void do_le_cl_register(int idx, bool eatt_support) {
       return;
   }
   if (Btif_gatt_layer) {
-#if (EATT_IF_SUPPORTED == TRUE)
-    Ret = sGattIfaceScan->client->register_client(bt_uuid,"gatt_test_app", eatt_support);
-#else
-    Ret = sGattIfaceScan->client->register_client(bt_uuid, "gatt_test_app", false);
-#endif
+    if (eatt_support)
+        Ret = sGattIfaceScan->client->register_client(bt_uuid,"gatt_test_app", eatt_support);
+    else
+        Ret = sGattIfaceScan->client->register_client(bt_uuid, "gatt_test_app", false);
     printf("%s:: ret value %d\n", __FUNCTION__, Ret);
   } else {
     g_client_if = sGattInterface->Register(uuid, &sGattCB, eatt_support);
@@ -3077,11 +3076,10 @@ void do_le_sr_register(int idx, bool eatt_support) {
   }
 
   if (Btif_gatt_layer) {
-#if (EATT_IF_SUPPORTED == TRUE)
-    Ret = sGattIfaceScan->server->register_server(bt_uuid, eatt_support);
-#else
-    Ret = sGattIfaceScan->server->register_server(bt_uuid, false);
-#endif
+    if (eatt_support)
+      Ret = sGattIfaceScan->server->register_server(bt_uuid, eatt_support);
+    else
+      Ret = sGattIfaceScan->server->register_server(bt_uuid, false);
     printf("%s:: Ret=%d \n", __FUNCTION__, Ret);
   } else {
     g_server_if = sGattInterface->Register(uuid, &sGattCB, eatt_support);
