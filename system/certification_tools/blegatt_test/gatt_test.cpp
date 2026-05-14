@@ -254,6 +254,8 @@ std::string AUTHENTICATION_LEVEL_UUID1 = "00001119-0000-1000-8000-00805f9b34fb";
 std::string AUTHENTICATION_LEVEL_UUID2 = "00001120-0000-1000-8000-00805f9b34fb";
 std::string AUTHENTICATION_LEVEL_UUID3 = "00001121-0000-1000-8000-00805f9b34fb";
 std::string AUTHENTICATION_LEVEL_UUID4 = "00001122-0000-1000-8000-00805f9b34fb";
+
+// GATT/SR/GAR/BI-34-C and GATT/SR/GAR/BI-35-C
 std::string ALERT_LEVEL_UUID18 = "00001123-0000-1000-8000-00805f9b34fb";
 std::string ALERT_LEVEL_UUID19 = "00001124-0000-1000-8000-00805f9b34fb";
 
@@ -300,6 +302,7 @@ int curr_handle = 0;
 int long_char_max_len_for_sr_gar_bi_13 = 100;
 
 std::map<RawAddress, std::vector<uint8_t>> cccd_value_map;
+std::map<int, int> g_invalid_transport_char_handle;
 
 int exec_write_status = BT_STATUS_SUCCESS;
 int invalid_offset = 0x07;
@@ -507,8 +510,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char1 = {};
   char1.uuid = Uuid::FromString(ALERT_LEVEL_UUID1, &is_valid);
   char1.type = BTGATT_DB_CHARACTERISTIC;
-  char1.properties = 58;
-  char1.permissions = 17;
+  char1.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service1.push_back(char1);
 
@@ -516,7 +519,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc1 = {};
   desc1.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc1.type = BTGATT_DB_DESCRIPTOR;
-  desc1.permissions = 17;
+  desc1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service1.push_back(desc1);
 
@@ -524,8 +527,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char2 = {};
   char2.uuid = Uuid::FromString(ALERT_LEVEL_UUID2, &is_valid);
   char2.type = BTGATT_DB_CHARACTERISTIC;
-  char2.properties = 58;
-  char2.permissions = 34;
+  char2.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char2.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use shortByteValue byte array for this char
   service1.push_back(char2);
 
@@ -533,7 +536,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc2 = {};
   desc2.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc2.type = BTGATT_DB_DESCRIPTOR;
-  desc2.permissions = 34;
+  desc2.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use shortByteValue byte array for this desc
   service1.push_back(desc2);
 
@@ -541,8 +544,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char3 = {};
   char3.uuid = Uuid::FromString(ALERT_LEVEL_UUID3, &is_valid);
   char3.type = BTGATT_DB_CHARACTERISTIC;
-  char3.properties = 58;
-  char3.permissions = 68;
+  char3.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char3.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use shortByteValue byte array for this char
   service1.push_back(char3);
 
@@ -550,7 +553,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc3 = {};
   desc3.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc3.type = BTGATT_DB_DESCRIPTOR;
-  desc3.permissions = 68;
+  desc3.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use shortByteValue byte array for this desc
   service1.push_back(desc3);
 
@@ -558,8 +561,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char4 = {};
   char4.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_UUID1, &is_valid);
   char4.type = BTGATT_DB_CHARACTERISTIC;
-  char4.properties = 58;
-  char4.permissions = 34;
+  char4.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char4.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use shortByteValue byte array for this char
   service1.push_back(char4);
 
@@ -567,7 +570,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc4 = {};
   desc4.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_DESC_UUID1, &is_valid);
   desc4.type = BTGATT_DB_DESCRIPTOR;
-  desc4.permissions = 34;
+  desc4.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use shortByteValue byte array for this desc
   service1.push_back(desc4);
 
@@ -575,8 +578,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char5 = {};
   char5.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_UUID2, &is_valid);
   char5.type = BTGATT_DB_CHARACTERISTIC;
-  char5.properties = 58;
-  char5.permissions = 68;
+  char5.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char5.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use shortByteValue byte array for this char
   service1.push_back(char5);
 
@@ -584,7 +587,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc5 = {};
   desc5.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_DESC_UUID2, &is_valid);
   desc5.type = BTGATT_DB_DESCRIPTOR;
-  desc5.permissions = 68;
+  desc5.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use shortByteValue byte array for this desc
   service1.push_back(desc5);
 
@@ -592,8 +595,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char6 = {};
   char6.uuid = Uuid::FromString(ALERT_LEVEL_UUID4, &is_valid);
   char6.type = BTGATT_DB_CHARACTERISTIC;
-  char6.properties = 4;
-  char6.permissions = 16;
+  char6.properties = GATT_CHAR_PROP_BIT_WRITE_NR;
+  char6.permissions = GATT_PERM_WRITE;
   // use shortByteValue byte array for this char
   service1.push_back(char6);
 
@@ -601,7 +604,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc6 = {};
   desc6.uuid = Uuid::FromString(DISC_LEVEL_UUID1, &is_valid);
   desc6.type = BTGATT_DB_DESCRIPTOR;
-  desc6.permissions = 16;
+  desc6.permissions = GATT_PERM_WRITE;
   // use shortByteValue byte array for this desc
   service1.push_back(desc6);
 
@@ -609,8 +612,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char7 = {};
   char7.uuid = Uuid::FromString(ALERT_LEVEL_UUID5, &is_valid);
   char7.type = BTGATT_DB_CHARACTERISTIC;
-  char7.properties = 114;
-  char7.permissions = 129;
+  char7.properties = GATT_CHAR_PROP_BIT_AUTH | GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_READ;
+  char7.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service1.push_back(char7);
 
@@ -618,7 +621,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc7 = {};
   desc7.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc7.type = BTGATT_DB_DESCRIPTOR;
-  desc7.permissions = 129;
+  desc7.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service1.push_back(desc7);
 
@@ -626,8 +629,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char8 = {};
   char8.uuid = Uuid::FromString(ALERT_LEVEL_UUID6, &is_valid);
   char8.type = BTGATT_DB_CHARACTERISTIC;
-  char8.properties = 66;
-  char8.permissions = 129;
+  char8.properties = GATT_CHAR_PROP_BIT_AUTH | GATT_CHAR_PROP_BIT_READ;
+  char8.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service1.push_back(char8);
 
@@ -635,7 +638,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc8 = {};
   desc8.uuid = Uuid::FromString(DISC_LEVEL_UUID2, &is_valid);
   desc8.type = BTGATT_DB_DESCRIPTOR;
-  desc8.permissions = 129;
+  desc8.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service1.push_back(desc8);
 
@@ -644,8 +647,8 @@ static void register_server_cb(int status, int server_if,
   char9.uuid =
       Uuid::FromString(ALERT_LEVEL_WRITENORESPONSEWITHREADABLE2, &is_valid);
   char9.type = BTGATT_DB_CHARACTERISTIC;
-  char9.properties = 6;
-  char9.permissions = 17;
+  char9.properties = GATT_CHAR_PROP_BIT_WRITE_NR | GATT_CHAR_PROP_BIT_READ;
+  char9.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service1.push_back(char9);
 
@@ -653,7 +656,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc9 = {};
   desc9.uuid = Uuid::FromString(DISC_LEVEL_UUID7, &is_valid);
   desc9.type = BTGATT_DB_DESCRIPTOR;
-  desc9.permissions = 17;
+  desc9.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service1.push_back(desc9);
 
@@ -661,8 +664,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char10 = {};
   char10.uuid = Uuid::FromString(ALERT_LEVEL_UUID18, &is_valid);
   char10.type = BTGATT_DB_CHARACTERISTIC;
-  char10.properties = 58;
-  char10.permissions = 17;
+  char10.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char10.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service1.push_back(char10);
 
@@ -670,7 +673,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc10 = {};
   desc10.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc10.type = BTGATT_DB_DESCRIPTOR;
-  desc10.permissions = 17;
+  desc10.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service1.push_back(desc10);
 
@@ -678,8 +681,8 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t char11 = {};
   char11.uuid = Uuid::FromString(ALERT_LEVEL_UUID19, &is_valid);
   char11.type = BTGATT_DB_CHARACTERISTIC;
-  char11.properties = 58;
-  char11.permissions = 17;
+  char11.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_READ;
+  char11.permissions = GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service1.push_back(char11);
 
@@ -687,7 +690,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc11 = {};
   desc11.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc11.type = BTGATT_DB_DESCRIPTOR;
-  desc11.permissions = 17;
+  desc11.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service1.push_back(desc11);
 
@@ -706,90 +709,90 @@ static void register_server_cb(int status, int server_if,
   // 1st char
   char1.uuid = Uuid::FromString(ALERT_LEVEL_UUID7, &is_valid);
   char1.type = BTGATT_DB_CHARACTERISTIC;
-  char1.properties = 58;
-  char1.permissions = 17;
+  char1.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this char
   service2.push_back(char1);
 
   // 1st desc
   desc1.uuid = Uuid::FromString(DISC_LEVEL_UUID3, &is_valid);
   desc1.type = BTGATT_DB_DESCRIPTOR;
-  desc1.permissions = 17;
+  desc1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service2.push_back(desc1);
 
   // 2nd char
   char2.uuid = Uuid::FromString(ALERT_LEVEL_UUID8, &is_valid);
   char2.type = BTGATT_DB_CHARACTERISTIC;
-  char2.properties = 58;
-  char2.permissions = 34;
+  char2.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char2.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use longByteValue byte array for this char
   service2.push_back(char2);
 
   // 2nd desc
   desc2.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc2.type = BTGATT_DB_DESCRIPTOR;
-  desc2.permissions = 34;
+  desc2.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use longByteValue byte array for this desc
   service2.push_back(desc2);
 
   // 3rd char
   char3.uuid = Uuid::FromString(ALERT_LEVEL_UUID9, &is_valid);
   char3.type = BTGATT_DB_CHARACTERISTIC;
-  char3.properties = 58;
-  char3.permissions = 68;
+  char3.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char3.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use longByteValue byte array for this char
   service2.push_back(char3);
 
   // 3rd desc
   desc3.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc3.type = BTGATT_DB_DESCRIPTOR;
-  desc3.permissions = 68;
+  desc3.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use longByteValue byte array for this desc
   service2.push_back(desc3);
 
   // 4th char
   char4.uuid = Uuid::FromString(ALERT_LEVEL_UUID10, &is_valid);
   char4.type = BTGATT_DB_CHARACTERISTIC;
-  char4.properties = 4;
-  char4.permissions = 16;
+  char4.properties = GATT_CHAR_PROP_BIT_WRITE_NR;
+  char4.permissions = GATT_PERM_WRITE;
   // use longByteValue byte array for this char
   service2.push_back(char4);
 
   // 4th desc
   desc4.uuid = Uuid::FromString(DISC_LEVEL_UUID3, &is_valid);
   desc4.type = BTGATT_DB_DESCRIPTOR;
-  desc4.permissions = 16;
+  desc4.permissions = GATT_PERM_WRITE;
   // use longByteValue byte array for this desc
   service2.push_back(desc4);
 
   // 5th char
   char5.uuid = Uuid::FromString(ALERT_LEVEL_UUID11, &is_valid);
   char5.type = BTGATT_DB_CHARACTERISTIC;
-  char5.properties = 114;
-  char5.permissions = 129;
+  char5.properties = GATT_CHAR_PROP_BIT_AUTH | GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_READ;
+  char5.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use longByteValue byte array for this char
   service2.push_back(char5);
 
   // 5th desc
   desc5.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc5.type = BTGATT_DB_DESCRIPTOR;
-  desc5.permissions = 129;
+  desc5.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service2.push_back(desc5);
 
   // 6th char
   char6.uuid = Uuid::FromString(ALERT_LEVEL_UUID12, &is_valid);
   char6.type = BTGATT_DB_CHARACTERISTIC;
-  char6.properties = 66;
-  char6.permissions = 129;
+  char6.properties = GATT_CHAR_PROP_BIT_AUTH | GATT_CHAR_PROP_BIT_READ;
+  char6.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use longByteValue byte array for this char
   service2.push_back(char6);
 
   // 6th desc
   desc6.uuid = Uuid::FromString(DISC_LEVEL_UUID4, &is_valid);
   desc6.type = BTGATT_DB_DESCRIPTOR;
-  desc6.permissions = 129;
+  desc6.permissions = GATT_PERM_WRITE_SIGNED | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service2.push_back(desc6);
 
@@ -797,45 +800,45 @@ static void register_server_cb(int status, int server_if,
   char7.uuid =
       Uuid::FromString(ALERT_LEVEL_WRITENORESPONSEWITHREADABLE, &is_valid);
   char7.type = BTGATT_DB_CHARACTERISTIC;
-  char7.properties = 6;
-  char7.permissions = 17;
+  char7.properties = GATT_CHAR_PROP_BIT_WRITE_NR | GATT_CHAR_PROP_BIT_READ;
+  char7.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this char
   service2.push_back(char7);
 
   // 7th desc
   desc7.uuid = Uuid::FromString(DISC_LEVEL_UUID6, &is_valid);
   desc7.type = BTGATT_DB_DESCRIPTOR;
-  desc7.permissions = 17;
+  desc7.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service2.push_back(desc7);
 
   // 8th char
   char8.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_UUID3, &is_valid);
   char8.type = BTGATT_DB_CHARACTERISTIC;
-  char8.properties = 58;
-  char8.permissions = 34;
+  char8.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char8.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use longByteValue byte array for this char
   service2.push_back(char8);
 
   // 8th desc
   desc8.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_DESC_UUID3, &is_valid);
   desc8.type = BTGATT_DB_DESCRIPTOR;
-  desc8.permissions = 34;
+  desc8.permissions = GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_READ_ENCRYPTED;
   // use longByteValue byte array for this desc
   service2.push_back(desc8);
 
   // 9th char
   char9.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_UUID4, &is_valid);
   char9.type = BTGATT_DB_CHARACTERISTIC;
-  char9.properties = 58;
-  char9.permissions = 68;
+  char9.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char9.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use longByteValue byte array for this char
   service2.push_back(char9);
 
   // 9th desc
   desc9.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_DESC_UUID4, &is_valid);
   desc9.type = BTGATT_DB_DESCRIPTOR;
-  desc9.permissions = 68;
+  desc9.permissions = GATT_PERM_WRITE_ENC_MITM | GATT_PERM_READ_ENC_MITM;
   // use longByteValue byte array for this desc
   service2.push_back(desc9);
 
@@ -854,15 +857,15 @@ static void register_server_cb(int status, int server_if,
   // 1st char
   char1.uuid = Uuid::FromString(ALERT_LEVEL_UUID13, &is_valid);
   char1.type = BTGATT_DB_CHARACTERISTIC;
-  char1.properties = 10;
-  char1.permissions = 17;
+  char1.properties = GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service3.push_back(char1);
 
   // 1st desc
   desc1.uuid = Uuid::FromString(DISC_LEVEL_UUID5, &is_valid);
   desc1.type = BTGATT_DB_DESCRIPTOR;
-  desc1.permissions = 17;
+  desc1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service3.push_back(desc1);
 
@@ -870,15 +873,15 @@ static void register_server_cb(int status, int server_if,
   // 2nd char
   char2.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_UUID4, &is_valid);
   char2.type = BTGATT_DB_CHARACTERISTIC;
-  char2.properties = 58;
-  char2.permissions = 0x2077;
+  char2.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char2.permissions = (2 << 12) | GATT_PERM_WRITE_ENC_MITM | GATT_PERM_WRITE_ENCRYPTED | GATT_PERM_WRITE | GATT_PERM_READ_ENC_MITM | GATT_PERM_READ_ENCRYPTED | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service3.push_back(char2);
 
   // 2nd desc
   desc2.uuid = Uuid::FromString(AUTHENTICATION_LEVEL_DESC_UUID4, &is_valid);
   desc2.type = BTGATT_DB_DESCRIPTOR;
-  desc2.permissions = 0x2007;
+  desc2.permissions = (2 << 12) | GATT_PERM_READ_ENC_MITM | GATT_PERM_READ_ENCRYPTED | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service3.push_back(desc2);
 
@@ -897,8 +900,8 @@ static void register_server_cb(int status, int server_if,
   // 1st char
   char1.uuid = Uuid::FromString(ALERT_LEVEL_UUID14, &is_valid);
   char1.type = BTGATT_DB_CHARACTERISTIC;
-  char1.properties = 10;
-  char1.permissions = 17;
+  char1.properties = GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service4.push_back(char1);
 
@@ -917,84 +920,84 @@ static void register_server_cb(int status, int server_if,
   // 1st char
   char1.uuid = Uuid::FromString(ALERT_LEVEL_UUID17, &is_valid);
   char1.type = BTGATT_DB_CHARACTERISTIC;
-  char1.properties = 58;
-  char1.permissions = 17;
+  char1.properties = GATT_CHAR_PROP_BIT_INDICATE | GATT_CHAR_PROP_BIT_NOTIFY | GATT_CHAR_PROP_BIT_WRITE | GATT_CHAR_PROP_BIT_READ;
+  char1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   service5.push_back(char1);
 
   // 1st desc
   desc1.uuid = Uuid::FromString(CharacteristicExtendedProperties, &is_valid);
   desc1.type = BTGATT_DB_DESCRIPTOR;
-  desc1.permissions = 17;
+  desc1.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this char
   service5.push_back(desc1);
 
   // 2nd desc
   desc2.uuid = Uuid::FromString(CharacteristicUserDescription, &is_valid);
   desc2.type = BTGATT_DB_DESCRIPTOR;
-  desc2.permissions = 17;
+  desc2.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service5.push_back(desc2);
 
   // 3rd desc
   desc3.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc3.type = BTGATT_DB_DESCRIPTOR;
-  desc3.permissions = 17;
+  desc3.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service5.push_back(desc3);
 
   // 4th desc
   desc4.uuid = Uuid::FromString(ServerCharacteristicConfiguration, &is_valid);
   desc4.type = BTGATT_DB_DESCRIPTOR;
-  desc4.permissions = 17;
+  desc4.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service5.push_back(desc4);
 
   // 5th desc
   desc5.uuid = Uuid::FromString(CharacteristicFormat, &is_valid);
   desc5.type = BTGATT_DB_DESCRIPTOR;
-  desc5.permissions = 17;
+  desc5.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service5.push_back(desc5);
 
   // 6th desc
   desc6.uuid = Uuid::FromString(CharacteristicAggregateFormat, &is_valid);
   desc6.type = BTGATT_DB_DESCRIPTOR;
-  desc6.permissions = 17;
+  desc6.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use shortByteValue byte array for this desc
   service5.push_back(desc6);
 
   // 7th desc
   desc7.uuid = Uuid::FromString(CharacteristicExtendedProperties, &is_valid);
   desc7.type = BTGATT_DB_DESCRIPTOR;
-  desc7.permissions = 17;
+  desc7.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service5.push_back(desc7);
 
   // 8th desc
   desc8.uuid = Uuid::FromString(CharacteristicUserDescription, &is_valid);
   desc8.type = BTGATT_DB_DESCRIPTOR;
-  desc8.permissions = 17;
+  desc8.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service5.push_back(desc8);
 
   // 9th desc
   desc9.uuid = Uuid::FromString(ClientCharConfigUUID, &is_valid);
   desc9.type = BTGATT_DB_DESCRIPTOR;
-  desc9.permissions = 17;
+  desc9.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service5.push_back(desc9);
 
   // 10th desc
   desc10.uuid = Uuid::FromString(ServerCharacteristicConfiguration, &is_valid);
   desc10.type = BTGATT_DB_DESCRIPTOR;
-  desc10.permissions = 17;
+  desc10.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service5.push_back(desc10);
 
   // 11th desc
   desc11.uuid = Uuid::FromString(CharacteristicFormat, &is_valid);
   desc11.type = BTGATT_DB_DESCRIPTOR;
-  desc11.permissions = 17;
+  desc11.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service5.push_back(desc11);
 
@@ -1002,7 +1005,7 @@ static void register_server_cb(int status, int server_if,
   btgatt_db_element_t desc12 = {};
   desc12.uuid = Uuid::FromString(CharacteristicAggregateFormat, &is_valid);
   desc12.type = BTGATT_DB_DESCRIPTOR;
-  desc12.permissions = 17;
+  desc12.permissions = GATT_PERM_WRITE | GATT_PERM_READ;
   // use longByteValue byte array for this desc
   service5.push_back(desc12);
 
@@ -1019,6 +1022,12 @@ static void server_connection_cb(int conn_id, int server_if, int connected,
                                  const RawAddress& bda) {
   printf("%s:: conn_id=%d, server_if=%d \n", __FUNCTION__, conn_id, server_if);
   g_conn_id = conn_id;
+}
+
+static bool is_invalid_transport_char_handle(int server_if, int handle) {
+  auto it = g_invalid_transport_char_handle.find(server_if);
+  return it != g_invalid_transport_char_handle.end() &&
+         it->second == handle;
 }
 
 static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
@@ -1039,11 +1048,8 @@ static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
 
   printf("%s:: offset=%d, is_long =%d \n", __FUNCTION__, offset, is_long);
 
-  if (attr_handle == 66) {
-    printf("%s:: Invalid transport access over LE \n", __FUNCTION__);
-    status = application_error;
-  } else if (attr_handle == 104) {
-    printf("%s:: Invalid transport access over BR/EDR \n", __FUNCTION__);
+  if (is_invalid_transport_char_handle(conn_id & 0xFF, attr_handle)) {
+    printf("%s:: Invalid transport access\n", __FUNCTION__);
     status = application_error;
   } else if ((attr_handle >= 74 && attr_handle <= 500) || is_long) {
     len = len_long_char;
@@ -1095,7 +1101,8 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
   gatt_resp.attr_value.len = 1;
   exec_write_status = BT_STATUS_SUCCESS;
 
-  printf("%s:: value size=%d, offset=%d \n", __FUNCTION__, value_count, offset);
+  printf("%s:: need_rsp=%d, is_prep=%d, value size=%d, offset=%d \n",
+      __FUNCTION__, need_rsp, is_prep, value_count, offset);
 
   if (is_prep) {
     if ((value_count + offset) > len_long_char) {
@@ -1116,11 +1123,17 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
       printf("%s:: Invalid attribute value length for short char/desc \n",
              __FUNCTION__);
       status = invalid_attribute_value_len;
+    } else if (value_count > len_long_char) {
+      printf("%s:: Invalid attribute value length %d,  len_long_char=%d\n",
+             __FUNCTION__, value_count, len_long_char);
+      status = invalid_attribute_value_len;
     }
   }
 
-  for (int i = 0; i < value_count; i++) {
-    attr_value[i + offset] = value[i];
+  if (status == BT_STATUS_SUCCESS) {
+    for (int i = 0; i < value_count; i++) {
+      attr_value[i + offset] = value[i];
+    }
   }
 
   // Client char configuration descriptor
@@ -1143,8 +1156,10 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
 
   g_conn_id = conn_id;
 
-  Ret = sGattIfaceScan->server->send_response(conn_id, trans_id, status,
-                                              gatt_resp);
+  if (need_rsp) {
+   Ret = sGattIfaceScan->server->send_response(conn_id, trans_id, status,
+                                                gatt_resp);
+  }
 }
 
 static void request_exec_write_cb(int conn_id, int trans_id,
@@ -1196,6 +1211,12 @@ void service_added_cb(int status, int server_if,
     const btgatt_db_element_t& sr = service[i];
     printf("Type: %d, Hndl: %d, UUID: %s, prprty: %d\n ",
                        sr.type, sr.attribute_handle, sr.uuid, sr.properties);
+    if (sr.type == BTGATT_DB_CHARACTERISTIC &&
+        sr.properties == (GATT_CHAR_PROP_BIT_AUTH | GATT_CHAR_PROP_BIT_READ)) {
+      g_invalid_transport_char_handle[server_if] = sr.attribute_handle;
+      printf("%s: server_if=%d invalid_transport_char_handle=%d\n",
+             __FUNCTION__, server_if, sr.attribute_handle);
+    }
   }
 }
 
@@ -3094,6 +3115,7 @@ void do_le_sr_deregister(int server_if, bool is_ext) {
     }
     sGattInterface->Deregister(server_if);
     Ret = sGattIfaceScan->server->unregister_server(server_if);
+    g_invalid_transport_char_handle.erase(server_if);
     printf("%s::Ret = %d\n", __FUNCTION__, Ret);
   } else {
     if (0 == g_server_if) {
