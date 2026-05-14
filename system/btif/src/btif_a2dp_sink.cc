@@ -36,6 +36,8 @@
 #include <string>
 #include <utility>
 
+#include "stack/include/a2dp_vendor.h"
+#include "stack/include/a2dp_vendor_aptx.h"
 #include "audio_hal_interface/a2dp_encoding.h"
 #include "bta_av_api.h"
 #include "btif/include/btif_av.h"
@@ -71,6 +73,8 @@ enum {
   BTIF_A2DP_SINK_STATE_RUNNING,
   BTIF_A2DP_SINK_STATE_SHUTTING_DOWN
 };
+
+typedef void (*tMEDIA_HANDLER)(BT_HDR* p_msg);
 
 /* BTIF A2DP Sink control block */
 class BtifA2dpSinkControlBlock {
@@ -113,6 +117,8 @@ public:
   btif_a2dp_sink_focus_state_t rx_focus_state; /* audio focus state */
   void* audio_track;
   const tA2DP_DECODER_INTERFACE* decoder_interface;
+  uint8_t codec_type;
+  btav_a2dp_codec_location_t codec_location;
 };
 
 // Mutex for below data structures.
@@ -136,6 +142,7 @@ static void btif_a2dp_sink_avk_handle_timer();
 static void btif_a2dp_sink_audio_rx_flush_req();
 /* Handle incoming media packets A2DP SINK streaming */
 static void btif_a2dp_sink_handle_inc_media(BT_HDR* p_msg);
+static void btif_handle_incoming_encoded_data(BT_HDR *p_msg);
 static void btif_a2dp_sink_decoder_update_event(RawAddress peer_address,
                                                 std::array<uint8_t, AVDT_CODEC_SIZE> codec_info);
 static void btif_a2dp_sink_clear_track_event();
@@ -144,6 +151,9 @@ static void btif_a2dp_sink_audio_rx_flush_event();
 static void btif_a2dp_sink_clear_track_event_req();
 static void btif_a2dp_sink_on_start_event();
 static void btif_a2dp_sink_on_suspend_event();
+static void btif_a2dp_sink_on_pause_track();
+static void btif_a2dp_sink_on_start_track();
+static void btif_a2dp_sink_on_write_track(BT_HDR* p_msg);
 
 bool btif_a2dp_sink_init() {
   log::info("");
@@ -470,13 +480,7 @@ static void btif_a2dp_sink_audio_handle_stop_decoding() {
   //
   // alarm_free waits for btif_decode_alarm_cb which is waiting for g_mutex.
   alarm_free(old_alarm);
-
-  {
-    LockGuard lock(g_mutex);
-#ifdef __ANDROID__
-    BtifAvrcpAudioTrackPause(btif_a2dp_sink_cb.audio_track);
-#endif
-  }
+  btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(btif_a2dp_sink_on_pause_track));
 }
 
 static void btif_decode_alarm_cb(void* /* context */) {
@@ -501,9 +505,12 @@ static void btif_a2dp_sink_audio_handle_start_decoding() {
     return;  // Already started decoding
   }
 
-#ifdef __ANDROID__
-  BtifAvrcpAudioTrackStart(btif_a2dp_sink_cb.audio_track);
-#endif
+  btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(btif_a2dp_sink_on_start_track));
+
+  if (btif_a2dp_sink_cb.codec_location != BTAV_A2DP_CODEC_LOCATION_SOFTWARE) {
+    log::info("non-software decoder, return");
+    return;
+  }
 
   btif_a2dp_sink_cb.decode_alarm = alarm_new_periodic("btif.a2dp_sink_decode");
   if (btif_a2dp_sink_cb.decode_alarm == nullptr) {
@@ -558,7 +565,12 @@ static void btif_a2dp_sink_avk_handle_timer() {
                fixed_queue_length(btif_a2dp_sink_cb.rx_audio_queue));
 
     /* Queue packet has less frames */
-    btif_a2dp_sink_handle_inc_media(p_msg);
+    if (btif_a2dp_sink_cb.codec_location == BTAV_A2DP_CODEC_LOCATION_SOFTWARE) {
+      btif_a2dp_sink_handle_inc_media(p_msg);
+    } else {
+      // Playing encoded data directly for non-software decoders
+      btif_handle_incoming_encoded_data(p_msg);
+    }
     osi_free(p_msg);
   }
   log::debug("process frames end");
@@ -593,9 +605,24 @@ static void btif_a2dp_sink_decoder_update_event(RawAddress peer_address,
   log::info("codec = {}", A2DP_CodecInfoString(codec_info.data()));
 }
 
+// Write encoded audio data to AudioTrack for ADSP decoding
+void btif_handle_incoming_encoded_data(BT_HDR *p_msg) {
+  log::info("");
+  uint8_t *start_frame_addr;
+  // Write encoded media packet to AudioTrack
+  if (p_msg != NULL && btif_a2dp_sink_cb.audio_track != NULL) {
+    start_frame_addr = (p_msg->data + p_msg->offset);
+    BT_HDR* p_buf = reinterpret_cast<BT_HDR*>(osi_malloc(sizeof(BT_HDR) + p_msg->len));
+    p_buf->len = p_msg->len;
+    memcpy(p_buf->data, start_frame_addr, p_msg->len);
+    btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(btif_a2dp_sink_on_write_track, p_buf));
+  }
+}
+
 uint8_t btif_a2dp_sink_enqueue_buf(BT_HDR* p_pkt) {
   LockGuard lock(g_mutex);
-  if (btif_a2dp_sink_cb.rx_flush) { /* Flush enabled, do not enqueue */
+  /* Flush enabled or audio track is nullptr, do not enqueue */
+  if (btif_a2dp_sink_cb.rx_flush || btif_a2dp_sink_cb.audio_track == nullptr) {
     return fixed_queue_length(btif_a2dp_sink_cb.rx_audio_queue);
   }
 
@@ -697,5 +724,41 @@ static void btif_a2dp_sink_on_suspend_event() {
     btif_a2dp_sink_cb.decoder_interface->decoder_suspend();
   }
 
+  return;
+}
+
+static void btif_a2dp_sink_on_pause_track() {
+  log::info("");
+
+#ifndef OS_GENERIC
+  BtifAvrcpAudioTrackPause(btif_a2dp_sink_cb.audio_track);
+#endif
+  return;
+}
+
+static void btif_a2dp_sink_on_start_track() {
+  log::info("");
+
+#ifndef OS_GENERIC
+  BtifAvrcpAudioTrackStart(btif_a2dp_sink_cb.audio_track);
+#endif
+  return;
+}
+
+static void btif_a2dp_sink_on_write_track(BT_HDR* p_msg) {
+  log::info("");
+
+  {
+    LockGuard lock(g_mutex);
+    if (btif_a2dp_sink_cb.rx_flush) {
+        log::debug("don't play due to rx flush");
+        osi_free(p_msg);
+        return;
+    }
+  }
+#ifndef OS_GENERIC
+  BtifAvrcpAudioTrackWriteData(btif_a2dp_sink_cb.audio_track, p_msg->data, p_msg->len);
+#endif
+  osi_free(p_msg);
   return;
 }
