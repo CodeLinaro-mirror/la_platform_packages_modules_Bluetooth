@@ -1209,15 +1209,30 @@ static void indication_sent_cb(int conn_id, int status) {
   printf("%s:: status=%d, conn_id =%d\n", __FUNCTION__, status, conn_id);
 }
 
+static void log_uuid(const bluetooth::Uuid& u) {
+    std::string s = u.ToString();
+    printf(" uuid=%s", s.c_str());
+}
+
 void service_added_cb(int status, int server_if,
                                         const btgatt_db_element_t* service,
                                         size_t service_count) {
-  printf("%s: status:%d server_if:%d count:%zu svc_handle:%d", __FUNCTION__,
-              status, server_if, service_count, service[0].attribute_handle);
-  for (size_t i = 1; i < service_count; i++) {
-    const btgatt_db_element_t& sr = service[i];
-    printf("Type: %d, Hndl: %d, UUID: %s, prprty: %d\n ",
-                       sr.type, sr.attribute_handle, sr.uuid, sr.properties);
+  if (service == nullptr || service_count == 0) {
+      printf("%s: status:%d server_if:%d count:%zu (no service data)\n",
+           __FUNCTION__, status, server_if, service_count);
+      return;
+  }
+
+  printf("%s: status:%d server_if:%d count:%zu svc_handle:%d\n",
+       __FUNCTION__, status, server_if,
+       service_count, service[0].attribute_handle);
+
+  for (size_t i = 0; i < service_count; ++i) {
+      const btgatt_db_element_t& sr = service[i];
+      printf("idx=%zu type=%d handle=%u properties=0x%X",
+              i, sr.type, (unsigned)sr.attribute_handle, (unsigned)sr.properties);
+      log_uuid(sr.uuid);
+      printf("\n");
   }
 }
 
