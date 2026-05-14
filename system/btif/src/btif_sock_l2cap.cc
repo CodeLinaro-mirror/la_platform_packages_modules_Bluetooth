@@ -109,6 +109,9 @@ static uid_set_t* uid_set = NULL;
 static int pth = -1;
 
 static void btsock_l2cap_cbk(tBTA_JV_EVT event, tBTA_JV* p_data, uint32_t l2cap_socket_id);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static void btsock_l2cap_free_l(l2cap_socket* sock, btsock_error_code_t error_code, bool async);
+#endif
 
 /* TODO: Consider to remove this buffer, as we have a buffer in l2cap as well,
  * and we risk a buffer overflow with this implementation if the socket data is not
@@ -241,6 +244,12 @@ static l2cap_socket* btsock_l2cap_find_by_conn_uuid_l(Uuid& conn_uuid) {
 }
 
 static void btsock_l2cap_free_l(l2cap_socket* sock, btsock_error_code_t error_code) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  btsock_l2cap_free_l(sock, error_code, false);
+}
+
+static void btsock_l2cap_free_l(l2cap_socket* sock, btsock_error_code_t error_code, bool async) {
+#endif
   uint8_t* buf;
   l2cap_socket* t = socks;
 
@@ -294,7 +303,15 @@ static void btsock_l2cap_free_l(l2cap_socket* sock, btsock_error_code_t error_co
   if (sock->is_le_coc) {
     // Only call if we are non server connections
     if (sock->handle >= 0 && (!sock->server)) {
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      // Do not call BTA_JvL2capClose if the close initiated by lower layers.
+      log::info("Do not call BTA_JvL2capClose async:{}", async);
+      if (!async) {
+        BTA_JvL2capClose(sock->handle);
+      }
+#else
       BTA_JvL2capClose(sock->handle);
+#endif
     }
     if ((sock->channel >= 0) && (sock->server)) {
       BTA_JvFreeChannel(sock->channel, tBTA_JV_CONN_TYPE::L2CAP_LE);
@@ -726,7 +743,11 @@ static void on_l2cap_close(tBTA_JV_L2CAP_CLOSE* p_close, uint32_t id) {
   if (sock->server) {
     BTA_JvFreeChannel(sock->channel, tBTA_JV_CONN_TYPE::L2CAP);
   }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  btsock_l2cap_free_l(sock, BTSOCK_ERROR_NONE, p_close->async);
+#else
   btsock_l2cap_free_l(sock, BTSOCK_ERROR_NONE);
+#endif
 }
 
 static void on_l2cap_outgoing_congest(tBTA_JV_L2CAP_CONG* p, uint32_t id) {
