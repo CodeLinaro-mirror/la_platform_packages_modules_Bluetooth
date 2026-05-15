@@ -55,6 +55,7 @@ typedef struct {
   bool(*get_pts_gatt_skip_service_discovery)(void);
   bool (*get_pts_configure_svc_chg_indication)(void);
   bool (*get_pts_DB_out_of_sync)(void);
+  bool (*get_pts_gatt_disable_cl_caching_bit_reset)(void);
   config_t* (*get_all)(void);
 } stack_config_t;
 
