@@ -13,40 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following
- * disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- * contributors may be used to endorse or promote products derived
- * from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
- *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.gatt;
@@ -121,6 +90,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Provides Bluetooth Gatt profile, as a service in the Bluetooth application. */
 public class GattService extends ProfileService {
@@ -1079,12 +1050,21 @@ public class GattService extends ProfileService {
         } else if (tag != null) {
             name = name + "[" + tag + "]";
         }
+        int state = BluetoothAdapter.STATE_OFF;
+        if (mAdapterService != null) {
+          state = mAdapterService.getState();
+        }
 
-        Log.d(TAG, "registerClient() - UUID=" + uuid + " name=" + name);
-        mClientMap.add(uuid, callback, this, source);
-
-        mNativeInterface.gattClientRegisterApp(
-                uuid.getLeastSignificantBits(), uuid.getMostSignificantBits(), name, eatt_support);
+        if (state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_BLE_ON) {
+          Log.d(TAG, "registerClient() - UUID=" + uuid + " name=" + name);
+          mClientMap.add(uuid, callback, this, source);
+          mNativeInterface.gattClientRegisterApp(
+                  uuid.getLeastSignificantBits(), uuid.getMostSignificantBits(), name, eatt_support);
+        } else {
+            Log.e(TAG, "registerClient() -  Disallowed in BT state: " + state);
+            callbackToApp(() -> callback.onClientRegistered(BluetoothGatt.GATT_FAILURE,0));
+            return;
+        }
     }
 
     @RequiresPermission(BLUETOOTH_CONNECT)
@@ -1203,6 +1183,113 @@ public class GattService extends ProfileService {
                 opportunistic,
                 phy,
                 preferredMtu);
+    }
+
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    void clientConnectV2(
+            int clientIf,
+            String address,
+            int addressType,
+            boolean isDirect,
+            int transport,
+            boolean opportunistic,
+            int phy,
+            AttributionSource source,
+            int advHandle,
+            int subEvent,
+            int filterPolicy) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (!checkConnectPermissionForDataDelivery(this, source, TAG, "clientConnectV2")) {
+                return;
+            }
+            Log.d(
+                TAG,
+                "clientConnect() - address="
+                        + toAnonymizedAddress(address)
+                        + ", addressType="
+                        + addressType
+                        + ", isDirect="
+                        + isDirect
+                        + ", opportunistic="
+                        + opportunistic
+                        + ", phy="
+                        + phy);
+            statsLogAppPackage(address, source.getUid(), clientIf);
+
+            logClientForegroundInfo(source.getUid(), isDirect);
+
+            statsLogGattConnectionStateChange(
+                    BluetoothProfile.GATT,
+                    address,
+                    clientIf,
+                    BluetoothProtoEnums.CONNECTION_STATE_CONNECTING,
+                    -1);
+
+            MetricsLogger.getInstance()
+                    .logBluetoothEvent(
+                            getDevice(address),
+                            BluetoothStatsLog
+                                    .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__EVENT_TYPE__GATT_CONNECT_JAVA,
+                            isDirect
+                                    ? BluetoothStatsLog
+                                            .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__DIRECT_CONNECT
+                                    : BluetoothStatsLog
+                                            .BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__INDIRECT_CONNECT,
+                            source.getUid());
+
+            int preferredMtu = 0;
+
+            String packageName = source.getPackageName();
+            if (packageName != null) {
+                mAdapterService.addAssociatedPackage(getDevice(address), packageName);
+
+                // Some apps expect MTU to be exchanged immediately on connections
+                for (Map.Entry<String, Integer> entry : EARLY_MTU_EXCHANGE_PACKAGES.entrySet()) {
+                    if (packageName.contains(entry.getKey())) {
+                        preferredMtu = entry.getValue();
+                        Log.i(
+                                TAG,
+                                "Early MTU exchange preference ("
+                                        + preferredMtu
+                                        + ") requested for "
+                                        + packageName);
+                        break;
+                    }
+                }
+            }
+
+            if (transport != BluetoothDevice.TRANSPORT_BREDR && isDirect && !opportunistic) {
+                String attributionTag = getLastAttributionTag(source);
+                if (packageName != null) {
+                    for (Map.Entry<String, String> entry :
+                            GATT_CLIENTS_NOTIFY_TO_ADAPTER_PACKAGES.entrySet()) {
+                        if (packageName.contains(entry.getKey())
+                                && ((attributionTag != null
+                                                && attributionTag.contains(entry.getValue()))
+                                        || entry.getValue().isEmpty())) {
+                            mAdapterService.notifyDirectLeGattClientConnect(
+                                    clientIf, getDevice(address));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            mNativeInterface.gattClientConnectV2(
+                    clientIf,
+                    address,
+                    addressType,
+                    isDirect,
+                    transport,
+                    opportunistic,
+                    phy,
+                    preferredMtu,
+                    advHandle,
+                    subEvent,
+                    filterPolicy);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
     }
 
     @RequiresPermission(BLUETOOTH_CONNECT)

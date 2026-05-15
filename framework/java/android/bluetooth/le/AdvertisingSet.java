@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth.le;
@@ -32,6 +36,23 @@ import android.content.AttributionSource;
 import android.os.RemoteException;
 import android.util.Log;
 
+import android.bluetooth.annotations.RequiresBluetoothScanPermission;
+import static android.Manifest.permission.BLUETOOTH_SCAN;
+import android.bluetooth.le.PeriodicAdvertisingManager;
+import android.bluetooth.le.PeriodicAdvertisingCallback;
+import android.annotation.RequiresPermission;
+import android.annotation.RequiresNoPermission;
+import android.bluetooth.BluetoothDevice;
+import android.annotation.FlaggedApi;
+import android.annotation.NonNull;
+import android.annotation.SystemApi;
+import android.annotation.Nullable;
+import com.android.bluetooth.flags.Flags;
+import android.os.Handler;
+import java.util.concurrent.atomic.AtomicBoolean;
+import android.os.Looper;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
+
 /**
  * This class provides a way to control single Bluetooth LE advertising instance.
  *
@@ -47,14 +68,24 @@ public final class AdvertisingSet {
     private int mAdvertiserId;
     private final AttributionSource mAttributionSource;
 
+    private final BluetoothAdapter mBluetoothAdapter;
+    private final AdvertisingSetCallback mCallback;
+    private final Handler mHandler;
+
+
     AdvertisingSet(
             IBluetoothAdvertise advertise,
             int advertiserId,
             BluetoothAdapter bluetoothAdapter,
-            AttributionSource attributionSource) {
+            AttributionSource attributionSource,
+            AdvertisingSetCallback callback,
+            Handler handler) {
         mAdvertiserId = advertiserId;
         mAttributionSource = attributionSource;
         mAdvertise = requireNonNull(advertise);
+        mBluetoothAdapter = requireNonNull(bluetoothAdapter);
+        mCallback = callback;
+        mHandler = handler;
     }
 
     /* package */ void setAdvertiserId(int advertiserId) {
@@ -173,6 +204,28 @@ public final class AdvertisingSet {
     }
 
     /**
+     * Update periodic advertising parameters V2 associated with this set. Must be called when periodic
+     * advertising is not enabled. This method returns immediately, the operation status is
+     * delivered through {@code callback.onPeriodicAdvertisingParametersV2Updated()}.
+     */
+    @RequiresLegacyBluetoothAdminPermission
+    @RequiresBluetoothAdvertisePermission
+    @RequiresPermission(BLUETOOTH_ADVERTISE)
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void setPeriodicAdvertisingParametersV2(@NonNull PeriodicAdvertisingParametersV2 parameters) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            try {
+                mAdvertise.setPeriodicAdvertisingParametersV2(
+                        mAdvertiserId, parameters, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, "remote exception - ", e);
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
+    }
+
+    /**
      * Used to set periodic advertising data, must be called after setPeriodicAdvertisingParameters,
      * or after advertising was started with periodic advertising data set. This method returns
      * immediately, the operation status is delivered through {@code
@@ -190,6 +243,29 @@ public final class AdvertisingSet {
             mAdvertise.setPeriodicAdvertisingData(mAdvertiserId, periodicData, mAttributionSource);
         } catch (RemoteException e) {
             Log.e(TAG, "remote exception - ", e);
+        }
+    }
+
+    /**
+     * Used to set periodic advertising subevent data, must be called after periodic advertising was
+     * started. This method returns immediately, the operation status is delivered through {@code
+     * callback.onPeriodicAdvertisingSubeventDataSet()}.
+     *
+     * @param data Periodic advertising subevent data.
+     */
+    @RequiresLegacyBluetoothAdminPermission
+    @RequiresBluetoothAdvertisePermission
+    @RequiresPermission(BLUETOOTH_ADVERTISE)
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void setPeriodicAdvertisingSubeventData(int numSubenvets, @NonNull byte[] data) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            try {
+                mAdvertise.setPeriodicAdvertisingSubeventData(mAdvertiserId, numSubenvets, data, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, "remote exception - ", e);
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
         }
     }
 
@@ -242,5 +318,100 @@ public final class AdvertisingSet {
     @SystemApi
     public int getAdvertiserId() {
         return mAdvertiserId;
+    }
+
+    /**
+     * Transfer Periodic Advertising Set Info (PAST Set Info Transfer) for this advertising set
+     * to a connected peer device.
+     *
+     * <p>The completion result is delivered via
+     * {@link AdvertisingSetCallback#onTransferSetInfo(BluetoothDevice, int)} on the same
+     * handler/looper that was provided when starting the advertising set.
+     *
+     * @param device       The peer device to receive the set info.
+     * @param serviceData  Vendor/application-defined service data to accompany the transfer.
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresBluetoothScanPermission
+    @RequiresPermission(BLUETOOTH_SCAN)
+    @FlaggedApi(Flags.FLAG_PAWR_ADVERTISER_EXTENSION)
+    public void transferSetInfo(@NonNull BluetoothDevice device, int serviceData) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            requireNonNull(device);
+
+            final AdvertisingSetCallback cb = mCallback;
+            if (cb == null) {
+                Log.w(TAG, "transferSetInfo: no AdvertisingSetCallback bound; nothing to dispatch");
+            }
+
+            // Resolve PeriodicAdvertisingManager via the same adapter context used to create this set
+            final PeriodicAdvertisingManager pa = mBluetoothAdapter.getPeriodicAdvertisingManager();
+            if (pa == null) {
+                // Manager unavailable; deliver a generic failure to the bound callback (if any)
+                dispatchTransferSetInfo(cb, device, 0x01 /*generic fail*/);
+                return;
+            }
+
+            // one-shot guard: guarantee exactly-once completion dispatch
+            final AtomicBoolean done = new AtomicBoolean(false);
+
+            // Bridge scanner-side callback into advertiser-side callback
+            final PeriodicAdvertisingCallback bridge = new PeriodicAdvertisingCallback() {
+                @Override
+                @RequiresNoPermission
+                public void onSyncTransferred(BluetoothDevice dev, int status) {
+                    if (done.compareAndSet(false, true)) {
+                        dispatchTransferSetInfo(cb, dev, status);
+                    }
+                }
+            };
+
+            try {
+                // adv handle == mAdvertiserId; this is the HCI advertising set identifier
+                final Handler h = (mHandler != null) ? mHandler : new Handler(Looper.getMainLooper());
+                pa.transferSetInfo(device, serviceData, mAdvertiserId, bridge, h);
+
+            } catch (Throwable t) {
+                Log.e(TAG, "transferSetInfo failed", t);
+                if (done.compareAndSet(false, true)) {
+                    dispatchTransferSetInfo(cb, device, /*status*/ 0x01 /*generic fail*/);
+                }
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
+    }
+
+    /**
+     * Dispatch the completion to the bound {@link AdvertisingSetCallback} using the same
+     * handler/looper that was provided to {@code startAdvertisingSet(..., callback, handler)}.
+     *
+     * <p>If no handler was provided, dispatch synchronously on the calling thread.
+     */
+    private void dispatchTransferSetInfo(AdvertisingSetCallback cb,
+                                         BluetoothDevice device,
+                                         int status) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (cb == null) return;
+
+            final Runnable r = () -> {
+                try {
+                    cb.onTransferSetInfo(AdvertisingSet.this, device, status);
+                } catch (Throwable t) {
+                    Log.e(TAG, "Callback onTransferSetInfo threw", t);
+                }
+            };
+
+            if (mHandler != null) {
+                mHandler.post(r);
+            } else {
+                // Fallback: synchronous dispatch when no handler has been bound
+                r.run();
+            }
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+        }
     }
 }

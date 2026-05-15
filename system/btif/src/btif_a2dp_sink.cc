@@ -69,7 +69,7 @@ using namespace bluetooth;
 /* In case of A2DP Sink, we will delay start by 5 AVDTP Packets */
 #define MAX_A2DP_DELAYED_START_FRAME_COUNT 5
 
-#define MAX_MTU_SIZE 1024
+#define MAX_MTU_SIZE 990
 
 enum {
   BTIF_A2DP_SINK_STATE_OFF,
@@ -326,7 +326,9 @@ static bool btif_a2dp_sink_initialize_a2dp_control_block(const RawAddress& peer_
   }
 
   if (btif_av_is_a2dp_sink_offload_enabled()) {
-    uint16_t peer_mtu = bta_av_co_get_peer_mtu_sink(peer_address);
+    /* Use DUT supported MTU instead of peer_mtu to prevent ADSP drops
+       on large incoming packets */
+    uint16_t peer_mtu = MAX_MTU_SIZE;
     log::debug("peer_mtu: {}", peer_mtu);
     bluetooth::audio::a2dp::setup_codec(a2dp_codec_config,
                                        (peer_mtu == 0) ? MAX_MTU_SIZE : peer_mtu, 0);

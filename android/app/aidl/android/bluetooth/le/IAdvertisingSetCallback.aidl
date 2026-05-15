@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 package android.bluetooth.le;
 
@@ -28,6 +32,11 @@ oneway interface IAdvertisingSetCallback {
   void onScanResponseDataSet(in int advertiserId, in int status);
   void onAdvertisingParametersUpdated(in int advertiserId, in int tx_power, in int status);
   void onPeriodicAdvertisingParametersUpdated(in int advertiserId, in int status);
+  void onPeriodicAdvertisingParametersV2Updated(in int advertiserId, in int status);
   void onPeriodicAdvertisingDataSet(in int advertiserId, in int status);
+  void onPeriodicAdvertisingSubeventDataSet(in int advertiserId, in int status);
   void onPeriodicAdvertisingEnabled(in int advertiserId, in boolean enable, in int status);
+  void onPeriodicAdvertisingSubeventRequest(in int advertiserId, in int subeventStart, in int subeventCount);
+  void onPeriodicAdvertisingSubeventResponse(in int advertiserId, in int subevent, in int txStatus,
+                            in int numResponses, in byte[] payload);
 }

@@ -15,6 +15,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -798,6 +802,16 @@ static int clear_event_mask() {
   return BT_STATUS_SUCCESS;
 }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static int get_filter_accept_list_size() {
+  log::verbose("");
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+  return (int)btif_ble_get_acceptlist_size();
+}
+#endif
+
 static int clear_filter_accept_list() {
   log::verbose("");
   if (!interface_ready()) {
@@ -859,6 +873,59 @@ static int set_default_event_mask_except(uint64_t mask, uint64_t le_mask) {
   do_in_main_thread(base::BindOnce(btif_dm_set_default_event_mask_except, mask, le_mask));
   return BT_STATUS_SUCCESS;
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+static int set_host_channel_classification(std::vector< uint8_t> channel_map) {
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+  do_in_main_thread(base::BindOnce(btif_dm_set_host_channel_classification, channel_map));
+  return BT_STATUS_SUCCESS;
+}
+
+void set_host_channel_classification_cb(uint8_t status) {
+  log::info("set_host_channel_classification_cb: status={}", status);
+  do_in_jni_thread(base::BindOnce(
+        [](uint8_t status) { HAL_CBACK(bt_hal_cbacks, host_channel_classification_cb, status); },
+        status));
+}
+
+static int le_write_suggested_default_data_length(uint16_t suggested_max_tx_octets,
+                                                uint16_t suggested_max_tx_time_us) {
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+  do_in_main_thread(base::BindOnce(btif_dm_write_suggested_default_data_length,
+                                  suggested_max_tx_octets,
+                                  suggested_max_tx_time_us));
+  return BT_STATUS_SUCCESS;
+}
+
+void le_write_suggested_default_data_length_cb(uint8_t status) {
+  log::info("le_write_suggested_default_data_length_cb: status={}", status);
+  do_in_jni_thread(base::BindOnce(
+        [](uint8_t status) { HAL_CBACK(bt_hal_cbacks, write_suggested_default_data_length_cb, status); },
+        status));
+}
+
+static int le_set_default_phy (uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys){
+  if (!interface_ready()) {
+    return BT_STATUS_NOT_READY;
+  }
+  do_in_main_thread(base::BindOnce(btif_dm_le_set_default_phy,
+                                  all_phys,
+                                  tx_phys,
+                                  rx_phys));
+  return BT_STATUS_SUCCESS;
+}
+
+void le_set_default_phy_cb(uint8_t status) {
+  log::info("set_default_phy_cb: status={}", status);
+  do_in_jni_thread(base::BindOnce(
+        [](uint8_t status) { HAL_CBACK(bt_hal_cbacks, set_default_phy_cb, status); },
+        status));
+}
+#endif
 
 static int restore_filter_accept_list() {
   if (!interface_ready()) {
@@ -1303,6 +1370,11 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .le_rand = le_rand,
         .set_event_filter_inquiry_result_all_devices = set_event_filter_inquiry_result_all_devices,
         .set_default_event_mask_except = set_default_event_mask_except,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        .set_host_channel_classification = set_host_channel_classification,
+        .le_write_suggested_default_data_length = le_write_suggested_default_data_length,
+        .le_set_default_phy = le_set_default_phy,
+#endif
         .restore_filter_accept_list = restore_filter_accept_list,
         .allow_wake_by_hid = allow_wake_by_hid,
         .set_event_filter_connection_setup_all_devices =
@@ -1318,6 +1390,9 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         .interop_database_add_remove_name = interop_database_add_remove_name,
         .get_remote_pbap_pce_version = get_remote_pbap_pce_version,
         .pbap_pse_dynamic_version_upgrade_is_enabled = pbap_pse_dynamic_version_upgrade_is_enabled,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        .get_filter_accept_list_size = get_filter_accept_list_size,
+#endif
 };
 
 // callback reporting helpers

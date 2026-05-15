@@ -99,3 +99,10 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "ble_security_extension"
+    namespace: "bluetooth"
+    description: "Add two new APIs to support add ble key and set encryption for a device"
+    bug: "none"
+}

@@ -860,7 +860,9 @@ public class DatabaseManager {
         synchronized (mMetadataCache) {
             return mMetadataCache.entrySet().stream()
                     .filter(x -> x.getValue().isActiveHfpDevice)
-                    .map(x -> mAdapter.getRemoteDevice(x.getValue().getAddress()))
+                    .map(x -> x.getValue().getAddress())
+                    .filter(BluetoothAdapter::checkBluetoothAddress)
+                    .map(mAdapter::getRemoteDevice)
                     .collect(Collectors.toList());
         }
     }

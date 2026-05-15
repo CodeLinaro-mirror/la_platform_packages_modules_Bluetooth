@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -25,6 +29,10 @@ namespace hci {
 constexpr hci::SubeventCode LeAdvertisingEvents[] = {
         hci::SubeventCode::SCAN_REQUEST_RECEIVED,
         hci::SubeventCode::ADVERTISING_SET_TERMINATED,
+#ifdef TARGET_QCOM_IOT_BT_EXT
+        hci::SubeventCode::BLE_META_SUBEVENT_PAWR_SUBEVENT_REQUEST,
+        hci::SubeventCode::BLE_META_SUBEVENT_PAWR_SUBEVENT_RESPONSE,
+#endif
 };
 
 typedef CommandInterface<LeAdvertisingCommandBuilder> LeAdvertisingInterface;

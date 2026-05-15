@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /** Provides Bluetooth AVRCP Controller profile, as a service in the Bluetooth application. */
 public class AvrcpControllerService extends ProfileService {
@@ -105,8 +106,8 @@ public class AvrcpControllerService extends ProfileService {
     private final BrowseTree mBrowseTree;
 
     @VisibleForTesting
-    final Map<BluetoothDevice, AvrcpControllerStateMachine> mDeviceStateMap =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentMap<BluetoothDevice, AvrcpControllerStateMachine>
+                                 mDeviceStateMap = new ConcurrentHashMap<>();
 
     private BluetoothDevice mActiveDevice = null;
 
@@ -210,7 +211,7 @@ public class AvrcpControllerService extends ProfileService {
 
     /** Set the current active device, notify devices of activity status */
     @VisibleForTesting
-    boolean setActiveDevice(BluetoothDevice device) {
+    public boolean setActiveDevice(BluetoothDevice device) {
         Log.d(TAG, "setActiveDevice(device=" + device + ")");
         A2dpSinkService a2dpSinkService = A2dpSinkService.getA2dpSinkService();
         if (a2dpSinkService == null) {
@@ -295,6 +296,25 @@ public class AvrcpControllerService extends ProfileService {
         }
     }
 
+    public void sendPassThroughCmd(BluetoothDevice device, int keyCode, int keyState) {
+        Log.v(TAG, "sendPassThroughCmd keyCode: " + keyCode + " keyState: "
+                + keyState + ", To: " + device);
+        if (device == null) {
+            Log.e(TAG, "sendPassThroughCmd: Device is null");
+            return;
+        }
+        if (!mDeviceStateMap.containsKey(device)) {
+            Log.e(TAG, " Device " + device + " does not match connected devices");
+            return;
+        }
+        AvrcpControllerStateMachine mAvrcpCtSm = getStateMachine(device);
+        if (mAvrcpCtSm == null)
+            return;
+        mAvrcpCtSm.sendMessage(
+                AvrcpControllerStateMachine.MSG_AVRCP_PASSTHRU,
+                keyCode, keyState, device);
+    }
+
     /*Java API*/
 
     /**
@@ -366,6 +386,8 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void onConnectionStateChanged(
             boolean remoteControlConnected, boolean browsingConnected, BluetoothDevice device) {
+        Log.d(TAG, "onConnectionStateChanged: RC = " + remoteControlConnected
+                    + ", BR = " + browsingConnected + ", for: " + device);
         StackEvent event =
                 StackEvent.connectionStateChanged(remoteControlConnected, browsingConnected);
         AvrcpControllerStateMachine stateMachine = getOrCreateStateMachine(device);
@@ -638,7 +660,11 @@ public class AvrcpControllerService extends ProfileService {
     }
 
     public List<BluetoothDevice> getConnectedDevices() {
-        return getDevicesMatchingConnectionStates(new int[] {BluetoothAdapter.STATE_CONNECTED});
+        List<BluetoothDevice> devices = new ArrayList<>();
+        for (AvrcpControllerStateMachine sm : mDeviceStateMap.values()) {
+            devices.add(sm.getDevice());
+        }
+        return devices;
     }
 
     protected AvrcpControllerStateMachine getStateMachine(BluetoothDevice device) {

@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /*****************************************************************************
@@ -2350,6 +2353,14 @@ void on_acl_br_edr_failed(const RawAddress& bda, tHCI_STATUS status, bool locall
 
   acl_set_locally_initiated(locally_initiated);
   btm_acl_create_failed(bda, BT_TRANSPORT_BR_EDR, status);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  tBTM_SEC_DEV_REC* p_dev_rec = btm_find_dev(bda);
+  if (p_dev_rec) {
+      // fix wrong replacing causes crash, clear BTM_SEC_IN_USE in sec_flags for failed
+      log::debug("clear BTM_SEC_IN_USE in sec_flags.");
+      p_dev_rec->sec_rec.sec_flags &= ~(BTM_SEC_IN_USE);
+  }
+#endif
 }
 
 void btm_acl_connected(const RawAddress& bda, uint16_t handle, tHCI_STATUS status,

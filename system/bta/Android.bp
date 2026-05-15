@@ -56,7 +56,10 @@ filegroup {
 
 cc_library_static {
     name: "libbt-bta",
-    defaults: ["fluoride_bta_defaults"],
+    defaults: [
+        "fluoride_bta_defaults",
+        "bt_ext_defaults",
+    ],
     srcs: [
         ":BtaDmSources",
         "ag/bta_ag_act.cc",

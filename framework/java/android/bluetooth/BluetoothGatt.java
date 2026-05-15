@@ -13,40 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following
- * disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- * contributors may be used to endorse or promote products derived
- * from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
- *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package android.bluetooth;
@@ -83,6 +52,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import android.annotation.SystemApi;
+
+import java.util.Objects;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
+import android.annotation.FlaggedApi;
 
 /**
  * Public API for the Bluetooth GATT Profile.
@@ -138,6 +111,33 @@ public final class BluetoothGatt implements BluetoothProfile {
     private static final int GATT_MAX_ATTR_LEN = 512;
 
     private final CopyOnWriteArrayList<BluetoothGattService> mServices;
+
+    // ---- V2 connection context (immutable, construction-time only) ----
+    /** Advertising handle for periodic advertising train (0x00–0xEF or 0xFF for "unused"). */
+    private final int mAdvHandle;
+
+    /** Sub-event ID for initiating the connection from PAwR (0x00–0x7F or 0xFF for "unused"). */
+    private final int mSubEvent;
+
+    /**
+     * Filter policy deciding whether to use the Filter Accept List and how to process decision PDUs.
+     * Must be one of 0x00..0x04 as per spec.
+     */
+    private final int mFilterPolicy;
+
+    // ---- Range constants for validation ----
+    private static final int ADV_HANDLE_MIN = 0x00;
+    private static final int ADV_HANDLE_MAX = 0xEF;
+    private static final int ADV_HANDLE_UNUSED = 0xFF;
+
+    private static final int SUBEVENT_MIN = 0x00;
+    private static final int SUBEVENT_MAX = 0x7F;
+    private static final int SUBEVENT_UNUSED = 0xFF;
+
+    private static final int FILTER_POLICY_MIN = 0x00;
+    private static final int FILTER_POLICY_MAX = 0x04;
+    /** Use FAL; ignore Decision PDUs; ignore Peer Address */
+    private static final int FILTER_POLICY_DEFAULT = 0x01;
 
     /** A GATT operation completed successfully */
     public static final int GATT_SUCCESS = 0;
@@ -316,20 +316,59 @@ public final class BluetoothGatt implements BluetoothProfile {
                         }
                         return;
                     }
-                    try {
-                        // autoConnect is inverse of "isDirect"
-                        mService.clientConnect(
-                                clientIf,
-                                mDevice.getAddress(),
-                                mDevice.getAddressType(),
-                                !mAutoConnect,
-                                mTransport,
-                                mOpportunistic,
-                                mPhy,
-                                mAttributionSource);
-                    } catch (RemoteException e) {
-                        Log.e(TAG, "", e);
+                    if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                        if (mAdvHandle >= ADV_HANDLE_MIN && mAdvHandle <= ADV_HANDLE_MAX && mSubEvent >= SUBEVENT_MIN && mSubEvent <= SUBEVENT_MAX) {
+                            try {
+                                // autoConnect is inverse of "isDirect"
+                                mService.clientConnectV2(
+                                        clientIf,
+                                        mDevice.getAddress(),
+                                        mDevice.getAddressType(),
+                                        !mAutoConnect,
+                                        mTransport,
+                                        mOpportunistic,
+                                        mPhy,
+                                        mAttributionSource,
+                                        mAdvHandle,
+                                        mSubEvent,
+                                        mFilterPolicy);
+                            } catch (RemoteException e) {
+                                Log.e(TAG, "", e);
+                            }
+                        } else {
+                            try {
+                                // autoConnect is inverse of "isDirect"
+                                mService.clientConnect(
+                                        clientIf,
+                                        mDevice.getAddress(),
+                                        mDevice.getAddressType(),
+                                        !mAutoConnect,
+                                        mTransport,
+                                        mOpportunistic,
+                                        mPhy,
+                                        mAttributionSource);
+                            } catch (RemoteException e) {
+                                Log.e(TAG, "", e);
+                            }
+                        }
+                    } else {
+                        try {
+                            // autoConnect is inverse of "isDirect"
+                            mService.clientConnect(
+                                    clientIf,
+                                    mDevice.getAddress(),
+                                    mDevice.getAddressType(),
+                                    !mAutoConnect,
+                                    mTransport,
+                                    mOpportunistic,
+                                    mPhy,
+                                    mAttributionSource);
+                        } catch (RemoteException e) {
+                            Log.e(TAG, "", e);
+                        }
+
                     }
+
                 }
 
                 /**
@@ -1063,6 +1102,79 @@ public final class BluetoothGatt implements BluetoothProfile {
 
         mConnState = CONN_STATE_IDLE;
         mAuthRetryState = AUTH_RETRY_STATE_IDLE;
+
+        mAdvHandle = ADV_HANDLE_UNUSED;
+        mSubEvent = SUBEVENT_UNUSED;
+        mFilterPolicy = FILTER_POLICY_DEFAULT;
+
+    }
+
+    // ---- Small helpers ----
+    private static boolean isValidAdvHandle(int h) {
+        return (h >= ADV_HANDLE_MIN && h <= ADV_HANDLE_MAX) || (h == ADV_HANDLE_UNUSED);
+    }
+    private static boolean isValidSubEvent(int s) {
+        return (s >= SUBEVENT_MIN && s <= SUBEVENT_MAX) || (s == SUBEVENT_UNUSED);
+    }
+
+    /* V2 constructor (new path): stores V2 session context and validates ranges. */
+    /* package */ BluetoothGatt(
+            IBluetoothGatt iGatt,
+            BluetoothDevice device,
+            int transport,
+            boolean opportunistic,
+            int phy,
+            AttributionSource attributionSource,
+            int advHandle,
+            int subEvent,
+            int filterPolicy) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            // Basic assignments (immutable session parameters)
+            mService = Objects.requireNonNull(iGatt, "IBluetoothGatt must not be null");
+            mDevice = Objects.requireNonNull(device, "BluetoothDevice must not be null");
+            mTransport = transport;
+            mPhy = phy;
+            mOpportunistic = opportunistic;
+            mAttributionSource = Objects.requireNonNull(attributionSource, "AttributionSource must not be null");
+
+            // Validate advHandle: either in [0x00..0xEF] or == 0xFF (unused)
+            if (!isValidAdvHandle(advHandle)) {
+                throw new IllegalArgumentException("Invalid advHandle: 0x" + Integer.toHexString(advHandle));
+            }
+            // Validate subEvent: either in [0x00..0x7F] or == 0xFF (unused)
+            if (!isValidSubEvent(subEvent)) {
+                throw new IllegalArgumentException("Invalid subEvent: 0x" + Integer.toHexString(subEvent));
+            }
+            // Validate filterPolicy: must be in [0x00..0x04]
+            if (filterPolicy < FILTER_POLICY_MIN || filterPolicy > FILTER_POLICY_MAX) {
+                throw new IllegalArgumentException("Invalid filterPolicy: 0x" + Integer.toHexString(filterPolicy));
+            }
+
+            mAdvHandle = advHandle;
+            mSubEvent = subEvent;
+            mFilterPolicy = filterPolicy;
+
+            // Init service cache and connection state
+            mServices = new CopyOnWriteArrayList<>();
+            mConnState = CONN_STATE_IDLE;
+            mAuthRetryState = AUTH_RETRY_STATE_IDLE;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported, use default value");
+            mService = iGatt;
+            mDevice = device;
+            mTransport = transport;
+            mPhy = phy;
+            mOpportunistic = opportunistic;
+            mAttributionSource = attributionSource;
+            mServices = new CopyOnWriteArrayList<>();
+
+            mConnState = CONN_STATE_IDLE;
+            mAuthRetryState = AUTH_RETRY_STATE_IDLE;
+
+            mAdvHandle = ADV_HANDLE_UNUSED;
+            mSubEvent = SUBEVENT_UNUSED;
+            mFilterPolicy = FILTER_POLICY_DEFAULT;
+        }
     }
 
     /** @hide */
@@ -1306,6 +1418,100 @@ public final class BluetoothGatt implements BluetoothProfile {
 
         // The connection will continue in the onClientRegistered callback
         return true;
+    }
+
+    /**
+     * Initiate a connection to a Bluetooth GATT capable device.
+     *
+     * <p>The connection may not be established right away, but will be completed when the remote
+     * device is available. A {@link BluetoothGattCallback#onConnectionStateChange} callback will be
+     * invoked when the connection state changes as a result of this function.
+     *
+     * <p>The autoConnect parameter determines whether to actively connect to the remote device, or
+     * rather passively scan and finalize the connection when the remote device is in
+     * range/available. Generally, the first ever connection to a device should be direct
+     * (autoConnect set to false) and subsequent connections to known devices should be invoked with
+     * the autoConnect parameter set to true.
+     *
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     *     automatically connect as soon as the remote device becomes available (true).
+     * @return true, if the connection attempt was initiated successfully
+     */
+    @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    /*package*/ boolean connectV2(
+            Boolean autoConnect, BluetoothGattCallback callback, Handler handler) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return connectV2(autoConnect, callback, handler, false);
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
+    }
+
+    /**
+     * Initiate a connection to a Bluetooth GATT capable device.
+     *
+     * <p>The connection may not be established right away, but will be
+     * completed when the remote device is available. A
+     * {@link BluetoothGattCallback#onConnectionStateChange} callback will be
+     * invoked when the connection state changes as a result of this function.
+     *
+     * <p>The autoConnect parameter determines whether to actively connect to
+     * the remote device, or rather passively scan and finalize the connection
+     * when the remote device is in range/available. Generally, the first ever
+     * connection to a device should be direct (autoConnect set to false) and
+     * subsequent connections to known devices should be invoked with the
+     * autoConnect parameter set to true.
+     *
+     * <p>Requires {@link android.Manifest.permission#BLUETOOTH} permission.
+     *
+     * @param autoConnect Whether to directly connect to the remote device (false) or to
+     * automatically connect as soon as the remote device becomes available (true).
+     * @param eattSupport specifies whether client app needs EATT channel for client operations.
+     * If both local and remote devices support EATT and local app asks for EATT, GATT client
+     * operations will be performed using EATT channel.
+     * If either local or remote device doesn't support EATT but local App asks for EATT, GATT
+     * client operations will be performed using unenhanced ATT channel.
+     * @return true, if the connection attempt was initiated successfully
+     *
+     * @hide
+     */
+    @UnsupportedAppUsage
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    /*package*/ boolean connectV2(Boolean autoConnect, BluetoothGattCallback callback,
+            Handler handler, boolean eattSupport) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            if (DBG) {
+                Log.d(TAG,
+                        "connectV2() - device: " + mDevice + ", auto: " + autoConnect
+                        + ", eattSupport: " + eattSupport);
+            }
+            synchronized (mStateLock) {
+                if (mConnState != CONN_STATE_IDLE) {
+                    throw new IllegalStateException("Not idle");
+                }
+                mConnState = CONN_STATE_CONNECTING;
+            }
+
+            mAutoConnect = autoConnect;
+
+            if (!registerApp(callback, handler, eattSupport)) {
+                synchronized (mStateLock) {
+                    mConnState = CONN_STATE_IDLE;
+                }
+                Log.e(TAG, "Failed to register callback");
+                return false;
+            }
+
+            // The connection will continue in the onClientRegistered callback
+            return true;
+        } else {
+            Log.e(TAG, "TARGET_QCOM_IOT_BT_EXT not supported");
+            return false;
+        }
     }
 
     /**
@@ -1623,12 +1829,12 @@ public final class BluetoothGatt implements BluetoothProfile {
      *
      * @param uuid UUID of characteristic to read from the remote device
      * @return true, if the read operation was initiated successfully
-     * @hide
      */
     @RequiresLegacyBluetoothPermission
     @RequiresBluetoothConnectPermission
     @RequiresPermission(BLUETOOTH_CONNECT)
-    public boolean readUsingCharacteristicUuid(UUID uuid, int startHandle, int endHandle) {
+    @FlaggedApi(Flags.FLAG_BLUETOOTH_GATT_EXECUTE)
+    public boolean readUsingCharacteristicUuid(@NonNull UUID uuid, int startHandle, int endHandle) {
         if (VDBG) Log.d(TAG, "readUsingCharacteristicUuid() - uuid: " + uuid);
         int clientIf = mClientIf;
         if (mService == null || clientIf == 0) return false;

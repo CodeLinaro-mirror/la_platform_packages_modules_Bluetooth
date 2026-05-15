@@ -548,6 +548,27 @@ public:
                                        false);
     }
 
+    /* If mute operation is notified then remove the pending operations to be
+     * extecuted next with set vol 0 in the queue.
+     */
+    if (op->opcode_ == kControlPointOpcodeMute) {
+      for (auto next_op = std::next(op);
+           next_op != ongoing_operations_.end();) {
+        if (next_op->opcode_ == kControlPointOpcodeSetAbsoluteVolume &&
+            next_op->arguments_.size() > 0 &&
+            next_op->arguments_.front() == 0) {
+          bluetooth::log::debug(
+              "Mute is notified, remove set absolute volume 0 operation, "
+              "id: {}",
+              next_op->operation_id_);
+          next_op = ongoing_operations_.erase(next_op);
+        } else {
+          /* Stop removing operations when a different one is found */
+          break;
+        }
+      }
+    }
+
     ongoing_operations_.erase(op);
     StartQueueOperation();
   }

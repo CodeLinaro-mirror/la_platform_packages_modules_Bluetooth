@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -217,6 +221,21 @@ public:
   virtual bool IsSupported(OpCode op_code) const = 0;
 
   virtual bool IsRpaGenerationSupported(void) const = 0;
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  virtual bool SupportsPeriodicAdvertisingwithResponsesAdvertiser() const = 0;
+
+  virtual void LeSetHostChannelClassification(uint8_t channel_map[5], common::OnceCallback<void(uint8_t)> on_complete) = 0;
+
+  virtual void LeWriteSuggestedDefaultDataLength(uint16_t suggested_max_tx_octets,
+                                                 uint16_t suggested_max_tx_time,
+                                                 common::OnceCallback<void(uint8_t)> on_complete) = 0;
+
+  virtual void LeSetDefaultPhy(uint8_t all_phys,
+                               uint8_t tx_phys,
+                               uint8_t rx_phys,
+                               common::OnceCallback<void(uint8_t)> on_complete) = 0;
+#endif
 };
 
 }  // namespace hci

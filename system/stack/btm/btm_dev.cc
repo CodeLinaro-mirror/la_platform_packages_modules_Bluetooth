@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -599,21 +602,26 @@ static tBTM_SEC_DEV_REC* btm_find_oldest_dev_rec(void) {
   for (list_node_t* node = list_begin(btm_sec_cb.sec_dev_rec); node != end;
        node = list_next(node)) {
     tBTM_SEC_DEV_REC* p_dev_rec = static_cast<tBTM_SEC_DEV_REC*>(list_node(node));
-
-    if ((p_dev_rec->sec_rec.sec_flags & (BTM_SEC_LINK_KEY_KNOWN | BTM_SEC_LE_LINK_KEY_KNOWN)) ==
-        0) {
-      // Device is not paired
-      if (p_dev_rec->timestamp < ts_oldest) {
-        p_oldest = p_dev_rec;
-        ts_oldest = p_dev_rec->timestamp;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if ((p_dev_rec->sec_rec.sec_flags & BTM_SEC_IN_USE) == 0) {
+#endif
+      if ((p_dev_rec->sec_rec.sec_flags & (BTM_SEC_LINK_KEY_KNOWN | BTM_SEC_LE_LINK_KEY_KNOWN)) ==
+          0) {
+        // Device is not paired
+        if (p_dev_rec->timestamp < ts_oldest) {
+          p_oldest = p_dev_rec;
+          ts_oldest = p_dev_rec->timestamp;
+        }
+      } else {
+        // Paired device
+        if (p_dev_rec->timestamp < ts_oldest_paired) {
+          p_oldest_paired = p_dev_rec;
+          ts_oldest_paired = p_dev_rec->timestamp;
+        }
       }
-    } else {
-      // Paired device
-      if (p_dev_rec->timestamp < ts_oldest_paired) {
-        p_oldest_paired = p_dev_rec;
-        ts_oldest_paired = p_dev_rec->timestamp;
-      }
+#ifdef TARGET_QCOM_IOT_BT_EXT
     }
+#endif
   }
 
   // If we did not find any non-paired devices, use the oldest paired one...
@@ -646,7 +654,13 @@ tBTM_SEC_DEV_REC* btm_sec_allocate_dev_rec(void) {
 
   if (list_length(btm_sec_cb.sec_dev_rec) > BTM_SEC_MAX_DEVICE_RECORDS) {
     p_dev_rec = btm_find_oldest_dev_rec();
-    wipe_secrets_and_remove(p_dev_rec);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (p_dev_rec) {
+#endif
+      wipe_secrets_and_remove(p_dev_rec);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    }
+#endif
   }
 
   p_dev_rec = static_cast<tBTM_SEC_DEV_REC*>(osi_calloc(sizeof(tBTM_SEC_DEV_REC)));

@@ -50,10 +50,9 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Changes from Qualcomm Innovation Center are provided under the following
- * license:
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
@@ -119,6 +118,16 @@ typedef struct {
 
   /** Closes the interface. */
   void (*cleanup)(void);
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  /** set BLE key */
+  int (*add_ble_key)(RawAddress* remote_addr, int key_len, uint8_t* le_key,
+                     int key_type, bool add);
+
+  /** set encryption */
+  void (*set_encryption)(const RawAddress& bd_addr, tBT_TRANSPORT transport, int sec_act);
+#endif
+
 } btvendor_interface_t;
 
 __END_DECLS

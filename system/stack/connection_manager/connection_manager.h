@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #pragma once
@@ -48,7 +52,12 @@ bool background_connect_targeted_announcement_add(tAPP_ID app_id, const RawAddre
 /* Add a background connect request.
  *
  * @return true if device added to the list, false otherwise */
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool background_connect_add(tAPP_ID app_id, const RawAddress& address, uint8_t pa_handle = 0x01,
+                            uint8_t subevent = 0xFF, uint8_t filter_policy = 0x01);
+#else
 bool background_connect_add(tAPP_ID app_id, const RawAddress& address);
+#endif
 
 /* Remove a background connection request.
  *
@@ -68,8 +77,14 @@ std::set<tAPP_ID> get_apps_connecting_to(const RawAddress& remote_bda);
 /* Add a direct connect request.
  *
  * @return true if device added to the list, false otherwise */
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool direct_connect_add(tAPP_ID app_id, const RawAddress& address,
+                        tBLE_ADDR_TYPE addr_type = BLE_ADDR_PUBLIC,
+                        uint8_t pa_handle = 0x01, uint8_t subevent = 0xFF, uint8_t filter_policy = 0x01);
+#else
 bool direct_connect_add(tAPP_ID app_id, const RawAddress& address,
                         tBLE_ADDR_TYPE addr_type = BLE_ADDR_PUBLIC);
+#endif
 /* Remove a direct connection request.
  *
  * @return true if the request is removed, false otherwise.

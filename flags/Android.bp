@@ -49,6 +49,9 @@ aconfig_declarations {
         "system_service.aconfig",
         "vcp.aconfig",
         "vsc.aconfig",
+        "channel_classification.aconfig",
+        "write_default_data_length.aconfig",
+        "set_default_phy.aconfig",
     ],
     // LINT.ThenChange(/flags/BUILD.gn)
     exportable: true,

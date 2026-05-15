@@ -256,6 +256,10 @@ void avct_bcb_event(tAVCT_BCB* p_bcb, uint8_t event, tAVCT_LCB_EVT* p_data) {
  ******************************************************************************/
 tAVCT_LCB* avct_lcb_by_bd(const RawAddress& bd_addr) {
   tAVCT_LCB* p_lcb = &avct_cb.lcb[0];
+  if (p_lcb == NULL) {
+    log::verbose(" p_lcb is NULL, return");
+    return p_lcb;
+  }
   int i;
 
   for (i = 0; i < AVCT_NUM_LINKS; i++, p_lcb++) {
@@ -286,6 +290,10 @@ tAVCT_LCB* avct_lcb_by_bd(const RawAddress& bd_addr) {
  ******************************************************************************/
 tAVCT_LCB* avct_lcb_alloc(const RawAddress& bd_addr) {
   tAVCT_LCB* p_lcb = &avct_cb.lcb[0];
+  if (p_lcb == NULL) {
+    log::verbose(" p_lcb is NULL, return");
+    return p_lcb;
+  }
   int i;
 
   for (i = 0; i < AVCT_NUM_LINKS; i++, p_lcb++) {
@@ -318,6 +326,10 @@ tAVCT_LCB* avct_lcb_alloc(const RawAddress& bd_addr) {
  *
  ******************************************************************************/
 void avct_lcb_dealloc(tAVCT_LCB* p_lcb, tAVCT_LCB_EVT* /* p_data */) {
+  if (p_lcb == NULL) {
+    log::verbose(" p_lcb is NULL, return");
+    return;
+  }
   log::verbose("lcb_allocated:{}", p_lcb->allocated);
 
   // Check if the LCB is still referenced
@@ -350,6 +362,10 @@ void avct_lcb_dealloc(tAVCT_LCB* p_lcb, tAVCT_LCB_EVT* /* p_data */) {
  ******************************************************************************/
 tAVCT_LCB* avct_lcb_by_lcid(uint16_t lcid) {
   tAVCT_LCB* p_lcb = &avct_cb.lcb[0];
+  if (p_lcb == NULL) {
+    log::verbose(" p_lcb is NULL, return");
+    return p_lcb;
+  }
   int i;
 
   for (i = 0; i < AVCT_NUM_LINKS; i++, p_lcb++) {

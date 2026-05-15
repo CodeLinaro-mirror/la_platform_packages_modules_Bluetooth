@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -3607,6 +3610,10 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle, tHCI_STATUS statu
             hci_status_code_text(status), enc_mode, bda,
             reinterpret_cast<char const*>(p_dev_rec->sec_bd_name));
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    // fix wrong replacing causes crash, set IN USE when connected, device IN USE can't be replaced
+    p_dev_rec->sec_rec.sec_flags |= BTM_SEC_IN_USE;
+#endif
     bit_shift = (handle == p_dev_rec->ble_hci_handle) ? 8 : 0;
     /* Update the timestamp for this device */
     p_dev_rec->timestamp = btm_sec_cb.dev_rec_count++;
@@ -3955,6 +3962,12 @@ void btm_sec_disconnected(uint16_t handle, tHCI_REASON reason, std::string comme
       p_dev_rec->sec_rec.sec_flags &= ~(BTM_SEC_LINK_KEY_KNOWN);
     }
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  // fix wrong replacing causes crash, clear BTM_SEC_IN_USE in sec_flags when disconnected, device not IN USE can be replaced
+  log::debug("clear BTM_SEC_IN_USE in sec_flags.");
+  p_dev_rec->sec_rec.sec_flags &= ~(BTM_SEC_IN_USE);
+#endif
 
   /* Some devices hardcode sample LTK value from spec, instead of generating
    * one. Treat such devices as insecure, and remove such bonds on

@@ -17,7 +17,10 @@ filegroup {
 
 cc_library_static {
     name: "libbte",
-    defaults: ["fluoride_defaults"],
+    defaults: [
+        "fluoride_defaults",
+        "bt_ext_defaults"
+    ],
     srcs: [
         ":BluetoothStackManagerSources",
         ":LibBluetoothShimSources",

@@ -504,6 +504,11 @@ bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBT_TRANSPORT
                       int8_t initiating_phys);
 bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
                       tBT_TRANSPORT transport, int8_t initiating_phys);
+#ifdef TARGET_QCOM_IOT_BT_EXT
+bool gatt_act_connect(tGATT_REG* p_reg, const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
+                      tBT_TRANSPORT transport, int8_t initiating_phys, uint8_t pa_handle,
+                      uint8_t subevent, uint8_t filter_policy);
+#endif
 void gatt_data_process(tGATT_TCB& p_tcb, uint16_t cid, BT_HDR* p_buf);
 void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_add,
                                    bool check_acl_link);

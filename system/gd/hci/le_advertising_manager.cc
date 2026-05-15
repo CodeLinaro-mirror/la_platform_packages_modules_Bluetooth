@@ -260,6 +260,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   size_t GetNumberOfAdvertisingInstances() const { return num_instances_; }
 
   size_t GetNumberOfAdvertisingInstancesInUse() const {
+    std::lock_guard<std::mutex> lock(id_mutex_);
     return std::count_if(advertising_sets_.begin(), advertising_sets_.end(),
                          [](const auto& set) { return set.second.in_use; });
   }
@@ -317,10 +318,48 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       case hci::SubeventCode::ADVERTISING_SET_TERMINATED:
         handle_set_terminated(LeAdvertisingSetTerminatedView::Create(event));
         break;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      case SubeventCode::BLE_META_SUBEVENT_PAWR_SUBEVENT_REQUEST:
+      case SubeventCode::BLE_META_SUBEVENT_PAWR_SUBEVENT_RESPONSE:
+        handle_pawr_report(event);
+        break;
+#endif
       default:
         log::info("Unknown subevent in scanner {}", hci::SubeventCodeText(event.GetSubeventCode()));
     }
   }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  void handle_pawr_report(LeMetaEventView event_view) {
+    SubeventCode sub_event_code = event_view.GetSubeventCode();
+    log::info("pawr sub_event_code = {}.", sub_event_code);
+    if (sub_event_code == SubeventCode::BLE_META_SUBEVENT_PAWR_SUBEVENT_REQUEST) {
+      LePawrNewPKTReqView pawr_req = LePawrNewPKTReqView::Create(event_view);
+      if (pawr_req.IsValid()) {
+        uint8_t advertiser_id = pawr_req.GetAdvertiserId();
+        uint8_t subevent_start = pawr_req.GetSubeventStart();
+        uint8_t subevent_count = pawr_req.GetSubeventCount();
+        advertising_callbacks_->OnPeriodicAdvertisingSubeventRequest(advertiser_id, subevent_start, subevent_count);
+      } else {
+        log::error("handle_pawr_report NEW_PACKET_REQ packet is invalid.");
+      }
+    } else if (sub_event_code == SubeventCode::BLE_META_SUBEVENT_PAWR_SUBEVENT_RESPONSE) {
+      LePawrAccessResponeView pawr_rsp = LePawrAccessResponeView::Create(event_view);
+      if (pawr_rsp.IsValid()) {
+        uint8_t advertiser_id = pawr_rsp.GetAdvertiserId();
+        uint8_t subevent = pawr_rsp.GetSubevent();
+        uint8_t tx_status = pawr_rsp.GetTxStatus();
+        uint8_t num_responses = pawr_rsp.GetNumResponses();
+        auto payload = pawr_rsp.GetPayload();
+        advertising_callbacks_->OnPeriodicAdvertisingSubeventResponse(advertiser_id, subevent, tx_status, num_responses, payload);
+      } else {
+        log::error("handle_pawr_report ACCESS_RESPONSE packet is invalid.");
+      }
+    } else {
+      log::error("handle_pawr_report unkown SubeventCode");
+    }
+  }
+#endif
 
   void handle_scan_request(LeScanRequestReceivedView event_view) {
     if (!event_view.IsValid()) {
@@ -450,6 +489,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   }
 
   AdvertiserId allocate_advertiser() {
+    std::unique_lock lock(id_mutex_);
     // number of LE_MULTI_ADVT start from 1
     AdvertiserId id = advertising_api_type_ == AdvertisingApiType::ANDROID_HCI ? 1 : 0;
     while (id < num_instances_ && advertising_sets_.count(id) != 0) {
@@ -1482,6 +1522,49 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
                     true, advertiser_id));
   }
 
+#ifdef TARGET_QCOM_IOT_BT_EXT
+  void set_periodic_parameter_v2(
+      AdvertiserId advertiser_id, PeriodicAdvertisingParametersV2 periodic_advertising_parameters) {
+    uint8_t include_tx_power = periodic_advertising_parameters.properties >>
+                               PeriodicAdvertisingParametersV2::AdvertisingProperty::INCLUDE_TX_POWER;
+    uint8_t num_subevents = periodic_advertising_parameters.num_subevents;
+    uint8_t subevent_interval = periodic_advertising_parameters.subevent_interval;
+    uint8_t response_slot_delay = periodic_advertising_parameters.response_slot_delay;
+    uint8_t response_slot_spacing = periodic_advertising_parameters.response_slot_spacing;
+    uint8_t num_response_slots = periodic_advertising_parameters.num_response_slots;
+    log::debug("set_periodic_parameter_v2 include_tx_power = {} min_interval = {}, {} {} {} {} {}", include_tx_power, periodic_advertising_parameters.min_interval,
+               num_subevents, subevent_interval, response_slot_delay, response_slot_spacing, num_response_slots);
+    advertising_sets_[advertiser_id].is_periodic = true;
+    le_advertising_interface_->EnqueueCommand(
+        hci::LeSetPeriodicAdvertisingParametersV2Builder::Create(
+            advertiser_id,
+            periodic_advertising_parameters.min_interval,
+            periodic_advertising_parameters.max_interval,
+            include_tx_power,
+            num_subevents, subevent_interval, response_slot_delay, response_slot_spacing, num_response_slots),
+        module_handler_->BindOnceOn(
+            this,
+            &impl::check_status_with_id<LeSetPeriodicAdvertisingParametersV2CompleteView>,
+            true,
+            advertiser_id));
+  }
+
+  void set_periodic_subevent_data(
+      AdvertiserId advertiser_id, uint8_t num_subevents, std::vector<uint8_t> data) {
+    log::debug("set_periodic_subevent_data advertiser_id = {} num_subevents = {}", advertiser_id, num_subevents);
+    le_advertising_interface_->EnqueueCommand(
+        hci::LeSetPeriodicAdvertisingSubeventDataBuilder::Create(
+            advertiser_id,
+            num_subevents,
+            data),
+        module_handler_->BindOnceOn(
+            this,
+            &impl::check_status_with_id<LeSetPeriodicAdvertisingSubeventDataCompleteView>,
+            true,
+            advertiser_id));
+  }
+#endif
+
   void set_periodic_data(AdvertiserId advertiser_id, std::vector<GapData> data) {
     uint16_t data_len = 0;
     // check data size
@@ -2081,7 +2164,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   storage::ConfigCache* configcache_;
   storage::StorageModule* storage_module_;
   EncrDataKey* key_iv = new EncrDataKey;
-  std::mutex id_mutex_;
+  mutable std::mutex id_mutex_;
   size_t num_instances_;
   std::vector<hci::EnabledSet> enabled_sets_;
   // map to mapping the id from java layer and advertier id
@@ -2616,6 +2699,14 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
       case OpCode::LE_SET_PERIODIC_ADVERTISING_PARAMETERS:
         advertising_callbacks_->OnPeriodicAdvertisingParametersUpdated(id, advertising_status);
         break;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      case OpCode::LE_SET_PERIODIC_ADVERTISING_PARAMETERS_V2:
+        advertising_callbacks_->OnPeriodicAdvertisingParametersV2Updated(id, advertising_status);
+        break;
+      case OpCode::LE_SET_PERIODIC_ADVERTISING_SUBEVENT_DATA:
+        advertising_callbacks_->OnPeriodicAdvertisingSubeventDataSet(id, advertising_status);
+        break;
+#endif
       case OpCode::LE_SET_PERIODIC_ADVERTISING_DATA:
         advertising_callbacks_->OnPeriodicAdvertisingDataSet(id, advertising_status);
         break;
@@ -2830,6 +2921,19 @@ void LeAdvertisingManager::SetPeriodicParameters(
   CallOn(pimpl_.get(), &impl::set_periodic_parameter, advertiser_id,
          periodic_advertising_parameters);
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void LeAdvertisingManager::SetPeriodicParametersV2(
+        AdvertiserId advertiser_id, PeriodicAdvertisingParametersV2 periodic_advertising_parameters) {
+  CallOn(pimpl_.get(), &impl::set_periodic_parameter_v2, advertiser_id,
+         periodic_advertising_parameters);
+}
+
+void LeAdvertisingManager::SetPeriodicSubeventData(
+    AdvertiserId advertiser_id, uint8_t num_subevents, std::vector<uint8_t> data) {
+  CallOn(pimpl_.get(), &impl::set_periodic_subevent_data, advertiser_id, num_subevents, data);
+}
+#endif
 
 void LeAdvertisingManager::SetPeriodicData(AdvertiserId advertiser_id, std::vector<GapData> data) {
   CallOn(pimpl_.get(), &impl::set_periodic_data, advertiser_id, data);

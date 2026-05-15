@@ -1733,12 +1733,3 @@ A2dpCodecConfig* bta_av_co_get_codec_config_a2dp_sink(
 
   return p_peer->GetCodecs()->findSinkCodecConfig(p_codec_info);
 }
-
-uint16_t bta_av_co_get_peer_mtu_sink(const RawAddress& peer_address) {
-  BtaAvCoPeer* p_peer = bta_av_co_cb.peer_cache_->FindPeer(peer_address);
-  if (p_peer == nullptr) {
-    return 0;
-  }
-
-  return p_peer->mtu;
-}

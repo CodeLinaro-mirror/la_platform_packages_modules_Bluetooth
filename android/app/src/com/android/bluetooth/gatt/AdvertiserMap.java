@@ -12,12 +12,17 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 package com.android.bluetooth.gatt;
 
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertisingSetParameters;
 import android.bluetooth.le.PeriodicAdvertisingParameters;
+import android.bluetooth.le.PeriodicAdvertisingParametersV2;
 import android.content.AttributionSource;
 import android.content.Context;
 import android.os.Binder;
@@ -29,6 +34,7 @@ import com.android.bluetooth.BluetoothEventLogger;
 import com.android.internal.annotations.GuardedBy;
 
 import java.util.HashMap;
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Helper class that keeps track of advertiser stats. */
 class AdvertiserMap {
@@ -166,12 +172,33 @@ class AdvertiserMap {
         stats.setPeriodicAdvertisingParameters(parameters);
     }
 
+    synchronized void setPeriodicAdvertisingParametersV2(
+            int id, PeriodicAdvertisingParametersV2 parameters) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AppAdvertiseStats stats = mAppAdvertiseStats.get(id);
+            if (stats == null) {
+                return;
+            }
+            stats.setPeriodicAdvertisingParametersV2(parameters);
+        }
+    }
+
     synchronized void setPeriodicAdvertisingData(int id, AdvertiseData data) {
         AppAdvertiseStats stats = mAppAdvertiseStats.get(id);
         if (stats == null) {
             return;
         }
         stats.setPeriodicAdvertisingData(data);
+    }
+
+    synchronized void setPeriodicAdvertisingSubeventData(int id, int num_subevents, byte[] data) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            AppAdvertiseStats stats = mAppAdvertiseStats.get(id);
+            if (stats == null) {
+                return;
+            }
+            stats.setPeriodicAdvertisingSubeventData(num_subevents, data);
+        }
     }
 
     synchronized void onPeriodicAdvertiseEnabled(int id, boolean enable) {

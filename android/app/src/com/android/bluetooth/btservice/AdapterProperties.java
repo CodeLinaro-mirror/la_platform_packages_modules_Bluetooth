@@ -13,6 +13,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
@@ -66,6 +70,8 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
+
 class AdapterProperties {
     private static final String TAG = AdapterProperties.class.getSimpleName();
 
@@ -91,6 +97,8 @@ class AdapterProperties {
 
     private final CopyOnWriteArrayList<BluetoothDevice> mBondedDevices =
             new CopyOnWriteArrayList<>();
+
+    private final HashMap<String /*identityAddr*/, BluetoothDevice /*latest LE-only pseudo*/> midentityAddrDeviceMap = new HashMap<>();
 
     private int mProfilesConnecting, mProfilesConnected, mProfilesDisconnecting;
     private final HashMap<Integer, Pair<Integer, Integer>> mProfileConnectionState =
@@ -196,6 +204,9 @@ class AdapterProperties {
         mProfileConnectionState.clear();
 
         mBondedDevices.clear();
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            midentityAddrDeviceMap.clear();
+        }
         invalidateBluetoothCaches();
     }
 
@@ -513,10 +524,23 @@ class AdapterProperties {
                     debugLog("Adding bonded device:" + device);
                     mBondedDevices.add(device);
                     cleanupPrevBondRecordsFor(device);
+                    if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                        int deviceType = prop.getDeviceType();
+                        String identityAddress = Utils.getBrEdrAddress(device, mService);
+                        if (identityAddress != null && deviceType == BluetoothDevice.DEVICE_TYPE_LE) {
+                            midentityAddrDeviceMap.put(identityAddress, device);
+                        }
+                    }
                 }
             } else if (state == BluetoothDevice.BOND_NONE) {
                 // remove device from list
                 if (mBondedDevices.remove(device)) {
+                    if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+                        String identityAddress = Utils.getBrEdrAddress(device, mService);
+                        if (identityAddress != null) {
+                            midentityAddrDeviceMap.remove(identityAddress);
+                        }
+                    }
                     debugLog("Removing bonded device:" + device);
                 } else {
                     debugLog("Failed to remove device: " + device);
@@ -541,38 +565,71 @@ class AdapterProperties {
             return;
         }
 
-        for (BluetoothDevice existingDevice : mBondedDevices) {
-            String existingAddress = existingDevice.getAddress();
-            String existingIdentityAddress = Utils.getBrEdrAddress(existingDevice, mService);
-            int existingDeviceType =
-                    mRemoteDevices.getDeviceProperties(existingDevice).getDeviceType();
+        if (!QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            for (BluetoothDevice existingDevice : mBondedDevices) {
+                String existingAddress = existingDevice.getAddress();
+                String existingIdentityAddress = Utils.getBrEdrAddress(existingDevice, mService);
+                int existingDeviceType =
+                        mRemoteDevices.getDeviceProperties(existingDevice).getDeviceType();
 
-            boolean removeExisting = false;
-            if (identityAddress.equals(existingIdentityAddress)
-                    && !address.equals(existingAddress)) {
-                // Existing device record should be removed only if the device type is LE-only
-                removeExisting = (existingDeviceType == BluetoothDevice.DEVICE_TYPE_LE);
-            }
-
-            if (removeExisting) {
-                // Found an existing LE-only device with the same identity address but different
-                // pseudo address
-                if (mService.getNative().removeBond(Utils.getBytesFromAddress(existingAddress))) {
-                    mBondedDevices.remove(existingDevice);
-                    infoLog(
-                            "Removing old bond record: "
-                                    + existingDevice
-                                    + " for the device: "
-                                    + device);
-                } else {
-                    Log.e(
-                            TAG,
-                            "Unexpected error while removing old bond record:"
-                                    + existingDevice
-                                    + " for the device: "
-                                    + device);
+                boolean removeExisting = false;
+                if (identityAddress.equals(existingIdentityAddress)
+                        && !address.equals(existingAddress)) {
+                    // Existing device record should be removed only if the device type is LE-only
+                    removeExisting = (existingDeviceType == BluetoothDevice.DEVICE_TYPE_LE);
                 }
-                break;
+
+                if (removeExisting) {
+                    // Found an existing LE-only device with the same identity address but different
+                    // pseudo address
+                    if (mService.getNative().removeBond(Utils.getBytesFromAddress(existingAddress))) {
+                        mBondedDevices.remove(existingDevice);
+                        infoLog(
+                                "Removing old bond record: "
+                                        + existingDevice
+                                        + " for the device: "
+                                        + device);
+                    } else {
+                        Log.e(
+                                TAG,
+                                "Unexpected error while removing old bond record:"
+                                        + existingDevice
+                                        + " for the device: "
+                                        + device);
+                    }
+                    break;
+                }
+            }
+        } else {
+            BluetoothDevice existingDevice = midentityAddrDeviceMap.get(identityAddress);
+            if (existingDevice != null) {
+                String existingAddress = existingDevice.getAddress();
+                boolean removeExisting = false;
+                if (!existingAddress.equals(address)) {
+                    // Existing device record should be removed only if the device type is LE-only
+                    removeExisting = true;
+                }
+
+                if (removeExisting) {
+                    // Found an existing LE-only device with the same identity address but different
+                    // pseudo address
+                    if (mService.getNative().removeBond(Utils.getBytesFromAddress(existingAddress))) {
+                        mBondedDevices.remove(existingDevice);
+                        midentityAddrDeviceMap.remove(identityAddress);
+                        infoLog(
+                                "Removing old bond record: "
+                                        + existingDevice
+                                        + " for the device: "
+                                        + device);
+                    } else {
+                        Log.e(
+                                TAG,
+                                "Unexpected error while removing old bond record:"
+                                        + existingDevice
+                                        + " for the device: "
+                                        + device);
+                    }
+                }
             }
         }
     }

@@ -15,6 +15,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /*******************************************************************************
@@ -1693,13 +1697,13 @@ static void btif_on_service_discovery_results(RawAddress bd_addr,
           (bd_addr == pairing_cb.bd_addr || bd_addr == pairing_cb.static_bdaddr);
 
   if (results_for_bonding_device && result != BTA_SUCCESS &&
-      pairing_cb.state == BT_BOND_STATE_BONDED &&
+      (pairing_cb.state == BT_BOND_STATE_BONDED || pairing_cb.sdp_attempts) &&
       pairing_cb.sdp_attempts < BTIF_DM_MAX_SDP_ATTEMPTS_AFTER_PAIRING) {
     if (pairing_cb.sdp_attempts) {
       log::warn("SDP failed after bonding re-attempting for {}", bd_addr);
       pairing_cb.sdp_attempts++;
       bluetooth::metrics::LogSDPComplete(bd_addr, result);
-      btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_BR_EDR);
+      btif_dm_sdp_delay_timer(&bd_addr);
     } else {
       log::warn("SDP triggered by someone failed when bonding");
     }
@@ -3012,6 +3016,14 @@ DEV_CLASS btif_dm_get_local_class_of_device() {
           "Check LE audio enabled status, update class of device to '0x{:x}, "
           "0x{:x}, 0x{:x}'",
           device_class[0], device_class[1], device_class[2]);
+  if(osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", true)) {
+    log::info("Changing COD for Sink device");
+    device_class[0] = 0x20; //Service class as Audio
+    device_class[1] = 0x04; // major dev class as Audio / Video
+    device_class[2] = 0x04; // minor dev class as Wearable headset device
+    log::debug("Updated class of device '0x{:x}, 0x{:x}, 0x{:x}' from CoD system property",
+             device_class[0], device_class[1], device_class[2]);
+  }
 #endif
   return device_class;
 }
@@ -4234,6 +4246,40 @@ void btif_dm_set_event_filter_inquiry_result_all_devices() {
   // Autoplumbed
   BTA_DmSetEventFilterInquiryResultAllDevices();
 }
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+uint8_t btif_ble_get_acceptlist_size(){
+  return bluetooth::shim::GetController()->GetLeFilterAcceptListSize();
+}
+#endif
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void btif_dm_set_host_channel_classification(std::vector< uint8_t> channel_map) {
+  // Autoplumbed
+  BTA_DmBleSetHostChannelClassification(channel_map);
+}
+
+void btif_dm_host_channel_classification_complete(uint8_t status){
+  set_host_channel_classification_cb(status);
+}
+
+void btif_dm_write_suggested_default_data_length(uint16_t tx_octets, uint16_t tx_time_us) {
+  // Autoplumbed
+  BTA_DmBleWriteSuggestedDefaultDataLength(tx_octets, tx_time_us);
+}
+
+void btif_dm_write_suggested_default_data_length_complete(uint8_t status){
+  le_write_suggested_default_data_length_cb(status);
+}
+
+void btif_dm_le_set_default_phy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys) {
+  BTA_DmBleSetDefaultPhy(all_phys, tx_phys, rx_phys);
+}
+
+void btif_dm_le_set_default_phy_complete(uint8_t status){
+  le_set_default_phy_cb(status);
+}
+#endif
 
 void btif_dm_metadata_changed(const RawAddress& remote_bd_addr, int key,
                               std::vector<uint8_t> value) {

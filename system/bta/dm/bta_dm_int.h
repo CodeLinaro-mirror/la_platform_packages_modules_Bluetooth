@@ -14,6 +14,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -347,6 +351,12 @@ void bta_dm_allow_wake_by_hid(std::vector<RawAddress> classic_hid_devices,
 void bta_dm_restore_filter_accept_list(std::vector<std::pair<RawAddress, uint8_t>> le_devices);
 void bta_dm_set_default_event_mask_except(uint64_t mask, uint64_t le_mask);
 void bta_dm_set_event_filter_inquiry_result_all_devices();
+
+#ifdef TARGET_QCOM_IOT_BT_EXT
+void bta_dm_ble_set_host_channel_classification(std::vector<uint8_t> channel_map);
+void bta_dm_ble_write_suggested_defualt_data_length(uint16_t tx_octets, uint16_t tx_time_us);
+void bta_dm_ble_set_default_phy(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys);
+#endif
 
 void bta_dm_ble_reset_id(void);
 

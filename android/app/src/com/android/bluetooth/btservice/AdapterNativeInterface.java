@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.btservice;
@@ -25,6 +29,8 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.FileDescriptor;
+
+import com.android.qcomfeatureconfig.QcomBtExtConfig;
 
 /** Native interface to be used by AdapterService */
 public class AdapterNativeInterface {
@@ -300,12 +306,36 @@ public class AdapterNativeInterface {
         return setDefaultEventMaskExceptNative(mask, leMask);
     }
 
+    boolean setHostChannelClassification(byte[] channelMap) {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return setHostChannelClassificationNative(channelMap);
+        } else {
+            return false;
+        }
+    }
+
     boolean clearEventFilter() {
         return clearEventFilterNative();
     }
 
+    int getLeAcceptlistSize() {
+        if (QcomBtExtConfig.TARGET_QCOM_IOT_BT_EXT) {
+            return getLeAcceptListSizeNative();
+        } else {
+            return -1;
+        }
+    }
+
     boolean clearFilterAcceptList() {
         return clearFilterAcceptListNative();
+    }
+
+    boolean writeLeSuggestedDefaultDataLength(int octets, int timeUs) {
+        return writeLeSuggestedDefaultDataLengthNative(octets, timeUs);
+    }
+
+    boolean setLeDefaultPhy(int allPhys, int txPhys, int rxPhys) {
+        return setLeDefaultPhyNative(allPhys, txPhys, rxPhys);
     }
 
     boolean disconnectAllAcls() {
@@ -459,7 +489,11 @@ public class AdapterNativeInterface {
 
     private native boolean setDefaultEventMaskExceptNative(long mask, long leMask);
 
+    private native boolean setHostChannelClassificationNative(byte[] channelMap);
+
     private native boolean clearEventFilterNative();
+
+    private native int getLeAcceptListSizeNative();
 
     private native boolean clearFilterAcceptListNative();
 
@@ -470,4 +504,8 @@ public class AdapterNativeInterface {
     private native boolean allowWakeByHidNative();
 
     private native boolean restoreFilterAcceptListNative();
+
+    private native boolean writeLeSuggestedDefaultDataLengthNative(int octets, int timeUs);
+
+    private native boolean setLeDefaultPhyNative(int allPhys, int txPhys, int rxPhys);
 }
