@@ -380,10 +380,16 @@ public class MediaPlayerList {
         // Add actual browsable players
         for (MediaBrowserWrapper browser : mMediaBrowserWrappers.values()) {
             var browserPackageName = browser.getPackageName();
-            Log.i(TAG, "getMediaPlayerList: Added browsable player: " + browserPackageName);
             var id = mMediaPlayerIds.get(browserPackageName);
-            var name = Util.getDisplayName(mContext, browserPackageName);
-            ret.add(new PlayerInfo(id, name, /* browsable */ true));
+            Log.i(TAG, "getMediaPlayerList: Checking browsable player:" + browserPackageName
+                  + "playerId: " + id);
+            if (id == mAddressedPlayerId) {
+              Log.i(TAG, "getMediaPlayerList: Added browsable player: " + browserPackageName
+                    + "playerId: " + id);
+              var name = Util.getDisplayName(mContext, browserPackageName);
+              ret.add(new PlayerInfo(id, name, /* browsable */ true));
+              return ret;
+            }
         }
         Log.i(TAG, "getMediaPlayerList: number of mediaPlayers: " + mMediaPlayers.size());
         // Also list non-browsable players, they can be selected if controller supports it.
@@ -391,12 +397,18 @@ public class MediaPlayerList {
             // Skip player if already added as browsable
             var mediaPlayerPackageName = mediaPlayer.getPackageName();
             var id = mMediaPlayerIds.get(mediaPlayerPackageName);
-            if (haveMediaBrowser(id)) {
-                continue;
+            Log.i(TAG, "getMediaPlayerList: Checking non browsable player: "
+                  + mediaPlayerPackageName + "playerId: " + id);
+            if (id == mAddressedPlayerId){
+              if (haveMediaBrowser(id)) {
+                  continue;
+              }
+              Log.i(TAG, "getMediaPlayerList: Added non browsable player: "
+                    + mediaPlayerPackageName + "playerId: " + id);
+              var name = Util.getDisplayName(mContext, mediaPlayerPackageName);
+              ret.add(new PlayerInfo(id, name, /* browsable */ false));
+              return ret;
             }
-            Log.i(TAG, "getMediaPlayerList: Added non browsable player: " + mediaPlayerPackageName);
-            var name = Util.getDisplayName(mContext, mediaPlayerPackageName);
-            ret.add(new PlayerInfo(id, name, /* browsable */ false));
         }
         return ret;
     }
