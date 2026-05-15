@@ -72,7 +72,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
               SinkStateToString(GetState()), pa_sync_lost_);
 
     if (GetState() == SinkState::BIG_SYNCED || GetState() == SinkState::BIG_SYNCING) {
-      TerminateBigSync();
+      TExitDbig();
     }
 
     if (GetState() != SinkState::IDLE && GetState() != SinkState::DISABLING &&
@@ -246,7 +246,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
                         GetBroadcastId());
               if (callbacks_) callbacks_->OnRxIsoPathsRemoved(GetBroadcastId());
               rx_paths_removed_ = true;
-              if (tx_paths_removed_) TerminateBigSync();
+              if (tx_paths_removed_) TExitDbig();
             }
           }
         } else {
@@ -377,7 +377,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     if (status != 0x00) {
       log::error("Failed to setup ISO data path, status=0x{:02x}", status);
       SetState(SinkState::STOPPING);
-      TerminateBigSync();
+      TExitDbig();
       return;
     }
 
@@ -447,7 +447,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
        *   When all done:
        *     1. Ack sink HAL (OnRxIsoPathsRemoved).
        *     2. Set rx_paths_removed_=true.
-       *     3. If tx_paths_removed_ → TerminateBigSync().
+       *     3. If tx_paths_removed_ → TExitDbig().
        *        Else wait for TX teardown to complete.
        *
        * TX_TEARDOWN (source HAL suspend via REMOVE_TX_PATHS):
@@ -455,7 +455,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
        *   When all done:
        *     1. Set tx_paths_removed_=true.
        *     2. If pending_rx_teardown_ → start RX teardown now.
-       *        Else if rx_paths_removed_ → TerminateBigSync().
+       *        Else if rx_paths_removed_ → TExitDbig().
        *        Else wait for RX teardown to complete.
        *
        * BIG sync is terminated only after BOTH TX and RX paths are removed.
@@ -487,7 +487,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
             /* RX already done — both paths removed, terminate BIG sync */
             log::info("broadcast_id=0x{:x}, TX done, RX already done — terminating BIG sync",
                       GetBroadcastId());
-            TerminateBigSync();
+            TExitDbig();
           } else {
             /* Waiting for RX teardown (REMOVE_RX_PATHS not yet received) */
             log::info("broadcast_id=0x{:x}, TX done, waiting for RX teardown",
@@ -512,7 +512,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
             /* TX already done — both paths removed, terminate BIG sync */
             log::info("broadcast_id=0x{:x}, RX done, TX already done — terminating BIG sync",
                       GetBroadcastId());
-            TerminateBigSync();
+            TExitDbig();
           } else {
             /* Waiting for TX teardown (REMOVE_TX_PATHS not yet received) */
             log::info("broadcast_id=0x{:x}, RX done, waiting for TX teardown",
@@ -555,29 +555,29 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     if (it == handles.end()) {
       log::info("broadcast_id=0x{:x}, all ISO paths removed, terminating BIG sync", GetBroadcastId());
       teardown_bis_handles_.clear();
-      TerminateBigSync();
+      TExitDbig();
     } else {
       TriggerIsoDatapathTeardown(*it,
           bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput /* RX */);
     }
   }
 
-  void OnBigTerminateSyncComplete(uint8_t big_handle, uint8_t status) override {
-    log::info("broadcast_id=0x{:x}, big_handle={}, status=0x{:02x}", GetBroadcastId(),
-              big_handle, status);
+  void OnTexitDbigComplete(uint8_t dbig_handle, uint8_t status, uint8_t reason) override {
+    log::info("broadcast_id=0x{:x}, dbig_handle={}, status=0x{:02x}, reason=0x{:02x}",
+              GetBroadcastId(), dbig_handle, status, reason);
 
-    if (big_sync_info_.has_value() && big_sync_info_->big_handle == big_handle) {
+    if (big_sync_info_.has_value() && big_sync_info_->big_handle == dbig_handle) {
       big_sync_info_ = std::nullopt;
     }
 
-    /* BIG sync is terminated only after BOTH TX and RX ISO paths are removed.
+    /* TExitDbig completion: DBIG exit completed after BOTH TX and RX ISO paths removed.
      * Notify upper layer — BTA layer acks source HAL in OnBigSyncTerminated. */
-    callbacks_->OnBigSyncTerminated(GetBroadcastId(), big_handle, status);
+    callbacks_->OnBigSyncTerminated(GetBroadcastId(), dbig_handle, status);
 
     if (GetState() == SinkState::DISABLING) {
       /* Both TX and RX paths already removed before we got here.
        * Reset teardown state and transition to PA_SYNCED. */
-      log::info("broadcast_id=0x{:x}, BIG terminated (all paths removed), transitioning to PA_SYNCED",
+      log::info("broadcast_id=0x{:x}, TExitDbig complete (all paths removed), transitioning to PA_SYNCED",
                 GetBroadcastId());
       enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
       teardown_bis_handles_.clear();
@@ -588,10 +588,10 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       SetState(SinkState::PA_SYNCED);
       if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
     } else if (GetState() == SinkState::STOPPING) {
-      log::info("broadcast_id=0x{:x}, BIG terminated, continuing PA sync termination", GetBroadcastId());
+      log::info("broadcast_id=0x{:x}, TExitDbig complete, continuing PA sync termination", GetBroadcastId());
       TerminatePaSync();
     } else {
-      log::warn("broadcast_id=0x{:x}, BIG terminate complete in unexpected state={}",
+      log::warn("broadcast_id=0x{:x}, TExitDbig complete in unexpected state={}",
                 GetBroadcastId(), SinkStateToString(GetState()));
     }
   }
@@ -623,7 +623,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
    *
    * Teardown:
    *   TX_TEARDOWN -- Removing TX paths (source HAL suspend via REMOVE_TX_PATHS).
-   *                  When done → TerminateBigSync().
+   *                  When done → TExitDbig().
    *   RX_TEARDOWN -- Removing RX paths (sink HAL suspend via REMOVE_RX_PATHS).
    *                  When done → OnRxIsoPathsRemoved() → PA_SYNCED.
    */
@@ -737,8 +737,8 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       };
 
   // REMOVE_TX_PATHS handlers — triggered by source HAL OnAudioSuspend
-  // Enhanced: remove TX ISO paths → TerminateBigSync → ack source HAL
-  // Standard: TerminateBigSync directly
+  // Enhanced: remove TX ISO paths → TExitDbig → ack source HAL
+  // Standard: TExitDbig directly
   const std::array<msg_handler_t, static_cast<size_t>(SinkState::STATE_COUNT)>
       REMOVE_TX_PATHS_handlers{
           /* IDLE */
@@ -787,7 +787,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
                   bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput /* TX */);
             } else {
               /* Standard source or no handles: terminate BIG sync directly */
-              TerminateBigSync();
+              TExitDbig();
             }
           },
           /* DISABLING */
@@ -831,7 +831,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
               TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
                   bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput);
             } else {
-              TerminateBigSync();
+              TExitDbig();
             }
           },
           /* DISABLING */
@@ -888,7 +888,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
                                              std::move(params));
   }
 
-  void TerminateBigSync() {
+  void TExitDbig() {
     if (!big_sync_info_.has_value()) {
       if (GetState() == SinkState::DISABLING) {
         SetState(SinkState::PA_SYNCED);
@@ -898,7 +898,13 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       }
       return;
     }
-    IsoManager::GetInstance()->BigTerminateSync(big_sync_info_->big_handle);
+    bluetooth::hci::iso_manager::dbig_texit_params params{
+      .dbig_handle = static_cast<uint8_t>(big_sync_info_->big_handle),
+      .texit_mode = HCI_TEXIT_MODE_EXIT,
+      .reason = 16,
+      .p_cb = nullptr
+    };
+    IsoManager::GetInstance()->TExitDbig(params);
   }
 
   /**
@@ -934,12 +940,16 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     params.dbig_handle                = static_cast<uint8_t>(sm_config_.reg_id);
     params.dbig_feature_set           = 0x03;  // Feature set: duplex TX+RX
     params.bis_detection_attempts     = 0x0A;  // 10 detection attempts
-    params.max_payload_dbig_control   = 0x10;  // 16 bytes max payload
+    params.max_payload_dbig_control   = 0x1E;  // 30 bytes max payload
     params.bis_control_event_interval = bis_ctrl_interval;
     params.send_exit                  = 0x02;  // 2
     params.pgp_timeout                = 0x0A;  // 10
     params.pgo_timeout                = 0x0A;  // 10
     params.sgo_timeout                = 0x06;  // 6
+    params.join_timeout               = 0x04;  //4
+    params.exit_timeout               = 0x04;  //4
+    params.remove_timeout             = 0x04;  //4
+    params.terminate_timeout          = 0x04;  //4
     params.tx_power                   = 0x08;  // 8
     IsoManager::GetInstance()->CreateDbig(params);
   }

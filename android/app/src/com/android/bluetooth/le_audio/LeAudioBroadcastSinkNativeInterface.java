@@ -366,13 +366,22 @@ public class LeAudioBroadcastSinkNativeInterface {
      * @param dbigHandle BIG handle from the controller event
      * @param status     DBIG status value from the controller event
      */
-    public void onDbigStatusChanged(int dbigHandle, int status) {
+    public void onDbigStatusChanged(int dbigHandle, int status, int devId, byte[] name,
+                                     int numBis, char[] bisDevIds, int broadcastFeatures) {
         if (DBG) Log.d(TAG, "onDbigStatusChanged(): dbigHandle=" + dbigHandle
-                + ", status=0x" + Integer.toHexString(status));
+                + ", status=0x" + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", numBis=" + numBis
+                + ", broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures));
         LeAudioBroadcastSinkStackEvent event = new LeAudioBroadcastSinkStackEvent(
                 LeAudioBroadcastSinkStackEvent.EVENT_TYPE_DBIG_STATUS_CHANGED);
         event.valueInt1 = dbigHandle;
         event.valueInt2 = status;
+        event.dbigDevId = devId;
+        event.dbigName = name;
+        event.dbigNumBis = numBis;
+        event.dbigBisDevIds = bisDevIds;
+        event.dbigBroadcastFeatures = broadcastFeatures;
         sendMessageToService(event);
     }
 

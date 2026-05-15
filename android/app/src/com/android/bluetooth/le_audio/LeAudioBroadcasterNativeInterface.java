@@ -144,13 +144,22 @@ public class LeAudioBroadcasterNativeInterface {
     }
 
     @VisibleForTesting
-    public void onDbigStatusChanged(int dbigHandle, int status) {
+    public void onDbigStatusChanged(int dbigHandle, int status, int devId, byte[] name,
+                                     int numBis, char[] bisDevIds, int broadcastFeatures) {
         Log.d(TAG, "onDbigStatusChanged: dbigHandle=" + dbigHandle + " status=0x"
-                + Integer.toHexString(status));
-        LeAudioStackEvent event =
-                new LeAudioStackEvent(LeAudioStackEvent.EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED);
+                + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", numBis=" + numBis
+                + ", broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED);
         event.valueInt1 = dbigHandle;
         event.valueInt2 = status;
+        event.dbigDevId = devId;
+        event.dbigName = name;
+        event.dbigNumBis = numBis;
+        event.dbigBisDevIds = bisDevIds;
+        event.dbigBroadcastFeatures = broadcastFeatures;
         sendMessageToService(event);
     }
 
@@ -286,6 +295,27 @@ public class LeAudioBroadcasterNativeInterface {
         getBroadcastMetadataNative(broadcastId);
     }
 
+    /**
+     * Set Achat-specific attributes (DevID and Name) for the broadcast source.
+     *
+     * @param devId Device ID packed into 2 octets (12-bit value with 4-bit padding)
+     * @param name  Device name packed into 10 octets (UTF-8 encoded, zero-padded)
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void setAchatAttributes(byte[] devId, byte[] name) {
+        setAchatAttributesNative(devId, name);
+    }
+
+    /**
+     * Set DBIG Join Control mode for the broadcast source.
+     *
+     * @param enable true to enable DBIG join control, false to disable
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void setDbigJoinControl(boolean enable) {
+        setDbigJoinControlNative(enable);
+    }
+
     // Native methods that call into the JNI interface
     private native void initNative();
 
@@ -320,4 +350,8 @@ public class LeAudioBroadcasterNativeInterface {
     private native void destroyBroadcastNative(int broadcastId);
 
     private native void getBroadcastMetadataNative(int broadcastId);
+
+    private native void setAchatAttributesNative(byte[] devId, byte[] name);
+
+    private native void setDbigJoinControlNative(boolean enable);
 }

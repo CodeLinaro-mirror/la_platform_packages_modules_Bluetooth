@@ -486,13 +486,16 @@ private:
         .dbig_handle = GetAdvertisingSid(),  // Use adv_handle as dbig_handle
         .dbig_feature_set = 3,
         .bis_detection_attempts = 10,
-        .max_payload_dbig_control = 16,
-        //check this
+        .max_payload_dbig_control = 30,
         .bis_control_event_interval = 9,
         .send_exit = 2,
         .pgp_timeout = 10,
         .pgo_timeout = 10,
         .sgo_timeout = 6,
+        .join_timeout = 4,
+        .exit_timeout = 4,
+        .remove_timeout = 4,
+        .terminate_timeout = 4,
         .tx_power = 8,
     };
     IsoManager::GetInstance()->CreateDbig(std::move(dbig_params));

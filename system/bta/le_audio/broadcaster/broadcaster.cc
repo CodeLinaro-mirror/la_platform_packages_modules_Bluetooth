@@ -35,6 +35,7 @@
 
 #include "bt_octets.h"
 #include "bta/include/bta_le_audio_broadcaster_api.h"
+#include "stack/include/btm_vendor_api.h"
 #include "bta/le_audio/broadcaster/state_machine.h"
 #include "bta/le_audio/codec_interface.h"
 #include "bta/le_audio/content_control_id_keeper.h"
@@ -1068,6 +1069,16 @@ public:
     return std::nullopt;
   }
 
+  void SetAchatAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
+    log::info("SetAchatAttributes: dev_id size={}, name size={}", dev_id.size(), name.size());
+    BTM_SetAchatAttributes(dev_id, name);
+  }
+
+  void SetDbigJoinControl(bool enable) override {
+    log::info("SetDbigJoinControl: enable={}", enable);
+    BTM_SetDbigJoinControl(enable);
+  }
+
   void GetBroadcastMetadata(uint32_t broadcast_id) override {
     if (broadcasts_.count(broadcast_id) == 0) {
       log::error("No such broadcast_id={}", broadcast_id);
@@ -1164,7 +1175,10 @@ public:
                   evt->dbig_handle, broadcast_id);
         }
 
-        callbacks_->OnDbigStatusChanged(evt->dbig_handle, evt->dbig_status);
+        callbacks_->OnDbigStatusChanged(evt->dbig_handle,
+                                        static_cast<uint16_t>(evt->dbig_status),
+                                        evt->dev_id, evt->name, evt->num_bis,
+                                        evt->bis_dev_ids, evt->broadcast_features);
       } break;
       default:
         log::error("Invalid DBIG event={}", event);

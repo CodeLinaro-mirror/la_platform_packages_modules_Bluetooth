@@ -115,12 +115,20 @@ class BroadcastSinkCallbacks {
 
   /**
    * Called when a DBIG status update event is received from the controller.
-   * Carries only the BIG handle and status — no other parameters.
    *
-   * @param dbig_handle  BIG handle from the controller event
-   * @param status       DBIG status value from the controller event
+   * @param dbig_handle       BIG handle from the controller event
+   * @param status            DBIG status value from the controller event
+   * @param dev_id            Device ID (12-bit)
+   * @param name              Device name (up to 10 bytes)
+   * @param num_bis           Number of BIS channels
+   * @param bis_dev_ids       BIS device IDs (12-bit each)
+   * @param broadcast_features Broadcast features bitmask
    */
-  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) = 0;
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                                    uint16_t dev_id, std::vector<uint8_t> name,
+                                    uint8_t num_bis,
+                                    std::vector<uint16_t> bis_dev_ids,
+                                    uint16_t broadcast_features) = 0;
 };
 
 // Interface from JNI to BTIF layer

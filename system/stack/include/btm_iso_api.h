@@ -285,6 +285,21 @@ public:
    * @param length event packet buffer length
    */
   virtual void HandleDbigStatusEvent(uint8_t* params, uint16_t length);
+  
+  /* Handle DBIG TExitDbIg complete event
+   *
+   * @param params raw packet buffer for the event
+   * @param length event packet buffer length
+   */
+  virtual void HandleTExitDbigEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Handle DBIG Join Control complete event
+   *
+   * @param params raw packet buffer for the event
+   * @param length event packet buffer length
+   */
+  virtual void HandleJoinControlEvent(uint8_t* params, uint16_t length);
 
   /**
    * Set DBIG parameters
@@ -292,6 +307,27 @@ public:
    * @param dbig_params DBIG parameters
    */
   virtual void SetDbigParameters(struct iso_manager::dbig_create_params dbig_params) const;
+
+  /**
+   * Send HCI_VS_LE_JOIN_CONTROL command to enable/disable join control for a DBIG
+   *
+   * @param params join control parameters including dbig_handle, mode, and callback
+   */
+  virtual void JoinControl(struct iso_manager::dbig_join_control_params params);
+
+  /**
+   * Send HCI_VS_LE_Texit_DBIG command to perform a timed exit from a DBIG
+   *
+   * @param params texit parameters including dbig_handle, texit_mode, reason, and callback
+   */
+  virtual void TExitDbig(struct iso_manager::dbig_texit_params params);
+
+  /**
+   * Send HCI_VS_LE_SET_DevID command to set the device ID for a DBIG
+   *
+   * @param params set devid parameters including dev_id, name, and callback
+   */
+  virtual void SetDevId(struct iso_manager::dbig_set_devid_params params);
 
   /**
    * Creates the Duplex Broadcast Isochronous Group

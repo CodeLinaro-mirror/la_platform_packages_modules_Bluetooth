@@ -802,11 +802,16 @@ void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
                                 uint8_t pgp_timeout,
                                 uint8_t pgo_timeout,
                                 uint8_t sgo_timeout,
+                                uint8_t join_timeout,
+                                uint8_t exit_timeout,
+                                uint8_t remove_timeout,
+                                uint8_t terminate_timeout,
                                 uint8_t tx_power,
                                 base::Callback<void(uint8_t*, uint16_t)> cb) {
   // Full parameter set for HCI_VS_LE_SET_DBIG_PARAMETERS
-  uint16_t param_len = 11; // 1 (subopcode) + 10 parameters
-  uint8_t param[11];
+  // 1 (subopcode) + 14 parameters = 15 bytes
+  uint16_t param_len = 15;
+  uint8_t param[15];
   uint8_t* p = param;
 
   UINT8_TO_STREAM(p, 0x04); // Subopcode
@@ -819,10 +824,73 @@ void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
   UINT8_TO_STREAM(p, pgp_timeout);
   UINT8_TO_STREAM(p, pgo_timeout);
   UINT8_TO_STREAM(p, sgo_timeout);
+  UINT8_TO_STREAM(p, join_timeout);
+  UINT8_TO_STREAM(p, exit_timeout);
+  UINT8_TO_STREAM(p, remove_timeout);
+  UINT8_TO_STREAM(p, terminate_timeout);
   UINT8_TO_STREAM(p, tx_power);
 
   btu_hcif_send_cmd_with_cb(HCI_VS_LE_SET_DBIG_PARAMETERS, param,
                             param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_join_control(uint8_t dbig_handle,
+                                 uint8_t mode,
+                                 base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // sub_opcode (1) + dbig_handle (1) + mode (1) = 3 bytes
+  const uint16_t param_len = 3;
+  uint8_t param[3];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_JOIN_CONTROL_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, mode);
+
+  // HCI_VS_LE_JOIN_CONTROL (opcode 0xfd90, sub-opcode 0x08) returns a
+  // CommandStatus event (not CommandComplete). Use the status variant so the
+  // GD HCI layer registers a CommandStatusView callback and does not abort
+  // with "Unknown OpCode was not expecting status event".
+  // The actual join-control completion is delivered via the VSE META event
+  // HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT → btm_ble_join_control_event_handler,
+  // matching the same pattern used by HandleDbigUpdateEvent / SetDbigParameters.
+  btu_hcif_send_cmd_status_with_cb(HCI_VS_LE_JOIN_CONTROL, param,
+                                   param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_set_devid(uint16_t dev_id,
+                               uint8_t* name,
+                               base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_SET_DEVID;
+  uint8_t param[HCI_PARAM_SIZE_SET_DEVID];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_SET_DEVID_SUB_OPCODE);  // Subopcode 0x0A
+  UINT16_TO_STREAM(p, dev_id);
+  ARRAY_TO_STREAM(p, name, 10);
+
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_SET_DEVID, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_texit_dbig(uint8_t dbig_handle,
+                               uint8_t texit_mode,
+                               uint8_t reason,
+                               base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_TEXIT_DBIG;
+  uint8_t param[HCI_PARAM_SIZE_TEXIT_DBIG];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, texit_mode);
+  UINT8_TO_STREAM(p, reason);
+
+  // HCI_VS_LE_TEXIT_DBIG (opcode 0xfd90, sub-opcode 0x05) returns CommandStatus,
+  // not CommandComplete. Use btu_hcif_send_cmd_status_with_cb to prevent GD HCI
+  // layer crash "Unknown OpCode was not expecting status event".
+  // Actual completion arrives via VS meta event HCI_VS_LE_TEXIT_DBIG_COMPLETE_EVT.
+  btu_hcif_send_cmd_status_with_cb(HCI_VS_LE_TEXIT_DBIG, param,
+                                    param_len, std::move(cb));
 }
 
 void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,

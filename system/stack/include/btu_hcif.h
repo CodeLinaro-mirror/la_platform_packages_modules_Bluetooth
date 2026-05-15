@@ -29,6 +29,12 @@
 void btu_hcif_send_cmd(uint8_t controller_id, const BT_HDR* p_msg);
 void btu_hcif_send_cmd_with_cb(uint16_t opcode, uint8_t* params, uint8_t params_len,
                                base::OnceCallback<void(uint8_t*, uint16_t)> cb);
+// Use this variant for HCI vendor commands that return a CommandStatus event
+// (not CommandComplete). HCI_VS_LE_JOIN_CONTROL (0xfd90, sub-opcode 0x08) is
+// one such command: the controller acknowledges it with a status event, and
+// the actual completion is delivered later via a VSE META event.
+void btu_hcif_send_cmd_status_with_cb(uint16_t opcode, uint8_t* params, uint8_t params_len,
+                                      base::OnceCallback<void(uint8_t*, uint16_t)> cb);
 void btu_hci_msg_process(BT_HDR* p_msg);
 
 namespace bluetooth::legacy::testing {

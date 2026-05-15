@@ -39,6 +39,7 @@
 #include "hardware/bluetooth.h"
 #include "hardware/bt_le_audio.h"
 #include "hardware/bt_le_audio_broadcast_sink.h"
+#include "stack/include/btm_vendor_api.h"
 #include "types/raw_address.h"
 
 using bluetooth::le_audio::BroadcastId;
@@ -1188,8 +1189,12 @@ public:
                                  success ? JNI_TRUE : JNI_FALSE);
   }
 
-  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) override {
-    log::info("dbig_handle={}, status=0x{:04x}", dbig_handle, status);
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                            uint16_t dev_id, std::vector<uint8_t> name,
+                            uint8_t num_bis, std::vector<uint16_t> bis_dev_ids,
+                            uint16_t broadcast_features) override {
+    log::info("dbig_handle={}, status=0x{:04x}, dev_id=0x{:03x}, num_bis={}, broadcast_features=0x{:04x}",
+              dbig_handle, status, dev_id, num_bis, broadcast_features);
 
     std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterCallbacksMutex);
     CallbackEnv sCallbackEnv(__func__);
@@ -1198,8 +1203,27 @@ public:
       return;
     }
 
+    ScopedLocalRef<jbyteArray> jname(sCallbackEnv.get(),
+                                     sCallbackEnv->NewByteArray(name.size()));
+    if (!jname.get()) {
+      log::error("Failed to allocate byte array for name");
+      return;
+    }
+    sCallbackEnv->SetByteArrayRegion(jname.get(), 0, name.size(),
+                                     reinterpret_cast<const jbyte*>(name.data()));
+
+    ScopedLocalRef<jcharArray> jbis_dev_ids(sCallbackEnv.get(),
+                                            sCallbackEnv->NewCharArray(bis_dev_ids.size()));
+    if (!jbis_dev_ids.get()) {
+      log::error("Failed to allocate char array for bis_dev_ids");
+      return;
+    }
+    sCallbackEnv->SetCharArrayRegion(jbis_dev_ids.get(), 0, bis_dev_ids.size(),
+                                     reinterpret_cast<const jchar*>(bis_dev_ids.data()));
+
     sCallbackEnv->CallVoidMethod(sBroadcasterCallbacksObj, method_onDbigStatusChanged,
-                                 (jint)dbig_handle, (jint)status);
+                                 (jint)dbig_handle, (jint)status, (jint)dev_id, jname.get(),
+                                 (jint)num_bis, jbis_dev_ids.get(), (jint)broadcast_features);
   }
 };
 
@@ -1539,6 +1563,40 @@ static void getBroadcastMetadataNative(JNIEnv* /* env */, jobject /* object */, 
   sLeAudioBroadcasterInterface->GetBroadcastMetadata(broadcast_id);
 }
 
+static void setAchatAttributesNative(JNIEnv* env, jobject /* object */,
+                                     jbyteArray dev_id, jbyteArray name) {
+  log::info("setAchatAttributesNative");
+  if (dev_id == nullptr || name == nullptr) {
+    log::error("setAchatAttributesNative: null parameter");
+    return;
+  }
+  jsize dev_id_len = env->GetArrayLength(dev_id);
+  jsize name_len = env->GetArrayLength(name);
+  if (dev_id_len < 2 || name_len < 10) {
+    log::error("setAchatAttributesNative: invalid parameter lengths");
+    return;
+  }
+  jbyte* dev_id_bytes = env->GetByteArrayElements(dev_id, nullptr);
+  jbyte* name_bytes = env->GetByteArrayElements(name, nullptr);
+  if (dev_id_bytes == nullptr || name_bytes == nullptr) {
+    if (dev_id_bytes) env->ReleaseByteArrayElements(dev_id, dev_id_bytes, JNI_ABORT);
+    if (name_bytes) env->ReleaseByteArrayElements(name, name_bytes, JNI_ABORT);
+    return;
+  }
+  std::vector<uint8_t> dev_id_vec(reinterpret_cast<uint8_t*>(dev_id_bytes),
+                                   reinterpret_cast<uint8_t*>(dev_id_bytes) + dev_id_len);
+  std::vector<uint8_t> name_vec(reinterpret_cast<uint8_t*>(name_bytes),
+                                 reinterpret_cast<uint8_t*>(name_bytes) + name_len);
+  env->ReleaseByteArrayElements(dev_id, dev_id_bytes, JNI_ABORT);
+  env->ReleaseByteArrayElements(name, name_bytes, JNI_ABORT);
+  BTM_SetAchatAttributes(dev_id_vec, name_vec);
+}
+
+static void setDbigJoinControlNative(JNIEnv* /* env */, jobject /* object */, jboolean mode) {
+  log::info("setDbigJoinControlNative: mode={}", (bool)mode);
+  BTM_SetDbigJoinControl((bool)mode);
+}
+
 static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)BroadcasterInitNative},
@@ -1554,6 +1612,8 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
           {"pauseBroadcastNative", "(I)V", (void*)PauseBroadcastNative},
           {"destroyBroadcastNative", "(I)V", (void*)DestroyBroadcastNative},
           {"getBroadcastMetadataNative", "(I)V", (void*)getBroadcastMetadataNative},
+          {"setAchatAttributesNative", "([B[B)V", (void*)setAchatAttributesNative},
+          {"setDbigJoinControlNative", "(Z)V", (void*)setDbigJoinControlNative},
   };
 
   const int result = REGISTER_NATIVE_METHODS(
@@ -1569,7 +1629,7 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
           {"onBroadcastMetadataChanged", "(ILandroid/bluetooth/BluetoothLeBroadcastMetadata;)V",
            &method_onBroadcastMetadataChanged},
           {"onBroadcastAudioSessionCreated", "(Z)V", &method_onBroadcastAudioSessionCreated},
-          {"onDbigStatusChanged", "(II)V", &method_onDbigStatusChanged},
+          {"onDbigStatusChanged", "(III[BI[CI)V", &method_onDbigStatusChanged},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcasterNativeInterface",
                    javaMethods);
@@ -1842,15 +1902,38 @@ public:
                                  (jint)broadcast_id, (jint)big_handle, (jint)status);
   }
 
-  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) override {
-    log::info("dbig_handle={}, status=0x{:04x}", dbig_handle, status);
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                            uint16_t dev_id, std::vector<uint8_t> name,
+                            uint8_t num_bis, std::vector<uint16_t> bis_dev_ids,
+                            uint16_t broadcast_features) override {
+    log::info("dbig_handle={}, status=0x{:04x}, dev_id=0x{:03x}, num_bis={}, broadcast_features=0x{:04x}",
+              dbig_handle, status, dev_id, num_bis, broadcast_features);
     std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
       return;
     }
+    ScopedLocalRef<jbyteArray> jname(sCallbackEnv.get(),
+                                     sCallbackEnv->NewByteArray(name.size()));
+    if (!jname.get()) {
+      log::error("Failed to allocate byte array for name");
+      return;
+    }
+    sCallbackEnv->SetByteArrayRegion(jname.get(), 0, name.size(),
+                                     reinterpret_cast<const jbyte*>(name.data()));
+
+    ScopedLocalRef<jcharArray> jbis_dev_ids(sCallbackEnv.get(),
+                                            sCallbackEnv->NewCharArray(bis_dev_ids.size()));
+    if (!jbis_dev_ids.get()) {
+      log::error("Failed to allocate char array for bis_dev_ids");
+      return;
+    }
+    sCallbackEnv->SetCharArrayRegion(jbis_dev_ids.get(), 0, bis_dev_ids.size(),
+                                     reinterpret_cast<const jchar*>(bis_dev_ids.data()));
+
     sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSinkDbigStatusChanged,
-                                 (jint)dbig_handle, (jint)status);
+                                 (jint)dbig_handle, (jint)status, (jint)dev_id, jname.get(),
+                                 (jint)num_bis, jbis_dev_ids.get(), (jint)broadcast_features);
   }
 };
 
@@ -2096,7 +2179,7 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
           {"onBigSyncCreated", "(II[I)V", &method_onBigSyncCreated},
           {"onBigSyncLost", "(III)V", &method_onBigSyncLost},
           {"onBigSyncTerminated", "(III)V", &method_onBigSyncTerminated},
-          {"onDbigStatusChanged", "(II)V", &method_onSinkDbigStatusChanged},
+          {"onDbigStatusChanged", "(III[BI[CI)V", &method_onSinkDbigStatusChanged},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface",
                    javaMethods);

@@ -102,6 +102,17 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
   }
 
+  void SetAchatAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::SetAchatAttributes,
+                           Unretained(LeAudioBroadcaster::Get()), std::move(dev_id),
+                           std::move(name)));
+  }
+
+  void SetDbigJoinControl(bool enable) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::SetDbigJoinControl,
+                           Unretained(LeAudioBroadcaster::Get()), enable));
+  }
+
   void GetBroadcastMetadata(uint32_t broadcast_id) override {
     do_in_main_thread(Bind(&LeAudioBroadcaster::GetBroadcastMetadata,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
@@ -134,9 +145,13 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                           Unretained(callbacks_), success));
   }
 
-  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) override {
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                            uint16_t dev_id, std::vector<uint8_t> name,
+                            uint8_t num_bis, std::vector<uint16_t> bis_dev_ids,
+                            uint16_t broadcast_features) override {
     do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnDbigStatusChanged,
-                          Unretained(callbacks_), dbig_handle, status));
+                          Unretained(callbacks_), dbig_handle, status,
+                          dev_id, name, num_bis, bis_dev_ids, broadcast_features));
   }
 
   void Stop(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Stop)); }

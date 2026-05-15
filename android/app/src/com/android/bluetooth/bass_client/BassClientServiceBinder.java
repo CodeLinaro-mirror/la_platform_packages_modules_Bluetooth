@@ -256,6 +256,32 @@ class BassClientServiceBinder extends IBluetoothLeBroadcastAssistant.Stub
     }
 
     @Override
+    public void setAchatAttributes(int devId, byte[] name, AttributionSource source) {
+        BassClientService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            Log.e(TAG, "Service is null");
+            return;
+        }
+        // Forward to LeAudioService for Achat attribute setting (sink side)
+        com.android.bluetooth.le_audio.LeAudioService leAudioService =
+                com.android.bluetooth.le_audio.LeAudioService.getLeAudioService();
+        if (leAudioService != null) {
+            // Pack devId into 2 octets (12-bit value with 4-bit padding)
+            byte[] devIdBytes = new byte[2];
+            devIdBytes[0] = (byte) (devId & 0xFF);
+            devIdBytes[1] = (byte) ((devId >> 8) & 0x0F);
+            // Ensure name is exactly 10 octets
+            byte[] nameBytes = new byte[10];
+            if (name != null) {
+                System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
+            }
+            leAudioService.setAchatAttributes(devId, nameBytes);
+        } else {
+            Log.w(TAG, "setAchatAttributes: LeAudioService not available");
+        }
+    }
+
+    @Override
     public BluetoothLeBroadcastMetadata getSourceMetadata(
             BluetoothDevice sink, int sourceId, AttributionSource source) {
         BassClientService service = getServiceAndEnforceConnect(source);

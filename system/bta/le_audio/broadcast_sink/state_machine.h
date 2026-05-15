@@ -227,8 +227,8 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
 
   virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
 
-  // BIG terminate sync complete callback
-  virtual void OnBigTerminateSyncComplete(uint8_t big_handle, uint8_t status) = 0;
+  // DBIG TExitDbig complete callback
+  virtual void OnTexitDbigComplete(uint8_t dbig_handle, uint8_t status, uint8_t reason) = 0;
 
   // Scanning callbacks (from LE Scanning Manager)
   virtual void OnSyncEstablished(uint8_t status, uint16_t sync_handle, uint8_t adv_sid,

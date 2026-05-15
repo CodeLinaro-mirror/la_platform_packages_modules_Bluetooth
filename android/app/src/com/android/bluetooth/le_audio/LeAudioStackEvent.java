@@ -54,6 +54,13 @@ public class LeAudioStackEvent {
     public static final int EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED = EVENT_TYPE_UNICAST_MAX + 5;
     public static final int EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED = EVENT_TYPE_UNICAST_MAX + 6;
 
+    // DBIG status extended fields (shared by broadcaster and sink paths)
+    public int dbigDevId = 0;
+    public byte[] dbigName;
+    public int dbigNumBis = 0;
+    public char[] dbigBisDevIds;
+    public int dbigBroadcastFeatures = 0;
+
     // Do not modify without updating the HAL bt_le_audio.h files.
     // Match up with GroupStatus enum of bt_le_audio.h
     static final int CONNECTION_STATE_DISCONNECTED = 0;

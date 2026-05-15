@@ -252,9 +252,11 @@ void btsnd_hcic_vendor_spec_cmd(uint16_t opcode, uint8_t len, uint8_t* p_data,
 #define HCIC_BLE_CHNL_MAP_SIZE 5
 #define HCIC_PARAM_SIZE_BLE_READ_PHY 2
 #define HCIC_PARAM_SIZE_BLE_SET_PHY 7
-#define HCI_PARAM_SIZE_CREATE_DBIG 5
+#define HCI_PARAM_SIZE_CREATE_DBIG 15
 #define HCI_PARAM_SIZE_CREATE_BIG_SYNC 24
 #define HCI_PARAM_SIZE_TERMINATE_BIG_SYNC 1
+#define HCI_PARAM_SIZE_SET_DEVID 13
+#define HCI_PARAM_SIZE_TEXIT_DBIG 4
 
 extern void btsnd_hcic_flow_spec(uint16_t handle, uint8_t unused, uint8_t direction,
                                  uint8_t service_type, uint32_t token_rate, uint32_t token_size,
@@ -269,8 +271,25 @@ extern void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
                                    uint8_t pgp_timeout,
                                    uint8_t pgo_timeout,
                                    uint8_t sgo_timeout,
+                                   uint8_t join_timeout,
+                                   uint8_t exit_timeout,
+                                   uint8_t remove_timeout,
+                                   uint8_t terminate_timeout,
                                    uint8_t tx_power,
                                    base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_join_control(uint8_t dbig_handle,
+                                        uint8_t mode,
+                                        base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_set_devid(uint16_t dev_id,
+                                     uint8_t* name,
+                                     base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_texit_dbig(uint8_t dbig_handle,
+                                      uint8_t texit_mode,
+                                      uint8_t reason,
+                                      base::Callback<void(uint8_t*, uint16_t)> cb);
 
 extern void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,
                                     uint16_t sync_handle,

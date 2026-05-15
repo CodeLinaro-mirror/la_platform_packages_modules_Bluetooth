@@ -231,6 +231,35 @@ void IsoManager::HandleDbigStatusEvent(uint8_t* params, uint16_t length) {
     pimpl_->iso_impl_->on_dbig_status_event(params, length);
   }
 }
+void IsoManager::HandleTExitDbigEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_texit_dbig_event(params, length);
+  }
+}
+
+void IsoManager::HandleJoinControlEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_join_control_event(params, length);
+  }
+}
+
+void IsoManager::JoinControl(struct iso_manager::dbig_join_control_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->join_control(params);
+  }
+}
+
+void IsoManager::TExitDbig(struct iso_manager::dbig_texit_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->texit_dbig(params);
+  }
+}
+
+void IsoManager::SetDevId(struct iso_manager::dbig_set_devid_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->set_devid(params);
+  }
+}
 
 void IsoManager::SetDbigParameters(struct iso_manager::dbig_create_params dbig_params) const {
   if (pimpl_->IsRunning()) {

@@ -1013,6 +1013,8 @@ struct iso_impl {
     STREAM_TO_UINT8(evt.big_handle, data);
     STREAM_TO_UINT8(evt.reason, data);
 
+    // Clean up BIS entries for this BIG
+    log::info("BIG_SYNC_LOST event received for big_handle: {}, cleaning up BIS entries", evt.big_handle);
     bool is_known_handle = false;
     auto bis_it = conn_hdl_to_bis_map_.cbegin();
     while (bis_it != conn_hdl_to_bis_map_.cend()) {
@@ -1025,7 +1027,11 @@ struct iso_impl {
       }
     }
 
-    log::assert_that(is_known_handle, "No such big: {}", evt.big_handle);
+    if (!is_known_handle) {
+      log::warn("BIG_SYNC_LOST event received but no BIS entries found for big_handle: ",
+                 evt.big_handle);
+    }
+
     big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnSyncLost, &evt);
 
     {
@@ -1111,22 +1117,179 @@ struct iso_impl {
     // HCI VS cmd: HCI_VS_LE_SET_DBIG_PARAMETERS
     // NOTE: btsnd_hcic_ble_create_dbig takes a Repeating Callback signature.
     btsnd_hcic_ble_create_dbig(
-            dbig_params.dbig_handle, dbig_params.dbig_feature_set, 
+            dbig_params.dbig_handle, dbig_params.dbig_feature_set,
             dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
             dbig_params.bis_control_event_interval, dbig_params.send_exit,
-            dbig_params.pgp_timeout, dbig_params.pgo_timeout, 
-            dbig_params.sgo_timeout, dbig_params.tx_power,
+            dbig_params.pgp_timeout, dbig_params.pgo_timeout,
+            dbig_params.sgo_timeout, dbig_params.join_timeout,
+            dbig_params.exit_timeout, dbig_params.remove_timeout,
+            dbig_params.terminate_timeout, dbig_params.tx_power,
             base::BindRepeating(&iso_impl::on_set_dbig_parameters_cmd_complete,
                                 weak_factory_.GetWeakPtr()));
 
     BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Params set",
                    std::format("dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
-                               "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, tx_power:{}",
-                               dbig_params.dbig_handle, dbig_params.dbig_feature_set, 
+                               "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, "
+                               "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, tx_power:{}",
+                               dbig_params.dbig_handle, dbig_params.dbig_feature_set,
                                dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
                                dbig_params.bis_control_event_interval, dbig_params.send_exit,
-                               dbig_params.pgp_timeout, dbig_params.pgo_timeout, 
-                               dbig_params.sgo_timeout, dbig_params.tx_power));
+                               dbig_params.pgp_timeout, dbig_params.pgo_timeout,
+                               dbig_params.sgo_timeout, dbig_params.join_timeout,
+                               dbig_params.exit_timeout, dbig_params.remove_timeout,
+                               dbig_params.terminate_timeout, dbig_params.tx_power));
+  }
+
+  void on_join_control_event(uint8_t* stream, uint16_t len) {
+    uint8_t dbig_handle = 0;
+    uint8_t status = 0;
+
+    log::info("DBIG Join Control event, len={}", len);
+    if (len < 2) {
+      log::warn("Insufficient event parameters for Join Control event.");
+      return;
+    }
+
+    STREAM_TO_UINT8(dbig_handle, stream);
+    STREAM_TO_UINT8(status, stream);
+
+    log::info("DBIG Join Control: dbig_handle=0x{:02x}, status=0x{:02x}", dbig_handle, status);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Join Control event",
+                   std::format("dbig_handle:0x{:02x}, status:{}", dbig_handle,
+                               hci_status_code_text((tHCI_STATUS)(status))));
+
+    if (join_control_complete_cb_ != nullptr) {
+      (*join_control_complete_cb_)(status, dbig_handle);
+      join_control_complete_cb_ = nullptr;
+    }
+  }
+
+  void join_control(struct dbig_join_control_params params) {
+    log::info("DBIG Join Control: dbig_handle=0x{:02x}, mode=0x{:02x}",
+              params.dbig_handle, params.mode);
+
+    join_control_complete_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_join_control(params.dbig_handle, params.mode,
+                                base::BindRepeating([](uint8_t*, uint16_t) {}));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Join Control",
+                   std::format("dbig_handle:0x{:02x}, mode:0x{:02x}",
+                               params.dbig_handle, params.mode));
+  }
+
+  void on_texit_dbig_event(uint8_t* stream, uint16_t len) {
+    uint8_t dbig_handle = 0;
+    uint8_t reason = 0;
+    uint8_t status = 0;
+
+    log::info("DBIG TExitDbIg event, len={}", len);
+    if (len < 3) {
+      log::warn("Insufficient event parameters for TExitDbIg event.");
+      return;
+    }
+
+    STREAM_TO_UINT8(dbig_handle, stream);
+    STREAM_TO_UINT8(reason, stream);
+    STREAM_TO_UINT8(status, stream);
+
+    log::info("DBIG TExitDbIg: dbig_handle=0x{:02x}, reason=0x{:02x}, status=0x{:02x}",
+              dbig_handle, reason, status);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG TExitDbIg event",
+                   std::format("dbig_handle:0x{:02x}, reason:0x{:02x}, status:{}",
+                               dbig_handle, reason,
+                               hci_status_code_text((tHCI_STATUS)(status))));
+
+    if (texit_dbig_cmpl_cb_ != nullptr) {
+      (*texit_dbig_cmpl_cb_)(status, HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE);
+      texit_dbig_cmpl_cb_ = nullptr;
+    }
+
+    if (status == HCI_SUCCESS) {
+      // Clean up BIS entries for this DBIG - similar to process_big_sync_lost_pkt
+      log::info("DBIG TExitDbig successful for dbig_handle: {}, cleaning up BIS entries", dbig_handle);
+      bool is_known_handle = false;
+      auto bis_it = conn_hdl_to_bis_map_.cbegin();
+      while (bis_it != conn_hdl_to_bis_map_.cend()) {
+        if (bis_it->second->big_handle == dbig_handle) {
+          log::info("Removing BIS handle {} for DBIG {}", bis_it->first, dbig_handle);
+          bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+          is_known_handle = true;
+        } else {
+          ++bis_it;
+        }
+      }
+      if (!is_known_handle) {
+        log::warn("DBIG TExitDbig complete but no BIS entries found for dbig_handle: ",
+                   dbig_handle);
+      }
+    } else {
+      log::error("DBIG TExitDbig failed, status: {}, dbig_handle: {}", status, dbig_handle);
+    }
+
+    /* Fire DBIG-specific TExitDbig completion event */
+    if (dbig_callbacks_ != nullptr) {
+      dbig_texit_cmpl_evt evt = {
+        .status = status,
+        .dbig_handle = dbig_handle,
+        .reason = reason
+      };
+      log::info("Firing kIsoEventDbigTexitCmpl for TExitDbig completion");
+      dbig_callbacks_->OnDbigEvent(kIsoEventDbigTexitCmpl, &evt);
+    }
+  }
+
+  void texit_dbig(struct dbig_texit_params params) {
+    log::info("DBIG TExitDbIg: dbig_handle=0x{:02x}, texit_mode=0x{:02x}, reason=0x{:02x}",
+              params.dbig_handle, params.texit_mode, params.reason);
+
+    texit_dbig_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_texit_dbig(params.dbig_handle, params.texit_mode, params.reason,
+                               base::BindRepeating([](uint8_t*, uint16_t) {}));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG TExitDbIg",
+                   std::format("dbig_handle:0x{:02x}, texit_mode:0x{:02x}, reason:0x{:02x}",
+                               params.dbig_handle, params.texit_mode, params.reason));
+  }
+
+  void on_set_devid_cmd_cmpl(uint8_t* stream, uint16_t len) {
+    uint8_t status = 0;
+    uint8_t sub_opcode = 0;
+
+    log::info("DBIG SetDevId cmd complete, len={}", len);
+    if (len < 2) {
+      log::warn("Insufficient return parameters for SetDevId cmd complete.");
+      return;
+    }
+
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(sub_opcode, stream);
+
+    log::info("DBIG SetDevId: status=0x{:02x}, sub_opcode=0x{:02x}", status, sub_opcode);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SetDevId complete",
+                   std::format("status:{}, sub_opcode:0x{:02x}",
+                               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode));
+
+    if (set_devid_cmpl_cb_ != nullptr) {
+      (*set_devid_cmpl_cb_)(status, sub_opcode, 0);
+    }
+  }
+
+  void set_devid(struct dbig_set_devid_params params) {
+    log::info("DBIG SetDevId: dev_id=0x{:04x}", params.dev_id);
+
+    set_devid_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_set_devid(params.dev_id, params.name,
+                              base::BindRepeating(&iso_impl::on_set_devid_cmd_cmpl,
+                                                  weak_factory_.GetWeakPtr()));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SetDevId",
+                   std::format("dev_id:0x{:04x}", params.dev_id));
   }
 
   void on_dbig_update_event(uint8_t* stream, uint16_t len) {
@@ -1141,9 +1304,46 @@ struct iso_impl {
     STREAM_TO_UINT8(evt.timing_source, stream);
     STREAM_TO_UINT8(evt.local_bis_id, stream);
 
+    /* Parse extended fields:
+     * [5-6]   : dev_id (12-bit, little-endian)
+     * [7-16]  : name (10 bytes)
+     * [17]    : num_bis
+     * [18-..] : BIS[n]_DevID (num_bis * 2 bytes, 12-bit each)
+     * [last]  : broadcast_features (2 bytes)
+     */
+    uint16_t offset = 5;
+    if (len >= offset + 2) {
+      uint16_t raw_dev_id = 0;
+      STREAM_TO_UINT16(raw_dev_id, stream);
+      evt.dev_id = raw_dev_id & 0x0FFF;
+      offset += 2;
+    }
+    if (len >= offset + 10) {
+      evt.name.resize(10);
+      STREAM_TO_ARRAY(evt.name.data(), stream, 10);
+      offset += 10;
+    }
+    if (len >= offset + 1) {
+      STREAM_TO_UINT8(evt.num_bis, stream);
+      offset += 1;
+      for (int i = 0; i < evt.num_bis && i < kDbigMaxBisCount; i++) {
+        if (len >= offset + 2) {
+          uint16_t bis_dev_id = 0;
+          STREAM_TO_UINT16(bis_dev_id, stream);
+          evt.bis_dev_ids.push_back(bis_dev_id & 0x0FFF);
+          offset += 2;
+        }
+      }
+    }
+    if (len >= offset + 2) {
+      STREAM_TO_UINT16(evt.broadcast_features, stream);
+    }
+
     BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Update event",
-                   std::format("big_handle:0x{:02x}, status:{}, bis_state:{}, timing_source:{}, local_bis_id:{}",
-                               evt.big_handle, evt.status, evt.bis_state, evt.timing_source, evt.local_bis_id));
+                   std::format("big_handle:0x{:02x}, status:{}, bis_state:{}, timing_source:{}, "
+                               "local_bis_id:{}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+                               evt.big_handle, evt.status, evt.bis_state, evt.timing_source,
+                               evt.local_bis_id, evt.dev_id, evt.num_bis, evt.broadcast_features));
 
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigUpdate, &evt);
   }
@@ -1158,10 +1358,49 @@ struct iso_impl {
     STREAM_TO_UINT8(evt.dbig_handle, stream);
     STREAM_TO_UINT16(evt.dbig_status, stream);
 
+    /* Parse extended fields if present:
+     * [3-7]   : big_event_counter (5 bytes, skipped)
+     * [8-9]   : dev_id (2 bytes, 12-bit value)
+     * [10-19] : name (10 bytes)
+     * [20-..] : BIS[n]_DevID (2*n bytes, n up to kDbigMaxBisCount)
+     * [last]  : broadcast_features (2 bytes)
+     */
+    uint16_t offset = 3;  /* 1(handle) + 2(status) */
+    if (len >= offset + 5) {
+      /* Skip big_event_counter (5 bytes) */
+      stream += 5;
+      offset += 5;
+    }
+    if (len >= offset + 2) {
+      uint16_t raw_dev_id = 0;
+      STREAM_TO_UINT16(raw_dev_id, stream);
+      evt.dev_id = raw_dev_id & 0x0FFF;
+      offset += 2;
+    }
+    if (len >= offset + 10) {
+      evt.name.resize(10);
+      STREAM_TO_ARRAY(evt.name.data(), stream, 10);
+      offset += 10;
+    }
+    /* Parse BIS[n]_DevID: n is determined by available bytes.
+     * The last 2 bytes are broadcast_features, so stop before them. */
+    evt.num_bis = 0;
+    while (len >= offset + 2 && evt.num_bis < kDbigMaxBisCount) {
+      if (len == offset + 2) break;  /* Last 2 bytes are broadcast_features */
+      uint16_t bis_dev_id = 0;
+      STREAM_TO_UINT16(bis_dev_id, stream);
+      evt.bis_dev_ids.push_back(bis_dev_id & 0x0FFF);
+      offset += 2;
+      evt.num_bis++;
+    }
+    if (len >= offset + 2) {
+      STREAM_TO_UINT16(evt.broadcast_features, stream);
+    }
+
     BTM_LogHistory(
             kBtmLogTag, RawAddress::kEmpty, "DBIG Status event",
-            std::format("dbig_handle:0x{:02x}, dbig_status:0x{:04x}",
-                        evt.dbig_handle, evt.dbig_status));
+            std::format("dbig_handle:0x{:02x}, dbig_status:0x{:04x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+                        evt.dbig_handle, evt.dbig_status, evt.dev_id, evt.num_bis, evt.broadcast_features));
 
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigStatus, &evt);
   }
@@ -1351,6 +1590,11 @@ struct iso_impl {
   DbigCallbacks* dbig_callbacks_ = nullptr;
 
   BigSyncCallbacks* big_sync_callbacks_ = nullptr;
+  /* Callback pointers for DBIG commands */
+  dbig_join_control_complete_cb* join_control_complete_cb_ = nullptr;
+  dbig_texit_cmpl_cb* texit_dbig_cmpl_cb_ = nullptr;
+  dbig_set_devid_cmpl_cb* set_devid_cmpl_cb_ = nullptr;
+
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
   base::WeakPtrFactory<iso_impl> weak_factory_{this};

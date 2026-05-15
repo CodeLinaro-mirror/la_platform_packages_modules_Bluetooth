@@ -991,7 +991,9 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     break;
                 }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_DBIG_STATUS_CHANGED: {
-                    notifyDbigStatusChanged(event.valueInt1, event.valueInt2);
+                    notifyDbigStatusChanged(event.valueInt1, event.valueInt2,
+                            event.dbigDevId, event.dbigName, event.dbigNumBis,
+                            event.dbigBisDevIds, event.dbigBroadcastFeatures);
                     break;
                 }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_LOST: {
@@ -1028,11 +1030,28 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     }
 
     @SuppressLint("AndroidFrameworkRequiresPermission")
-    private void notifyDbigStatusChanged(int dbigHandle, int status) {
+    private void notifyDbigStatusChanged(int dbigHandle, int status, int devId, byte[] name,
+                                          int numBis, char[] bisDevIds, int broadcastFeatures) {
         if (DBG) Log.d(TAG, "notifyDbigStatusChanged: dbig_handle=" + dbigHandle
-                + ", status=0x" + Integer.toHexString(status));
+                + ", status=0x" + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", numBis=" + numBis
+                + ", broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures));
         Intent intent = new Intent("android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED");
         intent.putExtra("android.bluetooth.extra.DBIG_STATUS", status);
+        intent.putExtra("android.bluetooth.extra.DBIG_DEV_ID", devId);
+        if (name != null) {
+            intent.putExtra("android.bluetooth.extra.DBIG_NAME", name);
+        }
+        intent.putExtra("android.bluetooth.extra.DBIG_NUM_BIS", numBis);
+        if (bisDevIds != null && bisDevIds.length > 0) {
+            int[] bisDevIdsInt = new int[bisDevIds.length];
+            for (int i = 0; i < bisDevIds.length; i++) {
+                bisDevIdsInt[i] = bisDevIds[i];
+            }
+            intent.putExtra("android.bluetooth.extra.DBIG_BIS_DEV_IDS", bisDevIdsInt);
+        }
+        intent.putExtra("android.bluetooth.extra.DBIG_BROADCAST_FEATURES", broadcastFeatures);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
                 | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
         sendBroadcastAsUser(

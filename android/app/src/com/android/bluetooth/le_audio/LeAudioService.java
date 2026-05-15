@@ -1775,6 +1775,43 @@ public class LeAudioService extends ProfileService {
     }
 
     /**
+     * Set Achat-specific attributes for the broadcast source/sink.
+     * @param devId Device ID (12-bit value, 0-4095)
+     * @param name Device name (up to 10 octets, UTF-8 encoded)
+     */
+    public void setAchatAttributes(int devId, byte[] name) {
+        Log.d(TAG, "setAchatAttributes: devId=" + devId);
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
+            Log.w(TAG, "setAchatAttributes: Native interface not available.");
+            return;
+        }
+        // Pack devId into 2 octets (12-bit value with 4-bit padding)
+        byte[] devIdBytes = new byte[2];
+        devIdBytes[0] = (byte) (devId & 0xFF);
+        devIdBytes[1] = (byte) ((devId >> 8) & 0x0F);
+
+        // Ensure name is exactly 10 octets
+        byte[] nameBytes = new byte[10];
+        if (name != null) {
+            System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
+        }
+        mLeAudioBroadcasterNativeInterface.get().setAchatAttributes(devIdBytes, nameBytes);
+    }
+
+    /**
+     * Set DBIG Join Control mode for the broadcast source.
+     * @param mode true to enable DBIG join control, false to disable
+     */
+    public void setDbigJoinControl(boolean mode) {
+        Log.d(TAG, "setDbigJoinControl: mode=" + mode);
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
+            Log.w(TAG, "setDbigJoinControl: Native interface not available.");
+            return;
+        }
+        mLeAudioBroadcasterNativeInterface.get().setDbigJoinControl(mode);
+    }
+
+    /**
      * Checks if Broadcast instance is playing.
      *
      * @param broadcastId broadcast instance identifier
@@ -4683,7 +4720,13 @@ public class LeAudioService extends ProfileService {
                 == LeAudioStackEvent.EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED) {
             final int dbigHandle = stackEvent.valueInt1;
             final int dbigStatus = stackEvent.valueInt2;
-            mHandler.post(() -> notifyDbigStatusChanged(dbigHandle, dbigStatus));
+            final int dbigDevId = stackEvent.dbigDevId;
+            final byte[] dbigName = stackEvent.dbigName;
+            final int dbigNumBis = stackEvent.dbigNumBis;
+            final char[] dbigBisDevIds = stackEvent.dbigBisDevIds;
+            final int dbigBroadcastFeatures = stackEvent.dbigBroadcastFeatures;
+            mHandler.post(() -> notifyDbigStatusChanged(dbigHandle, dbigStatus,
+                    dbigDevId, dbigName, dbigNumBis, dbigBisDevIds, dbigBroadcastFeatures));
         } else if (stackEvent.type == LeAudioStackEvent.EVENT_TYPE_NATIVE_INITIALIZED) {
             mLeAudioNativeIsInitialized = true;
             for (Map.Entry<ParcelUuid, Pair<Integer, Integer>> entry :
@@ -6059,12 +6102,29 @@ public class LeAudioService extends ProfileService {
     }
 
     @SuppressLint("AndroidFrameworkRequiresPermission")
-    private void notifyDbigStatusChanged(int dbigHandle, int status) {
+    private void notifyDbigStatusChanged(int dbigHandle, int status, int devId, byte[] name,
+                                          int numBis, char[] bisDevIds, int broadcastFeatures) {
         Log.d(TAG, "notifyDbigStatusChanged: dbigHandle=" + dbigHandle
-                + " status=0x" + Integer.toHexString(status));
+                + " status=0x" + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", numBis=" + numBis
+                + ", broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures));
 
         Intent intent = new Intent("android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED");
         intent.putExtra("android.bluetooth.extra.DBIG_STATUS", status);
+        intent.putExtra("android.bluetooth.extra.DBIG_DEV_ID", devId);
+        if (name != null) {
+            intent.putExtra("android.bluetooth.extra.DBIG_NAME", name);
+        }
+        intent.putExtra("android.bluetooth.extra.DBIG_NUM_BIS", numBis);
+        if (bisDevIds != null && bisDevIds.length > 0) {
+            int[] bisDevIdsInt = new int[bisDevIds.length];
+            for (int i = 0; i < bisDevIds.length; i++) {
+                bisDevIdsInt[i] = bisDevIds[i];
+            }
+            intent.putExtra("android.bluetooth.extra.DBIG_BIS_DEV_IDS", bisDevIdsInt);
+        }
+        intent.putExtra("android.bluetooth.extra.DBIG_BROADCAST_FEATURES", broadcastFeatures);
         intent.putExtra(BluetoothLeAudio.EXTRA_LE_AUDIO_GROUP_ID, dbigHandle);
         intent.addFlags(
                 Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT

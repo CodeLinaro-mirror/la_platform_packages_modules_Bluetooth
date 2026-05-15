@@ -851,24 +851,6 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         }
         break;
       }
-      case bluetooth::hci::iso_manager::kIsoEventBigOnTerminateSyncCmpl: {
-        auto* big_terminate_sync_cmpl = static_cast<
-            bluetooth::hci::iso_manager::big_terminate_sync_cmpl_evt*>(data);
-        log::info("BIG terminate sync complete: big_handle={}, status={}",
-                  big_terminate_sync_cmpl->big_handle,
-                  big_terminate_sync_cmpl->status);
-
-        BroadcastId broadcast_id = BroadcastIdFromBigHandle(big_terminate_sync_cmpl->big_handle);
-        if (broadcast_id == bluetooth::le_audio::kBroadcastIdInvalid) {
-          log::warn("No state machine found for big_handle={}", big_terminate_sync_cmpl->big_handle);
-          return;
-        }
-        auto& tracked_source = tracked_sources_[broadcast_id];
-        if (tracked_source.state_machine) {
-          tracked_source.state_machine->OnBigTerminateSyncComplete(big_terminate_sync_cmpl->big_handle, big_terminate_sync_cmpl->status);
-        }
-        break;
-      }
       default:
         log::warn("Unhandled BIG sync event: {}", event);
         break;
@@ -917,10 +899,35 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         auto* evt = static_cast<bluetooth::hci::iso_manager::dbig_status_evt*>(data);
         log::info("DBIG status event: big_handle={}, status=0x{:04x}",
                   evt->dbig_handle, evt->dbig_status);
-        /* Forward DBIG status (handle + status only) to the upper layer */
+        /* Forward DBIG status with extended fields to the upper layer */
         if (callbacks_) {
           callbacks_->OnDbigStatusChanged(evt->dbig_handle,
-                                          static_cast<uint16_t>(evt->dbig_status));
+                                          static_cast<uint16_t>(evt->dbig_status),
+                                          evt->dev_id, evt->name, evt->num_bis,
+                                          evt->bis_dev_ids, evt->broadcast_features);
+        }
+        break;
+      }
+
+      case bluetooth::hci::iso_manager::kIsoEventDbigTexitCmpl: {
+        if (!data) {
+          log::error("TExitDbig complete event with null data");
+          return;
+        }
+        auto* texit_evt = static_cast<bluetooth::hci::iso_manager::dbig_texit_cmpl_evt*>(data);
+        log::info("TExitDbig complete: dbig_handle={}, status={}, reason={}",
+                  texit_evt->dbig_handle, texit_evt->status, texit_evt->reason);
+
+        BroadcastId broadcast_id = BroadcastIdFromBigHandle(texit_evt->dbig_handle);
+        if (broadcast_id == bluetooth::le_audio::kBroadcastIdInvalid) {
+          log::warn("No state machine found for dbig_handle={}", texit_evt->dbig_handle);
+          return;
+        }
+        auto& tracked_source = tracked_sources_[broadcast_id];
+        if (tracked_source.state_machine) {
+          tracked_source.state_machine->OnTexitDbigComplete(texit_evt->dbig_handle,
+                                                             texit_evt->status,
+                                                             texit_evt->reason);
         }
         break;
       }

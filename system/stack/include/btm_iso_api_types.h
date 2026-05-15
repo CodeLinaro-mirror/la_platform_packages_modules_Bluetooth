@@ -87,6 +87,7 @@ constexpr uint8_t kIsoEventBigTerminated = 0x06;
 constexpr uint8_t kIsoEventDbigUpdate = 0x10;
 constexpr uint8_t kIsoEventDbigCreateCmpl = 0x11;
 constexpr uint8_t kIsoEventDbigStatus = 0x12;
+constexpr uint8_t kIsoEventDbigTexitCmpl = 0x13;
 
 constexpr uint8_t kIsoEventBigOnSyncEstablished = 0x00;
 constexpr uint8_t kIsoEventBigOnSyncLost = 0x01;
@@ -178,7 +179,42 @@ struct dbig_create_params {
   uint8_t pgp_timeout;
   uint8_t pgo_timeout;
   uint8_t sgo_timeout;
+  uint8_t join_timeout;
+  uint8_t exit_timeout;
+  uint8_t remove_timeout;
+  uint8_t terminate_timeout;
   uint8_t tx_power;
+};
+
+/* Callback for HCI_VS_LE_JOIN_CONTROL complete event */
+typedef void (dbig_join_control_complete_cb)(uint8_t status, uint8_t dbig_handle);
+
+/* Callback for HCI_VS_LE_Texit_DBIG command complete */
+typedef void (dbig_texit_cmpl_cb)(uint8_t status, uint8_t sub_opcode);
+
+/* Callback for HCI_VS_LE_SET_DevID command complete */
+typedef void (dbig_set_devid_cmpl_cb)(uint8_t status, uint8_t sub_opcode, uint16_t dev_id);
+
+/* Parameters for HCI_VS_LE_JOIN_CONTROL command */
+struct dbig_join_control_params {
+  uint8_t dbig_handle;
+  uint8_t mode;
+  dbig_join_control_complete_cb* p_cb;
+};
+
+/* Parameters for HCI_VS_LE_Texit_DBIG command */
+struct dbig_texit_params {
+  uint8_t dbig_handle;
+  uint8_t texit_mode;
+  uint8_t reason;
+  dbig_texit_cmpl_cb* p_cb;
+};
+
+/* Parameters for HCI_VS_LE_SET_DevID command */
+struct dbig_set_devid_params {
+  uint16_t dev_id;
+  uint8_t name[10];
+  dbig_set_devid_cmpl_cb* p_cb;
 };
 
 struct big_create_cmpl_evt {
@@ -259,6 +295,9 @@ struct dbig_create_cmpl_evt {
   uint8_t dbig_handle;
 };
 
+/* Maximum number of BIS channels in a DBIG */
+constexpr uint8_t kDbigMaxBisCount = 4;
+
 /* DBIG (Duplex Broadcast Information Group) update event */
 struct dbig_update_evt {
   uint8_t status;
@@ -266,12 +305,31 @@ struct dbig_update_evt {
   uint8_t bis_state;
   uint8_t timing_source;
   uint8_t local_bis_id;
+  /* Extended fields: device ID, name, BIS info, broadcast features */
+  uint16_t dev_id;
+  std::vector<uint8_t> name;
+  uint8_t num_bis;
+  std::vector<uint16_t> bis_dev_ids;
+  uint16_t broadcast_features;
 };
 
 /* DBIG (Duplex Broadcast Information Group) status event */
 struct dbig_status_evt {
   uint8_t dbig_handle;
   uint16_t dbig_status;
+  /* Extended fields: device ID, name, BIS info, broadcast features */
+  uint16_t dev_id;
+  std::vector<uint8_t> name;
+  uint8_t num_bis;
+  std::vector<uint16_t> bis_dev_ids;
+  uint16_t broadcast_features;
+};
+
+/* DBIG TExitDbig completion event */
+struct dbig_texit_cmpl_evt {
+  uint8_t status;
+  uint8_t dbig_handle;
+  uint8_t reason;
 };
 
 /* DBIG callbacks interface */

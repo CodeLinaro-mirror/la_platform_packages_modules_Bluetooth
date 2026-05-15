@@ -64,11 +64,18 @@ public class LeAudioBroadcastSinkStackEvent {
      */
     public static final int EVENT_TYPE_BIG_SYNC_TERMINATED = 13;
     /**
-     * DBIG status update received from the controller (kIsoEventDbigUpdate).
+     * DBIG status update received from the controller (kIsoEventDbigStatus).
      * {@code valueInt1} = dbig_handle, {@code valueInt2} = status.
-     * Only handle and status are forwarded — no other parameters.
+     * Extended fields: dbigDevId, dbigName, dbigNumBis, dbigBisDevIds, dbigBroadcastFeatures.
      */
     public static final int EVENT_TYPE_DBIG_STATUS_CHANGED = 14;
+
+    // DBIG status extended fields
+    public int dbigDevId = 0;
+    public byte[] dbigName;
+    public int dbigNumBis = 0;
+    public char[] dbigBisDevIds;
+    public int dbigBroadcastFeatures = 0;
 
     // Broadcast sink states (from broadcast_sink_types.h SinkState enum)
     public static final int SINK_STATE_IDLE       = 0;

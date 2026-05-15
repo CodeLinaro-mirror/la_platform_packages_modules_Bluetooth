@@ -63,6 +63,48 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             Log.d(TAG, "Received broadcast action: " + action);
             if (ACTION_DBIG_STATUS_CHANGED.equals(action)) {
                 int status = intent.getIntExtra(EXTRA_DBIG_STATUS, -1);
+                if (status < 0) {
+                    Log.w(TAG, "DBIG status broadcast missing status extra");
+                    return;
+                }
+                // bit8 (0x0100) - new device added to DBIG
+                boolean newDeviceAdded = (status & 0x0100) != 0;
+                Log.d(TAG, "Device added bit" + newDeviceAdded);
+                if (newDeviceAdded) {
+                    int devId = intent.getIntExtra(
+                                "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                        byte[] nameBytes = intent.getByteArrayExtra(
+                                "android.bluetooth.extra.DBIG_NAME");
+                        String nameStr = (nameBytes != null)
+                                ? new String(nameBytes,
+                                        java.nio.charset.StandardCharsets.UTF_8).trim()
+                                : "";
+                    Log.i(TAG, "New device added to DBIG: devId=0x"
+                            + String.format("%04X", devId) + ", name=" + nameStr);
+                    Toast.makeText(context,
+                            "New device joined DBIG: DevID=" + devId + ", Name=" + nameStr,
+                            Toast.LENGTH_LONG).show();
+                }
+
+                // bit9 (0x0200) - device removed from DBIG
+                boolean deviceRemoved = (status & 0x0200) != 0;
+                Log.d(TAG, "Device removed bit" + deviceRemoved);
+                if (deviceRemoved) {
+                    int devId = intent.getIntExtra(
+                                "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                        byte[] nameBytes = intent.getByteArrayExtra(
+                                "android.bluetooth.extra.DBIG_NAME");
+                        String nameStr = (nameBytes != null)
+                                ? new String(nameBytes,
+                                        java.nio.charset.StandardCharsets.UTF_8).trim()
+                                : "";
+                    Log.i(TAG, "Device removed from DBIG: devId=0x"
+                            + String.format("%04X", devId) + ", name=" + nameStr);
+                    Toast.makeText(context,
+                            "Device exited DBIG: DevID=" + devId + ", Name=" + nameStr,
+                            Toast.LENGTH_LONG).show();
+                }
+
                 boolean bisAvailable   = (status & 0x0001) != 0;
                 boolean localOccupying = (status & 0x0002) != 0;
 

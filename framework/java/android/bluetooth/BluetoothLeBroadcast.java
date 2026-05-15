@@ -43,6 +43,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 /**
@@ -873,6 +874,91 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     @RequiresNoPermission
     public BluetoothAdapter getAdapter() {
         return mAdapter;
+    }
+
+    /**
+     * Set Achat-specific attributes for the broadcast source.
+     *
+     * @param devId Device ID (12-bit value, 0-4095)
+     * @param name Device name (up to 10 octets, UTF-8 encoded)
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void setAchatAttributes(int devId, @NonNull byte[] name) {
+        if (devId < 0 || devId > 4095) {
+            Log.e(TAG, "setAchatAttributes: invalid devId=" + devId + " (must be 0-4095)");
+            throw new IllegalArgumentException(
+                    "Invalid devId: " + devId + ". Must be 0-4095 (12-bit)");
+        }
+        Objects.requireNonNull(name, "name cannot be null");
+        if (name.length == 0) {
+            Log.e(TAG, "setAchatAttributes: name is empty, ignoring request");
+            return;
+        }
+        if (name.length > 10) {
+            Log.e(TAG, "setAchatAttributes: name length=" + name.length
+                    + " exceeds 10 octets, ignoring request");
+            return;
+        }
+        // Find the actual length (stop at first null byte)
+        int actualLength = name.length;
+        for (int i = 0; i < name.length; i++) {
+            if (name[i] == 0) {
+                actualLength = i;
+                break;
+            }
+        }
+        String nameStr = new String(name, 0, actualLength, java.nio.charset.StandardCharsets.UTF_8);
+        if (nameStr.trim().isEmpty()) {
+            Log.e(TAG, "setAchatAttributes: name consists entirely of spaces, ignoring request");
+            return;
+        }
+        if (nameStr.contains(" ")) {
+            Log.e(TAG, "setAchatAttributes: name contains space character(s): \""
+                    + nameStr + "\", ignoring request");
+            return;
+        }
+        if (DBG) log("setAchatAttributes: devId=" + devId
+                + ", name=\"" + nameStr + "\", nameLen=" + name.length);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.setAchatAttributes(devId, name, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /**
+     * Set DBIG Join Control mode for the broadcast source.
+     *
+     * @param mode true to enable DBIG join control, false to disable
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void setDbigJoinControl(boolean mode) {
+        if (DBG) log("setDbigJoinControl: mode=" + mode);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.setDbigJoinControl(mode, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
     }
 
     private static void log(String msg) {

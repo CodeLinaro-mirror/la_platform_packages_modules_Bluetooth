@@ -35,6 +35,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.NumberPicker;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -67,6 +68,17 @@ public class BroadcasterActivity extends AppCompatActivity {
             "android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED";
     private static final String EXTRA_DBIG_STATUS =
             "android.bluetooth.extra.DBIG_STATUS";
+    /* Join Control state - persisted across app restarts */
+    private static final String PREFS_NAME = "leaudio_prefs";
+    private static final String KEY_JOIN_CONTROL_ENABLED = "join_control_enabled";
+
+    /**
+     * Tracks whether DBIG Join Control is currently enabled.
+     * Default is true (join control on by default).
+     * Persisted in SharedPreferences so the state survives crashes.
+     */
+    private boolean mJoinControlEnabled = true;
+
     /* ------------------------------------------------------------------
      *  BIS connectivity state (updated via ACTION_DBIG_STATUS_CHANGED)
      * ------------------------------------------------------------------ */
@@ -96,6 +108,46 @@ public class BroadcasterActivity extends AppCompatActivity {
                     if (status < 0) {
                         Log.w(TAG, "DBIG status broadcast missing status extra");
                         return;
+                    }
+
+                    // bit8 (0x0100) – new device added to DBIG
+                    boolean newDeviceAdded = (status & 0x0100) != 0;
+                    Log.d(TAG, "Device added bit" + newDeviceAdded);
+                    if (newDeviceAdded) {
+                        int devId = intent.getIntExtra(
+                                "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                        byte[] nameBytes = intent.getByteArrayExtra(
+                                "android.bluetooth.extra.DBIG_NAME");
+                        String nameStr = (nameBytes != null)
+                                ? new String(nameBytes,
+                                        java.nio.charset.StandardCharsets.UTF_8).trim()
+                                : "";
+                        Log.i(TAG, "New device added to DBIG: devId=0x"
+                                + String.format("%04X", devId) + ", name=" + nameStr);
+                        Toast.makeText(context,
+                                "New device joined DBIG: DevID=" + devId
+                                        + ", Name=" + nameStr,
+                                Toast.LENGTH_LONG).show();
+                    }
+                    // bit9 (0x0200) – device is exiting / removed from DBIG
+                    boolean deviceRemoved = (status & 0x0200) != 0;
+                    Log.d(TAG, "Device removed bit" + deviceRemoved);
+                    if (deviceRemoved) {
+                        int devId = intent.getIntExtra(
+                                "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                        byte[] nameBytes = intent.getByteArrayExtra(
+                                "android.bluetooth.extra.DBIG_NAME");
+                        String nameStr = (nameBytes != null)
+                                ? new String(nameBytes,
+                                        java.nio.charset.StandardCharsets.UTF_8).trim()
+                                : "";
+                        Log.i(TAG, "Device removed from DBIG: devId=0x"
+                                + String.format("%04X", devId) + ", name=" + nameStr);
+                        Toast.makeText(context,
+                                "Device exited DBIG: DevID"
+                                        + devId
+                                        + ", Name=" + nameStr,
+                                Toast.LENGTH_LONG).show();
                     }
 
                     // bit0 (0x0001) - at least one BIS is AVAILABLE
@@ -130,6 +182,10 @@ public class BroadcasterActivity extends AppCompatActivity {
         setContentView(R.layout.broadcaster_activity);
 
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        // Restore persisted Join Control state (default: enabled = true)
+        mJoinControlEnabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getBoolean(KEY_JOIN_CONTROL_ENABLED, true);
+        Log.d(TAG, "Restored Join Control state: enabled=" + mJoinControlEnabled);
         FloatingActionButton fab = findViewById(R.id.broadcast_fab);
         fab.setOnClickListener(
                 view -> {
@@ -479,8 +535,36 @@ public class BroadcasterActivity extends AppCompatActivity {
                                         alertView.findViewById(R.id.clear_button);
                                 clearButton.setVisibility(View.GONE);
 
+                                // Build a container: inflated form + two instant Join Control buttons
+                                LinearLayout container = new LinearLayout(this);
+                                container.setOrientation(LinearLayout.VERTICAL);
+                                container.addView(alertView);
+
+                                int dp8 = (int) (8 * getResources().getDisplayMetrics().density);
+                                LinearLayout joinRow = new LinearLayout(this);
+                                joinRow.setOrientation(LinearLayout.HORIZONTAL);
+                                joinRow.setPadding(dp8, dp8, dp8, dp8);
+
+                                Button btnJoinEnable = new Button(this);
+                                btnJoinEnable.setText("Join Enable");
+                                LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(
+                                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                                p1.setMargins(dp8, 0, dp8, 0);
+                                btnJoinEnable.setLayoutParams(p1);
+
+                                Button btnJoinDisable = new Button(this);
+                                btnJoinDisable.setText("Join Disable");
+                                LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(
+                                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                                p2.setMargins(dp8, 0, dp8, 0);
+                                btnJoinDisable.setLayoutParams(p2);
+
+                                joinRow.addView(btnJoinEnable);
+                                joinRow.addView(btnJoinDisable);
+                                container.addView(joinRow);
+
                                 modifyAlert
-                                        .setView(alertView)
+                                        .setView(container)
                                         .setNegativeButton(
                                                 "Cancel",
                                                 (modifyDialog, modifyWhich) -> {
@@ -550,7 +634,52 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                                 .show();
                                                 });
 
-                                modifyAlert.show();
+                                AlertDialog modifyDialog = modifyAlert.show();
+
+                                // Show only the button that represents the action the user can take next.
+                                //   Join Control enabled  → only "Join Disable" is visible
+                                //   Join Control disabled → only "Join Enable"  is visible
+                                if (mJoinControlEnabled) {
+                                    btnJoinEnable.setVisibility(View.GONE);
+                                    btnJoinDisable.setVisibility(View.VISIBLE);
+                                } else {
+                                    btnJoinDisable.setVisibility(View.GONE);
+                                    btnJoinEnable.setVisibility(View.VISIBLE);
+                                }
+
+                                // "Join Enable" – visible only when join control is currently disabled
+                                btnJoinEnable.setOnClickListener(v -> {
+                                    boolean result = mViewModel.setDbigJoinControl(true);
+                                    Log.d(TAG, "DBIG Join Enable: result=" + result);
+                                    if (result) {
+                                        mJoinControlEnabled = true;
+                                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                                                .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
+                                        btnJoinEnable.setVisibility(View.GONE);
+                                        btnJoinDisable.setVisibility(View.VISIBLE);
+                                    }
+                                    Toast.makeText(BroadcasterActivity.this,
+                                            result ? "DBIG Join Control: Enabled"
+                                                   : "Failed to enable DBIG Join Control",
+                                            Toast.LENGTH_SHORT).show();
+                                });
+
+                                // "Join Disable" – visible only when join control is currently enabled
+                                btnJoinDisable.setOnClickListener(v -> {
+                                    boolean result = mViewModel.setDbigJoinControl(false);
+                                    Log.d(TAG, "DBIG Join Disable: result=" + result);
+                                    if (result) {
+                                        mJoinControlEnabled = false;
+                                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                                                .putBoolean(KEY_JOIN_CONTROL_ENABLED, false).apply();
+                                        btnJoinDisable.setVisibility(View.GONE);
+                                        btnJoinEnable.setVisibility(View.VISIBLE);
+                                    }
+                                    Toast.makeText(BroadcasterActivity.this,
+                                            result ? "DBIG Join Control: Disabled"
+                                                   : "Failed to disable DBIG Join Control",
+                                            Toast.LENGTH_SHORT).show();
+                                });
                             });
 
                     // Acquire / Release button – mutually exclusive, uses negative slot
@@ -643,6 +772,19 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     .show();
 
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, true);
+
+                            // Automatically enable DBIG Join Control when broadcast enters playing state
+                            Log.d(TAG, "Broadcast playing - auto-enabling DBIG Join Control");
+                            boolean joinResult = mViewModel.setDbigJoinControl(true);
+                            Log.d(TAG, "Auto DBIG Join Control enable: result=" + joinResult);
+                            if (joinResult) {
+                                mJoinControlEnabled = true;
+                                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                                        .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
+                                Toast.makeText(BroadcasterActivity.this,
+                                        "DBIG Join Control auto-enabled (broadcast playing)",
+                                        Toast.LENGTH_SHORT).show();
+                            }
                         });
 
         mViewModel

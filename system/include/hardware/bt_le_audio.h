@@ -571,7 +571,11 @@ public:
   /* Callback for broadcast audio session create event. */
   virtual void OnBroadcastAudioSessionCreated(bool success) = 0;
   /* Callback for DBIG status event. */
-  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) = 0;
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                                    uint16_t dev_id, std::vector<uint8_t> name,
+                                    uint8_t num_bis,
+                                    std::vector<uint16_t> bis_dev_ids,
+                                    uint16_t broadcast_features) = 0;
 };
 
 class LeAudioBroadcasterInterface {
@@ -610,6 +614,11 @@ public:
   virtual void DestroyBroadcast(uint32_t broadcast_id) = 0;
   /* Get Broadcast Metadata */
   virtual void GetBroadcastMetadata(uint32_t broadcast_id) = 0;
+  /* Set Achat-specific attributes (DevID and Name) */
+  virtual void SetAchatAttributes(std::vector<uint8_t> dev_id,
+                                  std::vector<uint8_t> name) = 0;
+  /* Set DBIG Join Control mode */
+  virtual void SetDbigJoinControl(bool enable) = 0;
 };
 
 } /* namespace le_audio */

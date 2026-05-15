@@ -229,6 +229,7 @@ static void transmit_command(const BT_HDR* command, command_complete_cb complete
     }
   }
 
+
   // Gd stack API requires opcode specification and calculates length, so
   // no need to provide opcode or length here.
   data += (kCommandOpcodeSize + kCommandLengthSize);
@@ -348,6 +349,33 @@ static void set_data_cb(base::Callback<void(BT_HDR*)> send_data_cb) {
 static void transmit_command(const BT_HDR* command, command_complete_cb complete_callback,
                              command_status_cb status_callback, void* context) {
   cpp::transmit_command(command, complete_callback, status_callback, context);
+}
+
+// Use this variant for HCI vendor commands that return a CommandStatus event
+// (not CommandComplete). HCI_VS_LE_JOIN_CONTROL (opcode 0xfd90, sub-opcode
+// 0x08) is one such command: the controller acknowledges it with a status
+// event, and the actual completion is delivered later via a VSE META event
+// (HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT -> btm_ble_join_control_event_handler).
+// This matches the same pattern used by HandleDbigUpdateEvent/SetDbigParameters.
+void btu_hcif_send_cmd_status_with_cb(uint16_t opcode, uint8_t* params, uint8_t params_len,
+                                      base::OnceCallback<void(uint8_t*, uint16_t)> cb) {
+  // Build the command payload directly (no BT_HDR needed).
+  auto payload = std::make_unique<bluetooth::packet::RawBuilder>();
+  if (params != nullptr && params_len > 0) {
+    payload->AddOctets(std::vector<uint8_t>(params, params + params_len));
+  }
+  auto packet = bluetooth::hci::CommandBuilder::Create(
+      static_cast<bluetooth::hci::OpCode>(opcode), std::move(payload));
+
+  bluetooth::shim::GetHciLayer()->EnqueueCommand(
+      std::move(packet),
+      bluetooth::shim::GetGdShimHandler()->BindOnce(
+          [](base::OnceCallback<void(uint8_t*, uint16_t)> cb,
+             bluetooth::hci::CommandStatusView view) {
+            uint8_t status = static_cast<uint8_t>(view.GetStatus());
+            std::move(cb).Run(&status, 1);
+          },
+          std::move(cb)));
 }
 
 static void transmit_fragment(BT_HDR* packet, bool send_transmit_finished) {
