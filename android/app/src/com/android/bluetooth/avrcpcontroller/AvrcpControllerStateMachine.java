@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -49,6 +54,7 @@ import com.android.bluetooth.media_audio.sink.MediaSource.BrowseRequest;
 import com.android.bluetooth.media_audio.sink.MediaSource.BrowseResult;
 import com.android.bluetooth.media_audio.sink.MediaSource.BrowseStatus;
 import com.android.bluetooth.profile.ProfileService;
+import com.android.bluetooth.hfpclient.HeadsetClientStateMachine;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
@@ -621,7 +627,11 @@ class AvrcpControllerStateMachine extends StateMachine {
                         notifyAbsoluteVolumeChanged(msg.arg1);
                 case MESSAGE_GET_FOLDER_ITEMS -> transitionTo(mGetFolderList);
                 case MESSAGE_PLAY_ITEM -> processPlayItem((BrowseTree.BrowseNode) msg.obj);
-                case MSG_AVRCP_PASSTHRU -> passThru(msg.arg1);
+                case MSG_AVRCP_PASSTHRU -> {
+                    if (isPassThruAllowed(msg.arg1)) {
+                        passThru(msg.arg1);
+                    }
+                }
                 case MSG_AVRCP_SET_REPEAT -> setRepeat(msg.arg1);
                 case MSG_AVRCP_SET_SHUFFLE -> setShuffle(msg.arg1);
                 case MESSAGE_PROCESS_TRACK_CHANGED -> {
@@ -654,6 +664,14 @@ class AvrcpControllerStateMachine extends StateMachine {
                             "Connected: Playback status = "
                                     + AvrcpControllerUtils.playbackStateToString(msg.arg1));
                     mAddressedPlayer.setPlayStatus(msg.arg1);
+
+                    // Pause music when SCO is connected
+                    if (msg.arg1 == PlaybackStateCompat.STATE_PLAYING
+                            && HeadsetClientStateMachine.isAudioRouted()) {
+                        sendMessage(MSG_AVRCP_PASSTHRU,
+                                AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
+                        return true;
+                    }
 
                     if (Flags.mediaAudioServer()) {
                         // Media Audio Server handles audio focus requests and courtesy play/pause
@@ -1896,5 +1914,19 @@ class AvrcpControllerStateMachine extends StateMachine {
 
             return toBrowseNode(node.getAvrcpItem());
         }
+    }
+
+    private static boolean isPassThruAllowed(int cmd) {
+        if (!(HeadsetClientStateMachine.isAudioRouted())) {
+            return true;
+        } else {
+            // Only pause/stop are allowed when SCO is connected
+            if (cmd == AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE
+                    || cmd == AvrcpControllerService.PASS_THRU_CMD_ID_STOP) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
