@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 /*****************************************************************************
@@ -75,6 +80,7 @@ static void handle_avk_rc_metamsg_rsp(tBTA_AV_META_MSG* pmeta_msg);
 static void btif_rc_ctrl_upstreams_rsp_cmd(uint8_t event, tAVRC_COMMAND* pavrc_cmd, uint8_t label,
                                            btif_rc_device_cb_t* p_dev);
 static void rc_ctrl_procedure_complete(btif_rc_device_cb_t* p_dev);
+static void rc_stop_play_status_timer(btif_rc_device_cb_t* p_dev);
 static void register_for_event_notification(btif_rc_supported_event_t* p_event,
                                             btif_rc_device_cb_t* p_dev);
 static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_GET_CAPS_RSP* p_rsp);
@@ -129,6 +135,8 @@ static std::string dump_peer_features(const uint16_t feats);
       bluetooth::log::error("bt_rc_ctrl_callbacks is null for {}", #P_CBACK); \
     }                                                                         \
   } while (0)
+
+static void rc_start_play_status_timer(btif_rc_device_cb_t* p_dev);
 
 /*****************************************************************************
  *  Static variables
@@ -214,9 +222,11 @@ static void initialize_device(btif_rc_device_cb_t* p_dev) {
   }
 
   dealloc_device(p_dev);
+  rc_stop_play_status_timer(p_dev);
   p_dev->rc_cover_art_psm = 0;
   if (p_dev->rc_supported_event_list != nullptr) {
     list_clear(p_dev->rc_supported_event_list);
+    p_dev->rc_supported_play_pos_changed = false;
   }
   p_dev->rc_supported_event_list = nullptr;
   memset(&p_dev->rc_app_settings, 0, sizeof(btif_rc_player_app_settings_t));
@@ -954,6 +964,76 @@ static void rc_notification_interim_timeout(btif_rc_device_cb_t* p_dev, uint8_t 
 
 /***************************************************************************
  *
+ * Function         btif_rc_play_status_timeout_handler
+ *
+ * Description      RC play status timeout handler (Runs in BTIF context).
+ * Returns          None
+ *
+ **************************************************************************/
+static void btif_rc_play_status_timeout_handler(UNUSED_ATTR uint16_t event,
+                                                char* p_data) {
+  uint8_t rc_handle = *(uint8_t*)p_data;
+  btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_handle(rc_handle);
+  if (p_dev == NULL) {
+    log::error("timeout handler but no device found for handle %d",
+               rc_handle);
+    return;
+  }
+  get_play_status_cmd(p_dev);
+  rc_start_play_status_timer(p_dev);
+}
+
+/***************************************************************************
+ *
+ * Function         btif_rc_play_status_timer_timeout
+ *
+ * Description      RC play status timeout callback.
+ *                  This is called from BTU context and switches to BTIF
+ *                  context to handle the timeout events
+ * Returns          None
+ *
+ **************************************************************************/
+static void btif_rc_play_status_timer_timeout(void* data) {
+  uint8_t rc_handle = (uint8_t)PTR_TO_UINT(data);
+  log::verbose("called with handle: 0x{:x}", rc_handle);
+  btif_transfer_context(btif_rc_play_status_timeout_handler, 0,
+                        (char*)(&rc_handle), sizeof(uint8_t), NULL);
+}
+
+/***************************************************************************
+ *
+ * Function         rc_start_play_status_timer
+ *
+ * Description      Helper function to start the timer to fetch play status.
+ * Returns          None
+ *
+ **************************************************************************/
+static void rc_start_play_status_timer(btif_rc_device_cb_t* p_dev) {
+  /* Start the Play status timer only if it is not started */
+  if (!alarm_is_scheduled(p_dev->rc_play_status_timer)) {
+    if (p_dev->rc_play_status_timer == NULL) {
+      p_dev->rc_play_status_timer = alarm_new("p_dev->rc_play_status_timer");
+    }
+    alarm_set_on_mloop(
+        p_dev->rc_play_status_timer, BTIF_RC_TIMEOUT_MS,
+        btif_rc_play_status_timer_timeout, UINT_TO_PTR(p_dev->rc_handle));
+  }
+}
+
+/***************************************************************************
+ *
+ * Function         rc_stop_play_status_timer
+ *
+ * Description      Helper function to stop the play status timer.
+ * Returns          None
+ *
+ **************************************************************************/
+void rc_stop_play_status_timer(btif_rc_device_cb_t* p_dev) {
+  alarm_cancel(p_dev->rc_play_status_timer);
+}
+
+/***************************************************************************
+ *
  * Function         register_for_event_notification
  *
  * Description      Helper function registering notification events
@@ -1110,6 +1190,10 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_GE
         p_event->event_id = p_rsp->param.event_id[xx];
         p_event->status = eNOT_REGISTERED;
         list_append(p_dev->rc_supported_event_list, p_event);
+
+        if (p_rsp->param.event_id[xx] == AVRC_EVT_PLAY_POS_CHANGED) {
+          p_dev->rc_supported_play_pos_changed = true;
+        }
       }
     }
 
@@ -1186,7 +1270,19 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
     log::verbose("Interim response: 0x{:2X}", p_rsp->event_id);
     switch (p_rsp->event_id) {
       case AVRC_EVT_PLAY_STATUS_CHANGE:
-        get_play_status_cmd(p_dev);
+        if (p_dev->rc_supported_play_pos_changed == true) {
+          get_play_status_cmd(p_dev);
+        } else {
+          /* EVENT_PLAYBACK_POS_CHANGED is NOT supported
+          * So start timer to get play status periodically
+          * if the play state is playing.
+          */
+          if (p_rsp->param.play_status == AVRC_PLAYSTATE_PLAYING ||
+              p_rsp->param.play_status == AVRC_PLAYSTATE_REV_SEEK ||
+              p_rsp->param.play_status == AVRC_PLAYSTATE_FWD_SEEK) {
+            rc_start_play_status_timer(p_dev);
+          }
+        }
         CTRL_HAL_CBACK(bt_rc_ctrl_callbacks->play_status_changed_cb, p_dev->rc_addr,
                        (btrc_play_status_t)p_rsp->param.play_status);
         break;
@@ -1197,7 +1293,9 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
         } else {
           uint8_t* p_data = p_rsp->param.track;
           BE_STREAM_TO_UINT64(p_dev->rc_playing_uid, p_data);
-          get_play_status_cmd(p_dev);
+          if (p_dev->rc_supported_play_pos_changed == true) {
+            get_play_status_cmd(p_dev);
+          }
           get_metadata_attribute_cmd(attr_list_size, attr_list, p_dev);
         }
         break;
@@ -1283,12 +1381,22 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg, tAVRC_REG_
 
     switch (p_rsp->event_id) {
       case AVRC_EVT_PLAY_STATUS_CHANGE:
-        /* Start timer to get play status periodically
-         * if the play state is playing.
-         */
+        if (p_rsp->param.play_status == AVRC_PLAYSTATE_PLAYING) {
+          /* rc_start_play_status_timer is only required when
+           * EVENT_PLAYBACK_POS_CHANGED is not supported in AVRCP target
+           */
+          if (p_dev->rc_supported_play_pos_changed == false) {
+            /* Start timer to get play status periodically
+             * if the play state is playing.
+             */
+             rc_start_play_status_timer(p_dev);
+          }
+          get_element_attribute_cmd(AVRC_MAX_NUM_MEDIA_ATTR_ID, attr_list, p_dev);
+        } else {
+          rc_stop_play_status_timer(p_dev);
+        }
         CTRL_HAL_CBACK(bt_rc_ctrl_callbacks->play_status_changed_cb, p_dev->rc_addr,
                        (btrc_play_status_t)p_rsp->param.play_status);
-
         break;
 
       case AVRC_EVT_TRACK_CHANGE:

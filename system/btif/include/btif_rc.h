@@ -154,6 +154,7 @@ struct btif_rc_device_cb_t {
   unsigned int rc_volume;
   uint8_t rc_vol_label;
   list_t* rc_supported_event_list;
+  bool rc_supported_play_pos_changed;
   btif_rc_player_app_settings_t rc_app_settings;
   alarm_t* rc_play_status_timer;
   bool rc_features_processed;
