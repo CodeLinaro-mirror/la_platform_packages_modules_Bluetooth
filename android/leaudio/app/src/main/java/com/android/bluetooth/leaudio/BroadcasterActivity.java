@@ -18,11 +18,16 @@
 package com.android.bluetooth.leaudio;
 
 import android.bluetooth.BluetoothLeAudioContentMetadata;
+import android.bluetooth.BluetoothLeBroadcast;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
 import android.bluetooth.BluetoothLeBroadcastSettings;
 import android.bluetooth.BluetoothLeBroadcastSubgroupSettings;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -51,15 +56,65 @@ import java.util.Map;
 
 public class BroadcasterActivity extends AppCompatActivity {
     private BroadcasterViewModel mViewModel;
+    private static final String TAG = "BroadcasterActivity";
 
     private final String BROADCAST_PREFS_KEY = "BROADCAST_PREFS_KEY";
     private final String PREF_SEP = ":";
     private final String VALUE_NOT_SET = "undefined";
 
+    /* ------------------------------------------------------------------
+     *  BIS connectivity state (updated via ACTION_DBIG_STATUS_CHANGED)
+     * ------------------------------------------------------------------ */
+    private enum BisAvailability { UNKNOWN, AVAILABLE, UNAVAILABLE }
+    private BisAvailability mBisAvailability = BisAvailability.UNKNOWN;
+    private boolean mLocalOccupyingBis = false;
+
+    private AudioManager mAudioManager;
+    /** Reference to the currently visible broadcast-info dialog (for in-place refresh). */
+    private AlertDialog mCurrentInfoDialog = null;
+
+    private final BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "Received broadcast action: " + action);
+            if (BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED.equals(action)) {
+                int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                boolean bisAvailable   = (status & 0x0001) != 0;
+                boolean localOccupying = (status & 0x0002) != 0;
+
+                mBisAvailability = (bisAvailable && !localOccupying)
+                        ? BisAvailability.AVAILABLE
+                        : BisAvailability.UNAVAILABLE;
+                mLocalOccupyingBis = localOccupying;
+
+                if ((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                    Toast.makeText(context, "BIS is available, user can speak now",
+                            Toast.LENGTH_SHORT).show();
+                } else if (!bisAvailable && !localOccupying) {
+                    Toast.makeText(context,
+                            "BIS is not available, please wait until BIS is available",
+                            Toast.LENGTH_SHORT).show();
+                }
+                Log.d(TAG, "DBIG status – availability: " + mBisAvailability
+                        + ", local occupying: " + mLocalOccupyingBis);
+                refreshDialogIfVisible();
+            }
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.broadcaster_activity);
+
+        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+
+        // Register for DBIG status changes
+        IntentFilter dbigFilter = new IntentFilter();
+        dbigFilter.addAction(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED);
+        registerReceiver(mDbigStatusReceiver, dbigFilter, Context.RECEIVER_EXPORTED);
+        Log.d(TAG, "Registered mDbigStatusReceiver");
 
         FloatingActionButton fab = findViewById(R.id.broadcast_fab);
         fab.setOnClickListener(
@@ -318,6 +373,8 @@ public class BroadcasterActivity extends AppCompatActivity {
                         TextView addr_text = metaLayout.findViewById(R.id.device_addr_text);
                         addr_text.setText(
                                 "Device Address: " + metadata.getSourceDevice().toString());
+                        // Store broadcast ID so refreshDialogIfVisible() can re-open the dialog
+                        addr_text.setTag(broadcastId);
 
                         addr_text = metaLayout.findViewById(R.id.adv_sid_text);
                         addr_text.setText("Advertising SID: " + metadata.getSourceAdvertisingSid());
@@ -482,7 +539,40 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 modifyAlert.show();
                             });
 
-                    alert.show();
+                    // Acquire / Release button – mutually exclusive, uses negative slot
+                    if (mLocalOccupyingBis) {
+                        // bit1 == 1 → local device occupies a BIS → show Release
+                        alert.setNegativeButton("Release", (dialog, which) -> {
+                            if (mAudioManager != null) {
+                                mAudioManager.setParameters("achat_tx_acquire=false");
+                                Toast.makeText(this,
+                                        "achat_tx_acquire=false sent to AHAL for broadcast "
+                                                + broadcastId,
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                            Log.d(TAG, "Acquire:False");
+                            Toast.makeText(this,
+                                    "Release BIS for broadcast " + broadcastId,
+                                    Toast.LENGTH_SHORT).show();
+                        });
+                    } else if (mBisAvailability == BisAvailability.AVAILABLE) {
+                        // bit1 == 0 && bit0 == 1 → BIS free → show Acquire
+                        alert.setNegativeButton("Acquire", (dialog, which) -> {
+                            if (mAudioManager != null) {
+                                mAudioManager.setParameters("achat_tx_acquire=true");
+                                Toast.makeText(this,
+                                        "achat_tx_acquire=true sent to AHAL for broadcast "
+                                                + broadcastId,
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                            Log.d(TAG, "Acquire:True");
+                            Toast.makeText(this,
+                                    "Acquiring BIS for broadcast " + broadcastId,
+                                    Toast.LENGTH_SHORT).show();
+                        });
+                    }
+
+                    mCurrentInfoDialog = alert.show();
                     Log.d("CC", "Num broadcasts: " + mViewModel.getBroadcastCount());
                 });
         recyclerView.setAdapter(itemsAdapter);
@@ -594,6 +684,65 @@ public class BroadcasterActivity extends AppCompatActivity {
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         startActivity(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(mDbigStatusReceiver);
+    }
+
+    /**
+     * If the broadcast-info dialog is currently visible, update its Acquire/Release
+     * button in-place to reflect the latest DBIG status without recreating the dialog.
+     */
+    private void refreshDialogIfVisible() {
+        if (mCurrentInfoDialog == null || !mCurrentInfoDialog.isShowing()) return;
+
+        View deviceAddrView = mCurrentInfoDialog.findViewById(R.id.device_addr_text);
+        if (deviceAddrView == null || !(deviceAddrView.getTag() instanceof Integer)) return;
+
+        int broadcastId = (Integer) deviceAddrView.getTag();
+        android.widget.Button negativeButton =
+                mCurrentInfoDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+
+        if (mLocalOccupyingBis) {
+            if (negativeButton != null) {
+                negativeButton.setText("Release");
+                negativeButton.setVisibility(View.VISIBLE);
+                negativeButton.setOnClickListener(v -> {
+                    if (mAudioManager != null) {
+                        mAudioManager.setParameters("achat_tx_acquire=false");
+                        Toast.makeText(this,
+                                "achat_tx_acquire=false sent to AHAL for broadcast " + broadcastId,
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    Log.d(TAG, "Acquire:False");
+                    Toast.makeText(this, "Release BIS for broadcast " + broadcastId,
+                            Toast.LENGTH_SHORT).show();
+                });
+            }
+        } else if (mBisAvailability == BisAvailability.AVAILABLE) {
+            if (negativeButton != null) {
+                negativeButton.setText("Acquire");
+                negativeButton.setVisibility(View.VISIBLE);
+                negativeButton.setOnClickListener(v -> {
+                    if (mAudioManager != null) {
+                        mAudioManager.setParameters("achat_tx_acquire=true");
+                        Toast.makeText(this,
+                                "achat_tx_acquire=true sent to AHAL for broadcast " + broadcastId,
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    Log.d(TAG, "Acquire:True");
+                    Toast.makeText(this, "Acquiring BIS for broadcast " + broadcastId,
+                            Toast.LENGTH_SHORT).show();
+                });
+            }
+        } else {
+            if (negativeButton != null) {
+                negativeButton.setVisibility(View.GONE);
+            }
+        }
     }
 
     private BluetoothLeBroadcastSettings createBroadcastSettingsFromUI(

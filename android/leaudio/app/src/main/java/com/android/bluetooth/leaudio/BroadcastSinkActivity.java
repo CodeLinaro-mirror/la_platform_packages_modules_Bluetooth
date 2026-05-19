@@ -6,9 +6,15 @@
 package com.android.bluetooth.leaudio;
 
 import android.app.AlertDialog;
+import android.bluetooth.BluetoothLeBroadcast;
 import android.bluetooth.BluetoothLeBroadcastChannel;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
 import android.bluetooth.BluetoothLeBroadcastSubgroup;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
@@ -32,6 +38,50 @@ import java.util.List;
 public class BroadcastSinkActivity extends AppCompatActivity {
     private static final String TAG = "BroadcastSinkActivity";
 
+    /* ------------------------------------------------------------------
+     *  BIS connectivity state (updated via ACTION_DBIG_STATUS_CHANGED)
+     * ------------------------------------------------------------------ */
+    private enum BisAvailability { UNKNOWN, AVAILABLE, UNAVAILABLE }
+    private BisAvailability mBisAvailability = BisAvailability.UNKNOWN;
+    private boolean mLocalOccupyingBis = false;
+
+    private AudioManager mAudioManager;
+
+    private final BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "Received broadcast action: " + action);
+            if (BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED.equals(action)) {
+                int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                boolean bisAvailable   = (status & 0x0001) != 0;
+                boolean localOccupying = (status & 0x0002) != 0;
+
+                mBisAvailability = (bisAvailable && !localOccupying)
+                        ? BisAvailability.AVAILABLE
+                        : BisAvailability.UNAVAILABLE;
+                mLocalOccupyingBis = localOccupying;
+
+                Log.d(TAG, "DBIG status – availability: " + mBisAvailability
+                        + ", local occupying: " + mLocalOccupyingBis);
+
+                if ((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                    Toast.makeText(context, "BIS is available, user can speak now",
+                            Toast.LENGTH_SHORT).show();
+                } else if (!bisAvailable && !localOccupying) {
+                    Toast.makeText(context,
+                            "BIS is not available, please wait until BIS is available",
+                            Toast.LENGTH_SHORT).show();
+                }
+
+                // Update adapter button labels to reflect new state
+                if (mAdapter != null) {
+                    mAdapter.setLocalOccupyingBis(mLocalOccupyingBis);
+                }
+            }
+        }
+    };
+
     private BroadcastSinkViewModel mViewModel;
     private BroadcastSinkAdapter mAdapter;
     private Button mStartSearchButton;
@@ -45,6 +95,14 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.broadcast_sink_activity);
 
+        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+
+        // Register for DBIG status changes
+        IntentFilter dbigFilter = new IntentFilter();
+        dbigFilter.addAction(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED);
+        registerReceiver(mDbigStatusReceiver, dbigFilter, Context.RECEIVER_EXPORTED);
+        Log.d(TAG, "Registered mDbigStatusReceiver");
+
         initializeViews();
         setupViewModel();
         setupRecyclerView();
@@ -54,6 +112,7 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        unregisterReceiver(mDbigStatusReceiver);
         if (mViewModel != null) {
             mViewModel.cleanup();
         }
@@ -195,13 +254,47 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     }
 
     private void onBisAcquire(BroadcastSinkViewModel.FoundBroadcastItem item) {
-        Log.d(TAG, "BIS acquire: " + item.getBroadcastName());
+        Log.d(TAG, "BIS acquire/release: " + item.getBroadcastName()
+                + ", localOccupying=" + mLocalOccupyingBis
+                + ", bisAvailability=" + mBisAvailability);
 
-        if (item.metadata != null) {
-            // Show channel selection dialog for updating metadata
-            showChannelSelectionDialogForBisAcquire(item.metadata);
+        if (mLocalOccupyingBis) {
+            // Local device already occupies a BIS → Release
+            if (mAudioManager != null) {
+                mAudioManager.setParameters("achat_tx_acquire=false");
+                Log.d(TAG, "Acquire:False – sent achat_tx_acquire=false to AHAL");
+                Toast.makeText(this,
+                        "Release BIS for broadcast " + item.broadcastId,
+                        Toast.LENGTH_SHORT).show();
+            } else {
+                Log.e(TAG, "AudioManager is null, cannot release BIS");
+            }
+            // Update state and adapter immediately
+            mLocalOccupyingBis = false;
+            mBisAvailability = BisAvailability.UNKNOWN;
+            if (mAdapter != null) mAdapter.setLocalOccupyingBis(false);
+        } else if (mBisAvailability == BisAvailability.AVAILABLE) {
+            // BIS is free → Acquire
+            if (mAudioManager != null) {
+                mAudioManager.setParameters("achat_tx_acquire=true");
+                Log.d(TAG, "Acquire:True – sent achat_tx_acquire=true to AHAL");
+                Toast.makeText(this,
+                        "Acquiring BIS for broadcast " + item.broadcastId,
+                        Toast.LENGTH_SHORT).show();
+            } else {
+                Log.e(TAG, "AudioManager is null, cannot acquire BIS");
+            }
+            // Update state and adapter immediately
+            mLocalOccupyingBis = true;
+            mBisAvailability = BisAvailability.UNAVAILABLE;
+            if (mAdapter != null) mAdapter.setLocalOccupyingBis(true);
         } else {
-            Toast.makeText(this, "Metadata not available yet", Toast.LENGTH_SHORT).show();
+            // BIS not available yet
+            Toast.makeText(this,
+                    "BIS not available for broadcast " + item.broadcastId
+                            + " (status: " + mBisAvailability + ")",
+                    Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "BIS not available, ignoring acquire request");
         }
     }
 

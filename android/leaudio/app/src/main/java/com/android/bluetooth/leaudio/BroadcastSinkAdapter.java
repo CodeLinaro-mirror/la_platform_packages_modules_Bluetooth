@@ -29,9 +29,20 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
 
     private List<BroadcastSinkViewModel.FoundBroadcastItem> mBroadcasts = new ArrayList<>();
     private final OnBroadcastActionListener mActionListener;
+    /** Reflects the current BIS occupancy state from DBIG status. */
+    private boolean mLocalOccupyingBis = false;
 
     public BroadcastSinkAdapter(OnBroadcastActionListener actionListener) {
         mActionListener = actionListener;
+    }
+
+    /**
+     * Called by the activity when DBIG status changes so the button label
+     * switches between "Acquire" and "Release" without recreating items.
+     */
+    public void setLocalOccupyingBis(boolean localOccupyingBis) {
+        mLocalOccupyingBis = localOccupyingBis;
+        notifyDataSetChanged();
     }
 
     @NonNull
@@ -124,6 +135,9 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             } else {
                 mStartEnhancedBroadcastSinkButton.setText("Join");
             }
+
+            // Acquire / Release label driven by DBIG occupancy state
+            mBisAcquireButton.setText(mLocalOccupyingBis ? "Release" : "Acquire");
 
             if (!item.hasPASync()) {
                 // Not PA synced yet - only "Add Source" is available
