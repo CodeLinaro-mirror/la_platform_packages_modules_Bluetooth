@@ -160,23 +160,26 @@ public class AvrcpControllerService extends ProfileService {
     }
 
     @Override
-    public synchronized void cleanup() {
+    public void cleanup() {
         Log.i(TAG, "cleanup()");
 
-        setActiveDevice(null);
-        Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
-        stopService(stopIntent);
-        for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
-            stateMachine.quitNow();
-        }
-        mDeviceStateMap.clear();
-
-        if (mCoverArtManager != null) {
-            mCoverArtManager.cleanup();
-            setComponentAvailable(COVER_ART_PROVIDER, false);
-        }
-        setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
         mNativeInterface.cleanup();
+
+        synchronized (this) {
+            setActiveDevice(null);
+            Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
+            stopService(stopIntent);
+            for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
+                stateMachine.quitNow();
+            }
+            mDeviceStateMap.clear();
+
+            if (mCoverArtManager != null) {
+                mCoverArtManager.cleanup();
+                setComponentAvailable(COVER_ART_PROVIDER, false);
+            }
+            setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
