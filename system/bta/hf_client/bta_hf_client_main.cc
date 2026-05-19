@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #include <bluetooth/log.h>
@@ -237,9 +242,6 @@ const tBTA_HF_CLIENT_ST_TBL bta_hf_client_st_tbl[] = {
 /* HF Client control block */
 tBTA_HF_CLIENT_CB_ARR bta_hf_client_cb_arr;
 
-/* Event handler for the state machine */
-static const tBTA_SYS_REG bta_hf_client_reg = {bta_hf_client_hdl_event, BTA_HfClientDisable};
-
 /*******************************************************************************
  *
  * Function         bta_hf_client_cb_arr_init
@@ -395,17 +397,8 @@ void bta_hf_client_collision_cback(tBTA_SYS_CONN_STATUS /* status */, tBTA_SYS_I
  * Returns          void
  *
  ******************************************************************************/
-tBTA_STATUS bta_hf_client_api_enable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIENT_FEAT features,
-                                     const char* p_service_name) {
-  /* If already registered then return error */
-  if (bta_sys_is_register(BTA_ID_HS)) {
-    log::error("BTA HF Client is already enabled, ignoring ...");
-    return BTA_FAILURE;
-  }
-
-  /* register with BTA system manager */
-  bta_sys_register(BTA_ID_HS, &bta_hf_client_reg);
-
+void bta_hf_client_api_enable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIENT_FEAT features,
+                              const char* p_service_name) {
   /* reset the control blocks */
   bta_hf_client_cb_arr_init();
 
@@ -431,8 +424,6 @@ tBTA_STATUS bta_hf_client_api_enable(tBTA_HF_CLIENT_CBACK* p_cback, tBTA_HF_CLIE
 
   /* start RFCOMM server */
   bta_hf_client_start_server();
-
-  return BTA_SUCCESS;
 }
 
 /*******************************************************************************
@@ -619,11 +610,6 @@ void bta_hf_client_app_callback(uint16_t event, tBTA_HF_CLIENT* data) {
  *
  ******************************************************************************/
 void bta_hf_client_api_disable() {
-  if (!bta_sys_is_register(BTA_ID_HS)) {
-    log::warn("BTA HF Client is already disabled, ignoring ...");
-    return;
-  }
-
   /* Remove the collision handler */
   bta_sys_collision_register(BTA_ID_HS, NULL);
 
@@ -641,9 +627,6 @@ void bta_hf_client_api_disable() {
       bta_hf_client_cb_init(&(bta_hf_client_cb_arr.cb[i]), i);
     }
   }
-
-  /* De-register with BTA system manager */
-  bta_sys_deregister(BTA_ID_HS);
 }
 
 /*******************************************************************************
