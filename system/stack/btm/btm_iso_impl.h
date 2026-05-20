@@ -802,79 +802,6 @@ struct iso_impl {
     }
   }
 
-  void process_big_sync_established_evt(uint8_t len, uint8_t* data) {
-    iso_manager::big_sync_established_evt evt;
-
-    // Minimum without any BIS handles: 1(status) + 1(big_handle) + 2(sync_handle) + 3(lat) +
-    // 1(nse) + 1(bn) + 1(pto) + 1(irc) + 2(max_pdu) + 2(iso_interval) + 1(num_bis) = 16
-    log::assert_that(len >= 16, "Invalid BIG Sync Established packet length: {}", len);
-    log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
-
-    STREAM_TO_UINT8(evt.status, data);
-    STREAM_TO_UINT8(evt.big_handle, data);
-    STREAM_TO_UINT16(evt.sync_handle, data);
-
-    // 24-bit value on the wire
-    STREAM_TO_UINT24(evt.transport_latency_big, data);
-
-    STREAM_TO_UINT8(evt.nse, data);
-    STREAM_TO_UINT8(evt.bn, data);
-    STREAM_TO_UINT8(evt.pto, data);
-    STREAM_TO_UINT8(evt.irc, data);
-    STREAM_TO_UINT16(evt.max_pdu, data);
-    STREAM_TO_UINT16(evt.iso_interval, data);
-    STREAM_TO_UINT8(evt.num_bis, data);
-
-    const uint16_t expected_len = 16 + (evt.num_bis * sizeof(uint16_t));
-    log::assert_that(len == expected_len, "Invalid BIG Sync Established packet length: {} (num_bis {})",
-                     len, evt.num_bis);
-
-    evt.bis_handles.reserve(evt.num_bis);
-    for (uint8_t i = 0; i < evt.num_bis; i++) {
-      uint16_t h;
-      STREAM_TO_UINT16(h, data);
-      evt.bis_handles.push_back(h);
-      // Track BIS handles as broadcast ISO connections
-      if (evt.status == HCI_SUCCESS) {
-        auto bis = std::unique_ptr<iso_bis>(new iso_bis());
-        bis->big_handle = evt.big_handle;
-        bis->sdu_itv = 0;  // unknown here; data path may still be set later
-        bis->sync_info = {.tx_seq_nb = 0, .rx_seq_nb = 0};
-        bis->used_credits = 0;
-        bis->state_flags = kStateFlagIsBroadcast;
-        conn_hdl_to_bis_map_[h] = std::move(bis);
-      }
-    }
-
-    if (evt.status == HCI_SUCCESS) {
-      big_callbacks_->OnBigEvent(iso_manager::kIsoEventBigSyncEstablished, &evt);
-    } else {
-      big_callbacks_->OnBigEvent(iso_manager::kIsoEventBigSyncFail, &evt);
-    }
-  }
-
-  void process_big_sync_lost_evt(uint8_t len, uint8_t* data) {
-    iso_manager::big_sync_lost_evt evt;
-
-    log::assert_that(len == 2, "Invalid BIG Sync Lost packet length: {}", len);
-    log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
-
-    STREAM_TO_UINT8(evt.big_handle, data);
-    STREAM_TO_UINT8(evt.reason, data);
-
-    // Remove BIS handles for this BIG from map
-    auto bis_it = conn_hdl_to_bis_map_.cbegin();
-    while (bis_it != conn_hdl_to_bis_map_.cend()) {
-      if (bis_it->second->big_handle == evt.big_handle) {
-        bis_it = conn_hdl_to_bis_map_.erase(bis_it);
-      } else {
-        ++bis_it;
-      }
-    }
-
-    big_callbacks_->OnBigEvent(iso_manager::kIsoEventBigSyncLost, &evt);
-  }
-
   void create_big(uint8_t big_id, struct big_create_params big_params) {
     log::assert_that(!IsBigKnown(big_id), "Invalid big - already exists: {}", big_id);
 
@@ -1080,10 +1007,10 @@ struct iso_impl {
         /* Not supported */
         break;
       case HCI_BLE_BIG_SYNC_EST_EVT:
-        process_big_sync_established_evt(packet_len, packet);
+        process_big_sync_established_pkt(packet_len, packet);
         break;
       case HCI_BLE_BIG_SYNC_LOST_EVT:
-        process_big_sync_lost_evt(packet_len, packet);
+        process_big_sync_lost_pkt(packet_len, packet);
         break;
       default:
         log::error("Unhandled event code {}", code);

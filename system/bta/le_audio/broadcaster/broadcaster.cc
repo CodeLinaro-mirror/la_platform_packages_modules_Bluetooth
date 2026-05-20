@@ -1058,6 +1058,7 @@ public:
         metadata.addr = kv_it.second->GetOwnAddress();
         metadata.addr_type = kv_it.second->GetOwnAddressType();
         metadata.broadcast_code = kv_it.second->GetBroadcastCode();
+        metadata.is_encrypted = kv_it.second->GetBroadcastCode() ? true : false;
         metadata.basic_audio_announcement = kv_it.second->GetBroadcastAnnouncement();
         metadata.public_announcement = kv_it.second->GetPublicBroadcastAnnouncement();
         return metadata;

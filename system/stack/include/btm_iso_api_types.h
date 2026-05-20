@@ -219,7 +219,6 @@ struct big_sync_established_evt {
   uint8_t irc;
   uint16_t max_pdu;
   uint16_t iso_interval;
-  uint8_t num_bis;
   std::vector<uint16_t> conn_handles;
 };
 

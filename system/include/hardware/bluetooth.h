@@ -58,6 +58,7 @@
 #define BT_PROFILE_CSIS_CLIENT_ID "csis_client"
 #define BT_PROFILE_LE_AUDIO_ID "le_audio"
 #define BT_PROFILE_LE_AUDIO_BROADCASTER_ID "le_audio_broadcaster"
+#define BT_PROFILE_LE_AUDIO_BROADCAST_SINK_ID "le_audio_broadcast_sink"
 #define BT_BQR_ID "bqr"
 
 /** Bluetooth Device Name */

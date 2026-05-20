@@ -38,6 +38,7 @@
 #include "com_android_bluetooth.h"
 #include "hardware/bluetooth.h"
 #include "hardware/bt_le_audio.h"
+#include "hardware/bt_le_audio_broadcast_sink.h"
 #include "types/raw_address.h"
 
 using bluetooth::le_audio::BroadcastId;
@@ -1103,7 +1104,7 @@ static jobject prepareBluetoothLeBroadcastMetadataObject(
           android_bluetooth_BluetoothLeBroadcastMetadata.constructor,
           (jint)broadcast_metadata.addr_type, device_obj.get(), (jint)broadcast_metadata.adv_sid,
           (jint)broadcast_metadata.broadcast_id, (jint)broadcast_metadata.pa_interval,
-          broadcast_metadata.broadcast_code ? true : false, broadcast_metadata.is_public,
+          broadcast_metadata.is_encrypted ? true : false, broadcast_metadata.is_public,
           broadcast_name.get(), broadcast_metadata.broadcast_code ? code.get() : nullptr,
           (jint)broadcast_metadata.basic_audio_announcement.presentation_delay_us,
           audio_cfg_quality, (jint)bluetooth::le_audio::kLeAudioSourceRssiUnknown,
@@ -1614,6 +1615,391 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
   return 0;
 }
 
+/* Le Audio Broadcast Sink */
+using bluetooth::le_audio::broadcast_sink::BroadcastSinkInterface;
+using bluetooth::le_audio::broadcast_sink::BroadcastSinkCallbacks;
+
+static jmethodID method_onSourceAddFailed;
+static jmethodID method_onSourceJoinFailed;
+static jmethodID method_onSourceLeaveFailed;
+static jmethodID method_onSourceRemoveFailed;
+static jmethodID method_onSourceDestroyed;
+static jmethodID method_onSourceMetadataChanged;
+static jmethodID method_onBroadcastSinkAudioSessionCreated;
+static jmethodID method_onBroadcastSinkStateChanged;
+
+static BroadcastSinkInterface* sBroadcastSinkInterface = nullptr;
+static std::shared_timed_mutex sBroadcastSinkInterfaceMutex;
+
+static jobject sBroadcastSinkCallbacksObj = nullptr;
+static std::shared_timed_mutex sBroadcastSinkCallbacksMutex;
+
+
+class BroadcastSinkCallbacksImpl : public BroadcastSinkCallbacks {
+public:
+  ~BroadcastSinkCallbacksImpl() = default;
+
+  void OnSourceAddFailed(bluetooth::le_audio::BroadcastId broadcast_id, uint8_t reason) override {
+    log::info("broadcast_id=0x{:08x}, reason={}", broadcast_id, reason);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceAddFailed,
+                                 (jint)broadcast_id, (jint)reason);
+  }
+
+  void OnSourceJoinFailed(bluetooth::le_audio::BroadcastId broadcast_id,
+                          uint8_t reason) override {
+    log::info("");
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceJoinFailed,
+                                 (jint)broadcast_id, (jint)reason);
+  }
+
+  void OnSourceLeaveFailed(bluetooth::le_audio::BroadcastId broadcast_id, uint8_t reason) override {
+    log::info("");
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceLeaveFailed,
+                                 (jint)broadcast_id, (jint)reason);
+  }
+
+  void OnSourceDestroyed(bluetooth::le_audio::BroadcastId broadcast_id, uint8_t reason) override {
+    log::info("broadcast_id=0x{:08x}, reason={}", broadcast_id, reason);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceDestroyed,
+                                 (jint)broadcast_id, (jint)reason);
+  }
+
+  void OnSourceRemoveFailed(bluetooth::le_audio::BroadcastId broadcast_id, uint8_t reason) override {
+    log::info("");
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceRemoveFailed,
+                                 (jint)broadcast_id, (jint)reason);
+  }
+
+  void OnSourceMetadataChanged(bluetooth::le_audio::BroadcastId broadcast_id,
+                               const bluetooth::le_audio::BroadcastMetadata& broadcast_metadata) override {
+    log::info("");
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+
+    ScopedLocalRef<jobject> metadata(sCallbackEnv.get(),
+                                     prepareBluetoothLeBroadcastMetadataObject(sCallbackEnv.get(), broadcast_metadata));
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSourceMetadataChanged,
+                                 (jint)broadcast_id, metadata.get());
+  }
+
+  void OnBroadcastSinkAudioSessionCreated(bool success) override {
+    log::info("");
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onBroadcastSinkAudioSessionCreated,
+                                 success ? JNI_TRUE : JNI_FALSE);
+  }
+
+  void OnBroadcastSinkStateChanged(bluetooth::le_audio::BroadcastId broadcast_id, uint8_t state) override {
+    log::info("broadcast_id=0x{:08x}, state={}", broadcast_id, state);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) {
+      return;
+    }
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onBroadcastSinkStateChanged,
+                                 (jint)broadcast_id, (jint)state);
+  }
+};
+
+static BroadcastSinkCallbacksImpl sBroadcastSinkCallbacks;
+
+static void BroadcastSinkInitNative(JNIEnv* env, jobject object, jint maxSourceCapacity) {
+  std::unique_lock<std::shared_timed_mutex> interface_lock(sBroadcastSinkInterfaceMutex);
+  std::unique_lock<std::shared_timed_mutex> callbacks_lock(sBroadcastSinkCallbacksMutex);
+
+  const bt_interface_t* btInf = getBluetoothInterface();
+  if (btInf == nullptr) {
+    log::error("Bluetooth module is not loaded");
+    return;
+  }
+
+  if (sBroadcastSinkCallbacksObj != nullptr) {
+    log::info("Cleaning up Broadcast Sink callback object");
+    env->DeleteGlobalRef(sBroadcastSinkCallbacksObj);
+    sBroadcastSinkCallbacksObj = nullptr;
+  }
+
+  if ((sBroadcastSinkCallbacksObj = env->NewGlobalRef(object)) == nullptr) {
+    log::error("Failed to allocate Global Ref for Broadcast Sink Callbacks");
+    return;
+  }
+
+  sBroadcastSinkInterface = (BroadcastSinkInterface*)btInf->get_profile_interface(
+      BT_PROFILE_LE_AUDIO_BROADCAST_SINK_ID);
+  if (sBroadcastSinkInterface == nullptr) {
+    log::error("Failed to get Broadcast Sink interface");
+    return;
+  }
+
+  log::info("Initializing Broadcast Sink with maxSourceCapacity={}", maxSourceCapacity);
+  sBroadcastSinkInterface->Initialize(&sBroadcastSinkCallbacks, maxSourceCapacity);
+}
+
+static void BroadcastSinkCleanupNative(JNIEnv* env, jobject /* object */) {
+  std::unique_lock<std::shared_timed_mutex> interface_lock(sBroadcastSinkInterfaceMutex);
+  std::unique_lock<std::shared_timed_mutex> callbacks_lock(sBroadcastSinkCallbacksMutex);
+
+  if (sBroadcastSinkInterface != nullptr) {
+    sBroadcastSinkInterface->Cleanup();
+    sBroadcastSinkInterface = nullptr;
+  }
+
+  if (sBroadcastSinkCallbacksObj != nullptr) {
+    env->DeleteGlobalRef(sBroadcastSinkCallbacksObj);
+    sBroadcastSinkCallbacksObj = nullptr;
+  }
+}
+
+// Add source - initiates PA sync to a broadcast source
+static void BroadcastSinkAddSourceNative(JNIEnv* env, jobject /* object */,
+                                         jstring address, jint addressType,
+                                         jint advSid, jint broadcastId, jint rssi,
+                                         jstring broadcastName, jboolean isPublic,
+                                         jbyteArray publicMetadata, jint publicFeatures) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  const char* c_address = env->GetStringUTFChars(address, NULL);
+  if (!c_address) {
+    log::error("Failed to get address string");
+    return;
+  }
+
+  RawAddress addr;
+  RawAddress::FromString(std::string(c_address), addr);
+  env->ReleaseStringUTFChars(address, c_address);
+
+  const char* broadcast_name = nullptr;
+  if (broadcastName) {
+    broadcast_name = env->GetStringUTFChars(broadcastName, nullptr);
+  }
+
+  bool is_public = (isPublic == JNI_TRUE);
+
+  // Extract public metadata if provided
+  std::vector<uint8_t> public_metadata;
+  if (publicMetadata != nullptr) {
+    jsize metadata_len = env->GetArrayLength(publicMetadata);
+    if (metadata_len > 0) {
+      public_metadata.resize(metadata_len);
+      env->GetByteArrayRegion(publicMetadata, 0, metadata_len,
+                             reinterpret_cast<jbyte*>(public_metadata.data()));
+    }
+  }
+
+  log::info("address={}, addressType={}, advSid={}, broadcastId={}, rssi={}, broadcastName={}, isPublic={}, publicMetadata={} bytes, publicFeatures=0x{:x}",
+            addr.ToRedactedStringForLogging(), addressType, advSid, broadcastId, rssi,
+            broadcast_name ? broadcast_name : "null", is_public, public_metadata.size(), publicFeatures);
+
+  sBroadcastSinkInterface->AddSource(addr, addressType, advSid, broadcastId, rssi,
+                                     broadcast_name ? broadcast_name : "", is_public,
+                                     public_metadata, static_cast<uint8_t>(publicFeatures));
+
+  if (broadcast_name) {
+    env->ReleaseStringUTFChars(broadcastName, broadcast_name);
+  }
+}
+
+// Join source - initiates BIG sync to receive audio
+static void BroadcastSinkJoinSourceNative(JNIEnv* env, jobject /* object */,
+                                          jint broadcastId, jbyteArray broadcastCode, jintArray bisIndices) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  // Handle broadcast code if provided
+  std::optional<std::array<uint8_t, 16>> code = std::nullopt;
+  if (broadcastCode != nullptr) {
+    jsize codeLen = env->GetArrayLength(broadcastCode);
+    if (codeLen > 0 && codeLen <= 16) {
+      std::array<uint8_t, 16> codeArray{0};  // Initialize with zeros
+      // Padding with zeros on MSB positions if code is shorter than 16 octets
+      env->GetByteArrayRegion(broadcastCode, 0, codeLen, (jbyte*)codeArray.data());
+      code = codeArray;
+    }
+  }
+
+  // Handle BIS indices if provided
+  jint* bis_indices_array = nullptr;
+  if (bisIndices) {
+    bis_indices_array = env->GetIntArrayElements(bisIndices, nullptr);
+  }
+
+  sBroadcastSinkInterface->JoinSource(
+          (bluetooth::le_audio::BroadcastId)broadcastId, code,
+          bis_indices_array ? std::vector<uint8_t>(bis_indices_array,
+                                                   bis_indices_array + env->GetArrayLength(bisIndices))
+                            : std::vector<uint8_t>());
+
+  if (bis_indices_array) {
+    env->ReleaseIntArrayElements(bisIndices, bis_indices_array, 0);
+  }
+}
+
+// Leave source - terminates BIG sync but keeps PA sync
+static void BroadcastSinkLeaveSourceNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  sBroadcastSinkInterface->LeaveSource((bluetooth::le_audio::BroadcastId)broadcastId);
+}
+
+// Remove source - terminates both BIG and PA sync
+static void BroadcastSinkRemoveSourceNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  sBroadcastSinkInterface->RemoveSource((bluetooth::le_audio::BroadcastId)broadcastId);
+}
+
+// Destroy source - cleanup all resources for a broadcast source
+static void BroadcastSinkDestroySourceNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  sBroadcastSinkInterface->DestroySource((bluetooth::le_audio::BroadcastId)broadcastId);
+}
+
+// Get source metadata for a specific broadcast ID
+static void BroadcastSinkGetSourceMetadataNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  sBroadcastSinkInterface->GetSourceMetadata((bluetooth::le_audio::BroadcastId)broadcastId);
+}
+
+// Notify that source metadata has changed
+static void BroadcastSinkSourcePublicMetadataChangedNative(JNIEnv* env, jobject /* object */,
+                                                          jint broadcastId, jstring broadcastName,
+                                                          jbyteArray publicMetadata) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+
+  const char* broadcast_name = nullptr;
+  if (broadcastName) {
+    broadcast_name = env->GetStringUTFChars(broadcastName, nullptr);
+  }
+
+  // Extract public metadata if provided
+  std::vector<uint8_t> public_metadata;
+  if (publicMetadata != nullptr) {
+    jsize metadata_len = env->GetArrayLength(publicMetadata);
+    if (metadata_len > 0) {
+      public_metadata.resize(metadata_len);
+      env->GetByteArrayRegion(publicMetadata, 0, metadata_len,
+                             reinterpret_cast<jbyte*>(public_metadata.data()));
+    }
+  }
+
+  log::info("broadcastId={}, broadcastName={}, publicMetadata={} bytes",
+            broadcastId, broadcast_name ? broadcast_name : "null", public_metadata.size());
+
+  sBroadcastSinkInterface->SourcePublicMetadataChanged((bluetooth::le_audio::BroadcastId)broadcastId,
+                                                 broadcast_name ? broadcast_name : "",
+                                                 public_metadata);
+
+  if (broadcast_name) {
+    env->ReleaseStringUTFChars(broadcastName, broadcast_name);
+  }
+}
+
+static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
+  const JNINativeMethod methods[] = {
+          {"initializeNative", "(I)V", (void*)BroadcastSinkInitNative},
+          {"cleanupNative", "()V", (void*)BroadcastSinkCleanupNative},
+          {"addSourceNative", "(Ljava/lang/String;IIIILjava/lang/String;Z[BI)V", (void*)BroadcastSinkAddSourceNative},
+          {"joinSourceNative", "(I[B[I)V", (void*)BroadcastSinkJoinSourceNative},
+          {"leaveSourceNative", "(I)V", (void*)BroadcastSinkLeaveSourceNative},
+          {"removeSourceNative", "(I)V", (void*)BroadcastSinkRemoveSourceNative},
+          {"destroySourceNative", "(I)V", (void*)BroadcastSinkDestroySourceNative},
+          {"getSourceMetadataNative", "(I)V",
+           (void*)BroadcastSinkGetSourceMetadataNative},
+          {"sourcePublicMetadataChangedNative", "(ILjava/lang/String;[B)V",
+           (void*)BroadcastSinkSourcePublicMetadataChangedNative},
+  };
+
+  const int result = REGISTER_NATIVE_METHODS(
+          env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface", methods);
+  if (result != 0) {
+    return result;
+  }
+
+  const JNIJavaMethod javaMethods[] = {
+          {"onSourceAddFailed", "(II)V", &method_onSourceAddFailed},
+          {"onSourceJoinFailed", "(II)V", &method_onSourceJoinFailed},
+          {"onSourceLeaveFailed", "(II)V", &method_onSourceLeaveFailed},
+          {"onSourceRemoveFailed", "(II)V", &method_onSourceRemoveFailed},
+          {"onSourceDestroyed", "(II)V", &method_onSourceDestroyed},
+          {"onSourceMetadataChanged", "(ILandroid/bluetooth/BluetoothLeBroadcastMetadata;)V",
+           &method_onSourceMetadataChanged},
+          {"onBroadcastSinkAudioSessionCreated", "(Z)V", &method_onBroadcastSinkAudioSessionCreated},
+          {"onBroadcastSinkStateChanged", "(II)V", &method_onBroadcastSinkStateChanged},
+  };
+  GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface", javaMethods);
+
+  return 0;
+}
+
 int register_com_android_bluetooth_le_audio(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "([Landroid/bluetooth/BluetoothLeAudioCodecConfig;)V", (void*)initNative},
@@ -1688,6 +2074,13 @@ int register_com_android_bluetooth_le_audio(JNIEnv* env) {
   };
   GET_JAVA_METHODS(env, "android/bluetooth/BluetoothLeAudioCodecConfig", javaLeAudioCodecMethods);
 
-  return register_com_android_bluetooth_le_audio_broadcaster(env);
+  // Register broadcaster
+  int broadcaster_result = register_com_android_bluetooth_le_audio_broadcaster(env);
+  if (broadcaster_result != 0) {
+    return broadcaster_result;
+  }
+
+  // Register broadcast sink
+  return register_com_android_bluetooth_le_audio_broadcast_sink(env);
 }
 }  // namespace android

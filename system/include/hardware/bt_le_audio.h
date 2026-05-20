@@ -540,6 +540,7 @@ struct PublicBroadcastAnnouncementData {
 
 struct BroadcastMetadata {
   bool is_public;
+  bool is_encrypted;
   uint16_t pa_interval;
   RawAddress addr;
   uint8_t addr_type;

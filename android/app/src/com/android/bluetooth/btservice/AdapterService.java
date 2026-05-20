@@ -150,6 +150,7 @@ import com.android.bluetooth.hfpclient.HeadsetClientService;
 import com.android.bluetooth.hid.HidDeviceService;
 import com.android.bluetooth.hid.HidHostService;
 import com.android.bluetooth.le_audio.LeAudioService;
+import com.android.bluetooth.le_audio.LeAudioBroadcastSinkService;
 import com.android.bluetooth.le_scan.ScanController;
 import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.le_scan.ScanManager;
@@ -1557,6 +1558,9 @@ public class AdapterService extends Service {
                             Map.entry(BluetoothProfile.HID_HOST, HidHostService::new),
                             Map.entry(BluetoothProfile.GATT, GattService::new),
                             Map.entry(BluetoothProfile.LE_AUDIO, LeAudioService::new),
+                            Map.entry(
+                                    BluetoothProfile.LE_AUDIO_BROADCAST_SINK,
+                                    LeAudioBroadcastSinkService::new),
                             Map.entry(BluetoothProfile.LE_CALL_CONTROL, TbsService::new),
                             Map.entry(BluetoothProfile.MAP, BluetoothMapService::new),
                             Map.entry(BluetoothProfile.MAP_CLIENT, MapClientService::new),

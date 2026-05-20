@@ -22,7 +22,7 @@ import android.util.Log;
 import java.util.Arrays;
 
 /** Helper class to parse the Public Broadcast Announcement data */
-class PublicBroadcastData {
+public class PublicBroadcastData {
     private static final String TAG =
             BassClientService.TAG + "." + PublicBroadcastData.class.getSimpleName();
 
@@ -110,19 +110,19 @@ class PublicBroadcastData {
         return new PublicBroadcastData(publicBroadcastInfo);
     }
 
-    boolean isEncrypted() {
+    public boolean isEncrypted() {
         return mPublicBroadcastInfo.isEncrypted;
     }
 
-    int getAudioConfigQuality() {
+    public int getAudioConfigQuality() {
         return mPublicBroadcastInfo.audioConfigQuality;
     }
 
-    int getMetadataLength() {
+    public int getMetadataLength() {
         return mPublicBroadcastInfo.metaDataLength;
     }
 
-    byte[] getMetadata() {
+    public byte[] getMetadata() {
         return mPublicBroadcastInfo.metaData;
     }
 

@@ -20,6 +20,7 @@
 
 #include <vector>
 
+#include "broadcast_sink/broadcast_sink_types.h"
 #include "broadcaster/broadcaster_types.h"
 #include "hardware/bt_le_audio.h"
 #include "le_audio_types.h"
@@ -95,6 +96,13 @@ public:
     std::optional<std::vector<types::acs_ac_record>> sink_pacs;
   };
 
+  struct BroadcastSinkConfigurationRequirements {
+    // Parsed BASE data from the broadcast source (single subgroup focus)
+    BasicAudioAnnouncementData base_data;
+    // Explicit BIS indices to sync (required - user specifies which BIS)
+    std::vector<uint8_t> bis_indices;
+  };
+
   virtual ~CodecManager() = default;
   static CodecManager* GetInstance(void) {
     static CodecManager* instance = new CodecManager();
@@ -134,11 +142,14 @@ public:
           const ::bluetooth::le_audio::types::AudioSetConfiguration& config) const;
   virtual std::unique_ptr<broadcaster::BroadcastConfiguration> GetBroadcastConfig(
           const BroadcastConfigurationRequirements& requirements) const;
+  virtual std::unique_ptr<broadcast_sink::BroadcastSinkConfiguration> GetBroadcastSinkConfig(
+          const BroadcastSinkConfigurationRequirements& requirements) const;
 
   virtual void UpdateBroadcastConnHandle(
           const std::vector<uint16_t>& conn_handle,
           std::function<void(const ::bluetooth::le_audio::broadcast_offload_config& config)>
-                  update_receiver);
+                  update_receiver,
+          bool is_source = true);
   virtual std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
   GetLocalAudioOutputCodecCapa();
   virtual std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetLocalAudioInputCodecCapa();
