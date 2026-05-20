@@ -81,6 +81,8 @@ void IsoManager::RegisterVscCallback(VscCallback* callback) const {
 }
 
 void IsoManager::RegisterDbigCallbacks(iso_manager::DbigCallbacks* callbacks) const {
+  log::info("Register DBIG callbacks, is_running={}, callbacks={}", pimpl_->IsRunning(),
+            std::format_ptr(callbacks));
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->handle_register_dbig_callbacks(callbacks);
   }
@@ -219,6 +221,14 @@ void IsoManager::HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
 void IsoManager::HandleDbigUpdateEvent(uint8_t* params, uint16_t length) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->on_dbig_update_event(params, length);
+  }
+}
+
+void IsoManager::HandleDbigStatusEvent(uint8_t* params, uint16_t length) {
+  log::info("Handle DBIG status event, is_running={}, params={}, length={}", pimpl_->IsRunning(),
+            std::format_ptr(params), length);
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_dbig_status_event(params, length);
   }
 }
 

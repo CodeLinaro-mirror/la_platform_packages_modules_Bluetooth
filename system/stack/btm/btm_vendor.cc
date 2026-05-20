@@ -755,6 +755,27 @@ void btm_vendor_vse_cback(uint8_t vse_subcode, uint8_t evt_len, uint8_t* p) {
           break;
       }
       return;
+    } else if (HCI_VSE_SUBCODE_VS_META == vse_subcode) {
+      /* HCI_VS_META (0xC1) covers DBIG status, TExitDBIG complete, and
+       * JoinControl complete sub-events. Dispatch on the first payload byte. */
+      uint8_t vs_meta_subopcode;
+
+      if (evt_len < 1) {
+        log::warn(":: VS Meta VSE event too short, evt_len={}", evt_len);
+        return;
+      }
+      STREAM_TO_UINT8(vs_meta_subopcode, pp);
+      log::info(":: VS Meta VSE event received, subopcode = 0x{:02x}", vs_meta_subopcode);
+      switch (vs_meta_subopcode) {
+        case HCI_VS_LE_DBIG_STATUS:
+          log::info(":: VS Meta DBIG STATUS received, payload_len = {}", evt_len - 1);
+          bluetooth::hci::IsoManager::GetInstance()->HandleDbigStatusEvent(pp, evt_len - 1);
+          break;
+        default:
+          log::info(":: unknown VS Meta subopcode: 0x{:02x}", vs_meta_subopcode);
+          break;
+      }
+      return;
     } else if (HCI_VS_LINK_POWER_CTRL_EVENT == vse_subcode) {
       btm_vendor_link_power_control_event(pp);
     }

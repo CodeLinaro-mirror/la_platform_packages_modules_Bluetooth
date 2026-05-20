@@ -31,6 +31,8 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
     private final OnBroadcastActionListener mActionListener;
     /** Reflects the current BIS occupancy state from DBIG status. */
     private boolean mLocalOccupyingBis = false;
+    /** Reflects whether a free BIS slot is available (bit0=1 && bit1=0). */
+    private boolean mBisAvailable = false;
 
     public BroadcastSinkAdapter(OnBroadcastActionListener actionListener) {
         mActionListener = actionListener;
@@ -42,6 +44,19 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
      */
     public void setLocalOccupyingBis(boolean localOccupyingBis) {
         mLocalOccupyingBis = localOccupyingBis;
+        notifyDataSetChanged();
+    }
+
+    /**
+     * Update both BIS occupancy and availability in a single pass to avoid
+     * two consecutive notifyDataSetChanged() calls.
+     *
+     * @param localOccupying true when bit1 is set (local device holds a BIS)
+     * @param bisAvailable   true when bit0=1 && bit1=0 (a free BIS slot exists)
+     */
+    public void updateBisState(boolean localOccupying, boolean bisAvailable) {
+        mLocalOccupyingBis = localOccupying;
+        mBisAvailable = bisAvailable;
         notifyDataSetChanged();
     }
 
@@ -137,6 +152,8 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             }
 
             // Acquire / Release label driven by DBIG occupancy state
+            // bit1 == 1 → local device occupies a BIS → show Release
+            // bit1 == 0 && bit0 == 1 → BIS free → show Acquire
             mBisAcquireButton.setText(mLocalOccupyingBis ? "Release" : "Acquire");
 
             if (!item.hasPASync()) {
@@ -150,7 +167,9 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
                 // PA synced - "Join", "Leave", and "Remove" are available
                 mAddSourceButton.setEnabled(false);
                 mStartEnhancedBroadcastSinkButton.setEnabled(true);
-                mBisAcquireButton.setEnabled(!item.isEnhanced); // Not applicable for enhanced
+                // Enable Acquire/Release when local device occupies a BIS (can release)
+                // OR when a free BIS slot is available (can acquire)
+                mBisAcquireButton.setEnabled(mLocalOccupyingBis || mBisAvailable);
                 mStopEnhancedBroadcastSinkButton.setEnabled(true);
                 mRemoveSourceButton.setEnabled(true);
             }

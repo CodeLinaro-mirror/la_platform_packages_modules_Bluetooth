@@ -40,6 +40,7 @@ import android.os.Parcel;
 import android.os.ParcelUuid;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
@@ -989,6 +990,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
                     break;
                 }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_DBIG_STATUS_CHANGED: {
+                    notifyDbigStatusChanged(event.valueInt1, event.valueInt2);
+                    break;
+                }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_LOST: {
                     // BIG sync lost — the only ISO-layer loss event forwarded to Java.
                     if (DBG) Log.d(TAG, "BIG sync lost: broadcastId=" + event.broadcastId
@@ -1020,6 +1025,21 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     break;
             }
         });
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private void notifyDbigStatusChanged(int dbigHandle, int status) {
+        if (DBG) Log.d(TAG, "notifyDbigStatusChanged: dbig_handle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        Intent intent = new Intent("android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED");
+        intent.putExtra("android.bluetooth.extra.DBIG_STATUS", status);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
+                | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+        sendBroadcastAsUser(
+                intent,
+                UserHandle.ALL,
+                BLUETOOTH_CONNECT,
+                Utils.getTempBroadcastOptions().toBundle());
     }
 
     // Private notify methods for SDK callbacks - ONLY invoke SDK callbacks, no business logic

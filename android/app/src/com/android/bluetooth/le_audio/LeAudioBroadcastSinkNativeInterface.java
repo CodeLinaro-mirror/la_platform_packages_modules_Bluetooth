@@ -360,6 +360,23 @@ public class LeAudioBroadcastSinkNativeInterface {
     }
 
     /**
+     * Called when a DBIG status update event is received from the controller.
+     * Carries only the BIG handle and status — no other parameters.
+     *
+     * @param dbigHandle BIG handle from the controller event
+     * @param status     DBIG status value from the controller event
+     */
+    public void onDbigStatusChanged(int dbigHandle, int status) {
+        if (DBG) Log.d(TAG, "onDbigStatusChanged(): dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioBroadcastSinkStackEvent event = new LeAudioBroadcastSinkStackEvent(
+                LeAudioBroadcastSinkStackEvent.EVENT_TYPE_DBIG_STATUS_CHANGED);
+        event.valueInt1 = dbigHandle;
+        event.valueInt2 = status;
+        sendMessageToService(event);
+    }
+
+    /**
      * Called when the broadcast sink state changes.
      *
      * <p>For enhanced (enhanced broadcast) sources this is fired by the JNI C++ layer only

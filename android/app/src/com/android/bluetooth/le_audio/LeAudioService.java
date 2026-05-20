@@ -4679,6 +4679,11 @@ public class LeAudioService extends ProfileService {
             if (!device.equals(mActiveBroadcastAudioDevice)) {
                updateBroadcastActiveDevice(device, mActiveBroadcastAudioDevice, true);
             }
+        } else if (stackEvent.type
+                == LeAudioStackEvent.EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED) {
+            final int dbigHandle = stackEvent.valueInt1;
+            final int dbigStatus = stackEvent.valueInt2;
+            mHandler.post(() -> notifyDbigStatusChanged(dbigHandle, dbigStatus));
         } else if (stackEvent.type == LeAudioStackEvent.EVENT_TYPE_NATIVE_INITIALIZED) {
             mLeAudioNativeIsInitialized = true;
             for (Map.Entry<ParcelUuid, Pair<Integer, Integer>> entry :
@@ -6051,6 +6056,25 @@ public class LeAudioService extends ProfileService {
             }
             mBroadcastCallbacks.finishBroadcast();
         }
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private void notifyDbigStatusChanged(int dbigHandle, int status) {
+        Log.d(TAG, "notifyDbigStatusChanged: dbigHandle=" + dbigHandle
+                + " status=0x" + Integer.toHexString(status));
+
+        Intent intent = new Intent("android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED");
+        intent.putExtra("android.bluetooth.extra.DBIG_STATUS", status);
+        intent.putExtra(BluetoothLeAudio.EXTRA_LE_AUDIO_GROUP_ID, dbigHandle);
+        intent.addFlags(
+                Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
+                        | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+
+        sendBroadcastAsUser(
+                intent,
+                UserHandle.ALL,
+                BLUETOOTH_CONNECT,
+                Utils.getTempBroadcastOptions().toBundle());
     }
 
     /**

@@ -63,6 +63,12 @@ public class LeAudioBroadcastSinkStackEvent {
      * {@code valueInt1} = bigHandle, {@code reason} = HCI status (0x00 = success).
      */
     public static final int EVENT_TYPE_BIG_SYNC_TERMINATED = 13;
+    /**
+     * DBIG status update received from the controller (kIsoEventDbigUpdate).
+     * {@code valueInt1} = dbig_handle, {@code valueInt2} = status.
+     * Only handle and status are forwarded — no other parameters.
+     */
+    public static final int EVENT_TYPE_DBIG_STATUS_CHANGED = 14;
 
     // Broadcast sink states (from broadcast_sink_types.h SinkState enum)
     public static final int SINK_STATE_IDLE       = 0;
@@ -166,6 +172,7 @@ public class LeAudioBroadcastSinkStackEvent {
             case EVENT_TYPE_BIG_SYNC_CREATED:          return "EVENT_TYPE_BIG_SYNC_CREATED";
             case EVENT_TYPE_BIG_SYNC_LOST:             return "EVENT_TYPE_BIG_SYNC_LOST";
             case EVENT_TYPE_BIG_SYNC_TERMINATED:       return "EVENT_TYPE_BIG_SYNC_TERMINATED";
+            case EVENT_TYPE_DBIG_STATUS_CHANGED:       return "EVENT_TYPE_DBIG_STATUS_CHANGED";
             default:                                   return "UNKNOWN(" + type + ")";
         }
     }

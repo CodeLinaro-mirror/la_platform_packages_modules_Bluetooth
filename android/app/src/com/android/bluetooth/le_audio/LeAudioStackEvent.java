@@ -52,6 +52,7 @@ public class LeAudioStackEvent {
     public static final int EVENT_TYPE_BROADCAST_STATE = EVENT_TYPE_UNICAST_MAX + 3;
     public static final int EVENT_TYPE_BROADCAST_METADATA_CHANGED = EVENT_TYPE_UNICAST_MAX + 4;
     public static final int EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED = EVENT_TYPE_UNICAST_MAX + 5;
+    public static final int EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED = EVENT_TYPE_UNICAST_MAX + 6;
 
     // Do not modify without updating the HAL bt_le_audio.h files.
     // Match up with GroupStatus enum of bt_le_audio.h
@@ -181,6 +182,8 @@ public class LeAudioStackEvent {
                 return "EVENT_TYPE_BROADCAST_METADATA_CHANGED";
             case EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED:
                 return "EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED";
+            case EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED:
+                return "EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED";
             case EVENT_TYPE_AUDIO_LOCAL_CODEC_CONFIG_CAPA_CHANGED:
                 return "EVENT_TYPE_AUDIO_LOCAL_CODEC_CONFIG_CAPA_CHANGED";
             case EVENT_TYPE_AUDIO_GROUP_CURRENT_CODEC_CONFIG_CHANGED:
@@ -239,6 +242,8 @@ public class LeAudioStackEvent {
                 // same as EVENT_TYPE_BROADCAST_STATE
             case EVENT_TYPE_BROADCAST_STATE:
                 return "{broadcastId:" + value + "}";
+            case EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED:
+                return "{dbigHandle:" + value + "}";
             case EVENT_TYPE_HEALTH_BASED_GROUP_RECOMMENDATION:
                 return "{group_id: " + value + "}";
             case EVENT_TYPE_HEALTH_BASED_DEV_RECOMMENDATION:
@@ -294,6 +299,8 @@ public class LeAudioStackEvent {
                 return "{group_id:" + Integer.toString(value) + "}";
             case EVENT_TYPE_BROADCAST_STATE:
                 return "{state:" + broadcastStateToString(value) + "}";
+            case EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED:
+                return "{dbigStatus:" + value + "}";
             case EVENT_TYPE_HEALTH_BASED_GROUP_RECOMMENDATION:
                 switch (value) {
                     case HEALTH_RECOMMENDATION_ACTION_DISABLE:

@@ -70,6 +70,7 @@ using bluetooth::hci::IsoManager;
 using bluetooth::hci::iso_manager::big_create_cmpl_evt;
 using bluetooth::hci::iso_manager::big_terminate_cmpl_evt;
 using bluetooth::hci::iso_manager::dbig_create_cmpl_evt;
+using bluetooth::hci::iso_manager::dbig_status_evt;
 using bluetooth::hci::iso_manager::BigCallbacks;
 using bluetooth::hci::iso_manager::DbigCallbacks;
 using bluetooth::le_audio::BasicAudioAnnouncementData;
@@ -1150,6 +1151,21 @@ public:
                          "assert failed: broadcasts_.count(broadcast_id) != 0");
         broadcasts_[broadcast_id]->HandleHciEvent(HCI_VS_LE_DBIG_CREATE_CPL_EVT, evt);
       } break;
+      case bluetooth::hci::iso_manager::kIsoEventDbigStatus: {
+        auto* evt = static_cast<dbig_status_evt*>(data);
+        log::info("DBIG status event, dbig_handle={}, status=0x{:04x}",
+                  evt->dbig_handle, evt->dbig_status);
+
+        auto broadcast_id = BroadcastIdFromBigHandle(evt->dbig_handle);
+        if (broadcasts_.count(broadcast_id) == 0) {
+          log::warn(
+                  "DBIG status event has no matching broadcast, dbig_handle={}, broadcast_id={}. "
+                  "Forwarding status anyway.",
+                  evt->dbig_handle, broadcast_id);
+        }
+
+        callbacks_->OnDbigStatusChanged(evt->dbig_handle, evt->dbig_status);
+      } break;
       default:
         log::error("Invalid DBIG event={}", event);
         break;
@@ -1857,6 +1873,7 @@ void LeAudioBroadcaster::Initialize(bluetooth::le_audio::LeAudioBroadcasterCallb
   /* Register HCI event handlers */
   IsoManager::GetInstance()->RegisterBigCallbacks(instance);
   IsoManager::GetInstance()->RegisterDbigCallbacks(instance);
+  log::info("Registered DBIG callbacks for LE Audio broadcaster");
   /* Register for active traffic */
   IsoManager::GetInstance()->RegisterOnIsoTrafficActiveCallback([](bool is_active) {
     if (instance) {

@@ -269,13 +269,22 @@ public:
                                            uint64_t bdAddr);
 
   /**
-   * Handle DBIG related events
+   * Handle DBIG update event
    *
    * @param params raw packet buffer for the event. The ownership of params is
    * not being transferred
    * @param length event packet buffer length
    */
   virtual void HandleDbigUpdateEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Handle DBIG status event
+   *
+   * @param params raw packet buffer for the event. The ownership of params is
+   * not being transferred
+   * @param length event packet buffer length
+   */
+  virtual void HandleDbigStatusEvent(uint8_t* params, uint16_t length);
 
   /**
    * Set DBIG parameters

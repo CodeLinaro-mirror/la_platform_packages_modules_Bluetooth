@@ -1148,6 +1148,24 @@ struct iso_impl {
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigUpdate, &evt);
   }
 
+  void on_dbig_status_event(uint8_t* stream, uint16_t len) {
+    dbig_status_evt evt;
+
+    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    /* Minimum: 1(handle) + 2(status) = 3 bytes. */
+    log::assert_that(len >= 3, "Invalid DBIG status packet length: {}", len);
+
+    STREAM_TO_UINT8(evt.dbig_handle, stream);
+    STREAM_TO_UINT16(evt.dbig_status, stream);
+
+    BTM_LogHistory(
+            kBtmLogTag, RawAddress::kEmpty, "DBIG Status event",
+            std::format("dbig_handle:0x{:02x}, dbig_status:0x{:04x}",
+                        evt.dbig_handle, evt.dbig_status));
+
+    dbig_callbacks_->OnDbigEvent(kIsoEventDbigStatus, &evt);
+  }
+
   void handle_iso_data(BT_HDR* p_msg) {
     const uint8_t* stream = p_msg->data;
     uint16_t handle, seq_nb;

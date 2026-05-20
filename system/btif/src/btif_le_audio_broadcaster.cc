@@ -134,6 +134,11 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                           Unretained(callbacks_), success));
   }
 
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnDbigStatusChanged,
+                          Unretained(callbacks_), dbig_handle, status));
+  }
+
   void Stop(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Stop)); }
 
   void Cleanup(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Cleanup)); }

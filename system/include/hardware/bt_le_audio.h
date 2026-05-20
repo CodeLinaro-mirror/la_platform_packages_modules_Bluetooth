@@ -570,6 +570,8 @@ public:
                                           const BroadcastMetadata& broadcast_metadata) = 0;
   /* Callback for broadcast audio session create event. */
   virtual void OnBroadcastAudioSessionCreated(bool success) = 0;
+  /* Callback for DBIG status event. */
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) = 0;
 };
 
 class LeAudioBroadcasterInterface {

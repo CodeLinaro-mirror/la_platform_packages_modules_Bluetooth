@@ -112,6 +112,15 @@ class BroadcastSinkCallbacks {
    */
   virtual void OnEnhancedSourceDetected(BroadcastId broadcast_id,
                                         uint8_t num_bis) = 0;
+
+  /**
+   * Called when a DBIG status update event is received from the controller.
+   * Carries only the BIG handle and status — no other parameters.
+   *
+   * @param dbig_handle  BIG handle from the controller event
+   * @param status       DBIG status value from the controller event
+   */
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) = 0;
 };
 
 // Interface from JNI to BTIF layer

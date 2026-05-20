@@ -910,7 +910,18 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
                   "timing_source={}, local_bis_id={}",
                   evt->status, evt->big_handle, evt->bis_state,
                   evt->timing_source, evt->local_bis_id);
-        /* enhanced broadcast update events are informational; no state machine action needed */
+        break;
+      }
+
+      case bluetooth::hci::iso_manager::kIsoEventDbigStatus: {
+        auto* evt = static_cast<bluetooth::hci::iso_manager::dbig_status_evt*>(data);
+        log::info("DBIG status event: big_handle={}, status=0x{:04x}",
+                  evt->dbig_handle, evt->dbig_status);
+        /* Forward DBIG status (handle + status only) to the upper layer */
+        if (callbacks_) {
+          callbacks_->OnDbigStatusChanged(evt->dbig_handle,
+                                          static_cast<uint16_t>(evt->dbig_status));
+        }
         break;
       }
 

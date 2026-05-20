@@ -201,6 +201,13 @@ class BroadcastSinkInterfaceImpl
                           Unretained(callbacks_), broadcast_id, num_bis));
   }
 
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status) override {
+    log::info("OnDbigStatusChanged: dbig_handle={}, status=0x{:04x}",
+              dbig_handle, status);
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnDbigStatusChanged,
+                          Unretained(callbacks_), dbig_handle, status));
+  }
+
  private:
   BroadcastSinkCallbacks* callbacks_;
 };

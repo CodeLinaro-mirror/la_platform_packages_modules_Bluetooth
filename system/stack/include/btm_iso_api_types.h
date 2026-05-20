@@ -86,6 +86,7 @@ constexpr uint8_t kIsoEventBigTerminated = 0x06;
 /* DBIG (Duplex Broadcast Information Group) event types */
 constexpr uint8_t kIsoEventDbigUpdate = 0x10;
 constexpr uint8_t kIsoEventDbigCreateCmpl = 0x11;
+constexpr uint8_t kIsoEventDbigStatus = 0x12;
 
 constexpr uint8_t kIsoEventBigOnSyncEstablished = 0x00;
 constexpr uint8_t kIsoEventBigOnSyncLost = 0x01;
@@ -265,6 +266,12 @@ struct dbig_update_evt {
   uint8_t bis_state;
   uint8_t timing_source;
   uint8_t local_bis_id;
+};
+
+/* DBIG (Duplex Broadcast Information Group) status event */
+struct dbig_status_evt {
+  uint8_t dbig_handle;
+  uint16_t dbig_status;
 };
 
 /* DBIG callbacks interface */

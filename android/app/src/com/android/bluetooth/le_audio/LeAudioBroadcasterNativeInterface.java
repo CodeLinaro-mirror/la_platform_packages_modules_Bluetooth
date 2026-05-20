@@ -143,6 +143,17 @@ public class LeAudioBroadcasterNativeInterface {
         sendMessageToService(event);
     }
 
+    @VisibleForTesting
+    public void onDbigStatusChanged(int dbigHandle, int status) {
+        Log.d(TAG, "onDbigStatusChanged: dbigHandle=" + dbigHandle + " status=0x"
+                + Integer.toHexString(status));
+        LeAudioStackEvent event =
+                new LeAudioStackEvent(LeAudioStackEvent.EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED);
+        event.valueInt1 = dbigHandle;
+        event.valueInt2 = status;
+        sendMessageToService(event);
+    }
+
     /**
      * Initializes the native interface.
      *
