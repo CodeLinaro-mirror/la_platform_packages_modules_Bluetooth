@@ -28,6 +28,9 @@
 #include "bt_gatt_client.h"
 #include "bt_gatt_types.h"
 
+constexpr uint8_t kScannerClientIdJni = 0xff;
+constexpr uint8_t kScannerClientIdLeAudio = 0x1;
+
 class AdvertisingTrackInfo {
 public:
   // For MSFT-based advertisement monitor.
@@ -167,11 +170,35 @@ public:
                          StartSyncCb start_cb, SyncReportCb report_cb, SyncLostCb lost_cb,
                          BigInfoReportCb biginfo_report_cb) = 0;
 
+  /**
+   * Start periodic advertising sync with reg_id for client identification.
+   *
+   * reg_id allocation strategy:
+   * - JNI clients: Always use NEGATIVE reg_id values (e.g., -1, -2, -3, ...)
+   * - Native clients: Use POSITIVE reg_id values calculated as:
+   *   reg_id = (kMaxSyncTransactions * client_id) + index
+   *   where index is a per-client counter (0, 1, 2, ...)
+   *   This ensures each native client has a unique range of reg_ids
+   *   and different clients never have conflicting reg_ids.
+   *
+   * Example:
+   * - JNI client: reg_id = -1, -2, -3, ...
+   * - Native client_id=1: reg_id = 16, 17, 18, ... (assuming kMaxSyncTransactions=16)
+   * - Native client_id=2: reg_id = 32, 33, 34, ...
+   */
   virtual void StartSync(uint8_t sid, RawAddress address, uint16_t skip, uint16_t timeout,
-                         int reg_id) = 0;
-  virtual void StopSync(uint16_t handle) = 0;
+                         int reg_id, uint8_t client_id = kScannerClientIdJni) = 0;
+
+  /**
+   * Stop periodic advertising sync for a specific client.
+   * The client_id parameter identifies which client is stopping the sync.
+   * Reference counting ensures the sync continues if other clients are still using it.
+   */
+  virtual void StopSync(uint16_t handle, uint8_t client_id = kScannerClientIdJni) = 0;
 
   virtual void RegisterCallbacks(ScanningCallbacks* callbacks) = 0;
+  virtual void RegisterCallbacksNative(ScanningCallbacks* callbacks,
+                                       uint8_t client_id) = 0;
 
   virtual void CancelCreateSync(uint8_t sid, RawAddress address) = 0;
 

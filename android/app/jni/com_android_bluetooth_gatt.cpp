@@ -2779,14 +2779,15 @@ static void startSyncNative(JNIEnv* env, jobject /* object */, jint sid, jstring
   if (!sScanner) {
     return;
   }
-  sScanner->StartSync(sid, str2addr(env, address), skip, timeout, reg_id);
+  sScanner->StartSync(sid, str2addr(env, address), skip, timeout, reg_id, kScannerClientIdJni);
 }
 
 static void stopSyncNative(JNIEnv* /* env */, jobject /* object */, jint sync_handle) {
   if (!sScanner) {
     return;
   }
-  sScanner->StopSync(sync_handle);
+
+  sScanner->StopSync(sync_handle, kScannerClientIdJni);
 }
 
 static void cancelSyncNative(JNIEnv* env, jobject /* object */, jint sid, jstring address) {
