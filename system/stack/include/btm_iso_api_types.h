@@ -87,6 +87,11 @@ constexpr uint8_t kIsoEventBigTerminated = 0x06;
 constexpr uint8_t kIsoEventDbigUpdate = 0x10;
 constexpr uint8_t kIsoEventDbigCreateCmpl = 0x11;
 
+constexpr uint8_t kIsoEventBigOnSyncEstablished = 0x00;
+constexpr uint8_t kIsoEventBigOnSyncLost = 0x01;
+constexpr uint8_t kIsoEventBigOnTerminateSyncCmpl = 0x02;
+constexpr uint8_t kIsoEventBisDataAvailable = 0x03;
+
 struct cig_create_params {
   uint32_t sdu_itv_mtos;
   uint32_t sdu_itv_stom;
@@ -195,12 +200,19 @@ struct big_terminate_cmpl_evt {
   uint8_t reason;
 };
 
-/* HCI LE BIG Sync Established meta event payload (Core v5.2+) */
+struct big_sync_params {
+  uint16_t sync_handle;
+  uint8_t encryption;
+  std::array<uint8_t, 16> broadcast_code;
+  uint8_t mse;
+  uint16_t big_sync_timeout;
+  std::vector<uint8_t> bis;
+};
+
 struct big_sync_established_evt {
   uint8_t status;
   uint8_t big_handle;
-  uint16_t sync_handle;
-  uint32_t transport_latency_big;  // 24-bit value from controller
+  uint32_t transport_latency_big;
   uint8_t nse;
   uint8_t bn;
   uint8_t pto;
@@ -208,12 +220,26 @@ struct big_sync_established_evt {
   uint16_t max_pdu;
   uint16_t iso_interval;
   uint8_t num_bis;
-  std::vector<uint16_t> bis_handles;
+  std::vector<uint16_t> conn_handles;
 };
 
 struct big_sync_lost_evt {
   uint8_t big_handle;
   uint8_t reason;
+};
+
+struct big_terminate_sync_cmpl_evt {
+  uint8_t status;
+  uint8_t big_handle;
+};
+
+struct bis_data_evt {
+  uint8_t big_handle;
+  uint16_t bis_conn_hdl;
+  uint32_t ts;
+  uint16_t evt_lost;
+  uint16_t seq_nb;
+  BT_HDR* p_msg;
 };
 
 struct iso_data_path_params {

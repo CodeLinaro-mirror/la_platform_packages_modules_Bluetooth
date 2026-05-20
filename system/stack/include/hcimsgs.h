@@ -409,6 +409,13 @@ void btsnd_hcic_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_b
 
 void btsnd_hcic_term_big(uint8_t big_handle, uint8_t reason);
 
+void btsnd_hcic_big_create_sync(uint8_t big_handle, uint16_t sync_handle, uint8_t encryption,
+                                std::array<uint8_t, 16> broadcast_code, uint8_t mse,
+                                uint16_t big_sync_timeout, std::vector<uint8_t> bis);
+
+void btsnd_hcic_big_terminate_sync(uint8_t big_handle,
+                                   base::OnceCallback<void(uint8_t*, uint16_t)> cb);
+
 void btsnd_hcic_setup_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir,
                                     uint8_t data_path_id, uint8_t codec_id_format,
                                     uint16_t codec_id_company, uint16_t codec_id_vendor,

@@ -22,6 +22,7 @@
 #include "stack/include/bt_hdr.h"
 
 using bluetooth::hci::iso_manager::BigCallbacks;
+using bluetooth::hci::iso_manager::BigSyncCallbacks;
 using bluetooth::hci::iso_manager::CigCallbacks;
 using bluetooth::hci::iso_manager::DbigCallbacks;
 using bluetooth::hci::iso_manager::iso_impl;
@@ -66,6 +67,12 @@ void IsoManager::RegisterCigCallbacks(CigCallbacks* callbacks) const {
 void IsoManager::RegisterBigCallbacks(BigCallbacks* callbacks) const {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->handle_register_big_callbacks(callbacks);
+  }
+}
+
+void IsoManager::RegisterBigSyncCallbacks(BigSyncCallbacks* callbacks) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->handle_register_big_sync_callbacks(callbacks);
   }
 }
 
@@ -162,6 +169,19 @@ void IsoManager::TerminateBig(uint8_t big_id, uint8_t reason) {
 void IsoManager::CreateDbig(struct iso_manager::dbig_create_params dbig_params) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->set_dbig_parameters(dbig_params);
+  }
+}
+
+void IsoManager::BigCreateSync(uint8_t big_handle,
+                               struct iso_manager::big_sync_params sync_params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->big_create_sync(big_handle, std::move(sync_params));
+  }
+}
+
+void IsoManager::BigTerminateSync(uint8_t big_handle) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->big_terminate_sync(big_handle);
   }
 }
 

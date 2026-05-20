@@ -54,6 +54,7 @@ static constexpr uint8_t kStateFlagIsConnected = 0x02;
 static constexpr uint8_t kStateFlagHasDataPathSet = 0x04;
 static constexpr uint8_t kStateFlagIsBroadcast = 0x10;
 static constexpr uint8_t kStateFlagIsCancelled = 0x20;
+static constexpr uint8_t kStateFlagIsBroadcastSync = 0x40;
 
 constexpr char kBtmLogTag[] = "ISO";
 
@@ -115,6 +116,11 @@ struct iso_impl {
   void handle_register_dbig_callbacks(DbigCallbacks* callbacks) {
     log::assert_that(callbacks != nullptr, "Invalid DBIG callbacks");
     dbig_callbacks_ = callbacks;
+  }
+
+  void handle_register_big_sync_callbacks(BigSyncCallbacks* callbacks) {
+    log::assert_that(callbacks != nullptr, "Invalid BIG Sync callbacks");
+    big_sync_callbacks_ = callbacks;
   }
 
   void handle_register_vsc_callback(VscCallback* callback) {
@@ -373,7 +379,10 @@ struct iso_impl {
     if (status == HCI_SUCCESS) {
       iso->state_flags |= kStateFlagHasDataPathSet;
     }
-    if (iso->state_flags & kStateFlagIsBroadcast) {
+    if (iso->state_flags & kStateFlagIsBroadcastSync) {
+      log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+      big_sync_callbacks_->OnSetupIsoDataPath(status, conn_handle, iso->big_handle);
+    } else if (iso->state_flags & kStateFlagIsBroadcast) {
       log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
       big_callbacks_->OnSetupIsoDataPath(status, conn_handle, iso->big_handle);
     } else {
@@ -387,7 +396,9 @@ struct iso_impl {
     iso_base* iso = GetIsoIfKnown(conn_handle);
     log::assert_that(iso != nullptr, "No such iso connection: {}", conn_handle);
 
-    if (!(iso->state_flags & kStateFlagIsBroadcast)) {
+    // For CIS connections, ensure they are established
+    // For BIS connections (broadcast or broadcast sync), no connection establishment check needed
+    if (!(iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
       log::assert_that(iso->state_flags & kStateFlagIsConnected, "CIS not established");
     }
 
@@ -431,7 +442,10 @@ struct iso_impl {
       iso->state_flags &= ~kStateFlagHasDataPathSet;
     }
 
-    if (iso->state_flags & kStateFlagIsBroadcast) {
+    if (iso->state_flags & kStateFlagIsBroadcastSync) {
+      log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+      big_sync_callbacks_->OnRemoveIsoDataPath(status, conn_handle, iso->big_handle);
+    } else if (iso->state_flags & kStateFlagIsBroadcast) {
       log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
       big_callbacks_->OnRemoveIsoDataPath(status, conn_handle, iso->big_handle);
     } else {
@@ -912,6 +926,145 @@ struct iso_impl {
     btsnd_hcic_term_big(big_id, reason);
   }
 
+  void big_create_sync(uint8_t big_handle, struct big_sync_params big_params) {
+    log::assert_that(!IsBigKnown(big_handle), "Invalid big - already exists: {}", big_handle);
+
+    btsnd_hcic_big_create_sync(big_handle, big_params.sync_handle, big_params.encryption,
+                                big_params.broadcast_code, big_params.mse,
+                                big_params.big_sync_timeout, big_params.bis);
+  }
+
+  void big_terminate_sync(uint8_t big_handle) {
+    log::assert_that(IsBigKnown(big_handle), "No such big: {}", big_handle);
+
+    btsnd_hcic_big_terminate_sync(
+            big_handle, base::BindOnce(&iso_impl::on_big_terminate_sync_cmpl,
+                                       weak_factory_.GetWeakPtr(), big_handle));
+  }
+
+  void on_big_terminate_sync_cmpl(uint8_t big_handle, uint8_t* stream, uint16_t len) {
+    uint8_t status;
+    big_terminate_sync_cmpl_evt evt;
+
+    log::assert_that(len == 2, "Invalid packet length: {}", len);
+    log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(big_handle, stream);
+
+    evt.status = status;
+    evt.big_handle = big_handle;
+
+    if (status == HCI_SUCCESS) {
+      // BIS will be removed when BIG Sync Lost event is received
+      log::info("BIG terminate sync command successful for big_handle: {}", big_handle);
+      bool is_known_handle = false;
+      auto bis_it = conn_hdl_to_bis_map_.cbegin();
+      while (bis_it != conn_hdl_to_bis_map_.cend()) {
+        if (bis_it->second->big_handle == evt.big_handle) {
+          log::info("Removing BIS handle {} for BIG Sync {}", bis_it->first, big_handle);
+          bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+          is_known_handle = true;
+        } else {
+          ++bis_it;
+        }
+        log::assert_that(is_known_handle, "No such big sync handle: {}", big_handle);
+      }
+    } else {
+      log::error("BIG terminate sync command failed, status: {}, big_handle: {}", status,
+                 big_handle);
+    }
+
+    big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnTerminateSyncCmpl, &evt);
+  }
+
+  void process_big_sync_established_pkt(uint8_t len, uint8_t* data) {
+    struct big_sync_established_evt evt;
+
+    log::assert_that(len >= 16, "Invalid packet length: {}", len);
+    log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+
+    STREAM_TO_UINT8(evt.status, data);
+    STREAM_TO_UINT8(evt.big_handle, data);
+    STREAM_TO_UINT24(evt.transport_latency_big, data);
+    STREAM_TO_UINT8(evt.nse, data);
+    STREAM_TO_UINT8(evt.bn, data);
+    STREAM_TO_UINT8(evt.pto, data);
+    STREAM_TO_UINT8(evt.irc, data);
+    STREAM_TO_UINT16(evt.max_pdu, data);
+    STREAM_TO_UINT16(evt.iso_interval, data);
+
+    uint8_t num_bis;
+    STREAM_TO_UINT8(num_bis, data);
+
+    log::assert_that(num_bis != 0, "Bis count is 0");
+    log::assert_that(len == (14 + num_bis * sizeof(uint16_t)),
+                     "Invalid packet length: {}. Number of bis: {}", len, num_bis);
+
+    if (evt.status == HCI_SUCCESS) {
+      for (auto i = 0; i < num_bis; ++i) {
+        uint16_t conn_handle;
+        STREAM_TO_UINT16(conn_handle, data);
+        evt.conn_handles.push_back(conn_handle);
+        log::info("Synced to BIS conn_hdl {}", conn_handle);
+
+        auto bis = std::unique_ptr<iso_bis>(new iso_bis());
+        bis->big_handle = evt.big_handle;
+        bis->sdu_itv = 0;  // Will be updated from BASE if needed
+        bis->sync_info = {.tx_seq_nb = 0, .rx_seq_nb = 0};
+        bis->used_credits = 0;
+        bis->state_flags = kStateFlagIsBroadcastSync;
+
+        log::verbose("BIG_HANDLE {}, bis_handle: {:#x}, flags: {:#x}, status {}", evt.big_handle,
+                     conn_handle, bis->state_flags,
+                     hci_status_code_text((tHCI_STATUS)(evt.status)));
+
+        conn_hdl_to_bis_map_[conn_handle] = std::move(bis);
+      }
+    }
+
+    big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnSyncEstablished, &evt);
+
+    if (evt.status == HCI_SUCCESS) {
+      const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
+      for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
+        callbacks(true);
+      }
+    }
+  }
+
+  void process_big_sync_lost_pkt(uint8_t len, uint8_t* data) {
+    struct big_sync_lost_evt evt;
+
+    log::assert_that(len == 2, "Invalid packet length: {}", len);
+    log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+
+    STREAM_TO_UINT8(evt.big_handle, data);
+    STREAM_TO_UINT8(evt.reason, data);
+
+    bool is_known_handle = false;
+    auto bis_it = conn_hdl_to_bis_map_.cbegin();
+    while (bis_it != conn_hdl_to_bis_map_.cend()) {
+      if (bis_it->second->big_handle == evt.big_handle) {
+        log::info("Removing BIS handle {} for BIG {}", bis_it->first, evt.big_handle);
+        bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+        is_known_handle = true;
+      } else {
+        ++bis_it;
+      }
+    }
+
+    log::assert_that(is_known_handle, "No such big: {}", evt.big_handle);
+    big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnSyncLost, &evt);
+
+    {
+      const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
+      for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
+        callbacks(false);
+      }
+    }
+  }
+
   void on_iso_event(uint8_t code, uint8_t* packet, uint16_t packet_len) {
     switch (code) {
       case HCI_BLE_CIS_EST_EVT:
@@ -1026,7 +1179,6 @@ struct iso_impl {
 
   void handle_iso_data(BT_HDR* p_msg) {
     const uint8_t* stream = p_msg->data;
-    cis_data_evt evt;
     uint16_t handle, seq_nb;
 
     if (p_msg->len <= ((p_msg->layer_specific & BT_ISO_HDR_CONTAINS_TS) ? kIsoHeaderWithTsLen
@@ -1034,16 +1186,57 @@ struct iso_impl {
       return;
     }
 
-    log::assert_that(cig_callbacks_ != nullptr, "Invalid CIG callbacks");
-
     STREAM_TO_UINT16(handle, stream);
-    evt.cis_conn_hdl = HCID_GET_HANDLE(handle);
+    uint16_t iso_handle = HCID_GET_HANDLE(handle);
 
-    iso_base* iso = GetCisIfKnown(evt.cis_conn_hdl);
+    iso_base* iso = GetIsoIfKnown(iso_handle);
     if (iso == nullptr) {
-      log::error(", received data for the non-registered CIS!");
+      log::error("Received data for non-registered ISO handle: 0x{:04x}", iso_handle);
       return;
     }
+
+    // Check if this is BIS or CIS
+    if (iso->state_flags & kStateFlagIsBroadcastSync) {
+      // Handle BIS data for sink (synced BIG)
+      bis_data_evt evt;
+      evt.bis_conn_hdl = iso_handle;
+      evt.big_handle = iso->big_handle;
+
+      STREAM_SKIP_UINT16(stream);
+      if (p_msg->layer_specific & BT_ISO_HDR_CONTAINS_TS) {
+        STREAM_TO_UINT32(evt.ts, stream);
+      } else {
+        evt.ts = 0;
+      }
+
+      STREAM_TO_UINT16(seq_nb, stream);
+
+      uint16_t expected_seq_nb = iso->sync_info.rx_seq_nb;
+      iso->sync_info.rx_seq_nb = (seq_nb + 1) & 0xffff;
+
+      evt.evt_lost = ((1 << 16) + seq_nb - expected_seq_nb) & 0xffff;
+      if (evt.evt_lost > 0) {
+        iso->evt_stats.evt_lost_count += evt.evt_lost;
+        iso->evt_stats.evt_last_lost_us = bluetooth::common::time_get_os_boottime_us();
+
+        log::warn("{} BIS packets lost.", evt.evt_lost);
+        iso->evt_stats.seq_nb_mismatch_count++;
+      }
+
+      evt.p_msg = p_msg;
+      evt.seq_nb = seq_nb;
+
+      // BIS data is only received for sink (synced BIG), not for source (created BIG)
+      log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+      big_sync_callbacks_->OnBisEvent(kIsoEventBisDataAvailable, &evt);
+      return;
+    }
+
+    // Handle CIS data
+    log::assert_that(cig_callbacks_ != nullptr, "Invalid CIG callbacks");
+
+    cis_data_evt evt;
+    evt.cis_conn_hdl = iso_handle;
 
     STREAM_SKIP_UINT16(stream);
     if (p_msg->layer_specific & BT_ISO_HDR_CONTAINS_TS) {
@@ -1168,6 +1361,7 @@ struct iso_impl {
   BigCallbacks* big_callbacks_ = nullptr;
   DbigCallbacks* dbig_callbacks_ = nullptr;
 
+  BigSyncCallbacks* big_sync_callbacks_ = nullptr;
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
   base::WeakPtrFactory<iso_impl> weak_factory_{this};

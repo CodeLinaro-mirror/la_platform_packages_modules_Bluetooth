@@ -48,6 +48,15 @@ struct BigCallbacks {
   virtual void OnBigEvent(uint8_t event, void* data) = 0;
 };
 
+struct BigSyncCallbacks {
+  virtual ~BigSyncCallbacks() = default;
+  virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle, uint8_t big_handle) = 0;
+  virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle, uint8_t big_handle) = 0;
+
+  virtual void OnBigSyncEvent(uint8_t event, void* data) = 0;
+  virtual void OnBisEvent(uint8_t event, void* data) = 0;
+};
+
 struct VscCallback {
   virtual ~VscCallback() = default;
   virtual void OnVscEvent(uint16_t delay, uint8_t mode,
@@ -93,6 +102,15 @@ public:
    * @param callbacks BigCallbacks implementation
    */
   virtual void RegisterBigCallbacks(iso_manager::BigCallbacks* callbacks) const;
+
+  /**
+   * Set BIG Sync related callbacks
+   *
+   * <p> Shall be set by the Le Audio Broadcast Sink implementation
+   *
+   * @param callbacks BigSyncCallbacks implementation
+   */
+  virtual void RegisterBigSyncCallbacks(iso_manager::BigSyncCallbacks* callbacks) const;
 
   /**
    * Set true when CIG or BIG is active, false when CIG or BIG is closed
@@ -191,6 +209,22 @@ public:
    * @param reason termination reason data
    */
   virtual void TerminateBig(uint8_t big_id, uint8_t reason);
+
+  /**
+   * Synchronizes to a Broadcast Isochronous Group
+   *
+   * @param big_handle host assigned BIG handle
+   * @param sync_params BIG sync parameters including sync handle from PA sync
+   */
+  virtual void BigCreateSync(uint8_t big_handle,
+                             struct iso_manager::big_sync_params sync_params);
+
+  /**
+   * Terminates synchronization to a Broadcast Isochronous Group
+   *
+   * @param big_handle host assigned BIG handle
+   */
+  virtual void BigTerminateSync(uint8_t big_handle);
 
   /* Below are defined handlers called by the legacy code in btu_hcif.cc */
 
