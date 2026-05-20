@@ -1128,6 +1128,18 @@ public:
 
   uint8_t GetStreamingPhy(void) const override { return current_phy_; }
 
+  void ReadSupportedStates(void) override {
+    IsoManager::GetInstance()->ReadSupportedStates();
+  }
+
+  std::vector<uint8_t> GetDbigParams(void) override {
+    return IsoManager::GetInstance()->GetDbigParams();
+  }
+
+  uint32_t GetEnhancedBroadcastCap(void) override {
+    return IsoManager::GetInstance()->GetBroadcastStates();
+  }
+
   BroadcastId BroadcastIdFromBigHandle(uint8_t big_handle) const {
     auto pair_it =
             std::find_if(broadcasts_.begin(), broadcasts_.end(), [big_handle](auto const& entry) {
@@ -1857,6 +1869,7 @@ private:
   static constexpr uint64_t kBroadcastStopTimeoutMs = 30 * 60 * 1000;
   alarm_t* big_terminate_timer_;
   alarm_t* broadcast_stop_timer_;
+
 };
 
 /* Static members definitions */

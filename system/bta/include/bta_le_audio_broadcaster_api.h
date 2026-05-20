@@ -71,4 +71,23 @@ public:
 
   virtual void SetStreamingPhy(uint8_t phy) = 0;
   virtual uint8_t GetStreamingPhy(void) const = 0;
+
+  /**
+   * Read the controller's supported LE states for enhanced broadcast.
+   * Issues a VS HCI command and stores the result internally.
+   * Called once at broadcaster init when duplex mode is enabled.
+   */
+  virtual void ReadSupportedStates(void) = 0;
+
+  /**
+   * Get the 12-byte DBIG parameter block populated after ReadSupportedStates().
+   * @return 12-byte vector, or empty vector if not yet available.
+   */
+  virtual std::vector<uint8_t> GetDbigParams(void) = 0;
+
+  /**
+   * Get the enhanced broadcast capability bitmask from the controller.
+   * @return capability bitmask, or 0 if not yet available.
+   */
+  virtual uint32_t GetEnhancedBroadcastCap(void) = 0;
 };

@@ -182,6 +182,43 @@ class BroadcastSinkInterface {
   virtual void SourcePublicMetadataChanged(BroadcastId broadcast_id,
                                    const std::string& broadcast_name,
                                    const std::vector<uint8_t>& public_metadata) = 0;
+
+  /**
+   * Read the controller's supported LE states for enhanced broadcast sink.
+   * Called once at sink init when duplex mode is enabled.
+   * The result is stored internally and can be retrieved via
+   * getEnhancedBroadcastSinkCap().
+   */
+  virtual void readSupportedStatesForSink(void) = 0;
+
+  /**
+   * Get the enhanced broadcast sink capability bitmask returned by the
+   * controller after readSupportedStatesForSink() completed.
+   * @return capability bitmask, or 0 if not yet available.
+   */
+  virtual uint32_t getEnhancedBroadcastSinkCap(void) = 0;
+
+  /**
+   * Push the 12-byte DBIG parameter block received from the broadcast source
+   * (extracted from the vendor-specific PA LTV in the BASE subgroup metadata)
+   * into the sink stack so it can be used when creating the DBIG.
+   *
+   * Layout (all little-endian):
+   *   [0]  = DBIG_Handle
+   *   [1]  = DBIG_Feature_Set
+   *   [2]  = BIS_Detection_Attempts
+   *   [3]  = BIS_Control_Event_Interval
+   *   [4]  = Max_Payload_DBIG_Control
+   *   [5]  = Send_Exit
+   *   [6]  = PGP_Timeout
+   *   [7]  = PGO_Timeout
+   *   [8]  = SGO_Timeout
+   *   [9]  = TX_Power
+   *   [10..11] = reserved
+   *
+   * @param dbig_params  12-byte parameter vector
+   */
+  virtual void setEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
 };
 
 }  // namespace broadcast_sink

@@ -1490,6 +1490,41 @@ static void CreateEnhancedBroadcastNative(JNIEnv* env, jobject /* object */,
   }
 }
 
+static void ReadSupportedStatesNative(JNIEnv* /* env */, jobject /* object */) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterInterfaceMutex);
+  if (!sLeAudioBroadcasterInterface) {
+    return;
+  }
+  sLeAudioBroadcasterInterface->readSupportedStates();
+}
+
+static jbyteArray GetDbigParamsNative(JNIEnv* env, jobject /* object */) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterInterfaceMutex);
+  if (!sLeAudioBroadcasterInterface) {
+    return nullptr;
+  }
+
+  std::vector<uint8_t> params = sLeAudioBroadcasterInterface->getDbigParams();
+  ScopedLocalRef<jbyteArray> jparams(env, env->NewByteArray((jsize)params.size()));
+  if (!jparams.get()) {
+    log::error("Failed to allocate byte array for DBIG params");
+    return nullptr;
+  }
+  env->SetByteArrayRegion(jparams.get(), 0, (jsize)params.size(),
+                          reinterpret_cast<const jbyte*>(params.data()));
+  return jparams.release();
+}
+
+static jint GetEnhancedBroadcastCapNative(JNIEnv* /* env */, jobject /* object */) {
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterInterfaceMutex);
+  if (!sLeAudioBroadcasterInterface) {
+    return -1;
+  }
+  return (jint)sLeAudioBroadcasterInterface->getEnhancedBroadcastCap();
+}
+
 static void UpdateMetadataNative(JNIEnv* env, jobject /* object */, jint broadcast_id,
                                  jstring broadcastName, jbyteArray publicMetadata,
                                  jobjectArray metadataArray) {
@@ -1606,6 +1641,9 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
            (void*)CreateBroadcastNative},
            {"createEnhancedBroadcastNative", "(Ljava/lang/String;[B[I[[BF)V",
            (void*)CreateEnhancedBroadcastNative},
+          {"readSupportedStatesNative", "()V", (void*)ReadSupportedStatesNative},
+          {"getDbigParamsNative", "()[B", (void*)GetDbigParamsNative},
+          {"getEnhancedBroadcastCapNative", "()I", (void*)GetEnhancedBroadcastCapNative},
           {"updateMetadataNative", "(ILjava/lang/String;[B[[B)V", (void*)UpdateMetadataNative},
           {"startBroadcastNative", "(I)V", (void*)StartBroadcastNative},
           {"stopBroadcastNative", "(I)V", (void*)StopBroadcastNative},
@@ -2105,6 +2143,50 @@ static void BroadcastSinkDestroySourceNative(JNIEnv* env, jobject /* object */, 
 }
 
 // Notify that source metadata has changed
+static void BroadcastSinkReadSupportedStatesForSinkNative(JNIEnv* /* env */, jobject /* object */) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+  sBroadcastSinkInterface->readSupportedStatesForSink();
+}
+
+static jint BroadcastSinkGetEnhancedBroadcastSinkCapNative(JNIEnv* /* env */, jobject /* object */) {
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    return -1;
+  }
+  return (jint)sBroadcastSinkInterface->getEnhancedBroadcastSinkCap();
+}
+
+static void BroadcastSinkSetEnhancedDbigParamsNative(JNIEnv* env, jobject /* object */,
+                                                     jbyteArray dbigParams) {
+  log::info("");
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::error("Broadcast Sink interface not initialized");
+    return;
+  }
+  if (dbigParams == nullptr) {
+    log::error("dbigParams is null");
+    return;
+  }
+
+  jsize len = env->GetArrayLength(dbigParams);
+  jbyte* params = env->GetByteArrayElements(dbigParams, nullptr);
+  if (!params) {
+    log::error("Failed to get DBIG params array elements");
+    return;
+  }
+
+  std::vector<uint8_t> dbig_params_vec(params, params + len);
+  env->ReleaseByteArrayElements(dbigParams, params, JNI_ABORT);
+
+  sBroadcastSinkInterface->setEnhancedDbigParams(dbig_params_vec);
+}
+
 static void BroadcastSinkSourcePublicMetadataChangedNative(JNIEnv* env, jobject /* object */,
                                                           jint broadcastId, jstring broadcastName,
                                                           jbyteArray publicMetadata) {
@@ -2153,6 +2235,9 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
           {"stopEnhancedBroadcastSinkNative", "(I)V", (void*)BroadcastSinkStopEnhancedBroadcastSinkNative},
           {"removeSourceNative", "(I)V", (void*)BroadcastSinkRemoveSourceNative},
           {"destroySourceNative", "(I)V", (void*)BroadcastSinkDestroySourceNative},
+          {"readSupportedStatesForSinkNative", "()V", (void*)BroadcastSinkReadSupportedStatesForSinkNative},
+          {"getEnhancedBroadcastSinkCapNative", "()I", (void*)BroadcastSinkGetEnhancedBroadcastSinkCapNative},
+          {"setEnhancedDbigParamsNative", "([B)V", (void*)BroadcastSinkSetEnhancedDbigParamsNative},
           {"sourcePublicMetadataChangedNative", "(ILjava/lang/String;[B)V",
            (void*)BroadcastSinkSourcePublicMetadataChangedNative},
   };

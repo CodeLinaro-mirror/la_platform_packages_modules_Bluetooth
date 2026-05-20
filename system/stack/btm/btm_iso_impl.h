@@ -1087,7 +1087,53 @@ struct iso_impl {
     }
   }
 
+  void on_read_supported_states_cmd_complete(uint8_t* stream, uint16_t len) {
+    log::assert_that(len >= 12, "Invalid read_supported_states response length: {}", len);
+
+    uint8_t status, sub_opcode;
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(sub_opcode, stream);
+    stream += 8; // skip le_states[8]
+    STREAM_TO_UINT16(broadcast_states_, stream);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "ReadSupportedStates complete",
+                   std::format("status:{}, sub_opcode:0x{:02x}, broadcast_states:0x{:04x}",
+                               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
+                               broadcast_states_));
+  }
+
+  void read_supported_states() {
+    btsnd_hcic_dbig_read_supported_states(
+            base::BindRepeating(&iso_impl::on_read_supported_states_cmd_complete,
+                                weak_factory_.GetWeakPtr()));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "ReadSupportedStates",
+                   std::format("opcode:0x{:04x}, sub_opcode:0x{:02x}",
+                               HCI_VS_LE_READ_SUPPORTED_STATES,
+                               HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE));
+  }
+
+  std::vector<uint8_t> get_dbig_params() {
+    std::vector<uint8_t> params(12, 0);
+    params[0] = last_dbig_params_.dbig_feature_set;
+    params[1] = last_dbig_params_.bis_detection_attempts;
+    params[2] = last_dbig_params_.max_payload_dbig_control;
+    params[3] = last_dbig_params_.bis_control_event_interval;
+    params[4] = last_dbig_params_.send_exit;
+    params[5] = last_dbig_params_.pgp_timeout;
+    params[6] = last_dbig_params_.pgo_timeout;
+    params[7] = last_dbig_params_.sgo_timeout;
+    params[8] = last_dbig_params_.tx_power;
+    // params[9..11] = 0 (reserved)
+    return params;
+  }
+
+  uint16_t get_broadcast_states() {
+    return broadcast_states_;
+  }
+
   void set_dbig_parameters(struct dbig_create_params dbig_params) {
+    last_dbig_params_ = dbig_params;
     // Gate DBIG HCI command based on duplex property.
     // If duplex is disabled, we treat it as "DBIG configured" and immediately continue.
     const bool is_duplex =
@@ -1574,11 +1620,14 @@ struct iso_impl {
   DbigCallbacks* dbig_callbacks_ = nullptr;
 
   BigSyncCallbacks* big_sync_callbacks_ = nullptr;
+
   /* Callback pointers for DBIG commands */
   dbig_join_control_complete_cb* join_control_complete_cb_ = nullptr;
   dbig_texit_cmpl_cb* texit_dbig_cmpl_cb_ = nullptr;
   dbig_set_devid_cmpl_cb* set_devid_cmpl_cb_ = nullptr;
+  dbig_create_params last_dbig_params_ = {};
 
+  uint16_t broadcast_states_ = 0;
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
   base::WeakPtrFactory<iso_impl> weak_factory_{this};

@@ -107,6 +107,10 @@ public class BroadcasterViewModel extends AndroidViewModel {
         return mBluetooth.getBroadcastStatusMutableLive();
     }
 
+    public int getEnhancedBroadcastCap() {
+        return mBluetooth.getEnhancedBroadcastCap();
+    }
+
     @Override
     public void onCleared() {}
 }

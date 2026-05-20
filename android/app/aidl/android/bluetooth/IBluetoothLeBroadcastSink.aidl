@@ -45,4 +45,8 @@ interface IBluetoothLeBroadcastSink {
     List<BluetoothLeBroadcastSinkState> getAllSyncedSinkState(in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     int getMaximumSourceCapacity(in AttributionSource attributionSource);
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    int getEnhancedBroadcastSinkCap(in AttributionSource attributionSource);
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    int getEnhancedBroadcastSourceCap(in AttributionSource attributionSource);
 }

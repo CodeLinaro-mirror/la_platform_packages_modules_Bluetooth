@@ -340,6 +340,7 @@ void btsnd_hcic_ble_ltk_req_reply(uint16_t handle, const Octet16& ltk);
 void btsnd_hcic_ble_ltk_req_neg_reply(uint16_t handle);
 
 void btsnd_hcic_ble_read_supported_states(void);
+void btsnd_hcic_dbig_read_supported_states(base::Callback<void(uint8_t*, uint16_t)> cb);
 
 void btsnd_hcic_ble_receiver_test(uint8_t rx_freq);
 

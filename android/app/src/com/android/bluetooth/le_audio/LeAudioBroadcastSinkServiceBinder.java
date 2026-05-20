@@ -190,4 +190,18 @@ class LeAudioBroadcastSinkServiceBinder extends IBluetoothLeBroadcastSink.Stub
         }
         return service.getMaximumSourceCapacity();
     }
+
+    @Override
+    public int getEnhancedBroadcastSinkCap(AttributionSource source) {
+        LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
+        if (service == null) return -1;
+        return service.getEnhancedBroadcastSinkCap();
+    }
+
+    @Override
+    public int getEnhancedBroadcastSourceCap(AttributionSource source) {
+        LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
+        if (service == null) return -1;
+        return service.getEnhancedBroadcastSourceCap();
+    }
 }

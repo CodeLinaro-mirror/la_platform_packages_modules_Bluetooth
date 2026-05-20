@@ -54,6 +54,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     private BisAvailability mBisAvailability = BisAvailability.UNKNOWN;
     private boolean mLocalOccupyingBis = false;
 
+    private int mLastBroadcastFeatures = -1;
+    private int[] mLastBisDevIds = null;
+
     private AudioManager mAudioManager;
 
     private final BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
@@ -66,6 +69,26 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 if (status < 0) {
                     Log.w(TAG, "DBIG status broadcast missing status extra");
                     return;
+                }
+                int[] bisDevIds = intent.getIntArrayExtra("android.bluetooth.extra.DBIG_BIS_DEV_IDS");
+                int broadcastFeatures = intent.getIntExtra("android.bluetooth.extra.DBIG_BROADCAST_FEATURES", 0);
+                int totalBis = (bisDevIds != null) ? bisDevIds.length : 0;
+                int occupiedCount = 0, availableCount = 0;
+                if (bisDevIds != null) {
+                    for (int d : bisDevIds) { if (d != 0) occupiedCount++; else availableCount++; }
+                }
+                Log.i(TAG, "DBIG BIS: total=" + totalBis + ", occupied=" + occupiedCount
+                        + ", available=" + availableCount
+                        + ", features=0x" + Integer.toHexString(broadcastFeatures));
+                boolean featuresChanged = (broadcastFeatures != mLastBroadcastFeatures);
+                boolean bisIdsChanged = !java.util.Arrays.equals(bisDevIds, mLastBisDevIds);
+                if (featuresChanged || bisIdsChanged) {
+                    mLastBroadcastFeatures = broadcastFeatures;
+                    mLastBisDevIds = (bisDevIds != null) ? java.util.Arrays.copyOf(bisDevIds, bisDevIds.length) : null;
+                    Toast.makeText(context, "DBIG: totalBis=" + totalBis
+                            + ", occupiedBis=" + occupiedCount + ", availableBis=" + availableCount
+                            + ", features=0x" + Integer.toHexString(broadcastFeatures),
+                            Toast.LENGTH_SHORT).show();
                 }
                 // bit8 (0x0100) - new device added to DBIG
                 boolean newDeviceAdded = (status & 0x0100) != 0;
@@ -104,7 +127,6 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                             "Device exited DBIG: DevID=" + devId + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
                 }
-
                 boolean bisAvailable   = (status & 0x0001) != 0;
                 boolean localOccupying = (status & 0x0002) != 0;
 
@@ -188,6 +210,11 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         mStartSearchButton.setOnClickListener(v -> {
             Log.d(TAG, "Start search button clicked");
             mViewModel.startSearchingForSources();
+
+            int sinkCap = mViewModel.getEnhancedBroadcastSinkCap();
+            Log.i(TAG, "getEnhancedBroadcastSinkCap: 0x" + Integer.toHexString(sinkCap)
+                    + " [Terminate_in_PGP=" + ((sinkCap & 0x01) != 0 ? "supported" : "not_supported")
+                    + ", Remove_in_PGP=" + ((sinkCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
         });
 
         mStopSearchButton.setOnClickListener(v -> {
@@ -285,6 +312,11 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         Log.d(TAG, "Add source (PA sync): broadcastId=" + broadcastId);
         mViewModel.addSource(broadcastId);
         Toast.makeText(this, "Adding source (PA sync) for broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
+
+        int sourceCap = mViewModel.getEnhancedBroadcastSourceCap();
+        Log.i(TAG, "getEnhancedBroadcastSourceCap: 0x" + Integer.toHexString(sourceCap)
+                + " [Terminate_in_PGO=" + ((sourceCap & 0x01) != 0 ? "supported" : "not_supported")
+                + ", Remove_in_PGO=" + ((sourceCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
     }
 
     private void onStartEnhancedBroadcastSink(BroadcastSinkViewModel.FoundBroadcastItem item) {

@@ -141,6 +141,10 @@ public class LeAudioService extends ProfileService {
     /* 5 seconds timeout for Broadcast streaming state transition */
     private static final int CREATE_BROADCAST_TIMEOUT_MS = 5000;
 
+    // Vendor-specific LTV constants for enhanced PA BASE metadata
+    // Format: [0x11][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+    private static final int DBIG_VENDOR_COMPANY_ID_LO = 0x0A;
+    private static final int DBIG_VENDOR_COMPANY_ID_HI = 0x00;
     private static LeAudioService sLeAudioService;
 
     /** Indicates group audio support for none direction */
@@ -313,6 +317,9 @@ public class LeAudioService extends ProfileService {
                 LeAudioBroadcasterNativeInterface broadcastNativeInterface =
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
+                if (SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false)) {
+                    broadcastNativeInterface.readSupportedStates();
+                }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
 
                 mask |= LeAudioTmapGattServer.TMAP_ROLE_FLAG_BMS;
@@ -329,6 +336,9 @@ public class LeAudioService extends ProfileService {
                 LeAudioBroadcasterNativeInterface broadcastNativeInterface =
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
+                if (SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false)) {
+                    broadcastNativeInterface.readSupportedStates();
+                }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
                 mTmapRoleMask =
                         LeAudioTmapGattServer.TMAP_ROLE_FLAG_CG
@@ -1509,10 +1519,72 @@ public class LeAudioService extends ProfileService {
                         broadcastSettings.getBroadcastName(),
                         broadcastCode,
                         preferredQualityArray,
-                        broadcastSettings.getSubgroupSettings().stream()
-                                 .map(s -> s.getContentMetadata().getRawMetadata())
-                                 .toArray(byte[][]::new),
+                        buildMetadataArrayWithVendorLTV(broadcastSettings.getSubgroupSettings()),
                         isoInterval);
+    }
+
+    public int getEnhancedBroadcastCap() {
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
+            Log.w(TAG, "getEnhancedBroadcastCap: Native interface not available");
+            return -1;
+        }
+        return mLeAudioBroadcasterNativeInterface.get().getEnhancedBroadcastCap();
+    }
+
+    /**
+     * Builds the 18-byte enhanced PA vendor LTV for inclusion in BASE subgroup metadata.
+     * Only called in duplex broadcast mode.
+     *
+     * LTV format: [0x11][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+     *
+     * @return 18-byte LTV array, or null if DBIG params are unavailable
+     */
+    private byte[] buildEnhancedPAVendorLTV() {
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
+            Log.w(TAG, "buildEnhancedPAVendorLTV: Native interface not available");
+            return null;
+        }
+        byte[] nativeParams = mLeAudioBroadcasterNativeInterface.get().getDbigParams();
+        if (nativeParams == null || nativeParams.length < 12) {
+            Log.e(TAG, "buildEnhancedPAVendorLTV: failed to get DBIG params from native"
+                    + " (got " + (nativeParams == null ? "null" : nativeParams.length) + " bytes)");
+            return null;
+        }
+        byte[] ltv = new byte[18];
+        ltv[0] = 0x11;                              // Length (17 bytes follow)
+        ltv[1] = (byte) 0xFF;                       // Type = Vendor Specific
+        ltv[2] = (byte) DBIG_VENDOR_COMPANY_ID_LO;  // Company_ID Lo (0x0A)
+        ltv[3] = (byte) DBIG_VENDOR_COMPANY_ID_HI;  // Company_ID Hi (0x00)
+        ltv[4] = 0x00;                              // Broadcast_Features Lo (placeholder)
+        ltv[5] = 0x00;                              // Broadcast_Features Hi (placeholder)
+        System.arraycopy(nativeParams, 0, ltv, 6, 12); // DBIG params (12 bytes)
+        Log.d(TAG, "buildEnhancedPAVendorLTV: bis_ctrl_interval=0x"
+                + String.format("%02X", nativeParams[3] & 0xFF));
+        return ltv;
+    }
+
+    /**
+     * Builds the subgroup metadata byte[][] for createEnhancedBroadcast().
+     * In duplex mode, appends the vendor-specific PA LTV to each subgroup's raw metadata.
+     * In non-duplex mode, returns the raw metadata unchanged.
+     */
+    private byte[][] buildMetadataArrayWithVendorLTV(
+            List<BluetoothLeBroadcastSubgroupSettings> subgroupSettings) {
+        boolean isDuplex = SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false);
+        byte[] vendorLTV = isDuplex ? buildEnhancedPAVendorLTV() : null;
+
+        final byte[] ltv = vendorLTV;
+        return subgroupSettings.stream()
+                .map(s -> {
+                    byte[] raw = s.getContentMetadata().getRawMetadata();
+                    if (ltv == null) return raw;
+                    // Append vendor LTV to existing subgroup metadata (does not change PA structure)
+                    byte[] combined = new byte[raw.length + ltv.length];
+                    System.arraycopy(raw, 0, combined, 0, raw.length);
+                    System.arraycopy(ltv, 0, combined, raw.length, ltv.length);
+                    return combined;
+                })
+                .toArray(byte[][]::new);
     }
 
     private int[] getBroadcastAudioQualityPerSinkCapabilities(

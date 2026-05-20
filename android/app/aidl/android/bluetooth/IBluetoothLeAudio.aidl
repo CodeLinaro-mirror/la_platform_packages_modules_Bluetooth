@@ -137,4 +137,6 @@ interface IBluetoothLeAudio {
     void setAchatAttributes(int devId, in byte[] name, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void setDbigJoinControl(boolean mode, in AttributionSource attributionSource);
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    int getEnhancedBroadcastCap(in AttributionSource attributionSource);
 }

@@ -793,6 +793,14 @@ void btsnd_hcic_ble_set_default_periodic_advertising_sync_transfer_params(
                             std::move(cb));
 }
 
+void btsnd_hcic_dbig_read_supported_states(base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint8_t param[HCI_PARAM_SIZE_READ_SUPPORTED_STATES];
+  uint8_t* p = param;
+  UINT8_TO_STREAM(p, HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE);
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_READ_SUPPORTED_STATES, param,
+                            HCI_PARAM_SIZE_READ_SUPPORTED_STATES, std::move(cb));
+}
+
 void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
                                 uint8_t dbig_feature_set,
                                 uint8_t bis_detection_attempts,

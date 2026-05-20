@@ -335,6 +335,9 @@ public:
    * @param dbig_params DBIG parameters
    */
   virtual void CreateDbig(struct iso_manager::dbig_create_params dbig_params);
+  virtual void ReadSupportedStates();
+  virtual std::vector<uint8_t> GetDbigParams() const;
+  virtual uint16_t GetBroadcastStates() const;
 
   /**
    * Return the current number of ISO channels

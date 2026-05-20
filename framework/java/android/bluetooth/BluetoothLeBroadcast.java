@@ -841,6 +841,33 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Returns the Broadcast_States field from HCI_VS_LE_Read_Supported_States (0xFD90/0x0B).
+     * Bit 1: Terminate supported, Bit 2: Remove supported.
+     *
+     * @return capability bitmask, or -1 if service unavailable
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public int getEnhancedBroadcastCap() {
+        if (DBG) Log.d(TAG, "getEnhancedBroadcastCap");
+        final IBluetoothLeAudio service = getService();
+        final int defaultValue = -1;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+        } else if (isEnabled()) {
+            try {
+                return service.getEnhancedBroadcastCap(mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+        return defaultValue;
+    }
+
+    /**
      * {@inheritDoc}
      *
      * @hide

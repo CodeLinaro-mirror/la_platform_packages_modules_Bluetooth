@@ -443,4 +443,48 @@ public class LeAudioBroadcastSinkNativeInterface {
     private native void sourcePublicMetadataChangedNative(int broadcastId,
                                                           String broadcastName,
                                                           byte[] publicMetadata);
+
+    // -------------------------------------------------------------------------
+    // Enhanced DBIG / Supported-States APIs (duplex broadcast)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Read LE Supported States for duplex broadcast sink flow.
+     * Result is stored in the native layer and retrievable via
+     * {@link #getEnhancedBroadcastSinkCap()}.
+     */
+    public void readSupportedStatesForSink() {
+        if (DBG) Log.d(TAG, "readSupportedStatesForSink()");
+        readSupportedStatesForSinkNative();
+    }
+
+    /**
+     * Returns Broadcast_States from HCI_VS_LE_Read_Supported_States.
+     * Populated after {@link #readSupportedStatesForSink()} completes.
+     *
+     * @return broadcast_states bitmask, or -1 if not yet available
+     */
+    public int getEnhancedBroadcastSinkCap() {
+        return getEnhancedBroadcastSinkCapNative();
+    }
+
+    /**
+     * Push DBIG parameters (parsed from the enhanced PA vendor LTV) down to
+     * the native layer so the sink can use them when joining the DBIG.
+     *
+     * @param dbigParams 12-byte array:
+     *   [0]=dbig_feature_set  [1]=bis_detection_attempts
+     *   [2]=max_payload_dbig_control  [3]=bis_control_event_interval
+     *   [4]=send_exit  [5]=pgp_timeout  [6]=pgo_timeout  [7]=sgo_timeout
+     *   [8]=join_timeout  [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     */
+    public void setEnhancedDbigParams(byte[] dbigParams) {
+        if (DBG) Log.d(TAG, "setEnhancedDbigParams(): length="
+                + (dbigParams != null ? dbigParams.length : 0));
+        setEnhancedDbigParamsNative(dbigParams);
+    }
+
+    private native void readSupportedStatesForSinkNative();
+    private native int  getEnhancedBroadcastSinkCapNative();
+    private native void setEnhancedDbigParamsNative(byte[] dbigParams);
 }

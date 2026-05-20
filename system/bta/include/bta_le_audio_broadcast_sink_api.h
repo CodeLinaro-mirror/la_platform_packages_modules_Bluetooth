@@ -143,4 +143,27 @@ class LeAudioBroadcastSink {
       bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id,
       const std::string& broadcast_name,
       const std::vector<uint8_t>& public_metadata) = 0;
+
+  /**
+   * Read the controller's supported LE states for enhanced broadcast sink.
+   * Issues a VS HCI command and stores the result internally.
+   * Called once at sink init when duplex mode is enabled.
+   */
+  virtual void ReadSupportedStatesForSink(void) = 0;
+
+  /**
+   * Get the enhanced broadcast sink capability bitmask returned by the
+   * controller after ReadSupportedStatesForSink() completed.
+   * @return capability bitmask, or 0 if not yet available.
+   */
+  virtual uint32_t GetEnhancedBroadcastSinkCap(void) = 0;
+
+  /**
+   * Push the 12-byte DBIG parameter block received from the broadcast source
+   * (extracted from the vendor-specific PA LTV in the BASE subgroup metadata)
+   * into the sink stack so it can be used when creating the DBIG.
+   *
+   * @param dbig_params  12-byte parameter vector
+   */
+  virtual void SetEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
 };

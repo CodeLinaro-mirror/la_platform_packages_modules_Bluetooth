@@ -905,6 +905,60 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         return defaultValue;
     }
 
+    /**
+     * Returns the Broadcast_States field from HCI_VS_LE_Read_Supported_States (0xFD90/0x0B).
+     * Bit 1: Terminate supported, Bit 2: Remove supported.
+     *
+     * @return capability bitmask, or -1 if service unavailable
+     * @hide
+     */
+    @SystemApi
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public int getEnhancedBroadcastSinkCap() {
+        log("getEnhancedBroadcastSinkCap");
+        final IBluetoothLeBroadcastSink service = getService();
+        final int defaultValue = -1;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (mBluetoothAdapter.isEnabled()) {
+            try {
+                return service.getEnhancedBroadcastSinkCap(mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Returns the PGO Broadcast_Features field received from Enhanced PA report.
+     * This represents the broadcast source capabilities.
+     *
+     * @return Broadcast_Features bitmask from PGO, or -1 if service unavailable
+     * @hide
+     */
+    @SystemApi
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public int getEnhancedBroadcastSourceCap() {
+        log("getEnhancedBroadcastSourceCap");
+        final IBluetoothLeBroadcastSink service = getService();
+        final int defaultValue = -1;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (mBluetoothAdapter.isEnabled()) {
+            try {
+                return service.getEnhancedBroadcastSourceCap(mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+        return defaultValue;
+    }
+
     private static void log(@NonNull String msg) {
         if (DBG) {
             Log.d(TAG, msg);

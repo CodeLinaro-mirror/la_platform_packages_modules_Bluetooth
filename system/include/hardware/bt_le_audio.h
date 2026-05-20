@@ -619,6 +619,40 @@ public:
                                   std::vector<uint8_t> name) = 0;
   /* Set DBIG Join Control mode */
   virtual void SetDbigJoinControl(bool enable) = 0;
+
+  /**
+   * Read the controller's supported LE states for enhanced broadcast.
+   * The result is stored internally and can be retrieved via getDbigParams().
+   * Called once at broadcaster init when duplex mode is enabled.
+   */
+  virtual void readSupportedStates(void) = 0;
+
+  /**
+   * Get the 12-byte DBIG parameter block that was populated after
+   * readSupportedStates() completed.
+   *
+   * Layout (all little-endian):
+   *   [0]  = DBIG_Handle
+   *   [1]  = DBIG_Feature_Set
+   *   [2]  = BIS_Detection_Attempts
+   *   [3]  = BIS_Control_Event_Interval
+   *   [4]  = Max_Payload_DBIG_Control
+   *   [5]  = Send_Exit
+   *   [6]  = PGP_Timeout
+   *   [7]  = PGO_Timeout
+   *   [8]  = SGO_Timeout
+   *   [9]  = TX_Power
+   *   [10..11] = reserved
+   *
+   * @return 12-byte vector, or empty vector if not yet available.
+   */
+  virtual std::vector<uint8_t> getDbigParams(void) = 0;
+
+  /**
+   * Get the enhanced broadcast capability bitmask returned by the controller.
+   * @return capability bitmask, or 0 if not yet available.
+   */
+  virtual uint32_t getEnhancedBroadcastCap(void) = 0;
 };
 
 } /* namespace le_audio */

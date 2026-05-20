@@ -349,6 +349,48 @@ public class LeAudioBroadcasterNativeInterface {
 
     private native void destroyBroadcastNative(int broadcastId);
 
+    // -------------------------------------------------------------------------
+    // Enhanced DBIG / Supported-States APIs (duplex broadcast source)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Read LE Supported States for duplex broadcast source flow.
+     * Result is stored in the native layer and retrievable via
+     * {@link #getEnhancedBroadcastCap()}.
+     */
+    public void readSupportedStates() {
+        Log.d(TAG, "readSupportedStates");
+        readSupportedStatesNative();
+    }
+
+    /**
+     * Get DBIG parameters from the native stack for use in the PA vendor-specific LTV.
+     * Returns 12 bytes in order:
+     *   [0]=dbig_feature_set  [1]=bis_detection_attempts  [2]=max_payload_dbig_control
+     *   [3]=bis_control_event_interval  [4]=send_exit  [5]=pgp_timeout
+     *   [6]=pgo_timeout  [7]=sgo_timeout  [8]=join_timeout
+     *   [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     *
+     * @return 12-byte DBIG parameter array, or null if not available
+     */
+    public byte[] getDbigParams() {
+        return getDbigParamsNative();
+    }
+
+    /**
+     * Returns Broadcast_States from HCI_VS_LE_Read_Supported_States.
+     * Populated after {@link #readSupportedStates()} completes.
+     *
+     * @return broadcast_states bitmask, or -1 if not yet available
+     */
+    public int getEnhancedBroadcastCap() {
+        return getEnhancedBroadcastCapNative();
+    }
+
+    private native void readSupportedStatesNative();
+    private native byte[] getDbigParamsNative();
+    private native int getEnhancedBroadcastCapNative();
+
     private native void getBroadcastMetadataNative(int broadcastId);
 
     private native void setAchatAttributesNative(byte[] devId, byte[] name);

@@ -426,7 +426,7 @@
 
 #define HCI_QTI_CONTROLLER_A2DP_OPCODE (0x000A | HCI_GRP_VENDOR_SPECIFIC)
 
-/* DBIG parameters opcode */
+/* DBIG parameters opcode (shared VS opcode, differentiated by sub-opcode) */
 #define HCI_VS_LE_SET_DBIG_PARAMETERS (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
 
 /* Vendor-specific opcodes for DBIG commands (all share the same opcode 0xFD90) */
@@ -451,6 +451,11 @@
 #define HCI_TEXIT_MODE_EXIT 0x01
 #define HCI_TEXIT_MODE_TERMINATE 0x02
 #define HCI_TEXIT_MODE_REJECT_TERMINATE 0x03
+/* VS LE Read Supported States (same opcode as SET_DBIG_PARAMETERS, sub-opcode 0x0B) */
+#define HCI_VS_LE_READ_SUPPORTED_STATES (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+#define HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE 0x0B
+/* Parameter size: 1 byte (sub-opcode only) */
+#define HCI_PARAM_SIZE_READ_SUPPORTED_STATES 1
 
 /*
  * Host-defined (non-controller) event IDs used only for internal delivery into

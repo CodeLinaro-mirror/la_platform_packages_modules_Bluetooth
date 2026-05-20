@@ -368,6 +368,16 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         cleanup();
     }
 
+    public int getEnhancedBroadcastSinkCap() {
+        if (mBroadcastSink == null) return -1;
+        return mBroadcastSink.getEnhancedBroadcastSinkCap();
+    }
+
+    public int getEnhancedBroadcastSourceCap() {
+        if (mBroadcastSink == null) return -1;
+        return mBroadcastSink.getEnhancedBroadcastSourceCap();
+    }
+
     public void cleanup() {
         if (mBroadcastSink != null) {
             try {

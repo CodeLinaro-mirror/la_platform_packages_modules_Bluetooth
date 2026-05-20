@@ -267,6 +267,26 @@ void IsoManager::SetDbigParameters(struct iso_manager::dbig_create_params dbig_p
   }
 }
 
+void IsoManager::ReadSupportedStates() {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->read_supported_states();
+  }
+}
+
+std::vector<uint8_t> IsoManager::GetDbigParams() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->iso_impl_->get_dbig_params();
+  }
+  return {};
+}
+
+uint16_t IsoManager::GetBroadcastStates() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->iso_impl_->get_broadcast_states();
+  }
+  return 0;
+}
+
 void IsoManager::Start() {
   if (!pimpl_->IsRunning()) {
     pimpl_->Start();

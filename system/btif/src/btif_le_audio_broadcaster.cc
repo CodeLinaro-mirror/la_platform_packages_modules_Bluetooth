@@ -158,6 +158,33 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
 
   void Cleanup(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Cleanup)); }
 
+  /**
+   * Dispatch ReadSupportedStates to the BTA broadcaster on the main thread.
+   * The BTA layer issues the VS HCI command and stores the result in
+   * dbig_params_ / enhanced_broadcast_cap_.
+   */
+  void readSupportedStates(void) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::ReadSupportedStates,
+                           Unretained(LeAudioBroadcaster::Get())));
+  }
+
+  /**
+   * Synchronously retrieve the 12-byte DBIG parameter block from the BTA
+   * broadcaster.  Called from the JNI thread after readSupportedStates()
+   * has completed.
+   */
+  std::vector<uint8_t> getDbigParams(void) override {
+    return LeAudioBroadcaster::Get()->GetDbigParams();
+  }
+
+  /**
+   * Synchronously retrieve the enhanced broadcast capability bitmask from
+   * the BTA broadcaster.
+   */
+  uint32_t getEnhancedBroadcastCap(void) override {
+    return LeAudioBroadcaster::Get()->GetEnhancedBroadcastCap();
+  }
+
 private:
   LeAudioBroadcasterCallbacks* callbacks_;
 };

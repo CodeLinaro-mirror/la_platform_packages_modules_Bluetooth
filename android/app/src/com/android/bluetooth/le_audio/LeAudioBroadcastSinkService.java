@@ -80,6 +80,8 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private static final int MSG_STOP               = 2;
     /** Posted after MSG_STOP to clear the active broadcast device once teardown completes. */
     private static final int MSG_REMOVE_ACTIVE_DEVICE = 3;
+    /** Posted during init (duplex mode) to trigger HCI_VS_LE_Read_Supported_States. */
+    private static final int MSG_READ_SUPPORTED_STATES = 4;
 
     // Service instance
     private static LeAudioBroadcastSinkService sLeAudioBroadcastSinkService;
@@ -149,6 +151,16 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     @GuardedBy("mStateLock")
     private boolean mSearchInProgress = false;
     private final Object mStateLock = new Object();
+
+    // Vendor-specific LTV constants for enhanced PA BASE metadata (Section 6.12.6.9)
+    // LTV: [0x11][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+    // Company ID 0x000A = Qualcomm Technologies Inc (Little Endian: 0x0A, 0x00)
+    private static final int DBIG_VENDOR_COMPANY_ID_LO  = 0x0A;
+    private static final int DBIG_VENDOR_COMPANY_ID_HI  = 0x00;
+    private static final int DBIG_VENDOR_DATA_LENGTH    = 14; // 2 Broadcast_Features + 12 DBIG params
+
+    /** PGO Broadcast_Features field received from the enhanced PA vendor LTV. */
+    private int mBroadcastFeatures = 0;
 
     // enhanced broadcast default parameters are now managed entirely in the JNI C++ layer.
 
@@ -234,12 +246,27 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
                         }
                         break;
+                    case MSG_READ_SUPPORTED_STATES:
+                        if (DBG) Log.d(TAG, "MSG_READ_SUPPORTED_STATES: reading LE supported states (sink)");
+                        if (mNativeInterface != null) {
+                            mNativeInterface.readSupportedStatesForSink();
+                        }
+                        break;
                     default:
                         super.handleMessage(msg);
                         break;
                 }
             }
         };
+
+        // In duplex broadcast mode, read LE Supported States from the controller
+        // so the native layer knows which DBIG operations are supported.
+        boolean isDuplexMode = android.os.SystemProperties.getBoolean(
+                "persist.bluetooth.aurachat.enabled", false);
+        if (isDuplexMode) {
+            Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES");
+            mHandler.sendEmptyMessage(MSG_READ_SUPPORTED_STATES);
+        }
 
         // Initialize native interface with max source capacity
         mNativeInterface.init(MAX_PA_SYNC_SOURCES);
@@ -619,6 +646,113 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         return builder.build();
     }
 
+    // -------------------------------------------------------------------------
+    // Enhanced DBIG / Supported-States APIs (duplex broadcast)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Set the PGO Broadcast_Features field received from the enhanced PA vendor LTV.
+     * @param broadcastFeatures 2-octet Broadcast_Features value (little-endian)
+     */
+    public void setPGOBroadcastFeatures(int broadcastFeatures) {
+        Log.d(TAG, "setPGOBroadcastFeatures: 0x" + String.format("%04X", broadcastFeatures));
+        mBroadcastFeatures = broadcastFeatures;
+    }
+
+    /**
+     * Get the PGO Broadcast_Features field.
+     * @return 2-octet Broadcast_Features value
+     */
+    public int getPGOBroadcastFeatures() {
+        return mBroadcastFeatures;
+    }
+
+    /**
+     * Set the DBIG parameters received from the enhanced PA vendor LTV and push
+     * them to the native layer.
+     * 12-byte array:
+     *   [0]=dbig_feature_set  [1]=bis_detection_attempts
+     *   [2]=max_payload_dbig_control  [3]=bis_control_event_interval
+     *   [4]=send_exit  [5]=pgp_timeout  [6]=pgo_timeout  [7]=sgo_timeout
+     *   [8]=join_timeout  [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     */
+    public void setEnhancedDbigParams(byte[] dbigParams) {
+        if (dbigParams != null && dbigParams.length == 12) {
+            Log.d(TAG, "setEnhancedDbigParams: bis_ctrl_interval=" + (dbigParams[3] & 0xFF)
+                    + " dbig_feature_set=0x" + String.format("%02X", dbigParams[0] & 0xFF));
+            if (mNativeInterface != null) {
+                mNativeInterface.setEnhancedDbigParams(dbigParams);
+            }
+        } else {
+            Log.e(TAG, "setEnhancedDbigParams: invalid params - "
+                    + (dbigParams == null ? "null" : "length=" + dbigParams.length));
+        }
+    }
+
+    /**
+     * Returns Broadcast_States from HCI_VS_LE_Read_Supported_States.
+     * @return broadcast_states bitmask, or -1 if not yet available
+     */
+    public int getEnhancedBroadcastSinkCap() {
+        if (mNativeInterface != null) {
+            return mNativeInterface.getEnhancedBroadcastSinkCap();
+        }
+        return -1;
+    }
+
+    public int getEnhancedBroadcastSourceCap() {
+        return getPGOBroadcastFeatures();
+    }
+
+    /**
+     * Scans the subgroup metadata of a {@link BluetoothLeBroadcastMetadata} object
+     * for the enhanced PA vendor LTV (Type=0xFF, Company ID=0x000A).
+     *
+     * LTV format embedded in BASE subgroup metadata:
+     *   [Length=0x11][Type=0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+     *
+     * @param metadata parsed BluetoothLeBroadcastMetadata
+     * @return 14-byte vendor data: [Broadcast_Features(2)][DBIG_params(12)],
+     *         or null if the LTV is not present
+     */
+    private static byte[] extractEnhancedPAVendorLTVFromMetadata(BluetoothLeBroadcastMetadata metadata) {
+        if (metadata == null) return null;
+
+        for (android.bluetooth.BluetoothLeBroadcastSubgroup subgroup : metadata.getSubgroups()) {
+            byte[] rawMeta = subgroup.getContentMetadata().getRawMetadata();
+            if (rawMeta == null) continue;
+
+            int pos = 0;
+            while (pos < rawMeta.length) {
+                int length = rawMeta[pos] & 0xFF;
+                if (length == 0) break;
+                pos++;
+                if (pos >= rawMeta.length) break;
+
+                int type    = rawMeta[pos] & 0xFF;
+                int dataLen = length - 1; // value bytes = length - 1 (type byte)
+                pos++;
+
+                if (pos + dataLen > rawMeta.length) break;
+
+                // Type 0xFF = Vendor Specific; need ≥ 2 (Company ID) + 14 (vendor data)
+                if (type == 0xFF && dataLen >= (2 + DBIG_VENDOR_DATA_LENGTH)) {
+                    int cidLo = rawMeta[pos]     & 0xFF;
+                    int cidHi = rawMeta[pos + 1] & 0xFF;
+                    if (cidLo == DBIG_VENDOR_COMPANY_ID_LO && cidHi == DBIG_VENDOR_COMPANY_ID_HI) {
+                        // Found — extract the 14 bytes after Company ID
+                        byte[] vendorData = new byte[DBIG_VENDOR_DATA_LENGTH];
+                        System.arraycopy(rawMeta, pos + 2, vendorData, 0, DBIG_VENDOR_DATA_LENGTH);
+                        Log.d(TAG, "extractEnhancedPAVendorLTVFromMetadata: found vendor LTV");
+                        return vendorData;
+                    }
+                }
+                pos += dataLen;
+            }
+        }
+        return null;
+    }
+
     /**
      * Get maximum source capacity (max PA syncs)
      */
@@ -820,6 +954,27 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             notifyOnSourceAdded(event.metadata, descriptor.mIsEnhanced);
                         }
                         // No else: enhanced broadcast source metadata is stable after first receipt.
+
+                        // Extract enhanced PA vendor LTV from BASE subgroup metadata.
+                        // Only attempted in duplex broadcast mode — the LTV is only present
+                        // when the source is a duplex broadcaster (buildEnhancedPAVendorLTV).
+                        boolean isDuplex = android.os.SystemProperties.getBoolean(
+                                "persist.bluetooth.aurachat.enabled", false);
+                        if (isDuplex) {
+                            byte[] vendorData = extractEnhancedPAVendorLTVFromMetadata(event.metadata);
+                            if (vendorData != null) {
+                                int broadcastFeatures =
+                                        ((vendorData[1] & 0xFF) << 8) | (vendorData[0] & 0xFF);
+                                byte[] dbigParams = Arrays.copyOfRange(vendorData, 2, 14);
+                                Log.d(TAG, "Enhanced PA vendor LTV found: broadcastFeatures=0x"
+                                        + String.format("%04X", broadcastFeatures));
+                                setPGOBroadcastFeatures(broadcastFeatures);
+                                setEnhancedDbigParams(dbigParams);
+                            } else {
+                                Log.d(TAG, "No enhanced PA vendor LTV in BASE metadata for broadcastId="
+                                        + event.broadcastId);
+                            }
+                        }
                     }
                     break;
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_AUDIO_SESSION_CREATED: {

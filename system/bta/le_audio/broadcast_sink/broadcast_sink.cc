@@ -26,6 +26,7 @@
 #include "stack/include/btm_ble_api.h"
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/hci_error_code.h"
+#include "hcimsgs.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
 
@@ -520,6 +521,24 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       le_audio_sink_hal_client_.reset();
     }
   }
+  void ReadSupportedStatesForSink(void) override {
+    IsoManager::GetInstance()->ReadSupportedStates();
+  }
+
+  uint32_t GetEnhancedBroadcastSinkCap(void) override {
+    return IsoManager::GetInstance()->GetBroadcastStates();
+  }
+
+  void SetEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) override {
+    if (dbig_params.size() < 12) {
+      log::error("SetEnhancedDbigParams: short params ({} bytes)", dbig_params.size());
+      return;
+    }
+    dbig_params_ = dbig_params;
+    log::info("SetEnhancedDbigParams: stored {} bytes, bis_ctrl_interval=0x{:02x}",
+              dbig_params_.size(), dbig_params_[3]);
+  }
+
   void SourcePublicMetadataChanged(BroadcastId broadcast_id, const std::string& broadcast_name, const std::vector<uint8_t>& public_metadata) override {
     log::info("SourcePublicMetadataChanged: broadcast_id=0x{:08x}, broadcast_name='{}', public_metadata_len={}",
               broadcast_id, broadcast_name, public_metadata.size());
@@ -1178,6 +1197,9 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
   bool pending_source_suspend_ = false;  // Set when source HAL OnAudioSuspend arrives (StopEnhancedBroadcastSink)
   bool pending_sink_suspend_   = false;  // Set when sink   HAL OnAudioSuspend arrives (StopEnhancedBroadcastSink)
   bool dbig_callbacks_registered_ = false;  // DBIG callbacks registered lazily in StartEnhancedBroadcastSink
+
+  /* DBIG params set via SetEnhancedDbigParams() from PA vendor LTV */
+  std::vector<uint8_t> dbig_params_;
 
   static BleScannerInterface* ble_scanner_;
 

@@ -101,6 +101,20 @@ class BroadcastSinkInterfaceImpl
                            Unretained(LeAudioBroadcastSink::Get()),
                            broadcast_id));
   }
+  void readSupportedStatesForSink(void) override {
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::ReadSupportedStatesForSink,
+                           Unretained(LeAudioBroadcastSink::Get())));
+  }
+
+  uint32_t getEnhancedBroadcastSinkCap(void) override {
+    return LeAudioBroadcastSink::Get()->GetEnhancedBroadcastSinkCap();
+  }
+
+  void setEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) override {
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::SetEnhancedDbigParams,
+                           Unretained(LeAudioBroadcastSink::Get()), dbig_params));
+  }
+
   void SourcePublicMetadataChanged(BroadcastId broadcast_id,
                            const std::string& broadcast_name,
                            const std::vector<uint8_t>& public_metadata) override {
