@@ -3111,8 +3111,16 @@ void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status) {
   }
 
   if (was_authenticating == false) {
-    if (status != HCI_SUCCESS && old_state != BTM_PAIR_STATE_IDLE) {
-      NotifyBondingChange(*p_dev_rec, status);
+    if (status != HCI_SUCCESS) {
+      if (old_state != BTM_PAIR_STATE_IDLE) {
+        NotifyBondingChange(*p_dev_rec, status);
+      } else if (btm_sec_cb.pairing_disabled) {
+        // If pairing mode is disabled, the pairing state remains in IDLE.
+        // In this case, the bond state should still be reported so that the
+        // upper layer (JAVA service) can remove the device from the paired
+        // list when bonding fails because pairing was not allowed.
+        NotifyBondingChange(*p_dev_rec, HCI_ERR_PAIRING_NOT_ALLOWED);
+      }
     }
     return;
   }
