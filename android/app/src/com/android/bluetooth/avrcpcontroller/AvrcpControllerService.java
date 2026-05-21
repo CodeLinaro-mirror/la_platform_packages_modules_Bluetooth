@@ -177,11 +177,7 @@ public class AvrcpControllerService extends ProfileService {
         setActiveDevice(null);
         Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
         stopService(stopIntent);
-        try {
-            unregisterReceiver(mBroadcastReceiver);
-        } catch (IllegalArgumentException e) {
-            Log.w(TAG, "mBroadcastReceiver was not registered");
-        }
+        unregisterReceiver(mBroadcastReceiver);
         for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
             stateMachine.quitNow();
         }
