@@ -298,6 +298,8 @@ int len_short_char = 2;
 int curr_char_val_len = 0;
 int curr_handle = 0;
 int long_char_max_len_for_sr_gar_bi_13 = 100;
+int fixed_len_char_handle = -1;
+int fixed_len_char_max_len = 0;
 
 std::map<RawAddress, std::vector<uint8_t>> cccd_value_map;
 
@@ -320,6 +322,7 @@ static tL2CAP_CFG_INFO tl2cap_cfg_info;
 static long data_size = -1;
 static uint16_t g_PSM = 0;
 static uint16_t g_lcid = 0;
+static bool g_test_indi_reset_CCCD = false;
 
 enum {
   SEND,
@@ -1044,7 +1047,7 @@ static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
   } else if (attr_handle == 104) {
     printf("%s:: Invalid transport access over BR/EDR \n", __FUNCTION__);
     status = application_error;
-  } else if ((attr_handle >= 74 && attr_handle <= 204) || is_long) {
+  } else if ((attr_handle >= 74 && attr_handle <= 500) || is_long) {
     len = len_long_char;
     if (offset > len) {
       printf("%s:: Invalid offset\n", __FUNCTION__);
@@ -1094,7 +1097,16 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
   gatt_resp.attr_value.len = 1;
   exec_write_status = BT_STATUS_SUCCESS;
 
-  printf("%s:: value size=%d, offset=%d \n", __FUNCTION__, value_count, offset);
+  printf("%s:: value size=%d, offset=%d is_prep:%d \n", __FUNCTION__, value_count, offset, is_prep);
+
+  if (fixed_len_char_handle != -1 &&
+      attr_handle == fixed_len_char_handle &&
+      value_count > (size_t)fixed_len_char_max_len && !need_rsp) {
+    printf("%s:: Invalid attribute value length for fixed char handle=%d and doesn't require to response. \n",
+            __FUNCTION__, attr_handle);
+    // GATT/SR/GAW/BI-39-C requires not change the characteristic value and response to PTS with ATT_Write_Cmd.
+    return;
+  }
 
   if (is_prep) {
     if ((value_count + offset) > len_long_char) {
@@ -1115,6 +1127,17 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
       printf("%s:: Invalid attribute value length for short char/desc \n",
              __FUNCTION__);
       status = invalid_attribute_value_len;
+    }
+    if (fixed_len_char_handle != -1 &&
+        attr_handle == fixed_len_char_handle &&
+        value_count > (size_t)fixed_len_char_max_len) {
+      printf("%s:: Invalid attribute value length for fixed char handle=%d \n",
+             __FUNCTION__, attr_handle);
+      status = invalid_attribute_value_len;
+      gatt_resp.attr_value.len = 0;
+      Ret = sGattIfaceScan->server->send_response(conn_id, trans_id, status,
+                                              gatt_resp);
+      return;
     }
   }
 
@@ -1186,15 +1209,30 @@ static void indication_sent_cb(int conn_id, int status) {
   printf("%s:: status=%d, conn_id =%d\n", __FUNCTION__, status, conn_id);
 }
 
+static void log_uuid(const bluetooth::Uuid& u) {
+    std::string s = u.ToString();
+    printf(" uuid=%s", s.c_str());
+}
+
 void service_added_cb(int status, int server_if,
                                         const btgatt_db_element_t* service,
                                         size_t service_count) {
-  printf("%s: status:%d server_if:%d count:%zu svc_handle:%d", __FUNCTION__,
-              status, server_if, service_count, service[0].attribute_handle);
-  for (size_t i = 1; i < service_count; i++) {
-    const btgatt_db_element_t& sr = service[i];
-    printf("Type: %d, Hndl: %d, UUID: %s, prprty: %d\n ",
-                       sr.type, sr.attribute_handle, sr.uuid, sr.properties);
+  if (service == nullptr || service_count == 0) {
+      printf("%s: status:%d server_if:%d count:%zu (no service data)\n",
+           __FUNCTION__, status, server_if, service_count);
+      return;
+  }
+
+  printf("%s: status:%d server_if:%d count:%zu svc_handle:%d\n",
+       __FUNCTION__, status, server_if,
+       service_count, service[0].attribute_handle);
+
+  for (size_t i = 0; i < service_count; ++i) {
+      const btgatt_db_element_t& sr = service[i];
+      printf("idx=%zu type=%d handle=%u properties=0x%X",
+              i, sr.type, (unsigned)sr.attribute_handle, (unsigned)sr.properties);
+      log_uuid(sr.uuid);
+      printf("\n");
   }
 }
 
@@ -1596,6 +1634,7 @@ void do_smp_encrypt(char* p);
 void do_le_gap_conn_param_update(char* p);
 void do_le_gap_attr_init(char* p);
 void do_le_set_char_len(char* p);
+void do_le_set_fixed_char_len(char* p);
 void do_pairing(char* p);
 void do_l2cap_send_data_cid(char* p);
 static void do_set_localname(char* p);
@@ -1702,6 +1741,8 @@ const t_cmd console_cmd_list[] = {
     {"c_gap_attr_init", do_le_gap_attr_init, "::", 0},
     {"c_gap_conn_param_update", do_le_gap_conn_param_update, "::", 0},
     {"c_set_char_len", do_le_set_char_len, ":: <Default value: 512>", 0},
+    {"s_set_fixed_char_len", do_le_set_fixed_char_len,
+     ":: handle max_len", 0},
 
     {"s_register", do_le_server_register,
      "::UUID: 1<1111..> 2<12323..> 3<321111..>", 0},
@@ -2021,6 +2062,11 @@ static void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr,
       remote_bd_addr->address[4], remote_bd_addr->address[5],
       (state == BT_ACL_STATE_CONNECTED) ? "ACL Connected" : "ACL Disconnected");
   remote_bd_address = *remote_bd_addr;
+  if (g_test_indi_reset_CCCD && state == BT_ACL_STATE_DISCONNECTED) {
+    printf("Reset CCCD after disconnection\n");
+    memset(attr_value, 0, sizeof(attr_value));
+    g_test_indi_reset_CCCD = false;
+  }
 }
 
 static void le_test_mode(bt_status_t status, uint16_t packet_count) {
@@ -2387,11 +2433,10 @@ void do_le_cl_register(int idx, bool eatt_support) {
       return;
   }
   if (Btif_gatt_layer) {
-#if (EATT_IF_SUPPORTED == TRUE)
-    Ret = sGattIfaceScan->client->register_client(bt_uuid,"gatt_test_app", eatt_support);
-#else
-    Ret = sGattIfaceScan->client->register_client(bt_uuid, "gatt_test_app", false);
-#endif
+    if (eatt_support)
+        Ret = sGattIfaceScan->client->register_client(bt_uuid,"gatt_test_app", eatt_support);
+    else
+        Ret = sGattIfaceScan->client->register_client(bt_uuid, "gatt_test_app", false);
     printf("%s:: ret value %d\n", __FUNCTION__, Ret);
   } else {
     g_client_if = sGattInterface->Register(uuid, &sGattCB, eatt_support);
@@ -3031,11 +3076,10 @@ void do_le_sr_register(int idx, bool eatt_support) {
   }
 
   if (Btif_gatt_layer) {
-#if (EATT_IF_SUPPORTED == TRUE)
-    Ret = sGattIfaceScan->server->register_server(bt_uuid, eatt_support);
-#else
-    Ret = sGattIfaceScan->server->register_server(bt_uuid, false);
-#endif
+    if (eatt_support)
+      Ret = sGattIfaceScan->server->register_server(bt_uuid, eatt_support);
+    else
+      Ret = sGattIfaceScan->server->register_server(bt_uuid, false);
     printf("%s:: Ret=%d \n", __FUNCTION__, Ret);
   } else {
     g_server_if = sGattInterface->Register(uuid, &sGattCB, eatt_support);
@@ -3139,11 +3183,11 @@ void do_le_server_add_service(char* p) {
 void do_le_server_add_custom_service(char* p) {
   int Ret = 0;
   bool is_valid = false;
-  int uuid_len = 0, uuid_len_bytes = 0;
+  int uuid_len = 0;
 
   uuid_len = get_int(&p, -1);  // arg1 - Size in bytes for the uuid (2, 4, or
                                // 16)
-  std::string uuid_str = get_uuid_str(&p, uuid_len_bytes);  // arg2 service uuid
+  std::string uuid_str = get_uuid_str(&p, uuid_len);  // arg2 service uuid
   printf("%s:: uuid_str=%s \n", __FUNCTION__, uuid_str.c_str());
 
   std::vector<btgatt_db_element_t> service;
@@ -3225,6 +3269,7 @@ void do_le_server_send_indication(char* p) {
                                                 g_conn_id, confirm,
                                                 value.data(), value.size());
   printf("%s:: Ret=%d \n", __FUNCTION__, Ret);
+  g_test_indi_reset_CCCD = true;
 }
 
 void do_le_server_send_multi_notification(char* p) {
@@ -3789,6 +3834,23 @@ void do_le_set_char_len(char* p) {
     len_long_char = len;
     printf("long characteristic length is %d\n", len_long_char);
   }
+}
+
+void do_le_set_fixed_char_len(char* p) {
+  int handle = get_int(&p, -1);  // arg1
+  int len = get_int(&p, -1);     // arg2
+  if (handle < 1) {
+    printf("Invalid handle. Enter a valid attribute handle\n");
+    return;
+  }
+  if (len < 1 || len > LE_CHAR_MAX_LEN_VAL) {
+    printf("Invalid length. Enter 1 to %d\n", LE_CHAR_MAX_LEN_VAL);
+    return;
+  }
+  fixed_len_char_handle = handle;
+  fixed_len_char_max_len = len;
+  printf("Fixed char handle=%d max_len=%d\n", fixed_len_char_handle,
+         fixed_len_char_max_len);
 }
 
 void do_le_gap_attr_init(char* p) {

@@ -30,6 +30,7 @@ java_defaults {
         "app-compat-annotations",
         "framework-tethering.stubs.module_lib",
         "unsupportedappusage", // for android.compat.annotation.UnsupportedAppUsage
+        "qcomFeatureConfigLib",
     ],
     stub_only_libs: [
         // TODO: b/332362688 --- Metalava should already ignore our library
@@ -62,7 +63,6 @@ java_sdk_library {
         "framework-bluetooth-defaults",
         "framework-module-defaults",
     ],
-    impl_only_libs: ["qcomFeatureConfigLib"],
 
     jarjar_rules: ":bluetooth-jarjar-rules",
     installable: true,
@@ -90,6 +90,7 @@ java_sdk_library {
     permitted_packages: [
         "android.bluetooth",
         "com.android.bluetooth.jarjar",
+        "com.android.qcomfeatureconfig",
     ],
     aconfig_declarations: [
         "bluetooth_aconfig_flags",

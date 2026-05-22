@@ -1642,6 +1642,13 @@ struct LeScanningManager::impl : public LeAddressManagerCallback {
       log::warn("Unregistered!");
       return;
     }
+#ifdef TARGET_QCOM_IOT_BT_EXT
+    if (paused_) {
+      log::info("Already paused!");
+      ack_pause();
+      return;
+    }
+#endif
     paused_ = true;
     scan_on_resume_ = is_scanning_;
     stop_scan();
