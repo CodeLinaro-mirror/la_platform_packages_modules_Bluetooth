@@ -183,6 +183,11 @@ static void get_idle_time_callback(RawAddress* bd_addr, tBLE_ADDR_TYPE addr_type
     return;
   }
 
+  if (!mCallbacksObj) {
+    log::error("mCallbacksObj is null");
+    return;
+  }
+
   ScopedLocalRef<jbyteArray> addr(sCallbackEnv.get(), marshall_bda(bd_addr));
   if (!addr.get()) {
     log::error("Fail to new jbyteArray bd addr");
