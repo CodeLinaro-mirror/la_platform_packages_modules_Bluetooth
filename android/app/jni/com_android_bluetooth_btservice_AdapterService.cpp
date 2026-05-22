@@ -880,7 +880,7 @@ static void le_test_mode_recv_callback(bt_status_t status, uint16_t packet_count
 static void energy_info_recv_callback(bt_activity_energy_info* p_energy_info,
                                       bt_uid_traffic_t* uid_data) {
   std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
-  if (!sJniAdapterServiceObj) {
+  if (!sJniCallbacksObj) {
     log::error("JNI obj is null. Failed to call JNI callback");
     return;
   }
