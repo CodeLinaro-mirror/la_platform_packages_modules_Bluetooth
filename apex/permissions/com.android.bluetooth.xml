@@ -41,5 +41,6 @@
         <permission name="android.permission.WRITE_APN_SETTINGS" />
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
         <permission name="android.permission.WRITE_SECURITY_LOG" />
+        <permission name="android.car.permission.CAR_CONTROL_AUDIO_VOLUME" />
     </privapp-permissions>
 </permissions>

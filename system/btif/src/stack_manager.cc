@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bt_stack_manager"
@@ -234,6 +239,9 @@ void stack_disable(ProfileStopCallback stopProfiles) {
   module_shut_down(get_local_module(BTIF_CONFIG_MODULE));
   module_shut_down(get_local_module(DEVICE_IOT_CONFIG_MODULE));
 
+  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
+    main_thread_shut_down();
+  }
   gatt_free();
   do_in_main_thread(base::BindOnce(sdp_free));
   l2c_free();
@@ -274,10 +282,6 @@ void stack_cleanup() {
   module_shut_down(get_local_module(GD_SHIM_MODULE));
 
   module_clean_up(get_local_module(OSI_MODULE));
-
-  if (com_android_bluetooth_flags_replace_message_loop_thread_with_gd_handler()) {
-    main_thread_shut_down();
-  }
 
   module_management_stop();
   log::info("finished");

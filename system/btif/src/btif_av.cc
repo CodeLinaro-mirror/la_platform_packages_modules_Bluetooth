@@ -1,4 +1,4 @@
-/******************************************************************************
+/*****************************************************************************************
  *
  *  Copyright 2009-2016 Broadcom Corporation
  *
@@ -14,7 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- ******************************************************************************/
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ *****************************************************************************************/
 
 #define LOG_TAG "bluetooth-a2dp"
 
@@ -1267,6 +1272,11 @@ BtifAvPeer* BtifAvSource::FindOrCreatePeer(const RawAddress& peer_address,
   std::lock_guard<std::recursive_mutex> lock(btifavsource_peers_lock_);
   log::debug("peer={} bta_handle=0x{:x}", peer_address, bta_handle);
 
+  // In corner case that A2DP is doing cleanup while AVDTP media channel
+  // has just set up, and event from lower layer is receveid. Cause fatal
+  // error while accessing cleared resource.
+  if (!Enabled()) return nullptr;
+
   BtifAvPeer* peer = FindPeer(peer_address);
   if (peer != nullptr) {
     return peer;
@@ -1538,6 +1548,11 @@ BtifAvPeer* BtifAvSink::FindPeerByPeerId(uint8_t peer_id) {
 BtifAvPeer* BtifAvSink::FindOrCreatePeer(const RawAddress& peer_address, tBTA_AV_HNDL bta_handle) {
   std::lock_guard<std::recursive_mutex> lock(btifavsink_peers_lock_);
   log::debug("peer={} bta_handle=0x{:x}", peer_address, bta_handle);
+
+  // In corner case that A2DP is doing cleanup while AVDTP media channel
+  // has just set up, and event from lower layer is receveid. Cause fatal
+  // error while accessing cleared resource.
+  if (!Enabled()) return nullptr;
 
   BtifAvPeer* peer = FindPeer(peer_address);
   if (peer != nullptr) {
@@ -1841,11 +1856,8 @@ bool BtifAvStateMachine::StateIdle::ProcessEvent(uint32_t event, void* p_data) {
         can_connect = btif_av_sink.AllowedToConnect(peer_.PeerAddress());
         if (!can_connect) {
           log::error("Sink profile doesn't allow connection to peer:{}", peer_.PeerAddress());
-          if (btif_av_src_sink_coexist_enabled()) {
-            BTA_AvCloseRc((reinterpret_cast<tBTA_AV*>(p_data))->rc_open.rc_handle);
-          } else {
-            btif_av_sink_disconnect(peer_.PeerAddress());
-          }
+          BTA_AvCloseRc((reinterpret_cast<tBTA_AV*>(p_data))->rc_open.rc_handle);
+          btif_av_sink_disconnect(peer_.PeerAddress());
         }
       }
       if (!can_connect) {
@@ -3350,10 +3362,10 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
     case BTA_AV_VENDOR_CMD_EVT:
     case BTA_AV_VENDOR_RSP_EVT:
     case BTA_AV_META_MSG_EVT: {
+      const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
+      btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
       if (btif_av_src_sink_coexist_enabled()) {
         if (peer_sep == AVDT_TSEP_INVALID) {
-          const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
-          btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
           if (peer_address == RawAddress::kEmpty) {
             peer_address = btif_av_source.ActivePeer();
             if (peer_address == RawAddress::kEmpty) {
@@ -3361,9 +3373,13 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
             }
           }
         } else if (peer_sep == AVDT_TSEP_SNK) {
-          peer_address = btif_av_source.ActivePeer();
+          if (peer_address == RawAddress::kEmpty) {
+            peer_address = btif_av_source.ActivePeer();
+          }
         } else if (peer_sep == AVDT_TSEP_SRC) {
-          peer_address = btif_av_sink.ActivePeer();
+          if (peer_address == RawAddress::kEmpty) {
+            peer_address = btif_av_sink.ActivePeer();
+          }
         }
         break;
       } else {
@@ -3374,10 +3390,14 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
       // TODO: Might be wrong - this code will be removed once those
       // events are received from the AVRCP module.
       if (peer_sep == AVDT_TSEP_SNK) {
-        peer_address = btif_av_source.ActivePeer();
+        if (peer_address == RawAddress::kEmpty) {
+          peer_address = btif_av_source.ActivePeer();
+        }
         msg = "Stream sink offloaded";
       } else if (peer_sep == AVDT_TSEP_SRC) {
-        peer_address = btif_av_sink.ActivePeer();
+        if (peer_address == RawAddress::kEmpty) {
+          peer_address = btif_av_sink.ActivePeer();
+        }
         msg = "Stream source offloaded";
       }
       break;
