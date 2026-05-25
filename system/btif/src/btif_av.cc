@@ -3294,7 +3294,8 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
     case BTIF_AV_SINK_OFFLOAD_STOP_CFM_EVT: {
       // MM-Audio sessoin is stopped
       // check the last vsc_command status.
-      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart)) {
+      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) &&
+         !peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
         log::debug("Sending suspend to a2dp source peer : {}", peer_.PeerAddress());
         peer_.SetFlags(BtifAvPeer::kFlagLocalSuspendPending);
         BTA_AvStop(peer_.BtaHandle(), true);
