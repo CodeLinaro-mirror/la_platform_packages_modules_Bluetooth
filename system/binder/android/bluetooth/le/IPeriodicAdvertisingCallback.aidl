@@ -30,4 +30,5 @@ oneway interface IPeriodicAdvertisingCallback {
   void onSyncLost(in int syncHandle);
   void onSyncTransferred(in BluetoothDevice device, in int status);
   void onBigInfoAdvertisingReport(in int syncHandle, in boolean encrypted);
+  void onEnhancedBigInfoAdvertisingReport(in int syncHandle, in boolean encrypted, in int isoInterval);
 }
