@@ -3294,8 +3294,12 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
     case BTIF_AV_SINK_OFFLOAD_STOP_CFM_EVT: {
       // MM-Audio sessoin is stopped
       // check the last vsc_command status.
-      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart)) {
-        log::debug("Sending suspend to a2dp source peer : {}", peer_.PeerAddress());
+      // During SHO, SetActivePeer() switches active away from this peer before
+      // mm-audio stops its session, so IsActivePeer() is false here. A normal
+      // user-initiated stop arrives while this peer is still active. Only send
+      // AVDTP SUSPEND in the SHO case to tear down the old remote source.
+      if (!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) && !peer_.IsActivePeer()) {
+        log::debug("SHO: suspending non-active peer {}", peer_.PeerAddress());
         peer_.SetFlags(BtifAvPeer::kFlagLocalSuspendPending);
         BTA_AvStop(peer_.BtaHandle(), true);
         break;
