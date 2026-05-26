@@ -312,6 +312,11 @@ class HfpClientDeviceBlock {
                                     mDevice, mPhoneAccount.getAccountHandle(), mServiceInterface);
                     mConference.setExtras(mScoState);
                 }
+                // In case that conference call is created prior to the HFP SLC establishment
+                // Just keep the call state unchanged
+                if (otherConn.getState() == Connection.STATE_HOLDING) {
+                    mConference.setOnHold();
+                }
                 if (mConference.addConnection(otherConn)) {
                     debug("Adding connection " + otherConn + " to conference.");
                     addConf = true;
