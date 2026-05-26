@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "smp_act"
@@ -2248,6 +2253,9 @@ static void smp_key_distribution_by_transport(tSMP_CB* p_cb, tSMP_INT_DATA* /* p
  ******************************************************************************/
 void smp_br_pairing_complete(tSMP_CB* p_cb, tSMP_INT_DATA* /* p_data */) {
   log::verbose("addr:{}", p_cb->pairing_bda);
+
+  /* Restore role-switch policy blocked for SMP-BR (CTKD); covers all paths. */
+  get_btm_client_interface().link_policy.BTM_unblock_role_switch_for(p_cb->pairing_bda);
 
   if (p_cb->total_tx_unacked == 0) {
     /* process the pairing complete */

@@ -2617,6 +2617,9 @@ void btif_dm_sec_evt(tBTA_DM_SEC_EVT event, tBTA_DM_SEC* p_data) {
 
     case BTA_DM_BLE_AUTH_CMPL_EVT:
       log::verbose("BTA_DM_BLE_AUTH_CMPL_EVT");
+      /* Restore role-switch policy in case CTKD blocked it. */
+      get_btm_client_interface().link_policy.BTM_unblock_role_switch_for(
+              p_data->auth_cmpl.bd_addr);
       btif_dm_ble_auth_cmpl_evt(&p_data->auth_cmpl);
       break;
 
