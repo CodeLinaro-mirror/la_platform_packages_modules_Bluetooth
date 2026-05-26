@@ -1262,6 +1262,8 @@ public class HeadsetClientStateMachine extends StateMachine {
                 case CONNECTING_TIMEOUT -> {
                     // We timed out trying to connect, transition to disconnected.
                     warn("Connection timeout for " + mCurrentDevice);
+                    // Connection timeout occurred — cancel any pending CONNECT retries
+                    removeMessages(CONNECT);
                     transitionTo(mDisconnected);
                 }
 
