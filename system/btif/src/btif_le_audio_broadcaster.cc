@@ -164,8 +164,14 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
    * dbig_params_ / enhanced_broadcast_cap_.
    */
   void readSupportedStates(void) override {
-    do_in_main_thread(Bind(&LeAudioBroadcaster::ReadSupportedStates,
-                           Unretained(LeAudioBroadcaster::Get())));
+    // LeAudioBroadcaster::Initialize is posted asynchronously via
+    // do_in_main_thread, so instance may not be set yet when this is called
+    // from the JNI thread. Evaluate Get() on the main thread to avoid the
+    // assert-on-null crash.
+    do_in_main_thread(base::BindOnce([]() {
+      LeAudioBroadcaster* broadcaster = LeAudioBroadcaster::Get();
+      if (broadcaster) broadcaster->ReadSupportedStates();
+    }));
   }
 
   /**

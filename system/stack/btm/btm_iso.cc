@@ -174,6 +174,19 @@ void IsoManager::CreateDbig(struct iso_manager::dbig_create_params dbig_params) 
   }
 }
 
+void IsoManager::StoreDbigParams(struct iso_manager::dbig_create_params params) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->store_dbig_params(params);
+  }
+}
+
+iso_manager::dbig_create_params IsoManager::GetStoredDbigParams() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->iso_impl_->get_stored_dbig_params();
+  }
+  return {};
+}
+
 void IsoManager::BigCreateSync(uint8_t big_handle,
                                struct iso_manager::big_sync_params sync_params) {
   if (pimpl_->IsRunning()) {

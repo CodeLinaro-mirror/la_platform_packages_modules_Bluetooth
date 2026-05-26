@@ -1826,6 +1826,7 @@ public class LeAudioService extends ProfileService {
         }
         mAudioManager.setParameters("achat_rx_enable=false");
         mAudioManager.setParameters("achat_tx_enable=false");
+        updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
         mLeAudioBroadcasterNativeInterface.get().stopBroadcast(broadcastId);
     }
 

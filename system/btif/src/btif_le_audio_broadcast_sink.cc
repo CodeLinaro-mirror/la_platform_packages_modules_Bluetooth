@@ -102,8 +102,17 @@ class BroadcastSinkInterfaceImpl
                            broadcast_id));
   }
   void readSupportedStatesForSink(void) override {
-    do_in_main_thread(Bind(&LeAudioBroadcastSink::ReadSupportedStatesForSink,
-                           Unretained(LeAudioBroadcastSink::Get())));
+    // Get() asserts instance != nullptr. Initialize is posted asynchronously
+    // via do_in_main_thread, so instance may not be set yet when this is called
+    // from the Java handler thread. Defer Get() to the BT main thread so it
+    // always runs after Initialize.
+    do_in_main_thread(base::BindOnce([]() {
+      if (!LeAudioBroadcastSink::IsLeAudioBroadcastSinkRunning()) {
+        log::warn("BroadcastSink not yet initialized, skipping ReadSupportedStatesForSink");
+        return;
+      }
+      LeAudioBroadcastSink::Get()->ReadSupportedStatesForSink();
+    }));
   }
 
   uint32_t getEnhancedBroadcastSinkCap(void) override {

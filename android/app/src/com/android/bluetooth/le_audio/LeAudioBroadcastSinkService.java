@@ -259,6 +259,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             }
         };
 
+        // Initialize native interface with max source capacity before posting
+        // any messages that trigger native calls, so LeAudioBroadcastSink::Initialize
+        // is always queued on the BT main thread first.
+        mNativeInterface.init(MAX_PA_SYNC_SOURCES);
+
         // In duplex broadcast mode, read LE Supported States from the controller
         // so the native layer knows which DBIG operations are supported.
         boolean isDuplexMode = android.os.SystemProperties.getBoolean(
@@ -267,9 +272,6 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES");
             mHandler.sendEmptyMessage(MSG_READ_SUPPORTED_STATES);
         }
-
-        // Initialize native interface with max source capacity
-        mNativeInterface.init(MAX_PA_SYNC_SOURCES);
 
         // Register audio device callback
         mAudioManager.registerAudioDeviceCallback(mAudioManagerAudioDeviceCallback, mHandler);

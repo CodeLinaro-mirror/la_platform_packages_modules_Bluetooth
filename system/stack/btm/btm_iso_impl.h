@@ -1113,6 +1113,14 @@ struct iso_impl {
                                HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE));
   }
 
+  void store_dbig_params(struct dbig_create_params params) {
+    last_dbig_params_ = params;
+  }
+
+  dbig_create_params get_stored_dbig_params() const {
+    return last_dbig_params_;
+  }
+
   std::vector<uint8_t> get_dbig_params() {
     std::vector<uint8_t> params(12, 0);
     params[0] = last_dbig_params_.dbig_feature_set;

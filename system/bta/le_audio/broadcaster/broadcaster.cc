@@ -1130,6 +1130,28 @@ public:
 
   void ReadSupportedStates(void) override {
     IsoManager::GetInstance()->ReadSupportedStates();
+
+    // Pre-populate last_dbig_params_ so GetDbigParams() returns valid values
+    // when buildEnhancedPAVendorLTV() calls it during broadcast creation,
+    // before the first CreateDbig() has run and stored real params.
+    // Uses the same source-side constants that CreateDbig() sends to the controller.
+    struct bluetooth::hci::iso_manager::dbig_create_params defaults = {
+        .dbig_handle              = 0,
+        .dbig_feature_set         = 3,
+        .bis_detection_attempts   = 10,
+        .max_payload_dbig_control = 30,
+        .bis_control_event_interval = 9,
+        .send_exit                = 2,
+        .pgp_timeout              = 10,
+        .pgo_timeout              = 10,
+        .sgo_timeout              = 6,
+        .join_timeout             = 4,
+        .exit_timeout             = 4,
+        .remove_timeout           = 4,
+        .terminate_timeout        = 4,
+        .tx_power                 = 8,
+    };
+    IsoManager::GetInstance()->StoreDbigParams(defaults);
   }
 
   std::vector<uint8_t> GetDbigParams(void) override {

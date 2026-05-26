@@ -486,25 +486,10 @@ private:
   }
   void CreateDbig(void) {
     log::info("broadcast_id={}, creating DBIG for duplex mode", GetBroadcastId());
-  
-    /* DBIG parameters for duplex broadcast */
-    struct bluetooth::hci::iso_manager::dbig_create_params dbig_params = {
-        .dbig_handle = GetAdvertisingSid(),  // Use adv_handle as dbig_handle
-        .dbig_feature_set = 3,
-        .bis_detection_attempts = 10,
-        .max_payload_dbig_control = 30,
-        .bis_control_event_interval = 9,
-        .send_exit = 2,
-        .pgp_timeout = 10,
-        .pgo_timeout = 10,
-        .sgo_timeout = 6,
-        .join_timeout = 4,
-        .exit_timeout = 4,
-        .remove_timeout = 4,
-        .terminate_timeout = 4,
-        .tx_power = 8,
-    };
-    IsoManager::GetInstance()->CreateDbig(std::move(dbig_params));
+    // All params were pre-seeded in ReadSupportedStates(); only the handle is dynamic.
+    auto params = IsoManager::GetInstance()->GetStoredDbigParams();
+    params.dbig_handle = GetAdvertisingSid();
+    IsoManager::GetInstance()->CreateDbig(std::move(params));
   }
   void DisableAnnouncement(void) {
     log::info("broadcast_id={}", GetBroadcastId());

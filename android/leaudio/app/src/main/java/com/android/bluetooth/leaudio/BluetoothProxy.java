@@ -1677,6 +1677,11 @@ public class BluetoothProxy {
         return mBluetoothLeBroadcast.getMaximumNumberOfBroadcasts();
     }
 
+    public int getEnhancedBroadcastCap() {
+        if (mBluetoothLeBroadcast == null) return -1;
+        return mBluetoothLeBroadcast.getEnhancedBroadcastCap();
+    }
+
     public boolean isPlaying(int broadcastId) {
         if (mBluetoothLeBroadcast == null) return false;
         return mBluetoothLeBroadcast.isPlaying(broadcastId);

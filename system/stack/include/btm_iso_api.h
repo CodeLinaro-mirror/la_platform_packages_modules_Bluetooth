@@ -335,6 +335,8 @@ public:
    * @param dbig_params DBIG parameters
    */
   virtual void CreateDbig(struct iso_manager::dbig_create_params dbig_params);
+  virtual void StoreDbigParams(struct iso_manager::dbig_create_params params) const;
+  virtual iso_manager::dbig_create_params GetStoredDbigParams() const;
   virtual void ReadSupportedStates();
   virtual std::vector<uint8_t> GetDbigParams() const;
   virtual uint16_t GetBroadcastStates() const;
