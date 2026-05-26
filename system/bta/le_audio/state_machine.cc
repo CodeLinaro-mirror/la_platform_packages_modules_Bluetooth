@@ -2308,12 +2308,21 @@ private:
       return false;
     }
 
-    // Use 1M Phy for the ACK packet from remote device to phone for better
-    // sensitivity
-    if (group->asymmetric_phy_for_unidirectional_cis_supported && sdu_interval_p_to_c == 0 &&
-        (phy_p_to_c & bluetooth::hci::kIsoCigPhy1M) != 0) {
-      log::info("Use asymmetric PHY for unidirectional CIS");
-      phy_p_to_c = bluetooth::hci::kIsoCigPhy1M;
+    // Check if HDT PHY is selected in either direction and ensure symmetric PHY
+    if ((phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
+           group->GetConfigurationContextType() == LeAudioContextType::MEDIA) {
+      // If mtos has HDT, copy mtos PHY to stom for symmetric configuration
+      phy_p_to_c = phy_c_to_p;
+      log::info("HDT PHY selected in mtos, using symmetric PHY: mtos=0x{:02x}, stom=0x{:02x}",
+                phy_c_to_p, phy_p_to_c);
+    } else {
+      // Use 1M Phy for the ACK packet from remote device to phone for better
+      // sensitivity
+      if (group->asymmetric_phy_for_unidirectional_cis_supported && sdu_interval_p_to_c == 0 &&
+          (phy_p_to_c & bluetooth::hci::kIsoCigPhy1M) != 0) {
+        log::info("Use asymmetric PHY for unidirectional CIS");
+        phy_p_to_c = bluetooth::hci::kIsoCigPhy1M;
+      }
     }
 
     log::verbose(" phy_c_to_p: 0x{:02x}, phy_p_to_c: 0x{:02x}",
@@ -2365,10 +2374,36 @@ private:
         log::info("Fill HDT parameters in CIS");
         cis_cfg.coded_rates_c_to_p = 0x0003;
         cis_cfg.coded_rates_p_to_c = 0x0003;
-        cis_cfg.hdt_rates_c_to_p =
-            (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 | HDT_RATE_6 | HDT_RATE_7_5); // 0x001F
-        cis_cfg.hdt_rates_p_to_c =
-            (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 | HDT_RATE_6 | HDT_RATE_7_5); // 0x001F
+        // Read HDT rate from property; 0 (default) means all rates supported.
+        // Use 7 to represent rate 7.5 (since property is integer).
+        int32_t hdt_rate_prop = osi_property_get_int32(
+            "persist.vendor.qcom.bluetooth.hdt_rate", 0);
+        uint16_t hdt_rates;
+        switch (hdt_rate_prop) {
+          case 2:
+            hdt_rates = HDT_RATE_2;
+            break;
+          case 3:
+            hdt_rates = HDT_RATE_3;
+            break;
+          case 4:
+            hdt_rates = HDT_RATE_4;
+            break;
+          case 6:
+            hdt_rates = HDT_RATE_6;
+            break;
+          case 7:
+            hdt_rates = HDT_RATE_7_5;
+            break;
+          default:
+            hdt_rates = (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 |
+                         HDT_RATE_6 | HDT_RATE_7_5);
+            break;
+        }
+        log::info("HDT rates set to 0x{:02x} (property value: {})",
+                  hdt_rates, hdt_rate_prop);
+        cis_cfg.hdt_rates_c_to_p = hdt_rates;
+        cis_cfg.hdt_rates_p_to_c = hdt_rates;
         cis_cfg.hdt_mic_length = HDT_MIC_LENGTH_128_BITS; //0x02
         cis_cfg.hdt_packet_format = HDT_PACKET_FORMAT_ANY_SUPPORTED; //0x00
       }
@@ -3061,6 +3096,7 @@ private:
 
       return;
     }
+    bool bapPtsPrefRtn = osi_property_get_bool("persist.bluetooth.leaudio.bap.pts.pref.rtn", false);
 
     /* Internal helper for filling in the QoS parameters for an ASE, based
      * on the codec configure state and the prefferend ASE QoS parameters.
@@ -3069,7 +3105,7 @@ private:
      *       PrepareAndSendConfigQos(), once the whole group transitions to a
      *       proper state.
      */
-    auto qos_config_update = [leAudioDevice](
+    auto qos_config_update = [leAudioDevice, bapPtsPrefRtn](
                                      const struct bluetooth::le_audio::client_parser::ascs::
                                              ase_codec_configured_state_params& rsp,
                                      bluetooth::le_audio::types::AseQosPreferences& out_qos,
@@ -3091,7 +3127,7 @@ private:
       /* Validate and update QoS to be consistent */
       if ((!out_cfg.max_transport_latency ||
            out_cfg.max_transport_latency > rsp.max_transport_latency) ||
-          !out_cfg.retrans_nb) {
+          !out_cfg.retrans_nb || bapPtsPrefRtn) {
         out_cfg.max_transport_latency = rsp.max_transport_latency;
         out_cfg.retrans_nb = rsp.preferred_retrans_nb;
         log::info(

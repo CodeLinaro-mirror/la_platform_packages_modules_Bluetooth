@@ -419,6 +419,9 @@ typedef enum {
   //To Suppress A2DP while HFP is connected in particular carkits
   INTEROP_SUPPRESS_A2DP_AUTO_CONNECT,
 
+  //Some devices may not accept role switch during encryption
+  INTEROP_DELAY_ROLE_SWITCH_STILL_ENCRYPTION,
+
   END_OF_INTEROP_LIST
 } interop_feature_t;
 

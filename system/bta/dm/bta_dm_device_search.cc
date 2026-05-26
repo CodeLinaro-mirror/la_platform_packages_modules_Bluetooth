@@ -32,6 +32,7 @@
 
 #include "bta/dm/bta_dm_device_search_int.h"
 #include "bta/dm/bta_dm_disc_int.h"
+#include "bta/dm/bta_dm_disc.h"
 #include "common/circular_buffer.h"
 #include "device/include/interop.h"
 #include "main/shim/dumpsys.h"
@@ -920,6 +921,9 @@ void bta_dm_disc_start_device_discovery(tBTA_DM_SEARCH_CBACK* p_cback) {
 }
 
 void bta_dm_disc_stop_device_discovery() {
+  if (bta_dm_search_get_state() == BTA_DM_SEARCH_ACTIVE) {
+    bta_dm_disc_stop();
+  }
   bta_dm_search_sm_execute(BTA_DM_API_SEARCH_CANCEL_EVT, nullptr);
 }
 

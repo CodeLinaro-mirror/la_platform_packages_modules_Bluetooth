@@ -75,6 +75,7 @@
 namespace {
 constexpr char kBtmLogTag[] = "HFP";
 }
+bool isScoManagedByAudio = true;
 
 extern bool is_hf_client_device_connected();
 namespace bluetooth::headset {
@@ -204,6 +205,24 @@ static bool is_connected(const RawAddress bd_addr) {
         (bd_addr == btif_hf_cb[i].connected_bda)) {
       return true;
     }
+  }
+  return false;
+}
+
+/*******************************************************************************
+ *
+ * Function         is_sco_connected
+ *
+ * Description      Internal function to check if SCO is connected
+ *
+ * Returns          true if connected
+ *
+ ******************************************************************************/
+static bool is_sco_connected(const RawAddress bd_addr) {
+  int idx = btif_hf_idx_by_bdaddr(bd_addr);
+  if ((btif_hf_cb[idx].audio_state == BTHF_AUDIO_STATE_CONNECTED) ||
+      (btif_hf_cb[idx].audio_state == BTHF_AUDIO_STATE_CONNECTING)) {
+      return true;
   }
   return false;
 }
@@ -359,6 +378,21 @@ bool getHfClientConnectionStatus() {
    return is_hf_client_device_connected();
 }
 
+BtStatus GetScoStreamStatus() {
+  CHECK_BTHF_INIT();
+  if (isScoManagedByAudio) {
+    log::error("GetScoStreamStatus before calling disconnectAudio");
+    for (int i = 0; i < btif_max_hf_clients; ++i) {
+      if ((btif_hf_cb[i].audio_state == BTHF_AUDIO_STATE_CONNECTED) ||
+        (btif_hf_cb[i].audio_state == BTHF_AUDIO_STATE_CONNECTING)) {
+        return BtifStatus();;
+      }
+    }
+  }
+  log::error("No active sco streaming");
+  return BtifStatus(DEVICE_NOT_FOUND);
+}
+
 /*******************************************************************************
  *
  * Function         btif_hf_upstreams_evt
@@ -436,18 +470,19 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
           if (p_data->open.bd_addr == btif_hf_cb[idx].connected_bda) {
             bluetooth::metrics::LogMetricHfpRfcommChannelFail(p_data->open.bd_addr);
             log::warn(
-                    "btif_hf_cb state[{}] is not expected, possible connection "
+                    "btif_hf_cb idx {} state[{}] is not expected, possible connection "
                     "collision, ignoring AG open failure event for the same device "
                     "{}",
-                    p_data->open.status, p_data->open.bd_addr);
+                    idx, p_data->open.status, p_data->open.bd_addr);
+            reset_control_block(&btif_hf_cb[idx]);
           } else {
             bluetooth::metrics::LogMetricHfpRfcommCollisionFail(p_data->open.bd_addr);
             log::warn(
-                    "btif_hf_cb state[{}] is not expected, possible connection "
+                    "btif_hf_cb idx {} state[{}] is not expected, possible connection "
                     "collision, ignoring AG open failure event for the different "
                     "devices btif_hf_cb bda: {}, p_data bda: {}, report disconnect "
                     "state for p_data bda.",
-                    p_data->open.status, btif_hf_cb[idx].connected_bda, p_data->open.bd_addr);
+                    idx, p_data->open.status, btif_hf_cb[idx].connected_bda, p_data->open.bd_addr);
             bt_hf_callbacks->ConnectionStateCallback(BTHF_CONNECTION_STATE_DISCONNECTED,
                                                      p_data->open.bd_addr, p_data->open.status);
             bluetooth::metrics::Counter(bluetooth::metrics::CounterKey::HFP_COLLISON_AT_AG_OPEN);
@@ -843,9 +878,11 @@ static void bte_hf_evt(tBTA_AG_EVT event, tBTA_AG* p_data) {
     param_len = sizeof(tBTA_AG_OPEN);
   } else if (BTA_AG_CONN_EVT == event) {
     param_len = sizeof(tBTA_AG_CONN);
-  } else if ((BTA_AG_CLOSE_EVT == event) || (BTA_AG_AUDIO_OPEN_EVT == event) ||
+  } else if ((BTA_AG_AUDIO_OPEN_EVT == event) ||
              (BTA_AG_AUDIO_CLOSE_EVT == event)) {
     param_len = sizeof(tBTA_AG_HDR);
+  } else if (BTA_AG_CLOSE_EVT == event) {
+    param_len = sizeof(tBTA_AG_CLOSE);
   } else if (p_data) {
     param_len = sizeof(tBTA_AG_VAL);
   }
@@ -1078,17 +1115,36 @@ BtStatus HeadsetInterface::ConnectAudio(const RawAddress bd_addr, int disabled_c
 
 BtStatus HeadsetInterface::DisconnectAudio(const RawAddress bd_addr) {
   CHECK_BTHF_INIT();
-  int idx = btif_hf_idx_by_bdaddr(bd_addr);
-  if ((idx < 0) || (idx >= BTA_AG_MAX_NUM_CLIENTS)) {
-    log::error("Invalid index {}", idx);
-    return BtifStatus(PARM_INVALID);
-  }
-  if (!is_connected(bd_addr)) {
-    log::error("{} is not connected", bd_addr);
-    return BtifStatus(DEVICE_NOT_FOUND);
-  }
-  BTA_AgAudioClose(btif_hf_cb[idx].handle);
-  return BtifStatus();
+  if (isScoManagedByAudio) {
+    log::error("Disconnect audio for new sco management");
+    for (int i = 0; i < btif_max_hf_clients; ++i) {
+      if ((btif_hf_cb[i].state == BTHF_CONNECTION_STATE_CONNECTED) ||
+         (btif_hf_cb[i].state == BTHF_CONNECTION_STATE_SLC_CONNECTED)) {
+        log::error("Device connected for index {}", i);
+        const RawAddress addr = btif_hf_cb[i].connected_bda;
+        if (is_sco_connected(addr)) {
+          log::error(" sco connected for address {}", addr);
+          BTA_AgAudioClose(btif_hf_cb[i].handle);
+          return BtifStatus();
+        } else {
+          continue;
+        }
+     }
+   }
+   return BtifStatus();
+  } else {
+    int idx = btif_hf_idx_by_bdaddr(bd_addr);
+    if ((idx < 0) || (idx >= BTA_AG_MAX_NUM_CLIENTS)) {
+      log::error("Invalid index {}", idx);
+      return BtifStatus(PARM_INVALID);
+    }
+    if (!is_connected(bd_addr)) {
+      log::error("{} is not connected", bd_addr);
+      return BtifStatus(DEVICE_NOT_FOUND);
+    }
+    BTA_AgAudioClose(btif_hf_cb[idx].handle);
+    return BtifStatus();
+ }
 }
 
 BtStatus HeadsetInterface::isNoiseReductionSupported(const RawAddress bd_addr) {
@@ -1711,6 +1767,7 @@ BtStatus HeadsetInterface::DebugDump() {
 
 BtStatus HeadsetInterface::SetIsScoManagedByAudio(bool value) {
   CHECK_BTHF_INIT();
+  isScoManagedByAudio = value;
   BTA_AgSetIsScoManagedByAudio(value);
   return BtifStatus();
 }

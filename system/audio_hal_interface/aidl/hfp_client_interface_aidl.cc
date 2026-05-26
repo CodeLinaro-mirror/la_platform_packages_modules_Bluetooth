@@ -199,14 +199,22 @@ BluetoothAudioCtrlAck HfpTransport::SuspendRequest() {
     log::error("headset instance is nullptr");
     return BluetoothAudioCtrlAck::FAILURE;
   }
+  auto streamstatus = bluetooth::headset::GetScoStreamStatus();
   auto status = instance->DisconnectAudio(addr);
   log::info("DisconnectAudio status = {}", status);
   // once disconnect audio is queued, not waiting on that
   // because disconnect audio request can come when audio is disconnected
   hfp_pending_cmd_ = HFP_CTRL_CMD_NONE;
   if (status) {
-    LogMetricHfpSuspendStream(addr);
-    return BluetoothAudioCtrlAck::SUCCESS_FINISHED;
+    if (streamstatus) {
+      log::info("There is an ongoing SCO. Need to ack pending");
+      LogMetricHfpSuspendStream(addr);
+      hfp_pending_cmd_ = HFP_CTRL_CMD_SUSPEND;
+      return BluetoothAudioCtrlAck::PENDING;
+    } else {
+      log::info("No active SCO. Acking success");
+      return BluetoothAudioCtrlAck::SUCCESS_FINISHED;
+    }
   } else {
     return BluetoothAudioCtrlAck::FAILURE;
   }

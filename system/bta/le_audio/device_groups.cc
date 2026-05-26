@@ -810,7 +810,8 @@ uint8_t LeAudioDeviceGroup::GetPhyBitmask(uint8_t direction) const {
     phy_bitfield |= bluetooth::hci::kIsoCigPhy2M;
   }
   bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
-  if (hdt_enabled && controller && controller->SupportsBleHDTPhy()) {
+  if (hdt_enabled && controller && controller->SupportsBleHDTPhy() &&
+        GetConfigurationContextType() == LeAudioContextType::MEDIA) {
     log::info("LeAudioDeviceGroup::GetPhyBitmask: add HDT to local supp bitfield");
     phy_bitfield |= bluetooth::hci::kIsoCigPhyHdt;
   }

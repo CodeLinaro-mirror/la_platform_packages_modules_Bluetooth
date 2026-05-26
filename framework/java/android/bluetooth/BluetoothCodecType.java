@@ -23,6 +23,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresNoPermission;
 import android.annotation.SystemApi;
+import android.annotation.SuppressLint;
 import android.os.Parcel;
 import android.os.Parcelable;
 
@@ -79,9 +80,8 @@ public final class BluetoothCodecType implements Parcelable {
     /** Opus codec identifier. See {@link BluetoothCodecType#getCodecId}. */
     public static final long CODEC_ID_OPUS = 0x000100e0ff;
 
-    /** Aptx Adaptive codec identifier. See {@link BluetoothCodecType#getCodecId}.
-    * @hide
-    */
+    /** Aptx Adaptive codec identifier. See {@link BluetoothCodecType#getCodecId}. */
+    @SuppressLint("UnflaggedApi")
     public static final long CODEC_ID_APTX_AD = 0x00ad00d7ff;
 
     /** LHDC codec identifier. See {@link BluetoothCodecType#getCodecId}. */
@@ -97,6 +97,7 @@ public final class BluetoothCodecType implements Parcelable {
         CODEC_ID_LDAC,
         CODEC_ID_SONY_LDAC,
         CODEC_ID_OPUS,
+        CODEC_ID_APTX_AD,
         CODEC_ID_LHDCV5,
     })
     public @interface CodecId {}
@@ -274,6 +275,11 @@ public final class BluetoothCodecType implements Parcelable {
             return new BluetoothCodecType(
                     BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_HD, CODEC_ID_APTX_HD, "AptX HD");
         }
+        if (codecId == CODEC_ID_APTX_AD) {
+            return new BluetoothCodecType(
+                    BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE, CODEC_ID_APTX_AD, "aptX Adaptive");
+        }
+
         if (Flags.a2dpLdacApi()) {
             if (codecId == CODEC_ID_SONY_LDAC) {
                 return new BluetoothCodecType(

@@ -550,6 +550,7 @@ public class VolumeControlService extends ConnectableProfile {
         // We only receive the volume change and mute state needs to be acquired manually
         Boolean isGroupMute = getGroupMute(groupId);
         Boolean isStreamMute = mAudioManager.isStreamMute(streamType);
+        Boolean isAnyStreamTypeMuted = isAnyStreamMutedInGroup(groupId);
 
         /* Note: AudioService keeps volume levels for each stream and for each device type,
          * however it stores the mute state only for the stream type but not for each individual
@@ -576,6 +577,9 @@ public class VolumeControlService extends ConnectableProfile {
                 Log.i(TAG, "Unmute the group " + groupId);
                 unmuteGroup(groupId);
             }
+        } else if (!isStreamMute && (volume > 0) && isAnyStreamTypeMuted) {
+            Log.i(TAG, "Unmute the group " + groupId + " for all stream types");
+            unmuteGroupForAllStreamTypes(groupId);
         } else {
             for (BluetoothDevice device : getGroupDevices(groupId)) {
                 adjustDeviceMute(device, volume, isStreamMute);
@@ -682,6 +686,37 @@ public class VolumeControlService extends ConnectableProfile {
         }
     }
 
+    /**
+     * @return true if any stream type is muted for the group across all cached stream types.
+     *     Checks group cache first, then falls back to per-device cache.
+     */
+    @VisibleForTesting
+    Boolean isAnyStreamMutedInGroup(int groupId) {
+        synchronized (mDeviceMuteCache) {
+            boolean anyMutedInGroup =
+                    mGroupMuteCache
+                            .getOrDefault(groupId, Collections.emptyMap())
+                            .values()
+                            .stream()
+                            .anyMatch(Boolean.TRUE::equals);
+            if (anyMutedInGroup) {
+                return true;
+            }
+            for (BluetoothDevice device : getGroupDevices(groupId)) {
+                boolean anyMutedOnDevice =
+                        mDeviceMuteCache
+                                .getOrDefault(device, Collections.emptyMap())
+                                .values()
+                                .stream()
+                                .anyMatch(Boolean.TRUE::equals);
+                if (anyMutedOnDevice) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     @VisibleForTesting
     void mute(BluetoothDevice device) {
         mDeviceMuteCache
@@ -725,6 +760,21 @@ public class VolumeControlService extends ConnectableProfile {
                 mDeviceMuteCache
                         .computeIfAbsent(dev, k -> new ConcurrentHashMap<>())
                         .put(streamType, false);
+            }
+        }
+        mNativeInterface.unmuteGroup(groupId);
+    }
+
+    @VisibleForTesting
+    void unmuteGroupForAllStreamTypes(int groupId) {
+        synchronized (mDeviceMuteCache) {
+            mGroupMuteCache
+                    .computeIfAbsent(groupId, k -> new ConcurrentHashMap<>())
+                    .replaceAll((streamType, mute) -> false);
+            for (BluetoothDevice dev : getGroupDevices(groupId)) {
+                mDeviceMuteCache
+                        .computeIfAbsent(dev, k -> new ConcurrentHashMap<>())
+                        .replaceAll((streamType, mute) -> false);
             }
         }
         mNativeInterface.unmuteGroup(groupId);

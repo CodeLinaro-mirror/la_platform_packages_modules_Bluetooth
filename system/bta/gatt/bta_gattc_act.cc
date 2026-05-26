@@ -596,7 +596,9 @@ void bta_gattc_disc_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_DATA* /* p_da
   }
 
   /* Make sure that if there is any queued gatt command. If it is, let's execute it. */
-  bta_gattc_continue(p_clcb);
+  if (p_clcb->p_q_cmd == nullptr) {
+    bta_gattc_continue(p_clcb);
+  }
 
   if (p_clcb->p_rcb->p_cback) {
     tBTA_GATTC bta_gattc = {

@@ -596,6 +596,13 @@ size_t BluetoothAudioSinkClientInterface::ReadAudioData(uint8_t* p_buf, uint32_t
 void BluetoothAudioClientInterface::RenewAudioProviderAndSession() {
   // NOTE: must be invoked on the same thread where this
   // BluetoothAudioClientInterface is running
+  if (session_started_) {
+    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_STREAM_INDICATION,
+        0x01, std::vector<uint8_t>());
+  }
+  FetchAudioProvider();
+
+  //Need to reset any pending command if present on renewal of provider session
   if (transport_->GetSessionType() == SessionType::HFP_SOFTWARE_DECODING_DATAPATH) {
     log::info("Restart the pending command for HFP_SOFTWARE_DECODING_DATAPATH");
     static_cast<HfpDecodingTransport*>(transport_)->ResetPendingCmd();
@@ -606,12 +613,6 @@ void BluetoothAudioClientInterface::RenewAudioProviderAndSession() {
     log::info("Restart the pending command for HFP_HARDWARE_OFFLOAD_DATAPATH");
     static_cast<HfpEncodingTransport*>(transport_)->ResetPendingCmd();
   }
-
-  if (session_started_) {
-    bluetooth::le_audio::send_vs_cmd(LTV_TYPE_STREAM_INDICATION,
-        0x01, std::vector<uint8_t>());
-  }
-  FetchAudioProvider();
 
   if (session_started_) {
     log::info("Restart the session while audio HAL recovering");

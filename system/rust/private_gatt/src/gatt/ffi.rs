@@ -248,7 +248,7 @@ impl Handler {
 pub struct PrivateGattServerManager {
     handler: Handler,
     thread: Option<std::thread::JoinHandle<()>>,
-    arbiter: RegisteredArbiter,
+    arbiter: Option<RegisteredArbiter>,
 }
 
 /// This is the main entry point.  `callbacks` holds the necessary callbacks that are used to notify
@@ -267,7 +267,7 @@ pub fn new_private_gatt_server_manager(
     let thread = std::thread::spawn(move || {
         PrivateGattServerManager::run(Rc::new(GattCallbacksImpl(callbacks)), rx, isolation_manager)
     });
-    Box::new(PrivateGattServerManager { handler, thread: Some(thread), arbiter })
+    Box::new(PrivateGattServerManager { handler, thread: Some(thread), arbiter: Some(arbiter) })
 }
 
 impl PrivateGattServerManager {
@@ -455,14 +455,21 @@ impl PrivateGattServerManager {
     }
 
     fn is_connection_isolated(&self, conn_id: u16) -> bool {
-        self.arbiter.with_arbiter(|arbiter| {
-            arbiter.is_connection_isolated(ConnectionId(conn_id).get_tcb_idx())
-        })
+        self.arbiter
+            .as_ref()
+            .map(|arbiter| {
+                arbiter.with_arbiter(|a| {
+                    a.is_connection_isolated(ConnectionId(conn_id).get_tcb_idx())
+                })
+            })
+            .unwrap_or(false)
     }
 }
 
 impl Drop for PrivateGattServerManager {
     fn drop(&mut self) {
+        drop(self.arbiter.take());
+
         if let Some(thread) = self.thread.take() {
             // This should make the thread terminate.
             self.handler.0.send(None).unwrap();

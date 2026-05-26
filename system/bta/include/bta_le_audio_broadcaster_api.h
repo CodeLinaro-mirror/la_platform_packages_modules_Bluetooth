@@ -53,6 +53,7 @@ public:
                               const std::vector<uint8_t>& public_metadata,
                               const std::vector<std::vector<uint8_t>>& subgroup_metadata) = 0;
   virtual bool IsLeAudioBroadcastActive(void) = 0;
+  virtual bool IsLeAudioBroadcastStreaming(void) = 0;
 
   virtual void SetStreamingPhy(uint8_t phy) = 0;
   virtual uint8_t GetStreamingPhy(void) const = 0;

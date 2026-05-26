@@ -627,7 +627,7 @@ tBTM_STATUS BTM_SwitchRoleToCentral(const RawAddress& remote_bd_addr) {
  * Returns          void
  *
  ******************************************************************************/
-void btm_acl_encrypt_change(uint16_t handle, uint8_t /* status */, uint8_t encr_enable) {
+void btm_acl_encrypt_change(uint16_t handle, uint8_t status , uint8_t encr_enable) {
   tACL_CONN* p = internal_.acl_get_connection_from_handle(handle);
   if (p == nullptr) {
     log::warn("Unable to find active acl");
@@ -651,6 +651,11 @@ void btm_acl_encrypt_change(uint16_t handle, uint8_t /* status */, uint8_t encr_
   }
 
   p->is_encrypted = encr_enable;
+
+  if (encr_enable == 1 && status == HCI_SUCCESS) {
+    log::warn("BTA_dm_acl_encrypt_change handle:" "0x{:x}", handle);
+    BTA_dm_acl_encrypt_change(p->RemoteAddress());
+  }
 
   /* Process Role Switch if active */
   if (p->switch_role_state_ == BtmAclSwitchKeyState::kEncryptionOff) {

@@ -248,6 +248,12 @@ bool IsCodecOffloadingEnabled(const CodecConfiguration& codec_config) {
         auto aptx_config = codec_config.config.get<CodecConfiguration::CodecSpecific::aptxConfig>();
         return aptx_offloading_capability_match(aptx_capability, aptx_config);
       }
+      case CodecType::APTX_ADAPTIVE: {
+        auto aptx_ad_capability = codec_capability.capabilities
+                                       .get<CodecCapabilities::Capabilities::aptxAdaptiveCapabilities>();
+        auto aptx_ad_config = codec_config.config.get<CodecConfiguration::CodecSpecific::aptxAdaptiveConfig>();
+        return aptx_ad_offloading_capability_match(aptx_ad_capability, aptx_ad_config);
+      }
       case CodecType::LDAC: {
         auto ldac_capability = codec_capability.capabilities
                                        .get<CodecCapabilities::Capabilities::ldacCapabilities>();
@@ -764,6 +770,10 @@ bool getHalCodecConfiguration(const ahal_codec_configuration& config,
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX:
     case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD:
       return A2dpAptxToHalConfig(config, codec_configuration) &&
+             IsCodecOffloadingEnabled(*codec_configuration);
+
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE:
+      return A2dpAptxAdaptiveToHalConfig(config, codec_configuration) &&
              IsCodecOffloadingEnabled(*codec_configuration);
 
     case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:

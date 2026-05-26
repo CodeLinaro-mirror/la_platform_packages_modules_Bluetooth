@@ -129,8 +129,10 @@ static bool a2dp_lhdcv5_read_feeding(uint8_t* read_buffer, uint32_t* bytes_read)
 static std::string quality_mode_index_to_name(uint32_t quality_mode_index);
 
 bool A2DP_VendorLoadEncoderLhdcV5(void) {
-  // Initialize the control block
-  memset(&a2dp_lhdc_encoder_cb, 0, sizeof(a2dp_lhdc_encoder_cb));
+  // Only reset the control block if the encoder is not currently in use.
+  if (!a2dp_lhdc_encoder_cb.has_lhdc_handle) {
+    memset(&a2dp_lhdc_encoder_cb, 0, sizeof(a2dp_lhdc_encoder_cb));
+  }
   return true;
 }
 

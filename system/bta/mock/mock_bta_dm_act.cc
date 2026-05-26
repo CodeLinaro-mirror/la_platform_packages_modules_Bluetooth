@@ -47,6 +47,7 @@ struct BTA_dm_acl_down BTA_dm_acl_down;
 struct BTA_dm_acl_up BTA_dm_acl_up;
 struct BTA_dm_acl_up_failed BTA_dm_acl_up_failed;
 struct BTA_dm_notify_remote_features_complete BTA_dm_notify_remote_features_complete;
+struct BTA_dm_acl_encrypt_change BTA_dm_acl_encrypt_change;
 struct BTA_dm_on_hw_off BTA_dm_on_hw_off;
 struct BTA_dm_on_hw_on BTA_dm_on_hw_on;
 struct BTA_dm_remove_on_disconnect BTA_dm_remove_on_disconnect;
@@ -104,6 +105,10 @@ void BTA_dm_acl_up_failed(const AclLinkSpec& link_spec, tHCI_STATUS hci_status,
 void BTA_dm_notify_remote_features_complete(const RawAddress bd_addr) {
   inc_func_call_count(__func__);
   test::mock::bta_dm_act::BTA_dm_notify_remote_features_complete(bd_addr);
+}
+void BTA_dm_acl_encrypt_change(const RawAddress bd_addr) {
+  inc_func_call_count(__func__);
+  test::mock::bta_dm_act::BTA_dm_acl_encrypt_change(bd_addr);
 }
 void BTA_dm_on_hw_off() {
   inc_func_call_count(__func__);

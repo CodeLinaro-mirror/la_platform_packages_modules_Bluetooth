@@ -85,6 +85,11 @@ static CodecId sco_codec_to_hal_codec(tBTA_AG_UUID_CODEC sco_codec) {
       return CodecId::Core::MSBC;
     case tBTA_AG_UUID_CODEC::UUID_CODEC_CVSD:
       return CodecId::Core::CVSD;
+    case tBTA_AG_UUID_CODEC::BTA_AG_SCO_APTX_SWB_SETTINGS_Q0:
+      return CodecId::Vendor({
+        .id = HFP_APTX_VOICE_SWB_VENDOR_ID,
+        .codecId = HFP_APTX_VOICE_SWB_CODEC_ID_BLUETOOTH,
+      });
     default:
       log::warn("Unknown sco_codec {}, defaulting to vendor codec",
                 bta_ag_uuid_codec_text(sco_codec));

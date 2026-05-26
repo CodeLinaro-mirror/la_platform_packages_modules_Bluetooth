@@ -65,6 +65,12 @@ ProviderInfo::ProviderInfo(SessionType sessionType, std::vector<CodecInfo> codec
           sessionType == SessionType::HFP_SOFTWARE_DECODING_DATAPATH) {
         hfpScoConfigMap[tBTA_AG_UUID_CODEC::UUID_CODEC_LC3] = recordHfpCodecInfo(codecInfo);
       }
+    } else if (codecInfo.id.getTag() == CodecId::vendor) {
+      auto vendor_codec_id = codecInfo.id.get<CodecId::vendor>();
+      if (vendor_codec_id.id == HFP_APTX_VOICE_SWB_VENDOR_ID &&
+          vendor_codec_id.codecId == HFP_APTX_VOICE_SWB_CODEC_ID_BLUETOOTH) {
+        hfpScoConfigMap[tBTA_AG_UUID_CODEC::BTA_AG_SCO_APTX_SWB_SETTINGS_Q0] = recordHfpCodecInfo(codecInfo);
+      }
     }
   }
 }

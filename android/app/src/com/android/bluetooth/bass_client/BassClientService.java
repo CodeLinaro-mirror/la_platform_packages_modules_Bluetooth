@@ -205,7 +205,6 @@ public class BassClientService extends ConnectableProfile {
     private DialingOutTimeoutEvent mDialingOutTimeoutEvent = null;
     private final Map<Integer, ReactivateGroupMonitor> mReactivateGroupMonitors =
             new ConcurrentHashMap<>();
-    private final Map<BluetoothDevice, Boolean> mEncryptionStates = new ConcurrentHashMap<>();
 
     private record PendingSourceToAddByUri(
             BluetoothDevice sink,
@@ -252,7 +251,6 @@ public class BassClientService extends ConnectableProfile {
                                         + device
                                         + " state: "
                                         + encryptionState);
-                        mEncryptionStates.put(device, encryptionState);
                         synchronized (mStateMachines) {
                             BassClientStateMachine sm = mStateMachines.get(device);
                             if (sm != null) {
@@ -709,7 +707,7 @@ public class BassClientService extends ConnectableProfile {
     }
 
     public boolean isEncrypted(BluetoothDevice device) {
-        return mEncryptionStates.getOrDefault(device, false);
+        return device.getEncryptionStatus(BluetoothDevice.TRANSPORT_LE) != null;
     }
 
     public BassClientService(AdapterService adapterService, ScanController scanController) {
@@ -998,7 +996,6 @@ public class BassClientService extends ConnectableProfile {
                 Log.w(TAG, "mNfcJoinReceiver not registered");
             }
         }
-        mEncryptionStates.clear();
         mReactivateGroupMonitors.forEach((k, v) -> mHandler.removeCallbacks(v));
         mReactivateGroupMonitors.clear();
         mSyncStatusMap.clear();
@@ -2259,7 +2256,6 @@ public class BassClientService extends ConnectableProfile {
 
         // Check if the device is disconnected - if unbond, remove the state machine
         if (toState == STATE_DISCONNECTED) {
-            mEncryptionStates.remove(device);
             synchronized (mPendingGroupOp) {
                 mPendingGroupOp.remove(device);
             }

@@ -42,7 +42,9 @@
 #include <unistd.h>
 
 #include "btif_api.h"
+#include "btif_storage.h"
 #include "stack/include/gap_api.h"
+#include "stack/include/btm_sec_api.h"
 
 using namespace bluetooth;
 #include <bt_testapp.h>
@@ -59,10 +61,26 @@ static void Gap_BleAttrDBUpdate(RawAddress p_bda, uint16_t int_min,
   L2CA_UpdateBleConnParams(p_bda, 50, 70, 0, 1000, 0, 0);
 }
 
+static bool Gap_IsBonded(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
+  bool bonded = get_security_client_interface().BTM_IsBonded(bd_addr, transport);
+  if (!bonded || transport != BT_TRANSPORT_LE) {
+    log::info("bd_addr={}, transport={}, bonded={}", bd_addr, transport, bonded);
+    return bonded;
+  }
+
+  tBTA_LE_KEY_VALUE key = {};
+  bool pid_key_existing = btif_storage_get_ble_bonding_key(bd_addr, BTM_LE_KEY_PID,
+      reinterpret_cast<uint8_t*>(&key), sizeof(tBTM_LE_PID_KEYS)) == BT_STATUS_SUCCESS;
+  log::info("bd_addr={}, transport={}, pid_key_existing={}",
+      bd_addr, transport, pid_key_existing);
+  return pid_key_existing;
+}
+
 static const btgap_interface_t btgapInterface = {
     sizeof(btgap_interface_t),
     GapAttrInit,
     Gap_BleAttrDBUpdate,
+    Gap_IsBonded,
 };
 
 const btgap_interface_t* btif_gap_get_interface(void) {

@@ -216,6 +216,7 @@ typedef struct {
   void (*Gap_BleAttrDBUpdate)(RawAddress bd_addr, uint16_t int_min,
                               uint16_t int_max, uint16_t latency,
                               uint16_t sp_tout);
+  bool (*Gap_IsBonded)(const RawAddress& bd_addr, tBT_TRANSPORT transport);
 } btgap_interface_t;
 
 #endif

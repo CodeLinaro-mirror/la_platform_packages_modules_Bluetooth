@@ -41,6 +41,7 @@
 #include "bta/gatt/database.h"
 #include "device/include/interop.h"
 #include "internal_include/bt_target.h"
+#include "internal_include/stack_config.h"
 #include "osi/include/allocator.h"
 #include "stack/btm/btm_sec.h"
 #include "stack/include/bt_types.h"
@@ -243,6 +244,10 @@ static void bta_gattc_explore_next_service(tCONN_ID conn_id, tBTA_GATTC_SERV* p_
     // set request field to READ_EXT_PROP_DESC
     p_clcb->request_during_discovery = BTA_GATTC_DISCOVER_REQ_READ_EXT_PROP_DESC;
 
+    if (stack_config_get_interface()->get_pts_gatt_read_multiple_not_supported_during_discovery()) {
+      p_srvc_cb->read_multiple_not_supported = true;
+      log::info("pts, read_multiple_not_supported");
+    }
     if (p_srvc_cb->read_multiple_not_supported || descriptors.size() == 1) {
       tGATT_READ_PARAM read_param{
               .by_handle = {.auth_req = GATT_AUTH_REQ_NONE, .handle = descriptors.front()}};

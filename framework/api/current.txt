@@ -519,6 +519,7 @@ package android.bluetooth {
     method public void writeToParcel(@NonNull android.os.Parcel, int);
     field public static final long CODEC_ID_AAC = 2L; // 0x2L
     field public static final long CODEC_ID_APTX = 16797695L; // 0x1004fffL
+    field public static final long CODEC_ID_APTX_AD = -1392453633L; // 0xffffffffad00d7ffL
     field public static final long CODEC_ID_APTX_HD = 604035071L; // 0x2400d7ffL
     field @Deprecated @FlaggedApi("com.android.bluetooth.flags.a2dp_ldac_api") public static final long CODEC_ID_LDAC = -1442763265L; // 0xffffffffaa012dffL
     field public static final long CODEC_ID_LHDCV5 = 327307049727L; // 0x4c35053affL

@@ -405,7 +405,7 @@ constexpr uint8_t kTargetPhyUndefined = 0x00;
 constexpr uint8_t kTargetPhy1M = 0x01;
 constexpr uint8_t kTargetPhy2M = 0x02;
 constexpr uint8_t kTargetPhyCoded = 0x03;
-constexpr uint8_t kTargetPhyHdt = 0x04;
+constexpr uint8_t kTargetPhyHdt = 0x05;
 
 constexpr uint32_t kPresDelayNoPreference = 0x00000000;
 

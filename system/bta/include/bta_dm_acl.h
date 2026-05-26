@@ -32,3 +32,4 @@ void BTA_dm_report_role_change(const RawAddress bd_addr, tHCI_ROLE new_role,
                                tHCI_STATUS hci_status);
 void BTA_dm_notify_remote_features_complete(const RawAddress bd_addr);
 void BTA_dm_remove_on_disconnect(const AclLinkSpec& link_spec);
+void BTA_dm_acl_encrypt_change(const RawAddress bd_addr);

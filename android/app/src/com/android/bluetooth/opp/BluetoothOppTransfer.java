@@ -108,6 +108,12 @@ public class BluetoothOppTransfer implements BluetoothOppBatch.BluetoothOppBatch
                                     + mCurrentShare);
                     return;
                 }
+                int transport = intent.getIntExtra(
+                        BluetoothDevice.EXTRA_TRANSPORT, BluetoothDevice.TRANSPORT_AUTO);
+                if (transport == BluetoothDevice.TRANSPORT_LE) {
+                    Log.v(TAG, "Ignoring LE ACL disconnect for OPP BR/EDR session");
+                    return;
+                }
                 try {
                     Log.v(
                             TAG,

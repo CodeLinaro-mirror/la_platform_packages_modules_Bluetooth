@@ -61,7 +61,7 @@ static const tA2DP_LHDCV5_CIE a2dp_lhdcv5_source_caps = {
         .vendorId = A2DP_LHDC_VENDOR_ID,
         .codecId = A2DP_LHDCV5_CODEC_ID,
         .sampleRate = A2DP_LHDCV5_SAMPLING_FREQ_44100 | A2DP_LHDCV5_SAMPLING_FREQ_48000 |
-                      A2DP_LHDCV5_SAMPLING_FREQ_96000 | A2DP_LHDCV5_SAMPLING_FREQ_192000,
+                      A2DP_LHDCV5_SAMPLING_FREQ_96000,
         .bitsPerSample = A2DP_LHDCV5_BIT_FMT_16 | A2DP_LHDCV5_BIT_FMT_24,
         .channelMode = A2DP_LHDCV5_CHANNEL_MODE_STEREO,
         .version = A2DP_LHDCV5_VER_1,

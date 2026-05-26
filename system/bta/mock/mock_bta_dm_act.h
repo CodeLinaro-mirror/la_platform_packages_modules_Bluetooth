@@ -94,6 +94,15 @@ struct BTA_dm_notify_remote_features_complete {
 };
 extern struct BTA_dm_notify_remote_features_complete BTA_dm_notify_remote_features_complete;
 
+// Name: BTA_dm_acl_encrypt_change
+// Params: const RawAddress bd_addr
+// Return: void
+struct BTA_dm_acl_encrypt_change {
+  std::function<void(const RawAddress bd_addr)> body{[](const RawAddress /* bd_addr */) {}};
+  void operator()(const RawAddress bd_addr) { body(bd_addr); }
+};
+extern struct BTA_dm_acl_encrypt_change BTA_dm_acl_encrypt_change;
+
 // Name: BTA_dm_on_hw_off
 // Params:
 // Return: void

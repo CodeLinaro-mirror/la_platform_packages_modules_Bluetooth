@@ -45,6 +45,7 @@ typedef struct {
   bool (*get_pts_l2cap_ecoc_connect_remaining)(void);
   bool (*get_pts_rfcomm_rls_check)(void);
   bool (*get_pts_bcs_rej_write_req)(void);
+  bool (*get_pts_l2cap_silent_discard)(void);
   bool (*get_pts_bcs_ranging_select)(void);
   bool (*get_pts_foc_data_write)(void);
   bool (*get_enable_ind_ras_real_time)(void);
@@ -55,6 +56,8 @@ typedef struct {
   bool(*get_pts_gatt_skip_service_discovery)(void);
   bool (*get_pts_configure_svc_chg_indication)(void);
   bool (*get_pts_DB_out_of_sync)(void);
+  bool (*get_pts_gatt_read_multiple_not_supported_during_discovery)(void);
+  bool (*get_pts_l2cap_le_malformed_pdu)(void);
 } stack_config_t;
 
 extern const stack_config_t* stack_config_get_interface(void);

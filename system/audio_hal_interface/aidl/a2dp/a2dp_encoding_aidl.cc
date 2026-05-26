@@ -63,7 +63,6 @@ using ::aidl::android::hardware::bluetooth::audio::PcmConfiguration;
 using ::aidl::android::hardware::bluetooth::audio::SessionType;
 
 using ::bluetooth::audio::aidl::a2dp::BluetoothAudioClientInterface;
-using ::bluetooth::audio::aidl::a2dp::codec::A2dpAptxAdaptiveToHalConfig;
 using ::bluetooth::audio::aidl::a2dp::codec::getHalCodecConfiguration;
 using ::bluetooth::audio::aidl::a2dp::codec::getHalPcmConfiguration;
 

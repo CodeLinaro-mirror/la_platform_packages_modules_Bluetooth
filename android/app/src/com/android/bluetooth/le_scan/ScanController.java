@@ -863,6 +863,7 @@ public class ScanController {
             Log.e(TAG, "Error enabling advertisement monitor");
         } else {
             mIsMsftAdvMonitorEnabled = enable;
+            mScanManager.restartScan("onMsftAdvMonitorEnable");
         }
     }
 

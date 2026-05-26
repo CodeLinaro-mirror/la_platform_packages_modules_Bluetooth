@@ -48,6 +48,7 @@ const char* PTS_L2CAP_ECOC_MIN_KEY_SIZE = "PTS_L2capEcocMinKeySize";
 const char* PTS_L2CAP_ECOC_INITIAL_CHAN_CNT = "PTS_L2capEcocInitialChanCnt";
 const char* PTS_RFCOMM_SEND_RLS = "PTS_RFCOMM_send_rls";
 const char* PTS_REJ_WRITE_REQ = "PTS_BCS_Rej_Write_req";
+const char* PTS_L2CAP_SILENT_DISCARD = "PTS_L2CAP_SilentDiscard";
 const char* PTS_BCS_RANGING_SELECT = "PTS_BCS_RangingSelect";
 const char* PTS_ENB_IND_RAS = "PTS_BCSenablingind";
 const char* PTS_FOC_DATA_WRITE = "PTS_FOCdatawrite";
@@ -60,6 +61,9 @@ const char* PTS_GATT_SKIP_SERVICE_DISCOVERY_DURING_CONN =
         "PTS_SkipServiceDiscoveryDuringConnection";
 const char* PTS_CONFIGURE_SERVICE_CHG_INDICATION = "PTS_ConfigureServiceChangeIndication";
 const char* PTS_DB_OUT_OF_SYNC = "PTS_DBOutOfSync";
+const char* PTS_GATT_READ_MULTIPLE_NOT_SUPPORTED_DURING_DISCOVERY =
+        "PTS_GattReadMultipleNotSupportedDuringDiscovery";
+const char* PTS_L2CAP_LE_MALFORMED_PDU = "PTS_L2capLeMalformedPdu";
 
 static std::unique_ptr<config_t> config;
 }  // namespace
@@ -190,6 +194,10 @@ static bool get_pts_bcs_rej_write_req(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_REJ_WRITE_REQ, false);
 }
 
+static bool get_pts_l2cap_silent_discard(void) {
+  return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_L2CAP_SILENT_DISCARD, false);
+}
+
 static bool get_pts_bcs_ranging_select(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_BCS_RANGING_SELECT, false);
 }
@@ -234,8 +242,17 @@ static bool get_pts_DB_out_of_sync(void){
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_DB_OUT_OF_SYNC, false);
  }
 
+static bool get_pts_gatt_read_multiple_not_supported_during_discovery(void) {
+  return config_get_bool(*config, CONFIG_DEFAULT_SECTION,
+                         PTS_GATT_READ_MULTIPLE_NOT_SUPPORTED_DURING_DISCOVERY, false);
+}
+
 static bool get_pts_gatt_skip_service_discovery(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_GATT_SKIP_SERVICE_DISCOVERY_DURING_CONN, false);
+}
+
+static bool get_pts_l2cap_le_malformed_pdu(void) {
+  return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_L2CAP_LE_MALFORMED_PDU, false);
 }
 
 const stack_config_t interface = {get_pts_avrcp_test,
@@ -257,6 +274,7 @@ const stack_config_t interface = {get_pts_avrcp_test,
                                   get_pts_l2cap_ecoc_connect_remaining,
                                   get_pts_rfcomm_rls_check,
                                   get_pts_bcs_rej_write_req,
+                                  get_pts_l2cap_silent_discard,
                                   get_pts_bcs_ranging_select,
                                   get_enable_ind_ras_real_time,
                                   get_pts_foc_data_write,
@@ -266,6 +284,8 @@ const stack_config_t interface = {get_pts_avrcp_test,
                                   get_pts_le_audio_disable_ases_before_stopping,
                                   get_pts_gatt_skip_service_discovery,
                                   get_pts_configure_svc_chg_indication,
-                                  get_pts_DB_out_of_sync};
+                                  get_pts_DB_out_of_sync,
+                                  get_pts_gatt_read_multiple_not_supported_during_discovery,
+                                  get_pts_l2cap_le_malformed_pdu};
 
 const stack_config_t* stack_config_get_interface(void) { return &interface; }

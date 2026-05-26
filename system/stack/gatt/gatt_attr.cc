@@ -354,18 +354,18 @@ static tGATT_STATUS proc_write_req(tCONN_ID conn_id, uint16_t handle, uint8_t* v
     return GATT_WRITE_NOT_PERMIT;
   }
 
-  if (com_android_bluetooth_flags_gatt_add_cccd_on_service_changed() &&
-      handle == gatt_cb.handle_of_srv_changed_cccd) {
-    /* GATT_UUID_GATT_SRV_CHGD CCCD*/
-    log::verbose("Write: cccd of service changed");
-    return GATT_SUCCESS;
-  }
-
   /* GATT_UUID_CHAR_CLIENT_CONFIG */
   if (stack_config_get_interface()->get_pts_configure_svc_chg_indication()) {
     if (handle == gatt_cb.handle_of_srv_changed_cccd) {
       return gatt_sr_write_cccd(conn_id, value, len);
     }
+  }
+
+  if (com_android_bluetooth_flags_gatt_add_cccd_on_service_changed() &&
+      handle == gatt_cb.handle_of_srv_changed_cccd) {
+    /* GATT_UUID_GATT_SRV_CHGD CCCD*/
+    log::verbose("Write: cccd of service changed");
+    return GATT_SUCCESS;
   }
 
   return GATT_NOT_FOUND;

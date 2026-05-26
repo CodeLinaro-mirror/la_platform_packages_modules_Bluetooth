@@ -66,6 +66,7 @@ static constexpr uint16_t kStateFlagIsBroadcastSink = 0x80;
 static constexpr uint16_t kStateFlagIsCancelled = 0x20;
 static constexpr uint16_t kStateFlagSettingDataPath = 0x40;
 static constexpr uint16_t kStateFlagIsRejecting = 0x0100;
+static constexpr uint8_t kPhyHdt = 0x10;
 
 static constexpr IsoClientHandle kDefaultClientHandle = 1;
 
@@ -433,8 +434,17 @@ struct iso_impl {
       cig_id_to_group_map_[cig_id] = std::move(group);
     }
 
+    uint8_t phy_c_to_p_or = 0;
+    uint8_t phy_p_to_c_or = 0;
+    for (const auto& cfg : cig_params.cis_cfgs) {
+        phy_c_to_p_or |= cfg.phy_c_to_p;
+        phy_p_to_c_or |= cfg.phy_p_to_c;
+    }
+    log::debug(" phy_c_to_p_or: {} phy_p_to_c_or: {}", phy_c_to_p_or, phy_p_to_c_or);
+    bool isPhyHdt = (phy_c_to_p_or & kPhyHdt) || (phy_p_to_c_or & kPhyHdt);
+    log::debug(" isPhyHdt: {}", isPhyHdt);
     bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
-    if(hdt_enabled && shim::GetController()->SupportsBleHDTPhy()) {
+    if(isPhyHdt && hdt_enabled && shim::GetController()->SupportsBleHDTPhy()) {
       btsnd_hcic_set_cig_params_v3(
               cig_id, cig_params.sdu_itv_c_to_p, cig_params.sdu_itv_p_to_c, cig_params.sca,
               cig_params.packing, cig_params.framing, cig_params.max_trans_lat_c_to_p,

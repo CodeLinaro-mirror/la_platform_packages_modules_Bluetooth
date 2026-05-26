@@ -28,6 +28,7 @@
 #include <string.h>
 #include <com_android_bluetooth_flags.h>
 
+#include "internal_include/stack_config.h"
 #include "hal/snoop_logger.h"
 #include "internal_include/bt_target.h"
 #include "main/shim/entry.h"
@@ -257,6 +258,37 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
   tL2CAP_CFG_INFO cfg_info;
   memset(&cfg_info, 0, sizeof(cfg_info));
 
+  // BI-10-C PTS: Pre-validation block is enabled by config at runtime.
+  if (stack_config_get_interface()->get_pts_l2cap_silent_discard() && !pkt_size_rej) {
+    uint8_t* p_tmp = p;
+    while (p_tmp + 4 <= p_pkt_end) {
+      uint8_t tmp_code = p_tmp[0];
+      uint8_t tmp_id = p_tmp[1];
+      uint16_t tmp_len = (uint16_t)(p_tmp[2]) | ((uint16_t)(p_tmp[3]) << 8);
+      p_tmp += 4;
+
+      // Check for invalid/reserved command codes
+      if (tmp_code == 0x00 || tmp_code > L2CAP_CMD_INFO_RSP) {
+        log::warn("Invalid/Reserved command code: 0x{:02x}, silently discarding entire PDU", tmp_code);
+        return;  // Silently discard entire PDU - no response sent
+      }
+
+      if (p_tmp + tmp_len > p_pkt_end) {
+        log::warn("L2CAP classic - malformed PDU: format error, pkt_len: {} cmd_len: {} code: {}, silently discarding entire PDU per spec",
+                  pkt_len, tmp_len, tmp_code);
+        return;  // Silently discard entire PDU - no response sent
+      }
+      p_tmp += tmp_len;
+    }
+
+    // Trailing extra bytes after all commands ("padding"/junk)
+    if (p_tmp != p_pkt_end) {
+      log::warn("L2CAP classic - PDU has {} trailing extra byte(s) beyond commands, silently discarding entire PDU per spec",
+                static_cast<int>(p_pkt_end - p_tmp));
+      return;  // Silently discard entire PDU - no response sent
+    }
+  }
+
   /* An L2CAP packet may contain multiple commands */
   while (true) {
     /* Smallest command is 4 bytes */
@@ -280,6 +312,12 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
 
     last_id = id;
     first_cmd = false;
+
+    if (stack_config_get_interface()->get_pts_l2cap_silent_discard() &&
+        (cmd_code == 0x00 || cmd_code > L2CAP_CMD_INFO_RSP)) {
+      log::warn("Invalid command code: 0x{:02x}, silently discarding", cmd_code);
+      return;
+    }
 
     if (cmd_len > BT_SMALL_BUFFER_SIZE) {
       log::warn("Command size {} exceeds limit {}", cmd_len, BT_SMALL_BUFFER_SIZE);
@@ -724,6 +762,10 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
       }
 
       case L2CAP_CMD_DISC_REQ: {
+        if (stack_config_get_interface()->get_pts_l2cap_silent_discard() && cmd_len != 4) {
+          log::warn("DISCONNECTION_REQ with invalid length {}, expected 4, silently discarding", cmd_len);
+          return;
+        }
         uint16_t lcid{}, rcid{};
         if (p + 4 > p_next_cmd) {
           log::warn("Not enough data for L2CAP_CMD_DISC_REQ");
@@ -867,9 +909,14 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
         break;
 
       default:
-        log::warn("Bad cmd code: {}", cmd_code);
-        l2cu_send_peer_cmd_reject(p_lcb, L2CAP_CMD_REJ_NOT_UNDERSTOOD, id, 0, 0);
-        return;
+        if (stack_config_get_interface()->get_pts_l2cap_silent_discard()) {
+          log::warn("Unknown command code: 0x{:02x}, silently discarding", cmd_code);
+          return;
+        } else {
+          log::warn("Bad cmd code: {}", cmd_code);
+          l2cu_send_peer_cmd_reject(p_lcb, L2CAP_CMD_REJ_NOT_UNDERSTOOD, id, 0, 0);
+          return;
+        }
     }
   }
 }

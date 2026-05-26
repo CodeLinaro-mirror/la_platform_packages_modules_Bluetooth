@@ -155,6 +155,7 @@ public class HeadsetService extends ConnectableProfile {
     BluetoothDevice mExposedActiveDevice;
     // Active device known to Bluetooth
     private BluetoothDevice mActiveDevice;
+    private BluetoothDevice mPreviousActiveDevice = null;
     // Device waiting for audio framework to start SCO
     BluetoothDevice mPendingScoConnectionDevice;
     Intent mPendingDialingOutIntent = null;
@@ -349,6 +350,7 @@ public class HeadsetService extends ConnectableProfile {
             if (mActiveDevice != null) {
                 mExposedActiveDevice = null;
                 mActiveDevice = null;
+                mPreviousActiveDevice = null;
                 mPendingScoConnectionDevice = null;
                 mPendingDialingOutIntent = null;
                 mPendingDialingOutDevice = null;
@@ -1181,7 +1183,7 @@ public class HeadsetService extends ConnectableProfile {
             }
 
             // Make sure the Audio Manager knows the previous active device is no longer active.
-            BluetoothDevice previousActiveDevice = mActiveDevice;
+            mPreviousActiveDevice = mActiveDevice;
             mActiveDevice = null;
             mNativeInterface.setActiveDevice(null);
             broadcastActiveDevice(null);
@@ -1190,7 +1192,7 @@ public class HeadsetService extends ConnectableProfile {
                         .getAudioManager()
                         .handleBluetoothActiveDeviceChanged(
                                 null,
-                                previousActiveDevice,
+                                mPreviousActiveDevice,
                                 BluetoothProfileConnectionInfo.createHfpInfo());
             }
             updateInbandRinging(null, true);
@@ -1247,7 +1249,7 @@ public class HeadsetService extends ConnectableProfile {
                 Log.e(TAG, "setActiveDevice: Cannot set " + device + " as active in native layer");
                 return false;
             }
-            BluetoothDevice previousActiveDevice = mActiveDevice;
+            mPreviousActiveDevice = mActiveDevice;
             mActiveDevice = device;
 
             /* If HFP is getting active for a phone call and there are active LE Audio devices,
@@ -1280,23 +1282,23 @@ public class HeadsetService extends ConnectableProfile {
                         .getAudioManager()
                         .handleBluetoothActiveDeviceChanged(
                                 mActiveDevice,
-                                previousActiveDevice,
+                                mPreviousActiveDevice,
                                 BluetoothProfileConnectionInfo.createHfpInfo());
                 updateInbandRinging(device, true);
                 return true;
             }
 
-            if (getAudioState(previousActiveDevice) != BluetoothHeadset.STATE_AUDIO_DISCONNECTED) {
-                int disconnectStatus = disconnectAudio(previousActiveDevice);
+            if (getAudioState(mPreviousActiveDevice) != BluetoothHeadset.STATE_AUDIO_DISCONNECTED) {
+                int disconnectStatus = disconnectAudio(mPreviousActiveDevice);
                 if (disconnectStatus != BluetoothStatusCodes.SUCCESS) {
                     Log.e(
                             TAG,
                             "setActiveDevice: fail to disconnectAudio from "
-                                    + previousActiveDevice
+                                    + mPreviousActiveDevice
                                     + " with status code "
                                     + disconnectStatus);
-                    mActiveDevice = previousActiveDevice;
-                    mNativeInterface.setActiveDevice(previousActiveDevice);
+                    mActiveDevice = mPreviousActiveDevice;
+                    mNativeInterface.setActiveDevice(mPreviousActiveDevice);
                     return false;
                 }
                 broadcastActiveDevice(mActiveDevice);
@@ -1318,11 +1320,11 @@ public class HeadsetService extends ConnectableProfile {
                             Log.w(TAG, "setActiveDevice: connectAudio shouldn't be called.");
                             return true;
                         } else {
-                            if (previousActiveDevice == null) {
+                            if (mPreviousActiveDevice == null) {
                                 removeActiveDevice();
                             } else {
-                                mActiveDevice = previousActiveDevice;
-                                mNativeInterface.setActiveDevice(previousActiveDevice);
+                                mActiveDevice = mPreviousActiveDevice;
+                                mNativeInterface.setActiveDevice(mPreviousActiveDevice);
                             }
                             return false;
                         }
@@ -2303,11 +2305,7 @@ public class HeadsetService extends ConnectableProfile {
      */
     void onConnectionStateChangedFromStateMachine(
             BluetoothDevice device, int fromState, int toState) {
-        if (fromState != STATE_CONNECTED && toState == STATE_CONNECTED) {
-            updateInbandRinging(device, true);
-        }
         if (fromState != STATE_DISCONNECTED && toState == STATE_DISCONNECTED) {
-            updateInbandRinging(device, false);
             if (device.equals(mActiveDevice)) {
                 setActiveDevice(null);
             }
@@ -2348,9 +2346,7 @@ public class HeadsetService extends ConnectableProfile {
 
             final boolean inbandRingingRuntimeDisable = mInbandRingingRuntimeDisable;
 
-            if (getConnectedDevices().size() > 1
-                    || isHeadsetClientConnected()
-                    || mActiveDevice == null) {
+            if (isHeadsetClientConnected() || mActiveDevice == null) {
                 mInbandRingingRuntimeDisable = true;
             } else {
                 mInbandRingingRuntimeDisable = false;
@@ -2361,6 +2357,8 @@ public class HeadsetService extends ConnectableProfile {
             Log.i(
                     TAG,
                     "updateInbandRinging():"
+                            + " Number of connected devices="
+                            + getConnectedDevices().size()
                             + " Device="
                             + device
                             + " ActiveDevice="
@@ -2372,18 +2370,30 @@ public class HeadsetService extends ConnectableProfile {
                             + " Update all="
                             + updateAll);
 
-            StateMachineTask sendBsirTask =
-                    stateMachine ->
-                            stateMachine.sendMessage(
-                                    HeadsetStateMachine.SEND_BSIR,
-                                    mInbandRingingRuntimeDisable ? 0 : 1);
+            if (getConnectedDevices().size() > 1 && !mInbandRingingRuntimeDisable) {
+                if (mActiveDevice != null) {
+                    doForStateMachine(mActiveDevice,
+                        sm -> sm.sendMessage(HeadsetStateMachine.SEND_BSIR, 1));
+                }
+                if (mPreviousActiveDevice != null && !mPreviousActiveDevice.equals(mActiveDevice)) {
+                    doForStateMachine(mPreviousActiveDevice,
+                        sm -> sm.sendMessage(HeadsetStateMachine.SEND_BSIR, 0));
+                }
+            } else {
+                StateMachineTask sendBsirTask =
+                        stateMachine ->
+                                stateMachine.sendMessage(
+                                        HeadsetStateMachine.SEND_BSIR,
+                                        mInbandRingingRuntimeDisable ? 0 : 1);
 
-            if (updateAll) {
-                doForEachConnectedStateMachine(sendBsirTask);
-            } else if (connected) {
-                // Same Inband ringing status, send +BSIR only to the new connected device
-                doForStateMachine(device, sendBsirTask);
+                if (updateAll) {
+                    doForEachConnectedStateMachine(sendBsirTask);
+                } else if (connected) {
+                    // Same Inband ringing status, send +BSIR only to the new connected device
+                    doForStateMachine(device, sendBsirTask);
+                }
             }
+            mPreviousActiveDevice = null;
 
             /* If inactive device disconnected inbandringtone will be enabled, so try to
                create sco for active device if it is in call*/
@@ -2419,6 +2429,15 @@ public class HeadsetService extends ConnectableProfile {
             }
             return true;
         }
+    }
+
+    /**
+     * Get the HeadsetSystemInterface instance.
+     *
+     * @return HeadsetSystemInterface used by this service
+     */
+    public HeadsetSystemInterface getSystemInterface() {
+        return mSystemInterface;
     }
 
     public boolean isInCall() {

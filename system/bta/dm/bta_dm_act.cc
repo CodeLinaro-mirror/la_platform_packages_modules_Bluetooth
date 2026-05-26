@@ -655,6 +655,16 @@ void BTA_dm_report_role_change(const RawAddress bd_addr, tHCI_ROLE new_role,
   do_in_main_thread(base::BindOnce(handle_role_change, bd_addr, new_role, hci_status));
 }
 
+static void bta_dm_acl_encrypt_change(const RawAddress bd_addr) {
+  if (interop_match_addr(INTEROP_DELAY_ROLE_SWITCH_STILL_ENCRYPTION, bd_addr)) {
+     bta_dm_adjust_roles_delayed();
+  }
+}
+
+void BTA_dm_acl_encrypt_change(const RawAddress bd_addr) {
+  do_in_main_thread(base::BindOnce(bta_dm_acl_encrypt_change, bd_addr));
+}
+
 static void handle_remote_features_complete(const RawAddress& bd_addr) {
   BtaDmLink* p_link = bta_dm_find_link(bd_addr);
   if (!p_link) {
@@ -739,7 +749,7 @@ static void bta_dm_acl_up(const AclLinkSpec& link_spec, uint16_t acl_handle,
     bluetooth::metrics::Counter(bluetooth::metrics::CounterKey::BTA_DM_MAX_LINKS_REACHED);
     return;
   }
-  log::info("Acl connected peer:{} transport:{} handle:{}", bd_addr, bt_transport_text(transport),
+  log::warn("Acl connected peer:{} transport:{} handle:{}", bd_addr, bt_transport_text(transport),
             acl_handle);
 
   p_link->pref_role = get_preferred_role();
@@ -765,7 +775,11 @@ static void bta_dm_acl_up(const AclLinkSpec& link_spec, uint16_t acl_handle,
     bta_dm_acl_cb.p_acl_cback(BTA_DM_LINK_UP_EVT, &conn);
     log::debug("Executed security callback for new connection available");
   }
-  bta_dm_adjust_roles_delayed();
+  if (interop_match_addr(INTEROP_DELAY_ROLE_SWITCH_STILL_ENCRYPTION, bd_addr)) {
+     log::warn("Delay role switch until encryption for BL device : {}", bd_addr);
+   } else {
+     bta_dm_adjust_roles_delayed();
+   }
 }
 
 void BTA_dm_acl_up(const AclLinkSpec& link_spec, uint16_t acl_handle, bool locally_initiated) {
@@ -960,7 +974,12 @@ static void bta_dm_rm_cback(tBTA_SYS_CONN_STATUS status, tBTA_SYS_ID id, uint8_t
   // Don't adjust roles for each busy/idle state transition to avoid excessive switch requests when
   // individual profile busy/idle status changes
   if (status != BTA_SYS_CONN_BUSY && status != BTA_SYS_CONN_IDLE) {
-    bta_dm_adjust_roles();
+    if (interop_match_addr(INTEROP_DELAY_ROLE_SWITCH_STILL_ENCRYPTION, peer_addr)) {
+      log::warn("profile connected Delay role switch for BL device : {}", peer_addr);
+      bta_dm_adjust_roles_delayed();
+    } else {
+      bta_dm_adjust_roles();
+    }
   }
 }
 
@@ -1040,9 +1059,8 @@ static void bta_dm_adjust_roles() {
   // Ignore when there are only two connections and both are to the same device
   if (link_db.count == 2 && link_db.le_count == 1 &&
       link_db.links[0].addr == link_db.links[1].addr) {
-    log::debug("Skipping role switch because both connections are to the same device {}",
+    log::debug("Role switch even both le/bredr connections are to the same device {}",
                link_db.links[0].addr);
-    return;
   }
 
   for (uint8_t i = 0; i < link_db.count; i++) {
@@ -1085,7 +1103,8 @@ static void bta_dm_adjust_roles_delayed() {
   }
 
   if (alarm_is_scheduled(bta_dm_cb.switch_delay_timer)) {
-    alarm_cancel(bta_dm_cb.switch_delay_timer);
+    log::warn("timer already set to delay role switch");
+    return;
   }
 
   uint64_t delay = bluetooth::os::GenerateRandom() % (MAX_SWITCH_DELAY_MS - MIN_SWITCH_DELAY_MS) +

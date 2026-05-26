@@ -44,7 +44,7 @@ import java.util.Optional;
  * Defines system calls that is used by state machine/service to either send or receive messages
  * from the Android System.
  */
-class HeadsetSystemInterface {
+public class HeadsetSystemInterface {
     private static final String TAG = HeadsetSystemInterface.class.getSimpleName();
 
     private final AdapterService mAdapterService;
@@ -160,6 +160,11 @@ class HeadsetSystemInterface {
         // terminated for CHUP callback event
         if (mHeadsetService.isVirtualCallStarted()) {
             mHeadsetService.stopScoUsingVirtualVoiceCall();
+            // Notify audio framework about SCO disconnection
+            if (android.media.audio.Flags.btAudioDisconnectApi()) {
+                getAudioManager().handleBluetoothHfpAudioDisconnected(
+                    device, AudioManager.HFP_AUDIO_DISCONNECT_REMOTE_INITIATED);
+            }
         } else {
             BluetoothInCallService bluetoothInCallService = getBluetoothInCallServiceInstance();
             if (bluetoothInCallService != null) {
@@ -393,7 +398,7 @@ class HeadsetSystemInterface {
      *
      * @return true if SCO creation is managed by the audio service, false if it's done by Bluetooth
      */
-    boolean isScoManagedByAudioEnabled() {
+    public boolean isScoManagedByAudioEnabled() {
         // TODO(b/437953494) Replace with SDK check when flag is fully rolled out
         if (android.media.audio.Flags.amscoAvailableApi()) {
             boolean isScoManagedByAudio = mAudioManager.isScoManagedByAudio();

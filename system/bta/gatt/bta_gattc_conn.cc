@@ -32,6 +32,7 @@
 #include "device/include/interop.h"
 #include "hardware/bt_gatt_types.h"
 #include "hci/controller.h"
+#include "internal_include/stack_config.h"
 #include "main/shim/entry.h"
 #include "osi/include/allocator.h"
 #include "stack/include/bt_hdr.h"
@@ -262,7 +263,31 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb) {
     if (p_clcb->p_srcb->mtu == GATT_DEF_BLE_MTU_SIZE) {
       // Set the default based on the APP's preference
       log::verbose("bd_addr: {}", p_clcb->bda);
-      GATTC_SetDefaultMtu(p_clcb->bda);
+      uint16_t current_mtu = 0;
+      tGATTC_TryMtuRequestResult result =
+              GATTC_TryMtuRequest(p_clcb->bda, p_clcb->transport, p_clcb->bta_conn_id,
+                                  &current_mtu);
+      if (result == MTU_EXCHANGE_NOT_DONE_YET) {
+        log::info ("MTU is NOT YET DONE {}", static_cast<int>(result));
+        GATTC_SetDefaultMtu(p_clcb->bda);
+      } else {
+        if (result == MTU_EXCHANGE_ALREADY_DONE) {
+          log::info ("MTU is ALREADY DONE {}", static_cast<int>(result));
+          p_clcb->p_srcb->mtu = current_mtu;
+        } else if (result == MTU_EXCHANGE_IN_PROGRESS) {
+          log::info ("MTU is Added to the CMD QUEUE {}", static_cast<int>(result));
+          tBTA_GATTC_API_CFG_MTU* p_buf =
+                 (tBTA_GATTC_API_CFG_MTU*)osi_malloc(sizeof(tBTA_GATTC_API_CFG_MTU));
+
+          p_buf->hdr.event          = BTA_GATTC_API_CFG_MTU_EVT;
+          p_buf->hdr.layer_specific = static_cast<uint16_t>(p_clcb->bta_conn_id);
+          p_buf->mtu                = p_clcb->p_srcb->mtu;
+          p_buf->mtu_cb             = nullptr;
+          p_buf->mtu_cb_data        = nullptr;
+          p_clcb->p_q_cmd_queue.push_back(
+                                     reinterpret_cast<const tBTA_GATTC_DATA*>(p_buf));
+        }
+      }
     }
   }
 
@@ -309,7 +334,8 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb) {
       }
 
       if (!discovery_already_in_progress) {
-        if (db.IsEmpty() || robust_caching_support != RobustCachingSupport::UNSUPPORTED) {
+        if ((db.IsEmpty() || robust_caching_support != RobustCachingSupport::UNSUPPORTED)
+            && !(stack_config_get_interface()->get_pts_gatt_skip_service_discovery())) {
           // If the peer device is expected to support robust caching, or if we
           // don't know its services yet, then we should do discovery (which may
           // short-circuit through a hash match, but might also do the full

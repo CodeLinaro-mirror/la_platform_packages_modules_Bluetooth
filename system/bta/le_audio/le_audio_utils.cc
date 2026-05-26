@@ -30,6 +30,7 @@
 #include "hardware/bt_le_audio.h"
 #include "le_audio/codec_manager.h"
 #include "le_audio_types.h"
+#include "osi/include/properties.h"
 
 using bluetooth::le_audio::types::AudioContexts;
 using bluetooth::le_audio::types::LeAudioContextType;
@@ -130,7 +131,13 @@ AudioContexts GetAudioContextsFromSourceMetadata(
     if (isMetadataTagPresent(entry.tags, "VX_AOSP_SAMPLESOUND")) {
       track_contexts.set(LeAudioContextType::SOUNDEFFECTS);
     } else {
-      track_contexts.set(AudioContentToLeAudioContext(track.content_type, track.usage));
+      bool pts_gmap_mxlt = osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap_mxlt", false);
+      if(pts_gmap_mxlt) {
+        log::info(" pts_gmap_mxlt is true, convert MEDIA to GAME context");
+        track_contexts.set(LeAudioContextType::GAME);
+      } else {
+        track_contexts.set(AudioContentToLeAudioContext(track.content_type, track.usage));
+      }
     }
   }
   return track_contexts;

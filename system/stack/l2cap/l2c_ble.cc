@@ -60,6 +60,7 @@
 #include "stack/include/l2cdefs.h"
 #include "stack/include/main_thread.h"
 #include "stack/l2cap/l2c_int.h"
+#include "internal_include/stack_config.h"
 
 using namespace bluetooth;
 
@@ -318,6 +319,7 @@ static bool validate_l2cap_params(int mtu, int mps) {
  ******************************************************************************/
 void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
   uint8_t* p_pkt_end;
+  uint8_t* p_sig_end;
   uint8_t cmd_code, id;
   uint16_t cmd_len;
   uint16_t min_interval, max_interval, latency, timeout;
@@ -824,7 +826,43 @@ void l2cble_process_sig_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
         log::error("invalid read");
         return;
       }
-
+      /* Pre-validate all commands in the PDU before processing any.
+      * Per Bluetooth Core Spec Vol 3, Part A, Section 4.1:
+      * "If the length field of a command is incorrect, the entire L2CAP PDU
+      * shall be silently discarded." No response must be sent for a truncated PDU.
+      * This prevents sending a response to the first valid command in a
+      * multi-command PDU when a later command is truncated (e.g. BI-16-C).
+      * Also discard PDUs with trailing extra bytes beyond the last command
+      * (e.g. BI-13-C: valid command + extra zero octet padding).
+      */
+      if (stack_config_get_interface()->get_pts_l2cap_le_malformed_pdu()) {
+          p_sig_end = p + pkt_len;
+          uint8_t* p_tmp = p-4;
+          while (p_tmp + 4 <= p_sig_end) {
+                  uint8_t tmp_code = p_tmp[0];
+                  uint16_t tmp_len = (uint16_t)(p_tmp[2]) | ((uint16_t)(p_tmp[3]) << 8);
+                  p_tmp += 4;
+                  if (p_tmp + tmp_len > p_sig_end) {
+                      log::warn(
+                               "L2CAP - LE - format error, pkt_len: {}  cmd_len: {}  code: {}, "
+                                "silently discarding entire PDU per spec",
+                                pkt_len, tmp_len, tmp_code);
+                      return; /* Silently discard entire PDU - no response sent */
+                   }
+           p_tmp += tmp_len;
+         }
+      /* Check for trailing extra bytes after all commands (e.g. BI-13-C).
+      * Per spec, a PDU with extra padding bytes beyond the declared command
+      * lengths shall be silently discarded without sending any response.
+      */
+     if (p_tmp != p_sig_end) {
+        log::warn(
+            "L2CAP - LE - PDU has {} trailing extra byte(s) beyond commands, "
+            "silently discarding entire PDU per spec",
+          static_cast<int>(p_sig_end - p_tmp));
+          return; /* Silently discard entire PDU - no response sent */
+      }
+    }
       STREAM_TO_UINT16(con_info.psm, p);
       STREAM_TO_UINT16(rcid, p);
       STREAM_TO_UINT16(mtu, p);

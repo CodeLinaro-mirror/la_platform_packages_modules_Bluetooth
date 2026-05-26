@@ -217,17 +217,24 @@ public final class BondStateMachine extends StateMachine {
                     }
                     break;
                 case ACL_DISCONNECTED:
-                    if (hasMessages(MESSAGE_SERVICE_DISCOVERY_TIMEOUT)) {
-                        removeMessages(MESSAGE_SERVICE_DISCOVERY_TIMEOUT);
-                        mDevicesWaitingForUuids.remove(dev);
-                        DeviceProperties devProp =
-                                mRemoteDevices.getDeviceProperties(dev);
-                        if (devProp != null && devProp.getUuids() == null) {
-                            Log.e(TAG,
-                                    "ACL DISCONNECTED during Bonding: Remove the device "
-                                    + dev);
-                            removeBond(dev, true);
+                    if (dev.isBondingInitiatedLocally()) {
+                        if (hasMessages(MESSAGE_SERVICE_DISCOVERY_TIMEOUT)) {
+                            removeMessages(MESSAGE_SERVICE_DISCOVERY_TIMEOUT);
+                            mDevicesWaitingForUuids.remove(dev);
+                            DeviceProperties devProp =
+                                    mRemoteDevices.getDeviceProperties(dev);
+                            if (devProp != null && devProp.getUuids() == null) {
+                                Log.e(TAG,
+                                        "ACL DISCONNECTED during Bonding: Remove the device "
+                                        + dev);
+                                removeBond(dev, true);
+                            }
+
                         }
+                    } else {
+                        Log.i(TAG,
+                                    "Remote Initiated Bonding. So Skip Removing the bond "
+                                    + dev);
                     }
                     break;
                 case MESSAGE_CANCEL_BOND:
@@ -1044,6 +1051,9 @@ public final class BondStateMachine extends StateMachine {
         Log.d(TAG, "Removing device " + device.getAddress() + " from Absolute Volume rejectlist");
         InteropUtil.interopDatabaseRemoveAddr(
              InteropUtil.InteropFeature.INTEROP_DISABLE_ABSOLUTE_VOLUME, device.getAddress());
+        Log.d(TAG, "Removing device " + device.getAddress() + " from codec negotiation rejectlist");
+        InteropUtil.interopDatabaseRemoveAddr(
+                InteropUtil.InteropFeature.INTEROP_DISABLE_CODEC_NEGOTIATION, device.getAddress());
     }
 
     /**

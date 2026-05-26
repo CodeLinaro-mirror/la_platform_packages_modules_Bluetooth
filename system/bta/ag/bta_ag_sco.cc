@@ -1826,7 +1826,7 @@ void bta_ag_sco_conn_rsp(tBTA_AG_SCB* p_scb, tBTM_ESCO_CONN_REQ_EVT_DATA* /*p_da
   }
 
   /* If SCO open was initiated from HS, it must be CVSD */
-  p_scb->inuse_codec = tBTA_AG_UUID_CODEC::UUID_CODEC_NONE;
+  p_scb->inuse_codec = tBTA_AG_UUID_CODEC::UUID_CODEC_CVSD;
   /* Send pending commands to create SCO connection to peer */
   enh_esco_params_t params = {};
   bool offload = hfp_hal_interface::get_offload_enabled();

@@ -63,6 +63,7 @@
 #include <unistd.h>
 
 #include <map>
+#include <set>
 
 #include "bt_target.h"
 #include "bta_api.h"
@@ -70,6 +71,7 @@
 #include "l2c_int.h"
 #include "stack/include/hcimsgs.h"
 #include <bt_testapp.h>
+#include "stack/include/btm_sec_api.h"
 #include "stack/include/stack_app.h"
 #include "stack/include/stack_le_connection.h"
 
@@ -306,8 +308,9 @@ int curr_char_val_len = 0;
 int curr_handle = 0;
 int long_char_max_len_for_sr_gar_bi_13 = 100;
 
-std::map<RawAddress, std::vector<uint8_t>> cccd_value_map;
+std::map<RawAddress, std::map<int, std::vector<uint8_t>>> cccd_value_map;
 std::unordered_map<int, std::vector<uint8_t>> handle_value_map;
+std::map<int, std::set<int>> g_cccd_handles;
 
 int exec_write_status = BT_STATUS_SUCCESS;
 int invalid_offset = 0x07;
@@ -1026,9 +1029,24 @@ static void register_server_cb(int status, int server_if,
 
 static void server_connection_cb(int conn_id, int server_if, int transport,
                                          int connected, const RawAddress& bda) {
-  printf("%s:: conn_id=%d, server_if=%d \n", __FUNCTION__, conn_id, server_if);
+  printf("%s:: conn_id=%d, server_if=%d , transport=%d, connected=%d, bda=%s\n",
+       __FUNCTION__, conn_id, server_if, transport, connected, bda.ToString().c_str());
   g_conn_id = conn_id;
   handle_value_map.clear();
+  if (!connected &&
+      !sGapInterface->Gap_IsBonded(bda, (tBT_TRANSPORT)transport)) {
+    printf("%s:: non-bonded device disconnected, clearing CCCD for bda\n",
+           __FUNCTION__);
+    cccd_value_map.erase(bda);
+  }
+}
+
+static bool is_cccd_handle(int server_if, int handle) {
+  auto it = g_cccd_handles.find(server_if);
+  if (it != g_cccd_handles.end()) {
+    return it->second.count(handle) > 0;
+  }
+  return false;
 }
 
 static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
@@ -1038,8 +1056,6 @@ static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
   int len = len_short_char;
   btgatt_response_t gatt_resp;
   int status = BT_STATUS_SUCCESS;
-  std::vector<uint8_t> cccd_val;
-  uint8_t val[2] = {};
   gatt_resp.handle = attr_handle;
   gatt_resp.attr_value.handle = attr_handle;
   gatt_resp.attr_value.offset = offset;
@@ -1061,7 +1077,15 @@ static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
      gatt_resp.attr_value.len = (len - offset);
    }
   }
-  if (attr_handle == 66) {
+
+  if (is_cccd_handle(conn_id & 0xFF, attr_handle)) {
+    auto& cccd_val = cccd_value_map[bda][attr_handle];
+    if (cccd_val.empty()) {
+      cccd_val = {0, 0};
+    }
+    memcpy(gatt_resp.attr_value.value, cccd_val.data(), cccd_val.size());
+    gatt_resp.attr_value.len = cccd_val.size();
+  } else if (attr_handle == 66) {
     printf("%s:: Invalid transport access over LE \n", __FUNCTION__);
     status = application_error;
   } else if (attr_handle == 104) {
@@ -1076,15 +1100,6 @@ static void request_read_cb(int conn_id, int trans_id, const RawAddress& bda,
       memcpy(gatt_resp.attr_value.value, &attr_value[offset], (len - offset));
       gatt_resp.attr_value.len = (len - offset);
     }
-  }
-  // Client char configuration descriptor
-  else if (attr_handle == 43) {
-    cccd_val = cccd_value_map[bda];
-    for (int i = 0; i < cccd_val.size(); i++) {
-      val[i] = cccd_val[i];
-    }
-    memcpy(gatt_resp.attr_value.value, &val, 2);
-    gatt_resp.attr_value.len = 2;
   } else {
     memcpy(gatt_resp.attr_value.value, attr_value, 300);
   }
@@ -1107,7 +1122,6 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
   printf("%s:: conn_id=%d, trans_id=%d, attr_handle=%d \n", __FUNCTION__,
          conn_id, trans_id, attr_handle);
   int status = BT_STATUS_SUCCESS;
-  uint8_t cccd_val[2] = {};
   btgatt_response_t gatt_resp;
   gatt_resp.handle = attr_handle;
   gatt_resp.attr_value.handle = attr_handle;
@@ -1153,14 +1167,9 @@ static void request_write_cb(int conn_id, int trans_id, const RawAddress& bda,
     }
 
   // Client char configuration descriptor
-  if (attr_handle == 43) {
-    for (int i = 0; i < value_count; i++) {
-      cccd_val[i] = value[i];
-    }
-    // cccd_value_map.insert(std::make_pair(conn_id, cccd_val));
-    std::vector<uint8_t> value_vec(value, value + value_count);
-    cccd_value_map[bda] = value_vec;
-    memcpy(gatt_resp.attr_value.value, &cccd_val, value_count);
+  if (is_cccd_handle(conn_id & 0xFF, attr_handle)) {
+    cccd_value_map[bda][attr_handle].assign(value, value + value_count);
+    memcpy(gatt_resp.attr_value.value, value, value_count);
     gatt_resp.attr_value.len = value_count;
   } else {
     memcpy(gatt_resp.attr_value.value, &attr_value[offset], value_count);
@@ -1218,19 +1227,27 @@ static void indication_sent_cb(int conn_id, int status) {
 void service_added_cb(int status, int server_if,
                                         const btgatt_db_element_t* service,
                                         size_t service_count) {
-  printf("%s: status:%d server_if:%d count:%zu svc_handle:%d", __FUNCTION__,
-              status, server_if, service_count, service[0].attribute_handle);
+  printf("%s: status:%d, server_if:%d, count:%zu, svc_handle:%d (0x%04x), UUID: %s\n",
+          __FUNCTION__, status, server_if, service_count, service[0].attribute_handle,
+         service[0].attribute_handle, service[0].uuid.ToString().c_str());
   for (size_t i = 1; i < service_count; i++) {
     const btgatt_db_element_t& sr = service[i];
-    printf("Type: %d, Hndl: %d, UUID: %s, prprty: %d\n ",
-                       sr.type, sr.attribute_handle, sr.uuid, sr.properties);
+    printf("\tType: %d, Hndl: %d (0x%04x), UUID: %s, property: %d\n",
+           sr.type, sr.attribute_handle, sr.attribute_handle, sr.uuid.ToString().c_str(),
+           sr.properties);
+    if (sr.type == BTGATT_DB_DESCRIPTOR &&
+        sr.uuid == *Uuid::FromString(ClientCharConfigUUID)) {
+      g_cccd_handles[server_if].insert(sr.attribute_handle);
+      printf("\tCCCD handle detected for server_if %d: %d (0x%04x)\n",
+             server_if, sr.attribute_handle, sr.attribute_handle);
+    }
   }
 }
 
 static btgatt_server_callbacks_t sGattServer_cb = {
     register_server_cb,
     server_connection_cb,      // connection_callback             connection_cb;
-    NULL,                      // service_added_callback          service_added_cb;
+    service_added_cb,          // service_added_callback          service_added_cb;
     NULL,                      // service_deleted_callback        service_deleted_cb;
     request_read_cb,           // request_read_callback           request_read_characteristic_cb
     request_read_cb,           // request_read_callback           request_read_descriptor_cb
@@ -1847,7 +1864,8 @@ const t_cmd console_cmd_list[] = {
      "\n interval(1-interval low, 2-interval medium, 3-interval high),"
      "\n primary phy(1 for LE 1M, 3 for LE Coded),"
      "\n secondary phy (1 for LE 1M, 2 for LE 2M and 3 for LE Coded),"
-     "\n advertisement type (0 for PUBLIC TYPE, 1 for RANDOM TYPE)",
+     "\n advertisement type (0 for PUBLIC TYPE, 1 for RANDOM TYPE),"
+     "\n 0x02 general discoverable, 0x06 general discoverable + LE only)",
      0},
     {"unregister_advertiser", do_unregister_adv_set, ":: UnregisterAdvertiser",
      0},
@@ -2870,11 +2888,22 @@ void do_start_adv_set(char* p) {
   // adv data
   uint8_t arr[] = {2,1,0,10, 9, 'G', 'A', 'T', 'T', '-', 'T', 'O', 'O', 'L'};
   switch(adv_type) {
+          case 0:
+            arr[2] = 0;
+            break;
           case 1:
             arr[2] = 1;
             break;
           case 2:
             arr[2] = 2;
+            break;
+          case 6:
+            arr[2] = 6;
+            break;
+          default:
+            printf("%s:: unsupported flags value=0x%x, using 0x00\n", __FUNCTION__,
+                   adv_type);
+            arr[2] = 0;
             break;
   }
 
@@ -3202,6 +3231,7 @@ void do_le_sr_deregister(int server_if, bool is_ext) {
     }
     sGattInterface->Deregister(server_if);
     BtStatus Ret = sGattIfaceScan->server->unregister_server(server_if);
+    g_cccd_handles.erase(server_if);
   } else {
     if (0 == g_server_if) {
       printf("%s:: ERROR: no application registered\n", __FUNCTION__);
@@ -3209,6 +3239,7 @@ void do_le_sr_deregister(int server_if, bool is_ext) {
     }
     sGattInterface->Deregister(g_server_if);
     BtStatus Ret = sGattIfaceScan->server->unregister_server(g_server_if_scan);
+    g_cccd_handles.erase(g_server_if_scan);
   }
 }
 
@@ -3873,6 +3904,7 @@ void do_remove_bond(char* p) {
          bd_addr.address[0], bd_addr.address[1], bd_addr.address[2],
          bd_addr.address[3], bd_addr.address[4], bd_addr.address[5]);
   sBtInterface->remove_bond(bd_addr);
+  cccd_value_map.erase(bd_addr);
 }
 
 void do_le_gap_conn_param_update(char* p) {

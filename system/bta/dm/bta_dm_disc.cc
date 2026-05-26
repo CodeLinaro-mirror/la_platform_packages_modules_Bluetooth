@@ -651,10 +651,20 @@ static void bta_dm_start_gatt_discovery(const RawAddress& bd_addr) {
     return;
   }
 
-  /* GATT Discovery always uses non oportunistic direct connected */
+  /* Use non opportunistic direct connection for central, opportunistic for peripherals */
   log::debug(" {} , transport:{}", bd_addr, bt_transport_text(BT_TRANSPORT_LE));
-  get_gatt_interface().BTA_GATTC_Open(bta_dm_discovery_cb.client_if, bd_addr,
-                                      BTM_BLE_DIRECT_CONNECTION, 0, false);
+  tBTM_BLE_CONN_TYPE conn_type = BTM_BLE_DIRECT_CONNECTION;
+  if (get_btm_client_interface().peer.BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE)) {
+    tHCI_ROLE role;
+    auto role_status =
+            get_btm_client_interface().link_policy.BTM_GetRole(bd_addr, BT_TRANSPORT_LE, &role);
+    if (role_status == tBTM_STATUS::BTM_SUCCESS && role == HCI_ROLE_PERIPHERAL) {
+      log::info("connected peripheral - will use opportunistic client {}", bd_addr);
+      conn_type = BTM_BLE_OPPORTUNISTIC;
+    }
+  }
+
+  get_gatt_interface().BTA_GATTC_Open(bta_dm_discovery_cb.client_if, bd_addr, conn_type, 0, false);
 }
 
 /*******************************************************************************
@@ -838,9 +848,11 @@ static void bta_dm_disc_sm_execute(tBTA_DM_DISC_EVT event, std::unique_ptr<tBTA_
 }
 
 static void bta_dm_disc_init_discovery_cb(tBTA_DM_SERVICE_DISCOVERY_CB& bta_dm_discovery_cb) {
-  bta_dm_discovery_cb = {};
-  bta_dm_discovery_cb.service_discovery_state = BTA_DM_DISCOVER_IDLE;
-  bta_dm_discovery_cb.conn_id = GATT_INVALID_CONN_ID;
+  tBTA_DM_SERVICE_DISCOVERY_CB new_cb = {};
+  new_cb.service_discovery_state = BTA_DM_DISCOVER_IDLE;
+  new_cb.conn_id = GATT_INVALID_CONN_ID;
+  new_cb.client_if = bta_dm_discovery_cb.client_if;//restore clent_if for disovery, can't be cleared
+  bta_dm_discovery_cb = std::move(new_cb);
 }
 
 static void bta_dm_disc_reset() {

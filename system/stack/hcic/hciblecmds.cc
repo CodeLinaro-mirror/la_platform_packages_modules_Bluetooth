@@ -422,7 +422,7 @@ void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint
 
 void btsnd_hcic_set_cig_params_v3(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint32_t sdu_itv_p_to_c,
                                   uint8_t sca, uint8_t packing, uint8_t framing,
-                                  uint16_t max_trans_lat_p_to_c, uint16_t max_trans_lat_c_to_p,
+                                  uint16_t max_trans_lat_c_to_p, uint16_t max_trans_lat_p_to_c,
                                   uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,
                                   base::OnceCallback<void(uint8_t*, uint16_t)> cb) {
   const int params_len = 15 + cis_cnt * 19;

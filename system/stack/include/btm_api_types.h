@@ -125,6 +125,9 @@ typedef uint8_t tBTM_SCO_TYPE;
 #define BTA_AG_SCO_APTX_SWB_SETTINGS_Q2_MASK 0x0032
 #define BTA_AG_SCO_APTX_SWB_SETTINGS_Q3_MASK 0x0064
 
+#define HFP_APTX_VOICE_SWB_VENDOR_ID 0x0000004F
+#define HFP_APTX_VOICE_SWB_CODEC_ID_BLUETOOTH 0x0003
+
 /**
  * enum value is defined based on HFP spec, Codec ID section
  */

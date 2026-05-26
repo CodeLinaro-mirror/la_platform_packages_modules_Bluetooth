@@ -45,6 +45,8 @@ inline uint8_t GetPreferredPhyFromTargetPhy(uint8_t target_phy) {
       return bluetooth::hci::kIsoCigPhy2M;
     case types::kTargetPhyCoded:
       return bluetooth::hci::kIsoCigPhyC;
+    case types::kTargetPhyHdt:
+      return bluetooth::hci::kIsoCigPhyHdt;
     case types::kTargetPhyUndefined:
       [[fallthrough]];  // bluetooth::hci::kIsoCigPhy2M
     default:
@@ -53,7 +55,9 @@ inline uint8_t GetPreferredPhyFromTargetPhy(uint8_t target_phy) {
 }
 
 inline uint8_t GetTargetPhyFromPreferredPhy(uint8_t preferred_phy) {
-  if (preferred_phy & bluetooth::hci::kIsoCigPhy2M) {
+  if (preferred_phy & bluetooth::hci::kIsoCigPhyHdt) {
+    return types::kTargetPhyHdt;
+  } else if (preferred_phy & bluetooth::hci::kIsoCigPhy2M) {
     return types::kTargetPhy2M;
   } else if (preferred_phy & bluetooth::hci::kIsoCigPhy1M) {
     return types::kTargetPhy1M;

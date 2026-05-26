@@ -28,9 +28,6 @@ using ::aidl::android::hardware::bluetooth::audio::CodecConfiguration;
 using ::aidl::android::hardware::bluetooth::audio::PcmConfiguration;
 using ::bluetooth::audio::a2dp::ahal_codec_configuration;
 
-bool A2dpAptxAdaptiveToHalConfig(const ::bluetooth::audio::a2dp::ahal_codec_configuration& config,
-                         CodecConfiguration* codec_config);
-
 
 /// Configure the framework supported offload capabilities.
 bool UpdateOffloadingCapabilities(

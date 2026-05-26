@@ -42,6 +42,7 @@ void BTA_dm_acl_up_failed(const AclLinkSpec&, tHCI_STATUS, bool) {}
 void BTA_dm_acl_down(const AclLinkSpec&) {}
 void BTA_dm_report_role_change(RawAddress, tHCI_ROLE, tHCI_STATUS) {}
 void BTA_dm_notify_remote_features_complete(RawAddress) {}
+void BTA_dm_acl_encrypt_change(RawAddress) {}
 void bta_gattc_continue_discovery_if_needed(const RawAddress&, uint16_t) {}
 void bta_sys_notify_collision(const RawAddress&) {}
 void BTA_dm_remove_on_disconnect(const AclLinkSpec&) {}

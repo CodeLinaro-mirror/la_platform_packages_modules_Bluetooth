@@ -49,5 +49,11 @@ bool IsAgDeviceConnected();
  */
 BtStatus ExecuteService(bool b_enable);
 
+/**
+ * check if there any sco going on
+ * @return BtifStatus() on success, BtifStatus(DEVICE_NOT_FOUND) otherwise
+ */
+BtStatus GetScoStreamStatus();
+
 }  // namespace headset
 }  // namespace bluetooth

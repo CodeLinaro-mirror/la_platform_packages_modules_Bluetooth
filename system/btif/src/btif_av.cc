@@ -703,6 +703,10 @@ public:
   }
   bool GetSpatialAudioLLMode() { return is_spatial_audio_low_latency_mode_; }
 
+  bool IsA2dpOffloadCodecExtensibilityEnabled() {
+    return is_a2dp_offload_codec_extensibility_enabled_;
+  }
+
 private:
   void CleanupAllPeers();
 
@@ -719,6 +723,7 @@ private:
   uint16_t aptx_mode_;
   bool is_gaming_mode_;
   bool is_spatial_audio_low_latency_mode_;
+  bool is_a2dp_offload_codec_extensibility_enabled_;
 };
 
 class BtifAvSink {
@@ -1266,6 +1271,11 @@ void BtifAvSource::Init(btav_source_callbacks_t* callbacks, int max_connected_au
 
   a2dp_offload_enabled_ = GetInterfaceToProfiles()->config->isA2DPOffloadEnabled();
   log::info("a2dp_offload.enable={}", a2dp_offload_enabled_);
+
+  is_a2dp_offload_codec_extensibility_enabled_ =
+      osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_offload_codec_extensibility", false);
+  log::info("is_a2dp_offload_codec_extensibility_enabled_={}",
+      is_a2dp_offload_codec_extensibility_enabled_);
 
   if (a2dp_offload_enabled_) {
     tBTM_BLE_VSC_CB vsc_cb = {};
@@ -2925,6 +2935,21 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
         btif_av_source.UpdateCodecConfig(peer_.PeerAddress(), codec_preferences,
                                          std::move(peer_ready_promise), true);
       }
+    } break;
+
+    case BTIF_AV_SET_CODEC_MODE_EVT: {
+      if (btif_av_source.IsA2dpOffloadCodecExtensibilityEnabled()) {
+        log::info("Peer {} : ignore event={} due to A2dpOffloadCodecExtensibility",
+            peer_.PeerAddress(), BtifAvEvent::EventName(event));
+        break;
+      }
+      const btif_av_codec_mode_change_t* p_codec_mode_change =
+              static_cast<const btif_av_codec_mode_change_t*>(p_data);
+      log::info("Peer {} : event={} flags={} enc_mode={}",
+                peer_.PeerAddress().ToRedactedStringForLogging(), BtifAvEvent::EventName(event),
+                peer_.FlagsToString(), p_codec_mode_change->enc_mode);
+
+      BTA_AvSetCodecMode(peer_.BtaHandle(), p_codec_mode_change->enc_mode);
     } break;
 
       CHECK_RC_EVENT(event, reinterpret_cast<tBTA_AV*>(p_data));

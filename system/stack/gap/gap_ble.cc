@@ -452,7 +452,8 @@ static void cl_op_cmpl(tGAP_CLCB& clcb, bool status, uint16_t len, uint8_t* p_na
   /* if no further activity is requested in callback, drop the link */
   if (clcb.connected) {
     if (btm_cb.encrypted_advertising_data_supported) {
-      if (!send_cl_request(clcb) && (clcb.enc_key_stage <= GAP_ENC_KEY_CONNECTING)) {
+      if (!send_cl_request(clcb) &&
+          (clcb.enc_key_stage <= GAP_ENC_KEY_CONNECTING || !clcb.is_enc_key_info_in_progress)) {
         log::debug(" Calling GATT Disconnect");
         GATT_Disconnect(clcb.conn_id);
         clcb_dealloc(clcb);
@@ -560,6 +561,12 @@ void client_disc_cmpl_cback(uint16_t conn_id, tGATT_DISC_TYPE disc_type, tGATT_S
   if (status != GATT_SUCCESS || p_clcb->enc_key_result == 0) {
     log::warn("Unable to register for enc key material indication ");
     p_clcb->is_enc_key_info_in_progress = false;
+    /* Release LE ACL link if no more pending requests and process is done */
+    if (p_clcb->connected && !send_cl_request(*p_clcb)) {
+      log::debug("CCCD discovery failed, releasing LE link conn_id:{}", p_clcb->conn_id);
+      GATT_Disconnect(p_clcb->conn_id);
+      clcb_dealloc(*p_clcb);
+    }
     return;
   }
 

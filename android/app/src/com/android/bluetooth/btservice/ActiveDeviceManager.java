@@ -898,7 +898,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
 
             mLeAudioConnectedDevices.remove(device);
             mLeHearingAidConnectedDevices.remove(device);
-            leAudio.get().deviceDisconnected(device, false);
 
             boolean hasFallbackDevice = false;
             boolean isA2dpActive = false;
@@ -949,6 +948,8 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     }
                 }
             }
+
+            leAudio.get().deviceDisconnected(device, hasFallbackDevice);
         }
     }
 
@@ -1484,12 +1485,21 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                         mAdapterService
                                 .getLeAudioService()
                                 .ifPresent(
-                                        s ->
+                                        s -> {
                                                 s.handleAudioDeviceRemoved(
                                                         device,
                                                         deviceInfo.getType(),
                                                         deviceInfo.isSink(),
-                                                        deviceInfo.isSource()));
+                                                        deviceInfo.isSource());
+                                                if (s.getActiveGroupId() !=
+                                                  android.bluetooth.IBluetoothLeAudio.LE_AUDIO_GROUP_ID_INVALID) {
+                                                  handleLeAudioActiveDeviceChanged(
+                                                    s.getGroupDevices(s.getActiveGroupId(
+                                                    )).get(0));
+                                                } else {
+                                                  handleLeAudioActiveDeviceChanged(null);
+                                                }
+                                             });
                     }
                     case AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
                         mAdapterService

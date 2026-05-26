@@ -61,6 +61,7 @@ void BTA_dm_acl_up_failed(const AclLinkSpec&, tHCI_STATUS, bool) {}
 void BTA_dm_acl_down(const AclLinkSpec&) {}
 void BTA_dm_report_role_change(RawAddress, tHCI_ROLE, tHCI_STATUS) {}
 void BTA_dm_notify_remote_features_complete(RawAddress) {}
+void BTA_dm_acl_encrypt_change(RawAddress) {}
 void bta_dm_process_remove_device(const RawAddress&) {}
 void bta_dm_remote_key_missing(RawAddress, tBTM_KEY_MISSING_REASON) {}
 void bta_dm_on_encryption_change(bt_encryption_change_evt) {}
