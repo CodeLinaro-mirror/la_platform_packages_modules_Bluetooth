@@ -118,7 +118,7 @@ interface IBluetoothLeAudio {
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void stopBroadcast(int broadcastId, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void stopEnhancedBroadcast(int broadcastId, in AttributionSource attributionSource);
+    void stopEnhancedBroadcast(int broadcastId, int mode, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void updateBroadcast(int broadcastId, in BluetoothLeBroadcastSettings broadcastSettings, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
@@ -139,4 +139,12 @@ interface IBluetoothLeAudio {
     void setJoinControl(boolean mode, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     int getEnhancedBroadcastCap(in AttributionSource attributionSource);
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    void removeDeviceFromDbig(int devId, in byte[] name, int reason, in AttributionSource attributionSource);
+    /** Accept PGP terminate request (spec §4.9): sends TExitDbig(TERMINATE) as PGO. */
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    void acceptTerminateDbig(int broadcastId, in AttributionSource attributionSource);
+    /** Reject PGP terminate request: sends TExitDbig(REJECT_TERMINATE) as PGO. */
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    void rejectTerminateDbig(int broadcastId, in AttributionSource attributionSource);
 }

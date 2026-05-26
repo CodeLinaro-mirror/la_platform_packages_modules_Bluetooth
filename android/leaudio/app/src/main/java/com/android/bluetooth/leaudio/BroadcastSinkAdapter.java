@@ -24,6 +24,7 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
         void onStartEnhancedBroadcastSink(BroadcastSinkViewModel.FoundBroadcastItem item);
         void onBisAcquire(BroadcastSinkViewModel.FoundBroadcastItem item);
         void onStopEnhancedBroadcastSink(int broadcastId);
+        void onTerminateDbig(int broadcastId);
         void onRemoveSource(int broadcastId);
     }
 
@@ -33,6 +34,13 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
     private boolean mLocalOccupyingBis = false;
     /** Reflects whether a free BIS slot is available (bit0=1 && bit1=0). */
     private boolean mBisAvailable = false;
+    /**
+     * PGP (local) capability bit 0: supports Terminate DBIG procedure.
+     * Button is only shown when both PGP and PGO support the feature and BIG is synced.
+     */
+    private int mPgpSinkCap = 0;
+    /** PGO (remote) capability bit 0: supports Terminate DBIG procedure. */
+    private int mPgoSourceCap = 0;
 
     public BroadcastSinkAdapter(OnBroadcastActionListener actionListener) {
         mActionListener = actionListener;
@@ -57,6 +65,16 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
     public void updateBisState(boolean localOccupying, boolean bisAvailable) {
         mLocalOccupyingBis = localOccupying;
         mBisAvailable = bisAvailable;
+        notifyDataSetChanged();
+    }
+
+    /**
+     * Update PGP and PGO capability bits so the "Request PGO to Terminate DBIG" button
+     * visibility can be computed per-item on the next bind pass.
+     */
+    public void updateCapabilities(int pgpSinkCap, int pgoSourceCap) {
+        mPgpSinkCap = pgpSinkCap;
+        mPgoSourceCap = pgoSourceCap;
         notifyDataSetChanged();
     }
 
@@ -93,6 +111,7 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
         private final Button mBisAcquireButton;
         private final Button mStopEnhancedBroadcastSinkButton;
         private final Button mRemoveSourceButton;
+        private final Button mRequestTerminateDbigButton;
 
         public BroadcastViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -104,6 +123,7 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             mBisAcquireButton = itemView.findViewById(R.id.bis_acquire_button);
             mStopEnhancedBroadcastSinkButton = itemView.findViewById(R.id.stop_enhanced_sink_button);
             mRemoveSourceButton = itemView.findViewById(R.id.remove_source_button);
+            mRequestTerminateDbigButton = itemView.findViewById(R.id.request_terminate_dbig_button);
         }
 
         public void bind(BroadcastSinkViewModel.FoundBroadcastItem item) {
@@ -157,7 +177,8 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             mBisAcquireButton.setText(mLocalOccupyingBis ? "Release" : "Acquire");
 
             if (!item.hasPASync()) {
-                // Not PA synced yet - only "Add Source" is available
+                // Not PA synced yet — show the button in disabled state with the correct label
+                mStartEnhancedBroadcastSinkButton.setText("Start Enhanced Broadcast Sink");
                 mAddSourceButton.setEnabled(true);
                 mStartEnhancedBroadcastSinkButton.setEnabled(false);
                 mBisAcquireButton.setEnabled(false);
@@ -173,6 +194,16 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
                 mStopEnhancedBroadcastSinkButton.setEnabled(true);
                 mRemoveSourceButton.setEnabled(true);
             }
+
+            // "Request PGO to Terminate DBIG" is always visible but enabled only when:
+            //   1. PGP is BIG-synced (local device occupies a BIS slot)
+            //   2. PGO advertises support for Terminate (bit 0 of mPgoSourceCap)
+            //   3. PGP FW supports Terminate (bit 0 of mPgpSinkCap)
+            boolean bigSynced = mLocalOccupyingBis;
+            boolean pgoSupportsTerminate = (mPgoSourceCap & 0x01) != 0;
+            boolean pgpSupportsTerminate = (mPgpSinkCap & 0x01) != 0;
+            mRequestTerminateDbigButton.setEnabled(
+                    bigSynced && pgoSupportsTerminate && pgpSupportsTerminate);
 
             // Set up click listeners
             mAddSourceButton.setOnClickListener(v -> {
@@ -202,6 +233,12 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
             mRemoveSourceButton.setOnClickListener(v -> {
                 if (mActionListener != null) {
                     mActionListener.onRemoveSource(item.broadcastId);
+                }
+            });
+
+            mRequestTerminateDbigButton.setOnClickListener(v -> {
+                if (mActionListener != null) {
+                    mActionListener.onTerminateDbig(item.broadcastId);
                 }
             });
         }

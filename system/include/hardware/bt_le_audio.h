@@ -576,6 +576,24 @@ public:
                                     uint8_t num_bis,
                                     std::vector<uint16_t> bis_dev_ids,
                                     uint16_t broadcast_features) = 0;
+  /* Callback for DBIG Remove Device complete event. */
+  virtual void OnRemoveDeviceDbigComplete(uint8_t dbig_handle,
+                                          uint16_t dev_id,
+                                          uint8_t status) = 0;
+
+  /**
+   * Callback for HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+   * Fired after PGO sends TExitDbig(TERMINATE or REJECT_TERMINATE) in response to
+   * a PGP terminate request (DBIG status bit 10 = 0x0400).
+   * status=0x00 = PGO accepted and DBIG terminated; 0x0E = rejected.
+   *
+   * @param broadcast_id  broadcast_id matching the DBIG handle (may be kBroadcastIdInvalid)
+   * @param dbig_handle   DBIG handle
+   * @param status        HCI status code
+   */
+  virtual void OnTexitDbigComplete(uint32_t broadcast_id,
+                                   uint8_t dbig_handle,
+                                   uint8_t status) = 0;
 };
 
 class LeAudioBroadcasterInterface {
@@ -610,6 +628,9 @@ public:
   virtual void PauseBroadcast(uint32_t broadcast_id) = 0;
   /* Stop the Broadcast (no stream, no periodic advertisements */
   virtual void StopBroadcast(uint32_t broadcast_id) = 0;
+  /* Stop the enhanced broadcast (DUPLEX/DBIG) with a specific TExitDbig mode.
+   * mode: HCI_TEXIT_MODE_EXIT (0x01) or HCI_TEXIT_MODE_TERMINATE (0x02) */
+  virtual void stopEnhancedBroadcast(uint32_t broadcast_id, uint8_t mode) = 0;
   /* Destroy the existing Broadcast instance */
   virtual void DestroyBroadcast(uint32_t broadcast_id) = 0;
   /* Get Broadcast Metadata */
@@ -622,10 +643,13 @@ public:
 
   /**
    * Read the controller's supported LE states for enhanced broadcast.
-   * The result is stored internally and can be retrieved via getDbigParams().
+   * Blocks until the HCI command completes (with a timeout) and returns the
+   * capability bitmask directly: bit0=Terminate, bit1=Remove Device.
+   * The result is also stored internally for getEnhancedBroadcastCap().
    * Called once at broadcaster init when duplex mode is enabled.
+   * @return capability bitmask from controller, or 0 on timeout/error.
    */
-  virtual void readSupportedStates(void) = 0;
+  virtual uint32_t readSupportedStates(void) = 0;
 
   /**
    * Get the 12-byte DBIG parameter block that was populated after
@@ -653,6 +677,32 @@ public:
    * @return capability bitmask, or 0 if not yet available.
    */
   virtual uint32_t getEnhancedBroadcastCap(void) = 0;
+
+  /**
+   * Request the controller to remove a specific device from the DBIG.
+   * Sends HCI_VS_LE_Remove_Device_DBIG (0xFD90 / 0x09).
+   * Completion is delivered via OnRemoveDeviceDbigComplete() callback.
+   *
+   * @param dev_id  12-bit device identifier of the device to remove
+   * @param name    10-byte shortened local name of the device (may be shorter, zero-padded)
+   * @param reason  HCI reason code (e.g. 0x13 = Remote User Terminated)
+   */
+  virtual void removeDeviceDbig(uint16_t dev_id,
+                                const std::vector<uint8_t>& name,
+                                uint8_t reason) = 0;
+
+  /**
+   * Accept a PGP terminate request (spec §4.9 PGO Remote Host Terminate procedure).
+   * Sends HCI_VS_LE_Texit_DBIG(TERMINATE) as PGO, terminating the DBIG.
+   * Called when PGO user accepts the terminate dialog triggered by DBIG status bit 10.
+   */
+  virtual void acceptTerminateDbig(uint32_t broadcast_id) = 0;
+
+  /**
+   * Reject a PGP terminate request.
+   * Sends HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE). Does NOT terminate the DBIG.
+   */
+  virtual void rejectTerminateDbig(uint32_t broadcast_id) = 0;
 };
 
 } /* namespace le_audio */

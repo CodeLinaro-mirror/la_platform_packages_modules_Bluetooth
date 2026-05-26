@@ -779,6 +779,10 @@ void btm_vendor_vse_cback(uint8_t vse_subcode, uint8_t evt_len, uint8_t* p) {
           log::info(":: VS Meta TExitDBIG complete received, payload_len = {}", evt_len - 1);
           bluetooth::hci::IsoManager::GetInstance()->HandleTExitDbigEvent(pp, evt_len - 1);
           break;
+        case HCI_VS_LE_REMOVE_DEVICE_DBIG_COMPLETE_EVT:
+          log::info(":: VS Meta RemoveDeviceDBIG complete received, payload_len = {}", evt_len - 1);
+          bluetooth::hci::IsoManager::GetInstance()->HandleRemoveDeviceDbigEvent(pp, evt_len - 1);
+          break;
         case HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT:
           log::info(":: VS Meta JoinControl complete received, payload_len = {}", evt_len - 1);
           bluetooth::hci::IsoManager::GetInstance()->HandleJoinControlEvent(pp, evt_len - 1);

@@ -9,10 +9,12 @@
 #include <hardware/bt_le_audio_broadcast_sink.h>
 
 #include <cstdint>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -84,10 +86,9 @@ class BroadcastSinkInterfaceImpl
                            broadcast_id, broadcast_code));
   }
 
-  void StopEnhancedBroadcastSink(BroadcastId broadcast_id) override {
+  void StopEnhancedBroadcastSink(uint8_t mode) override {
     do_in_main_thread(Bind(&LeAudioBroadcastSink::StopEnhancedBroadcastSink,
-                           Unretained(LeAudioBroadcastSink::Get()),
-                           broadcast_id));
+                           Unretained(LeAudioBroadcastSink::Get()), mode));
   }
 
   void RemoveSource(BroadcastId broadcast_id) override {
@@ -101,11 +102,8 @@ class BroadcastSinkInterfaceImpl
                            Unretained(LeAudioBroadcastSink::Get()),
                            broadcast_id));
   }
-  void readSupportedStatesForSink(void) override {
-    // Get() asserts instance != nullptr. Initialize is posted asynchronously
-    // via do_in_main_thread, so instance may not be set yet when this is called
-    // from the Java handler thread. Defer Get() to the BT main thread so it
-    // always runs after Initialize.
+  uint32_t readSupportedStatesForSink(void) override {
+    /* Post HCI command to BT main thread (non-blocking from that thread's perspective). */
     do_in_main_thread(base::BindOnce([]() {
       if (!LeAudioBroadcastSink::IsLeAudioBroadcastSinkRunning()) {
         log::warn("BroadcastSink not yet initialized, skipping ReadSupportedStatesForSink");
@@ -113,6 +111,21 @@ class BroadcastSinkInterfaceImpl
       }
       LeAudioBroadcastSink::Get()->ReadSupportedStatesForSink();
     }));
+    /* Poll GetEnhancedBroadcastSinkCap() (reads cached broadcast_states_) until
+     * the HCI CommandComplete has been processed by the BT thread, or 1 s passes. */
+    constexpr int kPollIntervalMs = 10;
+    constexpr int kTimeoutMs = 1000;
+    for (int waited = 0; waited < kTimeoutMs; waited += kPollIntervalMs) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+      if (!LeAudioBroadcastSink::IsLeAudioBroadcastSinkRunning()) break;
+      uint32_t cap = LeAudioBroadcastSink::Get()->GetEnhancedBroadcastSinkCap();
+      if (cap != 0) {
+        log::info("readSupportedStatesForSink: cap=0x{:04x} after {}ms", cap, waited + kPollIntervalMs);
+        return cap;
+      }
+    }
+    log::warn("readSupportedStatesForSink: timed out or not available");
+    return 0;
   }
 
   uint32_t getEnhancedBroadcastSinkCap(void) override {
@@ -122,6 +135,20 @@ class BroadcastSinkInterfaceImpl
   void setEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) override {
     do_in_main_thread(Bind(&LeAudioBroadcastSink::SetEnhancedDbigParams,
                            Unretained(LeAudioBroadcastSink::Get()), dbig_params));
+  }
+
+  void terminateDbig() override {
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::TerminateDbig,
+                           Unretained(LeAudioBroadcastSink::Get())));
+  }
+
+  void OnTexitDbigComplete(BroadcastId broadcast_id,
+                            uint8_t dbig_handle,
+                            uint8_t status) override {
+    log::info("OnTexitDbigComplete: broadcast_id=0x{:08x}, dbig_handle={}, status=0x{:02x}",
+              broadcast_id, dbig_handle, status);
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnTexitDbigComplete,
+                          Unretained(callbacks_), broadcast_id, dbig_handle, status));
   }
 
   void SourcePublicMetadataChanged(BroadcastId broadcast_id,

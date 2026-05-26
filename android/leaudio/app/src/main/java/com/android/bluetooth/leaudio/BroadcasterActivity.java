@@ -91,6 +91,8 @@ public class BroadcasterActivity extends AppCompatActivity {
 
     private BisAvailability mBisAvailability = BisAvailability.UNAVAILABLE;
     private boolean mLocalOccupyingBis = false;
+    /** BroadcastId of the currently streaming enhanced broadcast (used for Terminate DBIG dialog). */
+    private int mStreamingBroadcastId = -1;
 
     private int mLastBroadcastFeatures = -1;
     private int[] mLastBisDevIds = null;
@@ -99,9 +101,20 @@ public class BroadcasterActivity extends AppCompatActivity {
      *  PGP tracking — up to 10 devices, populated from DBIG status events
      * ------------------------------------------------------------------ */
     private static final int MAX_PGP_TRACKED = 10;
-    /** devId → display name; insertion-ordered so oldest entry can be evicted. */
-    private final java.util.LinkedHashMap<Integer, String> mTrackedPgps =
+    /** Per-PGP info stored when the device joins the DBIG. */
+    private static final class PgpInfo {
+        final String name;
+        final int broadcastFeatures;
+        PgpInfo(String name, int broadcastFeatures) {
+            this.name = name;
+            this.broadcastFeatures = broadcastFeatures;
+        }
+    }
+    /** devId → PgpInfo; insertion-ordered so oldest entry can be evicted. */
+    private final java.util.LinkedHashMap<Integer, PgpInfo> mTrackedPgps =
             new java.util.LinkedHashMap<>();
+    /** PGO's own enhanced broadcast capability (from getEnhancedBroadcastCap()). */
+    private int mPgoEnhancedCap = 0;
     /** True while a Remove Device procedure is outstanding (between request and completion). */
     private boolean mRemovePending = false;
 
@@ -146,11 +159,11 @@ public class BroadcasterActivity extends AppCompatActivity {
                 if (featuresChanged || bisIdsChanged) {
                     mLastBroadcastFeatures = broadcastFeatures;
                     mLastBisDevIds = (bisDevIds != null) ? java.util.Arrays.copyOf(bisDevIds, bisDevIds.length) : null;
-                    Toast.makeText(context, "DBIG: totalBis=" + totalBis
-                            + ", occupiedBis=" + occupiedCount + ", availableBis=" + availableCount
-                            + ", features=0x" + Integer.toHexString(broadcastFeatures),
-                            Toast.LENGTH_SHORT).show();
                 }
+
+                    // Build one combined Toast for all status changes in this event
+                    StringBuilder toastMsg = new StringBuilder();
+
                     // bit8 (0x0100) – new device added to DBIG
                     boolean newDeviceAdded = (status & 0x0100) != 0;
                     Log.d(TAG, "Device added bit" + newDeviceAdded);
@@ -165,10 +178,9 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 : "";
                         Log.i(TAG, "New device added to DBIG: devId=0x"
                                 + String.format("%04X", devId) + ", name=" + nameStr);
-                        Toast.makeText(context,
-                                "New device joined DBIG: DevID=" + devId
-                                        + ", Name=" + nameStr,
-                                Toast.LENGTH_LONG).show();
+                        toastMsg.append("Joined: DevID=0x").append(String.format("%04X", devId))
+                                .append(" Name=").append(nameStr).append('\n');
+                        if (devId >= 0) addTrackedPgp(devId, nameStr, broadcastFeatures);
                     }
                     // bit9 (0x0200) – device is exiting / removed from DBIG
                     boolean deviceRemoved = (status & 0x0200) != 0;
@@ -184,11 +196,29 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 : "";
                         Log.i(TAG, "Device removed from DBIG: devId=0x"
                                 + String.format("%04X", devId) + ", name=" + nameStr);
-                        Toast.makeText(context,
-                                "Device exited DBIG: DevID"
-                                        + devId
-                                        + ", Name=" + nameStr,
-                                Toast.LENGTH_LONG).show();
+                        toastMsg.append("Exited: DevID=0x").append(String.format("%04X", devId))
+                                .append(" Name=").append(nameStr).append('\n');
+                        if (devId >= 0) removeTrackedPgp(devId);
+                    }
+
+                    // bit10 (0x0400) - PGP requesting to TERMINATE the DBIG group (spec §4.9)
+                    // PGO host must decide to accept (TExitDbig TERMINATE) or reject.
+                    // Only applicable to enhanced broadcast source (mPgoEnhancedCap != 0).
+                    boolean terminateRequested = (status & 0x0400) != 0;
+                    if (terminateRequested) {
+                        Log.i(TAG, "PGP requesting DBIG termination! mStreamingBroadcastId="
+                                + mStreamingBroadcastId
+                                + ", mPgoEnhancedCap=0x" + Integer.toHexString(mPgoEnhancedCap));
+                        if (mPgoEnhancedCap == 0) {
+                            Log.w(TAG, "bit10 terminate request but not enhanced broadcast — ignoring");
+                        } else {
+                            final int activeBroadcastId = mStreamingBroadcastId;
+                            if (activeBroadcastId >= 0) {
+                                runOnUiThread(() -> showTerminateRequestDialog(activeBroadcastId));
+                            } else {
+                                Log.w(TAG, "Terminate request but no active broadcast — ignoring");
+                            }
+                        }
                     }
 
                     // bit0 (0x0001) - at least one BIS is AVAILABLE
@@ -196,18 +226,37 @@ public class BroadcasterActivity extends AppCompatActivity {
                     boolean bisAvailable   = (status & 0x0001) != 0;
                     boolean localOccupying = (status & 0x0002) != 0;
 
+                    BisAvailability prevAvail = mBisAvailability;
+                    boolean prevOccupying = mLocalOccupyingBis;
                     mBisAvailability = (bisAvailable && !localOccupying)
                             ? BisAvailability.AVAILABLE
                             : BisAvailability.UNAVAILABLE;
                     mLocalOccupyingBis = localOccupying;
 
-                    if ((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
-                        Toast.makeText(context, "BIS is available, user can speak now",
-                                Toast.LENGTH_SHORT).show();
-                    } else if (!bisAvailable && !localOccupying) {
-                        Toast.makeText(context,
-                                "BIS is not available, please wait until BIS is available",
-                                Toast.LENGTH_SHORT).show();
+                    // Only report BIS availability change when it actually transitions
+                    if (mBisAvailability != prevAvail || localOccupying != prevOccupying) {
+                        if (mBisAvailability == BisAvailability.AVAILABLE) {
+                            toastMsg.append("BIS available – you can speak now");
+                        } else if (localOccupying) {
+                            toastMsg.append("Local device occupying BIS");
+                        } else {
+                            toastMsg.append("BIS not available");
+                        }
+                    }
+
+                    // Append BIS count summary only when bisIds or features changed
+                    // and no device-join/leave event is present (avoid double reporting)
+                    if ((featuresChanged || bisIdsChanged) && !newDeviceAdded && !deviceRemoved) {
+                        if (toastMsg.length() > 0) toastMsg.append('\n');
+                        toastMsg.append("BIS total=").append(totalBis)
+                                .append(" occ=").append(occupiedCount)
+                                .append(" avail=").append(availableCount);
+                    }
+
+                    // Show the single combined Toast (only if there is something to say)
+                    String combined = toastMsg.toString().trim();
+                    if (!combined.isEmpty()) {
+                        Toast.makeText(context, combined, Toast.LENGTH_SHORT).show();
                     }
 
                     Log.d(TAG, "DBIG status - availability: " + mBisAvailability
@@ -632,6 +681,38 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 joinRow.addView(btnJoinDisable);
                                 container.addView(joinRow);
 
+                                // "Remove Device" row — lets the PGO evict a specific PGP.
+                                // mBtnRemoveDevice and mRemoveStatusText are instance fields so
+                                // onRemoveDeviceDbigComplete() can update them asynchronously.
+                                // The Activity is NOT recreated on rotation (configChanges handles it)
+                                // so these references remain valid across orientation changes.
+                                LinearLayout removeRow = new LinearLayout(this);
+                                removeRow.setOrientation(LinearLayout.VERTICAL);
+                                removeRow.setPadding(dp8, 0, dp8, dp8);
+
+                                mBtnRemoveDevice = new Button(this);
+                                mBtnRemoveDevice.setText("Remove Device");
+                                LinearLayout.LayoutParams pRemove = new LinearLayout.LayoutParams(
+                                        LinearLayout.LayoutParams.MATCH_PARENT,
+                                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                                pRemove.setMargins(dp8, 0, dp8, 0);
+                                mBtnRemoveDevice.setLayoutParams(pRemove);
+                                // Grey out while a remove is already pending
+                                mBtnRemoveDevice.setEnabled(!mRemovePending);
+                                mBtnRemoveDevice.setAlpha(mRemovePending ? 0.4f : 1.0f);
+                                mBtnRemoveDevice.setOnClickListener(v -> showRemoveDeviceDialog());
+
+                                mRemoveStatusText = new TextView(this);
+                                mRemoveStatusText.setTextSize(12f);
+                                mRemoveStatusText.setPadding(dp8 * 2, 0, dp8, dp8 / 2);
+                                if (mRemovePending) {
+                                    mRemoveStatusText.setText("Removing… waiting for completion");
+                                }
+
+                                removeRow.addView(mBtnRemoveDevice);
+                                removeRow.addView(mRemoveStatusText);
+                                container.addView(removeRow);
+
                                 // Wrap the container in a ScrollView to handle landscape orientation
                                 ScrollView scrollView = new ScrollView(this);
                                 scrollView.addView(container);
@@ -761,10 +842,8 @@ public class BroadcasterActivity extends AppCompatActivity {
                         alert.setNegativeButton("Release", (dialog, which) -> {
                             if (mAudioManager != null) {
                                 mAudioManager.setParameters("achat_tx_acquire=false");
-                                Toast.makeText(this,
-                                        "achat_tx_acquire=false sent to AHAL for broadcast "
-                                                + broadcastId,
-                                        Toast.LENGTH_SHORT).show();
+                                Log.d(TAG, "achat_tx_acquire=false sent to AHAL for broadcast "
+                                        + broadcastId);
                             }
                             Log.d(TAG, "Acquire:False");
                             Toast.makeText(this,
@@ -779,10 +858,8 @@ public class BroadcasterActivity extends AppCompatActivity {
                         alert.setNegativeButton("Acquire", (dialog, which) -> {
                             if (mAudioManager != null) {
                                 mAudioManager.setParameters("achat_tx_acquire=true");
-                                Toast.makeText(this,
-                                        "achat_tx_acquire=true sent to AHAL for broadcast "
-                                                + broadcastId,
-                                        Toast.LENGTH_SHORT).show();
+                                Log.d(TAG, "achat_tx_acquire=true sent to AHAL for broadcast "
+                                        + broadcastId);
                             }
                             Log.d(TAG, "Acquire:True");
                             Toast.makeText(this,
@@ -801,6 +878,12 @@ public class BroadcasterActivity extends AppCompatActivity {
 
         // Get the initial state
         mViewModel = ViewModelProviders.of(this).get(BroadcasterViewModel.class);
+        // Fetch PGO capability once — readSupportedStates() was called at BT turn-on
+        // and the result is cached in the stack. No new HCI command is issued here.
+        mPgoEnhancedCap = mViewModel.getEnhancedBroadcastCap();
+        Log.i(TAG, "PGO enhanced broadcast cap: 0x" + Integer.toHexString(mPgoEnhancedCap)
+                + " [Terminate=" + ((mPgoEnhancedCap & 0x01) != 0 ? "Y" : "N")
+                + ", Remove=" + ((mPgoEnhancedCap & 0x02) != 0 ? "Y" : "N") + "]");
         final List<BluetoothLeBroadcastMetadata> metadata = mViewModel.getAllBroadcastMetadata();
         itemsAdapter.updateBroadcastsMetadata(metadata.isEmpty() ? new ArrayList<>() : metadata);
 
@@ -835,17 +918,20 @@ public class BroadcasterActivity extends AppCompatActivity {
                 .observe(
                         this,
                         reasonAndBidPair -> {
-                            Toast.makeText(
-                                            BroadcasterActivity.this,
-                                            "Playing broadcast "
-                                                    + reasonAndBidPair.second
-                                                    + ", reason "
-                                                    + reasonAndBidPair.first,
-                                            Toast.LENGTH_SHORT)
-                                    .show();
-
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, true);
                             int broadcastId = reasonAndBidPair.second;
+                            // Track broadcastId for Terminate DBIG dialog only for enhanced
+                            // broadcast source. Standard broadcasts have no DBIG.
+                            int enhancedCap = mViewModel.getEnhancedBroadcastCap();
+                            if (enhancedCap != 0) {
+                                mStreamingBroadcastId = broadcastId;
+                            } else {
+                                mStreamingBroadcastId = -1;
+                            }
+                            Log.i(TAG, "getEnhancedBroadcastCap: 0x" + Integer.toHexString(enhancedCap)
+                                    + " [Terminate_in_PGO=" + ((enhancedCap & 0x01) != 0 ? "supported" : "not_supported")
+                                    + ", Remove_in_PGO=" + ((enhancedCap & 0x02) != 0 ? "supported" : "not_supported") + "]"
+                                    + " mStreamingBroadcastId=" + mStreamingBroadcastId);
                             // Automatically enable Join Control once per broadcast session.
                             // Guard against duplicate STREAMING callbacks (duplex fires TX-only
                             // then TX+RX) so join control is sent exactly once.
@@ -867,10 +953,6 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 Log.d(TAG, "Broadcast playing (duplicate callback for broadcastId="
                                         + broadcastId + ") — skipping join control");
                             }
-                            int enhancedCap = mViewModel.getEnhancedBroadcastCap();
-                            Log.i(TAG, "getEnhancedBroadcastCap: 0x" + Integer.toHexString(enhancedCap)
-                                    + " [Terminate_in_PGO=" + ((enhancedCap & 0x01) != 0 ? "supported" : "not_supported")
-                                    + ", Remove_in_PGO=" + ((enhancedCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
                         });
 
         mViewModel
@@ -892,6 +974,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     .show();
 
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, false);
+                            mStreamingBroadcastId = -1;  // no longer streaming
                         });
 
         mViewModel
@@ -927,6 +1010,60 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     .show();
                         });
 
+        mViewModel
+                .getRemoveDeviceDbigResultMutableLive()
+                .observe(
+                        this,
+                        statusDevIdPair -> onRemoveDeviceDbigComplete(
+                                statusDevIdPair.first, statusDevIdPair.second));
+
+        // Observe HCI_VS_LE_Texit_DBIG_Complete result on PGO side
+        mViewModel
+                .getTexitDbigResultMutableLive()
+                .observe(this, pair -> {
+                    if (pair == null) return;
+                    int broadcastId = pair.first;
+                    int texitStatus = pair.second;
+                    Log.i(TAG, "Texit DBIG complete (PGO): broadcastId=" + broadcastId
+                            + ", status=0x" + Integer.toHexString(texitStatus));
+                    String msg;
+                    if (texitStatus == 0x00) {
+                        msg = "DBIG Terminated: success (broadcast ID " + broadcastId + ")";
+                    } else {
+                        msg = "DBIG Terminate: failed/unexpected (status=0x"
+                                + Integer.toHexString(texitStatus) + ")";
+                    }
+                    Toast.makeText(BroadcasterActivity.this, msg,
+                            texitStatus == 0 ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+                    Log.i(TAG, msg);
+                });
+
+        // When BT turns OFF, reset all AuraChat/enhanced broadcast state so the next
+        // BT-on cycle starts cleanly in PGO role.
+        mViewModel.getBluetoothOffEventLive().observe(this, off -> {
+            if (off == null || !off) return;
+            Log.i(TAG, "Bluetooth turned OFF — resetting enhanced broadcast (AuraChat) UI state");
+            // Clear PGP tracking
+            mTrackedPgps.clear();
+            mPgoEnhancedCap = 0;
+            mRemovePending = false;
+            mBtnRemoveDevice = null;
+            mRemoveStatusText = null;
+            // Clear DBIG BIS state
+            mBisAvailability = BisAvailability.UNAVAILABLE;
+            mLocalOccupyingBis = false;
+            mLastBroadcastFeatures = -1;
+            mLastBisDevIds = null;
+            mJoinControlAutoEnabledIds.clear();
+            mStreamingBroadcastId = -1;
+            // Dismiss any open broadcast-info dialog
+            if (mCurrentInfoDialog != null && mCurrentInfoDialog.isShowing()) {
+                mCurrentInfoDialog.dismiss();
+                mCurrentInfoDialog = null;
+            }
+            Toast.makeText(this, "Bluetooth OFF — AuraChat state cleared", Toast.LENGTH_SHORT).show();
+        });
+
         // Prevent destruction when loses focus
         this.setFinishOnTouchOutside(false);
     }
@@ -956,6 +1093,27 @@ public class BroadcasterActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // Stop all active enhanced broadcasts so BIG/DBIG are terminated when the app is killed.
+        // Without this, the broadcast stays alive on the controller even after the app dies,
+        // preventing a clean restart on the next session.
+        if (mViewModel != null) {
+            try {
+                java.util.List<android.bluetooth.BluetoothLeBroadcastMetadata> activeBroadcasts =
+                        mViewModel.getAllBroadcastMetadata();
+                if (activeBroadcasts != null && !activeBroadcasts.isEmpty()) {
+                    Log.i(TAG, "onDestroy: stopping " + activeBroadcasts.size()
+                            + " active broadcast(s)");
+                    for (android.bluetooth.BluetoothLeBroadcastMetadata meta : activeBroadcasts) {
+                        int broadcastId = meta.getBroadcastId();
+                        Log.d(TAG, "onDestroy: stopping broadcast broadcastId=" + broadcastId);
+                        mViewModel.stopEnhancedBroadcast(broadcastId,
+                                android.bluetooth.BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "onDestroy: error stopping broadcasts", e);
+            }
+        }
     }
 
     @Override
@@ -996,9 +1154,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                 negativeButton.setOnClickListener(v -> {
                     if (mAudioManager != null) {
                         mAudioManager.setParameters("achat_tx_acquire=false");
-                        Toast.makeText(this,
-                                "achat_tx_acquire=false sent to AHAL for broadcast " + broadcastId,
-                                Toast.LENGTH_SHORT).show();
+                        Log.d(TAG, "achat_tx_acquire=false sent to AHAL for broadcast " + broadcastId);
                     }
                     Log.d(TAG, "Acquire:False");
                     Toast.makeText(this, "Release BIS for broadcast " + broadcastId,
@@ -1016,9 +1172,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                 negativeButton.setOnClickListener(v -> {
                     if (mAudioManager != null) {
                         mAudioManager.setParameters("achat_tx_acquire=true");
-                        Toast.makeText(this,
-                                "achat_tx_acquire=true sent to AHAL for broadcast " + broadcastId,
-                                Toast.LENGTH_SHORT).show();
+                        Log.d(TAG, "achat_tx_acquire=true sent to AHAL for broadcast " + broadcastId);
                     }
                     Log.d(TAG, "Acquire:True");
                     Toast.makeText(this, "Acquiring BIS for broadcast " + broadcastId,
@@ -1032,6 +1186,20 @@ public class BroadcasterActivity extends AppCompatActivity {
         } else {
             if (negativeButton != null) {
                 negativeButton.setVisibility(View.GONE);
+            }
+        }
+
+        // Refresh Remove Device button state to reflect current mRemovePending value.
+        // mBtnRemoveDevice points to the button inside the dialog's View hierarchy;
+        // since the Activity is not recreated on rotation the reference remains valid.
+        if (mBtnRemoveDevice != null) {
+            mBtnRemoveDevice.setEnabled(!mRemovePending);
+            mBtnRemoveDevice.setAlpha(mRemovePending ? 0.4f : 1.0f);
+        }
+        if (mRemoveStatusText != null && mRemovePending) {
+            // Re-set pending text if it was cleared by a rotation that occurred mid-remove
+            if (mRemoveStatusText.getText().length() == 0) {
+                mRemoveStatusText.setText("Removing… waiting for completion");
             }
         }
     }
@@ -1171,5 +1339,188 @@ public class BroadcasterActivity extends AppCompatActivity {
                 .setNegativeButton("Cancel", (dialog, which) -> {});
         AlertDialog savedBroadcastsAlertDialog = alertDialog.create();
         savedBroadcastsAlertDialog.show();
+    }
+
+    /**
+     * Adds (or updates) a PGP entry in the tracked list.
+     * Evicts the oldest entry if the list already holds MAX_PGP_TRACKED devices.
+     */
+    private void addTrackedPgp(int devId, String name, int broadcastFeatures) {
+        // Remove first to re-insert at the end (treat as MRU update)
+        mTrackedPgps.remove(devId);
+        if (mTrackedPgps.size() >= MAX_PGP_TRACKED) {
+            int oldest = mTrackedPgps.keySet().iterator().next();
+            mTrackedPgps.remove(oldest);
+            Log.i(TAG, "PGP list full; evicted devId=0x" + Integer.toHexString(oldest));
+        }
+        String display = (name == null || name.isEmpty())
+                ? ("0x" + String.format("%04X", devId))
+                : name;
+        mTrackedPgps.put(devId, new PgpInfo(display, broadcastFeatures));
+        Log.i(TAG, "Tracking PGP devId=0x" + String.format("%04X", devId)
+                + " name=" + display
+                + " broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures)
+                + " total=" + mTrackedPgps.size());
+    }
+
+    /** Removes a PGP from the tracked list when it exits the DBIG. */
+    private void removeTrackedPgp(int devId) {
+        if (mTrackedPgps.remove(devId) != null) {
+            Log.i(TAG, "Removed PGP 0x" + String.format("%04X", devId)
+                    + " from tracked list; remaining=" + mTrackedPgps.size());
+        }
+    }
+    /**
+     * Shows a list of currently tracked PGPs for the user to pick one to remove.
+     * Disables itself if no PGPs are tracked or a remove is already in progress.
+     * Checks that both PGO and the selected PGP support the Remove operation before proceeding.
+     */
+    private void showRemoveDeviceDialog() {
+        if (mRemovePending) {
+            Toast.makeText(this, "Remove already in progress", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (mTrackedPgps.isEmpty()) {
+            Toast.makeText(this, "No PGPs currently in DBIG", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Build display strings and parallel arrays of devIds
+        Integer[] devIds = mTrackedPgps.keySet().toArray(new Integer[0]);
+        String[] items = new String[devIds.length];
+        for (int i = 0; i < devIds.length; i++) {
+            items[i] = "DevID: 0x" + String.format("%04X", devIds[i])
+                    + "  Name: " + mTrackedPgps.get(devIds[i]).name;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Select PGP to Remove (" + devIds.length + " device"
+                        + (devIds.length > 1 ? "s" : "") + ")")
+                .setItems(items, (dialog, which) -> {
+                    int devId = devIds[which];
+                    PgpInfo pgpInfo = mTrackedPgps.get(devId);
+                    String name = pgpInfo.name;
+                    int pgpFeatures = pgpInfo.broadcastFeatures;
+
+                    // Use PGO capability already fetched at BT turn-on (broadcast_states_
+                    // is populated by readSupportedStates() during service init and cached
+                    // in the stack — no new HCI command needed).
+                    boolean pgoSupportsRemove = (mPgoEnhancedCap & 0x02) != 0;
+                    boolean pgpSupportsRemove = (pgpFeatures & 0x02) != 0;
+
+                    Log.i(TAG, "Remove check: devId=0x" + String.format("%04X", devId)
+                            + " pgpFeatures=0x" + Integer.toHexString(pgpFeatures)
+                            + " pgoCap=0x" + Integer.toHexString(mPgoEnhancedCap)
+                            + " pgoSupportsRemove=" + pgoSupportsRemove
+                            + " pgpSupportsRemove=" + pgpSupportsRemove);
+
+                    if (!pgoSupportsRemove || !pgpSupportsRemove) {
+                        // Show a dialog explaining which side does not support Remove
+                        String reason;
+                        if (!pgoSupportsRemove && !pgpSupportsRemove) {
+                            reason = "Neither PGO nor PGP (DevID=0x"
+                                    + String.format("%04X", devId) + ") support the Remove operation.";
+                        } else if (!pgoSupportsRemove) {
+                            reason = "PGO does not support the Remove Device operation "
+                                    + "(PGO capability=0x" + Integer.toHexString(mPgoEnhancedCap) + ").";
+                        } else {
+                            reason = "PGP (DevID=0x" + String.format("%04X", devId) + ", Name=" + name
+                                    + ") does not support the Remove operation "
+                                    + "(PGP features=0x" + Integer.toHexString(pgpFeatures) + ").";
+                        }
+                        new AlertDialog.Builder(this)
+                                .setTitle("Remove Not Supported")
+                                .setMessage(reason)
+                                .setPositiveButton("OK", null)
+                                .show();
+                        return;
+                    }
+
+                    byte[] nameBytes = (!name.startsWith("0x"))
+                            ? name.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                            : new byte[]{0};
+                    Log.i(TAG, "Requesting remove: devId=0x" + String.format("%04X", devId)
+                            + " name=" + name);
+
+                    // Mark pending and grey out the button before the call returns
+                    mRemovePending = true;
+                    if (mBtnRemoveDevice != null) {
+                        mBtnRemoveDevice.setEnabled(false);
+                        mBtnRemoveDevice.setAlpha(0.4f);
+                    }
+                    if (mRemoveStatusText != null) {
+                        mRemoveStatusText.setText("Removing DevID 0x"
+                                + String.format("%04X", devId) + "...");
+                    }
+                    // 0x13 = Remote User Terminated Connection
+                    mViewModel.removeDeviceFromDbig(devId, nameBytes, 0x13);
+                    Toast.makeText(this,
+                            "Requesting removal of DevID 0x" + String.format("%04X", devId),
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Called when Remove Device DBIG completes (via LiveData observer). */
+    public void onRemoveDeviceDbigComplete(int status, int devId) {
+        Log.i(TAG, "onRemoveDeviceDbigComplete: status=0x" + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId));
+        runOnUiThread(() -> {
+            mRemovePending = false;
+
+            // Re-enable the button
+            if (mBtnRemoveDevice != null) {
+                mBtnRemoveDevice.setEnabled(true);
+                mBtnRemoveDevice.setAlpha(1.0f);
+            }
+
+            boolean success = (status == 0);
+            String statusMsg = success
+                    ? "Remove Device: success (devId=0x" + Integer.toHexString(devId) + ")"
+                    : "Remove Device: failed (status=0x" + Integer.toHexString(status)
+                            + ", devId=0x" + Integer.toHexString(devId) + ")";
+
+            // Update the persistent status label
+            if (mRemoveStatusText != null) {
+                mRemoveStatusText.setText(statusMsg);
+                mRemoveStatusText.setTextColor(success
+                        ? android.graphics.Color.parseColor("#006400")  // dark green
+                        : android.graphics.Color.RED);
+            }
+
+            Toast.makeText(this, statusMsg,
+                    success ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+        });
+    }
+
+    /**
+     * Shows when a PGP requests to terminate the DBIG group (spec §4.9).
+     * Accept: delegates to stopEnhancedBroadcast(TERMINATE) — full HAL teardown + TExitDbig.
+     *         BTA handles announcement teardown internally; onBroadcastStopped fires when done.
+     * Reject: sends TExitDbig(REJECT_TERMINATE). PGP receives failure Texit complete.
+     */
+    private void showTerminateRequestDialog(int broadcastId) {
+        Log.i(TAG, "showTerminateRequestDialog: broadcastId=" + broadcastId);
+        new AlertDialog.Builder(this)
+                .setTitle("PGP Requesting DBIG Termination")
+                .setMessage("A device in the DBIG group is requesting to terminate the entire "
+                        + "DBIG (broadcast ID " + broadcastId + ").\n\n"
+                        + "Accept: terminate DBIG for all devices.\n"
+                        + "Reject: keep DBIG alive, deny the request.")
+                .setPositiveButton("Accept (Terminate)", (dialog, which) -> {
+                    Log.i(TAG, "PGO accepted terminate request — sending TExitDbig(TERMINATE) for "
+                            + broadcastId);
+                    mViewModel.acceptTerminateDbig(broadcastId);
+                    Toast.makeText(this, "Terminating DBIG…", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Reject", (dialog, which) -> {
+                    Log.i(TAG, "PGO rejected terminate request — sending TExitDbig(REJECT) for "
+                            + broadcastId);
+                    mViewModel.rejectTerminateDbig(broadcastId);
+                    Toast.makeText(this, "Terminate request rejected", Toast.LENGTH_SHORT).show();
+                })
+                .setCancelable(false)
+                .show();
     }
 }

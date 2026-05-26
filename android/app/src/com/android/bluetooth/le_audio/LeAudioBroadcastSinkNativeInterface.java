@@ -127,13 +127,11 @@ public class LeAudioBroadcastSinkNativeInterface {
     }
 
     /**
-     * Leave a broadcast source (stop BIG sync, keep PA sync).
-     *
-     * @param broadcastId Broadcast ID to leave
+     * Leave the active enhanced broadcast source (stop BIG sync, keep PA sync).
      */
-    public void stopEnhancedBroadcastSink(int broadcastId) {
-        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink(): broadcastId=" + broadcastId);
-        stopEnhancedBroadcastSinkNative(broadcastId);
+    public void stopEnhancedBroadcastSink(int mode) {
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink(): mode=0x" + Integer.toHexString(mode));
+        stopEnhancedBroadcastSinkNative(mode);
     }
 
     /**
@@ -437,7 +435,7 @@ public class LeAudioBroadcastSinkNativeInterface {
      * Enhanced broadcast always syncs to all BISes — no BIS selection needed.
      */
     private native void startEnhancedBroadcastSinkNative(int broadcastId, byte[] broadcastCode);
-    private native void stopEnhancedBroadcastSinkNative(int broadcastId);
+    private native void stopEnhancedBroadcastSinkNative(int mode);
     private native void removeSourceNative(int broadcastId);
     private native void destroySourceNative(int broadcastId);
     private native void sourcePublicMetadataChangedNative(int broadcastId,
@@ -450,12 +448,13 @@ public class LeAudioBroadcastSinkNativeInterface {
 
     /**
      * Read LE Supported States for duplex broadcast sink flow.
-     * Result is stored in the native layer and retrievable via
-     * {@link #getEnhancedBroadcastSinkCap()}.
+     * Blocks until the HCI command completes (up to 1 s) and returns the
+     * PGP FW capability bitmask directly: bit0=Terminate, bit1=Remove Device.
+     * @return broadcast_states bitmask, or 0 if not available / timed out
      */
-    public void readSupportedStatesForSink() {
+    public int readSupportedStatesForSink() {
         if (DBG) Log.d(TAG, "readSupportedStatesForSink()");
-        readSupportedStatesForSinkNative();
+        return readSupportedStatesForSinkNative();
     }
 
     /**
@@ -484,7 +483,34 @@ public class LeAudioBroadcastSinkNativeInterface {
         setEnhancedDbigParamsNative(dbigParams);
     }
 
-    private native void readSupportedStatesForSinkNative();
+    private native int  readSupportedStatesForSinkNative();
     private native int  getEnhancedBroadcastSinkCapNative();
     private native void setEnhancedDbigParamsNative(byte[] dbigParams);
+
+    /**
+     * Terminate the DBIG (spec §5.3 PGP Terminates procedure).
+     * Sends HCI_VS_LE_Texit_DBIG with texit_mode=TERMINATE.
+     */
+    public void terminateDbig() {
+        Log.d(TAG, "terminateDbig()");
+        terminateDbigNative();
+    }
+
+    /**
+     * Callback when HCI_VS_LE_Texit_DBIG_Complete event is received.
+     * status=0x00 success; status=0x0E rejected by PGO.
+     */
+    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+        Log.d(TAG, "onTexitDbigComplete(): broadcastId=" + broadcastId
+                + ", dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioBroadcastSinkStackEvent event = new LeAudioBroadcastSinkStackEvent(
+                LeAudioBroadcastSinkStackEvent.EVENT_TYPE_TEXIT_DBIG_COMPLETE);
+        event.broadcastId = broadcastId;
+        event.valueInt1 = dbigHandle;
+        event.reason = status;
+        sendMessageToService(event);
+    }
+
+    private native void terminateDbigNative();
 }

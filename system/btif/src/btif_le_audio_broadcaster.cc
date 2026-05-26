@@ -16,12 +16,15 @@
  */
 
 #include <base/functional/bind.h>
+#include <bluetooth/log.h>
 #include <hardware/bt_le_audio.h>
 
 #include <cstdint>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -92,6 +95,11 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
   }
 
+  void stopEnhancedBroadcast(uint32_t broadcast_id, uint8_t mode) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::StopEnhancedAudioBroadcast,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_id, mode));
+  }
+
   void PauseBroadcast(uint32_t broadcast_id) override {
     do_in_main_thread(Bind(&LeAudioBroadcaster::SuspendAudioBroadcast,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
@@ -154,24 +162,75 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                           dev_id, name, num_bis, bis_dev_ids, broadcast_features));
   }
 
+  void OnRemoveDeviceDbigComplete(uint8_t dbig_handle, uint16_t dev_id,
+                                  uint8_t status) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnRemoveDeviceDbigComplete,
+                          Unretained(callbacks_), dbig_handle, dev_id, status));
+  }
+
+  void OnTexitDbigComplete(uint32_t broadcast_id, uint8_t dbig_handle,
+                            uint8_t status) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnTexitDbigComplete,
+                          Unretained(callbacks_), broadcast_id, dbig_handle, status));
+  }
+
+  /**
+   * Accept a PGP terminate request by sending HCI_VS_LE_Texit_DBIG(TERMINATE).
+   * Called when PGO user accepts the terminate dialog.
+   */
+  void acceptTerminateDbig(uint32_t broadcast_id) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::AcceptTerminateDbig,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_id));
+  }
+
+  /**
+   * Reject a PGP terminate request by sending HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE).
+   * Called when PGO user rejects the terminate dialog.
+   */
+  void rejectTerminateDbig(uint32_t broadcast_id) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::RejectTerminateDbig,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_id));
+  }
+
+  void removeDeviceDbig(uint16_t dev_id,
+                        const std::vector<uint8_t>& name,
+                        uint8_t reason) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::RemoveDeviceDbig,
+                           Unretained(LeAudioBroadcaster::Get()),
+                           dev_id, name, reason));
+  }
+
   void Stop(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Stop)); }
 
   void Cleanup(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Cleanup)); }
 
   /**
-   * Dispatch ReadSupportedStates to the BTA broadcaster on the main thread.
-   * The BTA layer issues the VS HCI command and stores the result in
-   * dbig_params_ / enhanced_broadcast_cap_.
+   * Post HCI command to BT main thread, poll GetEnhancedBroadcastCap() until
+   * the controller responds (≤1 s), and return the capability bitmask.
+   * bit0=Terminate, bit1=Remove Device.
    */
-  void readSupportedStates(void) override {
-    // LeAudioBroadcaster::Initialize is posted asynchronously via
-    // do_in_main_thread, so instance may not be set yet when this is called
-    // from the JNI thread. Evaluate Get() on the main thread to avoid the
-    // assert-on-null crash.
+  uint32_t readSupportedStates(void) override {
     do_in_main_thread(base::BindOnce([]() {
-      LeAudioBroadcaster* broadcaster = LeAudioBroadcaster::Get();
-      if (broadcaster) broadcaster->ReadSupportedStates();
+      if (!LeAudioBroadcaster::IsLeAudioBroadcasterRunning()) {
+        bluetooth::log::warn("Broadcaster not yet initialized, skipping ReadSupportedStates");
+        return;
+      }
+      LeAudioBroadcaster::Get()->ReadSupportedStates();
     }));
+    constexpr int kPollIntervalMs = 10;
+    constexpr int kTimeoutMs = 1000;
+    for (int waited = 0; waited < kTimeoutMs; waited += kPollIntervalMs) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+      if (!LeAudioBroadcaster::IsLeAudioBroadcasterRunning()) break;
+      uint32_t cap = LeAudioBroadcaster::Get()->GetEnhancedBroadcastCap();
+      if (cap != 0) {
+        bluetooth::log::info("readSupportedStates: cap=0x{:04x} after {}ms", cap,
+                             waited + kPollIntervalMs);
+        return cap;
+      }
+    }
+    bluetooth::log::warn("readSupportedStates: timed out or not available");
+    return 0;
   }
 
   /**

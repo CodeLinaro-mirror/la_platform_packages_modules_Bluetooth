@@ -442,14 +442,14 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
     }
 
     @Override
-    public void stopEnhancedBroadcast(int broadcastId, AttributionSource source) {
+    public void stopEnhancedBroadcast(int broadcastId, int mode, AttributionSource source) {
        LeAudioService service = getServiceAndEnforceConnect(source);
        if (service == null) {
            return;
        }
 
        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-       service.stopEnhancedBroadcast(broadcastId);
+       service.stopEnhancedBroadcast(broadcastId, mode);
     }
 
     @Override
@@ -597,5 +597,30 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
         LeAudioService service = getServiceAndEnforceConnect(source);
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.getEnhancedBroadcastCap();
+    }
+
+    @Override
+    public void removeDeviceFromDbig(int devId, byte[] name, int reason,
+                                     AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.removeDeviceFromDbig(devId, name, reason);
+    }
+
+    @Override
+    public void acceptTerminateDbig(int broadcastId, AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.acceptTerminateDbig(broadcastId);
+    }
+
+    @Override
+    public void rejectTerminateDbig(int broadcastId, AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.rejectTerminateDbig(broadcastId);
     }
 }

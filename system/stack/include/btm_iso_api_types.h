@@ -88,6 +88,7 @@ constexpr uint8_t kIsoEventDbigUpdate = 0x10;
 constexpr uint8_t kIsoEventDbigCreateCmpl = 0x11;
 constexpr uint8_t kIsoEventDbigStatus = 0x12;
 constexpr uint8_t kIsoEventDbigTexitCmpl = 0x13;
+constexpr uint8_t kIsoEventDbigRemoveDeviceCmpl = 0x14;
 
 constexpr uint8_t kIsoEventBigOnSyncEstablished = 0x00;
 constexpr uint8_t kIsoEventBigOnSyncLost = 0x01;
@@ -195,6 +196,9 @@ typedef void (dbig_texit_cmpl_cb)(uint8_t status, uint8_t sub_opcode);
 /* Callback for HCI_VS_LE_SET_DevID command complete */
 typedef void (dbig_set_devid_cmpl_cb)(uint8_t status, uint8_t sub_opcode, uint16_t dev_id);
 
+/* Callback for HCI_VS_LE_Remove_Device_DBIG command complete */
+typedef void (dbig_remove_device_cmpl_cb)(uint8_t status, uint8_t dbig_handle, uint16_t dev_id);
+
 /* Parameters for HCI_VS_LE_JOIN_CONTROL command */
 struct dbig_join_control_params {
   uint8_t dbig_handle;
@@ -215,6 +219,15 @@ struct dbig_set_devid_params {
   uint16_t dev_id;
   uint8_t name[10];
   dbig_set_devid_cmpl_cb* p_cb;
+};
+
+/* Parameters for HCI_VS_LE_Remove_Device_DBIG command */
+struct dbig_remove_device_params {
+  uint8_t dbig_handle;
+  uint16_t dev_id;
+  uint8_t name[10];
+  uint8_t reason;
+  dbig_remove_device_cmpl_cb* p_cb;
 };
 
 struct big_create_cmpl_evt {
@@ -330,6 +343,13 @@ struct dbig_texit_cmpl_evt {
   uint8_t status;
   uint8_t dbig_handle;
   uint8_t reason;
+};
+
+/* DBIG Remove Device completion event */
+struct dbig_remove_device_cmpl_evt {
+  uint8_t  status;
+  uint8_t  dbig_handle;
+  uint16_t dev_id;
 };
 
 /* DBIG callbacks interface */

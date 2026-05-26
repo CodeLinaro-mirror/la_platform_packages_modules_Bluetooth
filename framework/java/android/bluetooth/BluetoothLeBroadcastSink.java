@@ -63,6 +63,22 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
     private static final String TAG = BluetoothLeBroadcastSink.class.getSimpleName();
 
     private static final boolean DBG = true;
+
+    /**
+     * TExitDbig mode: graceful exit — this PGP leaves without affecting other DBIG members.
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int DBIG_TEXIT_MODE_EXIT = BluetoothLeBroadcast.DBIG_TEXIT_MODE_EXIT;
+
+    /**
+     * TExitDbig mode: terminate — PGP requests the entire DBIG be terminated for all members.
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int DBIG_TEXIT_MODE_TERMINATE = BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE;
     private final Map<Callback, Executor> mCallbackExecutorMap = new HashMap<>();
 
     private final IBluetoothLeBroadcastSinkCallback mCallback =
@@ -209,6 +225,20 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
                                 callbackExecutorEntry.getKey();
                         Executor executor = callbackExecutorEntry.getValue();
                         executor.execute(() -> callback.onSourceRemoveFailed(broadcastId, reason));
+                    }
+                }
+
+                @Override
+                @RequiresNoPermission
+                public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+                    for (Map.Entry<BluetoothLeBroadcastSink.Callback, Executor>
+                            callbackExecutorEntry : mCallbackExecutorMap.entrySet()) {
+                        BluetoothLeBroadcastSink.Callback callback =
+                                callbackExecutorEntry.getKey();
+                        Executor executor = callbackExecutorEntry.getValue();
+                        executor.execute(
+                                () -> callback.onTexitDbigComplete(broadcastId, dbigHandle,
+                                        status));
                     }
                 }
 
@@ -367,6 +397,21 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         void onSourceRemoveFailed(
                 int broadcastId, @BluetoothLeBroadcastSinkState.Reason int reason);
 
+        /**
+         * Callback delivered when {@code HCI_VS_LE_Texit_DBIG_Complete} event is received
+         * on the PGP (spec §5.3 PGP Terminates procedure).
+         *
+         * <p>status=0x00 → PGO accepted the terminate request, DBIG terminated.<br>
+         * status=0x0E → PGO rejected the terminate request (security reasons).
+         *
+         * @param broadcastId broadcast ID of the source
+         * @param dbigHandle  DBIG handle
+         * @param status      HCI status code (0x00=success, 0x0E=rejected)
+         * @hide
+         */
+        @SystemApi
+        @SuppressLint("UnflaggedApi")
+        default void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {}
     }
 
     private final CloseGuard mCloseGuard;
@@ -786,8 +831,8 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
     @SystemApi
     @RequiresBluetoothConnectPermission
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void stopEnhancedBroadcastSink(int broadcastId) {
-        log("stopEnhancedBroadcastSink: " + broadcastId);
+    public void stopEnhancedBroadcastSink(int broadcastId, int mode) {
+        log("stopEnhancedBroadcastSink: broadcastId=" + broadcastId + " mode=" + mode);
         if (mCallback == null) {
             throw new IllegalStateException("No callback was ever registered");
         }
@@ -804,7 +849,7 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (mBluetoothAdapter.isEnabled()) {
             try {
-                service.stopEnhancedBroadcastSink(broadcastId, mAttributionSource);
+                service.stopEnhancedBroadcastSink(broadcastId, mode, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
@@ -853,8 +898,34 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
             }
         }
     }
+
     /**
-     * Get all currently synced broadcast sink states.
+     * Terminate the DBIG (spec §5.3 PGP Terminates procedure).
+     * Sends {@code HCI_VS_LE_Texit_DBIG} with {@code texit_mode=TERMINATE}.
+     * PGO will receive DBIG status bit 10 (0x0400) and can accept or reject.
+     * Result delivered via {@link Callback#onTexitDbigComplete(int, int, int)}.
+     *
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void terminateDbig() {
+        log("terminateDbig");
+        final IBluetoothLeBroadcastSink service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (mBluetoothAdapter.isEnabled()) {
+            try {
+                service.terminateDbig(mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+    }
+    /**
      *
      * @return list of {@link BluetoothLeBroadcastSinkState} for all synced broadcasts
      * @hide

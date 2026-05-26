@@ -163,6 +163,19 @@ public class LeAudioBroadcasterNativeInterface {
         sendMessageToService(event);
     }
 
+    @VisibleForTesting
+    public void onRemoveDeviceDbigComplete(int dbigHandle, int devId, int status) {
+        Log.d(TAG, "onRemoveDeviceDbigComplete: dbigHandle=" + dbigHandle
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE);
+        event.valueInt1 = dbigHandle;
+        event.valueInt2 = devId;
+        event.valueInt3 = status;
+        sendMessageToService(event);
+    }
+
     /**
      * Initializes the native interface.
      *
@@ -270,6 +283,18 @@ public class LeAudioBroadcasterNativeInterface {
     }
 
     /**
+     * Stop an enhanced (DUPLEX/DBIG) broadcast with a specific TExitDbig mode.
+     *
+     * @param broadcastId broadcast instance identifier
+     * @param mode HCI TExitDbig mode: EXIT (1) or TERMINATE (2)
+     */
+    public void stopEnhancedBroadcast(int broadcastId, int mode) {
+        Log.d(TAG, "stopEnhancedBroadcast: broadcastId=" + broadcastId
+                + ", mode=0x" + Integer.toHexString(mode));
+        stopEnhancedBroadcastNative(broadcastId, mode);
+    }
+
+    /**
      * Pause LeAudio Broadcast instance.
      *
      * @param broadcastId broadcast instance identifier
@@ -316,6 +341,20 @@ public class LeAudioBroadcasterNativeInterface {
         setJoinControlNative(enable);
     }
 
+    /**
+     * Request the controller to remove a specific device from the DBIG.
+     *
+     * @param devId   12-bit device identifier (0-4095)
+     * @param name    up to 10-byte name (zero-padded to 10 bytes in native layer)
+     * @param reason  HCI reason code (e.g. 0x13 = Remote User Terminated)
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void removeDeviceDbig(int devId, byte[] name, int reason) {
+        Log.d(TAG, "removeDeviceDbig: devId=0x" + Integer.toHexString(devId)
+                + ", reason=0x" + Integer.toHexString(reason));
+        removeDeviceDbigNative(devId, name, reason);
+    }
+
     // Native methods that call into the JNI interface
     private native void initNative();
 
@@ -345,6 +384,8 @@ public class LeAudioBroadcasterNativeInterface {
 
     private native void stopBroadcastNative(int broadcastId);
 
+    private native void stopEnhancedBroadcastNative(int broadcastId, int mode);
+
     private native void pauseBroadcastNative(int broadcastId);
 
     private native void destroyBroadcastNative(int broadcastId);
@@ -355,12 +396,13 @@ public class LeAudioBroadcasterNativeInterface {
 
     /**
      * Read LE Supported States for duplex broadcast source flow.
-     * Result is stored in the native layer and retrievable via
-     * {@link #getEnhancedBroadcastCap()}.
+     * Blocks until the HCI command completes (up to 1 s) and returns the
+     * PGO FW capability bitmask: bit0=Terminate, bit1=Remove Device.
+     * @return broadcast_states bitmask, or 0 if not available / timed out
      */
-    public void readSupportedStates() {
+    public int readSupportedStates() {
         Log.d(TAG, "readSupportedStates");
-        readSupportedStatesNative();
+        return readSupportedStatesNative();
     }
 
     /**
@@ -387,7 +429,7 @@ public class LeAudioBroadcasterNativeInterface {
         return getEnhancedBroadcastCapNative();
     }
 
-    private native void readSupportedStatesNative();
+    private native int  readSupportedStatesNative();
     private native byte[] getDbigParamsNative();
     private native int getEnhancedBroadcastCapNative();
 
@@ -396,4 +438,36 @@ public class LeAudioBroadcasterNativeInterface {
     private native void setAttributesNative(byte[] devId, byte[] name);
 
     private native void setJoinControlNative(boolean enable);
+    private native void removeDeviceDbigNative(int devId, byte[] name, int reason);
+
+    /** Accept PGP terminate request (sends TExitDbig TERMINATE as PGO). */
+    public void acceptTerminateDbig(int broadcastId) {
+        Log.d(TAG, "acceptTerminateDbig: broadcastId=" + broadcastId);
+        acceptTerminateDbigNative(broadcastId);
+    }
+
+    /** Reject PGP terminate request (sends TExitDbig REJECT_TERMINATE as PGO). */
+    public void rejectTerminateDbig(int broadcastId) {
+        Log.d(TAG, "rejectTerminateDbig: broadcastId=" + broadcastId);
+        rejectTerminateDbigNative(broadcastId);
+    }
+
+    /**
+     * Callback: HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+     * status=0x00 success (DBIG terminated); other = error.
+     */
+    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+        Log.d(TAG, "onTexitDbigComplete (PGO): broadcastId=" + broadcastId
+                + ", dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE);
+        event.valueInt1 = broadcastId;
+        event.valueInt2 = dbigHandle;
+        event.valueInt3 = status;
+        sendMessageToService(event);
+    }
+
+    private native void acceptTerminateDbigNative(int broadcastId);
+    private native void rejectTerminateDbigNative(int broadcastId);
 }

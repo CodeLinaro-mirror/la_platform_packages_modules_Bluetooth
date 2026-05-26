@@ -49,6 +49,7 @@ import android.bluetooth.BluetoothLeAudio;
 import android.bluetooth.BluetoothLeAudioCodecConfig;
 import android.bluetooth.BluetoothLeAudioCodecStatus;
 import android.bluetooth.BluetoothLeAudioContentMetadata;
+import android.bluetooth.BluetoothLeBroadcast;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
 import android.bluetooth.BluetoothLeBroadcastSettings;
 import android.bluetooth.BluetoothLeBroadcastSubgroupSettings;
@@ -318,7 +319,10 @@ public class LeAudioService extends ProfileService {
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
                 if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-                    broadcastNativeInterface.readSupportedStates();
+                    int pgoCap = broadcastNativeInterface.readSupportedStates();
+                    Log.i(TAG, "PGO FW capability: 0x" + Integer.toHexString(pgoCap)
+                            + " [Terminate=" + ((pgoCap & 0x01) != 0 ? "supported" : "not_supported")
+                            + ", Remove=" + ((pgoCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
                 }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
 
@@ -337,7 +341,10 @@ public class LeAudioService extends ProfileService {
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
                 if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-                    broadcastNativeInterface.readSupportedStates();
+                    int pgoCap2 = broadcastNativeInterface.readSupportedStates();
+                    Log.i(TAG, "PGO FW capability: 0x" + Integer.toHexString(pgoCap2)
+                            + " [Terminate=" + ((pgoCap2 & 0x01) != 0 ? "supported" : "not_supported")
+                            + ", Remove=" + ((pgoCap2 & 0x02) != 0 ? "supported" : "not_supported") + "]");
                 }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
                 mTmapRoleMask =
@@ -1560,15 +1567,17 @@ public class LeAudioService extends ProfileService {
                     + " (got " + (nativeParams == null ? "null" : nativeParams.length) + " bytes)");
             return null;
         }
+        int pgoFeatures = mLeAudioBroadcasterNativeInterface.get().getEnhancedBroadcastCap();
         byte[] ltv = new byte[18];
         ltv[0] = 0x11;                              // Length (17 bytes follow)
         ltv[1] = (byte) 0xFF;                       // Type = Vendor Specific
         ltv[2] = (byte) DBIG_VENDOR_COMPANY_ID_LO;  // Company_ID Lo (0x0A)
         ltv[3] = (byte) DBIG_VENDOR_COMPANY_ID_HI;  // Company_ID Hi (0x00)
-        ltv[4] = 0x00;                              // Broadcast_Features Lo (placeholder)
-        ltv[5] = 0x00;                              // Broadcast_Features Hi (placeholder)
+        ltv[4] = (byte) (pgoFeatures & 0xFF);        // Broadcast_Features Lo
+        ltv[5] = (byte) ((pgoFeatures >> 8) & 0xFF); // Broadcast_Features Hi
         System.arraycopy(nativeParams, 0, ltv, 6, 12); // DBIG params (12 bytes)
-        Log.d(TAG, "buildEnhancedPAVendorLTV: bis_ctrl_interval=0x"
+        Log.d(TAG, "buildEnhancedPAVendorLTV: pgoFeatures=0x" + Integer.toHexString(pgoFeatures)
+                + " bis_ctrl_interval=0x"
                 + String.format("%02X", nativeParams[3] & 0xFF));
         return ltv;
     }
@@ -1773,7 +1782,7 @@ public class LeAudioService extends ProfileService {
         // which additionally disables the achat_rx/tx audio parameters.
         if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
             Log.d(TAG, "stopBroadcast: Aurachat enabled, delegating to stopEnhancedBroadcast");
-            stopEnhancedBroadcast(broadcastId);
+            stopEnhancedBroadcast(broadcastId, BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
             return;
         }
 
@@ -1804,7 +1813,7 @@ public class LeAudioService extends ProfileService {
      *
      * @param broadcastId broadcast instance identifier
      */
-    public void stopEnhancedBroadcast(Integer broadcastId) {
+    public void stopEnhancedBroadcast(Integer broadcastId, int mode) {
         if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
             Log.w(TAG, "Native interface not available.");
             return;
@@ -1836,8 +1845,7 @@ public class LeAudioService extends ProfileService {
         }
         mAudioManager.setParameters("achat_rx_enable=false");
         mAudioManager.setParameters("achat_tx_enable=false");
-        updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
-        mLeAudioBroadcasterNativeInterface.get().stopBroadcast(broadcastId);
+        mLeAudioBroadcasterNativeInterface.get().stopEnhancedBroadcast(broadcastId, mode);
     }
 
     /**
@@ -1906,6 +1914,57 @@ public class LeAudioService extends ProfileService {
             return;
         }
         mLeAudioBroadcasterNativeInterface.get().setJoinControl(mode);
+    }
+
+    /**
+     * Request the controller to remove a specific device from the DBIG.
+     *
+     * @param devId  12-bit device identifier (0-4095)
+     * @param name   device name (up to 10 bytes, zero-padded to 10)
+     * @param reason HCI reason code (e.g. 0x13 = Remote User Terminated)
+     */
+    public void removeDeviceFromDbig(int devId, byte[] name, int reason) {
+        Log.d(TAG, "removeDeviceFromDbig: devId=0x" + Integer.toHexString(devId)
+                + ", reason=0x" + Integer.toHexString(reason));
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
+            Log.w(TAG, "removeDeviceFromDbig: Native interface not available.");
+            return;
+        }
+        // Pad name to exactly 10 bytes
+        byte[] nameBytes = new byte[10];
+        if (name != null) {
+            System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
+        }
+        mLeAudioBroadcasterNativeInterface.get().removeDeviceDbig(devId, nameBytes, reason);
+    }
+
+    /** Accept PGP terminate request — reuses the full stopEnhancedBroadcast(TERMINATE) path
+     *  which sends setParameters(achat_rx/tx_enable=false) and drives ISO datapath teardown.
+     *  Only applicable to enhanced (DUPLEX) broadcast source. */
+    public void acceptTerminateDbig(int broadcastId) {
+        LeAudioBroadcastDescriptor desc = mBroadcastDescriptors.get(broadcastId);
+        if (desc == null || !Boolean.TRUE.equals(desc.mIsEnhanced)) {
+            Log.w(TAG, "acceptTerminateDbig: broadcastId=" + broadcastId
+                    + " not found or not enhanced — ignoring");
+            return;
+        }
+        Log.d(TAG, "acceptTerminateDbig: broadcastId=" + broadcastId
+                + " — delegating to stopEnhancedBroadcast(TERMINATE)");
+        stopEnhancedBroadcast(broadcastId, BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
+    }
+
+    /** Reject PGP terminate request (sends TExitDbig REJECT_TERMINATE as PGO).
+     *  Only applicable to enhanced (DUPLEX) broadcast source. */
+    public void rejectTerminateDbig(int broadcastId) {
+        LeAudioBroadcastDescriptor desc = mBroadcastDescriptors.get(broadcastId);
+        if (desc == null || !Boolean.TRUE.equals(desc.mIsEnhanced)) {
+            Log.w(TAG, "rejectTerminateDbig: broadcastId=" + broadcastId
+                    + " not found or not enhanced — ignoring");
+            return;
+        }
+        Log.d(TAG, "rejectTerminateDbig: broadcastId=" + broadcastId);
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) return;
+        mLeAudioBroadcasterNativeInterface.get().rejectTerminateDbig(broadcastId);
     }
 
     /**
@@ -2846,6 +2905,19 @@ public class LeAudioService extends ProfileService {
             BluetoothDevice newDevice,
             BluetoothDevice previousDevice,
             boolean suppressNoisyIntent) {
+        updateBroadcastActiveDevice(newDevice, previousDevice, suppressNoisyIntent, false);
+    }
+
+    /**
+     * @param isEnhancedOverride pass {@code true} when the caller has already determined that
+     *     the broadcast being stopped is enhanced, bypassing {@link #getFirstNotStoppedBroadcastId}
+     *     which returns empty once the descriptor's state is already STOPPED.
+     */
+    private void updateBroadcastActiveDevice(
+            BluetoothDevice newDevice,
+            BluetoothDevice previousDevice,
+            boolean suppressNoisyIntent,
+            boolean isEnhancedOverride) {
         mActiveBroadcastAudioDevice = newDevice;
         mEventLogger.logd(
                 TAG,
@@ -2860,12 +2932,14 @@ public class LeAudioService extends ProfileService {
             volume = getAudioDeviceGroupVolume(groupId);
         }
 
-        boolean isEnhanced = false;
-        Optional<Integer> activeBroadcastId = getFirstNotStoppedBroadcastId();
-        if (activeBroadcastId.isPresent()) {
-            LeAudioBroadcastDescriptor desc = mBroadcastDescriptors.get(activeBroadcastId.get());
-            if (desc != null) {
-                isEnhanced = desc.mIsEnhanced;
+        boolean isEnhanced = isEnhancedOverride;
+        if (!isEnhanced) {
+            Optional<Integer> activeBroadcastId = getFirstNotStoppedBroadcastId();
+            if (activeBroadcastId.isPresent()) {
+                LeAudioBroadcastDescriptor desc = mBroadcastDescriptors.get(activeBroadcastId.get());
+                if (desc != null) {
+                    isEnhanced = desc.mIsEnhanced;
+                }
             }
         }
 
@@ -3950,7 +4024,16 @@ public class LeAudioService extends ProfileService {
 
             // Notify audio manager
             if (!isAnyBroadcastInStreamingState()) {
-                updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, suppressNoisyIntent);
+                // Check if the broadcast being stopped was enhanced (mIsEnhanced=true).
+                // At this point mState is already STOPPED so getFirstNotStoppedBroadcastId()
+                // returns empty — scan all descriptors including STOPPED ones.
+                // This ensures createA2dpInfo (A2DP/prof=2) is used for deactivation so that
+                // AudioManager properly cycles the A2DP device and onAudioDevicesAdded fires
+                // on the next enhanced broadcast start.
+                boolean isEnhancedStopping = mBroadcastDescriptors.values().stream()
+                        .anyMatch(d -> Boolean.TRUE.equals(d.mIsEnhanced));
+                updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice,
+                        suppressNoisyIntent, isEnhancedStopping);
             }
             return;
         }
@@ -4858,6 +4941,26 @@ public class LeAudioService extends ProfileService {
             final int dbigBroadcastFeatures = stackEvent.dbigBroadcastFeatures;
             mHandler.post(() -> notifyDbigStatusChanged(dbigHandle, dbigStatus,
                     dbigDevId, dbigName, dbigNumBis, dbigBisDevIds, dbigBroadcastFeatures));
+        } else if (stackEvent.type
+                == LeAudioStackEvent.EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE) {
+            final int dbigHandle = stackEvent.valueInt1;
+            final int devId      = stackEvent.valueInt2;
+            final int status     = stackEvent.valueInt3;
+            mHandler.post(() -> notifyRemoveDeviceDbigComplete(dbigHandle, devId, status));
+        } else if (stackEvent.type
+                == LeAudioStackEvent.EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE) {
+            final int broadcastId = stackEvent.valueInt1;
+            final int dbigHandle  = stackEvent.valueInt2;
+            final int status      = stackEvent.valueInt3;
+            // Only forward for enhanced (DUPLEX) broadcasts. Standard broadcasts
+            // do not have a DBIG and must not receive this callback.
+            LeAudioBroadcastDescriptor desc = mBroadcastDescriptors.get(broadcastId);
+            if (desc != null && Boolean.TRUE.equals(desc.mIsEnhanced)) {
+                mHandler.post(() -> notifyTexitDbigComplete(broadcastId, dbigHandle, status));
+            } else {
+                Log.w(TAG, "EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE: broadcastId=" + broadcastId
+                        + " not enhanced — skip");
+            }
         } else if (stackEvent.type == LeAudioStackEvent.EVENT_TYPE_NATIVE_INITIALIZED) {
             mLeAudioNativeIsInitialized = true;
             for (Map.Entry<ParcelUuid, Pair<Integer, Integer>> entry :
@@ -6266,6 +6369,48 @@ public class LeAudioService extends ProfileService {
                 UserHandle.ALL,
                 BLUETOOTH_CONNECT,
                 Utils.getTempBroadcastOptions().toBundle());
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private void notifyRemoveDeviceDbigComplete(int dbigHandle, int devId, int status) {
+        Log.d(TAG, "notifyRemoveDeviceDbigComplete: dbigHandle=" + dbigHandle
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", status=0x" + Integer.toHexString(status));
+        synchronized (mBroadcastCallbacks) {
+            int n = mBroadcastCallbacks.beginBroadcast();
+            for (int i = 0; i < n; i++) {
+                try {
+                    mBroadcastCallbacks.getBroadcastItem(i)
+                            .onRemoveDeviceDbigComplete(status, devId);
+                } catch (RemoteException e) {
+                    // Ignore Exception
+                }
+            }
+            mBroadcastCallbacks.finishBroadcast();
+        }
+    }
+
+    /**
+     * Notifies all broadcaster callbacks of HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+     * status=0x00 DBIG terminated (PGO accepted); other = error or rejected.
+     */
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private void notifyTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+        Log.d(TAG, "notifyTexitDbigComplete: broadcastId=" + broadcastId
+                + ", dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        synchronized (mBroadcastCallbacks) {
+            int n = mBroadcastCallbacks.beginBroadcast();
+            for (int i = 0; i < n; i++) {
+                try {
+                    mBroadcastCallbacks.getBroadcastItem(i)
+                            .onTexitDbigComplete(broadcastId, dbigHandle, status);
+                } catch (RemoteException e) {
+                    // Ignore Exception
+                }
+            }
+            mBroadcastCallbacks.finishBroadcast();
+        }
     }
 
     /**

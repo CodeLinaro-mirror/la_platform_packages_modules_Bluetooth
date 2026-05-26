@@ -273,6 +273,10 @@ public:
 private:
   std::optional<BigConfig> active_config_;
   BroadcastStateMachineConfig sm_config_;
+  /* TExitDbig mode for the current user-initiated stop. Defaults to TERMINATE.
+   * Set from ProcessMessage(STOP, &mode) data so the mode from stopEnhancedBroadcast()
+   * reaches TerminateBig() after the async ISO teardown completes. */
+  uint8_t pending_stop_mode_ = HCI_TEXIT_MODE_TERMINATE;
 
   /* Message handlers for each possible state */
   typedef std::function<void(const void*)> msg_handler_t;
@@ -335,7 +339,8 @@ private:
           /* in STOPPING state */
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
-          [this](const void*) {
+          [this](const void* data) {
+            if (data) pending_stop_mode_ = *static_cast<const uint8_t*>(data);
             SetState(State::STOPPING);
             callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
@@ -497,10 +502,31 @@ private:
     advertiser_if_->Enable(GetAdvertisingSid(), false, base::DoNothing(), 0, 0, base::DoNothing());
   }
 
-  void TerminateBig() {
-    log::info("disabling={}", GetState() == BroadcastStateMachine::State::DISABLING);
-    /* Terminate with reason: Remote User Terminated Connection */
-    IsoManager::GetInstance()->TerminateBig(GetAdvertisingSid(), 0x13);
+  void TerminateBig(uint8_t mode = HCI_TEXIT_MODE_TERMINATE) {
+    log::info("mode=0x{:02x}, disabling={}", mode,
+              GetState() == BroadcastStateMachine::State::DISABLING);
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      /* For DUPLEX, send HCI_VS_LE_Texit_DBIG with the supplied mode.
+       * Mode meanings for PGO role:
+       *   TERMINATE (0x02) — PGO terminates the entire DBIG group for all members
+       *   EXIT      (0x01) — PGO gracefully exits without affecting other members (future)
+       * Note: removing a specific PGP from the DBIG is a separate operation via
+       *   HCI_VS_LE_Remove_Device_DBIG, handled by RemoveDeviceDbig() — not this path.
+       * The mode is propagated from stopEnhancedBroadcast(mode) via pending_stop_mode_.
+       * Error/cleanup paths pass HCI_TEXIT_MODE_TERMINATE explicitly. */
+      bluetooth::hci::iso_manager::dbig_texit_params params{
+        .dbig_handle = static_cast<uint8_t>(GetAdvertisingSid()),
+        .texit_mode  = mode,
+        .reason      = 0x13,
+        .p_cb        = nullptr
+      };
+      log::info("TerminateBig: DUPLEX — TExitDbig dbig_handle={}, texit_mode=0x{:02x}",
+                params.dbig_handle, params.texit_mode);
+      IsoManager::GetInstance()->TExitDbig(params);
+    } else {
+      /* Standard broadcast: unchanged — HCI_BLE_TERMINATE_BIG */
+      IsoManager::GetInstance()->TerminateBig(GetAdvertisingSid(), 0x13);
+    }
   }
 
   void OnSetupIsoDataPath(uint8_t status, uint16_t conn_hdl) override {
@@ -578,7 +604,7 @@ private:
         callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), this);
         return;
       }
-      TerminateBig();
+      TerminateBig(pending_stop_mode_);
     } else {
       /* Note: We would feed a watchdog here if we had one */
       /* There are more BISes to tear down data path for */
@@ -634,6 +660,23 @@ private:
             conn_handle, bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput);
   }
 
+  void HandleTexitDbigCmpl() override {
+    log::info("HandleTexitDbigCmpl: state={}", ToString(GetState()));
+    if (GetState() == BroadcastStateMachine::State::STOPPING ||
+        GetState() == BroadcastStateMachine::State::DISABLING) {
+      /* TExitDbig was sent by StopEnhancedAudioBroadcast — proceed with
+       * announcement teardown exactly as HCI_BLE_TERM_BIG_CPL_EVT does.
+       * Handles both STOPPING (explicit user stop) and DISABLING (the
+       * 0ms big_terminate_timer_ fired SuspendAudioBroadcasts() which put
+       * the state into DISABLING before the STOP message arrived). */
+      active_config_ = std::nullopt;
+      if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+        SetStreamingDirection(kStreamingDirectionNone);
+      }
+      DisableAnnouncement();
+    }
+  }
+
   void HandleHciEvent(uint16_t event, void* data) override {
     switch (event) {
       case HCI_BLE_CREATE_BIG_CPL_EVT: {
@@ -665,7 +708,7 @@ private:
           if (GetState() == BroadcastStateMachine::State::DISABLING ||
               GetState() == BroadcastStateMachine::State::STOPPING) {
             log::info("Terminating BIG in state={}, big_id={}", ToString(GetState()), evt->big_id);
-            TerminateBig();
+            TerminateBig(pending_stop_mode_);
           } else {
             callbacks_->OnBigCreated(evt->conn_handles);
             TriggerIsoDatapathSetup(evt->conn_handles[0]);

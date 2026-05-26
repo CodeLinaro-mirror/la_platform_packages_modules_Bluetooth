@@ -187,6 +187,9 @@ public class BluetoothProxy {
                             enabledBluetoothMutable.postValue(true);
                         } else if (toState == BluetoothAdapter.STATE_OFF) {
                             enabledBluetoothMutable.postValue(false);
+                            // BT turned off — reset all enhanced broadcast LiveData so the
+                            // Activities clear their UI state and start fresh on next BT-on.
+                            onBluetoothOff();
                         }
                     }
                 }
@@ -351,6 +354,13 @@ public class BluetoothProxy {
     private final MutableLiveData<Pair<Integer /* reason */, Integer /* broadcastId */>>
             mBroadcastRemovedMutableLive;
     private final MutableLiveData<String> mBroadcastStatusMutableLive;
+    private final MutableLiveData<Pair<Integer /* status */, Integer /* reason */>>
+            mRemoveDeviceDbigResultMutableLive;
+    /** Fires true when BT turns OFF so Activities can reset all enhanced broadcast UI state. */
+    private final MutableLiveData<Boolean> mBluetoothOffEventMutable = new MutableLiveData<>();
+    /** Fires (broadcastId, status) when PGO receives HCI_VS_LE_Texit_DBIG_Complete. */
+    private final MutableLiveData<Pair<Integer, Integer>> mTexitDbigResultMutableLive =
+            new MutableLiveData<>();
     private final BluetoothLeBroadcast.Callback mBroadcasterCallback =
             new BluetoothLeBroadcast.Callback() {
                 @Override
@@ -428,6 +438,23 @@ public class BluetoothProxy {
                     if (mLocalBroadcastEventListener != null) {
                         mLocalBroadcastEventListener.onBroadcastMetadataChanged(
                                 broadcastId, metadata);
+                    }
+                }
+
+                @Override
+                public void onRemoveDeviceDbigComplete(int status, int devId) {
+                    mRemoveDeviceDbigResultMutableLive.postValue(new Pair<>(status, devId));
+                    if (mLocalBroadcastEventListener != null) {
+                        mLocalBroadcastEventListener.onRemoveDeviceDbigComplete(status, devId);
+                    }
+                }
+
+                @Override
+                public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+                    mTexitDbigResultMutableLive.postValue(new Pair<>(broadcastId, status));
+                    if (mLocalBroadcastEventListener != null) {
+                        mLocalBroadcastEventListener.onTexitDbigComplete(broadcastId, dbigHandle,
+                                status);
                     }
                 }
             };
@@ -587,6 +614,7 @@ public class BluetoothProxy {
         mBroadcastPlaybackStoppedMutableLive = new MutableLiveData<>();
         mBroadcastAddedMutableLive = new MutableLiveData();
         mBroadcastRemovedMutableLive = new MutableLiveData<>();
+        mRemoveDeviceDbigResultMutableLive = new MutableLiveData<>();
 
         MutableLiveData<String> mBroadcastStatusMutableLive;
 
@@ -1676,9 +1704,9 @@ public class BluetoothProxy {
         return true;
     }
 
-    public boolean stopEnhancedBroadcast(int broadcastId) {
+    public boolean stopEnhancedBroadcast(int broadcastId, int mode) {
         if (mBluetoothLeBroadcast == null) return false;
-        mBluetoothLeBroadcast.stopEnhancedBroadcast(broadcastId);
+        mBluetoothLeBroadcast.stopEnhancedBroadcast(broadcastId, mode);
         return true;
     }
 
@@ -1705,6 +1733,48 @@ public class BluetoothProxy {
     public int getEnhancedBroadcastCap() {
         if (mBluetoothLeBroadcast == null) return -1;
         return mBluetoothLeBroadcast.getEnhancedBroadcastCap();
+    }
+
+    public void removeDeviceFromDbig(int devId, byte[] name, int reason) {
+        if (mBluetoothLeBroadcast == null) return;
+        mBluetoothLeBroadcast.removeDeviceFromDbig(devId, name, reason);
+    }
+
+    /**
+     * Returns LiveData that fires {@code true} exactly once each time Bluetooth turns OFF.
+     * Activities observe this to reset all enhanced broadcast (AuraChat) UI state so that
+     * the next BT-on cycle starts cleanly in both PGO and PGP roles.
+     */
+    public LiveData<Boolean> getBluetoothOffEventLive() {
+        return mBluetoothOffEventMutable;
+    }
+
+    /** Called when BT turns OFF — signals Activities to reset their enhanced broadcast UI state. */
+    private void onBluetoothOff() {
+        // Fire the BT-off event so BroadcasterActivity and BroadcastSinkActivity
+        // reset their own UI state (PGP tracking, BIS state, metadata, dialogs etc.)
+        // Do NOT null-post other LiveData fields — observers dereference values without null checks.
+        mBluetoothOffEventMutable.postValue(true);
+    }
+
+    public LiveData<Pair<Integer, Integer>> getRemoveDeviceDbigResultMutableLive() {
+        return mRemoveDeviceDbigResultMutableLive;
+    }
+
+    /** Accept PGP terminate request (spec §4.9): PGO sends TExitDbig(TERMINATE). */
+    public void acceptTerminateDbig(int broadcastId) {
+        if (mBluetoothLeBroadcast == null) return;
+        mBluetoothLeBroadcast.acceptTerminateDbig(broadcastId);
+    }
+
+    /** Reject PGP terminate request: PGO sends TExitDbig(REJECT_TERMINATE). */
+    public void rejectTerminateDbig(int broadcastId) {
+        if (mBluetoothLeBroadcast == null) return;
+        mBluetoothLeBroadcast.rejectTerminateDbig(broadcastId);
+    }
+
+    public LiveData<Pair<Integer, Integer>> getTexitDbigResultMutableLive() {
+        return mTexitDbigResultMutableLive;
     }
 
     public boolean isPlaying(int broadcastId) {
@@ -1763,5 +1833,10 @@ public class BluetoothProxy {
         void onBroadcastUpdated(int broadcastId);
 
         void onBroadcastMetadataChanged(int broadcastId, BluetoothLeBroadcastMetadata metadata);
+
+        default void onRemoveDeviceDbigComplete(int status, int devId) {}
+
+        /** HCI_VS_LE_Texit_DBIG_Complete on PGO side. status=0 accepted; other = error/rejected. */
+        default void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {}
     }
 }

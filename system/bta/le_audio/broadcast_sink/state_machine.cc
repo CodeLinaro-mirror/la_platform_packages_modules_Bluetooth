@@ -134,6 +134,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     return sm_config_.public_announcement;
   }
   bool IsEnhanced() const override { return is_enhanced_; }
+  void SetTexitMode(uint8_t mode) override { stop_texit_mode_ = mode; }
 
   void OnAudioStart() override {
     if (!is_enhanced_) return;
@@ -326,10 +327,14 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
      *
      * If BIG sync is subsequently lost, OnBigSyncLost() will check
      * pa_sync_info_.has_value() and transition to IDLE (no PA to return to)
-     * instead of PA_SYNCED. */
-
+     * instead of PA_SYNCED.
+     *
+     * Do NOT call OnStateMachineEvent() here. The current state has not changed
+     * (still BIG_SYNCED), so there is no state transition to report. Calling
+     * OnStateMachineEvent(BIG_SYNCED) would incorrectly re-trigger the 2nd HIDL
+     * start ack (ConfirmStreamingRequest on sink HAL) in broadcast_sink.cc, which
+     * must only fire once when RX ISO paths are first established. */
     callbacks_->OnPaSyncLost(GetBroadcastId(), lost_handle);
-    callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
   }
 
   void OnPeriodicScanResult(uint16_t sync_handle, int8_t tx_power, int8_t rssi, uint8_t status,
@@ -713,6 +718,10 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
    */
   bool rx_paths_removed_;
 
+  /** TExitDbig mode to use when sending TExitDbig. Defaults to EXIT (0x01).
+   * Set by StopEnhancedBroadcastSink(mode) before triggering teardown. */
+  uint8_t stop_texit_mode_ = HCI_TEXIT_MODE_EXIT;
+
   /**
    * BIG info parameters captured from the controller BIG Info Report
    * (via OnBigInfoReportFull → SetBigInfoParams).
@@ -883,7 +892,8 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
             if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
           },
           /* STREAMING */
-          [this](const void*) {
+          [this](const void* data) {
+            if (data) stop_texit_mode_ = *static_cast<const uint8_t*>(data);
             SetState(SinkState::STOPPING);
             if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             if (big_sync_info_.has_value() && !big_sync_info_->bis_conn_handles.empty()) {
@@ -974,7 +984,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     }
     bluetooth::hci::iso_manager::dbig_texit_params params{
       .dbig_handle = static_cast<uint8_t>(big_sync_info_->big_handle),
-      .texit_mode = HCI_TEXIT_MODE_EXIT,
+      .texit_mode = stop_texit_mode_,
       .reason = 16,
       .p_cb = nullptr
     };
@@ -1022,8 +1032,8 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     params.sgo_timeout                = 0x06;  // 6
     params.join_timeout               = 0x04;  //4
     params.exit_timeout               = 0x04;  //4
-    params.remove_timeout             = 0x04;  //4
-    params.terminate_timeout          = 0x04;  //4
+    params.remove_timeout             = 0x0A;  //10
+    params.terminate_timeout          = 0x0A;  //10
     params.tx_power                   = 0x08;  // 8
     IsoManager::GetInstance()->CreateDbig(params);
   }

@@ -355,6 +355,7 @@ public class MainActivity extends AppCompatActivity {
                 getSharedPreferences("achat_prefs", MODE_PRIVATE)
                         .edit()
                         .putInt("agp_dev_id", devId)
+                        .putString("agp_name", nameStr)
                         .apply();
                 Log.d("MainActivity", "Attributes set: DevID=" + devId + ", Name=" + nameStr);
                 Toast.makeText(this,

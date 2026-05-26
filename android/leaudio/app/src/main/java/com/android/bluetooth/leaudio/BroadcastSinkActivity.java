@@ -59,6 +59,24 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     private int mLastBroadcastFeatures = -1;
     private int[] mLastBisDevIds = null;
 
+    /**
+     * PGP (local) broadcast capability — cached from getEnhancedBroadcastSinkCap() at startup.
+     * Bit 0 (0x01): PGP FW supports Terminate DBIG procedure
+     * Bit 1 (0x02): PGP FW supports Remove Device procedure
+     */
+    private int mPgpSinkCap = 0;
+
+    /**
+     * PGO (remote source) broadcast capability — refreshed from getEnhancedBroadcastSourceCap()
+     * when the user joins an enhanced broadcast. Parsed from the PA advertisement LTV.
+     * Bit 0 (0x01): PGO FW supports Terminate DBIG procedure
+     * Bit 1 (0x02): PGO FW supports Remove Device procedure
+     */
+    private int mPgoSourceCap = 0;
+
+    /** Non-null while a PGO-initiated removal is in progress (bit 11 → TExitDbig complete). */
+    private android.app.AlertDialog mRemovalProgressDialog = null;
+
     private AudioManager mAudioManager;
 
     private final BroadcastReceiver mDbigStatusReceiver = new BroadcastReceiver() {
@@ -111,7 +129,7 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                             Toast.LENGTH_LONG).show();
                 }
 
-                // bit9 (0x0200) - device removed from DBIG
+                // bit9 (0x0200) - device removed from DBIG (device successfully exited)
                 boolean deviceRemoved = (status & 0x0200) != 0;
                 Log.d(TAG, "Device removed bit" + deviceRemoved);
                 if (deviceRemoved) {
@@ -128,6 +146,61 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                     Toast.makeText(context,
                             "Device exited DBIG: DevID=" + devId + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
+                }
+
+                // bit11 (0x0800) - PGO requesting this PGP to exit (spec §5.4 PGP Remove procedure)
+                // BT FW received PGO_STATUS(PGO_IND="Request to Exit") carrying the targeted DevID
+                // and Name. Only stop if those match THIS PGP's own attributes (multiple PGPs may
+                // share the same BIG/DBIG; the remove targets exactly one).
+                boolean removalRequested = (status & 0x0800) != 0;
+                if (removalRequested) {
+                    int devId = intent.getIntExtra(
+                            "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    byte[] nameBytes = intent.getByteArrayExtra(
+                            "android.bluetooth.extra.DBIG_NAME");
+                    String nameStr = (nameBytes != null)
+                            ? new String(nameBytes,
+                                    java.nio.charset.StandardCharsets.UTF_8).trim()
+                            : "";
+
+                    android.content.SharedPreferences prefs =
+                            context.getSharedPreferences("achat_prefs",
+                                    android.content.Context.MODE_PRIVATE);
+                    int localDevId   = prefs.getInt("agp_dev_id", -1);
+                    String localName = prefs.getString("agp_name", "").trim();
+
+                    boolean devIdMatch = (localDevId >= 0) && (devId == localDevId);
+                    boolean nameMatch  = !localName.isEmpty()
+                            && localName.equals(nameStr);
+
+                    Log.i(TAG, "bit11 removal: event devId=0x" + String.format("%04X", devId)
+                            + " name=" + nameStr
+                            + " | local devId=0x" + String.format("%04X", localDevId)
+                            + " name=" + localName
+                            + " | devIdMatch=" + devIdMatch + " nameMatch=" + nameMatch);
+
+                    if (devIdMatch && nameMatch) {
+                        Log.i(TAG, "Removal targets this PGP — calling stopEnhancedBroadcastSink(EXIT)");
+                        // Show a non-cancellable progress dialog so the user knows
+                        // the exit is in progress. Dismissed when TExitDbig complete arrives.
+                        if (mRemovalProgressDialog != null
+                                && mRemovalProgressDialog.isShowing()) {
+                            mRemovalProgressDialog.dismiss();
+                        }
+                        mRemovalProgressDialog = new android.app.AlertDialog.Builder(
+                                BroadcastSinkActivity.this)
+                                .setTitle("Exiting DBIG")
+                                .setMessage("PGO has requested removal of this device"
+                                        + " (DevID=0x" + String.format("%04X", devId)
+                                        + ").\nExiting DBIG group…")
+                                .setCancelable(false)
+                                .show();
+                        mViewModel.stopEnhancedBroadcastSink(0 /* ignored by stack */,
+                                android.bluetooth.BluetoothLeBroadcastSink.DBIG_TEXIT_MODE_EXIT);
+                    } else {
+                        Log.i(TAG, "Removal targets a different PGP (devId=0x"
+                                + String.format("%04X", devId) + ") — ignoring");
+                    }
                 }
                 boolean bisAvailable   = (status & 0x0001) != 0;
                 boolean localOccupying = (status & 0x0002) != 0;
@@ -154,6 +227,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                     mAdapter.updateBisState(mLocalOccupyingBis,
                             mBisAvailability == BisAvailability.AVAILABLE);
                 }
+                // Re-evaluate "Request PGO to Terminate DBIG" button visibility —
+                // the button requires mLocalOccupyingBis (BIG synced) to be true.
+                refreshTerminateButtonVisibility();
             }
         }
     };
@@ -203,6 +279,10 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (mRemovalProgressDialog != null && mRemovalProgressDialog.isShowing()) {
+            mRemovalProgressDialog.dismiss();
+            mRemovalProgressDialog = null;
+        }
         if (mViewModel != null) {
             mViewModel.cleanup();
         }
@@ -212,11 +292,14 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         Log.d(TAG, "Configuration changed - orientation: " + newConfig.orientation);
-
-        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            Log.d(TAG, "Switched to landscape mode");
-        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) {
-            Log.d(TAG, "Switched to portrait mode");
+        // The Activity is NOT recreated (configChanges set), so all fields and LiveData
+        // observers survive. However, RecyclerView does not guarantee a re-bind of existing
+        // items on resize — push current capability and BIS state into the adapter so the
+        // "Request PGO to Terminate DBIG" button visibility is correct after rotation.
+        if (mAdapter != null) {
+            mAdapter.updateBisState(mLocalOccupyingBis,
+                    mBisAvailability == BisAvailability.AVAILABLE);
+            refreshTerminateButtonVisibility();
         }
     }
 
@@ -230,11 +313,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         mStartSearchButton.setOnClickListener(v -> {
             Log.d(TAG, "Start search button clicked");
             mViewModel.startSearchingForSources();
-
-            int sinkCap = mViewModel.getEnhancedBroadcastSinkCap();
-            Log.i(TAG, "getEnhancedBroadcastSinkCap: 0x" + Integer.toHexString(sinkCap)
-                    + " [Terminate_in_PGP=" + ((sinkCap & 0x01) != 0 ? "supported" : "not_supported")
-                    + ", Remove_in_PGP=" + ((sinkCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+            Log.i(TAG, "PGP sink capability at search start: 0x" + Integer.toHexString(mPgpSinkCap)
+                    + " [Terminate=" + ((mPgpSinkCap & 0x01) != 0 ? "Y" : "N")
+                    + ", Remove=" + ((mPgpSinkCap & 0x02) != 0 ? "Y" : "N") + "]");
         });
 
         mStopSearchButton.setOnClickListener(v -> {
@@ -255,6 +336,19 @@ public class BroadcastSinkActivity extends AppCompatActivity {
 
     private void setupViewModel() {
         mViewModel = ViewModelProviders.of(this).get(BroadcastSinkViewModel.class);
+
+        // Fetch PGP (local) FW capability once — readSupportedStatesForSink() was called
+        // at BT turn-on and the result is cached in the native layer. No new HCI command.
+        mPgpSinkCap = mViewModel.getEnhancedBroadcastSinkCap();
+        Log.i(TAG, "PGP (local) broadcast capability: 0x" + Integer.toHexString(mPgpSinkCap)
+                + " [Terminate=" + ((mPgpSinkCap & 0x01) != 0 ? "supported" : "not_supported")
+                + ", Remove=" + ((mPgpSinkCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+    }
+
+    private void refreshTerminateButtonVisibility() {
+        if (mAdapter != null) {
+            mAdapter.updateCapabilities(mPgpSinkCap, mPgoSourceCap);
+        }
     }
 
     private void setupRecyclerView() {
@@ -277,6 +371,16 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             @Override
             public void onStopEnhancedBroadcastSink(int broadcastId) {
                 BroadcastSinkActivity.this.onStopEnhancedBroadcastSink(broadcastId);
+            }
+
+            @Override
+            public void onTerminateDbig(int broadcastId) {
+                // Direct path: "Request PGO to Terminate DBIG" button — call terminateDbig().
+                Log.d(TAG, "onTerminateDbig: broadcastId=" + broadcastId);
+                mViewModel.terminateDbig();
+                Toast.makeText(BroadcastSinkActivity.this,
+                        "Terminate DBIG request sent — waiting for PGO response",
+                        Toast.LENGTH_SHORT).show();
             }
 
             @Override
@@ -334,7 +438,74 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             int sdkReason   = pair.second;
             Log.i(TAG, "BIG sync lost callback: broadcastId=" + broadcastId
                     + ", sdkReason=" + sdkReason);
+            // BIG is gone — clear BIS occupancy so the terminate button disappears.
+            mLocalOccupyingBis = false;
+            mBisAvailability = BisAvailability.UNKNOWN;
+            refreshTerminateButtonVisibility();
             showBigSyncLostRetryDialog(broadcastId, sdkReason);
+        });
+
+        // Observe HCI_VS_LE_Texit_DBIG_Complete result on PGP
+        mViewModel.getTexitDbigResultLive().observe(this, pair -> {
+            if (pair == null) return;
+            int broadcastId = pair.first;
+            int status      = pair.second;
+            Log.i(TAG, "Texit DBIG complete: broadcastId=" + broadcastId
+                    + ", status=0x" + Integer.toHexString(status));
+
+            // If a removal progress dialog is showing, dismiss it and show result.
+            if (mRemovalProgressDialog != null && mRemovalProgressDialog.isShowing()) {
+                mRemovalProgressDialog.dismiss();
+                mRemovalProgressDialog = null;
+                String resultMsg = (status == 0x00)
+                        ? "Exited DBIG successfully"
+                        : "Exit DBIG failed (status=0x" + Integer.toHexString(status) + ")";
+                Toast.makeText(this, resultMsg,
+                        status == 0 ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+                updateStatusText(resultMsg);
+                if (status == 0x00) {
+                    // PGO-triggered removal: BIG sync left — now terminate PA sync so the
+                    // PGP fully leaves the broadcast (no more scan for this source).
+                    Log.i(TAG, "Removal complete — calling removeSource to terminate PA sync, broadcastId=" + broadcastId);
+                    mViewModel.removeSource(broadcastId);
+                }
+                return;
+            }
+
+            // TExitDbig complete — covers both PGP-requested terminate rejection and
+            // user-initiated Stop/Terminate flows.
+            String msg;
+            if (status == 0x00) {
+                msg = "Terminate DBIG: success — DBIG terminated";
+            } else if (status == 0x0E) {
+                msg = "Terminate DBIG request rejected by PGO";
+            } else {
+                msg = "Terminate DBIG: failed (status=0x" + Integer.toHexString(status) + ")";
+            }
+            Toast.makeText(this, msg,
+                    status == 0 ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+            updateStatusText(msg);
+        });
+
+        // When BT turns OFF, reset all AuraChat/enhanced broadcast sink state so the next
+        // BT-on cycle starts cleanly in PGP role.
+        mViewModel.getBluetoothOffEventLive().observe(this, off -> {
+            if (off == null || !off) return;
+            Log.i(TAG, "Bluetooth turned OFF — resetting enhanced broadcast sink (AuraChat) UI state");
+            // Reset BIS availability and DBIG state
+            mBisAvailability = BisAvailability.UNKNOWN;
+            mLocalOccupyingBis = false;
+            mLastBroadcastFeatures = -1;
+            mLastBisDevIds = null;
+            mPgoSourceCap = 0;
+            // Clear saved metadata so Retry-with-Code dialog cannot use stale data
+            mLastEnhancedMetadata = null;
+            // Reset synced broadcast list in adapter
+            mAdapter.updateBroadcasts(new java.util.ArrayList<>());
+            updateSyncedBroadcastsText(new java.util.ArrayList<>());
+            refreshTerminateButtonVisibility();
+            updateStatusText("Bluetooth OFF — AuraChat sink state cleared");
+            Toast.makeText(this, "Bluetooth OFF — AuraChat state cleared", Toast.LENGTH_SHORT).show();
         });
     }
 
@@ -343,10 +514,12 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         mViewModel.addSource(broadcastId);
         Toast.makeText(this, "Adding source (PA sync) for broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
 
-        int sourceCap = mViewModel.getEnhancedBroadcastSourceCap();
-        Log.i(TAG, "getEnhancedBroadcastSourceCap: 0x" + Integer.toHexString(sourceCap)
-                + " [Terminate_in_PGO=" + ((sourceCap & 0x01) != 0 ? "supported" : "not_supported")
-                + ", Remove_in_PGO=" + ((sourceCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+        // Refresh PGO capability — available after PA sync establishes the broadcast metadata.
+        mPgoSourceCap = mViewModel.getEnhancedBroadcastSourceCap();
+        Log.i(TAG, "PA sync added — PGO source capability: 0x" + Integer.toHexString(mPgoSourceCap)
+                + " [Terminate=" + ((mPgoSourceCap & 0x01) != 0 ? "supported" : "not_supported")
+                + ", Remove=" + ((mPgoSourceCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+        refreshTerminateButtonVisibility();
     }
 
     private void onStartEnhancedBroadcastSink(BroadcastSinkViewModel.FoundBroadcastItem item) {
@@ -363,6 +536,17 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         mLastEnhancedMetadata = item.metadata;
 
         if (item.isEnhanced) {
+            // Refresh PGO source capability — parsed from the PA advertisement LTV.
+            mPgoSourceCap = mViewModel.getEnhancedBroadcastSourceCap();
+            Log.i(TAG, "Joining enhanced broadcast — capability check:"
+                    + "\n  PGO (source) cap: 0x" + Integer.toHexString(mPgoSourceCap)
+                    + " [Terminate=" + ((mPgoSourceCap & 0x01) != 0 ? "supported" : "not_supported")
+                    + ", Remove=" + ((mPgoSourceCap & 0x02) != 0 ? "supported" : "not_supported") + "]"
+                    + "\n  PGP (local)  cap: 0x" + Integer.toHexString(mPgpSinkCap)
+                    + " [Terminate=" + ((mPgpSinkCap & 0x01) != 0 ? "supported" : "not_supported")
+                    + ", Remove=" + ((mPgpSinkCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+            refreshTerminateButtonVisibility();
+
             // Enhanced broadcast source (>= 3 BISes): no channel selection needed.
             // startEnhancedBroadcastSink() syncs to all BISes autonomously.
             if (item.isEncrypted()) {
@@ -424,9 +608,29 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     }
 
     private void onStopEnhancedBroadcastSink(int broadcastId) {
-        Log.d(TAG, "Stop Enhanced Sink (stop BIG sync): broadcastId=" + broadcastId);
-        mViewModel.stopEnhancedBroadcastSink(broadcastId);
-        Toast.makeText(this, "Stopping Enhanced Sink for broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
+        Log.d(TAG, "Stop Enhanced Sink button clicked: broadcastId=" + broadcastId);
+        boolean isEnhanced = mViewModel.isSourceEnhanced(broadcastId);
+        if (!isEnhanced) {
+            // Standard BIG sync — no DBIG, just stop directly
+            Log.d(TAG, "Standard (non-DBIG) source — stopping BIG sync directly");
+            mViewModel.stopEnhancedBroadcastSink(broadcastId,
+                    android.bluetooth.BluetoothLeBroadcastSink.DBIG_TEXIT_MODE_EXIT);
+            return;
+        }
+        // Enhanced (DBIG) source — only offer Stop BIG Sync (EXIT mode).
+        // "Request PGO to Terminate DBIG" is available via the dedicated button.
+        new AlertDialog.Builder(this)
+                .setTitle("Stop BIG Sync?")
+                .setMessage("Leave DBIG for broadcast ID " + broadcastId + ".\n\n"
+                        + "PA sync is kept — other PGPs are unaffected.\n"
+                        + "To terminate the entire group, use the dedicated button.")
+                .setPositiveButton("Stop BIG Sync", (dialog, which) -> {
+                    Log.d(TAG, "User chose Stop BIG Sync (EXIT): broadcastId=" + broadcastId);
+                    mViewModel.stopEnhancedBroadcastSink(broadcastId,
+                            android.bluetooth.BluetoothLeBroadcastSink.DBIG_TEXIT_MODE_EXIT);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void onRemoveSource(int broadcastId) {
@@ -797,4 +1001,12 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 .setCancelable(false)
                 .show();
     }
+
+    /**
+     * Shows when PGO requests removal of this PGP from the DBIG (spec §5.4).
+     * BT FW has received PGO_STATUS(PGO_IND="Request to Exit") with our DevID and Name.
+     *
+     * Replaced by automatic stopEnhancedBroadcastSink(EXIT) in the DBIG status receiver.
+     * Kept for reference; no longer called.
+     */
 }

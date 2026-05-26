@@ -129,6 +129,19 @@ class BroadcastSinkCallbacks {
                                     uint8_t num_bis,
                                     std::vector<uint16_t> bis_dev_ids,
                                     uint16_t broadcast_features) = 0;
+
+  /**
+   * Fired when HCI_VS_LE_Texit_DBIG_Complete event is received on the PGP.
+   * Covers both the Terminate (§5.3) and Remove-acceptance (§5.4) procedures.
+   * status=0 → success; status=0x0E → PGO rejected (security reasons).
+   *
+   * @param broadcast_id  broadcast ID of the source
+   * @param dbig_handle   DBIG handle
+   * @param status        HCI status (0x00 = success, 0x0E = rejected by PGO)
+   */
+  virtual void OnTexitDbigComplete(BroadcastId broadcast_id,
+                                   uint8_t dbig_handle,
+                                   uint8_t status) = 0;
 };
 
 // Interface from JNI to BTIF layer
@@ -169,7 +182,7 @@ class BroadcastSinkInterface {
       BroadcastId broadcast_id,
       const std::optional<BroadcastCode>& broadcast_code) = 0;
 
-  virtual void StopEnhancedBroadcastSink(BroadcastId broadcast_id) = 0;
+  virtual void StopEnhancedBroadcastSink(uint8_t mode) = 0;
 
   // Source removal (terminates both PA and BIG sync)
   virtual void RemoveSource(BroadcastId broadcast_id) = 0;
@@ -185,16 +198,17 @@ class BroadcastSinkInterface {
 
   /**
    * Read the controller's supported LE states for enhanced broadcast sink.
+   * Blocks until the HCI command completes (with a timeout) and returns the
+   * capability bitmask directly: bit0=Terminate, bit1=Remove Device.
    * Called once at sink init when duplex mode is enabled.
-   * The result is stored internally and can be retrieved via
-   * getEnhancedBroadcastSinkCap().
+   * @return capability bitmask from controller, or 0 on timeout/error.
    */
-  virtual void readSupportedStatesForSink(void) = 0;
+  virtual uint32_t readSupportedStatesForSink(void) = 0;
 
   /**
-   * Get the enhanced broadcast sink capability bitmask returned by the
-   * controller after readSupportedStatesForSink() completed.
-   * @return capability bitmask, or 0 if not yet available.
+   * Get the enhanced broadcast sink capability bitmask most recently returned
+   * by readSupportedStatesForSink().
+   * @return capability bitmask, or 0 if readSupportedStatesForSink() not yet called.
    */
   virtual uint32_t getEnhancedBroadcastSinkCap(void) = 0;
 
@@ -219,6 +233,15 @@ class BroadcastSinkInterface {
    * @param dbig_params  12-byte parameter vector
    */
   virtual void setEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
+
+  /**
+   * Terminate the DBIG (spec §5.3 PGP Terminates procedure).
+   * Sends HCI_VS_LE_Texit_DBIG with texit_mode=TERMINATE so the PGP BT FW sends
+   * PGP_REQUEST(TERMINATE) PDU to the PGO.
+   * PGO host receives DBIG status bit 10 (0x0400) and can accept or reject.
+   * Result delivered via OnTexitDbigComplete() callback on both sides.
+   */
+  virtual void terminateDbig() = 0;
 };
 
 }  // namespace broadcast_sink

@@ -24,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <atomic>
 
 #include "btm_dev.h"
 #include "btm_iso_api.h"
@@ -1110,6 +1111,7 @@ struct iso_impl {
     STREAM_TO_UINT8(sub_opcode, stream);
     stream += 8; // skip le_states[8]
     STREAM_TO_UINT16(broadcast_states_, stream);
+    read_states_pending_ = false;
 
     log::info("ReadSupportedStates complete - status:{}, sub_opcode:0x{:02x}, broadcast_states:0x{:04x}",
               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
@@ -1117,6 +1119,19 @@ struct iso_impl {
   }
 
   void read_supported_states() {
+    // If broadcast_states_ is already populated (e.g., the other profile — source or
+    // sink — already sent this command and received the response), skip re-sending.
+    // If a command is already in-flight, skip sending a duplicate.
+    // Both profiles share the same controller capability value.
+    if (broadcast_states_ != 0) {
+      log::info("ReadSupportedStates skipped — broadcast_states_ already 0x{:04x}",
+                static_cast<uint16_t>(broadcast_states_));
+      return;
+    }
+    if (read_states_pending_.exchange(true)) {
+      log::info("ReadSupportedStates skipped — command already in-flight");
+      return;
+    }
     btsnd_hcic_dbig_read_supported_states(
             base::BindRepeating(&iso_impl::on_read_supported_states_cmd_complete,
                                 weak_factory_.GetWeakPtr()));
@@ -1292,6 +1307,60 @@ struct iso_impl {
 
     btsnd_hcic_ble_texit_dbig(params.dbig_handle, params.texit_mode, params.reason,
                                base::BindRepeating([](uint8_t*, uint16_t) {}));
+  }
+
+  void on_remove_device_dbig_event(uint8_t* stream, uint16_t len) {
+    uint8_t  dbig_handle = 0;
+    uint16_t dev_id      = 0;
+    uint8_t  status      = 0;
+
+    log::info("DBIG RemoveDevice complete event, len={}", len);
+    if (len < 4) {
+      log::warn("Insufficient event parameters for RemoveDevice event.");
+      return;
+    }
+
+    STREAM_TO_UINT8(dbig_handle, stream);
+    STREAM_TO_UINT16(dev_id, stream);
+    STREAM_TO_UINT8(status, stream);
+
+    log::info("DBIG RemoveDevice: dbig_handle=0x{:02x}, dev_id=0x{:04x}, status=0x{:02x}",
+              dbig_handle, dev_id, status);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG RemoveDevice complete",
+                   std::format("dbig_handle:0x{:02x}, dev_id:0x{:04x}, status:{}",
+                               dbig_handle, dev_id,
+                               hci_status_code_text((tHCI_STATUS)(status))));
+
+    if (remove_device_dbig_cmpl_cb_ != nullptr) {
+      (*remove_device_dbig_cmpl_cb_)(status, dbig_handle, dev_id);
+      remove_device_dbig_cmpl_cb_ = nullptr;
+    }
+
+    if (dbig_callbacks_ != nullptr) {
+      dbig_remove_device_cmpl_evt evt = {
+        .status      = status,
+        .dbig_handle = dbig_handle,
+        .dev_id      = dev_id
+      };
+      log::info("Firing kIsoEventDbigRemoveDeviceCmpl for RemoveDevice completion");
+      dbig_callbacks_->OnDbigEvent(kIsoEventDbigRemoveDeviceCmpl, &evt);
+    }
+  }
+
+  void remove_device_dbig(struct dbig_remove_device_params params) {
+    log::info("DBIG RemoveDevice: dbig_handle=0x{:02x}, dev_id=0x{:04x}, reason=0x{:02x}",
+              params.dbig_handle, params.dev_id, params.reason);
+
+    remove_device_dbig_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_remove_device_dbig(params.dbig_handle, params.dev_id, params.name,
+                                      params.reason,
+                                      base::BindRepeating([](uint8_t*, uint16_t) {}));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG RemoveDevice",
+                   std::format("dbig_handle:0x{:02x}, dev_id:0x{:04x}, reason:0x{:02x}",
+                               params.dbig_handle, params.dev_id, params.reason));
   }
 
   void on_set_devid_cmd_cmpl(uint8_t* stream, uint16_t len) {
@@ -1624,9 +1693,15 @@ struct iso_impl {
   dbig_join_control_complete_cb* join_control_complete_cb_ = nullptr;
   dbig_texit_cmpl_cb* texit_dbig_cmpl_cb_ = nullptr;
   dbig_set_devid_cmpl_cb* set_devid_cmpl_cb_ = nullptr;
+  dbig_remove_device_cmpl_cb* remove_device_dbig_cmpl_cb_ = nullptr;
   dbig_create_params last_dbig_params_ = {};
 
-  uint16_t broadcast_states_ = 0;
+  std::atomic<uint16_t> broadcast_states_{0};
+  /** True while a HCI_VS_LE_READ_SUPPORTED_STATES command is in-flight.
+   *  Guards against a second command being sent before the first completes,
+   *  which happens when both broadcast source and sink call ReadSupportedStates
+   *  concurrently during BT turn-on. */
+  std::atomic<bool> read_states_pending_{false};
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
   /* Cached once at construction — persist.vendor.qcom.bluetooth.enable_ba_duplex

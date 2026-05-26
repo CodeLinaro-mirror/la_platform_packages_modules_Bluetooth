@@ -294,6 +294,14 @@ public:
   virtual void HandleTExitDbigEvent(uint8_t* params, uint16_t length);
 
   /**
+   * Handle DBIG Remove Device complete event
+   *
+   * @param params raw packet buffer for the event
+   * @param length event packet buffer length
+   */
+  virtual void HandleRemoveDeviceDbigEvent(uint8_t* params, uint16_t length);
+
+  /**
    * Handle DBIG Join Control complete event
    *
    * @param params raw packet buffer for the event
@@ -321,6 +329,13 @@ public:
    * @param params texit parameters including dbig_handle, texit_mode, reason, and callback
    */
   virtual void TExitDbig(struct iso_manager::dbig_texit_params params);
+
+  /**
+   * Send HCI_VS_LE_Remove_Device_DBIG command to remove a specific device from a DBIG
+   *
+   * @param params remove device parameters including dbig_handle, dev_id, name, reason, callback
+   */
+  virtual void RemoveDeviceDbig(struct iso_manager::dbig_remove_device_params params);
 
   /**
    * Send HCI_VS_LE_SET_DevID command to set the device ID for a DBIG

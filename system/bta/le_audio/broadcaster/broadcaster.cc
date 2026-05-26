@@ -72,6 +72,7 @@ using bluetooth::hci::iso_manager::big_create_cmpl_evt;
 using bluetooth::hci::iso_manager::big_terminate_cmpl_evt;
 using bluetooth::hci::iso_manager::dbig_create_cmpl_evt;
 using bluetooth::hci::iso_manager::dbig_status_evt;
+using bluetooth::hci::iso_manager::dbig_remove_device_cmpl_evt;
 using bluetooth::hci::iso_manager::BigCallbacks;
 using bluetooth::hci::iso_manager::DbigCallbacks;
 using bluetooth::le_audio::BasicAudioAnnouncementData;
@@ -1027,14 +1028,17 @@ public:
 
     log::info("Stopping AudioHalClient, broadcast_id={}", broadcast_id);
 
-    /* Unregister DBIG callbacks when a DUPLEX (enhanced) broadcast stops so the
-     * PGP (broadcast sink) can safely register its own DBIG callbacks without
-     * the PGO pointer lingering. */
-    if (broadcasts_.at(broadcast_id)->GetBroadcastMode() ==
+    /* For DUPLEX (enhanced) broadcasts, do NOT unregister DBIG callbacks yet — we
+     * need them active to receive the TExitDbig_Complete event from the controller.
+     * Unregistration happens in kIsoEventDbigTexitCmpl when state is STOPPING or DISABLING. */
+    if (broadcasts_.at(broadcast_id)->GetBroadcastMode() !=
             bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
-      log::info("DUPLEX broadcast stopping — unregistering DBIG callbacks for PGO, "
-                "broadcast_id={}", broadcast_id);
-      IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+      if (dbig_callbacks_registered_) {
+        log::info("Non-DUPLEX broadcast stopping — unregistering DBIG callbacks, broadcast_id={}",
+                  broadcast_id);
+        IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+        dbig_callbacks_registered_ = false;
+      }
     }
 
     if (le_audio_source_hal_client_) {
@@ -1046,6 +1050,33 @@ public:
     audio_state_ = AudioState::SUSPENDED;
     broadcasts_[broadcast_id]->SetMuted(true);
     broadcasts_[broadcast_id]->ProcessMessage(BroadcastStateMachine::Message::STOP, nullptr);
+    bluetooth::le_audio::MetricsCollector::Get()->OnBroadcastStateChanged(false);
+  }
+
+  void StopEnhancedAudioBroadcast(uint32_t broadcast_id, uint8_t mode) override {
+    if (broadcasts_.count(broadcast_id) == 0) {
+      log::error("StopEnhancedAudioBroadcast: no such broadcast_id={}", broadcast_id);
+      return;
+    }
+    if (broadcasts_.at(broadcast_id)->GetBroadcastMode() !=
+            bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+      log::warn("StopEnhancedAudioBroadcast: broadcast_id={} is not DUPLEX — falling back to StopAudioBroadcast",
+                broadcast_id);
+      StopAudioBroadcast(broadcast_id);
+      return;
+    }
+
+    log::info("StopEnhancedAudioBroadcast: broadcast_id={}, texit_mode=0x{:02x}", broadcast_id, mode);
+
+    if (le_audio_source_hal_client_) {
+      le_audio_source_hal_client_->Stop();
+    }
+    if (le_audio_sink_hal_client_) {
+      le_audio_sink_hal_client_->Stop();
+    }
+    audio_state_ = AudioState::SUSPENDED;
+    broadcasts_[broadcast_id]->SetMuted(true);
+    broadcasts_[broadcast_id]->ProcessMessage(BroadcastStateMachine::Message::STOP, &mode);
     bluetooth::le_audio::MetricsCollector::Get()->OnBroadcastStateChanged(false);
   }
 
@@ -1106,6 +1137,75 @@ public:
     BTM_SetJoinControl(enable);
   }
 
+  void RemoveDeviceDbig(uint16_t dev_id,
+                        const std::vector<uint8_t>& name,
+                        uint8_t reason) override {
+    log::info("RemoveDeviceDbig: dev_id=0x{:04x}, reason=0x{:02x}", dev_id, reason);
+
+    // Find the streaming DUPLEX (enhanced) broadcast — only DUPLEX broadcasts
+    // have a DBIG; a standard broadcast has no DBIG handle.
+    auto it = std::find_if(broadcasts_.begin(), broadcasts_.end(), [](auto const& entry) {
+      return entry.second->GetState() == BroadcastStateMachine::State::STREAMING &&
+             entry.second->GetBroadcastMode() ==
+                     bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX;
+    });
+    if (it == broadcasts_.end()) {
+      log::warn("RemoveDeviceDbig: no streaming broadcast found");
+      return;
+    }
+    uint8_t dbig_handle = it->second->GetAdvertisingSid();
+
+    bluetooth::hci::iso_manager::dbig_remove_device_params params = {};
+    params.dbig_handle = dbig_handle;
+    params.dev_id = dev_id;
+    params.reason = reason;
+    // Copy name (up to 10 bytes)
+    size_t copy_len = std::min(name.size(), static_cast<size_t>(10));
+    std::memcpy(params.name, name.data(), copy_len);
+    params.p_cb = nullptr;
+
+    IsoManager::GetInstance()->RemoveDeviceDbig(params);
+  }
+
+  /* Helper: find the streaming DUPLEX broadcast's adv_sid as DBIG handle and
+   * send TExitDbig with the given texit_mode. Used for Accept/Reject Terminate. */
+  void SendTexitDbigAsPgo(uint32_t broadcast_id, uint8_t texit_mode) {
+    if (broadcasts_.count(broadcast_id) == 0) {
+      log::warn("SendTexitDbigAsPgo: no such broadcast_id={}", broadcast_id);
+      return;
+    }
+    /* Guard: only DUPLEX (enhanced) broadcasts have a DBIG. Sending TExitDbig
+     * to a standard broadcast would be an invalid HCI command. */
+    if (broadcasts_.at(broadcast_id)->GetBroadcastMode() !=
+            bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+      log::warn("SendTexitDbigAsPgo: broadcast_id={} is NOT DUPLEX — ignoring TExitDbig",
+                broadcast_id);
+      return;
+    }
+    uint8_t dbig_handle = broadcasts_.at(broadcast_id)->GetAdvertisingSid();
+    bluetooth::hci::iso_manager::dbig_texit_params params{
+      .dbig_handle = dbig_handle,
+      .texit_mode  = texit_mode,
+      .reason      = 0x13,
+      .p_cb        = nullptr
+    };
+    log::info("SendTexitDbigAsPgo: broadcast_id={}, dbig_handle={}, texit_mode=0x{:02x}",
+              broadcast_id, dbig_handle, texit_mode);
+    IsoManager::GetInstance()->TExitDbig(params);
+  }
+
+  void AcceptTerminateDbig(uint32_t broadcast_id) override {
+    log::info("AcceptTerminateDbig: broadcast_id={} — PGO accepting PGP terminate request",
+              broadcast_id);
+    SendTexitDbigAsPgo(broadcast_id, HCI_TEXIT_MODE_TERMINATE);
+  }
+
+  void RejectTerminateDbig(uint32_t broadcast_id) override {
+    log::info("RejectTerminateDbig: broadcast_id={} — PGO rejecting PGP terminate request",
+              broadcast_id);
+    SendTexitDbigAsPgo(broadcast_id, HCI_TEXIT_MODE_REJECT_TERMINATE);
+  }
+
   void GetBroadcastMetadata(uint32_t broadcast_id) override {
     if (broadcasts_.count(broadcast_id) == 0) {
       log::error("No such broadcast_id={}", broadcast_id);
@@ -1155,7 +1255,7 @@ public:
 
   uint8_t GetStreamingPhy(void) const override { return current_phy_; }
 
-  void ReadSupportedStates(void) override {
+  uint32_t ReadSupportedStates(void) override {
     IsoManager::GetInstance()->ReadSupportedStates();
 
     // Pre-populate last_dbig_params_ so GetDbigParams() returns valid values
@@ -1174,11 +1274,12 @@ public:
         .sgo_timeout              = 6,
         .join_timeout             = 4,
         .exit_timeout             = 4,
-        .remove_timeout           = 4,
-        .terminate_timeout        = 4,
+        .remove_timeout           = 10,
+        .terminate_timeout        = 10,
         .tx_power                 = 8,
     };
     IsoManager::GetInstance()->StoreDbigParams(defaults);
+    return IsoManager::GetInstance()->GetBroadcastStates();
   }
 
   std::vector<uint8_t> GetDbigParams(void) override {
@@ -1240,6 +1341,50 @@ public:
                                         static_cast<uint16_t>(evt->dbig_status),
                                         evt->dev_id, evt->name, evt->num_bis,
                                         evt->bis_dev_ids, evt->broadcast_features);
+      } break;
+      case bluetooth::hci::iso_manager::kIsoEventDbigRemoveDeviceCmpl: {
+        auto* evt = static_cast<dbig_remove_device_cmpl_evt*>(data);
+        log::info("DBIG RemoveDevice complete: dbig_handle={}, dev_id=0x{:04x}, status=0x{:02x}",
+                  evt->dbig_handle, evt->dev_id, evt->status);
+        callbacks_->OnRemoveDeviceDbigComplete(evt->dbig_handle, evt->dev_id, evt->status);
+      } break;
+      case bluetooth::hci::iso_manager::kIsoEventDbigTexitCmpl: {
+        /* HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+         * Fired after PGO sends TExitDbig for:
+         *   - TERMINATE mode accepting a PGP terminate request
+         *   - REJECT_TERMINATE mode rejecting a PGP terminate request
+         *   - EXIT or TERMINATE mode during StopEnhancedAudioBroadcast (STOPPING state)
+         * Only process for DUPLEX (enhanced) broadcasts. */
+        auto* evt = static_cast<bluetooth::hci::iso_manager::dbig_texit_cmpl_evt*>(data);
+        log::info("DBIG TExitDbig complete (PGO): dbig_handle={}, status=0x{:02x}, reason=0x{:02x}",
+                  evt->dbig_handle, evt->status, evt->reason);
+        auto broadcast_id = BroadcastIdFromBigHandle(evt->dbig_handle);
+        if (broadcast_id != bluetooth::le_audio::kBroadcastIdInvalid &&
+            broadcasts_.count(broadcast_id) > 0 &&
+            broadcasts_.at(broadcast_id)->GetBroadcastMode() ==
+                    bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+          auto state = broadcasts_.at(broadcast_id)->GetState();
+          if (state == BroadcastStateMachine::State::STOPPING ||
+              state == BroadcastStateMachine::State::DISABLING) {
+            /* TExitDbig sent by StopEnhancedAudioBroadcast — let the state machine
+             * drive announcement teardown (same path as HCI_BLE_TERM_BIG_CPL_EVT).
+             * Handles both STOPPING (explicit stop) and DISABLING (timer-triggered
+             * suspend raced ahead and put state to DISABLING before STOP arrived).
+             * Unregister DBIG callbacks now that the controller acked exit. */
+            log::info("kIsoEventDbigTexitCmpl: state={} — triggering announcement teardown, broadcast_id={}",
+                      ToString(state), broadcast_id);
+            if (dbig_callbacks_registered_) {
+              IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+              dbig_callbacks_registered_ = false;
+            }
+            broadcasts_.at(broadcast_id)->HandleTexitDbigCmpl();
+          } else {
+            callbacks_->OnTexitDbigComplete(broadcast_id, evt->dbig_handle, evt->status);
+          }
+        } else {
+          log::warn("kIsoEventDbigTexitCmpl: broadcast_id={} not found or not DUPLEX — skip",
+                    broadcast_id);
+        }
       } break;
       default:
         log::error("Invalid DBIG event={}", event);

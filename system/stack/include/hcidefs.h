@@ -439,6 +439,7 @@
 #define HCI_VS_LE_ASSOCIATE_PA_DBIG_SUB_OPCODE 0x06
 #define HCI_VS_LE_DBIG_SYNC_ONLY_SUB_OPCODE 0x07
 #define HCI_VS_LE_JOIN_CONTROL_SUB_OPCODE 0x08
+#define HCI_VS_LE_REMOVE_DEVICE_DBIG_SUB_OPCODE 0x09
 #define HCI_VS_LE_SET_DEVID_SUB_OPCODE 0x0A
 #define HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE 0x05
 
@@ -446,6 +447,8 @@
 #define HCI_PARAM_SIZE_SET_DEVID 13
 /* Parameter size for TEXIT_DBIG command: 1 sub-opcode + 1 dbig_handle + 1 texit_mode + 1 reason */
 #define HCI_PARAM_SIZE_TEXIT_DBIG 4
+/* Parameter size for REMOVE_DEVICE_DBIG: 1 sub-opcode + 1 dbig_handle + 2 dev_id + 10 name + 1 reason */
+#define HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG 15
 
 /* Texit Mode definitions */
 #define HCI_TEXIT_MODE_EXIT 0x01
@@ -469,6 +472,7 @@
 #define HCI_VS_LE_DBIG_STATUS_EVT 0x00
 #define HCI_VS_LE_EXIT_DBIG_COMPLETE_EVT 0x04
 #define HCI_VS_LE_TEXIT_DBIG_COMPLETE_EVT 0x01
+#define HCI_VS_LE_REMOVE_DEVICE_DBIG_COMPLETE_EVT 0x02
 #define HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT 0x03
 
 /* Bluetooth Quality Report opcode */

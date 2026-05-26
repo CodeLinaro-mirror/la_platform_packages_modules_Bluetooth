@@ -223,6 +223,8 @@ public:
   virtual void HandleHciEvent(uint16_t event, void* data) = 0;
   virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
   virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
+  /* Called by broadcaster when TExitDbig_Complete is received in STOPPING or DISABLING state. */
+  virtual void HandleTexitDbigCmpl() = 0;
 
   virtual void ProcessMessage(Message event, const void* data = nullptr) = 0;
   virtual ~BroadcastStateMachine() {}

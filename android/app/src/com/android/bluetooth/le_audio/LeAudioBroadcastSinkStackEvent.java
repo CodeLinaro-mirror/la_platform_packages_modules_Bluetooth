@@ -70,6 +70,15 @@ public class LeAudioBroadcastSinkStackEvent {
      */
     public static final int EVENT_TYPE_DBIG_STATUS_CHANGED = 14;
 
+    /**
+     * TExitDbig complete event received.
+     * Fired when HCI_VS_LE_Texit_DBIG_Complete arrives — covers both the
+     * Terminate procedure (§5.3) result: success (0x00) or rejected by PGO (0x0E).
+     * {@code broadcastId} = broadcast ID, {@code valueInt1} = dbig_handle,
+     * {@code reason} = HCI status (0x00 = success, 0x0E = rejected).
+     */
+    public static final int EVENT_TYPE_TEXIT_DBIG_COMPLETE = 15;
+
     // DBIG status extended fields
     public int dbigDevId = 0;
     public byte[] dbigName;
@@ -179,8 +188,9 @@ public class LeAudioBroadcastSinkStackEvent {
             case EVENT_TYPE_BIG_SYNC_CREATED:          return "EVENT_TYPE_BIG_SYNC_CREATED";
             case EVENT_TYPE_BIG_SYNC_LOST:             return "EVENT_TYPE_BIG_SYNC_LOST";
             case EVENT_TYPE_BIG_SYNC_TERMINATED:       return "EVENT_TYPE_BIG_SYNC_TERMINATED";
-            case EVENT_TYPE_DBIG_STATUS_CHANGED:       return "EVENT_TYPE_DBIG_STATUS_CHANGED";
-            default:                                   return "UNKNOWN(" + type + ")";
+            case EVENT_TYPE_DBIG_STATUS_CHANGED:           return "EVENT_TYPE_DBIG_STATUS_CHANGED";
+            case EVENT_TYPE_TEXIT_DBIG_COMPLETE:           return "EVENT_TYPE_TEXIT_DBIG_COMPLETE";
+            default:                                       return "UNKNOWN(" + type + ")";
         }
     }
 

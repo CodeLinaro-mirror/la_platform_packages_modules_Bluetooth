@@ -250,6 +250,12 @@ void IsoManager::HandleTExitDbigEvent(uint8_t* params, uint16_t length) {
   }
 }
 
+void IsoManager::HandleRemoveDeviceDbigEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_remove_device_dbig_event(params, length);
+  }
+}
+
 void IsoManager::HandleJoinControlEvent(uint8_t* params, uint16_t length) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->on_join_control_event(params, length);
@@ -265,6 +271,12 @@ void IsoManager::JoinControl(struct iso_manager::dbig_join_control_params params
 void IsoManager::TExitDbig(struct iso_manager::dbig_texit_params params) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->texit_dbig(params);
+  }
+}
+
+void IsoManager::RemoveDeviceDbig(struct iso_manager::dbig_remove_device_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->remove_device_dbig(params);
   }
 }
 

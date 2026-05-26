@@ -112,7 +112,7 @@ class LeAudioBroadcastSink {
    *
    * @param broadcast_id Unique identifier for the broadcast
    */
-  virtual void StopEnhancedBroadcastSink(bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id) = 0;
+  virtual void StopEnhancedBroadcastSink(uint8_t mode) = 0;
 
   /**
    * Remove a broadcast source (stop PA sync)
@@ -146,10 +146,11 @@ class LeAudioBroadcastSink {
 
   /**
    * Read the controller's supported LE states for enhanced broadcast sink.
-   * Issues a VS HCI command and stores the result internally.
-   * Called once at sink init when duplex mode is enabled.
+   * Issues a VS HCI command and returns the result. The result is also cached
+   * for later retrieval via GetEnhancedBroadcastSinkCap().
+   * @return capability bitmask: bit0=Terminate, bit1=Remove Device. 0 if not ready.
    */
-  virtual void ReadSupportedStatesForSink(void) = 0;
+  virtual uint32_t ReadSupportedStatesForSink(void) = 0;
 
   /**
    * Get the enhanced broadcast sink capability bitmask returned by the
@@ -166,4 +167,11 @@ class LeAudioBroadcastSink {
    * @param dbig_params  12-byte parameter vector
    */
   virtual void SetEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
+
+  /**
+   * Terminate the DBIG (spec §5.3 PGP Terminates procedure).
+   * Sends HCI_VS_LE_Texit_DBIG(TERMINATE) so BT FW sends PGP_REQUEST(TERMINATE) to PGO.
+   * Only valid for enhanced (DBIG) sources. Operates on the single active enhanced source.
+   */
+  virtual void TerminateDbig() = 0;
 };

@@ -158,6 +158,11 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
    */
   virtual bool IsEnhanced() const = 0;
 
+  /** Set the TExitDbig mode to use when stopping/disabling BIG sync.
+   * Must be called before MSG_STOP triggers teardown.
+   * mode: HCI_TEXIT_MODE_EXIT (0x01) or HCI_TEXIT_MODE_TERMINATE (0x02) */
+  virtual void SetTexitMode(uint8_t mode) = 0;
+
   /**
    * Called when the audio HAL (HIDL) sends a start indication to the BTA layer.
    *

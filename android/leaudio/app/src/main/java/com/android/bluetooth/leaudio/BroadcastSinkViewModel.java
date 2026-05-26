@@ -54,6 +54,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
     /** Pair(broadcastId, sdkReason) posted whenever BIG sync is lost unexpectedly. */
     private final MutableLiveData<Pair<Integer, Integer>> mBigSyncLostWithReason =
             new MutableLiveData<>();
+    /** Fires (broadcastId, status) when HCI_VS_LE_Texit_DBIG_Complete arrives on PGP. */
+    private final MutableLiveData<Pair<Integer, Integer>> mTexitDbigResultMutableLive =
+            new MutableLiveData<>();
 
     // Internal state
     private final Map<Integer, BluetoothLeBroadcastMetadata> mSyncedBroadcastMap = new HashMap<>();
@@ -334,6 +337,24 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             }
             mStatusMessage.postValue(message);
         }
+
+        @Override
+        public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+            Log.i(TAG, "onTexitDbigComplete (callback): broadcastId=" + broadcastId
+                    + ", dbigHandle=" + dbigHandle
+                    + ", status=0x" + Integer.toHexString(status));
+            String msg;
+            if (status == 0x00) {
+                msg = "Terminate DBIG: success — DBIG terminated (broadcast ID " + broadcastId + ")";
+            } else if (status == 0x0E) {
+                msg = "Terminate DBIG: rejected by PGO (security, broadcast ID " + broadcastId + ")";
+            } else {
+                msg = "Terminate DBIG: failed (status=0x" + Integer.toHexString(status)
+                        + ", broadcast ID " + broadcastId + ")";
+            }
+            mStatusMessage.postValue(msg);
+            mTexitDbigResultMutableLive.postValue(new Pair<>(broadcastId, status));
+        }
     };
 
     private final BluetoothProfile.ServiceListener mServiceListener = new BluetoothProfile.ServiceListener() {
@@ -416,6 +437,24 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                 // Stop any ongoing search
                 if (Boolean.TRUE.equals(mIsSearching.getValue())) {
                     mBroadcastSink.stopScanningForSources();
+                }
+                // Stop all synced enhanced sources so BIG sync is terminated when the app is killed.
+                // Without this, BIG sync stays alive on the controller even after the app dies,
+                // preventing a clean restart on the next session.
+                synchronized (mSyncedBroadcastMap) {
+                    if (!mSyncedBroadcastMap.isEmpty()) {
+                        Log.i(TAG, "cleanup: stopping " + mSyncedBroadcastMap.size()
+                                + " active sink(s) before unregistering");
+                        for (int broadcastId : new java.util.ArrayList<>(mSyncedBroadcastMap.keySet())) {
+                            try {
+                                Log.d(TAG, "cleanup: stopping enhanced sink broadcastId=" + broadcastId);
+                                mBroadcastSink.stopEnhancedBroadcastSink(broadcastId,
+                                        android.bluetooth.BluetoothLeBroadcastSink.DBIG_TEXIT_MODE_EXIT);
+                            } catch (Exception e) {
+                                Log.e(TAG, "cleanup: error stopping sink broadcastId=" + broadcastId, e);
+                            }
+                        }
+                    }
                 }
                 mBroadcastSink.unregisterCallback(mBroadcastSinkCallback);
                 mBluetoothAdapter.closeProfileProxy(BluetoothProfile.LE_AUDIO_BROADCAST_SINK, mBroadcastSink);
@@ -552,19 +591,41 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         }
     }
 
-    public void stopEnhancedBroadcastSink(int broadcastId) {
+    public void stopEnhancedBroadcastSink(int broadcastId, int mode) {
         if (mBroadcastSink == null) {
             mStatusMessage.postValue("Broadcast Sink service not available");
             return;
         }
 
         try {
-            mBroadcastSink.stopEnhancedBroadcastSink(broadcastId);
-            mStatusMessage.postValue("Stopping Enhanced Sink for broadcast ID: " + broadcastId);
+            mBroadcastSink.stopEnhancedBroadcastSink(broadcastId, mode);
+            mStatusMessage.postValue("Stopping Enhanced Sink for broadcast ID: " + broadcastId
+                    + " mode=0x" + Integer.toHexString(mode));
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop enhanced sink", e);
             mStatusMessage.postValue("Failed to stop enhanced sink: " + e.getMessage());
         }
+    }
+
+    /**
+     * Terminate the DBIG — PGP sends HCI_VS_LE_Texit_DBIG(TERMINATE) to PGO (spec §5.3).
+     */
+    public void terminateDbig() {
+        if (mBroadcastSink == null) {
+            mStatusMessage.postValue("Broadcast Sink service not available");
+            return;
+        }
+        try {
+            mBroadcastSink.terminateDbig();
+            mStatusMessage.postValue("Terminate DBIG sent");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to terminate DBIG", e);
+            mStatusMessage.postValue("Failed to terminate DBIG: " + e.getMessage());
+        }
+    }
+
+    public LiveData<Pair<Integer, Integer>> getTexitDbigResultLive() {
+        return mTexitDbigResultMutableLive;
     }
 
     public void removeSource(int broadcastId) {
@@ -669,6 +730,19 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
      */
     public LiveData<Pair<Integer, Integer>> getBigSyncLostWithReason() {
         return mBigSyncLostWithReason;
+    }
+
+    /** LiveData that fires true when Bluetooth turns OFF — observe to reset AuraChat UI. */
+    public LiveData<Boolean> getBluetoothOffEventLive() {
+        BluetoothProxy proxy = BluetoothProxy.getBluetoothProxy(getApplication());
+        if (proxy == null) return new MutableLiveData<>();
+        return proxy.getBluetoothOffEventLive();
+    }
+    public boolean isSourceEnhanced(int broadcastId) {
+        synchronized (mFoundBroadcastsMap) {
+            FoundBroadcastItem item = mFoundBroadcastsMap.get(broadcastId);
+            return item != null && item.isEnhanced;
+        }
     }
 
     public void getAllSyncedSinkStates() {

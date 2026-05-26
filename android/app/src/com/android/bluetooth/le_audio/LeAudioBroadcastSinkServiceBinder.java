@@ -149,15 +149,14 @@ class LeAudioBroadcastSinkServiceBinder extends IBluetoothLeBroadcastSink.Stub
 
     @Override
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void stopEnhancedBroadcastSink(int broadcastId, AttributionSource source) {
+    public void stopEnhancedBroadcastSink(int broadcastId, int mode, AttributionSource source) {
         LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
         if (service == null) {
             Log.e(TAG, "Service is null");
             return;
         }
-        service.stopEnhancedBroadcastSink(broadcastId);
+        service.stopEnhancedBroadcastSink(broadcastId, mode);
     }
-
     @Override
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public void removeSource(int broadcastId, AttributionSource source) {
@@ -211,5 +210,13 @@ class LeAudioBroadcastSinkServiceBinder extends IBluetoothLeBroadcastSink.Stub
         LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
         if (service == null) return;
         service.setAttributes(devId, name);
+    }
+
+    @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void terminateDbig(AttributionSource source) {
+        LeAudioBroadcastSinkService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.terminateDbig();
     }
 }

@@ -901,6 +901,27 @@ void btsnd_hcic_ble_texit_dbig(uint8_t dbig_handle,
                                     param_len, std::move(cb));
 }
 
+void btsnd_hcic_ble_remove_device_dbig(uint8_t dbig_handle,
+                                       uint16_t dev_id,
+                                       uint8_t* name,
+                                       uint8_t reason,
+                                       base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG;
+  uint8_t param[HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_REMOVE_DEVICE_DBIG_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT16_TO_STREAM(p, dev_id);
+  ARRAY_TO_STREAM(p, name, 10);
+  UINT8_TO_STREAM(p, reason);
+
+  // HCI_VS_LE_Remove_Device_DBIG (opcode 0xfd90, sub-opcode 0x09) returns CommandStatus.
+  // Actual completion arrives via VS meta event HCI_VS_LE_REMOVE_DEVICE_DBIG_COMPLETE_EVT (0x02).
+  btu_hcif_send_cmd_status_with_cb(HCI_VS_LE_SET_DBIG_PARAMETERS, param,
+                                   param_len, std::move(cb));
+}
+
 void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,
                                     uint16_t sync_handle,
                                     uint8_t encryption,

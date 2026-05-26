@@ -46,4 +46,9 @@ interface IBluetoothLeBroadcastSinkCallback {
 
     // Metadata update callbacks
 
+    /**
+     * HCI_VS_LE_Texit_DBIG_Complete received on PGP (spec §5.3 PGP Terminates procedure).
+     * status=0x00 success (PGO accepted terminate); status=0x0E rejected by PGO.
+     */
+    void onTexitDbigComplete(int broadcastId, int dbigHandle, int status);
 }

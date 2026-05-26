@@ -26,6 +26,7 @@
 #include "stack/include/btm_ble_api.h"
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/hci_error_code.h"
+#include "hcidefs.h"
 #include "hcimsgs.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
@@ -377,26 +378,28 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     JoinSource(broadcast_id, broadcast_code, {});
   }
 
-  void StopEnhancedBroadcastSink(BroadcastId broadcast_id) override {
-    log::info("StopEnhancedBroadcastSink: broadcast_id=0x{:08x}", broadcast_id);
+  void StopEnhancedBroadcastSink(uint8_t mode) override {
+    log::info("StopEnhancedBroadcastSink: texit_mode=0x{:02x}", mode);
 
-    if (tracked_sources_.count(broadcast_id) == 0) {
-      log::error("No such broadcast_id=0x{:08x}", broadcast_id);
-      if (callbacks_) {
-        callbacks_->OnSourceLeaveFailed(broadcast_id, 0);
+    /* Only one enhanced source is active at a time — find it. */
+    BroadcastId broadcast_id = bluetooth::le_audio::kBroadcastIdInvalid;
+    for (auto& kv : tracked_sources_) {
+      if (kv.second.state_machine && kv.second.state_machine->IsEnhanced()) {
+        auto s = kv.second.state_machine->GetState();
+        if (s == SinkState::BIG_SYNCED || s == SinkState::BIG_SYNCING) {
+          broadcast_id = kv.first;
+          break;
+        }
       }
+    }
+    if (broadcast_id == bluetooth::le_audio::kBroadcastIdInvalid) {
+      log::error("StopEnhancedBroadcastSink: no active enhanced source found");
+      if (callbacks_) callbacks_->OnSourceLeaveFailed(0, 0);
       return;
     }
+    log::info("StopEnhancedBroadcastSink: resolved broadcast_id=0x{:08x}", broadcast_id);
 
     auto& tracked_source = tracked_sources_[broadcast_id];
-    if (!tracked_source.state_machine) {
-      log::error("State machine not found for broadcast_id=0x{:08x}", broadcast_id);
-      if (callbacks_) {
-        callbacks_->OnSourceLeaveFailed(broadcast_id, 0);
-      }
-      return;
-    }
-
     auto* state_machine = tracked_source.state_machine.get();
     auto current_state = state_machine->GetState();
 
@@ -415,9 +418,12 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     pending_source_suspend_ = false;
     pending_sink_suspend_   = false;
 
-    log::info("StopEnhancedBroadcastSink: state validated, flags cleared for broadcast_id=0x{:08x}. "
+    // Store the TExitDbig mode on the state machine before teardown fires.
+    state_machine->SetTexitMode(mode);
+
+    log::info("StopEnhancedBroadcastSink: state validated, flags cleared, texit_mode=0x{:02x} for broadcast_id=0x{:08x}. "
               "MSG_STOP from Java will drive HAL teardown via blocking setParameters().",
-              broadcast_id);
+              mode, broadcast_id);
 
     /* Do NOT call Stop() on the HAL clients here.
      *
@@ -527,8 +533,12 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       }
     }
   }
-  void ReadSupportedStatesForSink(void) override {
+  uint32_t ReadSupportedStatesForSink(void) override {
+    /* Send HCI_VS_LE_READ_SUPPORTED_STATES. The response is async and stores
+     * the result in broadcast_states_. The BTIF caller polls
+     * GetEnhancedBroadcastSinkCap() until the value is available. */
     IsoManager::GetInstance()->ReadSupportedStates();
+    return IsoManager::GetInstance()->GetBroadcastStates();
   }
 
   uint32_t GetEnhancedBroadcastSinkCap(void) override {
@@ -543,6 +553,58 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     dbig_params_ = dbig_params;
     log::info("SetEnhancedDbigParams: stored {} bytes, bis_ctrl_interval=0x{:02x}",
               dbig_params_.size(), dbig_params_[3]);
+  }
+
+  void TerminateDbig() override {
+    log::info("TerminateDbig: PGP requesting to terminate DBIG (spec §5.3)");
+
+    /* Only one enhanced source is active at a time — find it. */
+    BroadcastId broadcast_id = bluetooth::le_audio::kBroadcastIdInvalid;
+    for (auto& kv : tracked_sources_) {
+      if (kv.second.state_machine && kv.second.state_machine->IsEnhanced()) {
+        auto s = kv.second.state_machine->GetState();
+        if (s == SinkState::BIG_SYNCED || s == SinkState::BIG_SYNCING) {
+          broadcast_id = kv.first;
+          break;
+        }
+      }
+    }
+    if (broadcast_id == bluetooth::le_audio::kBroadcastIdInvalid) {
+      log::error("TerminateDbig: no active enhanced source found");
+      return;
+    }
+    log::info("TerminateDbig: resolved broadcast_id=0x{:08x}", broadcast_id);
+
+    auto& tracked_source = tracked_sources_[broadcast_id];
+    if (!tracked_source.state_machine) {
+      log::error("TerminateDbig: no state machine for broadcast_id=0x{:08x}", broadcast_id);
+      return;
+    }
+    auto current_state = tracked_source.state_machine->GetState();
+    if (current_state != SinkState::BIG_SYNCED && current_state != SinkState::BIG_SYNCING) {
+      log::warn("TerminateDbig: state={} for broadcast_id=0x{:08x}, not in BIG sync",
+                SinkStateToString(current_state), broadcast_id);
+      return;
+    }
+    auto big_sync_info = tracked_source.state_machine->GetBigSyncInfo();
+    if (!big_sync_info.has_value()) {
+      log::error("TerminateDbig: no BIG sync info for broadcast_id=0x{:08x}", broadcast_id);
+      return;
+    }
+
+    /* Send HCI_VS_LE_Texit_DBIG with texit_mode=TERMINATE (0x02).
+     * BT FW sends PGP_REQUEST(TERMINATE) PDU to the PGO.
+     * PGO host will receive DBIG status event with bit 10 (0x0400) set and
+     * can accept (→ TExitDbig TERMINATE) or reject (→ TExitDbig REJECT_TERMINATE).
+     * Result arrives via kIsoEventDbigTexitCmpl → OnTexitDbigComplete(). */
+    bluetooth::hci::iso_manager::dbig_texit_params params{
+      .dbig_handle = static_cast<uint8_t>(big_sync_info->big_handle),
+      .texit_mode  = HCI_TEXIT_MODE_TERMINATE,  /* 0x02 */
+      .reason      = 0x13,
+      .p_cb        = nullptr
+    };
+    log::info("TerminateDbig: sending TExitDbig TERMINATE, dbig_handle={}", params.dbig_handle);
+    IsoManager::GetInstance()->TExitDbig(params);
   }
 
   void SourcePublicMetadataChanged(BroadcastId broadcast_id, const std::string& broadcast_name, const std::vector<uint8_t>& public_metadata) override {
@@ -990,6 +1052,17 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
           tracked_source.state_machine->OnTexitDbigComplete(texit_evt->dbig_handle,
                                                              texit_evt->status,
                                                              texit_evt->reason);
+        }
+        /* Notify Java only for enhanced (DBIG) sources — standard sinks do not
+         * participate in DBIG and should not receive this callback. */
+        if (callbacks_ && tracked_source.state_machine &&
+            tracked_source.state_machine->IsEnhanced()) {
+          callbacks_->OnTexitDbigComplete(broadcast_id, texit_evt->dbig_handle,
+                                          texit_evt->status);
+        } else if (!tracked_source.state_machine ||
+                   !tracked_source.state_machine->IsEnhanced()) {
+          log::warn("kIsoEventDbigTexitCmpl: broadcast_id=0x{:08x} not enhanced — skip callback",
+                    broadcast_id);
         }
         break;
       }
@@ -1473,21 +1546,31 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       log::info("BIG sync terminated: broadcast_id=0x{:08x}, big_handle={}, status=0x{:02x}",
                 broadcast_id, big_handle, status);
 
-      /* Ack source HAL suspend: TX paths removed + BIG terminated. */
+      /* Ack source HAL suspend: TX paths removed + BIG terminated.
+       * This must happen unconditionally whenever pending_source_suspend_ is set
+       * so that setParameters("achat_tx_enable=false") in MSG_STOP is unblocked. */
       if (instance->pending_source_suspend_ && instance->le_audio_source_hal_client_) {
         log::info("OnBigSyncTerminated: acking source HAL suspend for broadcast_id=0x{:08x}",
                   broadcast_id);
         instance->le_audio_source_hal_client_->ConfirmSuspendRequest();
         instance->pending_source_suspend_ = false;
-      }
 
-      /* Notify Java layer that BIG sync has been intentionally terminated
-       * (user-initiated StopEnhancedBroadcastSink).  Java handles onSinkStopped from this
-       * event rather than from the MSG_STOP handler. */
-      if (instance->callbacks_) {
-        log::info("OnBigSyncTerminated: notifying Java layer for broadcast_id=0x{:08x}",
+        /* Notify Java layer only when PGP initiated the stop (source HAL suspend was
+         * pending). If pending_source_suspend_ was false the Texit complete is
+         * unsolicited — PGO terminated the BIG without PGP initiating a stop.
+         * In that case the Java EVENT_TYPE_TEXIT_DBIG_COMPLETE handler (Case B)
+         * is responsible for cleanup; firing EVENT_TYPE_BIG_SYNC_TERMINATED here
+         * would clear mIsEnhancedStreaming before that handler runs, making
+         * Case B invisible and leaving MM audio and the BIG sync slot unreleased. */
+        if (instance->callbacks_) {
+          log::info("OnBigSyncTerminated: notifying Java layer (PGP-initiated stop) "
+                    "for broadcast_id=0x{:08x}", broadcast_id);
+          instance->callbacks_->OnBigSyncTerminated(broadcast_id, big_handle, status);
+        }
+      } else {
+        log::info("OnBigSyncTerminated: source HAL not pending (unsolicited Texit from PGO) "
+                  "— skipping Java EVENT_TYPE_BIG_SYNC_TERMINATED for broadcast_id=0x{:08x}",
                   broadcast_id);
-        instance->callbacks_->OnBigSyncTerminated(broadcast_id, big_handle, status);
       }
     }
 
@@ -1607,11 +1690,29 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
        * When BIG sync is already lost (state = PA_SYNCED, IDLE, or BIG_SYNCING)
        * the controller has already cleared all BIG/DBIG handles.  Send
        * REMOVE_TX_PATHS anyway so the state machine can fire OnBigSyncTerminated()
-       * immediately (no HCI needed) and unblock achat_tx_enable=false. */
+       * immediately (no HCI needed) and unblock achat_tx_enable=false.
+       *
+       * Special case: BIG_SYNCED state but big_sync_info_ already null — the DBIG
+       * was cleared by a prior unsolicited OnTexitDbigComplete (PGO terminated) before
+       * OnAudioSuspend arrived. There are no BIS handles to remove so REMOVE_TX_PATHS
+       * would stall. Ack the source HAL directly and clear pending_source_suspend_
+       * so that the subsequent OnBigSyncTerminated from OnTexitDbigComplete does not
+       * misidentify this as a PGP-initiated stop. */
       for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
         if (!tracked_source.state_machine) continue;
         if (!tracked_source.state_machine->IsEnhanced()) continue;
         auto st = tracked_source.state_machine->GetState();
+        if (st == SinkState::BIG_SYNCED &&
+            !tracked_source.state_machine->GetBigSyncInfo().has_value()) {
+          log::info("Source HAL suspend: BIG_SYNCED but DBIG already cleared "
+                    "(prior unsolicited Texit) — acking source HAL directly for "
+                    "broadcast_id=0x{:08x}", broadcast_id);
+          if (instance->le_audio_source_hal_client_) {
+            instance->le_audio_source_hal_client_->ConfirmSuspendRequest();
+          }
+          instance->pending_source_suspend_ = false;
+          break;
+        }
         if (st == SinkState::BIG_SYNCED  ||
             st == SinkState::DISABLING   ||
             st == SinkState::BIG_SYNCING ||

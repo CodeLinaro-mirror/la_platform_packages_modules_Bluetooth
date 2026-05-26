@@ -36,7 +36,7 @@ interface IBluetoothLeBroadcastSink {
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void startEnhancedBroadcastSink(in BluetoothLeBroadcastMetadata metadata, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    void stopEnhancedBroadcastSink(int broadcastId, in AttributionSource attributionSource);
+    void stopEnhancedBroadcastSink(int broadcastId, int mode, in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void removeSource(int broadcastId, in AttributionSource attributionSource);
 
@@ -51,4 +51,10 @@ interface IBluetoothLeBroadcastSink {
     int getEnhancedBroadcastSourceCap(in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     void setAttributes(int devId, in byte[] name, in AttributionSource attributionSource);
+    /**
+     * Terminate the DBIG (spec §5.3 PGP Terminates procedure).
+     * Sends HCI_VS_LE_Texit_DBIG(TERMINATE) so BT FW sends PGP_REQUEST(TERMINATE) to PGO.
+     */
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    void terminateDbig(in AttributionSource attributionSource);
 }
