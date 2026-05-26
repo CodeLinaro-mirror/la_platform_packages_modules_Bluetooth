@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.hfpclient;
@@ -184,36 +189,43 @@ class HfpClientDeviceBlock {
         if (connection != null) {
             connection.updateCall(call);
             connection.handleCallChanged();
-        }
+        } else {
+            // There is a possibility that the state of a new call is terminated.
+            // In this scenario, buildConnection is not required, otherwise a NPE
+            // would occur in HfpClientConnection.finishInitializing() because
+            // handleCallChanged() has already set mCurrentCall to null via close().
+            if (call.getState() == HfpClientCall.CALL_STATE_TERMINATED) {
+                debug("Removing call " + call);
+                mConnections.remove(call.getUUID());
+            } else {
+                // Create the connection here, trigger Telecom to bind to us.
+                buildConnection(call, null);
 
-        if (connection == null) {
-            // Create the connection here, trigger Telecom to bind to us.
-            buildConnection(call, null);
-
-            // Depending on where this call originated make it an incoming call or outgoing
-            // (represented as unknown call in telecom since). Since HfpClientCall is a
-            // parcelable we simply pack the entire object in there.
-            Bundle b = new Bundle();
-            if (call.getState() == HfpClientCall.CALL_STATE_DIALING
-                    || call.getState() == HfpClientCall.CALL_STATE_ALERTING
-                    || call.getState() == HfpClientCall.CALL_STATE_ACTIVE
-                    || call.getState() == HfpClientCall.CALL_STATE_HELD) {
-                // This is an outgoing call. Even if it is an active call we do not have a way of
-                // putting that parcelable in a separate field.
-                b.putParcelable(
-                        TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, new ParcelUuid(call.getUUID()));
-                mTelecomManager.addNewUnknownCall(mPhoneAccount.getAccountHandle(), b);
-            } else if (call.getState() == HfpClientCall.CALL_STATE_INCOMING
-                    || call.getState() == HfpClientCall.CALL_STATE_WAITING) {
-                // This is an incoming call.
-                b.putParcelable(
-                        TelecomManager.EXTRA_INCOMING_CALL_EXTRAS, new ParcelUuid(call.getUUID()));
-                b.putBoolean(TelecomManager.EXTRA_CALL_HAS_IN_BAND_RINGTONE, call.isInBandRing());
-                mTelecomManager.addNewIncomingCall(mPhoneAccount.getAccountHandle(), b);
+                // Depending on where this call originated make it an incoming call or outgoing
+                // (represented as unknown call in telecom since). Since HfpClientCall is a
+                // parcelable we simply pack the entire object in there.
+                Bundle b = new Bundle();
+                if (call.getState() == HfpClientCall.CALL_STATE_DIALING
+                        || call.getState() == HfpClientCall.CALL_STATE_ALERTING
+                        || call.getState() == HfpClientCall.CALL_STATE_ACTIVE
+                        || call.getState() == HfpClientCall.CALL_STATE_HELD) {
+                    // This is an outgoing call. Even if it is an active call we do not have a way
+                    // of putting that parcelable in a separate field.
+                    b.putParcelable(
+                            TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS,
+                            new ParcelUuid(call.getUUID()));
+                    mTelecomManager.addNewUnknownCall(mPhoneAccount.getAccountHandle(), b);
+                } else if (call.getState() == HfpClientCall.CALL_STATE_INCOMING
+                        || call.getState() == HfpClientCall.CALL_STATE_WAITING) {
+                    // This is an incoming call.
+                    b.putParcelable(
+                            TelecomManager.EXTRA_INCOMING_CALL_EXTRAS,
+                            new ParcelUuid(call.getUUID()));
+                    b.putBoolean(
+                            TelecomManager.EXTRA_CALL_HAS_IN_BAND_RINGTONE, call.isInBandRing());
+                    mTelecomManager.addNewIncomingCall(mPhoneAccount.getAccountHandle(), b);
+                }
             }
-        } else if (call.getState() == HfpClientCall.CALL_STATE_TERMINATED) {
-            debug("Removing call " + call);
-            mConnections.remove(call.getUUID());
         }
 
         updateConferenceableConnections();
