@@ -606,11 +606,12 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 Toast.makeText(this, "Please enter a broadcast code", Toast.LENGTH_SHORT).show();
                 return;
             }
-            if (codeStr.length() < 1 || codeStr.length() > 16) {
-                Toast.makeText(this, "Broadcast code must be 1-16 characters", Toast.LENGTH_SHORT).show();
+            byte[] broadcastCode = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (broadcastCode.length < 4 || broadcastCode.length > 16) {
+                Toast.makeText(this, "Broadcast code must be 4-16 bytes (4-16 ASCII characters)",
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
-            byte[] broadcastCode = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             Log.d(TAG, "Joining encrypted enhanced broadcast with code length: " + broadcastCode.length);
             mViewModel.startEnhancedBroadcastSink(metadata, broadcastCode);
             dialog.dismiss();
@@ -643,15 +644,15 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 return;
             }
 
-            // Validate broadcast code length (1-16 characters)
-            if (codeStr.length() < 1 || codeStr.length() > 16) {
-                Toast.makeText(this, "Broadcast code must be 1-16 characters",
+            // Convert to bytes first so the length check is on actual byte count
+            byte[] broadcastCode = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+            // Validate broadcast code length (4-16 bytes per Bluetooth spec)
+            if (broadcastCode.length < 4 || broadcastCode.length > 16) {
+                Toast.makeText(this, "Broadcast code must be 4-16 bytes (4-16 ASCII characters)",
                         Toast.LENGTH_SHORT).show();
                 return;
             }
-
-            // Convert ASCII string to byte array (UTF-8 encoding)
-            byte[] broadcastCode = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
             Log.d(TAG, "Joining encrypted broadcast with code: " + codeStr +
                     " (length: " + broadcastCode.length + " bytes) and selected channels: " + selectedChannelIndices);

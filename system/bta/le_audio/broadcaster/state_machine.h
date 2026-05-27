@@ -183,7 +183,9 @@ public:
   inline State GetState(void) const { return static_cast<State>(StateMachine::GetState()); }
 
   virtual uint8_t GetAdvertisingSid() const { return advertising_sid_; }
-  virtual uint8_t GetPaInterval() const { return kPaIntervalMax; }
+  virtual uint8_t GetPaInterval() const {
+    return (GetBroadcastMode() == BroadcastMode::DUPLEX) ? kPaIntervalDuplex : kPaIntervalMax;
+  }
 
   virtual bool Initialize() = 0;
   virtual const std::vector<BroadcastSubgroupCodecConfig>& GetCodecConfig() const = 0;

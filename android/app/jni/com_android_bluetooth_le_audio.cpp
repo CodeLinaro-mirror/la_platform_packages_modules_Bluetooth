@@ -1459,7 +1459,10 @@ static void CreateEnhancedBroadcastNative(JNIEnv* env, jobject /* object */,
       log::error("broadcast code too long");
       return;
     }
-
+    if (size > 0 && size < 4) {
+      log::error("CreateEnhancedBroadcastNative: broadcast code too short ({}) — must be 4-16 octets", size);
+      return;
+    }
     env->GetByteArrayRegion(broadcast_code, 0, size, (jbyte*)code_array.data());
   }
 
@@ -2094,11 +2097,20 @@ static void BroadcastSinkStartEnhancedBroadcastSinkNative(JNIEnv* env, jobject /
   std::optional<std::array<uint8_t, 16>> code = std::nullopt;
   if (broadcastCode != nullptr) {
     jsize len = env->GetArrayLength(broadcastCode);
-    if (len == 16) {
+    if (len > 16) {
+      log::error("startEnhancedBroadcastSinkNative: broadcast code too long ({})", len);
+      return;
+    }
+    if (len > 0 && len < 4) {
+      log::error("startEnhancedBroadcastSinkNative: broadcast code too short ({}) — must be 4-16 octets", len);
+      return;
+    }
+    if (len >= 4) {
       std::array<uint8_t, 16> arr{};
-      env->GetByteArrayRegion(broadcastCode, 0, 16,
+      env->GetByteArrayRegion(broadcastCode, 0, len,
                               reinterpret_cast<jbyte*>(arr.data()));
       code = arr;
+      log::info("startEnhancedBroadcastSinkNative: broadcast code len={}, encryption enabled", len);
     }
   }
 

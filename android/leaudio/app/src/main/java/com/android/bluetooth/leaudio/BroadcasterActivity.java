@@ -309,6 +309,20 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                 }
                                             }
 
+                                            // Enhanced broadcast: validate code before building settings
+                                            if (isoInterval > 0) {
+                                                String codeStr = code_input_text.getText().toString();
+                                                if (!codeStr.isEmpty()) {
+                                                    byte[] codeBytes = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                                                    if (codeBytes.length < 4 || codeBytes.length > 16) {
+                                                        Toast.makeText(BroadcasterActivity.this,
+                                                                "Broadcast code must be 4-16 bytes (leave empty for unencrypted)",
+                                                                Toast.LENGTH_SHORT).show();
+                                                        return;
+                                                    }
+                                                }
+                                            }
+
                                             BluetoothLeBroadcastSettings broadcastSettings =
                                                     createBroadcastSettingsFromUI(
                                                             program_info.getText().toString(),
@@ -367,6 +381,20 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                         "Invalid ISO interval format. Must be one of: 7.5, 10, 20, 30",
                                                         Toast.LENGTH_LONG).show();
                                                     return;
+                                                }
+                                            }
+
+                                            // Enhanced broadcast: validate code before building settings
+                                            if (isoInterval > 0) {
+                                                String codeStr = code_input_text.getText().toString();
+                                                if (!codeStr.isEmpty()) {
+                                                    byte[] codeBytes = codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                                                    if (codeBytes.length < 4 || codeBytes.length > 16) {
+                                                        Toast.makeText(BroadcasterActivity.this,
+                                                                "Broadcast code must be 4-16 bytes (leave empty for unencrypted)",
+                                                                Toast.LENGTH_SHORT).show();
+                                                        return;
+                                                    }
                                                 }
                                             }
 
@@ -995,7 +1023,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                 new BluetoothLeBroadcastSettings.Builder()
                         .setPublicBroadcast(isPublic)
                         .setBroadcastName(broadcastName.isEmpty() ? null : broadcastName)
-                        .setBroadcastCode(broadcastCode.isEmpty() ? null : broadcastCode.getBytes())
+                        .setBroadcastCode(broadcastCode.isEmpty() ? null : broadcastCode.getBytes(java.nio.charset.StandardCharsets.UTF_8))
                         .setPublicBroadcastMetadata(publicContentBuilder.build());
 
         // builder expect at least one subgroup setting
