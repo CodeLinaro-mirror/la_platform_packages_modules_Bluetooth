@@ -1862,14 +1862,14 @@ public class LeAudioService extends ProfileService {
     }
 
     /**
-     * Set Achat-specific attributes for the broadcast source/sink.
+     * Set attributes for the broadcast source/sink.
      * @param devId Device ID (12-bit value, 0-4095)
      * @param name Device name (up to 10 octets, UTF-8 encoded)
      */
-    public void setAchatAttributes(int devId, byte[] name) {
-        Log.d(TAG, "setAchatAttributes: devId=" + devId);
+    public void setAttributes(int devId, byte[] name) {
+        Log.d(TAG, "setAttributes: devId=" + devId);
         if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
-            Log.w(TAG, "setAchatAttributes: Native interface not available.");
+            Log.w(TAG, "setAttributes: Native interface not available.");
             return;
         }
         // Pack devId into 2 octets (12-bit value with 4-bit padding)
@@ -1882,20 +1882,20 @@ public class LeAudioService extends ProfileService {
         if (name != null) {
             System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
         }
-        mLeAudioBroadcasterNativeInterface.get().setAchatAttributes(devIdBytes, nameBytes);
+        mLeAudioBroadcasterNativeInterface.get().setAttributes(devIdBytes, nameBytes);
     }
 
     /**
-     * Set DBIG Join Control mode for the broadcast source.
-     * @param mode true to enable DBIG join control, false to disable
+     * Set Join Control mode for the broadcast source.
+     * @param mode true to enable join control, false to disable
      */
-    public void setDbigJoinControl(boolean mode) {
-        Log.d(TAG, "setDbigJoinControl: mode=" + mode);
+    public void setJoinControl(boolean mode) {
+        Log.d(TAG, "setJoinControl: mode=" + mode);
         if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
-            Log.w(TAG, "setDbigJoinControl: Native interface not available.");
+            Log.w(TAG, "setJoinControl: Native interface not available.");
             return;
         }
-        mLeAudioBroadcasterNativeInterface.get().setDbigJoinControl(mode);
+        mLeAudioBroadcasterNativeInterface.get().setJoinControl(mode);
     }
 
     /**

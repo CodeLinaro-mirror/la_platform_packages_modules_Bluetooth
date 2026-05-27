@@ -102,14 +102,14 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
   }
 
-  void SetAchatAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
-    do_in_main_thread(Bind(&LeAudioBroadcaster::SetAchatAttributes,
+  void SetAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::SetAttributes,
                            Unretained(LeAudioBroadcaster::Get()), std::move(dev_id),
                            std::move(name)));
   }
 
-  void SetDbigJoinControl(bool enable) override {
-    do_in_main_thread(Bind(&LeAudioBroadcaster::SetDbigJoinControl,
+  void SetJoinControl(bool enable) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::SetJoinControl,
                            Unretained(LeAudioBroadcaster::Get()), enable));
   }
 

@@ -1598,17 +1598,17 @@ static void getBroadcastMetadataNative(JNIEnv* /* env */, jobject /* object */, 
   sLeAudioBroadcasterInterface->GetBroadcastMetadata(broadcast_id);
 }
 
-static void setAchatAttributesNative(JNIEnv* env, jobject /* object */,
+static void setAttributesNative(JNIEnv* env, jobject /* object */,
                                      jbyteArray dev_id, jbyteArray name) {
-  log::info("setAchatAttributesNative");
+  log::info("setAttributesNative");
   if (dev_id == nullptr || name == nullptr) {
-    log::error("setAchatAttributesNative: null parameter");
+    log::error("setAttributesNative: null parameter");
     return;
   }
   jsize dev_id_len = env->GetArrayLength(dev_id);
   jsize name_len = env->GetArrayLength(name);
   if (dev_id_len < 2 || name_len < 10) {
-    log::error("setAchatAttributesNative: invalid parameter lengths");
+    log::error("setAttributesNative: invalid parameter lengths");
     return;
   }
   jbyte* dev_id_bytes = env->GetByteArrayElements(dev_id, nullptr);
@@ -1624,12 +1624,12 @@ static void setAchatAttributesNative(JNIEnv* env, jobject /* object */,
                                  reinterpret_cast<uint8_t*>(name_bytes) + name_len);
   env->ReleaseByteArrayElements(dev_id, dev_id_bytes, JNI_ABORT);
   env->ReleaseByteArrayElements(name, name_bytes, JNI_ABORT);
-  BTM_SetAchatAttributes(dev_id_vec, name_vec);
+  BTM_SetAttributes(dev_id_vec, name_vec);
 }
 
-static void setDbigJoinControlNative(JNIEnv* /* env */, jobject /* object */, jboolean mode) {
-  log::info("setDbigJoinControlNative: mode={}", (bool)mode);
-  BTM_SetDbigJoinControl((bool)mode);
+static void setJoinControlNative(JNIEnv* /* env */, jobject /* object */, jboolean mode) {
+  log::info("setJoinControlNative: mode={}", (bool)mode);
+  BTM_SetJoinControl((bool)mode);
 }
 
 static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
@@ -1650,8 +1650,8 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
           {"pauseBroadcastNative", "(I)V", (void*)PauseBroadcastNative},
           {"destroyBroadcastNative", "(I)V", (void*)DestroyBroadcastNative},
           {"getBroadcastMetadataNative", "(I)V", (void*)getBroadcastMetadataNative},
-          {"setAchatAttributesNative", "([B[B)V", (void*)setAchatAttributesNative},
-          {"setDbigJoinControlNative", "(Z)V", (void*)setDbigJoinControlNative},
+          {"setAttributesNative", "([B[B)V", (void*)setAttributesNative},
+          {"setJoinControlNative", "(Z)V", (void*)setJoinControlNative},
   };
 
   const int result = REGISTER_NATIVE_METHODS(

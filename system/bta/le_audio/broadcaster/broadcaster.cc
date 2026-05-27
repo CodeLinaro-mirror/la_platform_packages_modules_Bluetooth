@@ -1069,14 +1069,14 @@ public:
     return std::nullopt;
   }
 
-  void SetAchatAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
+  void SetAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
     log::info("SetAchatAttributes: dev_id size={}, name size={}", dev_id.size(), name.size());
-    BTM_SetAchatAttributes(dev_id, name);
+    BTM_SetAttributes(dev_id, name);
   }
 
-  void SetDbigJoinControl(bool enable) override {
+  void SetJoinControl(bool enable) override {
     log::info("SetDbigJoinControl: enable={}", enable);
-    BTM_SetDbigJoinControl(enable);
+    BTM_SetJoinControl(enable);
   }
 
   void GetBroadcastMetadata(uint32_t broadcast_id) override {

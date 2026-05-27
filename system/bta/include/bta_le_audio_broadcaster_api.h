@@ -54,9 +54,9 @@ public:
   virtual void StopAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void DestroyAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void GetBroadcastMetadata(uint32_t broadcast_id) = 0;
-  virtual void SetAchatAttributes(std::vector<uint8_t> dev_id,
-                                  std::vector<uint8_t> name) = 0;
-  virtual void SetDbigJoinControl(bool enable) = 0;
+  virtual void SetAttributes(std::vector<uint8_t> dev_id,
+                              std::vector<uint8_t> name) = 0;
+  virtual void SetJoinControl(bool enable) = 0;
   virtual void GetAllBroadcastStates(void) = 0;
   virtual void UpdateMetadata(uint32_t broadcast_id, const std::string& broadcast_name,
                               const std::vector<uint8_t>& public_metadata,

@@ -707,6 +707,32 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     }
 
     /**
+     * Set Achat-specific attributes for the Broadcast Sink.
+     * @param devId Device ID (12-bit value, 0-4095)
+     * @param name Device name (up to 10 octets, UTF-8 encoded)
+     */
+    public void setAttributes(int devId, byte[] name) {
+        Log.d(TAG, "setAttributes: devId=" + devId);
+        LeAudioBroadcasterNativeInterface nativeInterface =
+                LeAudioBroadcasterNativeInterface.getInstance();
+        if (nativeInterface == null) {
+            Log.w(TAG, "setAttributes: Native interface not available.");
+            return;
+        }
+        // Pack devId into 2 octets (12-bit value with 4-bit padding)
+        byte[] devIdBytes = new byte[2];
+        devIdBytes[0] = (byte) (devId & 0xFF);
+        devIdBytes[1] = (byte) ((devId >> 8) & 0x0F);
+
+        // Ensure name is exactly 10 octets
+        byte[] nameBytes = new byte[10];
+        if (name != null) {
+            System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
+        }
+        nativeInterface.setAttributes(devIdBytes, nameBytes);
+    }
+
+    /**
      * Scans the subgroup metadata of a {@link BluetoothLeBroadcastMetadata} object
      * for the enhanced PA vendor LTV (Type=0xFF, Company ID=0x000A).
      *

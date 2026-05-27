@@ -570,19 +570,19 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
     }
 
     @Override
-    public void setAchatAttributes(int devId, byte[] name, AttributionSource source) {
+    public void setAttributes(int devId, byte[] name, AttributionSource source) {
         LeAudioService service = getServiceAndEnforceConnect(source);
         if (service == null) return;
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-        service.setAchatAttributes(devId, name);
+        service.setAttributes(devId, name);
     }
 
     @Override
-    public void setDbigJoinControl(boolean mode, AttributionSource source) {
+    public void setJoinControl(boolean mode, AttributionSource source) {
         LeAudioService service = getServiceAndEnforceConnect(source);
         if (service == null) return;
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
-        service.setDbigJoinControl(mode);
+        service.setJoinControl(mode);
     }
 
     @Override

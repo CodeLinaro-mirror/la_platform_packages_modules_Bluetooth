@@ -61,6 +61,7 @@ public class BluetoothProxy {
     private BluetoothLeAudio bluetoothLeAudio = null;
     private BluetoothLeBroadcast mBluetoothLeBroadcast = null;
     private BluetoothLeBroadcastAssistant mBluetoothLeBroadcastAssistant = null;
+    private BluetoothLeBroadcastSink mBluetoothLeBroadcastSink = null;
     private Set<BluetoothDevice> mBroadcastScanDelegatorDevices = new HashSet<>();
     private BluetoothCsipSetCoordinator bluetoothCsis = null;
     private BluetoothVolumeControl bluetoothVolumeControl = null;
@@ -826,6 +827,13 @@ public class BluetoothProxy {
                                     Log.e("BASS", "Application callback already registered.");
                                 }
                                 break;
+                            case BluetoothProfile.LE_AUDIO_BROADCAST_SINK:
+                                Log.d(
+                                        "BluetoothProxy",
+                                        "LE_AUDIO_BROADCAST_SINK Service connected");
+                                mBluetoothLeBroadcastSink =
+                                        (BluetoothLeBroadcastSink) bluetoothProfile;
+                                break;
                         }
                         queryLeAudioDevices();
                     }
@@ -840,6 +848,7 @@ public class BluetoothProxy {
         initHapProxy();
         initLeAudioBroadcastProxy();
         initBassProxy();
+        initBroadcastSinkProxy();
     }
 
     public void cleanupProfiles() {
@@ -851,6 +860,7 @@ public class BluetoothProxy {
         cleanupHapProxy();
         cleanupLeAudioBroadcastProxy();
         cleanupBassProxy();
+        cleanupBroadcastSinkProxy();
 
         profileListener = null;
     }
@@ -947,6 +957,21 @@ public class BluetoothProxy {
             mBluetoothLeBroadcastAssistant.unregisterCallback(mBroadcastAssistantCallback);
             bluetoothAdapter.closeProfileProxy(
                     BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT, mBluetoothLeBroadcastAssistant);
+        }
+    }
+
+    private void initBroadcastSinkProxy() {
+        if (mBluetoothLeBroadcastSink == null) {
+            bluetoothAdapter.getProfileProxy(
+                    this.application, profileListener, BluetoothProfile.LE_AUDIO_BROADCAST_SINK);
+        }
+    }
+
+    private void cleanupBroadcastSinkProxy() {
+        if (mBluetoothLeBroadcastSink != null) {
+            bluetoothAdapter.closeProfileProxy(
+                    BluetoothProfile.LE_AUDIO_BROADCAST_SINK, mBluetoothLeBroadcastSink);
+            mBluetoothLeBroadcastSink = null;
         }
     }
 
@@ -1627,21 +1652,21 @@ public class BluetoothProxy {
         return true;
     }
 
-    public boolean setAchatAttributes(int devId, byte[] name) {
+    public boolean setAttributes(int devId, byte[] name) {
         if (mBluetoothLeBroadcast == null) return false;
-        mBluetoothLeBroadcast.setAchatAttributes(devId, name);
+        mBluetoothLeBroadcast.setAttributes(devId, name);
         return true;
     }
 
-    public boolean setAchatAttributesForSink(int devId, byte[] name) {
-        if (mBluetoothLeBroadcastAssistant == null) return false;
-        mBluetoothLeBroadcastAssistant.setAchatAttributes(devId, name);
+    public boolean setAttributesForSink(int devId, byte[] name) {
+        if (mBluetoothLeBroadcastSink == null) return false;
+        mBluetoothLeBroadcastSink.setAttributes(devId, name);
         return true;
     }
 
-    public boolean setDbigJoinControl(boolean mode) {
+    public boolean setJoinControl(boolean mode) {
         if (mBluetoothLeBroadcast == null) return false;
-        mBluetoothLeBroadcast.setDbigJoinControl(mode);
+        mBluetoothLeBroadcast.setJoinControl(mode);
         return true;
     }
 

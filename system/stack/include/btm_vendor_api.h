@@ -106,6 +106,6 @@ uint8_t* BTM_GetScramblingSupportedFreqs(uint8_t* number_of_freqs);
  *
  ******************************************************************************/
 extern void BTM_SetPowerBackOffState(bool status);
-extern void BTM_SetAchatAttributes(const std::vector<uint8_t>& dev_id,
-                                   const std::vector<uint8_t>& name);
-extern void BTM_SetDbigJoinControl(bool enable);
+extern void BTM_SetAttributes(const std::vector<uint8_t>& dev_id,
+                              const std::vector<uint8_t>& name);
+extern void BTM_SetJoinControl(bool enable);

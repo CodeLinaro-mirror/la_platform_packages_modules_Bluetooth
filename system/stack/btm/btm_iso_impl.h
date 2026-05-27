@@ -1096,10 +1096,9 @@ struct iso_impl {
     stream += 8; // skip le_states[8]
     STREAM_TO_UINT16(broadcast_states_, stream);
 
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "ReadSupportedStates complete",
-                   std::format("status:{}, sub_opcode:0x{:02x}, broadcast_states:0x{:04x}",
-                               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
-                               broadcast_states_));
+    log::info("ReadSupportedStates complete - status:{}, sub_opcode:0x{:02x}, broadcast_states:0x{:04x}",
+              hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
+              broadcast_states_);
   }
 
   void read_supported_states() {
@@ -1107,10 +1106,9 @@ struct iso_impl {
             base::BindRepeating(&iso_impl::on_read_supported_states_cmd_complete,
                                 weak_factory_.GetWeakPtr()));
 
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "ReadSupportedStates",
-                   std::format("opcode:0x{:04x}, sub_opcode:0x{:02x}",
-                               HCI_VS_LE_READ_SUPPORTED_STATES,
-                               HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE));
+    log::info("ReadSupportedStates - opcode:0x{:04x}, sub_opcode:0x{:02x}",
+              HCI_VS_LE_READ_SUPPORTED_STATES,
+              HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE);
   }
 
   void store_dbig_params(struct dbig_create_params params) {
@@ -1165,17 +1163,16 @@ struct iso_impl {
             base::BindRepeating(&iso_impl::on_set_dbig_parameters_cmd_complete,
                                 weak_factory_.GetWeakPtr()));
 
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Params set",
-                   std::format("dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
-                               "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, "
-                               "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, tx_power:{}",
-                               dbig_params.dbig_handle, dbig_params.dbig_feature_set,
-                               dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
+    log::info("DBIG Params set - dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
+              "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, "
+              "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, tx_power:{}",
+              dbig_params.dbig_handle, dbig_params.dbig_feature_set,
+              dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
                                dbig_params.bis_control_event_interval, dbig_params.send_exit,
                                dbig_params.pgp_timeout, dbig_params.pgo_timeout,
                                dbig_params.sgo_timeout, dbig_params.join_timeout,
                                dbig_params.exit_timeout, dbig_params.remove_timeout,
-                               dbig_params.terminate_timeout, dbig_params.tx_power));
+                               dbig_params.terminate_timeout, dbig_params.tx_power);
   }
 
   void on_join_control_event(uint8_t* stream, uint16_t len) {
@@ -1193,10 +1190,6 @@ struct iso_impl {
 
     log::info("DBIG Join Control: dbig_handle=0x{:02x}, status=0x{:02x}", dbig_handle, status);
 
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Join Control event",
-                   std::format("dbig_handle:0x{:02x}, status:{}", dbig_handle,
-                               hci_status_code_text((tHCI_STATUS)(status))));
-
     if (join_control_complete_cb_ != nullptr) {
       (*join_control_complete_cb_)(status, dbig_handle);
       join_control_complete_cb_ = nullptr;
@@ -1211,10 +1204,6 @@ struct iso_impl {
 
     btsnd_hcic_ble_join_control(params.dbig_handle, params.mode,
                                 base::BindRepeating([](uint8_t*, uint16_t) {}));
-
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Join Control",
-                   std::format("dbig_handle:0x{:02x}, mode:0x{:02x}",
-                               params.dbig_handle, params.mode));
   }
 
   void on_texit_dbig_event(uint8_t* stream, uint16_t len) {
@@ -1234,11 +1223,6 @@ struct iso_impl {
 
     log::info("DBIG TExitDbIg: dbig_handle=0x{:02x}, reason=0x{:02x}, status=0x{:02x}",
               dbig_handle, reason, status);
-
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG TExitDbIg event",
-                   std::format("dbig_handle:0x{:02x}, reason:0x{:02x}, status:{}",
-                               dbig_handle, reason,
-                               hci_status_code_text((tHCI_STATUS)(status))));
 
     if (texit_dbig_cmpl_cb_ != nullptr) {
       (*texit_dbig_cmpl_cb_)(status, HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE);
@@ -1287,10 +1271,6 @@ struct iso_impl {
 
     btsnd_hcic_ble_texit_dbig(params.dbig_handle, params.texit_mode, params.reason,
                                base::BindRepeating([](uint8_t*, uint16_t) {}));
-
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG TExitDbIg",
-                   std::format("dbig_handle:0x{:02x}, texit_mode:0x{:02x}, reason:0x{:02x}",
-                               params.dbig_handle, params.texit_mode, params.reason));
   }
 
   void on_set_devid_cmd_cmpl(uint8_t* stream, uint16_t len) {
@@ -1308,10 +1288,6 @@ struct iso_impl {
 
     log::info("DBIG SetDevId: status=0x{:02x}, sub_opcode=0x{:02x}", status, sub_opcode);
 
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SetDevId complete",
-                   std::format("status:{}, sub_opcode:0x{:02x}",
-                               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode));
-
     if (set_devid_cmpl_cb_ != nullptr) {
       (*set_devid_cmpl_cb_)(status, sub_opcode, 0);
     }
@@ -1325,9 +1301,6 @@ struct iso_impl {
     btsnd_hcic_ble_set_devid(params.dev_id, params.name,
                               base::BindRepeating(&iso_impl::on_set_devid_cmd_cmpl,
                                                   weak_factory_.GetWeakPtr()));
-
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SetDevId",
-                   std::format("dev_id:0x{:04x}", params.dev_id));
   }
 
   void on_dbig_update_event(uint8_t* stream, uint16_t len) {
@@ -1377,11 +1350,10 @@ struct iso_impl {
       STREAM_TO_UINT16(evt.broadcast_features, stream);
     }
 
-    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG Update event",
-                   std::format("big_handle:0x{:02x}, status:{}, bis_state:{}, timing_source:{}, "
-                               "local_bis_id:{}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
-                               evt.big_handle, evt.status, evt.bis_state, evt.timing_source,
-                               evt.local_bis_id, evt.dev_id, evt.num_bis, evt.broadcast_features));
+    log::info("DBIG Update event - big_handle:0x{:02x}, status:{}, bis_state:{}, timing_source:{}, "
+              "local_bis_id:{}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+              evt.big_handle, evt.status, evt.bis_state, evt.timing_source,
+              evt.local_bis_id, evt.dev_id, evt.num_bis, evt.broadcast_features);
 
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigUpdate, &evt);
   }
@@ -1435,10 +1407,8 @@ struct iso_impl {
       STREAM_TO_UINT16(evt.broadcast_features, stream);
     }
 
-    BTM_LogHistory(
-            kBtmLogTag, RawAddress::kEmpty, "DBIG Status event",
-            std::format("dbig_handle:0x{:02x}, dbig_status:0x{:04x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
-                        evt.dbig_handle, evt.dbig_status, evt.dev_id, evt.num_bis, evt.broadcast_features));
+    log::info("DBIG Status event - dbig_handle:0x{:02x}, dbig_status:0x{:04x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+              evt.dbig_handle, evt.dbig_status, evt.dev_id, evt.num_bis, evt.broadcast_features);
 
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigStatus, &evt);
   }

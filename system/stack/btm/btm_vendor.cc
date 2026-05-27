@@ -1227,7 +1227,7 @@ static void btm_vendor_set_tech_based_max_power(bool status) {
 
 /*******************************************************************************
  *
- * Function         BTM_SetAchatAttributes
+ * Function         BTM_SetAttributes
  *
  * Description      Set Achat-specific device ID and name attributes.
  *                  Sends HCI_VS_LE_SET_DEVID vendor command to the controller.
@@ -1238,16 +1238,16 @@ static void btm_vendor_set_tech_based_max_power(bool status) {
  * Returns          void
  *
  ******************************************************************************/
-void BTM_SetAchatAttributes(const std::vector<uint8_t>& dev_id,
-                             const std::vector<uint8_t>& name) {
-  log::info("BTM_SetAchatAttributes: dev_id size={}, name size={}", dev_id.size(), name.size());
+void BTM_SetAttributes(const std::vector<uint8_t>& dev_id,
+                        const std::vector<uint8_t>& name) {
+  log::info("BTM_SetAttributes: dev_id size={}, name size={}", dev_id.size(), name.size());
 
   if (dev_id.size() < 2) {
-    log::error("BTM_SetAchatAttributes: dev_id too short ({})", dev_id.size());
+    log::error("BTM_SetAttributes: dev_id too short ({})", dev_id.size());
     return;
   }
   if (name.size() < 10) {
-    log::error("BTM_SetAchatAttributes: name too short ({})", name.size());
+    log::error("BTM_SetAttributes: name too short ({})", name.size());
     return;
   }
 
@@ -1267,7 +1267,7 @@ void BTM_SetAchatAttributes(const std::vector<uint8_t>& dev_id,
 
 /*******************************************************************************
  *
- * Function         BTM_SetDbigJoinControl
+ * Function         BTM_SetJoinControl
  *
  * Description      Set DBIG Join Control mode.
  *                  Sends HCI_VS_LE_JOIN_CONTROL vendor command to the
@@ -1278,7 +1278,7 @@ void BTM_SetAchatAttributes(const std::vector<uint8_t>& dev_id,
  * Returns          void
  *
  ******************************************************************************/
-void BTM_SetDbigJoinControl(bool enable) {
+void BTM_SetJoinControl(bool enable) {
   log::info("BTM_SetDbigJoinControl: enable={}", enable);
 
   bluetooth::hci::iso_manager::dbig_join_control_params params;

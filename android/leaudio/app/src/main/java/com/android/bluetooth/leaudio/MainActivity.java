@@ -63,6 +63,8 @@ public class MainActivity extends AppCompatActivity {
             };
     LeAudioRecycleViewAdapter recyclerViewAdapter;
     private LeAudioViewModel leAudioViewModel;
+    private AlertDialog mAttributesSinkDialog;
+    private AlertDialog mAttributesSourceDialog;
     private static final String ACTION_CHANGE_MUTE =
             "com.android.bluetooth.vc.test.action.CHANGE_MUTE";
     private static final String EXTRA_MUTE =
@@ -140,6 +142,13 @@ public class MainActivity extends AppCompatActivity {
 
         FloatingActionButton fab = findViewById(R.id.fab);
         fab.setOnClickListener(null);
+
+        if (mAttributesSinkDialog != null && mAttributesSinkDialog.isShowing()) {
+            mAttributesSinkDialog.dismiss();
+        }
+        if (mAttributesSourceDialog != null && mAttributesSourceDialog.isShowing()) {
+            mAttributesSourceDialog.dismiss();
+        }
     }
 
     @Override
@@ -189,12 +198,12 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 }
                 return true;
-            case R.id.action_set_achat_attributes:
-                launchSetAchatAttributesDialog();
+            case R.id.action_set_attributes_sink:
+                launchSetAttributesSinkDialog();
                 return true;
 
-            case R.id.action_set_achat_attributes_source:
-                launchSetAchatAttributesForSourceDialog();
+            case R.id.action_set_attributes_source:
+                launchSetAttributesForSourceDialog();
                 return true;
 
             default:
@@ -245,9 +254,9 @@ public class MainActivity extends AppCompatActivity {
                                 if (deviceList == null || deviceList.size() == 0)
                                     leAudioViewModel.queryDevices();
                             } else {
-                                // Reset Achat attributes when Bluetooth is toggled off
-                                leAudioViewModel.setAchatAttributesForSink(0, null);
-                                Log.d("MainActivity", "BT disabled - Achat attributes reset to null");
+                                // Reset attributes when Bluetooth is toggled off
+                                leAudioViewModel.setAttributesForSink(0, null);
+                                Log.d("MainActivity", "BT disabled - attributes reset to null");
                                 Intent enableBtIntent =
                                         new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                                 startActivityForResult(enableBtIntent, 1);
@@ -270,9 +279,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Shows a dialog to set Achat-specific attributes (DevID and Name) for the Sink.
+     * Shows a dialog to set attributes (DevID and Name) for the Sink.
      */
-    private void launchSetAchatAttributesDialog() {
+    private void launchSetAttributesSinkDialog() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         int padding = (int) (16 * getResources().getDisplayMetrics().density);
@@ -305,13 +314,13 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(nameInput);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Set Achat Attributes (Sink)");
+        builder.setTitle("Set Attributes (Sink)");
         builder.setView(layout);
         builder.setNegativeButton("Cancel", (dialog, which) -> { /* no-op */ });
         builder.setPositiveButton("Set", null);
 
-        AlertDialog dialog = builder.show();
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        mAttributesSinkDialog = builder.show();
+        mAttributesSinkDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             int devId = generatedDevId[0];
             if (devId == -1) {
                 Toast.makeText(this, "Please generate a Device ID first", Toast.LENGTH_SHORT).show();
@@ -336,27 +345,27 @@ public class MainActivity extends AppCompatActivity {
                 System.arraycopy(nameBytes, 0, truncated, 0, 10);
                 nameBytes = truncated;
             }
-            boolean result = leAudioViewModel.setAchatAttributesForSink(devId, nameBytes);
+            boolean result = leAudioViewModel.setAttributesForSink(devId, nameBytes);
             if (result) {
                 getSharedPreferences("achat_prefs", MODE_PRIVATE)
                         .edit()
                         .putInt("agp_dev_id", devId)
                         .apply();
-                Log.d("MainActivity", "Achat attributes set: DevID=" + devId + ", Name=" + nameStr);
+                Log.d("MainActivity", "Attributes set: DevID=" + devId + ", Name=" + nameStr);
                 Toast.makeText(this,
-                        "Achat attributes set: DevID=" + devId + ", Name=" + nameStr,
+                        "Attributes set: DevID=" + devId + ", Name=" + nameStr,
                         Toast.LENGTH_SHORT).show();
-                dialog.dismiss();
+                mAttributesSinkDialog.dismiss();
             } else {
-                Toast.makeText(this, "Failed to set Achat attributes", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Failed to set attributes", Toast.LENGTH_SHORT).show();
             }
         });
     }
 
     /**
-     * Shows a dialog to set Achat-specific attributes (DevID and Name) for the PGO (source).
+     * Shows a dialog to set attributes (DevID and Name) for the PGO (source).
      */
-    private void launchSetAchatAttributesForSourceDialog() {
+    private void launchSetAttributesForSourceDialog() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         int padding = (int) (16 * getResources().getDisplayMetrics().density);
@@ -389,13 +398,13 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(nameInput);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Set Achat Attributes (PGO)");
+        builder.setTitle("Set Attributes (PGO)");
         builder.setView(layout);
         builder.setNegativeButton("Cancel", (dialog, which) -> { /* no-op */ });
         builder.setPositiveButton("Set", null);
 
-        AlertDialog dialog = builder.show();
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        mAttributesSourceDialog = builder.show();
+        mAttributesSourceDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             int devId = generatedDevId[0];
             if (devId == -1) {
                 Toast.makeText(this, "Please generate a Device ID first", Toast.LENGTH_SHORT).show();
@@ -420,15 +429,15 @@ public class MainActivity extends AppCompatActivity {
                 System.arraycopy(nameBytes, 0, truncated, 0, 10);
                 nameBytes = truncated;
             }
-            boolean result = leAudioViewModel.setAchatAttributesForSource(devId, nameBytes);
+            boolean result = leAudioViewModel.setAttributesForSource(devId, nameBytes);
             if (result) {
-                Log.d("MainActivity", "Achat attributes set (PGO): DevID=" + devId + ", Name=" + nameStr);
+                Log.d("MainActivity", "Attributes set (PGO): DevID=" + devId + ", Name=" + nameStr);
                 Toast.makeText(this,
-                        "Achat attributes set (PGO): DevID=" + devId + ", Name=" + nameStr,
+                        "Attributes set (PGO): DevID=" + devId + ", Name=" + nameStr,
                         Toast.LENGTH_SHORT).show();
-                dialog.dismiss();
+                mAttributesSourceDialog.dismiss();
             } else {
-                Toast.makeText(this, "Failed to set Achat attributes (PGO)", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Failed to set attributes (PGO)", Toast.LENGTH_SHORT).show();
             }
         });
     }

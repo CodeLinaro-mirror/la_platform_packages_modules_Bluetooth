@@ -296,24 +296,24 @@ public class LeAudioBroadcasterNativeInterface {
     }
 
     /**
-     * Set Achat-specific attributes (DevID and Name) for the broadcast source.
+     * Set attributes (DevID and Name) for the broadcast source.
      *
      * @param devId Device ID packed into 2 octets (12-bit value with 4-bit padding)
      * @param name  Device name packed into 10 octets (UTF-8 encoded, zero-padded)
      */
     @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
-    public void setAchatAttributes(byte[] devId, byte[] name) {
-        setAchatAttributesNative(devId, name);
+    public void setAttributes(byte[] devId, byte[] name) {
+        setAttributesNative(devId, name);
     }
 
     /**
-     * Set DBIG Join Control mode for the broadcast source.
+     * Set Join Control mode for the broadcast source.
      *
-     * @param enable true to enable DBIG join control, false to disable
+     * @param enable true to enable join control, false to disable
      */
     @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
-    public void setDbigJoinControl(boolean enable) {
-        setDbigJoinControlNative(enable);
+    public void setJoinControl(boolean enable) {
+        setJoinControlNative(enable);
     }
 
     // Native methods that call into the JNI interface
@@ -393,7 +393,7 @@ public class LeAudioBroadcasterNativeInterface {
 
     private native void getBroadcastMetadataNative(int broadcastId);
 
-    private native void setAchatAttributesNative(byte[] devId, byte[] name);
+    private native void setAttributesNative(byte[] devId, byte[] name);
 
-    private native void setDbigJoinControlNative(boolean enable);
+    private native void setJoinControlNative(boolean enable);
 }

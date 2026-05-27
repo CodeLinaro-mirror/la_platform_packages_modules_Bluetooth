@@ -49,4 +49,6 @@ interface IBluetoothLeBroadcastSink {
     int getEnhancedBroadcastSinkCap(in AttributionSource attributionSource);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     int getEnhancedBroadcastSourceCap(in AttributionSource attributionSource);
+    @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
+    void setAttributes(int devId, in byte[] name, in AttributionSource attributionSource);
 }

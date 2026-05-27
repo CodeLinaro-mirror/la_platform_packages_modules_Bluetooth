@@ -154,10 +154,6 @@ public class BroadcastScanViewModel extends AndroidViewModel {
         mBluetooth.addBroadcastSource(sink, sourceMetadata);
     }
 
-    public boolean setAchatAttributes(int devId, byte[] name) {
-        return mBluetooth.setAchatAttributesForSink(devId, name);
-    }
-
     public void refreshBroadcasts() {
         // Concatenate local broadcasts to the scanned broadcast list
         List<BluetoothLeBroadcastMetadata> localSessionBroadcasts =

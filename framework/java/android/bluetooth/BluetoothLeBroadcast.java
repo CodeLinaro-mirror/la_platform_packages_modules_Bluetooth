@@ -952,7 +952,7 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     @SuppressLint("UnflaggedApi")
     @RequiresBluetoothConnectPermission
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void setAchatAttributes(int devId, @NonNull byte[] name) {
+    public void setAttributes(int devId, @NonNull byte[] name) {
         if (devId < 0 || devId > 4095) {
             Log.e(TAG, "setAchatAttributes: invalid devId=" + devId + " (must be 0-4095)");
             throw new IllegalArgumentException(
@@ -994,7 +994,7 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (isEnabled()) {
             try {
-                service.setAchatAttributes(devId, name, mAttributionSource);
+                service.setAttributes(devId, name, mAttributionSource);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -1011,7 +1011,7 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     @SuppressLint("UnflaggedApi")
     @RequiresBluetoothConnectPermission
     @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
-    public void setDbigJoinControl(boolean mode) {
+    public void setJoinControl(boolean mode) {
         if (DBG) log("setDbigJoinControl: mode=" + mode);
         final IBluetoothLeAudio service = getService();
         if (service == null) {
@@ -1019,7 +1019,7 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             if (DBG) log(Log.getStackTraceString(new Throwable()));
         } else if (isEnabled()) {
             try {
-                service.setDbigJoinControl(mode, mAttributionSource);
+                service.setJoinControl(mode, mAttributionSource);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }

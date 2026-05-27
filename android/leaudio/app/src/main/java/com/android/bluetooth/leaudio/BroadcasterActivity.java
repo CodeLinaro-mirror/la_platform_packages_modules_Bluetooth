@@ -670,7 +670,7 @@ public class BroadcasterActivity extends AppCompatActivity {
 
                                 // "Join Enable" – visible only when join control is currently disabled
                                 btnJoinEnable.setOnClickListener(v -> {
-                                    boolean result = mViewModel.setDbigJoinControl(true);
+                                boolean result = mViewModel.setJoinControl(true);
                                     Log.d(TAG, "DBIG Join Enable: result=" + result);
                                     if (result) {
                                         mJoinControlEnabled = true;
@@ -687,7 +687,7 @@ public class BroadcasterActivity extends AppCompatActivity {
 
                                 // "Join Disable" – visible only when join control is currently enabled
                                 btnJoinDisable.setOnClickListener(v -> {
-                                    boolean result = mViewModel.setDbigJoinControl(false);
+                                    boolean result = mViewModel.setJoinControl(false);
                                     Log.d(TAG, "DBIG Join Disable: result=" + result);
                                     if (result) {
                                         mJoinControlEnabled = false;
@@ -793,16 +793,16 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     .show();
 
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, true);
-                            // Automatically enable DBIG Join Control when broadcast enters playing state
-                            Log.d(TAG, "Broadcast playing - auto-enabling DBIG Join Control");
-                            boolean joinResult = mViewModel.setDbigJoinControl(true);
-                            Log.d(TAG, "Auto DBIG Join Control enable: result=" + joinResult);
+                            // Automatically enable Join Control when broadcast enters playing state
+                            Log.d(TAG, "Broadcast playing - auto-enabling Join Control");
+                            boolean joinResult = mViewModel.setJoinControl(true);
+                            Log.d(TAG, "Auto Join Control enable: result=" + joinResult);
                             if (joinResult) {
                                 mJoinControlEnabled = true;
                                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                                         .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
                                 Toast.makeText(BroadcasterActivity.this,
-                                        "DBIG Join Control auto-enabled (broadcast playing)",
+                                        "Join Control auto-enabled (broadcast playing)",
                                         Toast.LENGTH_SHORT).show();
                             }
                             int enhancedCap = mViewModel.getEnhancedBroadcastCap();

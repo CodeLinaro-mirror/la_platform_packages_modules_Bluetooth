@@ -614,11 +614,11 @@ public:
   virtual void DestroyBroadcast(uint32_t broadcast_id) = 0;
   /* Get Broadcast Metadata */
   virtual void GetBroadcastMetadata(uint32_t broadcast_id) = 0;
-  /* Set Achat-specific attributes (DevID and Name) */
-  virtual void SetAchatAttributes(std::vector<uint8_t> dev_id,
-                                  std::vector<uint8_t> name) = 0;
-  /* Set DBIG Join Control mode */
-  virtual void SetDbigJoinControl(bool enable) = 0;
+  /* Set attributes (DevID and Name) */
+  virtual void SetAttributes(std::vector<uint8_t> dev_id,
+                              std::vector<uint8_t> name) = 0;
+  /* Set Join Control mode */
+  virtual void SetJoinControl(bool enable) = 0;
 
   /**
    * Read the controller's supported LE states for enhanced broadcast.
