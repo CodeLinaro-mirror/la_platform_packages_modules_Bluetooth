@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 #include <bluetooth/log.h>
 #include <string.h>
@@ -452,14 +457,24 @@ static tAVRC_STS avrc_pars_browsing_cmd(tAVRC_MSG_BROWSE* p_msg, tAVRC_COMMAND* 
   tAVRC_STS status = AVRC_STS_NO_ERROR;
   uint8_t* p = p_msg->p_browse_data;
   int count;
+  uint16_t p_browse_packet_len = 0;
 
   uint32_t min_len = 3;
   RETURN_STATUS_IF_FALSE(AVRC_STS_BAD_CMD, (p_msg->browse_len >= min_len), "msg too short");
 
   p_result->pdu = *p++;
   log::verbose("avrc_pars_browsing_cmd() pdu:0x{:x}", p_result->pdu);
-  /* skip over len */
-  p += 2;
+  /* parse the 2-byte parameter length following the PDU id */
+  BE_STREAM_TO_UINT16(p_browse_packet_len, p);
+
+  log::verbose("{}: p_browse_packet_len = {}, browse_len: {}", __func__, p_browse_packet_len,
+               p_msg->browse_len);
+  if ((p_browse_packet_len + 3) != p_msg->browse_len) {
+    status = AVRC_STS_INTERNAL_ERR;
+    log::error("{} total Browse length packet criteria didn't match, status: {}", __func__,
+               status);
+    return status;
+  }
 
   switch (p_result->pdu) {
     case AVRC_PDU_SET_BROWSED_PLAYER: /* 0x70 */
@@ -571,6 +586,11 @@ static tAVRC_STS avrc_pars_browsing_cmd(tAVRC_MSG_BROWSE* p_msg, tAVRC_COMMAND* 
 
       BE_STREAM_TO_UINT16(p_result->search.string.charset_id, p);
       BE_STREAM_TO_UINT16(p_result->search.string.str_len, p);
+      /* parameter length must equal charset_id(2) + str_len(2) + str(str_len) */
+      if (p_browse_packet_len != (uint16_t)(4 + p_result->search.string.str_len)) {
+        log::error("{}: browse packet length criteria didn't match, status:{}", __func__, status);
+        return AVRC_STS_BAD_CMD;
+      }
       p_result->search.string.p_str = p_buf;
       if (p_buf) {
         if (p_result->search.string.str_len > buf_len) {
