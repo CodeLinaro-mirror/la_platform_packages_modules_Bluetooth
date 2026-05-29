@@ -267,7 +267,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         // In duplex broadcast mode, read LE Supported States from the controller
         // so the native layer knows which DBIG operations are supported.
         boolean isDuplexMode = android.os.SystemProperties.getBoolean(
-                "persist.bluetooth.aurachat.enabled", false);
+                "persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
         if (isDuplexMode) {
             Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES");
             mHandler.sendEmptyMessage(MSG_READ_SUPPORTED_STATES);
@@ -987,7 +987,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                         // Only attempted in duplex broadcast mode — the LTV is only present
                         // when the source is a duplex broadcaster (buildEnhancedPAVendorLTV).
                         boolean isDuplex = android.os.SystemProperties.getBoolean(
-                                "persist.bluetooth.aurachat.enabled", false);
+                                "persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
                         if (isDuplex) {
                             byte[] vendorData = extractEnhancedPAVendorLTVFromMetadata(event.metadata);
                             if (vendorData != null) {

@@ -1143,7 +1143,7 @@ struct iso_impl {
     // Gate DBIG HCI command based on duplex property.
     // If duplex is disabled, we treat it as "DBIG configured" and immediately continue.
     const bool is_duplex =
-            osi_property_get_bool("persist.vendor.service.bt.dbig.duplex", false);
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
     if (!is_duplex) {
       log::info("DBIG duplex disabled; skipping SetDbigParameters. dbig_handle=0x{:02x}",
                 dbig_params.dbig_handle);

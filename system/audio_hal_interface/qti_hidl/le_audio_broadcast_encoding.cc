@@ -297,7 +297,7 @@ namespace qti_hidl {
 namespace le_audio_broadcast {
 
 bool is_duplex_broadcast_enabled() {
-  bool enabled = osi_property_get_bool("persist.bluetooth.aurachat.enabled", false);
+  bool enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
   __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "%s: Aurachat (duplex broadcast) %s", __func__,
                       enabled ? "enabled" : "disabled");
   return enabled;

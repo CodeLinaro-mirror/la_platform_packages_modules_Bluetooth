@@ -317,7 +317,7 @@ public class LeAudioService extends ProfileService {
                 LeAudioBroadcasterNativeInterface broadcastNativeInterface =
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
-                if (SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false)) {
+                if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
                     broadcastNativeInterface.readSupportedStates();
                 }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
@@ -336,7 +336,7 @@ public class LeAudioService extends ProfileService {
                 LeAudioBroadcasterNativeInterface broadcastNativeInterface =
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
-                if (SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false)) {
+                if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
                     broadcastNativeInterface.readSupportedStates();
                 }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
@@ -1570,7 +1570,7 @@ public class LeAudioService extends ProfileService {
      */
     private byte[][] buildMetadataArrayWithVendorLTV(
             List<BluetoothLeBroadcastSubgroupSettings> subgroupSettings) {
-        boolean isDuplex = SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false);
+        boolean isDuplex = SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
         byte[] vendorLTV = isDuplex ? buildEnhancedPAVendorLTV() : null;
 
         final byte[] ltv = vendorLTV;
@@ -1761,7 +1761,7 @@ public class LeAudioService extends ProfileService {
 
         // If duplex broadcast (Aurachat) is enabled, delegate to stopEnhancedBroadcast
         // which additionally disables the achat_rx/tx audio parameters.
-        if (SystemProperties.getBoolean("persist.bluetooth.aurachat.enabled", false)) {
+        if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
             Log.d(TAG, "stopBroadcast: Aurachat enabled, delegating to stopEnhancedBroadcast");
             stopEnhancedBroadcast(broadcastId);
             return;

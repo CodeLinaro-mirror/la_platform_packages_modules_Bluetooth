@@ -34,7 +34,7 @@ BroadcastConfiguration GetBroadcastConfig(
         const std::vector<std::pair<types::LeAudioContextType, uint8_t>>& subgroup_quality) {
   // Check if AuraChat DBIG duplex mode is enabled
   bool aurachat_enabled =
-          osi_property_get_bool("persist.bluetooth.aurachat.enabled", false);
+          osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
   log::info("AuraChat duplex mode enabled={}", aurachat_enabled);
   if (aurachat_enabled) {
     return aurachat_duplex_2m;
