@@ -17,6 +17,8 @@
 #define LOG_TAG "BluetoothSdpJni"
 
 #include <string.h>
+#include <mutex>
+#include <shared_mutex>
 
 #include "com_android_bluetooth.h"
 #include "hardware/bt_sdp.h"
@@ -47,8 +49,10 @@ static void sdp_search_callback(bt_status_t status, const RawAddress& bd_addr, c
 btsdp_callbacks_t sBluetoothSdpCallbacks = {sizeof(sBluetoothSdpCallbacks), sdp_search_callback};
 
 static jobject sCallbacksObj = NULL;
+static std::shared_timed_mutex callbacks_mutex;
 
 static void initializeNative(JNIEnv* env, jobject object) {
+  std::unique_lock<std::shared_timed_mutex> lock(callbacks_mutex);
   const bt_interface_t* btInf = getBluetoothInterface();
 
   if (btInf == NULL) {
@@ -59,6 +63,12 @@ static void initializeNative(JNIEnv* env, jobject object) {
     log::warn("Cleaning up Bluetooth SDP Interface before initializing...");
     sBluetoothSdpInterface->deinit();
     sBluetoothSdpInterface = NULL;
+  }
+
+  if (sCallbacksObj != NULL) {
+    log::warn("Cleaning up Bluetooth SDP callback object");
+    env->DeleteGlobalRef(sCallbacksObj);
+    sCallbacksObj = NULL;
   }
 
   sBluetoothSdpInterface =
@@ -111,8 +121,14 @@ static jboolean sdpSearchNative(JNIEnv* env, jobject /* obj */, jbyteArray addre
 
 static void sdp_search_callback(bt_status_t status, const RawAddress& bd_addr, const Uuid& uuid_in,
                                 int count, bluetooth_sdp_record* records) {
+  std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
   if (!sCallbackEnv.valid()) {
+    return;
+  }
+
+  if (!sCallbacksObj) {
+    log::error("sCallbacksObj is null");
     return;
   }
 
@@ -474,6 +490,7 @@ static jboolean sdpRemoveSdpRecordNative(JNIEnv* /* env */, jobject /* obj */, j
 }
 
 static void cleanupNative(JNIEnv* env, jobject /* object */) {
+  std::unique_lock<std::shared_timed_mutex> lock(callbacks_mutex);
   const bt_interface_t* btInf = getBluetoothInterface();
 
   if (btInf == NULL) {
