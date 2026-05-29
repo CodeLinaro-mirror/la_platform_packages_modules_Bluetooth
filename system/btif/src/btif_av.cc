@@ -2524,7 +2524,7 @@ void BtifAvStateMachine::StateOpened::OnEnter() {
   // implementation in Java doesn't support active devices (yet).
   // For A2DP Source, the setting of the Active device is done by the
   // ActiveDeviceManager in Java.
-  if (peer_.IsSource()) {
+  if (peer_.IsSource() && !peer_.IsActivePeer()) {
     log::debug("Reporting connection state to application.");
     // Report the connection state to the application
     btif_report_connection_state(peer_.PeerAddress(),
@@ -3977,6 +3977,10 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
     case BTA_AV_SINK_OFFLOAD_STOP_RSP_EVT: {
         const tBTA_AV_SINK_OFFLOAD_RSP& rsp = p_data->snk_offload_rsp;
         BtifAvPeer* peer = btif_av_sink.FindPeerByHandle(rsp.hndl);
+        if (peer == nullptr) {
+          log::warn("No peer found for handle 0x{:x}, ignoring SINK_OFFLOAD_STOP_RSP", rsp.hndl);
+          break;
+        }
         peer_address = peer->PeerAddress();
         log::verbose("response hdl peer{} Active peer {}", peer->PeerAddress(), peer_address);
         bta_handle = rsp.hndl;
