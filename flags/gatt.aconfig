@@ -30,10 +30,11 @@ flag {
 }
 
 flag {
-    name: "gatt_offload_api"
+    name: "gatt_add_cccd_on_service_changed"
     namespace: "bluetooth"
-    description: "New gatt API to offload characteristics"
-    bug: "427099808"
-    is_exported: true
+    description: "Add CCCD to the service changed"
+    bug: "450918251"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
 }
-
