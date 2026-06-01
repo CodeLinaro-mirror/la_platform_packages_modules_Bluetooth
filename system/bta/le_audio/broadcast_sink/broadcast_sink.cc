@@ -51,9 +51,8 @@ std::mutex instance_mutex;
 struct TrackedSource {
   std::unique_ptr<BroadcastSinkStateMachine> state_machine;
   bool is_notified;  // Flag to avoid duplicate source found notifications
-  bool pending_big_rejoin;  // Flag to track if BIG rejoin is pending after sync lost
 
-  TrackedSource() : is_notified(false), pending_big_rejoin(false) {}
+  TrackedSource() : is_notified(false) {}
 };
 
 /**
@@ -200,16 +199,22 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       return;
     }
 
-    // Clear pending rejoin flags for ALL tracked sources when user explicitly requests to join
-    for (auto& [id, source] : tracked_sources_) {
-      if (source.pending_big_rejoin) {
-        source.pending_big_rejoin = false;
-        log::info("Cleared pending_big_rejoin flag for broadcast_id=0x{:08x}", id);
-      }
-    }
-    log::info("JoinSource requested for broadcast_id=0x{:08x}, cleared all pending_big_rejoin flags", broadcast_id);
+    log::info("JoinSource requested for broadcast_id=0x{:08x}", broadcast_id);
 
     auto* state_machine = tracked_source.state_machine.get();
+
+    /* Guard: BIG sync requires PA sync to be established first.
+     * If the state machine is at IDLE (e.g. after PA sync was lost), the caller
+     * must re-add the source (Initialize → PA_SYNCING → PA_SYNCED) before BIG sync. */
+    if (state_machine->GetState() == SinkState::IDLE) {
+      log::warn("JoinSource: state machine is IDLE for broadcast_id=0x{:08x}; "
+                "PA sync not established — call addSource() first to restart PA sync",
+                broadcast_id);
+      /* Use reason=1 as a sentinel for "PA sync not available" so Java can
+       * map it to REASON_PA_SYNC_LOST and show a meaningful message. */
+      if (callbacks_) callbacks_->OnSourceJoinFailed(broadcast_id, 1 /* PA sync not available */);
+      return;
+    }
 
     // Update broadcast code if present
     if (broadcast_code.has_value()) {
@@ -406,8 +411,7 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       return;
     }
 
-    // StopEnhancedBroadcastSink requested by user - clear any pending rejoin and stale suspend flags.
-    tracked_source.pending_big_rejoin = false;
+    // StopEnhancedBroadcastSink requested by user - clear stale suspend flags.
     pending_source_suspend_ = false;
     pending_sink_suspend_   = false;
 
@@ -463,9 +467,7 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       return;
     }
 
-    // RemoveSource requested by user - clear any pending rejoin
-    tracked_source.pending_big_rejoin = false;
-    log::info("RemoveSource requested for broadcast_id=0x{:08x}, cleared rejoin flags", broadcast_id);
+    log::info("RemoveSource requested for broadcast_id=0x{:08x}", broadcast_id);
 
     auto* state_machine = tracked_source.state_machine.get();
     // Check if state machine is in a synced state (PA_SYNCED, BIG_SYNCING or BIG_SYNCED)
@@ -867,6 +869,43 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         auto& tracked_source = tracked_sources_[broadcast_id];
         if (tracked_source.state_machine) {
           tracked_source.state_machine->HandleHciEvent(HCI_BLE_BIG_SYNC_LOST_EVT, data);
+        }
+        break;
+      }
+      case bluetooth::hci::iso_manager::kIsoEventBigOnTerminateSyncCmpl: {
+        /* BIG_TERMINATE_SYNC_COMPLETE — the controller has confirmed that the
+         * BIG sync initiated by LE_BIG_TERMINATE_SYNC is fully gone.
+         * For enhanced broadcast (DBIG), TExitDbig drives teardown and
+         * kIsoEventDbigTexitCmpl is the authoritative completion event, so
+         * big_sync_info_ will already be null here.  If for any reason it is
+         * still set (e.g. a non-DBIG terminate path), treat it identically to
+         * kIsoEventBigOnSyncLost to ensure full cleanup. */
+        auto* term_cmpl =
+            static_cast<bluetooth::hci::iso_manager::big_terminate_sync_cmpl_evt*>(data);
+        log::info("BIG terminate sync complete: big_handle={}, status=0x{:02x}",
+                  term_cmpl->big_handle, term_cmpl->status);
+
+        BroadcastId broadcast_id = BroadcastIdFromBigHandle(term_cmpl->big_handle);
+        if (broadcast_id == bluetooth::le_audio::kBroadcastIdInvalid) {
+          log::info("BIG terminate sync complete: big_handle={} not tracked (already cleaned up)",
+                    term_cmpl->big_handle);
+          break;
+        }
+        auto& tracked_source = tracked_sources_[broadcast_id];
+        if (tracked_source.state_machine &&
+            tracked_source.state_machine->GetBigSyncInfo().has_value()) {
+          log::warn("BIG terminate sync complete: big_sync_info_ still set for "
+                    "broadcast_id=0x{:08x} — cleaning up via sync-lost path", broadcast_id);
+          /* Reuse the sync-lost HCI event structure with reason=local-host (0x16). */
+          bluetooth::hci::iso_manager::big_sync_lost_evt synthetic_lost = {
+              .big_handle = term_cmpl->big_handle,
+              .reason     = 0x16 /* Connection Terminated By Local Host */,
+          };
+          tracked_source.state_machine->HandleHciEvent(
+              HCI_BLE_BIG_SYNC_LOST_EVT, &synthetic_lost);
+        } else {
+          log::info("BIG terminate sync complete: big_sync_info_ already cleared for "
+                    "broadcast_id=0x{:08x}, no further action needed", broadcast_id);
         }
         break;
       }
@@ -1316,10 +1355,12 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       log::info("PA sync lost: broadcast_id=0x{:08x}, sync_handle=0x{:04X}",
                 broadcast_id, pa_sync_handle);
 
-      // Do NOT notify OnSourceRemoved here - wait for state machine to transition to IDLE
-      // The OnStateMachineEvent callback will handle the notification with appropriate reason code
-      log::info("PA sync lost for broadcast_id=0x{:08x}, waiting for state machine to transition to IDLE",
-                broadcast_id);
+      /* PA sync is lost/terminated but BIG sync may still be active.
+       * Audio continues without PA sync.  We record pa_sync_lost_ in the
+       * state machine so that when BIG sync is subsequently lost, we know
+       * to transition to IDLE (no PA to return to) and fire OnSourceDestroyed
+       * to signal a full restart is needed.
+       * No Java notification here — BIG sync is still running. */
     }
 
     void OnBaseDataReceived(uint32_t broadcast_id,
@@ -1402,32 +1443,24 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         return;
       }
 
-      log::warn("BIG sync lost (UNEXPECTED): broadcast_id=0x{:08x}, big_handle={}, reason=0x{:02x}",
+      log::warn("BIG sync lost: broadcast_id=0x{:08x}, big_handle={}, reason=0x{:02x}",
                 broadcast_id, big_handle, reason);
 
-      // Find the tracked source and implement rejoin logic based on HCI error codes
-      if (instance->tracked_sources_.count(broadcast_id) > 0) {
-        auto& tracked_source = instance->tracked_sources_[broadcast_id];
-
-        // Classify error codes for rejoin decision
-        if (reason == HCI_ERR_PEER_USER || reason == HCI_ERR_CONNECTION_TOUT) {
-          // Rejoin scenarios: Remote User Terminated Connection (0x13) or Connection Timeout (0x08)
-          tracked_source.pending_big_rejoin = true;
-          log::info("BIG sync lost due to rejoinable reason 0x{:02x}, will attempt rejoin on next BIG Info Report", reason);
-        } else if (reason == HCI_ERR_CONN_TERM_MIC_FAILURE) {
-          // MIC Failure (0x3D) - do not rejoin, just log the error
-          tracked_source.pending_big_rejoin = false;
-          log::warn("BIG sync lost due to MIC failure (0x{:02x}), not rejoining", reason);
-        } else {
-          tracked_source.pending_big_rejoin = false;
-          log::warn("BIG sync lost due to other reason (0x{:02x}), not rejoin", reason);
-        }
-      }
+      /* Do NOT attempt automatic rejoin.  BIG sync must only be initiated when
+       * the user explicitly calls startEnhancedBroadcastSink() again. */
 
       /* Forward BIG sync lost to Java layer. */
       if (instance->callbacks_) {
         instance->callbacks_->OnBigSyncLost(broadcast_id, big_handle, reason);
       }
+
+      /* When PA sync was already lost before this BIG sync loss, the state
+       * machine transitions to IDLE.  Java will receive STATE_CHANGED(IDLE)
+       * immediately after, which calls destroySource() → C++ destructor →
+       * OnStateMachineDestroyed(PA_SYNC_LOST) → OnSourceDestroyed → Java
+       * notifyOnSourceRemoved(REASON_PA_SYNC_LOST).
+       * Do NOT fire OnSourceDestroyed here — that path handles it correctly
+       * and a direct call here would cause a double notification. */
     }
 
     void OnBigSyncTerminated(uint32_t broadcast_id, uint8_t big_handle, uint8_t status) override {
@@ -1491,23 +1524,6 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
       log::info("Updated encryption status for broadcast_id=0x{:08x}: encrypted={}",
                 broadcast_id, encrypted);
-
-      // Check if automatic rejoin is pending after BIG sync lost
-      if (tracked_source.pending_big_rejoin) {
-        auto current_state = tracked_source.state_machine->GetState();
-        log::info("Checking automatic BIG rejoin: broadcast_id=0x{:08x}, pending_big_rejoin=true, current_state={}",
-                  broadcast_id, SinkStateToString(current_state));
-
-        // If we're in PA_SYNCED state and rejoin is pending, restore BIG sync
-        if (current_state == SinkState::PA_SYNCED) {
-          log::info("Performing automatic BIG rejoin after sync lost for broadcast_id=0x{:08x}", broadcast_id);
-          tracked_source.state_machine->ProcessMessage(
-              BroadcastSinkStateMachine::Message::START_BIG_SYNC, nullptr);
-
-          // Clear the rejoin flag after attempting rejoin
-          tracked_source.pending_big_rejoin = false;
-        }
-      }
 
       // Notify OnSourceMetadataChanged when BIG Info Report is received (first time only)
       if (!tracked_source.is_notified && instance->callbacks_) {

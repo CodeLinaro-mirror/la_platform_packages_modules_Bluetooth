@@ -136,6 +136,14 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private volatile boolean mIsEnhancedStreaming = false;
 
     /**
+     * Set to true when EVENT_TYPE_BIG_SYNC_LOST is received and we have already sent
+     * notifyOnSinkStopped(REASON_BIG_SYNC_LOST).  Cleared when EVENT_TYPE_BIG_SYNC_TERMINATED
+     * fires (from the source-HAL ack path in REMOVE_TX_PATHS) so we do not send a second
+     * onSinkStopped for the same loss event.
+     */
+    private volatile boolean mBigSyncLostPending = false;
+
+    /**
      * Source device pending active-device notification for enhanced broadcast sink.
      * Set in startEnhancedBroadcastSink() and consumed in EVENT_TYPE_AUDIO_SESSION_CREATED
      * so that MM audio is notified only after both HAL sessions are confirmed started
@@ -915,8 +923,13 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_JOIN_FAILED:
                     if (DBG) Log.d(TAG, "Source join failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
 
-                    // Normal join failed
-                    notifyOnSinkStartFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                    if (event.reason == 1) {
+                        // Reason 1 = PA sync not available (state machine in IDLE).
+                        // User must re-add the source to restart PA sync before retrying BIG sync.
+                        notifyOnSinkStartFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_PA_SYNC_LOST);
+                    } else {
+                        notifyOnSinkStartFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                    }
                     break;
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_LEAVE_FAILED:
                     if (DBG) Log.d(TAG, "Source leave failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
@@ -1169,6 +1182,16 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     if (DBG) Log.d(TAG, "BIG sync terminated: broadcastId=" + event.broadcastId
                             + ", bigHandle=" + event.valueInt1
                             + ", status=0x" + Integer.toHexString(event.reason));
+                    if (mBigSyncLostPending) {
+                        // onSinkStopped already sent from EVENT_TYPE_BIG_SYNC_LOST.
+                        // This termination is the REMOVE_TX_PATHS source-HAL ack path
+                        // triggered after BIG sync was unexpectedly lost — skip duplicate.
+                        Log.d(TAG, "BIG sync terminated (post BIG-sync-lost cleanup): "
+                                + "suppressing duplicate onSinkStopped for broadcastId="
+                                + event.broadcastId);
+                        mBigSyncLostPending = false;
+                        break;
+                    }
                     notifyOnSinkStopped(event.broadcastId,
                             BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
                     break;
@@ -1194,6 +1217,9 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
                     // Stop source + sink audio sessions.
                     mIsEnhancedStreaming = false;
+                    // Mark that we have already notified onSinkStopped so the follow-on
+                    // EVENT_TYPE_BIG_SYNC_TERMINATED (from source-HAL ack) is suppressed.
+                    mBigSyncLostPending = true;
                     if (DBG) Log.d(TAG, "BIG sync lost: sending MSG_STOP");
                     mHandler.sendEmptyMessage(MSG_STOP);
                     // Post MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP so the active device

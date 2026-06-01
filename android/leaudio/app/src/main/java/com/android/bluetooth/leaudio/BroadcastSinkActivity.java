@@ -163,6 +163,12 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     private TextView mStatusText;
     private TextView mSyncedBroadcastsText;
     private RecyclerView mFoundBroadcastsRecyclerView;
+    /**
+     * Last metadata used for an enhanced broadcast sink attempt.
+     * Retained so that when BIG sync is lost the user can retry with a corrected
+     * broadcast code without rescanning — PA sync is still intact.
+     */
+    private BluetoothLeBroadcastMetadata mLastEnhancedMetadata = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -306,6 +312,13 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 mStartSearchButton.setEnabled(true);
             }
         });
+
+        // Observe unexpected BIG sync loss — PA sync is still intact so we can retry
+        mViewModel.getBigSyncLostBroadcastId().observe(this, broadcastId -> {
+            if (broadcastId == null) return;
+            Log.i(TAG, "BIG sync lost for broadcastId=" + broadcastId + ", showing retry dialog");
+            showBigSyncLostRetryDialog(broadcastId);
+        });
     }
 
     private void onAddSource(int broadcastId) {
@@ -328,6 +341,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             Toast.makeText(this, "Metadata not available yet", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // Remember metadata so we can offer a retry if BIG sync is lost
+        mLastEnhancedMetadata = item.metadata;
 
         if (item.isEnhanced) {
             // Enhanced broadcast source (>= 3 BISes): no channel selection needed.
@@ -713,5 +729,43 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             }
             mSyncedBroadcastsText.setText(text);
         }
+    }
+
+    /**
+     * Shows when BIG sync is lost unexpectedly (e.g. wrong broadcast code).
+     * PA sync is still active so the user can retry without rescanning.
+     * The user must explicitly press "Retry" to start a new BIG sync attempt.
+     */
+    private void showBigSyncLostRetryDialog(int broadcastId) {
+        String title = "BIG Sync Lost (ID: " + broadcastId + ")";
+        String message = "BIG sync was lost.\n\n"
+                + "If PA sync is still active (wrong broadcast code), press\n"
+                + "\"Retry with Code\" to enter the correct code.\n\n"
+                + "If PA sync was also lost, press \"Re-add Source\" to\n"
+                + "restart PA sync, then retry BIG sync.";
+
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("Retry with Code", (dialog, which) -> {
+                    if (mLastEnhancedMetadata != null) {
+                        Log.d(TAG, "User chose to retry BIG sync for broadcastId=" + broadcastId);
+                        showEnhancedBroadcastCodeDialog(mLastEnhancedMetadata);
+                    } else {
+                        Toast.makeText(this,
+                                "No metadata — select source from the list",
+                                Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNeutralButton("Re-add Source", (dialog, which) -> {
+                    Log.d(TAG, "User chose to re-add source for broadcastId=" + broadcastId);
+                    mViewModel.addSource(broadcastId);
+                    Toast.makeText(this,
+                            "Re-establishing PA sync for broadcast ID: " + broadcastId,
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .setCancelable(false)
+                .show();
     }
 }

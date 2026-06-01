@@ -92,6 +92,21 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
               sm_config_.address.ToString(), sm_config_.adv_sid);
 
     sink_config_ = BroadcastSinkConfiguration();
+
+    /* Reset all state for a clean PA sync + BIG sync cycle.  This handles
+     * re-initialization after PA sync loss, BIG sync loss, or explicit remove. */
+    big_sync_info_ = std::nullopt;
+    base_data_ = std::nullopt;
+    pa_sync_lost_ = false;
+    is_enhanced_ = false;
+    enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+    teardown_bis_handles_.clear();
+    enhanced_iso_setup_index_ = 0;
+    tx_paths_removed_ = false;
+    rx_paths_removed_ = false;
+    pending_rx_teardown_ = false;
+    pending_tx_teardown_ = false;
+
     SetState(SinkState::PA_SYNCING);
     if (callbacks_) {
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
@@ -304,13 +319,15 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     pa_sync_info_ = std::nullopt;
     base_data_ = std::nullopt;
 
-    if (big_sync_info_.has_value()) {
-      uint8_t big_handle = big_sync_info_->big_handle;
-      big_sync_info_ = std::nullopt;
-      callbacks_->OnBigSyncLost(GetBroadcastId(), big_handle, 0x13);
-    }
+    /* PA sync is independent of BIG sync after the initial setup phase.
+     * BIG sync can continue even after PA sync is lost or terminated.
+     * Do NOT touch big_sync_info_, enhanced ISO state, or state machine
+     * state here — the audio stream keeps running.
+     *
+     * If BIG sync is subsequently lost, OnBigSyncLost() will check
+     * pa_sync_info_.has_value() and transition to IDLE (no PA to return to)
+     * instead of PA_SYNCED. */
 
-    SetState(SinkState::IDLE);
     callbacks_->OnPaSyncLost(GetBroadcastId(), lost_handle);
     callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
   }
@@ -576,20 +593,42 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
 
     if (GetState() == SinkState::DISABLING) {
       /* Both TX and RX paths already removed before we got here.
-       * Reset teardown state and transition to PA_SYNCED. */
-      log::info("broadcast_id=0x{:x}, TExitDbig complete (all paths removed), transitioning to PA_SYNCED",
-                GetBroadcastId());
+       * Reset teardown state and transition based on PA sync availability. */
       enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
       teardown_bis_handles_.clear();
       tx_paths_removed_ = false;
       rx_paths_removed_ = false;
       pending_rx_teardown_ = false;
       pending_tx_teardown_ = false;
-      SetState(SinkState::PA_SYNCED);
+      if (pa_sync_info_.has_value()) {
+        log::info("broadcast_id=0x{:x}, TExitDbig complete (DISABLING) → PA_SYNCED",
+                  GetBroadcastId());
+        SetState(SinkState::PA_SYNCED);
+      } else {
+        log::info("broadcast_id=0x{:x}, TExitDbig complete (DISABLING), PA sync gone → IDLE",
+                  GetBroadcastId());
+        SetState(SinkState::IDLE);
+      }
       if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
     } else if (GetState() == SinkState::STOPPING) {
-      log::info("broadcast_id=0x{:x}, TExitDbig complete, continuing PA sync termination", GetBroadcastId());
-      TerminatePaSync();
+      log::info("broadcast_id=0x{:x}, TExitDbig complete (STOPPING), resetting enhanced state",
+                GetBroadcastId());
+      enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+      teardown_bis_handles_.clear();
+      enhanced_iso_setup_index_ = 0;
+      tx_paths_removed_ = false;
+      rx_paths_removed_ = false;
+      pending_rx_teardown_ = false;
+      pending_tx_teardown_ = false;
+      if (pa_sync_info_.has_value()) {
+        TerminatePaSync();  /* PA sync still active — terminate it */
+      } else {
+        /* PA sync already gone — go directly to IDLE */
+        log::info("broadcast_id=0x{:x}, TExitDbig complete (STOPPING), PA sync gone → IDLE",
+                  GetBroadcastId());
+        SetState(SinkState::IDLE);
+        if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      }
     } else {
       log::warn("broadcast_id=0x{:x}, TExitDbig complete in unexpected state={}",
                 GetBroadcastId(), SinkStateToString(GetState()));
@@ -743,7 +782,16 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       REMOVE_TX_PATHS_handlers{
           /* IDLE */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, no BIG sync to stop (IDLE)", GetBroadcastId());
+            log::info("broadcast_id=0x{:x}, no BIG sync (IDLE): acking source HAL "
+                      "to unblock MSG_STOP after PA sync + BIG sync lost",
+                      GetBroadcastId());
+            if (is_enhanced_) {
+              /* PA sync was lost while BIG sync was active.  BT FW has cleared
+               * all BIG/DBIG handles — fire OnBigSyncTerminated to ack source
+               * HAL (unblocks achat_tx_enable=false in MSG_STOP). Java service
+               * guards against duplicate onSinkStopped via mBigSyncLostPending. */
+              callbacks_->OnBigSyncTerminated(GetBroadcastId(), 0 /* no handle */, 0 /* ok */);
+            }
           },
           /* PA_SYNCING */
           [this](const void*) {
@@ -751,11 +799,23 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           },
           /* PA_SYNCED */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, no BIG sync to stop (PA_SYNCED)", GetBroadcastId());
+            log::info("broadcast_id=0x{:x}, no BIG sync (PA_SYNCED): acking source HAL "
+                      "to unblock MSG_STOP after BIG sync lost",
+                      GetBroadcastId());
+            if (is_enhanced_) {
+              /* BIG sync was already lost; there are no TX ISO paths to remove.
+               * Fire OnBigSyncTerminated to ack source HAL (unblocks achat_tx_enable=false).
+               * Java service guards against duplicate onSinkStopped via mBigSyncLostPending. */
+              callbacks_->OnBigSyncTerminated(GetBroadcastId(), 0 /* no handle */, 0 /* ok */);
+            }
           },
           /* BIG_SYNCING */
           [this](const void*) {
-            log::info("broadcast_id=0x{:x}, stopping BIG sync (BIG_SYNCING)", GetBroadcastId());
+            log::info("broadcast_id=0x{:x}, BIG sync lost during BIG_SYNCING: acking source HAL",
+                      GetBroadcastId());
+            if (is_enhanced_) {
+              callbacks_->OnBigSyncTerminated(GetBroadcastId(), 0 /* no handle */, 0 /* ok */);
+            }
           },
           /* STREAMING */
           [this](const void*) {
@@ -890,11 +950,17 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
 
   void TExitDbig() {
     if (!big_sync_info_.has_value()) {
+      /* BIG sync info was already cleared (e.g. by OnBigSyncLost before teardown
+       * completed).  Resolve the dangling state based on PA sync availability. */
       if (GetState() == SinkState::DISABLING) {
-        SetState(SinkState::PA_SYNCED);
+        if (pa_sync_info_.has_value()) {
+          SetState(SinkState::PA_SYNCED);
+        } else {
+          SetState(SinkState::IDLE);
+        }
         if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       } else if (GetState() == SinkState::STOPPING) {
-        TerminatePaSync();
+        TerminatePaSync();  /* handles null pa_sync_info_ → IDLE */
       }
       return;
     }
@@ -1009,16 +1075,48 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
 
     uint8_t big_handle = big_sync_info_->big_handle;
     big_sync_info_ = std::nullopt;
+
+    /* Reset all enhanced ISO state so the next sync attempt starts from a clean
+     * slate.  The controller has already lost the BIG connection so all ISO
+     * data paths are gone — no HCI teardown commands are needed.  Any in-flight
+     * REMOVE_TX_PATHS or REMOVE_RX_PATHS messages from MSG_STOP will be handled
+     * by the PA_SYNCED handlers which ack the HAL without HCI operations. */
+    if (is_enhanced_) {
+      enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+      teardown_bis_handles_.clear();
+      enhanced_iso_setup_index_ = 0;
+      tx_paths_removed_ = false;
+      rx_paths_removed_ = false;
+      pending_rx_teardown_ = false;
+      pending_tx_teardown_ = false;
+    }
+
     callbacks_->OnBigSyncLost(GetBroadcastId(), big_handle, evt->reason);
 
-    if (GetState() == SinkState::DISABLING) {
-      SetState(SinkState::PA_SYNCED);
-      callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
-    } else if (GetState() == SinkState::STOPPING) {
-      TerminatePaSync();
+    if (GetState() == SinkState::STOPPING) {
+      /* User-initiated stop that covered both BIG and PA sync. */
+      if (pa_sync_info_.has_value()) {
+        TerminatePaSync();  /* PA sync still active — terminate it */
+      } else {
+        /* PA sync was already lost/terminated — go directly to IDLE */
+        SetState(SinkState::IDLE);
+        if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      }
     } else {
-      SetState(SinkState::PA_SYNCED);
-      callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      /* Unexpected BIG sync loss (e.g. wrong broadcast code, out of range). */
+      if (pa_sync_info_.has_value()) {
+        /* PA sync is still active — stay at PA_SYNCED so the user can
+         * correct the broadcast code and retry BIG sync without rescanning. */
+        SetState(SinkState::PA_SYNCED);
+        if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      } else {
+        /* PA sync was already lost/terminated before BIG sync was lost.
+         * Go to IDLE — a full restart (scan → addSource → BIG sync) is needed. */
+        log::info("broadcast_id=0x{:x}, PA sync also gone → transitioning to IDLE",
+                  GetBroadcastId());
+        SetState(SinkState::IDLE);
+        if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      }
     }
   }
 

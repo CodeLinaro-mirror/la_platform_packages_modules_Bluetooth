@@ -44,6 +44,12 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
     private final MutableLiveData<List<BluetoothLeBroadcastMetadata>> mSyncedBroadcasts = new MutableLiveData<>(new ArrayList<>());
     private final MutableLiveData<String> mStatusMessage = new MutableLiveData<>("");
     private final MutableLiveData<Boolean> mIsBroadcastSinkSupported = new MutableLiveData<>(false);
+    /**
+     * Posted with the broadcastId when BIG sync is lost unexpectedly (e.g. wrong broadcast code).
+     * BroadcastSinkActivity observes this to show a retry-with-new-code dialog while keeping
+     * the PA sync intact so the user can try again without rescanning.
+     */
+    private final MutableLiveData<Integer> mBigSyncLostBroadcastId = new MutableLiveData<>();
 
     // Internal state
     private final Map<Integer, BluetoothLeBroadcastMetadata> mSyncedBroadcastMap = new HashMap<>();
@@ -227,6 +233,10 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                 case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST:
                     message = "Join failed for " + name + ": Broadcast sync lost";
                     break;
+                case BluetoothLeBroadcastSinkState.REASON_PA_SYNC_LOST:
+                    message = "Join failed for " + name
+                            + ": PA sync not available — select source from the list to re-establish PA sync first";
+                    break;
                 case BluetoothLeBroadcastSinkState.REASON_DUPLICATE_JOIN_REQUEST:
                     message = "Join failed for " + name + ": Already joined";
                     break;
@@ -247,7 +257,16 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         @Override
         public void onSinkStopped(int broadcastId, int reason) {
             Log.d(TAG, "onSinkStopped: broadcastId=" + broadcastId + ", reason=" + reason);
-            mStatusMessage.postValue("Left broadcast ID: " + broadcastId + " (reason: " + reason + ")");
+            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST) {
+                // BIG sync lost unexpectedly (e.g. wrong broadcast code).
+                // PA sync is still intact — post LiveData so the Activity can offer a retry
+                // with a corrected broadcast code without the user having to rescan.
+                mStatusMessage.postValue("BIG sync lost for broadcast ID " + broadcastId
+                        + " — check broadcast code and retry");
+                mBigSyncLostBroadcastId.postValue(broadcastId);
+            } else {
+                mStatusMessage.postValue("Left broadcast ID: " + broadcastId + " (reason: " + reason + ")");
+            }
             updateSyncedBroadcasts();
         }
 
@@ -280,8 +299,14 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                 mFoundBroadcastsMap.remove(broadcastId);
                 mFoundBroadcasts.postValue(new ArrayList<>(mFoundBroadcastsMap.values()));
             }
-            mStatusMessage.postValue("Removed broadcast ID: " + broadcastId + " (reason: " + reason + ")");
             updateSyncedBroadcasts();
+            if (reason == BluetoothLeBroadcastSinkState.REASON_PA_SYNC_LOST) {
+                mStatusMessage.postValue(
+                        "PA sync + BIG sync both lost for broadcast ID " + broadcastId
+                        + " — please scan to find and re-add the source");
+            } else {
+                mStatusMessage.postValue("Removed broadcast ID: " + broadcastId + " (reason: " + reason + ")");
+            }
         }
 
         @Override
@@ -616,6 +641,14 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
     public LiveData<Boolean> isBroadcastSinkSupported() {
         return mIsBroadcastSinkSupported;
+    }
+
+    /**
+     * Fires once with the broadcastId whenever BIG sync is lost unexpectedly.
+     * PA sync remains intact; the Activity should offer a retry-with-code dialog.
+     */
+    public LiveData<Integer> getBigSyncLostBroadcastId() {
+        return mBigSyncLostBroadcastId;
     }
 
     public void getAllSyncedSinkStates() {
