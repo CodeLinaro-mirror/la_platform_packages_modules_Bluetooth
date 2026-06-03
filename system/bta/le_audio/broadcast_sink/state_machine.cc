@@ -924,8 +924,16 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       return;
     }
+    /* Clear pa_sync_info_ BEFORE calling StopSync() so that any re-entrant or
+     * subsequent call to TerminatePaSync() (e.g. from the destructor, a queued
+     * STOP_SYNC message, or a duplicate event) immediately hits the null guard
+     * above and does NOT send a second HCI_LE_PERIODIC_ADVERTISING_TERMINATE_SYNC
+     * command to the controller. */
+    uint16_t sync_handle = pa_sync_info_->sync_handle;
+    pa_sync_info_ = std::nullopt;
+    base_data_    = std::nullopt;
     if (!ble_scanner_) { log::error("BLE scanner not initialized"); return; }
-    ble_scanner_->StopSync(pa_sync_info_->sync_handle, kScannerClientIdLeAudio);
+    ble_scanner_->StopSync(sync_handle, kScannerClientIdLeAudio);
     SetState(SinkState::IDLE);
     if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
   }
