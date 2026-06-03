@@ -355,6 +355,16 @@ public class LeAudioService extends ProfileService {
 
         mTmapStarted = registerTmap();
 
+        // Crash recovery: if BT process was killed while a duplex broadcast was streaming,
+        // AHAL retains achat_tx/rx_enable=true and doesn't know BT died.
+        // Reset unconditionally on every restart so AHAL is in a known-clean state
+        // before the next startEnhancedBroadcast.
+        if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
+            Log.d(TAG, "Duplex broadcast mode: crash recovery — resetting AHAL TX+RX state");
+            mAudioManager.setParameters("achat_rx_enable=false");
+            mAudioManager.setParameters("achat_tx_enable=false");
+        }
+
         mLeAudioInbandRingtoneSupportedByPlatform =
                 BluetoothProperties.isLeAudioInbandRingtoneSupported().orElse(true);
 

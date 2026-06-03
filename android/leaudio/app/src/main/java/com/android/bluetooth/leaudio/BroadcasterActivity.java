@@ -93,6 +93,24 @@ public class BroadcasterActivity extends AppCompatActivity {
     private int mLastBroadcastFeatures = -1;
     private int[] mLastBisDevIds = null;
 
+    /* ------------------------------------------------------------------
+     *  PGP tracking — up to 10 devices, populated from DBIG status events
+     * ------------------------------------------------------------------ */
+    private static final int MAX_PGP_TRACKED = 10;
+    /** devId → display name; insertion-ordered so oldest entry can be evicted. */
+    private final java.util.LinkedHashMap<Integer, String> mTrackedPgps =
+            new java.util.LinkedHashMap<>();
+    /** True while a Remove Device procedure is outstanding (between request and completion). */
+    private boolean mRemovePending = false;
+
+    // Tracks broadcast IDs for which join control was already auto-enabled in this
+    // session. Guards against duplicate STREAMING callbacks (e.g., duplex TX then TX+RX).
+    private final java.util.Set<Integer> mJoinControlAutoEnabledIds = new java.util.HashSet<>();
+    /** Retained reference so we can enable/disable the button across Remove completions. */
+    private Button mBtnRemoveDevice = null;
+    /** Persistent status label shown below the Remove Device button. */
+    private TextView mRemoveStatusText = null;
+
     private AudioManager mAudioManager;
     /** Reference to the currently visible broadcast-info dialog (for in-place refresh). */
     private AlertDialog mCurrentInfoDialog = null;
@@ -821,17 +839,27 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     .show();
 
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, true);
-                            // Automatically enable Join Control when broadcast enters playing state
-                            Log.d(TAG, "Broadcast playing - auto-enabling Join Control");
-                            boolean joinResult = mViewModel.setJoinControl(true);
-                            Log.d(TAG, "Auto Join Control enable: result=" + joinResult);
-                            if (joinResult) {
-                                mJoinControlEnabled = true;
-                                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                                        .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
-                                Toast.makeText(BroadcasterActivity.this,
-                                        "Join Control auto-enabled (broadcast playing)",
+                            int broadcastId = reasonAndBidPair.second;
+                            // Automatically enable Join Control once per broadcast session.
+                            // Guard against duplicate STREAMING callbacks (duplex fires TX-only
+                            // then TX+RX) so join control is sent exactly once.
+                            if (!mJoinControlAutoEnabledIds.contains(broadcastId)) {
+                                mJoinControlAutoEnabledIds.add(broadcastId);
+                                Log.d(TAG, "Broadcast playing - auto-enabling DBIG Join Control");
+                                boolean joinResult = mViewModel.setJoinControl(true);
+                                Log.d(TAG, "Auto Join Control enable: result=" + joinResult);
+                                String playMsg = "Playing broadcast " + broadcastId;
+                                if (joinResult) {
+                                    mJoinControlEnabled = true;
+                                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                                            .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
+                                    playMsg += "\nJoin Control auto-enabled";
+                                }
+                                Toast.makeText(BroadcasterActivity.this, playMsg,
                                         Toast.LENGTH_SHORT).show();
+                            } else {
+                                Log.d(TAG, "Broadcast playing (duplicate callback for broadcastId="
+                                        + broadcastId + ") — skipping join control");
                             }
                             int enhancedCap = mViewModel.getEnhancedBroadcastCap();
                             Log.i(TAG, "getEnhancedBroadcastCap: 0x" + Integer.toHexString(enhancedCap)
@@ -844,10 +872,14 @@ public class BroadcasterActivity extends AppCompatActivity {
                 .observe(
                         this,
                         reasonAndBidPair -> {
+                            int broadcastId = reasonAndBidPair.second;
+                            // Clear the deduplication entry so join control is re-enabled
+                            // if the same broadcast ID is restarted in a future session.
+                            mJoinControlAutoEnabledIds.remove(broadcastId);
                             Toast.makeText(
                                             BroadcasterActivity.this,
                                             "Paused broadcast "
-                                                    + reasonAndBidPair.second
+                                                    + broadcastId
                                                     + ", reason "
                                                     + reasonAndBidPair.first,
                                             Toast.LENGTH_SHORT)

@@ -277,6 +277,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         boolean isDuplexMode = android.os.SystemProperties.getBoolean(
                 "persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
         if (isDuplexMode) {
+            // Crash recovery: if BT process was killed while a duplex broadcast was
+            // streaming, AHAL retains achat_tx/rx_enable=true and doesn't know BT died.
+            // Send MSG_STOP unconditionally on every restart so AHAL is always brought
+            // to a known-clean state before the next startEnhancedBroadcast.
+            Log.d(TAG, "Duplex broadcast mode: sending MSG_STOP for AHAL crash recovery");
+            mHandler.sendEmptyMessage(MSG_STOP);
             Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES");
             mHandler.sendEmptyMessage(MSG_READ_SUPPORTED_STATES);
         }
