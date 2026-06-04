@@ -133,6 +133,11 @@ public:
                               const Octet16& r) const override {
     btm_remote_oob_data_reply(res, bd_addr, c, r);
   }
+  void BTM_RemoteOobExtendedDataReply(tBTM_STATUS res, const RawAddress& bd_addr,
+                                    const Octet16& c, const Octet16& r,
+                                    const Octet16& c_256, const Octet16& r_256) const override {
+   btm_remote_oob_extended_data_reply(res, bd_addr, c, r, c_256, r_256);
+  }
   void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res, uint8_t pin_len,
                         PinCode pin_code) const override {
     btm_pin_code_reply(bd_addr, res, pin_len, pin_code);
