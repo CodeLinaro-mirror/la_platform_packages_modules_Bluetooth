@@ -415,19 +415,6 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     pending_source_suspend_ = false;
     pending_sink_suspend_   = false;
 
-    // Clear the DBIG registration flag so StartEnhancedBroadcastSink() will re-register
-    // when the next enhanced source is joined.
-    // NOTE: We do NOT call RegisterDbigCallbacks(nullptr) here because
-    // handle_register_dbig_callbacks() asserts callbacks != nullptr and would crash.
-    // The broadcast source will overwrite the DBIG callback pointer when it
-    // calls RegisterDbigCallbacks(instance) during its own Initialize().
-    if (dbig_callbacks_registered_) {
-      log::info("StopEnhancedBroadcastSink: clearing DBIG registration flag for broadcast_id=0x{:08x} "
-                "(broadcast source will overwrite callback pointer on next Initialize)",
-                broadcast_id);
-      dbig_callbacks_registered_ = false;
-    }
-
     log::info("StopEnhancedBroadcastSink: state validated, flags cleared for broadcast_id=0x{:08x}. "
               "MSG_STOP from Java will drive HAL teardown via blocking setParameters().",
               broadcast_id);
@@ -531,6 +518,13 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       /* Reset suspend flags so a fresh start finds them clean. */
       pending_source_suspend_ = false;
       pending_sink_suspend_   = false;
+
+      /* Unregister DBIG callbacks when the last source is destroyed (role transition). */
+      if (dbig_callbacks_registered_) {
+        log::info("DestroySource: last source removed, unregistering DBIG callbacks (PGP)");
+        IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+        dbig_callbacks_registered_ = false;
+      }
     }
   }
   void ReadSupportedStatesForSink(void) override {

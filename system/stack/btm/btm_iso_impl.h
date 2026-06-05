@@ -115,7 +115,7 @@ struct iso_impl {
   }
 
   void handle_register_dbig_callbacks(DbigCallbacks* callbacks) {
-    log::assert_that(callbacks != nullptr, "Invalid DBIG callbacks");
+    /* callbacks == nullptr is valid — it unregisters the current handler. */
     dbig_callbacks_ = callbacks;
   }
 
@@ -1246,6 +1246,12 @@ struct iso_impl {
       if (!is_known_handle) {
         log::warn("DBIG TExitDbig complete but no BIS entries found for dbig_handle: ",
                    dbig_handle);
+      }
+
+      // Notify that ISO traffic is now inactive (symmetric to BIG_CREATE_SYNC success)
+      const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
+      for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
+        callbacks(false);  // Notify broadcaster.cc that ISO traffic stopped
       }
     } else {
       log::error("DBIG TExitDbig failed, status: {}, dbig_handle: {}", status, dbig_handle);

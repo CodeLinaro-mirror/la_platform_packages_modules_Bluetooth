@@ -165,6 +165,10 @@ public:
     is_iso_running_ = false;
     is_suspended_by_audio_ = false;
 
+    /* Unregister DBIG callbacks — do this before IsoManager::Stop() so no stale
+     * pointer is left for any subsequent role (PGP) that calls RegisterDbigCallbacks. */
+    IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+
     if (!LeAudioClient::IsLeAudioClientRunning()) {
       IsoManager::GetInstance()->Stop();
     }
@@ -733,6 +737,14 @@ public:
                             const std::vector<uint8_t>& subgroup_quality,
                             const std::vector<std::vector<uint8_t>>& subgroup_metadata,
                             float iso_interval) override {
+    /* Register DBIG callbacks immediately when an enhanced broadcast is created
+     * so that DBIG events (CreateCmpl, Status, TExitCmpl, etc.) are routed to
+     * the PGO before the broadcast enters STREAMING state. */
+    if (!dbig_callbacks_registered_) {
+      log::info("CreateEnhancedAudioBroadcast: registering DBIG callbacks for PGO");
+      IsoManager::GetInstance()->RegisterDbigCallbacks(this);
+      dbig_callbacks_registered_ = true;
+    }
     std::vector<LeAudioLtvMap> subgroup_ltvs;
     if (broadcast_code && std::all_of(broadcast_code->begin(), broadcast_code->end(),
                                       [](uint8_t byte) { return byte == 0xFF; })) {
@@ -1015,6 +1027,16 @@ public:
 
     log::info("Stopping AudioHalClient, broadcast_id={}", broadcast_id);
 
+    /* Unregister DBIG callbacks when a DUPLEX (enhanced) broadcast stops so the
+     * PGP (broadcast sink) can safely register its own DBIG callbacks without
+     * the PGO pointer lingering. */
+    if (broadcasts_.at(broadcast_id)->GetBroadcastMode() ==
+            bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+      log::info("DUPLEX broadcast stopping — unregistering DBIG callbacks for PGO, "
+                "broadcast_id={}", broadcast_id);
+      IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+    }
+
     if (le_audio_source_hal_client_) {
       le_audio_source_hal_client_->Stop();
     }
@@ -1030,7 +1052,12 @@ public:
   void DestroyAudioBroadcast(uint32_t broadcast_id) override {
     log::info("Destroying broadcast_id={}", broadcast_id);
     broadcasts_.erase(broadcast_id);
-
+    // Only unregister DBIG callbacks when destroying the last broadcast (role transition)
+    if (broadcasts_.empty() && dbig_callbacks_registered_) {
+      log::info("DestroyAudioBroadcast: last broadcast removed, unregistering DBIG callbacks (PGO)");
+      IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
+      dbig_callbacks_registered_ = false;
+    }
     if (le_audio_source_hal_client_) {
       le_audio_source_hal_client_->Stop();
     }
@@ -1424,6 +1451,7 @@ private:
             instance->is_suspended_by_audio_ = false;
             return;
           }
+
           if (getStreamerCount() == 1) {
             log::info("Starting AudioHalClient");
 
@@ -1887,6 +1915,9 @@ private:
   // Flag of suspend request from audio
   bool is_suspended_by_audio_ = false;
 
+  // Flag to track DBIG callback registration
+  bool dbig_callbacks_registered_ = false;
+
   static constexpr uint64_t kBigTerminateTimeoutMs = 0;
   static constexpr uint64_t kBroadcastStopTimeoutMs = 30 * 60 * 1000;
   alarm_t* big_terminate_timer_;
@@ -1925,10 +1956,10 @@ void LeAudioBroadcaster::Initialize(bluetooth::le_audio::LeAudioBroadcasterCallb
   IsoManager::GetInstance()->Start();
 
   instance = new LeAudioBroadcasterImpl(callbacks);
-  /* Register HCI event handlers */
+  /* Register HCI event handlers for BIG (always needed for broadcaster role).
+   * DBIG callbacks are registered lazily when an enhanced (DUPLEX) broadcast
+   * enters the STREAMING state, and unregistered when it stops. */
   IsoManager::GetInstance()->RegisterBigCallbacks(instance);
-  IsoManager::GetInstance()->RegisterDbigCallbacks(instance);
-  log::info("Registered DBIG callbacks for LE Audio broadcaster");
   /* Register for active traffic */
   IsoManager::GetInstance()->RegisterOnIsoTrafficActiveCallback([](bool is_active) {
     if (instance) {
