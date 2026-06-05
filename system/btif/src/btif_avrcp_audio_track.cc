@@ -162,6 +162,7 @@ void BtifAvrcpAudioTrackStart(void* handle) {
     if (result != AAUDIO_OK) {
       log::error("re-start failed, AAudio Error - {} in AAudioStream_requestStart()", result);
       AAudioStream_close(trackHolder->stream);
+      trackHolder->stream = nullptr;
     }
   }
 }
@@ -283,7 +284,10 @@ constexpr int64_t kTimeoutNanos = 100 * 1000 * 1000;  // 100 ms
 int BtifAvrcpAudioTrackWriteData(void* handle, void* audioBuffer, int bufferLength) {
   BtifAvrcpAudioTrack* trackHolder = static_cast<BtifAvrcpAudioTrack*>(handle);
   log::assert_that(trackHolder != NULL, "assert failed: trackHolder != NULL");
-  log::assert_that(trackHolder->stream != NULL, "assert failed: trackHolder->stream != NULL");
+  if (trackHolder->stream == NULL) {
+    log::error("Track.cpp: stream is null, cannot write");
+    return -1;
+  }
   aaudio_result_t retval = -1;
 
   size_t sampleSize = sampleSizeFor(trackHolder);
@@ -296,6 +300,36 @@ int BtifAvrcpAudioTrackWriteData(void* handle, void* audioBuffer, int bufferLeng
                                 transcodedCount / (sampleSize * trackHolder->channelCount),
                                 kTimeoutNanos);
     log::verbose("Track.cpp: btWriteData len = {} ret = {}", bufferLength, retval);
+
+    if (retval == AAUDIO_ERROR_DISCONNECTED) {
+      log::error("AAudio stream disconnected during write, re-creating stream");
+      AAudioStream_close(trackHolder->stream);
+
+      trackHolder->stream = buildAudioStream(
+          s_AudioEngine.trackFreq,
+          trackHolder->bitsPerSample,
+          s_AudioEngine.channelCount);
+
+      if (trackHolder->stream == nullptr) {
+        log::error("Failed to rebuild audio stream after write disconnect");
+        return retval;
+      }
+
+      trackHolder->bufferLength =
+          trackHolder->channelCount * AAudioStream_getBufferSizeInFrames(trackHolder->stream);
+
+      aaudio_result_t start_result = AAudioStream_requestStart(trackHolder->stream);
+      if (start_result != AAUDIO_OK) {
+        log::error("Failed to restart rebuilt stream after write disconnect: {}",
+                   start_result);
+        AAudioStream_close(trackHolder->stream);
+        trackHolder->stream = nullptr;
+        return start_result;
+      }
+
+      // Retry the write on the new stream
+      transcodedCount = 0;
+    }
   } while (transcodedCount < bufferLength);
 
   return transcodedCount;
