@@ -50,6 +50,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
      * the PA sync intact so the user can try again without rescanning.
      */
     private final MutableLiveData<Integer> mBigSyncLostBroadcastId = new MutableLiveData<>();
+    /** Pair(broadcastId, sdkReason) posted whenever BIG sync is lost unexpectedly. */
+    private final MutableLiveData<Pair<Integer, Integer>> mBigSyncLostWithReason =
+            new MutableLiveData<>();
 
     // Internal state
     private final Map<Integer, BluetoothLeBroadcastMetadata> mSyncedBroadcastMap = new HashMap<>();
@@ -257,15 +260,18 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         @Override
         public void onSinkStopped(int broadcastId, int reason) {
             Log.d(TAG, "onSinkStopped: broadcastId=" + broadcastId + ", reason=" + reason);
-            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST) {
-                // BIG sync lost unexpectedly (e.g. wrong broadcast code).
-                // PA sync is still intact — post LiveData so the Activity can offer a retry
-                // with a corrected broadcast code without the user having to rescan.
-                mStatusMessage.postValue("BIG sync lost for broadcast ID " + broadcastId
-                        + " — check broadcast code and retry");
+            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST
+                    || reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED
+                    || reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT) {
+                // BIG sync lost unexpectedly — post LiveData so the Activity can show
+                // a cause-specific dialog. PA sync is still intact for retry.
+                String causeMsg = sdkReasonToLabel(reason);
+                mStatusMessage.postValue("BIG sync lost (ID " + broadcastId + "): " + causeMsg);
                 mBigSyncLostBroadcastId.postValue(broadcastId);
+                mBigSyncLostWithReason.postValue(new Pair<>(broadcastId, reason));
             } else {
-                mStatusMessage.postValue("Left broadcast ID: " + broadcastId + " (reason: " + reason + ")");
+                mStatusMessage.postValue("Left broadcast ID: " + broadcastId
+                        + " (reason: " + reason + ")");
             }
             updateSyncedBroadcasts();
         }
@@ -651,6 +657,19 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         return mBigSyncLostBroadcastId;
     }
 
+    /**
+     * Fires alongside {@link #getBigSyncLostBroadcastId()} carrying
+     * the SDK reason code so the UI can distinguish:
+     *   REASON_BIG_SYNC_LOST_REMOTE_TERMINATED — PGO terminated BIG (0x13)
+     *   REASON_BIG_SYNC_LOST_TIMEOUT           — PGO out of range (0x08)
+     *   REASON_BIG_SYNC_LOST                   — other / unknown
+     *
+     * Value is a Pair(broadcastId, sdkReason).
+     */
+    public LiveData<Pair<Integer, Integer>> getBigSyncLostWithReason() {
+        return mBigSyncLostWithReason;
+    }
+
     public void getAllSyncedSinkStates() {
         if (mBroadcastSink == null) {
             mStatusMessage.postValue("Broadcast Sink service not available");
@@ -789,6 +808,18 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                 return "MAX_BIG_SYNC_REACHED";
             default:
                 return "UNKNOWN(" + reason + ")";
+        }
+    }
+
+    /** Maps a BIG sync lost SDK reason to a user-facing label. */
+    private static String sdkReasonToLabel(int reason) {
+        switch (reason) {
+            case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED:
+                return "PGO terminated the BIG";
+            case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT:
+                return "Out of range / connection timeout";
+            default:
+                return "BIG sync lost";
         }
     }
 }

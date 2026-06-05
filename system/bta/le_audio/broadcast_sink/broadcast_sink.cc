@@ -516,11 +516,21 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     tracked_sources_.erase(broadcast_id);
     log::info("Destroyed broadcast source: broadcast_id=0x{:08x}", broadcast_id);
 
-    // Stop and release audio HAL client if no more sources exist
-    if (tracked_sources_.empty() && le_audio_sink_hal_client_) {
-      log::info("No more sources, stopping and releasing audio HAL client");
-      le_audio_sink_hal_client_->Stop();
-      le_audio_sink_hal_client_.reset();
+    // When the last source is removed, stop and release both HAL clients.
+    if (tracked_sources_.empty()) {
+      if (le_audio_sink_hal_client_) {
+        log::info("No more sources, stopping and releasing sink HAL client");
+        le_audio_sink_hal_client_->Stop();
+        le_audio_sink_hal_client_.reset();
+      }
+      if (le_audio_source_hal_client_) {
+        log::info("No more sources, stopping and releasing source HAL client");
+        le_audio_source_hal_client_->Stop();
+        le_audio_source_hal_client_.reset();
+      }
+      /* Reset suspend flags so a fresh start finds them clean. */
+      pending_source_suspend_ = false;
+      pending_sink_suspend_   = false;
     }
   }
   void ReadSupportedStatesForSink(void) override {
@@ -1594,16 +1604,27 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         return;
       }
 
+      instance->pending_source_suspend_ = true;
+
       /* Source HAL suspend: remove TX ISO paths, then terminate BIG sync.
        * State machine calls OnBigSyncTerminated when done; BTA layer acks
-       * source HAL there via ConfirmSuspendRequest(). */
-      instance->pending_source_suspend_ = true;
+       * source HAL there via ConfirmSuspendRequest().
+       *
+       * When BIG sync is already lost (state = PA_SYNCED, IDLE, or BIG_SYNCING)
+       * the controller has already cleared all BIG/DBIG handles.  Send
+       * REMOVE_TX_PATHS anyway so the state machine can fire OnBigSyncTerminated()
+       * immediately (no HCI needed) and unblock achat_tx_enable=false. */
       for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
         if (!tracked_source.state_machine) continue;
+        if (!tracked_source.state_machine->IsEnhanced()) continue;
         auto st = tracked_source.state_machine->GetState();
-        if (tracked_source.state_machine->IsEnhanced() &&
-            (st == SinkState::BIG_SYNCED || st == SinkState::DISABLING)) {
-          log::info("Source HAL suspend: REMOVE_TX_PATHS for broadcast_id=0x{:08x}", broadcast_id);
+        if (st == SinkState::BIG_SYNCED  ||
+            st == SinkState::DISABLING   ||
+            st == SinkState::BIG_SYNCING ||
+            st == SinkState::PA_SYNCED   ||
+            st == SinkState::IDLE) {
+          log::info("Source HAL suspend: REMOVE_TX_PATHS for broadcast_id=0x{:08x} state={}",
+                    broadcast_id, SinkStateToString(st));
           tracked_source.state_machine->ProcessMessage(
               BroadcastSinkStateMachine::Message::REMOVE_TX_PATHS, nullptr);
           break;
@@ -1671,16 +1692,27 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         return;
       }
 
+      instance->pending_sink_suspend_ = true;
+
       /* Sink HAL suspend: remove RX ISO paths.
        * State machine calls OnRxIsoPathsRemoved when done; BTA layer acks
-       * sink HAL there via ConfirmSuspendRequest(). */
-      instance->pending_sink_suspend_ = true;
+       * sink HAL there via ConfirmSuspendRequest().
+       *
+       * When BIG sync is already lost (state = PA_SYNCED, IDLE, or BIG_SYNCING)
+       * the controller has already cleared all BIG/DBIG handles.  Send
+       * REMOVE_RX_PATHS anyway so the state machine can call OnRxIsoPathsRemoved()
+       * immediately (no HCI needed) and unblock achat_rx_enable=false. */
       for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
         if (!tracked_source.state_machine) continue;
+        if (!tracked_source.state_machine->IsEnhanced()) continue;
         auto st = tracked_source.state_machine->GetState();
-        if (tracked_source.state_machine->IsEnhanced() &&
-            (st == SinkState::BIG_SYNCED || st == SinkState::DISABLING)) {
-          log::info("Sink HAL suspend: REMOVE_RX_PATHS for broadcast_id=0x{:08x}", broadcast_id);
+        if (st == SinkState::BIG_SYNCED  ||
+            st == SinkState::DISABLING   ||
+            st == SinkState::BIG_SYNCING ||
+            st == SinkState::PA_SYNCED   ||
+            st == SinkState::IDLE) {
+          log::info("Sink HAL suspend: REMOVE_RX_PATHS for broadcast_id=0x{:08x} state={}",
+                    broadcast_id, SinkStateToString(st));
           tracked_source.state_machine->ProcessMessage(
               BroadcastSinkStateMachine::Message::REMOVE_RX_PATHS, nullptr);
           break;

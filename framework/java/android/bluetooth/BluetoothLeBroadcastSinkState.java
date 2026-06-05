@@ -92,6 +92,8 @@ public final class BluetoothLeBroadcastSinkState implements Parcelable {
         REASON_ENCRYPTION_FAILED_NO_KEY,
         REASON_BIG_SYNC_FAILED,
         REASON_BIG_SYNC_LOST,
+        REASON_BIG_SYNC_LOST_REMOTE_TERMINATED,
+        REASON_BIG_SYNC_LOST_TIMEOUT,
         REASON_DUPLICATE_ADD_REQUEST,
         REASON_DUPLICATE_JOIN_REQUEST,
         REASON_MAX_PA_SYNC_REACHED,
@@ -173,6 +175,19 @@ public final class BluetoothLeBroadcastSinkState implements Parcelable {
      * has reached the maximum broadcast source it can join.
      */
     public static final int REASON_MAX_BIG_SYNC_REACHED = 111;
+
+    /**
+     * BIG sync was lost because the PGO (broadcast source) explicitly terminated
+     * the BIG via HCI_LE_Terminate_BIG.
+     * HCI disconnect reason: 0x13 (Remote User Terminated Connection).
+     */
+    public static final int REASON_BIG_SYNC_LOST_REMOTE_TERMINATED = 112;
+
+    /**
+     * BIG sync was lost because the PGO moved out of range or the link was lost.
+     * HCI disconnect reason: 0x08 (Connection Timeout).
+     */
+    public static final int REASON_BIG_SYNC_LOST_TIMEOUT = 113;
 
     private final int mBroadcastId;
     private final @SinkState int mSinkState;

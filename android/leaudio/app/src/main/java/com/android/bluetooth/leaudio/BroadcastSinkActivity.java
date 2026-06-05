@@ -313,11 +313,14 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             }
         });
 
-        // Observe unexpected BIG sync loss — PA sync is still intact so we can retry
-        mViewModel.getBigSyncLostBroadcastId().observe(this, broadcastId -> {
-            if (broadcastId == null) return;
-            Log.i(TAG, "BIG sync lost for broadcastId=" + broadcastId + ", showing retry dialog");
-            showBigSyncLostRetryDialog(broadcastId);
+        // Observe unexpected BIG sync loss with specific SDK reason for cause-specific UI
+        mViewModel.getBigSyncLostWithReason().observe(this, pair -> {
+            if (pair == null) return;
+            int broadcastId = pair.first;
+            int sdkReason   = pair.second;
+            Log.i(TAG, "BIG sync lost callback: broadcastId=" + broadcastId
+                    + ", sdkReason=" + sdkReason);
+            showBigSyncLostRetryDialog(broadcastId, sdkReason);
         });
     }
 
@@ -736,20 +739,33 @@ public class BroadcastSinkActivity extends AppCompatActivity {
      * PA sync is still active so the user can retry without rescanning.
      * The user must explicitly press "Retry" to start a new BIG sync attempt.
      */
-    private void showBigSyncLostRetryDialog(int broadcastId) {
-        String title = "BIG Sync Lost (ID: " + broadcastId + ")";
-        String message = "BIG sync was lost.\n\n"
-                + "If PA sync is still active (wrong broadcast code), press\n"
-                + "\"Retry with Code\" to enter the correct code.\n\n"
-                + "If PA sync was also lost, press \"Re-add Source\" to\n"
-                + "restart PA sync, then retry BIG sync.";
+    private void showBigSyncLostRetryDialog(int broadcastId, int sdkReason) {
+        String cause;
+        String suggestion;
+        if (sdkReason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED) {
+            cause      = "PGO terminated the BIG";
+            suggestion = "The broadcast source ended the session.\n"
+                       + "If PA sync is still active, press \"Retry\" to re-sync to BIG.";
+        } else if (sdkReason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT) {
+            cause      = "PGO out of range (connection timeout)";
+            suggestion = "Move closer to the broadcast source, then press \"Retry\" or\n"
+                       + "\"Re-add Source\" to restart PA sync.";
+        } else {
+            cause      = "BIG sync lost";
+            suggestion = "Press \"Retry with Code\" or \"Re-add Source\" to recover.";
+        }
+
+        String title   = "BIG Sync Lost (ID: " + broadcastId + ")";
+        String message = "Cause: " + cause + "\n\n" + suggestion;
+
+        Log.i(TAG, "showBigSyncLostRetryDialog: broadcastId=" + broadcastId
+                + " sdkReason=" + sdkReason + " cause=" + cause);
 
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton("Retry with Code", (dialog, which) -> {
                     if (mLastEnhancedMetadata != null) {
-                        Log.d(TAG, "User chose to retry BIG sync for broadcastId=" + broadcastId);
                         showEnhancedBroadcastCodeDialog(mLastEnhancedMetadata);
                     } else {
                         Toast.makeText(this,
@@ -758,7 +774,6 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                     }
                 })
                 .setNeutralButton("Re-add Source", (dialog, which) -> {
-                    Log.d(TAG, "User chose to re-add source for broadcastId=" + broadcastId);
                     mViewModel.addSource(broadcastId);
                     Toast.makeText(this,
                             "Re-establishing PA sync for broadcast ID: " + broadcastId,

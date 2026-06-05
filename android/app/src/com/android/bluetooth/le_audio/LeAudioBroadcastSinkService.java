@@ -193,6 +193,8 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         public boolean mIsEnhanced;
         public BluetoothLeBroadcastMetadata mPendingMetadataUpdate;
         public final List<Integer> mBisIndices;
+        /** Raw HCI reason code from the last BIG_SYNC_LOST event (0x08, 0x13, 0x16, etc.) */
+        public int mBigSyncLostHciReason = 0;
     }
 
     // Broadcast sink descriptors - maintains internal state and metadata for each broadcast
@@ -1209,32 +1211,29 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     break;
                 }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_LOST: {
-                    // BIG sync lost — the only ISO-layer loss event forwarded to Java.
+                    int hciReason = event.reason;
                     if (DBG) Log.d(TAG, "BIG sync lost: broadcastId=" + event.broadcastId
                             + ", bigHandle=" + event.valueInt1
-                            + ", reason=0x" + Integer.toHexString(event.reason));
+                            + ", hciReason=0x" + Integer.toHexString(hciReason)
+                            + " (" + hciReasonToString(hciReason) + ")");
                     LeAudioBroadcastSinkDescriptor bigLostDesc =
                             mBroadcastSinkDescriptors.get(event.broadcastId);
                     if (bigLostDesc != null) {
                         bigLostDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
-                        // Clear any pending metadata update since this was unexpected
+                        bigLostDesc.mBigSyncLostHciReason = hciReason;
                         bigLostDesc.mPendingMetadataUpdate = null;
                     }
 
-                    // Stop source + sink audio sessions.
                     mIsEnhancedStreaming = false;
-                    // Mark that we have already notified onSinkStopped so the follow-on
-                    // EVENT_TYPE_BIG_SYNC_TERMINATED (from source-HAL ack) is suppressed.
                     mBigSyncLostPending = true;
                     if (DBG) Log.d(TAG, "BIG sync lost: sending MSG_STOP");
                     mHandler.sendEmptyMessage(MSG_STOP);
-                    // Post MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP so the active device
-                    // is cleared only after HAL teardown fully completes (FIFO handler).
                     if (DBG) Log.d(TAG, "BIG sync lost: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
                     mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
 
-                    notifyOnSinkStopped(event.broadcastId,
-                            BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST);
+                    // Map HCI reason → specific SDK reason so onSinkStopped() carries
+                    // the full cause without needing a separate callback.
+                    notifyOnSinkStopped(event.broadcastId, hciReasonToSdkReason(hciReason));
                     break;
                 }
                 default:
@@ -1242,6 +1241,33 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     break;
             }
         });
+    }
+
+    /** Returns a human-readable string for a raw HCI disconnect reason code. */
+    private static String hciReasonToString(int reason) {
+        switch (reason) {
+            case 0x08: return "Connection Timeout (out-of-range)";
+            case 0x13: return "Remote User Terminated (PGO terminated BIG)";
+            case 0x16: return "Local Host Terminated (PGP terminated sync)";
+            case 0x3D: return "MIC Failure (wrong broadcast code)";
+            default:   return "Unknown (0x" + Integer.toHexString(reason) + ")";
+        }
+    }
+
+    /**
+     * Maps a raw HCI disconnect reason from BIG_SYNC_LOST to the most specific
+     * SDK reason constant so {@code onSinkStopped()} carries the full cause.
+     *
+     *   HCI 0x13 (Remote User Terminated) → PGO sent HCI_LE_Terminate_BIG
+     *   HCI 0x08 (Connection Timeout)     → PGO out of range / link lost
+     *   anything else                      → generic REASON_BIG_SYNC_LOST
+     */
+    private static int hciReasonToSdkReason(int hciReason) {
+        switch (hciReason) {
+            case 0x13: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED;
+            case 0x08: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT;
+            default:   return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST;
+        }
     }
 
     @SuppressLint("AndroidFrameworkRequiresPermission")
