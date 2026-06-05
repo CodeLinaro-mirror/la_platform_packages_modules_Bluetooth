@@ -1631,9 +1631,10 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
       if (!instance) return;
 
-      /* This is the 1st HIDL start (source HAL client).
-       * Forward to the enhanced state machine in BIG_SYNCING state so it
-       * sends the enhanced broadcast command (phase IDLE -> DBIG_SETUP). */
+      /* --- Normal enhanced-broadcast start path ---
+       * State is BIG_SYNCING: this is the 1st HIDL start.  Forward to the
+       * state machine so it sends the enhanced broadcast command
+       * (phase IDLE -> DBIG_SETUP). */
       for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
         if (!tracked_source.state_machine) continue;
 
@@ -1644,7 +1645,44 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
                     "source broadcast_id=0x{:08x}", broadcast_id);
           tracked_source.state_machine->OnAudioStart();
           /* Only one enhanced source active at a time */
-          break;
+          return;
+        }
+      }
+
+      /* --- ADSP SSR recovery path ---
+       * After ADSP SSR, MM audio HAL sends OnAudioSuspend (teardown completes:
+       * state → PA_SYNCED) then OnAudioResume (restart).  At this point:
+       *   - State = PA_SYNCED  (BIG sync torn down, pa_sync_info_ still set)
+       *   - base_data_ and is_enhanced_ are intact (BT FW was not reset)
+       *   - BIG sync info is gone (controller cleared BIG during SSR teardown)
+       *
+       * Re-send START_BIG_SYNC to restart the full DBIG+ISO path setup without
+       * any Java involvement, as if startEnhancedBroadcastSink() were called
+       * again with the same parameters. */
+      for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
+        if (!tracked_source.state_machine) continue;
+        if (!tracked_source.state_machine->IsEnhanced()) continue;
+
+        auto state = tracked_source.state_machine->GetState();
+        if (state == SinkState::PA_SYNCED) {
+          log::info("Source HAL OnAudioResume: ADSP SSR recovery — re-sending "
+                    "START_BIG_SYNC for broadcast_id=0x{:08x}", broadcast_id);
+          /* Re-register DBIG callbacks in case they were cleared during teardown. */
+          if (!instance->dbig_callbacks_registered_) {
+            IsoManager::GetInstance()->RegisterDbigCallbacks(instance);
+            instance->dbig_callbacks_registered_ = true;
+          }
+          /* START_BIG_SYNC transitions PA_SYNCED → BIG_SYNCING and sets
+           * enhanced_iso_phase_=IDLE, then waits for OnAudioStart() (1st HIDL
+           * start).  Since THIS callback IS the 1st HIDL start, call
+           * OnAudioStart() immediately after. */
+          tracked_source.state_machine->ProcessMessage(
+              BroadcastSinkStateMachine::Message::START_BIG_SYNC, nullptr);
+          tracked_source.state_machine->OnAudioStart();
+          log::info("Source HAL OnAudioResume: SSR recovery — DBIG setup triggered for "
+                    "broadcast_id=0x{:08x}", broadcast_id);
+          /* Only one enhanced source active at a time */
+          return;
         }
       }
     }
