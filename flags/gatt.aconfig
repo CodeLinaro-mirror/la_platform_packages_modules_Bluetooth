@@ -38,3 +38,11 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "gatt_offload_api"
+    namespace: "bluetooth"
+    description: "New gatt API to offload characteristics"
+    bug: "427099808"
+    is_exported: true
+}
