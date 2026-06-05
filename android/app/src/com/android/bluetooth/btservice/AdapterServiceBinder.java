@@ -532,6 +532,18 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    public void loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data, AttributionSource source) {
+        var service = getServiceAndEnforceCallerUserAndConnect(source, "loadRemoteOobData");;
+        if (service == null) {
+            return;
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_CONNECT, null);
+        service.loadRemoteOobData(device, transport, remoteP192Data, remoteP256Data);
+    }
+
+    @Override
     public int[] getSupportedProfiles(AttributionSource source) {
         var service = getServiceAndEnforceConnect(source, "getSupportedProfiles");
         if (service == null) {

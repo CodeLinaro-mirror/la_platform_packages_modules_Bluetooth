@@ -3222,6 +3222,14 @@ public class AdapterService extends Service {
         }
     }
 
+    public boolean loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data) {
+        byte[] addr = Util.getBytesFromAddress(device.getAddress());
+        return mNativeInterface.loadRemoteOobData(
+                addr, transport, remoteP192Data, remoteP256Data);
+    }
+
     public boolean isQuietModeEnabled() {
         Log.d(TAG, "isQuietModeEnabled(): Enabled = " + mQuietMode);
         return mQuietMode;

@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -45,6 +50,21 @@
  *
  ******************************************************************************/
 void bta_dm_ci_rmt_oob(bool accept, const RawAddress& bd_addr, const Octet16& c, const Octet16& r);
+/*******************************************************************************
+ *
+ * Function         bta_dm_ci_rmt_oob_extended
+ *
+ * Description      This function must be called in response to function
+ *                  bta_dm_co_rmt_oob() to provide the OOB data associated
+ *                  with the remote device.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+extern void bta_dm_ci_rmt_oob_extended(bool accept, const RawAddress& bd_addr,
+                                       const Octet16& c192, const Octet16& r192,
+                                       const Octet16& c256, const Octet16& r256);
+
 /*******************************************************************************
  *
  * Function         bta_dm_sco_ci_data_ready

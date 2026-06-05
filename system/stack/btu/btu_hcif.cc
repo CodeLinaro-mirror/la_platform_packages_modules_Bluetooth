@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -1302,11 +1307,15 @@ void btu_hcif_read_local_oob_extended_complete(bluetooth::hci::CommandCompleteVi
   } else {
     evt_data.status = tBTM_STATUS::BTM_ERR_PROCESSING;
   }
-  evt_data.c_192 = read_local_oob_extended_complete_view.GetC192();
-  evt_data.r_192 = read_local_oob_extended_complete_view.GetR192();
-  evt_data.c_256 = read_local_oob_extended_complete_view.GetC256();
-  evt_data.r_256 = read_local_oob_extended_complete_view.GetR256();
-  btm_read_local_oob_complete(evt_data);
+  auto c_192 = read_local_oob_extended_complete_view.GetC192();
+  auto r_192 = read_local_oob_extended_complete_view.GetR192();
+  auto c_256 = read_local_oob_extended_complete_view.GetC256();
+  auto r_256 = read_local_oob_extended_complete_view.GetR256();
+  std::reverse_copy(c_192.begin(), c_192.end(), evt_data.c_192.begin());
+  std::reverse_copy(r_192.begin(), r_192.end(), evt_data.r_192.begin());
+  std::reverse_copy(c_256.begin(), c_256.end(), evt_data.c_256.begin());
+  std::reverse_copy(r_256.begin(), r_256.end(), evt_data.r_256.begin());
+  btm_read_local_oob_extended_complete(evt_data);
 }
 
 /*******************************************************************************

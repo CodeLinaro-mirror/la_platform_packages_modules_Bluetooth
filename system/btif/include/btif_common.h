@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 #ifndef BTIF_COMMON_H
@@ -150,8 +155,8 @@ void invoke_pin_request_cb(RawAddress bd_addr, bt_bdname_t bd_name, uint32_t cod
                            int pairing_algorithm);
 void invoke_ssp_request_cb(RawAddress bd_addr, int transport, PairingVariant pairing_variant,
                            uint32_t pass_key, int pairing_algorithm);
-void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c, Octet16 r,
-                                RawAddress raw_address, uint8_t address_type);
+void invoke_oob_data_request_cb(tBT_TRANSPORT t, bool valid, Octet16 c, Octet16 r, Octet16 c_256,
+                                Octet16 r_256, RawAddress raw_address, uint8_t address_type);
 void invoke_bond_state_changed_cb(bt_status_t status, RawAddress bd_addr, tBT_TRANSPORT transport,
                                   bt_bond_state_t state, PairingType pairing_type, int fail_reason,
                                   PairingInitiator pairing_initiator);
