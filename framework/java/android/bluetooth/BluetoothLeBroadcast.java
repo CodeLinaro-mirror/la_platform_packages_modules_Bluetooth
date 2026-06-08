@@ -1038,6 +1038,120 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Set Achat-specific attributes for the broadcast source.
+     *
+     * <p>This method allows setting device-specific attributes including a 12-bit device ID
+     * and a shortened device name for Achat functionality.
+     *
+     * @param devId Device ID (12-bit value, 0-4095). Will be packed into 2 octets with
+     *              the most significant 4 bits set to 0.
+     * @param name Device name (up to 10 octets, UTF-8 encoded). If null or empty,
+     *             defaults to all zeros. If longer than 10 octets, will be truncated.
+     * @throws IllegalArgumentException if devId is not in the valid range (0-4095) or
+     *                                  if name length exceeds 10 octets
+     * @throws IllegalStateException if callback was not registered
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+    })
+    public void setAchatAttributes(int devId, @NonNull byte[] name) {
+        // Validate devId (12-bit, 0-4095)
+        if (devId < 0 || devId > 4095) {
+            Log.e(TAG, "setAchatAttributes: invalid devId=" + devId + " (must be 0-4095)");
+            throw new IllegalArgumentException(
+                    "Invalid devId: " + devId + ". Must be 0-4095 (12-bit)");
+        }
+
+        // Validate name: must not be null
+        Objects.requireNonNull(name, "name cannot be null");
+
+        // Validate name: must not be empty
+        if (name.length == 0) {
+            Log.e(TAG, "setAchatAttributes: name is empty, ignoring request");
+            return;
+        }
+
+        // Validate name: must not exceed 10 octets
+        if (name.length > 10) {
+            Log.e(TAG, "setAchatAttributes: name length=" + name.length
+                    + " exceeds 10 octets, ignoring request");
+            return;
+        }
+
+        // Validate name: must not be all spaces and must not contain any space
+        String nameStr = new String(name, java.nio.charset.StandardCharsets.UTF_8);
+        if (nameStr.trim().isEmpty()) {
+            Log.e(TAG, "setAchatAttributes: name consists entirely of spaces, ignoring request");
+            return;
+        }
+        if (nameStr.contains(" ")) {
+            Log.e(TAG, "setAchatAttributes: name contains space character(s): \""
+                    + nameStr + "\", ignoring request");
+            return;
+        }
+
+        byte[] nameBytes = name;
+
+        if (DBG) Log.d(TAG, "setAchatAttributes: devId=" + devId
+                + ", name=\"" + nameStr + "\", nameLen=" + name.length);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) Log.d(TAG, Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                service.setAchatAttributes(devId, nameBytes, mAttributionSource, recv);
+                recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+            } catch (TimeoutException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } catch (SecurityException e) {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * Set DBIG Join Control mode for the broadcast source.
+     *
+     * <p>Controls whether the broadcast source joins or leaves the DBIG (Dynamic Broadcast
+     * Isochronous Group).
+     *
+     * @param mode true to join the DBIG, false to leave
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+    })
+    public void setDbigJoinControl(boolean mode) {
+        if (DBG) Log.d(TAG, "setDbigJoinControl: mode=" + mode);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) Log.d(TAG, Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                service.setDbigJoinControl(mode, mAttributionSource, recv);
+                recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+            } catch (TimeoutException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } catch (SecurityException e) {
+                throw e;
+            }
+        }
+    }
+
+    /**
      * {@inheritDoc}
      * @hide
      */
