@@ -27,6 +27,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.util.Log;
@@ -37,6 +38,7 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.NumberPicker;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -630,8 +632,12 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 joinRow.addView(btnJoinDisable);
                                 container.addView(joinRow);
 
+                                // Wrap the container in a ScrollView to handle landscape orientation
+                                ScrollView scrollView = new ScrollView(this);
+                                scrollView.addView(container);
+
                                 modifyAlert
-                                        .setView(container)
+                                        .setView(scrollView)
                                         .setNegativeButton(
                                                 "Cancel",
                                                 (modifyDialog, modifyWhich) -> {
@@ -950,6 +956,23 @@ public class BroadcasterActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        Log.d(TAG, "Configuration changed - orientation: " + newConfig.orientation);
+
+        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            Log.d(TAG, "Switched to landscape mode");
+        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            Log.d(TAG, "Switched to portrait mode");
+        }
+
+        if (mCurrentInfoDialog != null && mCurrentInfoDialog.isShowing()) {
+            Log.d(TAG, "Refreshing dialog due to orientation change");
+            refreshDialogIfVisible();
+        }
     }
 
     /**

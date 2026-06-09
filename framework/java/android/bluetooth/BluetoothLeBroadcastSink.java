@@ -979,11 +979,11 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         }
         requireNonNull(name, "name cannot be null");
         if (name.length == 0) {
-            Log.e(TAG, "setAchatAttributes: name is empty, ignoring request");
+            Log.e(TAG, "setAttributes: name is empty, ignoring request");
             return;
         }
         if (name.length > 10) {
-            Log.e(TAG, "setAchatAttributes: name length=" + name.length
+            Log.e(TAG, "setAttributes: name length=" + name.length
                     + " exceeds 10 octets, ignoring request");
             return;
         }
@@ -997,15 +997,15 @@ public final class BluetoothLeBroadcastSink implements BluetoothProfile, AutoClo
         }
         String nameStr = new String(name, 0, actualLength, java.nio.charset.StandardCharsets.UTF_8);
         if (nameStr.trim().isEmpty()) {
-            Log.e(TAG, "setAchatAttributes: name consists entirely of spaces, ignoring request");
+            Log.e(TAG, "setAttributes: name consists entirely of spaces, ignoring request");
             return;
         }
         if (nameStr.contains(" ")) {
-            Log.e(TAG, "setAchatAttributes: name contains space character(s): \""
+            Log.e(TAG, "setAttributes: name contains space character(s): \""
                     + nameStr + "\", ignoring request");
             return;
         }
-        if (DBG) log("setAchatAttributes: devId=" + devId
+        if (DBG) log("setAttributes: devId=" + devId
                 + ", name=\"" + nameStr + "\", nameLen=" + name.length);
         final IBluetoothLeBroadcastSink service = getService();
         if (service == null) {

@@ -32,6 +32,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -313,9 +314,13 @@ public class MainActivity extends AppCompatActivity {
                 new android.text.InputFilter.LengthFilter(10)});
         layout.addView(nameInput);
 
+        // Wrap the layout in a ScrollView to handle landscape orientation
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(layout);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Set Attributes (Sink)");
-        builder.setView(layout);
+        builder.setView(scrollView);
         builder.setNegativeButton("Cancel", (dialog, which) -> { /* no-op */ });
         builder.setPositiveButton("Set", null);
 
@@ -397,9 +402,13 @@ public class MainActivity extends AppCompatActivity {
                 new android.text.InputFilter.LengthFilter(10)});
         layout.addView(nameInput);
 
+        // Wrap the layout in a ScrollView to handle landscape orientation
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(layout);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Set Attributes (PGO)");
-        builder.setView(layout);
+        builder.setView(scrollView);
         builder.setNegativeButton("Cancel", (dialog, which) -> { /* no-op */ });
         builder.setPositiveButton("Set", null);
 

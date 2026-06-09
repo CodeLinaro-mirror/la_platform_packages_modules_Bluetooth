@@ -164,7 +164,7 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
                 mStopEnhancedBroadcastSinkButton.setEnabled(false);
                 mRemoveSourceButton.setEnabled(false);
             } else {
-                // PA synced - "Join", "Leave", and "Remove" are available
+                // PA synced - "Join", "Stop Enhanced Sink", and "Remove" are available
                 mAddSourceButton.setEnabled(false);
                 mStartEnhancedBroadcastSinkButton.setEnabled(true);
                 // Enable Acquire/Release when local device occupies a BIS (can release)

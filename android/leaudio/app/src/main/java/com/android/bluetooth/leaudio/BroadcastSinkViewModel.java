@@ -18,6 +18,7 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.util.Log;
+import android.util.Pair;
 
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
@@ -283,13 +284,13 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             String message;
             switch (reason) {
                 case BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS:
-                    message = "Leave failed for broadcast ID " + broadcastId + ": Invalid broadcast ID";
+                    message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + ": Invalid broadcast ID";
                     break;
                 case BluetoothLeBroadcastSinkState.REASON_HARDWARE_GENERIC:
-                    message = "Leave failed for broadcast ID " + broadcastId + ": Hardware error";
+                    message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + ": Hardware error";
                     break;
                 default:
-                    message = "Leave failed for broadcast ID " + broadcastId + " (" + getReasonString(reason) + ")";
+                    message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + " (" + getReasonString(reason) + ")";
                     break;
             }
             mStatusMessage.postValue(message);
@@ -559,10 +560,10 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
         try {
             mBroadcastSink.stopEnhancedBroadcastSink(broadcastId);
-            mStatusMessage.postValue("Leaving broadcast ID: " + broadcastId);
+            mStatusMessage.postValue("Stopping Enhanced Sink for broadcast ID: " + broadcastId);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to leave source", e);
-            mStatusMessage.postValue("Failed to leave: " + e.getMessage());
+            Log.e(TAG, "Failed to stop enhanced sink", e);
+            mStatusMessage.postValue("Failed to stop enhanced sink: " + e.getMessage());
         }
     }
 
@@ -760,7 +761,7 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             case BluetoothLeBroadcastSinkState.SINK_STATE_RECEIVING_BROADCAST:
                 return "RECEIVING_BROADCAST";
             case BluetoothLeBroadcastSinkState.SINK_STATE_LEAVING_BROADCAST:
-                return "LEAVING_BROADCAST";
+                return "STOPPING_ENHANCED_SINK";
             case BluetoothLeBroadcastSinkState.SINK_STATE_UPDATING_BROADCAST:
                 return "UPDATING_BROADCAST";
             default:

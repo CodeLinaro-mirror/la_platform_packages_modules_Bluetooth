@@ -88,7 +88,7 @@ SPDX-License-Identifier: BSD-3-Clause-Clear -->
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Leave"
+                android:text="Stop Enhanced Sink"
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="4dp"
                 style="@android:style/Widget.Button.Small" />

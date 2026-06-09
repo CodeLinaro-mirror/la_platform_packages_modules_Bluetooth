@@ -9,11 +9,13 @@ import android.app.AlertDialog;
 import android.bluetooth.BluetoothLeBroadcast;
 import android.bluetooth.BluetoothLeBroadcastChannel;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
+import android.bluetooth.BluetoothLeBroadcastSinkState;
 import android.bluetooth.BluetoothLeBroadcastSubgroup;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -203,6 +205,18 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         super.onDestroy();
         if (mViewModel != null) {
             mViewModel.cleanup();
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        Log.d(TAG, "Configuration changed - orientation: " + newConfig.orientation);
+
+        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            Log.d(TAG, "Switched to landscape mode");
+        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            Log.d(TAG, "Switched to portrait mode");
         }
     }
 
@@ -410,9 +424,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     }
 
     private void onStopEnhancedBroadcastSink(int broadcastId) {
-        Log.d(TAG, "Leave source (stop BIG sync): broadcastId=" + broadcastId);
+        Log.d(TAG, "Stop Enhanced Sink (stop BIG sync): broadcastId=" + broadcastId);
         mViewModel.stopEnhancedBroadcastSink(broadcastId);
-        Toast.makeText(this, "Leaving broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Stopping Enhanced Sink for broadcast ID: " + broadcastId, Toast.LENGTH_SHORT).show();
     }
 
     private void onRemoveSource(int broadcastId) {

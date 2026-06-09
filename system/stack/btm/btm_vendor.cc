@@ -1255,7 +1255,7 @@ void BTM_SetAttributes(const std::vector<uint8_t>& dev_id,
   uint16_t device_id = static_cast<uint16_t>(dev_id[0]) |
                        (static_cast<uint16_t>(dev_id[1] & 0x0F) << 8);
 
-  log::info("BTM_SetAchatAttributes: device_id=0x{:03x}", device_id);
+  log::info("BTM_SetAttributes: device_id=0x{:03x}", device_id);
 
   bluetooth::hci::iso_manager::dbig_set_devid_params params;
   params.dev_id = device_id;
@@ -1279,7 +1279,7 @@ void BTM_SetAttributes(const std::vector<uint8_t>& dev_id,
  *
  ******************************************************************************/
 void BTM_SetJoinControl(bool enable) {
-  log::info("BTM_SetDbigJoinControl: enable={}", enable);
+  log::info("BTM_SetJoinControl: enable={}", enable);
 
   bluetooth::hci::iso_manager::dbig_join_control_params params;
   params.dbig_handle = 0;
