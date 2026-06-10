@@ -612,8 +612,13 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr, tBLE_ADDR_TYPE 
 
   /* Other security process is in progress */
   if (btm_sec_cb.pairing_state != BTM_PAIR_STATE_IDLE) {
-    log::error("BTM_SecBond: already busy in state: {}",
-               tBTM_SEC_CB::btm_pair_state_descr(btm_sec_cb.pairing_state));
+    if (btm_sec_cb.pairing_bda == bd_addr) {
+      log::warn("Already pairing with {}", bd_addr);
+      return tBTM_STATUS::BTM_CMD_STARTED;
+    }
+    log::error("Already busy in state: {} pairing with {}",
+               tBTM_SEC_CB::btm_pair_state_descr(btm_sec_cb.pairing_state),
+               btm_sec_cb.pairing_bda);
     return tBTM_STATUS::BTM_WRONG_MODE;
   }
 
