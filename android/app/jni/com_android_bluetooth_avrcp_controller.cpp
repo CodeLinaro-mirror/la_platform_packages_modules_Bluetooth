@@ -619,9 +619,13 @@ static void btavrcp_now_playing_content_changed_callback(const RawAddress& bd_ad
   }
 
   log::info("");
-
+  std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
   if (!sCallbackEnv.valid()) {
+    return;
+  }
+  if (!sCallbacksObj) {
+    log::error("sCallbacksObj is null");
     return;
   }
 
