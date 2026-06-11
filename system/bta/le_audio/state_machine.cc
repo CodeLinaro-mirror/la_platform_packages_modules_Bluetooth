@@ -2309,8 +2309,9 @@ private:
     }
 
     // Check if HDT PHY is selected in either direction and ensure symmetric PHY
+    log::info(" phy_c_to_p: {}", phy_c_to_p);
     if ((phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
-           group->GetConfigurationContextType() == LeAudioContextType::MEDIA) {
+          le_audio::utils::isContextForHDT(group->GetConfigurationContextType())) {
       // If mtos has HDT, copy mtos PHY to stom for symmetric configuration
       phy_p_to_c = phy_c_to_p;
       log::info("HDT PHY selected in mtos, using symmetric PHY: mtos=0x{:02x}, stom=0x{:02x}",
@@ -2368,8 +2369,8 @@ private:
       auto device = group->GetFirstActiveDevice();
       auto controller = bluetooth::shim::GetController();
       if(hdt_enabled &&
-           group->GetConfigurationContextType() == LeAudioContextType::MEDIA &&
-           device && (device->GetPhyBitmask() & bluetooth::hci::kIsoCigPhyHdt) &&
+           le_audio::utils::isContextForHDT(group->GetConfigurationContextType()) &&
+           (cis_cfg.phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
            (controller && controller->SupportsBleHDTPhy())) {
         log::info("Fill HDT parameters in CIS");
         cis_cfg.coded_rates_c_to_p = 0x0003;

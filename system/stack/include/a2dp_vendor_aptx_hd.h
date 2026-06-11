@@ -124,12 +124,6 @@ std::string A2DP_VendorCodecInfoStringAptxHd(const uint8_t* p_codec_info);
 // and supported, otherwise NULL.
 const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptxHd(const uint8_t* p_codec_info);
 
-// Adjusts the A2DP aptX-HD codec, based on local support and Bluetooth
-// specification.
-// |p_codec_info| contains the codec information to adjust.
-// Returns true if |p_codec_info| is valid and supported, otherwise false.
-bool A2DP_VendorAdjustCodecAptxHd(uint8_t* p_codec_info);
-
 // Initializes A2DP aptX-HD Source codec information into |AvdtpSepConfig|
 // configuration entry pointed by |p_cfg|.
 bool A2DP_VendorInitCodecConfigAptxHd(AvdtpSepConfig* p_cfg);

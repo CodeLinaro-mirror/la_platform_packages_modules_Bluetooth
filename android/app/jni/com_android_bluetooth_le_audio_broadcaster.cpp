@@ -108,13 +108,19 @@ public:
     std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterCallbacksMutex);
     CallbackEnv sCallbackEnv(__func__);
 
+    if (!sCallbackEnv.valid() || sBroadcasterCallbacksObj == nullptr) {
+      return;
+    }
+
     ScopedLocalRef<jobject> metadata_obj(
             sCallbackEnv.get(),
             prepareBluetoothLeBroadcastMetadataObject(sCallbackEnv.get(), broadcast_metadata));
 
-    if (!sCallbackEnv.valid() || sBroadcasterCallbacksObj == nullptr) {
+    if (!metadata_obj.get()) {
+      log::warn("Failed to prepare broadcast metadata object, skipping callback");
       return;
     }
+
     sCallbackEnv->CallVoidMethod(sBroadcasterCallbacksObj, method_onBroadcastMetadataChanged,
                                  (jint)broadcast_id, metadata_obj.get());
   }

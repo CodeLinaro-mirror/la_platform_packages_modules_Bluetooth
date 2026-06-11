@@ -700,24 +700,12 @@ class BassClientStateMachine extends StateMachine {
                 recvState.getPaSyncState()
                         == BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_FAILED_TO_SYNCHRONIZE) {
             log("Bad code, remove this source...");
-            int sourceId = recvState.getSourceId();
-            if (recvState.getPaSyncState()
-                    == BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_SYNCHRONIZED) {
-                BluetoothLeBroadcastMetadata metaDataToUpdate =
-                        getCurrentBroadcastMetadata(sourceId);
-                if (metaDataToUpdate != null) {
-                    log("Force source to lost PA sync");
-                    Message msg = obtainMessage(UPDATE_BCAST_SOURCE);
-                    msg.arg1 = sourceId;
-                    msg.arg2 = BluetoothLeBroadcastReceiveState.PA_SYNC_STATE_IDLE;
-                    msg.obj = metaDataToUpdate;
-                    sendMessage(msg);
-                    return;
-                }
-            }
+            // REMOVE_BCAST_SOURCE handler checks isSyncedToTheSource (PA or BIS) and calls
+            // handleSourceSynchronizationChange with setPendingRemove=true if still synced,
+            // ensuring the source is unsynced before removal is issued.
             Message m = obtainMessage(BassClientStateMachine.REMOVE_BCAST_SOURCE);
             m.arg1 = recvState.getSourceId();
-            sendMessageDelayed(m, BassConstants.REMOVE_SOURCE_TIMEOUT_MS);
+            sendMessage(m);
         }
     }
 

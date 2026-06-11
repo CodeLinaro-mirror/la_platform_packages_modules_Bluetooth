@@ -172,12 +172,6 @@ const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceOpus(const uint8_t*
 // supported, otherwise NULL.
 const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterfaceOpus(const uint8_t* p_codec_info);
 
-// Adjusts the A2DP Opus codec, based on local support and Bluetooth
-// specification.
-// |p_codec_info| contains the codec information to adjust.
-// Returns true if |p_codec_info| is valid and supported, otherwise false.
-bool A2DP_VendorAdjustCodecOpus(uint8_t* p_codec_info);
-
 // Initializes A2DP Opus Source codec information into |AvdtpSepConfig|
 // configuration entry pointed by |p_cfg|.
 bool A2DP_VendorInitCodecConfigOpus(AvdtpSepConfig* p_cfg);

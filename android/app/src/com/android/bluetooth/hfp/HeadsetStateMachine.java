@@ -40,6 +40,7 @@ import android.bluetooth.hfp.BluetoothHfpProtoEnums;
 import android.content.Intent;
 import android.media.AudioManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
@@ -1437,11 +1438,27 @@ class HeadsetStateMachine extends StateMachine {
                 // Checking for the Blacklisted device Addresses
                 mIsBlacklistedDeviceforRetrySCO = isConnectedDeviceBlacklistedforRetrySco();
 
-                if (mSystemInterface.isInCall() || mSystemInterface.isRinging()) {
+                if ((mSystemInterface.isInCall() || mSystemInterface.isRinging())
+                                && !mSystemInterface.isScoManagedByAudioEnabled()) {
                     Log.w(TAG, "call is in ringing/present, suspending a2dp/le audio");
                     mSystemInterface.getAudioManager().setA2dpSuspended(true);
                     if (isAtLeastU()) {
-                        mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                        if (Utils.isDualModeAudioEnabled()) {
+                            Bundle preferredAudioProfiles =
+                                    mAdapterService.getPreferredAudioProfiles(mDevice);
+                            if (preferredAudioProfiles != null && !preferredAudioProfiles.isEmpty()
+                                            && preferredAudioProfiles.getInt("audio_mode_duplex") !=
+                                                        BluetoothProfile.LE_AUDIO) {
+                                Log.i(TAG, "Setting LE suspension only for HFP preference case");
+                                mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                            } else {
+                                Log.i(TAG, "Not setting LE suspension." +
+                                                        "LE is the pref duplex profile");
+                            }
+                        } else {
+                            Log.i(TAG, "HFP device connected. Setting LeAudiosuspend params");
+                            mSystemInterface.getAudioManager().setLeAudioSuspended(true);
+                        }
                     }
                 }
                 // Remove pending connection attempts that were deferred during the pending
@@ -2842,13 +2859,6 @@ class HeadsetStateMachine extends StateMachine {
                                 "Remove the active device because the active device policy after"
                                         + " connection is not allowed");
                         mHeadsetService.setActiveDevice(null);
-                    } else if (getHfpCallAudioPolicy().getActiveDevicePolicyAfterConnection()
-                                    == BluetoothSinkAudioPolicy.POLICY_ALLOWED
-                            && !mDevice.equals(mHeadsetService.getActiveDevice())) {
-                        Log.d( TAG,
-                            "Set the device as active because the active device policy after"
-                              + " connection is allowed");
-                        mHeadsetService.setActiveDevice(mDevice);
                     }
                 } else {
                     Log.w(TAG, "Invalid SinkAudioPolicy parameters!");

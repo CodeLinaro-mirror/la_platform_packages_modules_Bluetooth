@@ -350,6 +350,7 @@ struct tBTA_AG_SCB {
   tBTA_AG_SCO_APTX_SWB_SETTINGS codec_aptx_settings; /* settings to be used for the
                                                         aptX Voice SWB eSCO */
   bool is_aptx_swb_codec;                            /* Flag to determine aptX Voice SWB codec  */
+  bool aptx_swb_codec_status;                        /* aptX Voice SWB enabled for this device (set by upper layer) */
 
   tBTA_AG_HF_IND peer_hf_indicators[BTA_AG_MAX_NUM_PEER_HF_IND];   /* Peer supported
                                                                HF indicators */

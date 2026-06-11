@@ -605,17 +605,6 @@ const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterfaceOpus(const uint8_t*
   return &a2dp_decoder_interface_opus;
 }
 
-bool A2DP_VendorAdjustCodecOpus(uint8_t* p_codec_info) {
-  tA2DP_OPUS_CIE cfg_cie;
-
-  // Nothing to do: just verify the codec info is valid
-  if (A2DP_ParseInfoOpus(&cfg_cie, p_codec_info, true) != A2DP_SUCCESS) {
-    return false;
-  }
-
-  return true;
-}
-
 bool A2DP_VendorInitCodecConfigOpus(AvdtpSepConfig* p_cfg) {
   return A2DP_BuildInfoOpus(AVDT_MEDIA_TYPE_AUDIO, &a2dp_opus_source_caps, p_cfg->codec_info);
 }

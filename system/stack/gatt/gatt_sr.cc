@@ -1318,7 +1318,6 @@ static void gatts_chk_pending_ind(tGATT_TCB& tcb) {
  ******************************************************************************/
 static bool gatts_proc_ind_ack(tGATT_TCB& tcb, uint16_t ack_handle) {
   bool continue_processing = true;
-  bool chg_aware = true;
   log::verbose("ack handle={}", ack_handle);
 
   if (ack_handle == gatt_cb.handle_of_h_r) {
@@ -1327,12 +1326,11 @@ static bool gatts_proc_ind_ack(tGATT_TCB& tcb, uint16_t ack_handle) {
      * internally by GATT */
     continue_processing = false;
 
-  if (stack_config_get_interface()->get_pts_DB_out_of_sync()){
-    chg_aware = false;
-  }
-
-    // After receiving ack of svc_chg_ind, reset client status
-    gatt_sr_update_cl_status(tcb, chg_aware);
+    // After receiving ack of svc_chg_ind, mark client as change-aware.
+    // Per GATT spec 2.5.2, confirming a Service Changed indication makes the
+    // client change-aware; the server must not return Database Out of Sync
+    // for subsequent requests (GATT/SR/GAS/BV-07-C Step 6).
+    gatt_sr_update_cl_status(tcb, /* chg_aware= */ true);
   }
 
   gatts_chk_pending_ind(tcb);
@@ -1445,10 +1443,13 @@ static bool gatts_process_db_out_of_sync(tGATT_TCB& tcb, uint16_t cid, uint8_t o
   if (should_ignore) {
     if (should_rsp) {
       gatt_send_error_rsp(tcb, cid, GATT_DATABASE_OUT_OF_SYNC, op_code, 0x0000, false);
+      // Per spec 2.5.2.1: after sending DB Out of Sync, the client becomes
+      // change-aware only when the server receives the NEXT ATT request in
+      // the same connection. Set a flag; do NOT store the hash yet.
+      tcb.db_out_of_sync_sent = true;
     }
     log::info("database out of sync, device={}, op_code=0x{:x}, should_rsp={}", tcb.peer_bda,
               (uint16_t)op_code, should_rsp);
-    gatt_sr_update_cl_status(tcb, /* chg_aware= */ should_rsp);
   }
 
   return should_ignore;
@@ -1457,6 +1458,12 @@ static bool gatts_process_db_out_of_sync(tGATT_TCB& tcb, uint16_t cid, uint8_t o
 /** This function is called to handle the client requests to server */
 void gatt_server_handle_client_req(tGATT_TCB& tcb, uint16_t cid, uint8_t op_code, uint16_t len,
                                    uint8_t* p_data) {
+  if (tcb.db_out_of_sync_sent && op_code != GATT_CMD_WRITE &&
+      op_code != GATT_SIGN_CMD_WRITE && op_code != GATT_HANDLE_VALUE_CONF) {
+    tcb.db_out_of_sync_sent = false;
+    gatt_sr_update_cl_status(tcb, /* chg_aware= */ true);
+  }
+
   /* there is pending command, discard this one */
   if (!gatt_sr_cmd_empty(tcb, cid) && op_code != GATT_HANDLE_VALUE_CONF) {
     return;

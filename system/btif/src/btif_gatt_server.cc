@@ -479,6 +479,43 @@ static BtStatus btif_gatts_send_response(int conn_id, int trans_id, int status,
           BindOnce(&btif_gatts_send_response_impl, conn_id, trans_id, status, response));
 }
 
+static BtStatus btif_gatts_send_multi_notification(int conn_id, const btgatt_multi_notif_params_t* params,
+                                                   int num_params) {
+  CHECK_BTGATT_INIT();
+
+  if (!params || num_params <= 0) {
+    log::error("Invalid parameters: params is null={} num_params={}", params == nullptr,
+               num_params);
+    return BtifStatus(FAIL);
+  }
+
+  std::vector<tGATT_VALUE> notifications;
+  notifications.reserve(num_params);
+  for (int i = 0; i < num_params; i++) {
+    tGATT_VALUE notif = {};
+    notif.handle = params[i].attribute_handle;
+    notif.len = static_cast<uint16_t>(
+            std::min(static_cast<size_t>(params[i].len), sizeof(notif.value)));
+    memcpy(notif.value, params[i].value, notif.len);
+    notifications.push_back(notif);
+  }
+
+  return do_in_main_thread(
+          BindOnce(
+                  [](tCONN_ID conn_id, std::vector<tGATT_VALUE> notifications) {
+                    tGATT_STATUS status =
+                            BTA_GATTS_HandleMultipleValueNotification(conn_id, notifications);
+                    if (status != GATT_SUCCESS) {
+                      log::error(
+                              "BTA_GATTS_HandleMultipleValueNotification failed "
+                              "conn_id=0x{:x} status={}",
+                              conn_id, status);
+                    }
+                    btapp_gatts_conf_send_fail_cback(conn_id, status);
+                  },
+                  static_cast<tCONN_ID>(conn_id), std::move(notifications)));
+}
+
 static BtStatus btif_gatts_set_preferred_phy(const RawAddress& bd_addr, uint8_t tx_phy,
                                              uint8_t rx_phy, uint16_t phy_options) {
   CHECK_BTGATT_INIT();
@@ -540,4 +577,5 @@ const btgatt_server_interface_t btgattServerInterface = {btif_gatts_register_app
                                                          btif_gatts_set_preferred_phy,
                                                          btif_gatts_read_phy,
                                                          btif_gatts_offload_characteristics,
-                                                         btif_gatts_unoffload_characteristics};
+                                                         btif_gatts_unoffload_characteristics,
+                                                         btif_gatts_send_multi_notification};

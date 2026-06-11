@@ -145,12 +145,6 @@ bool A2DP_VendorHasLLFlagLhdcV5(uint8_t* retval, const uint8_t* p_codec_info);
 // supported, otherwise NULL.
 const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceLhdcV5(const uint8_t* p_codec_info);
 
-// Adjusts the A2DP LHDC codec, based on local support and Bluetooth
-// specification.
-// |p_codec_info| contains the codec information to adjust.
-// Returns true if |p_codec_info| is valid and supported, otherwise false.
-bool A2DP_VendorAdjustCodecLhdcV5(uint8_t* p_codec_info);
-
 // Initializes A2DP LHDC Source codec information into |tAVDT_CFG|
 // configuration entry pointed by |p_cfg|.
 bool A2DP_VendorInitCodecConfigLhdcV5(AvdtpSepConfig* p_cfg);

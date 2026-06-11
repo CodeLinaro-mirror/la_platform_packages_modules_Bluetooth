@@ -336,6 +336,10 @@ typedef struct {
   uint8_t svc_chg_cccd;
   /* Use for server. if false, should handle database out of sync. */
   bool is_robust_cache_change_aware;
+  /* Per spec 2.5.2.1: set when DB Out of Sync is sent to the client.
+   * The client becomes change-aware when the server receives the next
+   * ATT request in the same connection (single ATT bearer). */
+  bool db_out_of_sync_sent;
 
   /* SIRK read related data */
   tGATT_STATUS gatt_status;

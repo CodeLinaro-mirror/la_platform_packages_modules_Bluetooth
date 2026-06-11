@@ -477,6 +477,7 @@ void bta_ag_rfc_close(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
   p_scb->codec_cvsd_settings = BTA_AG_SCO_CVSD_SETTINGS_S4;
   p_scb->codec_aptx_settings = BTA_AG_SCO_APTX_SWB_SETTINGS_Q0;
   p_scb->is_aptx_swb_codec = false;
+  p_scb->aptx_swb_codec_status = false;
   p_scb->codec_lc3_settings = BTA_AG_SCO_LC3_SETTINGS_T2;
   p_scb->role = 0;
   p_scb->svc_conn = false;

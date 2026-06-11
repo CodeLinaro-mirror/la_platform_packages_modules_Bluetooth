@@ -439,6 +439,12 @@ bool IsAseConfigMatchedWithPreferredRequirements(
         const std::vector<
                 CodecManager::UnicastConfigurationRequirements::DeviceDirectionRequirements>& reqs,
         uint8_t channel_cnt_per_ase, btle_audio_codec_index_t PreferCodecType);
+
+/* Returns true if the given context type supports HDT PHY, false otherwise.
+ * HDT-supported contexts: UNSPECIFIED, MEDIA, VOICEASSISTANTS, SOUNDEFFECTS,
+ *                         NOTIFICATIONS, ALERTS, EMERGENCYALARM.
+ */
+bool isContextForHDT(types::LeAudioContextType context);
 }  // namespace utils
 }  // namespace bluetooth::le_audio
 

@@ -344,6 +344,7 @@ class AvrcpVolumeManager extends AudioDeviceCallback {
         mCurrentDevice = device;
         if (!mDeviceMap.containsKey(device)) {
             // Wait until AudioManager informs us that the new device is connected
+            Log.w(TAG, "Wait for AudioManager to inform new device is connected");
             return;
         }
         switchVolumeDevice(device);

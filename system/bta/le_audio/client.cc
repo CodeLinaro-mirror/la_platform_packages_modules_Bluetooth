@@ -423,6 +423,7 @@ public:
         track_in_call_update_(0),
         defer_reconfig_complete_update_(false),
         defer_call_reconfig_(false),
+        defer_media_reconfig_(false),
         le_audio_source_hal_client_(nullptr),
         le_audio_sink_hal_client_(nullptr),
         close_vbc_timeout_(alarm_new("LeAudioCloseVbcTimeout")),
@@ -1002,6 +1003,15 @@ public:
                                               kLogAfSuspendForReconfig + "LocalSource",
                                               "r_state: " + ToString(audio_receiver_state_) +
                                                       "s_state: " + ToString(audio_sender_state_));
+      if (audio_receiver_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
+                                       bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+          log::info("Suspended for SNK since current context has directional config");
+          le_audio_sink_hal_client_->SuspendedForReconfiguration();
+        }
+      }
+
       if(le_audio_source_hal_client_) {
         le_audio_source_hal_client_->SuspendedForReconfiguration();
       }
@@ -1011,6 +1021,15 @@ public:
                                               kLogAfSuspendForReconfig + "LocalSink",
                                               "r_state: " + ToString(audio_receiver_state_) +
                                                       "s_state: " + ToString(audio_sender_state_));
+      if (audio_sender_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
+                                         bluetooth::le_audio::types::kLeAudioDirectionSink)) {
+          log::info("Suspended for SRC since current context has directional config");
+          le_audio_source_hal_client_->SuspendedForReconfiguration();
+        }
+      }
+
       if(le_audio_sink_hal_client_) {
         le_audio_sink_hal_client_->SuspendedForReconfiguration();
       }
@@ -1455,6 +1474,9 @@ public:
         if (group) {
           group->ClearStreamingPendingTargetState();
         }
+      } else {
+        log::debug("Clear cached call end updates during group In-Active");
+        defer_media_reconfig_ = false;
       }
       callbacks_->OnGroupStatus(group_id, GroupStatus::INACTIVE);
     }
@@ -1639,6 +1661,8 @@ public:
       track_in_call_update_ = 0;
       defer_call_reconfig_ = false;
       defer_reconfig_complete_update_ = false;
+    } else {
+      defer_media_reconfig_ = false;
     }
 
     if (in_call == in_call_) {
@@ -1741,6 +1765,12 @@ public:
     } else {
       if (configuration_context_type_ == LeAudioContextType::CONVERSATIONAL) {
         log::info("Call is ended, speed up reconfiguration for media");
+        if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
+            group->GetTargetState() == AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
+          log::info("stack is pending for CONVERSATIONAL streaming, defer media reconfiguration");
+          defer_media_reconfig_ = true;
+          return;
+        }
         if (in_call_metadata_context_types_.sink.none() &&
             in_call_metadata_context_types_.source.none()) {
           log::debug("No metadata, set default Media");
@@ -2041,10 +2071,10 @@ public:
        * (see condition in `lc3_hr_setup_decoder``) so we will choose the
        * highest possible sample rate for the PCM to feed to Audio Framework.
        */
-      const auto sink_context_types = {LeAudioContextType::UNSPECIFIED,
-                                       LeAudioContextType::CONVERSATIONAL, LeAudioContextType::GAME,
+      const auto sink_context_types = {/*LeAudioContextType::UNSPECIFIED,*/
+                                       LeAudioContextType::CONVERSATIONAL/*, LeAudioContextType::GAME,
                                        LeAudioContextType::VOICEASSISTANTS,
-                                       LeAudioContextType::LIVE};
+                                       LeAudioContextType::LIVE*/};
       audio_framework_sink_config.sample_rate = bluetooth::audio::le_audio::kSampleRate16000;
       for (auto context_type : sink_context_types) {
         auto sink_configuration = group->GetAudioSessionCodecConfigForDirection(
@@ -2142,6 +2172,9 @@ public:
         if (group) {
           group->ClearStreamingPendingTargetState();
         }
+      } else {
+        log::debug("Clear cached call end updates during group In-Active");
+        defer_media_reconfig_ = false;
       }
       StopAudio();
       ClientAudioInterfaceRelease();
@@ -6572,6 +6605,21 @@ public:
       }
     }
 
+    /* If current context is GAME or LIVE, update local metadata should clean decode metadata
+       if receiver state is IDLE and there is no configuration pending
+    */
+    if (audio_receiver_state_ == AudioState::IDLE &&
+        (configuration_context_type_ == LeAudioContextType::LIVE ||
+         configuration_context_type_ == LeAudioContextType::GAME) &&
+        (local_metadata_context_types_.sink.test(LeAudioContextType::LIVE) ||
+         local_metadata_context_types_.sink.test(LeAudioContextType::GAME)) &&
+        !group->IsPendingConfiguration() &&
+        !group->IsSuspendedForReconfiguration()) {
+      log::info("Clearing stale LIVE/GAME decoding context: receiver IDLE, not reconfiguring");
+      local_metadata_context_types_.sink.clear();
+      audioContextTypeManager_->SetDecodingSessionMetadata({});
+    }
+
     if (IsReconfigurationTimeoutRunning(group->group_id_)) {
       log::info("Skip it as group is reconfiguring");
       auto [new_context_type, _] = audioContextTypeManager_->GetAudioContextsForTheGroup(
@@ -7370,9 +7418,26 @@ public:
     // Check which directions were suspended
     uint8_t previously_active_directions = 0;
     if (audio_sender_state_ >= AudioState::READY_TO_START) {
+      if (audio_receiver_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
+                                       bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+          log::info("Reconfiguration complete for SNK since current context has SNK config");
+          previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSource;
+        }
+      }
       previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSink;
     }
     if (audio_receiver_state_ >= AudioState::READY_TO_START) {
+      if (audio_sender_state_ == AudioState::IDLE) {
+        LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
+                                         bluetooth::le_audio::types::kLeAudioDirectionSink)) {
+          log::info("Reconfiguration complete for SRC since current context has SRC config");
+          previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSink;
+        }
+      }
+
       previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSource;
     }
 
@@ -7581,6 +7646,12 @@ public:
                   ::bluetooth::le_audio::types::kLeAudioDirectionSink);
         }
 
+        if (!IsInCall() && defer_media_reconfig_) {
+          reconfigurationComplete();
+          in_call_ = true;
+          defer_media_reconfig_ = false;
+          SetInCall(false);
+        }
         if (audio_sender_state_ == AudioState::READY_TO_START) {
           startSendingAudioWrapper(group);
           auto metadata_contexts = get_bidirectional(local_metadata_context_types_);
@@ -7687,6 +7758,20 @@ public:
                 in_call_ = false;
                 defer_call_reconfig_ = false;
                 SetInCall(true);
+              }
+              /* Dual mode, HFP preferred audio profile for call: metadata
+               * update triggered reconfiguration completes with audio states
+               * in RELEASING. Reset to IDLE to allow HFP SCO via IsInIdle().
+               */
+              if (group && IsPreferredProfileLeAudioInDualMode(group) &&
+                  (audio_receiver_state_ == AudioState::RELEASING ||
+                   audio_sender_state_ == AudioState::RELEASING)) {
+                log::warn(
+                    "Reconfig completed for metadata-triggered reconfig in"
+                    " dual mode call use case, updating reconfigurationComplete");
+                reconfigurationComplete();
+                notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
+                notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
               }
             }
           } else {
@@ -7959,6 +8044,8 @@ private:
 
   /*To track call reconfig when call comes during other reconfiguration*/
   bool defer_call_reconfig_;
+  /*To track media reconfig when call is pending for streaming */
+  bool defer_media_reconfig_;
 
   static constexpr uint64_t kGroupConnectedWatchDelayMs = 3000;
   static constexpr uint64_t kRecoveryReconnectDelayMs = 2000;

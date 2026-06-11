@@ -2610,6 +2610,25 @@ public class LeAudioService extends ConnectableProfile {
                                 : mActiveAudioOutDevice)));
     }
 
+    /**
+     * Handle when AudioManager removes Broadcast audio device.
+     *
+     * @param device added audio device
+     * @param type of device
+     */
+    public void handleAudioBroadcastDeviceRemoved(BluetoothDevice device, int type) {
+        mEventLogger.logd(
+                TAG,
+                ("[From AudioManager]: handleAudioBroadcastDeviceRemoved: " + device)
+                        + (" device type: " + type)
+                        + (" mExposedActiveDevice: " + mExposedActiveDevice));
+
+        releaseLeAudioStream();
+        if (mExposedActiveDevice != null) {
+            notifyVolumeControlServiceAboutActiveGroup(mExposedActiveDevice);
+        }
+    }
+
     /* Notifications of audio device connection/disconnection events. */
     private class AudioManagerAudioDeviceCallback extends AudioDeviceCallback {
         private static boolean isWiredAudioHeadset(AudioDeviceInfo deviceInfo) {

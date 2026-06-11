@@ -1842,10 +1842,6 @@ void bta_av_getcap_results(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
               p_scb->PeerAddress(), BTA_AV_SINK_MEDIA_CFG_EVT, &av_sink_codec_info);
     }
 
-    if (p_scb->uuid_int == UUID_SERVCLASS_AUDIO_SOURCE) {
-      A2DP_AdjustCodec(result_sep_cfg.codec_info);
-    }
-
     /* ensure stack does not initiate AVDT configuration after timeout */
     alarm_cancel(p_scb->accept_signalling_timer);
 

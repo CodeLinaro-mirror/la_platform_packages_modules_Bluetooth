@@ -76,8 +76,6 @@ const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterfaceOpus(const uint8_t*
   return nullptr;
 }
 
-bool A2DP_VendorAdjustCodecOpus(uint8_t* p_codec_info) { return false; }
-
 bool A2DP_VendorInitCodecConfigOpus(AvdtpSepConfig* p_cfg) { return false; }
 
 bool A2DP_VendorInitCodecConfigOpusSink(AvdtpSepConfig* p_cfg) { return false; }

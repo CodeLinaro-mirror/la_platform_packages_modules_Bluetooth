@@ -262,6 +262,12 @@ void BTA_GATTS_InitBonded(void) {
   gatt_server_interface->InitBonded();
 }
 
+tGATT_STATUS BTA_GATTS_HandleMultipleValueNotification(
+        tCONN_ID conn_id, const std::vector<tGATT_VALUE>& notifications) {
+  log::assert_that(gatt_server_interface != nullptr, "Mock GATT server interface not set!");
+  return gatt_server_interface->HandleMultipleValueNotification(conn_id, notifications);
+}
+
 void gatt::SetMockBtaGattServerInterface(
         MockBtaGattServerInterface* mock_bta_gatt_server_interface) {
   gatt_server_interface = mock_bta_gatt_server_interface;

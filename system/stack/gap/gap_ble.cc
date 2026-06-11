@@ -407,6 +407,7 @@ bool send_cl_write_request(tGAP_CLCB& clcb) {
   }
   tGAP_REQUEST& req = clcb.requests.front();
   clcb.p_cback = req.p_cback;
+  clcb.cl_op_uuid = GATT_UUID_CHAR_CLIENT_CONFIG;
   uint16_t handle = req.handle;
   clcb.requests.pop();
 
@@ -591,8 +592,10 @@ static void client_cmpl_cback(tCONN_ID conn_id, tGATTC_OPTYPE op, tGATT_STATUS s
 
   op_type = p_clcb->cl_op_uuid;
 
-  /* Currently we only issue read commands */
   if (op != GATTC_OPTYPE_READ) {
+    if (btm_cb.encrypted_advertising_data_supported && op == GATTC_OPTYPE_WRITE) {
+      cl_op_cmpl(*p_clcb, status == GATT_SUCCESS, 0, NULL);
+    }
     return;
   }
 
@@ -1080,6 +1083,7 @@ void gap_ble_config_cccd_enc_key_cmpl(bool status, const RawAddress& bda, uint16
   } else {
     log::debug(" next enc key char handle is NOT available");
     p_clcb->is_enc_key_info_in_progress = false;
+    p_clcb->enc_key_stage = GAP_ENC_KEY_CONNECTING;
   }
 }
 

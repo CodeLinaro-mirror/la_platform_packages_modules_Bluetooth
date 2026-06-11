@@ -944,21 +944,6 @@ const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceLhdcV5(const uint8_
   return &a2dp_encoder_interface_lhdcv5;
 }
 
-bool A2DP_VendorAdjustCodecLhdcV5(uint8_t* p_codec_info) {
-  tA2DP_LHDCV5_CIE cfg_cie;
-  if (p_codec_info == nullptr) {
-    log::error("nullptr input");
-    return false;
-  }
-
-  // Nothing to do: just verify the codec info is valid
-  if (A2DP_ParseInfoLhdcV5(&cfg_cie, p_codec_info, true) != A2DP_SUCCESS) {
-    return false;
-  }
-
-  return true;
-}
-
 bool A2DP_VendorInitCodecConfigLhdcV5(AvdtpSepConfig* p_cfg) {
   if (p_cfg == nullptr) {
     log::error("nullptr input");

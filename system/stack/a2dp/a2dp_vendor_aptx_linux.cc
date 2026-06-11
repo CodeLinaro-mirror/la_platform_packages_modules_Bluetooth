@@ -68,8 +68,6 @@ const tA2DP_DECODER_INTERFACE* A2DP_VendorGetDecoderInterfaceAptx(const uint8_t*
   return nullptr;
 }
 
-bool A2DP_VendorAdjustCodecAptx(uint8_t* p_codec_info) { return false; }
-
 bool A2DP_VendorInitCodecConfigAptx(AvdtpSepConfig* p_cfg) { return false; }
 
 A2dpCodecConfigAptx::A2dpCodecConfigAptx(btav_a2dp_codec_priority_t codec_priority)

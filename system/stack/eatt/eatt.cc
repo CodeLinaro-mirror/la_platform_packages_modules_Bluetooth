@@ -150,6 +150,12 @@ bool EattExtension::IsEattSupportedByPeer(const RawAddress& bd_addr) {
 void EattExtension::Connect(const RawAddress& bd_addr) { pimpl_->eatt_impl_->connect(bd_addr); }
 
 void EattExtension::Disconnect(const RawAddress& bd_addr, uint16_t cid) {
+  if (!pimpl_->eatt_impl_) {
+    /* EATT already stopped (e.g. gatt_cleanup_upon_disc runs after Stop()).
+     * Nothing to disconnect. */
+    log::warn("EATT not started, ignoring Disconnect for {}", bd_addr);
+    return;
+  }
   pimpl_->eatt_impl_->disconnect(bd_addr, cid);
 }
 
@@ -161,10 +167,22 @@ void EattExtension::ReconfigureAll(const RawAddress& bd_addr, uint16_t mtu) {
 }
 
 EattChannel* EattExtension::FindEattChannelByCid(const RawAddress& bd_addr, uint16_t cid) {
+  if (!pimpl_->eatt_impl_) {
+    /* EATT was stopped (e.g. during BLE shutdown) before this incoming data
+     * path completed. Return nullptr so callers treat the channel as
+     * disconnected — all call-sites already handle a nullptr return. */
+    log::warn("EATT not started, FindEattChannelByCid returning nullptr for {} cid 0x{:04x}",
+              bd_addr, cid);
+    return nullptr;
+  }
   return pimpl_->eatt_impl_->find_eatt_channel_by_cid(bd_addr, cid);
 }
 
-EattChannel* EattExtension::FindEattChannelByTransId(const RawAddress& bd_addr, uint32_t trans_id) {
+EattChannel* EattExtension::FindEattChannelByTransId(const RawAddress& bd_addr,
+                                                     uint32_t trans_id) {
+  if (!pimpl_->eatt_impl_) {
+    return nullptr;
+  }
   return pimpl_->eatt_impl_->find_eatt_channel_by_transid(bd_addr, trans_id);
 }
 

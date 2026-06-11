@@ -1220,6 +1220,15 @@ void gatt_sr_update_cl_status(tGATT_TCB& tcb, bool chg_aware) {
   }
 
   tcb.is_robust_cache_change_aware = chg_aware;
+
+  // Any path that makes the client change-aware must also clear the
+  // db_out_of_sync_sent flag.  Without this, a flag left over from a prior
+  // DB_OUT_OF_SYNC response (e.g. after a Service Changed indication ack)
+  // would be silently consumed by the very next ATT Request, causing a
+  // redundant gatt_sr_update_cl_status(true) call on an already-aware client.
+  if (chg_aware) {
+    tcb.db_out_of_sync_sent = false;
+  }
 }
 
 /* handle request for reading database hash */

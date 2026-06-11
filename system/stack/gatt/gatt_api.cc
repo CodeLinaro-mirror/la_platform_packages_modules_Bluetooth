@@ -163,6 +163,11 @@ static void gatt_update_for_database_change() {
     tGATT_TCB& tcb = gatt_cb.tcb[i];
     if (tcb.in_use) {
       gatt_sr_update_cl_status(tcb, /* chg_aware= */ false);
+      // Clear the pending "next-request makes change-aware" flag so that a
+      // stale flag from a previous DB Out of Sync response does not
+      // incorrectly mark the client change-aware with the old hash after
+      // the database has changed again (spec 2.5.2.1 / BV-05-C Step 15-16).
+      tcb.db_out_of_sync_sent = false;
     }
   }
 }
@@ -533,7 +538,7 @@ tGATT_STATUS GATTS_HandleValueIndication(tCONN_ID conn_id, uint16_t attr_handle,
 }
 
 #if (GATT_UPPER_TESTER_MULT_VARIABLE_LENGTH_NOTIF == TRUE)
-static tGATT_STATUS GATTS_HandleMultipleValueNotification(
+static tGATT_STATUS GATTS_HandleMultipleValueNotification_UpperTester(
         tGATT_TCB* p_tcb, std::vector<tGATT_VALUE> gatt_notif_vector) {
   log::info("");
 
@@ -563,6 +568,103 @@ static tGATT_STATUS GATTS_HandleMultipleValueNotification(
   return attp_send_sr_msg(*p_tcb, cid, p_buf);
 }
 #endif
+
+tGATT_STATUS GATTS_HandleMultipleValueNotification(
+        tCONN_ID conn_id, const std::vector<tGATT_VALUE>& notifications) {
+  log::verbose("conn_id=0x{:x}, num_notifications={}", conn_id, notifications.size());
+
+  if (notifications.empty()) {
+    log::error("notifications list is empty");
+    return GATT_ILLEGAL_PARAMETER;
+  }
+
+  tGATT_IF gatt_if = gatt_get_gatt_if(conn_id);
+  uint8_t tcb_idx = gatt_get_tcb_idx(conn_id);
+  tGATT_REG* p_reg = gatt_get_regcb(gatt_if);
+  tGATT_TCB* p_tcb = gatt_get_tcb_by_idx(tcb_idx);
+
+  if ((p_reg == nullptr) || (p_tcb == nullptr)) {
+    log::error("Unknown conn_id=0x{:x}", conn_id);
+    return GATT_ILLEGAL_PARAMETER;
+  }
+
+  if (!gatt_sr_is_cl_multi_variable_len_notif_supported(*p_tcb)) {
+    log::error("Client does not support Multiple Variable Length Notifications");
+    return GATT_REQ_NOT_SUPPORTED;
+  }
+
+  for (const auto& notif : notifications) {
+    if (!GATT_HANDLE_IS_VALID(notif.handle)) {
+      log::error("Invalid handle 0x{:04x}", notif.handle);
+      return GATT_ILLEGAL_PARAMETER;
+    }
+    if (notif.len > GATT_MAX_ATTR_LEN) {
+      log::error("Value length {} exceeds GATT_MAX_ATTR_LEN for handle 0x{:04x}", notif.len,
+                 notif.handle);
+      return GATT_ILLEGAL_PARAMETER;
+    }
+  }
+
+  uint16_t cid = gatt_tcb_get_att_cid(*p_tcb, p_reg->eatt_support);
+  uint16_t payload_size = gatt_tcb_get_payload_size(*p_tcb, cid);
+
+  /* Build and send PDU(s). Each PDU starts with the opcode byte (1 byte).
+   * Each notification entry is: handle (2) + value_length (2) + value (N).
+   * If all notifications fit in one PDU, send them together; otherwise split
+   * across multiple PDUs. */
+  size_t idx = 0;
+  while (idx < notifications.size()) {
+    BT_HDR* p_buf =
+            (BT_HDR*)osi_malloc(sizeof(BT_HDR) + payload_size + L2CAP_MIN_OFFSET);
+    if (p_buf == nullptr) {
+      log::error("Failed to allocate buffer");
+      return GATT_NO_RESOURCES;
+    }
+
+    uint8_t* p = (uint8_t*)(p_buf + 1) + L2CAP_MIN_OFFSET;
+    UINT8_TO_STREAM(p, GATT_HANDLE_MULTI_VALUE_NOTIF);
+    p_buf->offset = L2CAP_MIN_OFFSET;
+    p_buf->len = 1; /* opcode byte */
+
+    /* Pack as many notifications as fit in this PDU */
+    while (idx < notifications.size()) {
+      const tGATT_VALUE& notif = notifications[idx];
+      /* Each entry needs: handle(2) + value_length(2) + value(notif.len) */
+      uint16_t entry_size = 4 + notif.len;
+      if (p_buf->len + entry_size > payload_size) {
+        /* This notification doesn't fit; send current PDU and start a new one */
+        if (p_buf->len == 1) {
+          /* Even a single notification doesn't fit - truncate value */
+          log::warn(
+                  "Notification for handle 0x{:04x} value too large for PDU, truncating",
+                  notif.handle);
+          uint16_t max_val_len = payload_size - 1 /* opcode */ - 4 /* handle+len fields */;
+          UINT16_TO_STREAM(p, notif.handle);
+          UINT16_TO_STREAM(p, max_val_len);
+          ARRAY_TO_STREAM(p, notif.value, max_val_len);
+          p_buf->len += 4 + max_val_len;
+          idx++;
+        }
+        break;
+      }
+      log::verbose("Adding handle: 0x{:04x}, val len {}", notif.handle, notif.len);
+      UINT16_TO_STREAM(p, notif.handle);
+      UINT16_TO_STREAM(p, notif.len);
+      ARRAY_TO_STREAM(p, notif.value, notif.len);
+      p_buf->len += entry_size;
+      idx++;
+    }
+
+    log::verbose("Sending Multiple Value Notification PDU, len={}", p_buf->len);
+    tGATT_STATUS status = attp_send_sr_msg(*p_tcb, cid, p_buf);
+    if (status != GATT_SUCCESS && status != GATT_CONGESTED) {
+      log::error("Failed to send Multiple Value Notification PDU, status={}", status);
+      return status;
+    }
+  }
+
+  return GATT_SUCCESS;
+}
 /*******************************************************************************
  *
  * Function         GATTS_HandleValueNotification
@@ -631,7 +733,7 @@ tGATT_STATUS GATTS_HandleValueNotification(tCONN_ID conn_id, uint16_t attr_handl
 
       notif.auth_req = GATT_AUTH_REQ_NONE;
 
-      return GATTS_HandleMultipleValueNotification(p_tcb, gatt_notif_vector);
+      return GATTS_HandleMultipleValueNotification_UpperTester(p_tcb, gatt_notif_vector);
     }
 
     log::error("PTS Mode: Invalid tcb_idx: {}, cached_tcb_idx: {}", tcb_idx, cached_tcb_idx);

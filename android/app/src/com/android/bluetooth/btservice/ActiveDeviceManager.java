@@ -715,7 +715,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     boolean leAudioMadeActive =
                             setLeAudioActiveDevice(device, /* stopAudio= */ true);
                     if (leAudioMadeActive && !Utils.isDualModeAudioEnabled()) {
-                        setA2dpActiveDevice(null, /* stopAudio= */ false);
+                    //  setA2dpActiveDevice(null, /* stopAudio= */ false);
                         setHfpActiveDevice(null);
                     }
                 } else if (isLeAudioHearingAidDevice(device)) {
@@ -1124,6 +1124,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                  */
                 if (mLeAudioActiveDevice != null
                         && device != null
+                        && !Utils.isDualModeAudioEnabled()
                         && !mLeAudioActiveDevice.equals(device)) {
                     /* HFP device becoming active is not dual mode and was not set as
                      * active LE Audio device. Inactivate LE Audio device.
@@ -1499,6 +1500,16 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                                                 } else {
                                                   handleLeAudioActiveDeviceChanged(null);
                                                 }
+                                             });
+                    }
+                    case AudioDeviceInfo.TYPE_BLE_BROADCAST -> {
+                        mAdapterService
+                                .getLeAudioService()
+                                .ifPresent(
+                                        s -> {
+                                                s.handleAudioBroadcastDeviceRemoved(
+                                                        device,
+                                                        deviceInfo.getType());
                                              });
                     }
                     case AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
@@ -2181,6 +2192,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     AudioDeviceInfo.TYPE_HEARING_AID,
                     AudioDeviceInfo.TYPE_BLE_HEADSET,
                     AudioDeviceInfo.TYPE_BLE_SPEAKER,
+                    AudioDeviceInfo.TYPE_BLE_BROADCAST,
                     AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
                     AudioDeviceInfo.TYPE_BLE_HEARING_AID -> {
                 return true;

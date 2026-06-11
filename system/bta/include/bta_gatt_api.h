@@ -819,6 +819,24 @@ tGATT_STATUS BTA_GATTS_HandleValueIndication(tCONN_ID conn_id, uint16_t attr_id,
 
 /*******************************************************************************
  *
+ * Function         BTA_GATTS_HandleMultipleValueNotification
+ *
+ * Description      Send Multiple Variable Length Notifications to a client.
+ *                  The client must have set the "Multiple Handle Value Notifications"
+ *                  bit in GATT Client Supported Features.
+ *
+ * Parameter        conn_id: connection identifier.
+ *                  notifications: vector of tGATT_VALUE entries (handle, len,
+ *                                 value) to include in the notification PDU.
+ *
+ * Returns          GATT_SUCCESS if successfully sent; otherwise error code.
+ *
+ ******************************************************************************/
+tGATT_STATUS BTA_GATTS_HandleMultipleValueNotification(
+        tCONN_ID conn_id, const std::vector<tGATT_VALUE>& notifications);
+
+/*******************************************************************************
+ *
  * Function         BTA_GATTS_SendRsp
  *
  * Description      This function is called to send a response to a request.

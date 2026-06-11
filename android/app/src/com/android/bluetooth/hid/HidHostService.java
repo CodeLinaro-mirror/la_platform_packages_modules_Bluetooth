@@ -622,6 +622,20 @@ public class HidHostService extends ConnectableProfile {
             // was loaded from storage. Add it in the record.
             if (state == STATE_ACCEPTING) {
                 setTransport(device, transport);
+            } else if (state == STATE_DISCONNECTED || state == STATE_DISCONNECTING) {
+                // Device was already removed from mInputDevices (e.g. by
+                // handleMessageOnVirtualUnplug after a Virtual Unplug sequence).
+                // The native stack has already cleaned up the HID channels; calling
+                // nativeDisconnect here would fail with "Unknown link" / UNHANDLED.
+                // This stale callback is safe to ignore — no further action needed.
+                Log.d(
+                        TAG,
+                        "handleMessageConnectStateChanged: Ignoring stale disconnect"
+                                + " callback for already-removed device"
+                                + (" device=" + device)
+                                + (" state=" + state)
+                                + (" transport=" + transport));
+                return;
             } else {
                 Log.e(
                         TAG,

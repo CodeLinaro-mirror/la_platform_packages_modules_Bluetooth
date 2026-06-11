@@ -504,17 +504,6 @@ const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceLdac(const uint8_t*
   return &a2dp_encoder_interface_ldac;
 }
 
-bool A2DP_VendorAdjustCodecLdac(uint8_t* p_codec_info) {
-  tA2DP_LDAC_CIE cfg_cie;
-
-  // Nothing to do: just verify the codec info is valid
-  if (A2DP_ParseInfoLdac(&cfg_cie, p_codec_info, true) != A2DP_SUCCESS) {
-    return false;
-  }
-
-  return true;
-}
-
 bool A2DP_VendorInitCodecConfigLdac(AvdtpSepConfig* p_cfg) {
   return A2DP_BuildInfoLdac(AVDT_MEDIA_TYPE_AUDIO, &a2dp_ldac_source_caps, p_cfg->codec_info);
 }

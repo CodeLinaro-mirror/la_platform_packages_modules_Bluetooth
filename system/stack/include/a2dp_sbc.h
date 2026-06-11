@@ -202,12 +202,6 @@ const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterfaceSbc(const uint8_t* p_code
 // supported, otherwise NULL.
 const tA2DP_DECODER_INTERFACE* A2DP_GetDecoderInterfaceSbc(const uint8_t* p_codec_info);
 
-// Adjusts the A2DP SBC codec, based on local support and Bluetooth
-// specification.
-// |p_codec_info| contains the codec information to adjust.
-// Returns true if |p_codec_info| is valid and supported, otherwise false.
-bool A2DP_AdjustCodecSbc(uint8_t* p_codec_info);
-
 // Initializes A2DP SBC Source codec information into |AvdtpSepConfig|
 // configuration entry pointed by |p_cfg|.
 bool A2DP_InitCodecConfigSbc(AvdtpSepConfig* p_cfg);

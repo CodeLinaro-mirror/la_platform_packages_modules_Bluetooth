@@ -115,6 +115,10 @@ jint getOctetsPerFrameOrDefault(const std::map<uint8_t, std::vector<uint8_t>>& m
 
 jobject prepareLeBroadcastChannelObject(
         JNIEnv* env, const bt_le_audio::BasicAudioAnnouncementBisConfig& bis_config) {
+  if (!android_bluetooth_BluetoothLeBroadcastChannel.clazz) {
+    log::warn("BluetoothLeBroadcastChannel class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   ScopedLocalRef<jobject> meta_object(
           env, prepareLeAudioCodecConfigMetadataObject(env, bis_config.codec_specific_params));
   if (!meta_object.get()) {
@@ -130,6 +134,10 @@ jobject prepareLeBroadcastChannelObject(
 }
 
 jobject prepareBluetoothDeviceObject(JNIEnv* env, const RawAddress& addr, int addr_type) {
+  if (!android_bluetooth_BluetoothDevice.clazz) {
+    log::warn("BluetoothDevice class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   // The address string has to be uppercase or the BluetoothDevice constructor
   // will treat it as invalid.
   auto addr_str = addr.ToString();
@@ -149,6 +157,10 @@ jobject prepareBluetoothDeviceObject(JNIEnv* env, const RawAddress& addr, int ad
 
 jobject prepareLeBroadcastSubgroupObject(
         JNIEnv* env, const bt_le_audio::BasicAudioAnnouncementSubgroup& subgroup) {
+  if (!android_bluetooth_BluetoothLeBroadcastSubgroup.clazz) {
+    log::warn("BluetoothLeBroadcastSubgroup class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   // Serialize codec ID
   jlong jlong_codec_id = subgroup.codec_config.codec_id |
                          ((jlong)subgroup.codec_config.vendor_company_id << 16) |
@@ -279,6 +291,10 @@ void UtilsCleanup(JNIEnv* env) {
 
 jobject prepareLeAudioCodecConfigMetadataObject(
         JNIEnv* env, const std::map<uint8_t, std::vector<uint8_t>>& metadata) {
+  if (!android_bluetooth_BluetoothLeAudioCodecConfigMetadata.clazz) {
+    log::warn("BluetoothLeAudioCodecConfigMetadata class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   jlong audio_location = getAudioLocationOrDefault(metadata, -1);
   jint sampling_frequency = getSamplingFrequencyOrDefault(metadata, 0);
   jint frame_duration = getFrameDurationOrDefault(metadata, -1);
@@ -299,6 +315,10 @@ jobject prepareLeAudioCodecConfigMetadataObject(
 
 jobject prepareLeAudioContentMetadataObject(
         JNIEnv* env, const std::map<uint8_t, std::vector<uint8_t>>& metadata) {
+  if (!android_bluetooth_BluetoothLeAudioContentMetadata.clazz) {
+    log::warn("BluetoothLeAudioContentMetadata class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   jstring program_info_str = nullptr;
   if (metadata.count(bt_le_audio::kLeAudioMetadataTypeProgramInfo)) {
     // Convert the metadata vector to string with null terminator
@@ -349,6 +369,10 @@ jobject prepareLeAudioContentMetadataObject(
 
 jobject prepareLeBroadcastChannelListObject(
         JNIEnv* env, const std::vector<bt_le_audio::BasicAudioAnnouncementBisConfig>& bis_configs) {
+  if (!java_util_ArrayList.clazz) {
+    log::warn("ArrayList class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   jobject array = env->NewObject(java_util_ArrayList.clazz, java_util_ArrayList.constructor);
   if (!array) {
     log::error("Failed to create array for subgroups");
@@ -370,6 +394,10 @@ jobject prepareLeBroadcastChannelListObject(
 jobject prepareLeBroadcastSubgroupListObject(
         JNIEnv* env,
         const std::vector<bt_le_audio::BasicAudioAnnouncementSubgroup>& subgroup_configs) {
+  if (!java_util_ArrayList.clazz) {
+    log::warn("ArrayList class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   jobject array = env->NewObject(java_util_ArrayList.clazz, java_util_ArrayList.constructor);
   if (!array) {
     log::error("Failed to create array for subgroups");
@@ -390,6 +418,10 @@ jobject prepareLeBroadcastSubgroupListObject(
 
 jobject prepareBluetoothLeBroadcastMetadataObject(
         JNIEnv* env, const bt_le_audio::BroadcastMetadata& broadcast_metadata) {
+  if (!android_bluetooth_BluetoothLeBroadcastMetadata.clazz) {
+    log::warn("BluetoothLeBroadcastMetadata class ref is null, BT cleanup in progress");
+    return nullptr;
+  }
   ScopedLocalRef<jobject> device_obj(
           env,
           prepareBluetoothDeviceObject(env, broadcast_metadata.addr, broadcast_metadata.addr_type));

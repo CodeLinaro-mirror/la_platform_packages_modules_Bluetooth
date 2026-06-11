@@ -41,6 +41,7 @@
 #include "gd/os/rand.h"
 #include "hardware/bt_common_types.h"
 #include "main/shim/entry.h"
+#include "osi/include/properties.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_ble_addr.h"
 #include "stack/include/btm_ble_api_types.h"
@@ -156,7 +157,8 @@ public:
 
   void do_initialize() {
     auto controller = bluetooth::shim::GetController();
-    if (controller && !controller->SupportsBleChannelSounding()) {
+    if ((controller && !controller->SupportsBleChannelSounding()) ||
+        osi_property_get_bool("bluetooth.gatt.pts.disable.non_core_services", false)) {
       log::info("controller does not support channel sounding.");
       return;
     }

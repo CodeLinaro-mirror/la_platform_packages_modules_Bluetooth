@@ -70,6 +70,13 @@ typedef struct {
   uint8_t auth_req;
 } btgatt_value_t;
 
+/** Parameters for a single entry in a Multiple Variable Length Notification */
+typedef struct {
+  uint16_t attribute_handle;
+  uint16_t len;
+  uint8_t value[GATT_MAX_ATTR_LEN];
+} btgatt_multi_notif_params_t;
+
 /** GATT remote read request response type */
 typedef union {
   btgatt_value_t attr_value;
@@ -217,6 +224,10 @@ typedef struct {
 
   /** Unoffload GATT characteristics */
   BtStatus (*unoffload_characteristics)(int conn_id, int session_id);
+
+  /** Send Multiple Variable Length Notifications */
+  BtStatus (*send_multi_notification)(int conn_id, const btgatt_multi_notif_params_t* params,
+                                      int num_params);
 } btgatt_server_interface_t;
 
 __END_DECLS

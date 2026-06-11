@@ -138,8 +138,8 @@ public final class BluetoothGatt implements BluetoothProfile {
     private static final int CONN_STATE_CONNECTED = 2;
     private static final int CONN_STATE_CLOSED = 4;
 
-    private static final int WRITE_CHARACTERISTIC_MAX_RETRIES = 5;
-    private static final int WRITE_CHARACTERISTIC_TIME_TO_WAIT = 10; // milliseconds
+    private static final int WRITE_CHARACTERISTIC_MAX_RETRIES = 100;
+    private static final int WRITE_CHARACTERISTIC_TIME_TO_WAIT = 20; // milliseconds
 
     private final CopyOnWriteArrayList<BluetoothGattService> mServices =
             new CopyOnWriteArrayList<>();

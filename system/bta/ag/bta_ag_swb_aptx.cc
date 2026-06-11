@@ -49,8 +49,6 @@ bool is_hfp_aptx_voice_enabled() {
   return android::sysprop::bluetooth::Hfp::codec_aptx_voice().value_or(false);
 }
 
-static bool aptx_swb_codec_status;
-
 static bool get_lc3_swb_codec_status(RawAddress bd_addr) {
   uint16_t p_scb_idx = bta_ag_idx_by_bdaddr(&bd_addr);
   tBTA_AG_SCB* p_scb = bta_ag_scb_by_idx(p_scb_idx);
@@ -61,9 +59,13 @@ static bool get_lc3_swb_codec_status(RawAddress bd_addr) {
   return false;
 }
 
-static bool get_aptx_swb_codec_status() {
+static bool get_aptx_swb_codec_status(RawAddress bd_addr) {
   if (is_hfp_aptx_voice_enabled()) {
-    return aptx_swb_codec_status;
+    uint16_t idx = bta_ag_idx_by_bdaddr(&bd_addr);
+    tBTA_AG_SCB* p_scb = bta_ag_scb_by_idx(idx);
+    bool status = (p_scb != nullptr) && p_scb->aptx_swb_codec_status;
+    log::verbose("AptX SWB per-device status for {}: {}", bd_addr, status);
+    return status;
   }
   return false;
 }
@@ -76,7 +78,7 @@ bool get_swb_codec_status(bluetooth::headset::bthf_swb_codec_t swb_codec, RawAdd
       log::verbose("LC3 SWB status={}", status);
       break;
     case bluetooth::headset::BTHF_SWB_CODEC_VENDOR_APTX:
-      status = get_aptx_swb_codec_status();
+      status = get_aptx_swb_codec_status(bd_addr);
       log::verbose("AptX SWB status={}", status);
       break;
     default:
@@ -88,8 +90,14 @@ bool get_swb_codec_status(bluetooth::headset::bthf_swb_codec_t swb_codec, RawAdd
 
 BtStatus enable_aptx_swb_codec(bool enable, RawAddress bd_addr) {
   if (is_hfp_aptx_voice_enabled() && (!get_lc3_swb_codec_status(bd_addr))) {
-    log::verbose("enable={}", enable);
-    aptx_swb_codec_status = enable;
+    uint16_t idx = bta_ag_idx_by_bdaddr(&bd_addr);
+    tBTA_AG_SCB* p_scb = bta_ag_scb_by_idx(idx);
+    if (p_scb == nullptr) {
+      log::warn("no SCB found for device={}", bd_addr);
+      return BtifStatus(FAIL);
+    }
+    log::verbose("enable={} for device={}", enable, bd_addr);
+    p_scb->aptx_swb_codec_status = enable;
     return BtifStatus();
   }
   return BtifStatus(FAIL);

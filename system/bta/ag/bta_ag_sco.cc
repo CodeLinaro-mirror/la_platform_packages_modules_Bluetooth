@@ -416,6 +416,9 @@ static void bta_ag_esco_connreq_cback(tBTM_ESCO_EVT event, tBTM_ESCO_EVT_DATA* p
           val.hdr.status = BTA_AG_SUCCESS;
           val.bd_addr = p_scb->peer_addr;
           (*bta_ag_cb.p_cback)(BTA_AG_AT_BCC_EVT, (tBTA_AG*)&val);
+          bta_ag_cb.sco.state = BTA_AG_SCO_OPENING_ST;
+          bta_ag_cb.sco.p_curr_scb = p_scb;
+          bta_ag_cb.sco.cur_idx = p_scb->sco_idx;
           return;
         }
         bta_ag_sco_conn_rsp(p_scb, &p_data->conn_evt);
@@ -436,6 +439,15 @@ static void bta_ag_esco_connreq_cback(tBTM_ESCO_EVT event, tBTM_ESCO_EVT_DATA* p
           val.hdr.status = BTA_AG_SUCCESS;
           val.bd_addr = p_scb->peer_addr;
           (*bta_ag_cb.p_cback)(BTA_AG_AT_BCC_EVT, (tBTA_AG*)&val);
+          bta_ag_cb.sco.p_xfer_scb = p_scb;
+          bta_ag_cb.sco.conn_data = p_data->conn_evt;
+          bta_ag_cb.sco.state = BTA_AG_SCO_OPEN_XFER_ST;
+
+        if (!bta_ag_remove_sco(bta_ag_cb.sco.p_curr_scb, true)) {
+           log::error("Nothing to remove,wait for audio HAL to accept(sco_inx 0x{:04x})", sco_inx);
+           bta_ag_cb.sco.p_xfer_scb = nullptr;
+           bta_ag_cb.sco.state = BTA_AG_SCO_LISTEN_ST;
+         }
           return;
         }
         bta_ag_cb.sco.p_xfer_scb = p_scb;

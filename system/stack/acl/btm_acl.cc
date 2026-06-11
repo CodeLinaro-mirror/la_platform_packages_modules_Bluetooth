@@ -1001,19 +1001,19 @@ tBTM_STATUS BTM_SetLinkSuperTout(const RawAddress& remote_bda, uint16_t timeout)
       log::warn(
               "UNSUPPORTED by controller write link supervision timeout:{:.2f}ms "
               "bd_addr:{}",
-              supervision_timeout_to_seconds(timeout), remote_bda);
+              ticks_to_milliseconds(timeout), remote_bda);
       return tBTM_STATUS::BTM_MODE_UNSUPPORTED;
     }
     p_acl->link_super_tout = timeout;
     btsnd_hcic_write_link_super_tout(p_acl->hci_handle, timeout);
     log::debug("Set supervision timeout:{:.2f}ms bd_addr:{}",
-               supervision_timeout_to_seconds(timeout), remote_bda);
+               ticks_to_milliseconds(timeout), remote_bda);
     return tBTM_STATUS::BTM_CMD_STARTED;
   } else {
     log::warn(
             "Role is peripheral so unable to set supervision timeout:{:.2f}ms "
             "bd_addr:{}",
-            supervision_timeout_to_seconds(timeout), remote_bda);
+            ticks_to_milliseconds(timeout), remote_bda);
     return tBTM_STATUS::BTM_SUCCESS;
   }
 }
@@ -2040,8 +2040,7 @@ void on_acl_br_edr_connected(const RawAddress& bda, uint16_t handle, uint8_t enc
   log::verbose("{}, handle:{}, role:{}, enc_mode:{}, locally_initiated:{}", bda, handle,
                hci_role_text(role), enc_mode, locally_initiated);
 
-  btm_sec_connected(bda, handle, HCI_SUCCESS, enc_mode, locally_initiated,
-          locally_initiated ? HCI_ROLE_CENTRAL : HCI_ROLE_PERIPHERAL);
+  btm_sec_connected(bda, handle, HCI_SUCCESS, enc_mode, locally_initiated, role);
   l2c_link_hci_conn_comp(HCI_SUCCESS, handle, bda);
   uint16_t link_supervision_timeout =
           osi_property_get_int32(PROPERTY_LINK_SUPERVISION_TIMEOUT, 8000);

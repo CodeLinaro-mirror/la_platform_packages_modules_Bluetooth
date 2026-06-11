@@ -627,18 +627,18 @@ public class ScanController {
 
     @VisibleForTesting
     void onBatchScanReportsInternal(
-            int status, int scannerId, int reportType, int numRecords, byte[] recordData) {
-        Set<ScanResult> results =
-                BatchScanUtil.parseResults(mAdapterService, numRecords, reportType, recordData);
+int status, int scannerId, int reportType, int numRecords, byte[] recordData) {
         if (reportType == SCAN_RESULT_TYPE_TRUNCATED) {
             // We only support single client for truncated mode.
             var header = "onBatchScanReportsInternal(): ";
             var app = mScannerMap.getById(scannerId);
             if (app == null) {
                 Log.e(TAG, header + "App not found for scannerId=" + scannerId);
-                return;
+                return;  // stop processing, no valid app to deliver results to
             }
 
+            Set<ScanResult> results =
+                    BatchScanUtil.parseResults(mAdapterService, numRecords, reportType, recordData);
             var client = ScanUtil.findById(mScanManager.getBatchScanQueue(), scannerId);
             if (client == null) {
                 return;
@@ -666,6 +666,8 @@ public class ScanController {
                 }
             }
         } else {
+            Set<ScanResult> results =
+                    BatchScanUtil.parseResults(mAdapterService, numRecords, reportType, recordData);
             for (ScanClient client : mScanManager.getFullBatchScanQueue()) {
                 // Deliver results for each client.
                 deliverBatchScan(client, results);

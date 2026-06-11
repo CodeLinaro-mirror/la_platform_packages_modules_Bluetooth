@@ -34,6 +34,7 @@
 
 using bluetooth::le_audio::types::AudioContexts;
 using bluetooth::le_audio::types::LeAudioContextType;
+using bluetooth::common::ToString;
 
 namespace bluetooth::le_audio {
 namespace utils {
@@ -853,6 +854,25 @@ bool IsAseConfigMatchedWithPreferredRequirements(
   }
 
   return true;
+}
+
+bool isContextForHDT(types::LeAudioContextType context) {
+  /* The following context types support HDT PHY (return true).
+   * If the context is outside this list, HDT PHY is not used (return false).
+   */
+  log::debug(" context: {}", ToString(context));
+  switch (context) {
+    case LeAudioContextType::UNSPECIFIED:
+    case LeAudioContextType::MEDIA:
+    case LeAudioContextType::VOICEASSISTANTS:
+    case LeAudioContextType::SOUNDEFFECTS:
+    case LeAudioContextType::NOTIFICATIONS:
+    case LeAudioContextType::ALERTS:
+    case LeAudioContextType::EMERGENCYALARM:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace utils

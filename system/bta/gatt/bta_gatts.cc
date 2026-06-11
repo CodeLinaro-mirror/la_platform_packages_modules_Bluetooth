@@ -168,6 +168,11 @@ tGATT_STATUS BTA_GATTS_HandleValueIndication(uint16_t conn_id, uint16_t attr_id,
   }
 }
 
+tGATT_STATUS BTA_GATTS_HandleMultipleValueNotification(
+    tCONN_ID conn_id, const std::vector<tGATT_VALUE>& notifications) {
+  return GATTS_HandleMultipleValueNotification(conn_id, notifications);
+}
+
 static void notify_pm_br_gatt_conn_open(const RawAddress& bda) {
   bta_sys_conn_open(BTA_ID_GATTC, BTA_ALL_APP_ID, bda);
   bta_sys_conn_open(BTA_ID_GATTS, BTA_ALL_APP_ID, bda);

@@ -346,17 +346,6 @@ const tA2DP_ENCODER_INTERFACE* A2DP_VendorGetEncoderInterfaceAptx(const uint8_t*
   return &a2dp_encoder_interface_aptx;
 }
 
-bool A2DP_VendorAdjustCodecAptx(uint8_t* p_codec_info) {
-  tA2DP_APTX_CIE cfg_cie;
-
-  // Nothing to do: just verify the codec info is valid
-  if (A2DP_ParseInfoAptx(&cfg_cie, p_codec_info, true) != A2DP_SUCCESS) {
-    return false;
-  }
-
-  return true;
-}
-
 bool A2DP_VendorInitCodecConfigAptx(AvdtpSepConfig* p_cfg) {
   return A2DP_BuildInfoAptx(AVDT_MEDIA_TYPE_AUDIO, &a2dp_aptx_source_caps, p_cfg->codec_info);
 }

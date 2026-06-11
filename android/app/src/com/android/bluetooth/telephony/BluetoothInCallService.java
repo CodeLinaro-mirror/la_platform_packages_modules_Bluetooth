@@ -1882,7 +1882,8 @@ public class BluetoothInCallService extends InCallService {
         int ringingAddressType = PhoneNumberUtils.TOA_Unknown;
         String ringingName = null;
         if (!mCallInfo.isNullCall(ringingCall)
-                && ringingCall.getHandle() != null) {
+                && ringingCall.getHandle() != null
+                && !ringingCall.isSilentRingingRequested()) {
             ringingAddress = ringingCall.getHandle().getSchemeSpecificPart();
             if (ringingAddress != null) {
                 ringingAddressType = PhoneNumberUtils.toaFromString(ringingAddress);
@@ -2015,7 +2016,7 @@ public class BluetoothInCallService extends InCallService {
         //
 
         int bluetoothCallState = CallState.IDLE;
-        if (!mCallInfo.isNullCall(ringingCall)) {
+        if (!mCallInfo.isNullCall(ringingCall) && !ringingCall.isSilentRingingRequested()) {
             bluetoothCallState = CallState.INCOMING;
         } else if (!mCallInfo.isNullCall(dialingCall)) {
             bluetoothCallState = CallState.ALERTING;
@@ -2048,7 +2049,9 @@ public class BluetoothInCallService extends InCallService {
                     CallState.ALERTING;
 
             case Call.STATE_RINGING, Call.STATE_SIMULATED_RINGING -> {
-                if (isForeground) {
+                if (call.isSilentRingingRequested()) {
+                    yield CallState.IDLE;
+                } else if (isForeground) {
                     yield CallState.INCOMING;
                 } else {
                     yield CallState.WAITING;
@@ -2442,7 +2445,8 @@ public class BluetoothInCallService extends InCallService {
           mDsDaRingingName = null;
           return;
        } else {
-         if (!mCallInfo.isNullCall(ringingCall) && ringingCall.getHandle() != null) {
+         if (!mCallInfo.isNullCall(ringingCall) && ringingCall.getHandle() != null
+              && !ringingCall.isSilentRingingRequested()) {
             mDsDaRingingAddress = ringingCall.getHandle().getSchemeSpecificPart();
             if (mDsDaRingingAddress != null) {
                mDsDaRingingAddressType = PhoneNumberUtils.toaFromString(mDsDaRingingAddress);

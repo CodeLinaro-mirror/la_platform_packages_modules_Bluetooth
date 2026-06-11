@@ -1030,14 +1030,33 @@ static void btif_hh_remove_device_in_jni_thread(const AclLinkSpec& link_spec) {
 
     BTA_HhRemoveDev(p_dev->dev_handle);  // Remove the connection, in case it was pending
     bta_hh_co_close(p_dev);
+    // Only notify upper layers if the device was in an active state (CONNECTED,
+    // CONNECTING, or ACCEPTING). If already DISCONNECTED or DISCONNECTING, the
+    // upper layer has already been notified and sending another callback would
+    // produce a duplicate DISCONNECTED event.
+    //
+    // Concretely: hh_vc_unplug_handler sets p_dev->state = BTHH_CONN_STATE_DISCONNECTED
+    // and fires BTHH_STATE_UPDATE before calling btif_hh_remove_device(). Without this
+    // guard the do_in_jni_thread below would fire a second BTHH_STATE_UPDATE(DISCONNECTED),
+    // which arrives at HidHostService after handleMessageOnVirtualUnplug has already
+    // called mInputDevices.remove(), causing "Disconnect and unknown inputDevice" →
+    // nativeDisconnect → "Unknown link" / UNHANDLED errors.
+    const bool needs_disconnect_notification =
+        (p_dev->state == BTHH_CONN_STATE_CONNECTED ||
+         p_dev->state == BTHH_CONN_STATE_CONNECTING ||
+         p_dev->state == BTHH_CONN_STATE_ACCEPTING);
     p_dev->state = BTHH_CONN_STATE_UNKNOWN;
     p_dev->dev_handle = BTA_HH_INVALID_HANDLE;
-   // Notify upper layers of disconnection to avoid getting states out of sync
-    do_in_jni_thread(base::Bind(
-            [](AclLinkSpec link_spec) {
-              BTHH_STATE_UPDATE(link_spec, BTHH_CONN_STATE_DISCONNECTED, BTHH_OK);
-            },
-            link_spec));
+    if (needs_disconnect_notification) {
+      // Notify upper layers of disconnection to avoid getting states out of sync.
+      do_in_jni_thread(base::Bind(
+              [](AclLinkSpec link_spec) {
+                BTHH_STATE_UPDATE(link_spec, BTHH_CONN_STATE_DISCONNECTED, BTHH_OK);
+              },
+              link_spec));
+    } else {
+      log::info("Ignore state BTHH_CONN_STATE_DISCONNECTED ");
+    }
   }
 
   // Remove pending connection if address matches

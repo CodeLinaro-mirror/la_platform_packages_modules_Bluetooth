@@ -19,7 +19,10 @@ cc_binary {
         "external/libchrome",
     ],
 
-    cflags: ["-DHAS_NO_BDROID_BUILDCFG"],
+    cflags: [
+        "-DHAS_NO_BDROID_BUILDCFG",
+        "-DEATT_IF_SUPPORTED=TRUE",
+    ],
 
     shared_libs: [
         "libcutils",

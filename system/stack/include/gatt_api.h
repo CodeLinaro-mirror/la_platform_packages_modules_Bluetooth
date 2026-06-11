@@ -831,6 +831,25 @@ void GATTS_StopService(uint16_t service_handle);
 
 /*******************************************************************************
  *
+ * Function         GATTS_HandleMultipleValueNotification
+ *
+ * Description      This function sends multiple handle value notifications to
+ *                  a client in a single PDU. The client must have set
+ *                  the "Multiple Handle Value Notifications" bit in GATT
+ *                  Client Supported Features.
+ *
+ * Parameter        conn_id: connection identifier.
+ *                  notifications: vector of tGATT_VALUE entries (handle, len,
+ *                                 value) to include in the notification PDU.
+ *
+ * Returns          GATT_SUCCESS if successfully sent; otherwise error code.
+ *
+ ******************************************************************************/
+[[nodiscard]] tGATT_STATUS GATTS_HandleMultipleValueNotification(
+        tCONN_ID conn_id, const std::vector<tGATT_VALUE>& notifications);
+
+/*******************************************************************************
+ *
  * Function         GATTS_SendRsp
  *
  * Description      This function sends the server response to client.

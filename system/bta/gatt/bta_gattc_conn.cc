@@ -269,7 +269,7 @@ void bta_gattc_conn(tBTA_GATTC_CLCB* p_clcb) {
                                   &current_mtu);
       if (result == MTU_EXCHANGE_NOT_DONE_YET) {
         log::info ("MTU is NOT YET DONE {}", static_cast<int>(result));
-        GATTC_SetDefaultMtu(p_clcb->bda);
+        BTA_GATTC_ConfigureMTU(p_clcb->bta_conn_id, p_clcb->p_srcb->mtu);
       } else {
         if (result == MTU_EXCHANGE_ALREADY_DONE) {
           log::info ("MTU is ALREADY DONE {}", static_cast<int>(result));
