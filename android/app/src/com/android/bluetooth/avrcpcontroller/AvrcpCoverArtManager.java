@@ -58,6 +58,7 @@ class AvrcpCoverArtManager {
     private final AvrcpCoverArtStorage mCoverArtStorage;
     private final Callback mCallback;
     private final String mDownloadScheme;
+    private volatile boolean mShutdown = false;
 
     AvrcpCoverArtManager(
             AdapterService adapterService, AvrcpControllerService service, Callback callback) {
@@ -199,6 +200,7 @@ class AvrcpCoverArtManager {
      */
     synchronized void cleanup() {
         debug("Clean up and shutdown");
+        mShutdown = true;
         for (BluetoothDevice device : mClients.keySet()) {
             disconnect(device);
         }
@@ -405,11 +407,13 @@ class AvrcpCoverArtManager {
                 mService.getCurrentMetadataIfNoCoverArt(mDevice);
             } else if (newState == STATE_DISCONNECTED) {
                 AvrcpBipClient client = getClient(mDevice);
-                boolean shouldReconnect = (client != null);
+                boolean shouldReconnect = (client != null) && !mShutdown;
                 disconnect(mDevice);
                 if (shouldReconnect) {
                     debug("Disconnect was not expected by us. Attempt to reconnect.");
                     connect(mDevice, client.getL2capPsm());
+                } else if (mShutdown) {
+                    debug("Disconnect during shutdown, skipping reconnect for " + mDevice);
                 }
             }
         }
