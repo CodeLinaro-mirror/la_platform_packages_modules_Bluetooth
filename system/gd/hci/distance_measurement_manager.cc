@@ -1044,15 +1044,6 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      log::info("min_subevent_len {} max_subevent_len {} preferred_peer_antenna {}",
 	        min_subevent_len, max_subevent_len, procedure_setting.preferred_peer_antenna);
 
-     if (procedure_setting.preferred_peer_antenna & 0x01)
-       preferred_peer_antenna.use_first_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x02)
-       preferred_peer_antenna.use_second_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x04)
-       preferred_peer_antenna.use_third_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x08)
-       preferred_peer_antenna.use_fourth_ordered_antenna_element_ = 1;
-
      uint16_t conn_interval = cs_requester_trackers_[connection_handle].conn_interval_;
      uint16_t min_period_time_ms = procedure_setting.min_period_between_proc;
      uint16_t max_period_time_ms = procedure_setting.max_period_between_proc;
@@ -1076,17 +1067,31 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
        min_period_between_proc = procedure_setting.min_period_between_proc;
        max_period_between_proc = procedure_setting.max_period_between_proc;
        tmp_tone_antenna_config_sel =  procedure_setting.tone_ant_cfg_selection;
+
+       uint8_t preferred_ant_val = procedure_setting.preferred_peer_antenna;
+       preferred_peer_antenna.use_first_ordered_antenna_element_ = preferred_ant_val & 0x01;
+       preferred_peer_antenna.use_second_ordered_antenna_element_ = (preferred_ant_val >> 1) & 0x01;
+       preferred_peer_antenna.use_third_ordered_antenna_element_ = (preferred_ant_val >> 2) & 0x01;
+       preferred_peer_antenna.use_fourth_ordered_antenna_element_ = (preferred_ant_val >> 3) & 0x01;
+
        log::info("Using local config: min_period_between_proc={}, max_period_between_proc={}, "
-                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
-                  tmp_tone_antenna_config_sel);
+                 "tone_antenna_config_sel={}, preferred_peer_antenna={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel, preferred_ant_val);
      } else {
        min_period_between_proc = static_cast<uint16_t>(std::round(
            (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
        max_period_between_proc = static_cast<uint16_t>(std::round(
            (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+
+       uint8_t preferred_ant_val = cs_preferred_peer_antenna_mapping_table_[tone_antenna_config_selection];
+       preferred_peer_antenna.use_first_ordered_antenna_element_ = preferred_ant_val & 0x01;
+       preferred_peer_antenna.use_second_ordered_antenna_element_ = (preferred_ant_val >> 1) & 0x01;
+       preferred_peer_antenna.use_third_ordered_antenna_element_ = (preferred_ant_val >> 2) & 0x01;
+       preferred_peer_antenna.use_fourth_ordered_antenna_element_ = (preferred_ant_val >> 3) & 0x01;
+
        log::info("Using static config: min_period_between_proc={}, max_period_between_proc={}, "
-                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
-                  tmp_tone_antenna_config_sel);
+                 "tone_antenna_config_sel={}, preferred_peer_antenna={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel, preferred_ant_val);
      }
 
      log::info("config_avb: conn_interval={}, min_period_time={}ms, max_period_time={}ms, "
