@@ -189,6 +189,14 @@ public class A2dpSinkService extends ProfileService {
     /** Set the device that should be allowed to actively stream */
     public boolean setActiveDevice(BluetoothDevice device) {
         Log.i(TAG, "setActiveDevice(device=" + device + ")");
+        if (device != null) {
+            int state = getConnectionState(device);
+            if (state != BluetoothProfile.STATE_CONNECTED
+                    && state != BluetoothProfile.STATE_CONNECTING) {
+                Log.w(TAG, "setActiveDevice: device is not connected or connecting, ignoring");
+                return false;
+            }
+        }
         synchronized (mActiveDeviceLock) {
             if (mNativeInterface.setActiveDevice(device)) {
                 mActiveDevice = device;

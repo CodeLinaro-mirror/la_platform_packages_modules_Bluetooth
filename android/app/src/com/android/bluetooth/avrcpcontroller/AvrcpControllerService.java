@@ -257,6 +257,7 @@ public class AvrcpControllerService extends ProfileService {
         // Try and update the active device
         synchronized (mActiveDeviceLock) {
             if (device == null) {
+              mActiveDevice = null;
               Log.d(TAG, "Ignore A2dpSink setActiveDevice as device : "+device);
               return true;
             }
