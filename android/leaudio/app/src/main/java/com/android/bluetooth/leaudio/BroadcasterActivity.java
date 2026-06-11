@@ -214,12 +214,16 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                 : BisAvailability.UNAVAILABLE;
                 mLocalOccupyingBis = localOccupying;
 
-                if((mBisAvailability == BisAvailability.AVAILABLE) ||
-                    localOccupying) {
-                    Toast.makeText(context, "BIS is available, user can speak now", Toast.LENGTH_SHORT).show();
-                } else if (!bisAvailable && !localOccupying) {
-                    Toast.makeText(context, "BIS is not available, please wait until BIS is available", Toast.LENGTH_SHORT).show();
+                // COMBINE status toasts into ONE comprehensive message
+                String bisStatus;
+                if((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                    bisStatus = "BIS Available";
+                } else {
+                    bisStatus = "BIS Not Available";
                 }
+
+                // Single combined toast with BIS status
+                Toast.makeText(context, bisStatus, Toast.LENGTH_SHORT).show();
 
                 Log.d(TAG, "DBIG status – availability: " + mBisAvailability
                         + ", local occupying: " + mLocalOccupyingBis);

@@ -419,7 +419,41 @@ public class BluetoothProxy {
         public void onSourceModifyFailed(BluetoothDevice sink, int sourceId, int reason) {}
 
         @Override
-        public void onSourceRemoved(BluetoothDevice sink, int sourceId, int reason) {}
+        public void onSourceRemoved(BluetoothDevice sink, int sourceId, int reason) {
+            final String sinkAddr = sink.getAddress();
+            String statusMessage = "";
+
+            if (reason == BluetoothStatusCodes.HCI_CONNECTION_TIMEOUT) {
+                Log.d("BluetoothProxy", "onSourceRemoved: sink=" + sinkAddr
+                        + " sourceId=" + sourceId
+                        + " reason=HCI_CONNECTION_TIMEOUT (0x08 - BIG sync lost due to timeout)");
+                statusMessage = "Sync lost: Timeout (0x08)";
+            } else if (reason == BluetoothStatusCodes.HCI_REMOTE_USER_TERMINATED_CONNECTION) {
+                Log.d("BluetoothProxy", "onSourceRemoved: sink=" + sinkAddr
+                        + " sourceId=" + sourceId
+                        + " reason=HCI_REMOTE_USER_TERMINATED_CONNECTION (0x13 - Connection terminated by remote user)");
+                statusMessage = "Sync lost: Remote terminated (0x13)";
+            } else if (reason == BluetoothStatusCodes.HCI_LOCAL_HOST_TERMINATED_CONNECTION) {
+                Log.d("BluetoothProxy", "onSourceRemoved: sink=" + sinkAddr
+                        + " sourceId=" + sourceId
+                        + " reason=HCI_LOCAL_HOST_TERMINATED_CONNECTION (0x16 - Host issued HCI_LE_BIG_Terminate_Sync)");
+                statusMessage = "Source removed : Local terminated (0x16)";
+            } else {
+                Log.d("BluetoothProxy", "onSourceRemoved: sink=" + sinkAddr
+                        + " sourceId=" + sourceId
+                        + " reason=" + reason);
+                statusMessage = "Source removed: 0x" + Integer.toHexString(reason);
+            }
+
+            // Show Toast for sync lost on sink side
+            if (!statusMessage.isEmpty()) {
+                final String message = statusMessage;
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    android.widget.Toast.makeText(application, message,
+                            android.widget.Toast.LENGTH_SHORT).show();
+                });
+            }
+        }
 
         @Override
         public void onSourceRemoveFailed(BluetoothDevice sink, int sourceId, int reason) {}
