@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bt_bta_gattc"
@@ -25,10 +30,12 @@
 #include <sys/stat.h>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "bta/gatt/bta_gattc_int.h"
 #include "gatt/database.h"
+#include "gd/os/parameter_provider.h"
 #include "stack/include/gattdefs.h"
 
 using namespace bluetooth;
@@ -37,38 +44,61 @@ using gatt::StoredAttribute;
 using std::string;
 using std::vector;
 
+constexpr int kGattCacheVersion = 6;
+constexpr int kGattHashMaxSize = 30;
+// Default expired time is 7 days.
+constexpr int kGattHashExpiredTime = 604800;
+
+constexpr std::string_view kGattCacheFilePrefix = "gatt_cache_";
+constexpr std::string_view kGattHashFilePrefix = "gatt_hash_";
+
 #ifdef TARGET_FLOSS
-#define GATT_CACHE_PREFIX "/var/lib/bluetooth/gatt/gatt_cache_"
-#define GATT_CACHE_VERSION 6
-
-#define GATT_HASH_MAX_SIZE 30
-#define GATT_HASH_PATH_PREFIX "/var/lib/bluetooth/gatt/gatt_hash_"
-#define GATT_HASH_PATH "/var/lib/bluetooth/gatt"
-#define GATT_HASH_FILE_PREFIX "gatt_hash_"
+constexpr std::string_view kGattCachePrefix = "/var/lib/bluetooth/gatt/gatt_cache_";
+constexpr std::string_view kGattCachePath   = "/var/lib/bluetooth/gatt";
+constexpr std::string_view kGattHashPrefix  = "/var/lib/bluetooth/gatt/gatt_hash_";
 #else
-#define GATT_CACHE_PREFIX "/data/misc/bluetooth/gatt_cache_"
-#define GATT_CACHE_VERSION 6
-
-#define GATT_HASH_MAX_SIZE 30
-#define GATT_HASH_PATH_PREFIX "/data/misc/bluetooth/gatt_hash_"
-#define GATT_HASH_PATH "/data/misc/bluetooth"
-#define GATT_HASH_FILE_PREFIX "gatt_hash_"
+constexpr std::string_view kGattCachePrefix = "/data/misc/bluetooth/gatt_cache_";
+constexpr std::string_view kGattCachePath   = "/data/misc/bluetooth";
+constexpr std::string_view kGattHashPrefix  = "/data/misc/bluetooth/gatt_hash_";
 #endif
-
-// Default expired time is 7 days
-#define GATT_HASH_EXPIRED_TIME 604800
+// kGattHashPath is identical to kGattCachePath; use kGattCachePath directly.
 
 static void bta_gattc_hash_remove_least_recently_used_if_possible();
 
+static std::string GetGattCachePrefix() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kGattCachePrefix);
+  }
+  return std::string(kGattCachePath) + "/" + name + "_" + std::string(kGattCacheFilePrefix);
+}
+
+static std::string GetGattHashPrefix() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kGattHashPrefix);
+  }
+  return std::string(kGattCachePath) + "/" + name + "_" + std::string(kGattHashFilePrefix);
+}
+
+static std::string GetGattHashFilePrefix() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kGattHashFilePrefix);
+  }
+  return name + "_" + std::string(kGattHashFilePrefix);
+}
+
 static void bta_gattc_generate_cache_file_name(char* buffer, size_t buffer_len,
                                                const RawAddress& bda) {
-  snprintf(buffer, buffer_len, "%s%02x%02x%02x%02x%02x%02x", GATT_CACHE_PREFIX, bda.address[0],
-           bda.address[1], bda.address[2], bda.address[3], bda.address[4], bda.address[5]);
+  snprintf(buffer, buffer_len, "%s%02x%02x%02x%02x%02x%02x",
+           GetGattCachePrefix().c_str(), bda.address[0], bda.address[1],
+           bda.address[2], bda.address[3], bda.address[4], bda.address[5]);
 }
 
 static void bta_gattc_generate_hash_file_name(char* buffer, size_t buffer_len,
                                               const Octet16& hash) {
-  snprintf(buffer, buffer_len, "%s%s", GATT_HASH_PATH_PREFIX,
+  snprintf(buffer, buffer_len, "%s%s", GetGattHashPrefix().c_str(),
            base::HexEncode(hash.data(), 16).c_str());
 }
 
@@ -101,7 +131,7 @@ static gatt::Database bta_gattc_load_db(const char* fname) {
     goto done;
   }
 
-  if (cache_ver != GATT_CACHE_VERSION) {
+  if (cache_ver != kGattCacheVersion) {
     log::error("wrong GATT cache version: {}", fname);
     goto done;
   }
@@ -239,7 +269,7 @@ static bool bta_gattc_store_db(const char* fname, const std::vector<StoredAttrib
     return false;
   }
 
-  uint16_t cache_ver = GATT_CACHE_VERSION;
+  uint16_t cache_ver = kGattCacheVersion;
   if (fwrite(&cache_ver, sizeof(uint16_t), 1, fd) != 1) {
     log::error("can't write GATT cache version: {}", fname);
     fclose(fd);
@@ -373,9 +403,12 @@ void bta_gattc_cache_reset(const RawAddress& server_bda) {
  *
  ******************************************************************************/
 static void bta_gattc_hash_remove_least_recently_used_if_possible() {
-  std::unique_ptr<DIR, decltype(&closedir)> dirp(opendir(GATT_HASH_PATH), &closedir);
+  // kGattCachePath is a constexpr string_view over a string literal, so .data()
+  // is guaranteed null-terminated and safe to pass to POSIX C APIs.
+  std::unique_ptr<DIR, decltype(&closedir)> dirp(
+      opendir(kGattCachePath.data()), &closedir);
   if (dirp == nullptr) {
-    log::error("open dir error, dir={}", GATT_HASH_PATH);
+    log::error("open dir error, dir={}", kGattCachePath);
     return;
   }
 
@@ -394,7 +427,9 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
 
     // pattern match: gatt_hash_
     size_t fname_len = strlen(dp->d_name);
-    size_t pattern_len = strlen(GATT_HASH_FILE_PREFIX);
+    // Cache once per iteration to avoid two calls to GetHciInstanceName().
+    const string hash_file_prefix = GetGattHashFilePrefix();
+    size_t pattern_len = hash_file_prefix.size();
     if (pattern_len > fname_len) {
       continue;
     }
@@ -402,7 +437,7 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
     // check if the file name has gatt_hash_ as prefix
     char tmp[255] = {0};
     strncpy(tmp, dp->d_name, pattern_len);
-    if (strncmp(tmp, GATT_HASH_FILE_PREFIX, pattern_len) != 0) {
+    if (strncmp(tmp, hash_file_prefix.c_str(), pattern_len) != 0) {
       continue;
     }
 
@@ -410,7 +445,7 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
     count++;
 
     // generate the full path, in order to get the state of the file
-    snprintf(tmp, 255, "%s/%s", GATT_HASH_PATH, dp->d_name);
+    snprintf(tmp, 255, "%s/%s", kGattCachePath.data(), dp->d_name);
 
     struct stat buf;
     int result = lstat(tmp, &buf);
@@ -426,7 +461,7 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
         candidate_item.assign(tmp);
       }
 
-      if (buf.st_mtime + GATT_HASH_EXPIRED_TIME < current_time) {
+      if (buf.st_mtime + kGattHashExpiredTime < current_time) {
         // Add expired item.
         expired_items.emplace_back(tmp);
       }
@@ -435,7 +470,7 @@ static void bta_gattc_hash_remove_least_recently_used_if_possible() {
   log::debug("<-----------End Local Hash Cache------------>");
 
   // if the number of hash files exceeds the limit, remove the candidate item.
-  if (count > GATT_HASH_MAX_SIZE && !candidate_item.empty()) {
+  if (count > kGattHashMaxSize && !candidate_item.empty()) {
     unlink(candidate_item.c_str());
     log::debug("delete hash file (size), name={}", candidate_item);
   }

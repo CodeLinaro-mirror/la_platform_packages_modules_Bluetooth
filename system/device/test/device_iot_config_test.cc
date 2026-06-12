@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #include "device/include/device_iot_config.h"
@@ -175,7 +180,7 @@ TEST_F(DeviceIotConfigModuleTest, test_device_iot_config_module_init_original) {
     config_new_return_value = new config_t();
     config_new_empty_return_value = NULL;
     int config_get_int_return_value = DEVICE_IOT_INFO_CURRENT_VERSION;
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_int.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -210,7 +215,7 @@ TEST_F(DeviceIotConfigModuleTest, test_device_iot_config_module_init_backup) {
   config_t* config_new_empty_return_value = NULL;
 
   test::mock::osi_config::config_new.body = [&](const char* filename) {
-    if (strcmp(filename, IOT_CONFIG_BACKUP_PATH) == 0) {
+    if (strcmp(filename, IOT_CONFIG_BACKUP_PATH.c_str()) == 0) {
       return std::unique_ptr<config_t>(config_new_return_value);
     }
     return std::unique_ptr<config_t>(nullptr);
@@ -228,7 +233,7 @@ TEST_F(DeviceIotConfigModuleTest, test_device_iot_config_module_init_backup) {
     config_new_return_value = new config_t();
     config_new_empty_return_value = NULL;
     int config_get_int_return_value = DEVICE_IOT_INFO_CURRENT_VERSION;
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_int.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -277,7 +282,7 @@ TEST_F(DeviceIotConfigModuleTest, test_device_iot_config_module_init_new_file) {
     factory_reset_property_get_value = "false";
     config_new_return_value = NULL;
     config_new_empty_return_value = new config_t();
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_string.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -322,7 +327,7 @@ TEST_F(DeviceIotConfigModuleTest, test_device_iot_config_module_init_version_inv
     config_new_return_value = new config_t();
     config_new_empty_return_value = NULL;
     int config_get_int_return_value = -1;
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_int.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -373,7 +378,7 @@ TEST_F(DeviceIotConfigModuleTest,
     config_new_return_value = new config_t();
     config_new_empty_return_value = new config_t();
     int config_get_int_return_value = 2;
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_int.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -389,27 +394,29 @@ TEST_F(DeviceIotConfigModuleTest,
     int backup_fd = -1;
 
     errno = 0;
-    file_fd = open(IOT_CONFIG_FILE_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    file_fd = open(IOT_CONFIG_FILE_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+                   S_IRUSR | S_IWUSR);
     EXPECT_GT(file_fd, 0);
     EXPECT_EQ(errno, 0);
 
     errno = 0;
     backup_fd =
-            open(IOT_CONFIG_BACKUP_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+            open(IOT_CONFIG_BACKUP_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+                 S_IRUSR | S_IWUSR);
     EXPECT_GT(backup_fd, 0);
     EXPECT_EQ(errno, 0);
 
-    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH, F_OK), 0);
-    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH, F_OK), 0);
+    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH.c_str(), F_OK), 0);
+    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH.c_str(), F_OK), 0);
 
     device_iot_config_module_init();
 
     errno = 0;
-    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH, F_OK), -1);
+    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH.c_str(), F_OK), -1);
     EXPECT_EQ(errno, ENOENT);
 
     errno = 0;
-    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH, F_OK), -1);
+    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH.c_str(), F_OK), -1);
     EXPECT_EQ(errno, ENOENT);
 
     EXPECT_EQ(get_func_call_count("config_new"), 1);
@@ -449,7 +456,7 @@ TEST_F(DeviceIotConfigModuleTest,
     config_new_return_value = new config_t();
     config_new_empty_return_value = NULL;
     int config_get_int_return_value = 2;
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_int.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -465,27 +472,29 @@ TEST_F(DeviceIotConfigModuleTest,
     int backup_fd = -1;
 
     errno = 0;
-    file_fd = open(IOT_CONFIG_FILE_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    file_fd = open(IOT_CONFIG_FILE_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+                   S_IRUSR | S_IWUSR);
     EXPECT_GT(file_fd, 0);
     EXPECT_EQ(errno, 0);
 
     errno = 0;
     backup_fd =
-            open(IOT_CONFIG_BACKUP_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+            open(IOT_CONFIG_BACKUP_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+                 S_IRUSR | S_IWUSR);
     EXPECT_GT(backup_fd, 0);
     EXPECT_EQ(errno, 0);
 
-    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH, F_OK), 0);
-    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH, F_OK), 0);
+    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH.c_str(), F_OK), 0);
+    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH.c_str(), F_OK), 0);
 
     device_iot_config_module_init();
 
     errno = 0;
-    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH, F_OK), -1);
+    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH.c_str(), F_OK), -1);
     EXPECT_EQ(errno, ENOENT);
 
     errno = 0;
-    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH, F_OK), -1);
+    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH.c_str(), F_OK), -1);
     EXPECT_EQ(errno, ENOENT);
 
     EXPECT_EQ(get_func_call_count("config_new"), 1);
@@ -572,7 +581,7 @@ TEST_F(DeviceIotConfigModuleTest, test_device_iot_config_module_init_alarm_new_f
     config_new_return_value = new config_t();
     config_new_empty_return_value = NULL;
     int config_get_int_return_value = DEVICE_IOT_INFO_CURRENT_VERSION;
-    std::string config_get_string_return_value(TIME_STRING_FORMAT);
+    std::string config_get_string_return_value(kTimeStringFormat);
 
     test::mock::osi_config::config_get_int.body =
             [&](const config_t& /*config*/, const std::string& /*section*/,
@@ -2963,7 +2972,8 @@ TEST_F(DeviceIotConfigTest, test_device_debug_iot_config_dump) {
     const int BUF_SIZE = 100;
     char buf[BUF_SIZE] = {0};
 
-    fd = open(IOT_CONFIG_FILE_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    fd = open(IOT_CONFIG_FILE_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+              S_IRUSR | S_IWUSR);
     EXPECT_GT(fd, 0);
     EXPECT_EQ(errno, 0);
 
@@ -2991,16 +3001,18 @@ TEST_F(DeviceIotConfigTest, test_device_debug_iot_config_delete_files) {
     int file_fd = -1;
     int backup_fd = -1;
 
-    file_fd = open(IOT_CONFIG_FILE_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    file_fd = open(IOT_CONFIG_FILE_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+                   S_IRUSR | S_IWUSR);
     EXPECT_GT(file_fd, 0);
     EXPECT_EQ(errno, 0);
 
     backup_fd =
-            open(IOT_CONFIG_BACKUP_PATH, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+            open(IOT_CONFIG_BACKUP_PATH.c_str(), O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC,
+                 S_IRUSR | S_IWUSR);
     EXPECT_GT(backup_fd, 0);
     EXPECT_EQ(errno, 0);
 
-    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH, F_OK), 0);
-    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH, F_OK), 0);
+    EXPECT_EQ(access(IOT_CONFIG_FILE_PATH.c_str(), F_OK), 0);
+    EXPECT_EQ(access(IOT_CONFIG_BACKUP_PATH.c_str(), F_OK), 0);
   }
 }

@@ -428,7 +428,8 @@ static bool is_profile(const char* p1, const char* p2) {
  *
  ****************************************************************************/
 
-#ifdef TARGET_FLOSS
+
+#if defined(TARGET_FLOSS) || defined(DUAL_BT)
 static int global_hci_adapter = 0;
 
 static void set_adapter_index(int adapter) { global_hci_adapter = adapter; }
@@ -1239,7 +1240,7 @@ static void interop_database_add_remove_name(bool do_add, const char* feature_na
 
 EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
         sizeof(bluetoothInterface),
-#ifdef TARGET_FLOSS
+#if defined(TARGET_FLOSS) || defined(DUAL_BT)
         .set_adapter_index = set_adapter_index,
 #endif
         .get_adapter_property = get_adapter_property,

@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "device_iot_config"
@@ -65,11 +70,11 @@ future_t* device_iot_config_module_init(void) {
   config_timer = NULL;
   config = NULL;
 
-  config = config_new(IOT_CONFIG_FILE_PATH);
+  config = config_new(GetIotConfigFilePath().c_str());
   device_iot_config_source = ORIGINAL;
   if (!config) {
-    log::warn("Unable to load config file: {}; using backup.", IOT_CONFIG_FILE_PATH);
-    config = config_new(IOT_CONFIG_BACKUP_PATH);
+    log::warn("Unable to load config file: {}; using backup.", GetIotConfigFilePath().c_str());
+    config = config_new(GetIotConfigBackupPath().c_str());
     device_iot_config_source = BACKUP;
   }
 
@@ -100,8 +105,8 @@ future_t* device_iot_config_module_init(void) {
   if (version != DEVICE_IOT_INFO_CURRENT_VERSION) {
     log::info("Version in file is {}, CURRENT_VERSION is {}", version,
               DEVICE_IOT_INFO_CURRENT_VERSION);
-    remove(IOT_CONFIG_FILE_PATH);
-    remove(IOT_CONFIG_BACKUP_PATH);
+    remove(GetIotConfigFilePath().c_str());
+    remove(GetIotConfigBackupPath().c_str());
     config.reset();
     config = config_new_empty();
     if (!config) {
@@ -126,7 +131,7 @@ future_t* device_iot_config_module_init(void) {
     time_t current_time = time(NULL);
     struct tm* time_created = localtime(&current_time);
     if (time_created) {
-      strftime(device_iot_config_time_created, TIME_STRING_LENGTH, TIME_STRING_FORMAT,
+      strftime(device_iot_config_time_created, TIME_STRING_LENGTH, kTimeStringFormat,
                time_created);
       config_set_string(config.get(), INFO_SECTION, FILE_CREATED_TIMESTAMP,
                         std::string(device_iot_config_time_created));
@@ -188,10 +193,10 @@ void device_iot_config_write(uint16_t event, UNUSED_ATTR char* p_param) {
     device_iot_config_set_modified_time();
   }
 
-  rename(IOT_CONFIG_FILE_PATH, IOT_CONFIG_BACKUP_PATH);
+  rename(GetIotConfigFilePath().c_str(), GetIotConfigBackupPath().c_str());
   device_iot_config_restrict_device_num(*config);
   device_iot_config_sections_sort_by_entry_key(*config, device_iot_config_compare_key);
-  config_save(*config, IOT_CONFIG_FILE_PATH);
+  config_save(*config, GetIotConfigFilePath().c_str());
 }
 
 void device_iot_config_sections_sort_by_entry_key(config_t& config, compare_func comp) {
@@ -218,7 +223,7 @@ void device_iot_config_save_async(void) {
   log::assert_that(config_timer != NULL, "assert failed: config_timer != NULL");
 
   log::verbose("");
-  alarm_set(config_timer, CONFIG_SETTLE_PERIOD_MS, device_iot_config_timer_save_cb, NULL);
+  alarm_set(config_timer, kConfigSettlePeriodMs, device_iot_config_timer_save_cb, NULL);
 }
 
 int device_iot_config_get_device_num(const config_t& conf) {
@@ -283,7 +288,7 @@ void device_iot_config_set_modified_time() {
   struct tm* time_modified = localtime(&current_time);
   char device_iot_config_time_modified[TIME_STRING_LENGTH];
   if (time_modified) {
-    strftime(device_iot_config_time_modified, TIME_STRING_LENGTH, TIME_STRING_FORMAT,
+    strftime(device_iot_config_time_modified, TIME_STRING_LENGTH, kTimeStringFormat,
              time_modified);
     config_set_string(config.get(), INFO_SECTION, FILE_MODIFIED_TIMESTAMP,
                       device_iot_config_time_modified);

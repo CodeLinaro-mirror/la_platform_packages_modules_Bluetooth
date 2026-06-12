@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -22,6 +27,7 @@
 #include <memory>
 #include <mutex>
 
+#include "gd/os/parameter_provider.h"
 #include "hardware/avrcp/avrcp.h"
 #include "osi/include/properties.h"
 #include "profile/avrcp/avrcp_sdp_service.h"
@@ -121,5 +127,8 @@ private:
 }  // namespace bluetooth
 
 inline bool is_new_avrcp_enabled() {
-  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false);
+  // So far constrain the supporting of AVRCP(TG) only in new adapter
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false) &&
+         (name != "default");
 }
