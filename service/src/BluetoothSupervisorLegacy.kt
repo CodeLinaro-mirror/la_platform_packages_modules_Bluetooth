@@ -17,6 +17,7 @@
 package com.android.server.bluetooth
 
 import android.app.ActivityManager
+import android.bluetooth.BluetoothAdapterCommon
 import android.bluetooth.IBluetoothManagerCallback
 import android.content.Context
 import android.os.IBinder
@@ -36,26 +37,30 @@ private const val TAG = "BluetoothSupervisorLegacy"
 class BluetoothSupervisorLegacy(
     context: Context,
     private val looper: Looper,
-    bluetoothComponent: BluetoothComponent,
-    private val bms: BluetoothManagerService =
-        BluetoothManagerService(
-            context,
-            looper,
-            BluetoothHciInstance().getInstance(),
-            bluetoothComponent,
-            TimeProvider.systemClock,
-        ),
+    bluetoothComponent: BluetoothComponent?,
 ) : BluetoothSupervisor {
 
+    val adapterIndex: Int = bluetoothComponent?.adapterIndex ?:
+                            BluetoothAdapterCommon.ADAPTER_DEFAULT
+    private val bms: BluetoothManagerService
     private var currentUser: UserHandle? = null
 
     private var initialized = false
     override val api: BluetoothManagerServiceApi = Api(BmsProvider())
 
     init {
+        val hciInstance = BluetoothHciInstance().getInstance(adapterIndex)
+
+        bms = BluetoothManagerService(
+            context,
+            looper,
+            hciInstance,
+            bluetoothComponent,
+            TimeProvider.systemClock
+        )
         initializeAirplaneMode(looper, context.contentResolver, this::onAirplaneModeChanged)
         initializeSatelliteMode(looper, context.contentResolver, this::onSatelliteModeChanged)
-        Log.i(TAG, "Created BluetoothSupervisorLegacy")
+        Log.i(TAG, "Created BluetoothSupervisorLegacy with HCI instance: $hciInstance")
     }
 
     override fun onRestrictionChange() {

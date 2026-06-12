@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -270,6 +275,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public boolean startDiscovery(AttributionSource source) {
         var service = getServiceAndEnforceCallerUserAndScan(source, "startDiscovery");
         if (service == null) {
@@ -281,6 +287,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
     public boolean cancelDiscovery(AttributionSource source) {
         var service = getServiceAndEnforceCallerUserAndScan(source, "cancelDiscovery");
         if (service == null) {

@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.metrics;
@@ -96,11 +101,12 @@ public class MetricsLogger {
     private static final String TAG = Util.BT_PREFIX + MetricsLogger.class.getSimpleName();
 
     private static final String BLOOMFILTER_PATH = "/data/misc/bluetooth";
-    private static final String BLOOMFILTER_FILE = "/devices_for_metrics_v3";
-    private static final String MEDICAL_DEVICE_BLOOMFILTER_FILE = "/medical_devices_for_metrics_v1";
-    public static final String BLOOMFILTER_FULL_PATH = BLOOMFILTER_PATH + BLOOMFILTER_FILE;
-    public static final String MEDICAL_DEVICE_BLOOMFILTER_FULL_PATH =
-            BLOOMFILTER_PATH + MEDICAL_DEVICE_BLOOMFILTER_FILE;
+    private static final String BLOOMFILTER_FILE = "devices_for_metrics_v3";
+    private static final String MEDICAL_DEVICE_BLOOMFILTER_FILE = "medical_devices_for_metrics_v1";
+
+    // Full paths are computed in init() once the HCI instance name is known.
+    private String mBloomfilterFullPath;
+    private String mMedicalDeviceBloomfilterFullPath;
 
     // 6 hours timeout for counter metrics
     private static final long BLUETOOTH_COUNTER_METRICS_ACTION_DURATION_MILLIS = 6L * 3600L * 1000L;
@@ -232,26 +238,45 @@ public class MetricsLogger {
         mMedicalDeviceBloomFilter = bloomfilter;
     }
 
-    public void init(AdapterService adapterService, RemoteDevices remoteDevices) {
+    public void init(AdapterService adapterService, RemoteDevices remoteDevices,
+            String hciInstanceName) {
         if (mInitialized) {
             return;
         }
         mInitialized = true;
         mAdapterService = adapterService;
         mRemoteDevices = remoteDevices;
+        mBloomfilterFullPath = buildBloomfilterPath(hciInstanceName, BLOOMFILTER_FILE);
+        mMedicalDeviceBloomfilterFullPath =
+                buildBloomfilterPath(hciInstanceName, MEDICAL_DEVICE_BLOOMFILTER_FILE);
         scheduleDrains();
-        if (!initBloomFilter(BLOOMFILTER_FULL_PATH)) {
+        if (!initBloomFilter(mBloomfilterFullPath)) {
             Log.w(TAG, "MetricsLogger can't initialize the bloomfilter");
             // The class is for multiple metrics tasks.
             // We still want to use this class even if the bloomfilter isn't initialized
             // so still return true here.
         }
-        if (!initMedicalDeviceBloomFilter(MEDICAL_DEVICE_BLOOMFILTER_FULL_PATH)) {
+        if (!initMedicalDeviceBloomFilter(mMedicalDeviceBloomfilterFullPath)) {
             Log.w(TAG, "MetricsLogger can't initialize the medical device bloomfilter");
             // The class is for multiple metrics tasks.
             // We still want to use this class even if the bloomfilter isn't initialized
             // so still return true here.
         }
+    }
+
+    /**
+     * Builds the full path for a bloomfilter file, incorporating the HCI instance name so that
+     * each adapter instance uses a separate file.
+     *
+     * <p>For the default adapter the path is {@code <base>/<fileName>}. For any other adapter it
+     * is {@code <base>/<hciInstanceName>_<fileName>}, mirroring the C++ convention used in
+     * {@code bta_gattc_db_storage.cc}.
+     */
+    private static String buildBloomfilterPath(String hciInstanceName, String fileName) {
+        if ("default".equals(hciInstanceName)) {
+            return BLOOMFILTER_PATH + "/" + fileName;
+        }
+        return BLOOMFILTER_PATH + "/" + hciInstanceName + "_" + fileName;
     }
 
     public void logDeviceConnectionStateChanges(BluetoothDevice device, int profile, int state) {

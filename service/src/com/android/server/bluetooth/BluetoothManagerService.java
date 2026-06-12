@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.server.bluetooth;
@@ -43,8 +48,13 @@ import static com.android.bluetooth.util.Text.elapsedString;
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.NonNull;
+import android.annotation.SuppressLint;
 import android.app.BroadcastOptions;
+import android.bluetooth.BluetoothAdapterCommon;
+import android.bluetooth.BluetoothAdapterExt;
+import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.IAdapter;
+import android.bluetooth.IAdapterExt;
 import android.bluetooth.IBluetoothCallback;
 import android.bluetooth.IBluetoothManagerCallback;
 import android.bluetooth.State;
@@ -57,12 +67,14 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.os.PowerExemptionManager;
+import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -100,7 +112,7 @@ import java.util.regex.Pattern;
 
 @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE) // For Kotlin
 public class BluetoothManagerService {
-    private static final String TAG = BluetoothManagerService.class.getSimpleName();
+    private final String TAG;
 
     private static final int CRASH_LOG_MAX_SIZE = 100;
 
@@ -190,6 +202,9 @@ public class BluetoothManagerService {
     private int mRetryCounter = 0;
     private boolean mIsBootCompleted = false;
 
+    private int mAdapterIndex = 0;
+    private boolean mDualAdapterMode = false;
+
     // The code in mBluetoothCallback is running on Binder thread.
     // It must be posted on the local looper to prevent concurrent access.
     private final IBluetoothCallback mBluetoothCallback =
@@ -261,24 +276,26 @@ public class BluetoothManagerService {
         return Text.truncateUtf8String(name, 248);
     }
 
+    @SuppressLint("AndroidFrameworkRequiresPermission")
     private void storeName(String name) {
-        if (!Settings.Secure.putString(mContentResolver, Settings.Secure.BLUETOOTH_NAME, name)) {
+        if (!Settings.Secure.putString(mContentResolver, getBluetoothNameSetting(), name)) {
             Log.e(TAG, "storeName(" + name + "): Failed. Name is still " + mName);
             return;
         }
         mName = name;
         Log.v(TAG, "storeName(" + mName + "): Success");
         Intent intent =
-                new Intent(ACTION_LOCAL_NAME_CHANGED)
-                        .putExtra(EXTRA_LOCAL_NAME, name)
-                        .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+                newIntent(ACTION_LOCAL_NAME_CHANGED,
+                        BluetoothAdapterExt.ACTION_LOCAL_NAME_CHANGED);
+        intent.putExtra(EXTRA_LOCAL_NAME, name);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
         mContext.sendBroadcastAsUser(
                 intent, mUser, BLUETOOTH_CONNECT, getTempAllowlistBroadcastOptions());
     }
 
     private void storeAddress(String address) {
         if (!Settings.Secure.putString(
-                mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS, address)) {
+                mContentResolver, getBluetoothAddressSetting(), address)) {
             Log.e(
                     TAG,
                     "storeAddress("
@@ -369,6 +386,12 @@ public class BluetoothManagerService {
 
     /** Send Intent to the Notification Service in the Bluetooth app */
     Unit sendToggleNotification(String notificationReason) {
+        if (!isAdapterDefault()) {
+            Log.i(
+                    TAG,
+                    "Don't send toggle notification for non default adapter!");
+            return Unit.INSTANCE;
+        }
         Intent intent =
                 new Intent("android.bluetooth.notification.action.SEND_TOGGLE_NOTIFICATION");
         intent.setComponent(
@@ -561,6 +584,15 @@ public class BluetoothManagerService {
             String hciInstanceName,
             BluetoothComponent bluetoothComponent,
             TimeProvider timeProvider) {
+        mAdapterIndex = (bluetoothComponent != null)
+                ? bluetoothComponent.getAdapterIndex()
+                : BluetoothAdapterCommon.ADAPTER_DEFAULT;
+        if (!validAdapter(mAdapterIndex)) {
+            throw new IllegalArgumentException("Invalid adapter index: " + mAdapterIndex);
+        }
+        TAG = BluetoothManagerService.class.getSimpleName() + "[adapter_" + mAdapterIndex + "]";
+        mDualAdapterMode = SystemProperties.getBoolean("persist.bluetooth.dual_adapter_mode", false);
+        Log.i(TAG, "mDualAdapterMode = " + (mDualAdapterMode ? "enabled" : "disabled"));
         mContext = requireNonNull(context);
         mContentResolver = requireNonNull(mContext.getContentResolver());
         mLooper = requireNonNull(looper);
@@ -585,11 +617,11 @@ public class BluetoothManagerService {
                 validateLocalName(
                         BluetoothServerProxy.getInstance()
                                 .settingsSecureGetString(
-                                        mContentResolver, Settings.Secure.BLUETOOTH_NAME));
+                                        mContentResolver, getBluetoothNameSetting()));
         mAddress =
                 BluetoothServerProxy.getInstance()
                         .settingsSecureGetString(
-                                mContentResolver, Settings.Secure.BLUETOOTH_ADDRESS);
+                                mContentResolver, getBluetoothAddressSetting());
 
         int persistedState = getBluetoothPersistedState();
 
@@ -792,6 +824,11 @@ public class BluetoothManagerService {
                         + (" isBinding=" + isBinding())
                         + (" mState=" + mState));
 
+        if (!isToggleAllowed()) {
+            Log.e(TAG, "disableBle: toggle disallowed");
+            return false;
+        }
+
         mBleAppManager.removeBleApp(ENABLE_DISABLE_REASON_APPLICATION_REQUEST, token, packageName);
         return true;
     }
@@ -861,6 +898,11 @@ public class BluetoothManagerService {
             return false;
         }
 
+        if (!isToggleAllowed()) {
+            Log.e(TAG, "enableNoAutoConnect: not enabling - toggle disallowed");
+            return false;
+        }
+
         if (mUser == null) {
             Log.e(TAG, "enableNoAutoConnect: not enabling - no user");
             return false;
@@ -887,6 +929,11 @@ public class BluetoothManagerService {
 
         if (isSatelliteModeOn()) {
             Log.d(TAG, "enable: not enabling - satellite mode");
+            return false;
+        }
+
+        if (!isToggleAllowed()) {
+            Log.e(TAG, "enable: not enabling - toggle disallowed");
             return false;
         }
 
@@ -917,6 +964,11 @@ public class BluetoothManagerService {
                         + (" isBinding=" + isBinding())
                         + (" mState=" + mState));
 
+        if (!isToggleAllowed()) {
+            Log.e(TAG, "disable: not disabling - toggle disallowed");
+            return false;
+        }
+
         mAirplaneModeController.notifyUserToggledBluetooth(false);
 
         if (persist) {
@@ -927,7 +979,7 @@ public class BluetoothManagerService {
         return true;
     }
 
-    private static CompletableFuture<Void> createDeathNotifier(IBinder binder) {
+    private CompletableFuture<Void> createDeathNotifier(IBinder binder) {
         CompletableFuture<Void> deathNotifier = new CompletableFuture<>();
         try {
             binder.linkToDeath(
@@ -943,7 +995,7 @@ public class BluetoothManagerService {
         return deathNotifier;
     }
 
-    private static void killBluetoothProcess(
+    private void killBluetoothProcess(
             AdapterBinder adapter, CompletableFuture<Void> deathNotifier) {
         try {
             // Force kill Bluetooth to make sure its process is not reused.
@@ -1151,7 +1203,7 @@ public class BluetoothManagerService {
         public void onServiceConnected(ComponentName componentName, IBinder service) {
             String name = componentName.getClassName();
             Log.d(TAG, "ServiceConnection.onServiceConnected(" + name + ", " + service + ")");
-            if (!name.equals("com.android.bluetooth.btservice.AdapterService")) {
+            if (!isServiceIBluetooth(name)) {
                 // Impossible to reach
                 Log.e(TAG, "Unknown service connected: " + name);
                 return;
@@ -1164,7 +1216,7 @@ public class BluetoothManagerService {
             // Called if we unexpectedly disconnect.
             String name = componentName.getClassName();
             Log.e(TAG, "ServiceConnection.onServiceDisconnected(" + name + ")");
-            if (!name.equals("com.android.bluetooth.btservice.AdapterService")) {
+            if (!isServiceIBluetooth(name)) {
                 // Impossible to reach
                 Log.e(TAG, "Unknown service disconnected: " + name);
                 return;
@@ -1496,7 +1548,7 @@ public class BluetoothManagerService {
     private void bindToAdapter() {
         requireNonNull(mUser, "There is no user to start for");
         int flags = Context.BIND_AUTO_CREATE | Context.BIND_IMPORTANT;
-        Intent intent = new Intent(IAdapter.class.getName());
+        Intent intent = new Intent(getAdapterClassName());
         intent.putExtra(EXTRA_LOCAL_NAME, mName);
         intent.setComponent(mBluetoothComponent.getComponentName());
 
@@ -1639,14 +1691,21 @@ public class BluetoothManagerService {
 
         mState.set(newState);
 
-        broadcastIntentStateChange(ACTION_BLE_STATE_CHANGED, prevState, newState);
+        broadcastIntentStateChange(getAction(ACTION_BLE_STATE_CHANGED,
+                                   BluetoothAdapterExt.ACTION_BLE_STATE_CHANGED),
+                                   prevState,
+                                   newState);
 
         // BLE state are shown as State.OFF for BrEdr users
         final int prevBrEdrState = isBleState(prevState) ? State.OFF : prevState;
         final int newBrEdrState = isBleState(newState) ? State.OFF : newState;
 
         if (prevBrEdrState != newBrEdrState) { // Only broadcast when there is a BrEdr state change.
-            broadcastIntentStateChange(ACTION_STATE_CHANGED, prevBrEdrState, newBrEdrState);
+            broadcastIntentStateChange(
+                    getAction(ACTION_STATE_CHANGED,
+                    BluetoothAdapterExt.ACTION_STATE_CHANGED),
+                    prevBrEdrState,
+                    newBrEdrState);
             if (newBrEdrState == State.OFF) {
                 sendBluetoothOffCallback();
             }
@@ -1873,6 +1932,7 @@ public class BluetoothManagerService {
         String errorMsg = null;
 
         writer.println("Bluetooth Status:");
+        writer.println("  adapterIndex:  " + mAdapterIndex);
         writer.println("  State:         " + mState);
         writer.println("  Address:       " + Log.address(mAddress));
         writer.println("  Name:          " + mName);
@@ -1997,7 +2057,7 @@ public class BluetoothManagerService {
         disableComponents(pm, packageInfo.providers, packageName, Collections.emptySet());
     }
 
-    private static <T extends android.content.pm.ComponentInfo> void disableComponents(
+    private <T extends android.content.pm.ComponentInfo> void disableComponents(
             PackageManager pm, T[] components, String packageName, Set<String> componentsToKeep) {
         if (components == null) {
             return;
@@ -2055,5 +2115,65 @@ public class BluetoothManagerService {
 
     private void sendMessageDelayed(Message msg, Duration delay) {
         mHandler.sendMessageAtTime(msg, mTimeProvider.uptimeMillis() + delay.toMillis());
+    }
+
+    private boolean isServiceIBluetooth(String name) {
+        return isAdapterDefault()
+                ? name.equals("com.android.bluetooth.btservice.AdapterService")
+                : name.equals("com.android.bluetooth.btservice.AdapterExtService");
+    }
+
+    private String getAction(String action, String newAction) {
+        return isAdapterDefault() ? action : newAction;
+    }
+
+    // Per-adapter settings keys.  Index 0 maps to the standard key (no numeric suffix);
+    // index 1 maps to the "1"-suffixed key that already exists in Settings.Secure.
+    // When adapters 2 and 3 are provisioned, add their Settings.Secure constants and
+    // extend these arrays accordingly.
+    private static final String[] BLUETOOTH_NAME_SETTINGS = {
+        Settings.Secure.BLUETOOTH_NAME,
+        Settings.Secure.BLUETOOTH_NAME1,
+    };
+
+    private static final String[] BLUETOOTH_ADDRESS_SETTINGS = {
+        Settings.Secure.BLUETOOTH_ADDRESS,
+        Settings.Secure.BLUETOOTH_ADDRESS1,
+    };
+
+    private String getBluetoothNameSetting() {
+        return mAdapterIndex < BLUETOOTH_NAME_SETTINGS.length
+                ? BLUETOOTH_NAME_SETTINGS[mAdapterIndex]
+                : Settings.Secure.BLUETOOTH_NAME + mAdapterIndex;
+    }
+
+    private String getBluetoothAddressSetting() {
+        return mAdapterIndex < BLUETOOTH_ADDRESS_SETTINGS.length
+                ? BLUETOOTH_ADDRESS_SETTINGS[mAdapterIndex]
+                : Settings.Secure.BLUETOOTH_ADDRESS + mAdapterIndex;
+    }
+
+    private String getAdapterClassName() {
+        return isAdapterDefault() ? IAdapter.class.getName() : IAdapterExt.class.getName();
+    }
+
+    private boolean isToggleAllowed() {
+        // If dual adapter mode is enabled, disallow Bluetooth application from toggling
+        // non-default adapters, except the system process.
+        return isAdapterDefault()
+                || !mDualAdapterMode
+                || (UserHandle.getAppId(Binder.getCallingUid()) == Process.SYSTEM_UID);
+    }
+
+    private boolean isAdapterDefault() {
+        return BluetoothAdapterCommon.isAdapterDefault(mAdapterIndex);
+    }
+
+    private static boolean validAdapter(int adapterIndex) {
+        return BluetoothAdapterCommon.validAdapter(adapterIndex);
+    }
+
+    private Intent newIntent(String action, String newAction) {
+        return new Intent(isAdapterDefault() ? action : newAction);
     }
 }

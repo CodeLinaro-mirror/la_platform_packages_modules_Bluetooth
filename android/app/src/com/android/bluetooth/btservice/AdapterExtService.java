@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,22 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
-package com.android.bluetooth.btservice
+package com.android.bluetooth.btservice;
 
-import android.app.Application
-import android.util.Log
-import com.android.bluetooth.Util
+import android.bluetooth.BluetoothAdapter;
+import android.content.Intent;
+import android.os.IBinder;
+import android.util.Log;
 
-private const val TAG = Util.BT_PREFIX + "AdapterApp"
+import com.android.bluetooth.Util;
 
-class AdapterApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        Log.d(TAG, "onCreate()")
-        AdapterUtil.init(this)
+public class AdapterExtService extends AdapterService {
+    private static final String TAG = Util.BT_PREFIX + AdapterExtService.class.getSimpleName();
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        Log.d(TAG, "onBind()");
+        mLocalName = intent.getStringExtra(BluetoothAdapter.EXTRA_LOCAL_NAME);
+        return mAdapterBinder;
     }
 }

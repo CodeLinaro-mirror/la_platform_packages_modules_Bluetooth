@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
@@ -51,6 +56,7 @@ import android.content.AttributionSource;
 import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.IpcDataCache;
 import android.os.Parcel;
 import android.os.ParcelUuid;
@@ -66,7 +72,9 @@ import java.io.IOException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeoutException;
 import java.util.List;
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
@@ -1546,6 +1554,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
 
     private AttributionSource mAttributionSource;
 
+    private final int mAdapterIndex;
+
     static IBluetooth getService() {
         return BluetoothAdapter.getDefaultAdapter().getBluetoothService();
     }
@@ -1588,6 +1598,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         }
 
         mAdapter = adapter;
+        mAdapterIndex = mAdapter.getAdapterIndex();
         mAddress = address;
         mAddressType = addressType;
         mAttributionSource = AttributionSource.myAttributionSource();
@@ -1632,6 +1643,44 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     @UnsupportedAppUsage
     /*package*/ BluetoothDevice(Parcel in) {
         this(BluetoothAdapter.getDefaultAdapter(), in.readString(), in.readInt());
+    }
+
+    /**
+     * Returns the index of the {@link BluetoothAdapter} this device was obtained from.
+     *
+     * <p>In a dual-Bluetooth configuration two physical adapters are present:
+     * <ul>
+     *   <li>Index {@code 0} — the default adapter ({@link BluetoothAdapter#getDefaultAdapter()})
+     *   <li>Index {@code 1} — the secondary adapter (Ext1,
+     *       {@link android.bluetooth.BluetoothAdapterUtil#getNewAdapter()})
+     * </ul>
+     * On a single-adapter device this method always returns {@code 0}.
+     *
+     * <p>Use this index to determine which physical radio discovered or bonded the device, for
+     * example when filtering paired-device lists or routing connections to the correct adapter.
+     *
+     * @return the zero-based index of the Bluetooth adapter associated with this device
+     */
+    @SuppressLint("UnflaggedApi")
+    @RequiresNoPermission
+    public int getAdapterIndex() {
+        return mAdapterIndex;
+    }
+
+    /**
+     * Returns the {@link BluetoothAdapter} this device was obtained from.
+     *
+     * <p>In a dual-Bluetooth configuration there are two adapters (default and Ext1). This method
+     * lets callers (e.g. {@link com.android.settingslib.bluetooth.CachedBluetoothDevice}) identify
+     * which adapter a device belongs to without using reflection.
+     *
+     * @return the {@link BluetoothAdapter} associated with this device
+     */
+    @SuppressLint("UnflaggedApi")
+    @NonNull
+    @RequiresNoPermission
+    public BluetoothAdapter getAdapter() {
+        return mAdapter;
     }
 
     @Hide
@@ -1683,10 +1732,13 @@ public final class BluetoothDevice implements Parcelable, Attributable {
      */
     @Override
     public String toString() {
+        String addr;
         if (!CompatChanges.isChangeEnabled(CHANGE_TO_STRING_REDACTED)) {
-            return mAddress;
+            addr = mAddress;
+        } else {
+            addr = getAnonymizedAddress();
         }
-        return getAnonymizedAddress();
+        return mAdapterIndex == 0 ? addr : addr + " in new adapter";
     }
 
     @Override
@@ -1697,7 +1749,13 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     public static final @NonNull Creator<BluetoothDevice> CREATOR =
             new Creator<>() {
                 public BluetoothDevice createFromParcel(Parcel in) {
-                    return new BluetoothDevice(in);
+                     String address = in.readString();
+                     int addressType = in.readInt();
+                     int adapterIndex = in.readInt();
+                     // setPairingConfirmation from Settings should know which adapter
+                     // should be associated
+                     BluetoothAdapter adapter = getAdapter(adapterIndex);
+                     return new BluetoothDevice(adapter, address, addressType);
                 }
 
                 public BluetoothDevice[] newArray(int size) {
@@ -1709,6 +1767,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     public void writeToParcel(Parcel out, int flags) {
         BluetoothUtils.writeStringToParcel(out, mAddress);
         out.writeInt(mAddressType);
+        out.writeInt(mAdapterIndex);//mainly for send pairing request intent to Settings
     }
 
     /**
@@ -3249,7 +3308,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
 
     /**
      * Create a Bluetooth L2CAP Connection-oriented Channel (CoC) {@link BluetoothSocket} that can
-     * be used to start a secure outgoing connection to the remote device with the same dynamic
+     * be used to start a insecure outgoing connection to the remote device with the same dynamic
      * protocol/service multiplexer (PSM) value. The supported Bluetooth transport is LE only.
      *
      * <p>This is designed to be used with {@link
@@ -3766,8 +3825,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
                 null);
     }
 
-    private static void log(String msg) {
-        Log.d(TAG, msg);
+    private void log(String msg) {
+        Log.d(TAG + "[adapter_" + mAdapterIndex + "]", msg);
     }
 
     /** A data class for Bluetooth address and address type. */
@@ -3830,5 +3889,13 @@ public final class BluetoothDevice implements Parcelable, Attributable {
                         return new BluetoothAddress[size];
                     }
                 };
+    }
+
+    private static BluetoothAdapter getAdapter(int adapterIndex) {
+        BluetoothAdapter adapter = BluetoothAdapterUtil.getAdapter(adapterIndex);
+        if (adapter == null) {
+            throw new IllegalArgumentException("Null Bluetooth adapter");
+        }
+        return adapter;
     }
 }

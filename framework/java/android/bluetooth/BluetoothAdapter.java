@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package android.bluetooth;
@@ -785,6 +790,10 @@ public final class BluetoothAdapter {
 
     private static final int ADDRESS_LENGTH = 17;
 
+    private static final int ADAPTER_DEFAULT = BluetoothAdapterCommon.ADAPTER_DEFAULT;
+    private static final int ADAPTER_1 = BluetoothAdapterCommon.ADAPTER_1;
+    private static final int ADAPTER_NUMBER = BluetoothAdapterCommon.ADAPTER_NUMBER;
+
     /** Lazily initialized singleton. Guaranteed final after first object constructed. */
     private static BluetoothAdapter sAdapter;
 
@@ -792,6 +801,7 @@ public final class BluetoothAdapter {
     private BluetoothLeAdvertiser mBluetoothLeAdvertiser;
     private DistanceMeasurementManager mDistanceMeasurementManager;
 
+    private final int mAdapterIndex;
     private final IBluetoothManager mManagerService;
     private final AttributionSource mAttributionSource;
     private final Optional<Context> mContext;
@@ -804,14 +814,14 @@ public final class BluetoothAdapter {
     @GuardedBy("mServiceLock")
     private IBluetooth mService;
 
-    private static final ReentrantReadWriteLock sServiceLock = new ReentrantReadWriteLock();
+    private static HashMap<Integer, ReentrantReadWriteLock> sServiceLock;
     private final ReentrantReadWriteLock mServiceLock = new ReentrantReadWriteLock();
 
     @GuardedBy("sServiceLock")
-    private static boolean sServiceRegistered;
+    private static HashMap<Integer, Boolean> sServiceRegistered;
 
     @GuardedBy("sServiceLock")
-    private static IBluetooth sService;
+    private static HashMap<Integer, IBluetooth> sService;
 
     private final Object mLock = new Object();
     private final Map<LeScanCallback, ScanCallback> mLeScanClients = new HashMap<>();
@@ -865,6 +875,12 @@ public final class BluetoothAdapter {
 
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
+    private static HashMap<Integer, IBluetoothManagerCallback> sManagerCallback;
+
+    @GuardedBy("sServiceLock")
+    private static HashMap<Integer, WeakHashMap<IBluetoothManagerCallback, Void>>
+            sProxyServiceStateCallbacks;
+
     /**
      * Bluetooth metadata listener. Overrides the default BluetoothMetadataListener implementation.
      */
@@ -892,6 +908,36 @@ public final class BluetoothAdapter {
                     }
                 }
             };
+
+    static {
+        classInit();
+    }
+
+    @SuppressWarnings("GuardedBy")
+    private static void classInit() {
+        sServiceRegistered = new HashMap<Integer, Boolean>(ADAPTER_NUMBER);
+        sServiceRegistered.put(ADAPTER_DEFAULT, false);
+        sServiceRegistered.put(ADAPTER_1, false);
+
+        sService = new HashMap<Integer, IBluetooth>(ADAPTER_NUMBER);
+
+        sManagerCallback = new HashMap<Integer, IBluetoothManagerCallback>(ADAPTER_NUMBER);
+        sManagerCallback.put(ADAPTER_DEFAULT,
+                new BluetoothManagerCallback(ADAPTER_DEFAULT));
+        sManagerCallback.put(ADAPTER_1,
+                new BluetoothManagerCallback(ADAPTER_1));
+
+        sProxyServiceStateCallbacks =
+                new HashMap<Integer, WeakHashMap<IBluetoothManagerCallback, Void>>(ADAPTER_NUMBER);
+        sProxyServiceStateCallbacks.put(ADAPTER_DEFAULT,
+                new WeakHashMap<IBluetoothManagerCallback, Void>());
+        sProxyServiceStateCallbacks.put(ADAPTER_1,
+                new WeakHashMap<IBluetoothManagerCallback, Void>());
+
+        sServiceLock = new HashMap<Integer, ReentrantReadWriteLock>(ADAPTER_NUMBER);
+        sServiceLock.put(ADAPTER_DEFAULT, new ReentrantReadWriteLock());
+        sServiceLock.put(ADAPTER_1, new ReentrantReadWriteLock());
+    }
 
     @Hide
     @IntDef(
@@ -993,19 +1039,52 @@ public final class BluetoothAdapter {
         return new BluetoothAdapter(service, context);
     }
 
-    private BluetoothAdapter(IBluetoothManager managerService, @Nullable Context context) {
+    /** Use {@link #getDefaultAdapter} to get the BluetoothAdapter instance. */
+    BluetoothAdapter(IBluetoothManager managerService, @Nullable Context context) {
         this(
                 managerService,
                 context,
                 context != null
                         ? context.getAttributionSource()
-                        : AttributionSource.myAttributionSource());
+                        : AttributionSource.myAttributionSource(),
+                ADAPTER_DEFAULT);
     }
 
-    private BluetoothAdapter(
+    /** Use {@link #getDefaultAdapter} to get the BluetoothAdapter instance. */
+    BluetoothAdapter(
             @NonNull IBluetoothManager managerService,
             @Nullable Context context,
             @NonNull AttributionSource source) {
+        this(
+                managerService,
+                context,
+                source,
+                ADAPTER_DEFAULT);
+    }
+
+    /** Use {@link #getDefaultAdapter} to get the BluetoothAdapter instance. */
+    BluetoothAdapter(
+            @NonNull IBluetoothManager managerService,
+            @NonNull AttributionSource source,
+            int adapterIndex) {
+        this(
+                managerService,
+                null,
+                source,
+                adapterIndex);
+    }
+
+    /** Use {@link #getDefaultAdapter} to get the BluetoothAdapter instance. */
+    BluetoothAdapter(
+            @NonNull IBluetoothManager managerService,
+            @Nullable Context context,
+            @NonNull AttributionSource source,
+            int adapterIndex) {
+        if (!BluetoothAdapterCommon.validAdapter(adapterIndex)) {
+            throw new IllegalArgumentException("Invalid adapter index: " + adapterIndex);
+        }
+        mAdapterIndex = adapterIndex;
+
         mManagerService = requireNonNull(managerService);
         mContext = Optional.ofNullable(context);
         mAttributionSource = requireNonNull(source);
@@ -1064,6 +1143,12 @@ public final class BluetoothAdapter {
      */
     private void enforcePermissionInFramework(String... permissions) {
         mContext.ifPresent(ctx -> BluetoothUtils.enforcePermissionInFramework(ctx, permissions));
+    }
+
+    /** @hide */
+    @RequiresNoPermission
+    public int getAdapterIndex() {
+        return mAdapterIndex;
     }
 
     /**
@@ -3178,82 +3263,120 @@ public final class BluetoothAdapter {
         closeProfileProxy(proxy);
     }
 
-    private static final IBluetoothManagerCallback sManagerCallback =
-            new IBluetoothManagerCallback.Stub() {
-                @RequiresNoPermission
-                public void onBluetoothServiceUp(IBinder bluetoothService) {
-                    Log.d(TAG, "onBluetoothServiceUp: " + bluetoothService);
+    private static class BluetoothManagerCallback extends IBluetoothManagerCallback.Stub {
+        private final int mAdapterIndex;
+        BluetoothManagerCallback(int adapterIndex) {
+            mAdapterIndex = adapterIndex;
+        }
 
-                    sServiceLock.writeLock().lock();
+        @SuppressWarnings("GuardedBy")
+        @RequiresNoPermission
+        public void onBluetoothServiceUp(IBinder bluetoothService) {
+            Log.d(TAG, "onBluetoothServiceUp: " + bluetoothService);
+
+            WeakHashMap<IBluetoothManagerCallback, Void> serviceStateCallback;
+            ReentrantReadWriteLock serviceLock =
+                    sServiceLock.get(mAdapterIndex);
+            synchronized (serviceLock) {
+                IBluetooth service = IBluetooth.Stub.asInterface(bluetoothService);
+                sService.put(mAdapterIndex, service);
+                serviceStateCallback = sProxyServiceStateCallbacks.get(mAdapterIndex);
+            }
+
+            serviceLock.writeLock().lock();
+            try {
+                for (IBluetoothManagerCallback cb : serviceStateCallback.keySet()) {
                     try {
-                        sService = IBluetooth.Stub.asInterface(bluetoothService);
-                        for (IBluetoothManagerCallback cb : sProxyServiceStateCallbacks.keySet()) {
-                            try {
-                                cb.onBluetoothServiceUp(bluetoothService);
-                            } catch (RemoteException e) {
-                                logRemoteException(TAG, e);
-                            }
-                        }
-                    } finally {
-                        sServiceLock.writeLock().unlock();
+                        cb.onBluetoothServiceUp(bluetoothService);
+                    } catch (RemoteException e) {
+                        logRemoteException(TAG, e);
                     }
                 }
+            } finally {
+                serviceLock.writeLock().unlock();
+            }
+        }
 
-                @RequiresNoPermission
-                public void onBluetoothServiceDown() {
-                    Log.d(TAG, "onBluetoothServiceDown");
+        @SuppressWarnings("GuardedBy")
+        @RequiresNoPermission
+        public void onBluetoothServiceDown() {
+            Log.d(TAG, "onBluetoothServiceDown");
 
-                    sServiceLock.writeLock().lock();
+            WeakHashMap<IBluetoothManagerCallback, Void> serviceStateCallback;
+            ReentrantReadWriteLock serviceLock =
+                    sServiceLock.get(mAdapterIndex);
+            synchronized (serviceLock) {
+                sService.put(mAdapterIndex, null);
+                serviceStateCallback = sProxyServiceStateCallbacks.get(mAdapterIndex);
+            }
+
+            serviceLock.writeLock().lock();
+            try {
+                for (IBluetoothManagerCallback cb : serviceStateCallback.keySet()) {
                     try {
-                        sService = null;
-                        for (IBluetoothManagerCallback cb : sProxyServiceStateCallbacks.keySet()) {
-                            try {
-                                cb.onBluetoothServiceDown();
-                            } catch (RemoteException e) {
-                                logRemoteException(TAG, e);
-                            }
-                        }
-                    } finally {
-                        sServiceLock.writeLock().unlock();
+                        cb.onBluetoothServiceDown();
+                    } catch (RemoteException e) {
+                        logRemoteException(TAG, e);
                     }
                 }
+            } finally {
+                serviceLock.writeLock().unlock();
+            }
+        }
 
-                @RequiresNoPermission
-                public void onBluetoothOn() {
-                    Log.d(TAG, "onBluetoothOn");
+        @SuppressWarnings("GuardedBy")
+        @RequiresNoPermission
+        public void onBluetoothOn() {
+            Log.d(TAG, "onBluetoothOn");
 
-                    sServiceLock.readLock().lock();
+            WeakHashMap<IBluetoothManagerCallback, Void> serviceStateCallback;
+            ReentrantReadWriteLock serviceLock =
+                    sServiceLock.get(mAdapterIndex);
+            synchronized (serviceLock) {
+                serviceStateCallback = sProxyServiceStateCallbacks.get(mAdapterIndex);
+            }
+
+            serviceLock.readLock().lock();
+            try {
+                for (IBluetoothManagerCallback cb : serviceStateCallback.keySet()) {
                     try {
-                        for (IBluetoothManagerCallback cb : sProxyServiceStateCallbacks.keySet()) {
-                            try {
-                                cb.onBluetoothOn();
-                            } catch (RemoteException e) {
-                                logRemoteException(TAG, e);
-                            }
-                        }
-                    } finally {
-                        sServiceLock.readLock().unlock();
+                        cb.onBluetoothOn();
+                    } catch (RemoteException e) {
+                        logRemoteException(TAG, e);
                     }
                 }
+            } finally {
+                serviceLock.readLock().unlock();
+            }
+        }
 
-                @RequiresNoPermission
-                public void onBluetoothOff() {
-                    Log.d(TAG, "onBluetoothOff");
+        @SuppressWarnings("GuardedBy")
+        @RequiresNoPermission
+        public void onBluetoothOff() {
+            Log.d(TAG, "onBluetoothOff");
 
-                    sServiceLock.readLock().lock();
+            WeakHashMap<IBluetoothManagerCallback, Void> serviceStateCallback;
+            ReentrantReadWriteLock serviceLock =
+                    sServiceLock.get(mAdapterIndex);
+            synchronized (serviceLock) {
+                serviceStateCallback = sProxyServiceStateCallbacks.get(mAdapterIndex);
+            }
+
+            serviceLock.readLock().lock();
+            try {
+                for (IBluetoothManagerCallback cb : serviceStateCallback.keySet()) {
                     try {
-                        for (IBluetoothManagerCallback cb : sProxyServiceStateCallbacks.keySet()) {
-                            try {
-                                cb.onBluetoothOff();
-                            } catch (RemoteException e) {
-                                logRemoteException(TAG, e);
-                            }
-                        }
-                    } finally {
-                        sServiceLock.readLock().unlock();
+                        cb.onBluetoothOff();
+                    } catch (RemoteException e) {
+                        logRemoteException(TAG, e);
                     }
                 }
-            };
+            } finally {
+                serviceLock.readLock().unlock();
+            }
+        }
+    };
+
 
     private final IBluetoothManagerCallback mManagerCallback =
             new IBluetoothManagerCallback.Stub() {
@@ -3359,7 +3482,7 @@ public final class BluetoothAdapter {
                                 });
                     }
                 }
-            };
+    };
 
     /**
      * Enable the Bluetooth Adapter, but don't auto-connect devices and don't persist state.
@@ -3575,29 +3698,35 @@ public final class BluetoothAdapter {
         return mAttributionSource;
     }
 
-    @GuardedBy("sServiceLock")
-    private static final WeakHashMap<IBluetoothManagerCallback, Void> sProxyServiceStateCallbacks =
-            new WeakHashMap<>();
-
+    @SuppressWarnings("GuardedBy")
     /*package*/ IBluetooth getBluetoothService() {
-        sServiceLock.readLock().lock();
+        ReentrantReadWriteLock serviceLock =
+                sServiceLock.get(mAdapterIndex);
+        serviceLock.readLock().lock();
         try {
-            return sService;
+            return sService.get(mAdapterIndex);
         } finally {
-            sServiceLock.readLock().unlock();
+            serviceLock.readLock().unlock();
         }
     }
 
     /** Registers a IBluetoothManagerCallback and returns the cached service proxy object. */
+    @SuppressWarnings("GuardedBy")
     IBluetooth registerBluetoothManagerCallback(IBluetoothManagerCallback cb) {
         requireNonNull(cb);
-        sServiceLock.writeLock().lock();
+        ReentrantReadWriteLock serviceLock =
+                sServiceLock.get(mAdapterIndex);
+        WeakHashMap<IBluetoothManagerCallback, Void> serviceStateCallback;
+        synchronized (serviceLock) {
+           serviceStateCallback = sProxyServiceStateCallbacks.get(mAdapterIndex);
+        }
+        serviceLock.writeLock().lock();
         try {
-            sProxyServiceStateCallbacks.put(cb, null);
+            serviceStateCallback.put(cb, null);
             registerOrUnregisterAdapterLocked();
-            return sService;
+            return sService.get(mAdapterIndex);
         } finally {
-            sServiceLock.writeLock().unlock();
+            serviceLock.writeLock().unlock();
         }
     }
 
@@ -3637,14 +3766,21 @@ public final class BluetoothAdapter {
         callServiceIfEnabled(s -> s.getProfileOneway(profile, callback));
     }
 
+    @SuppressWarnings("GuardedBy")
     void removeServiceStateCallback(IBluetoothManagerCallback cb) {
         requireNonNull(cb);
-        sServiceLock.writeLock().lock();
+        ReentrantReadWriteLock serviceLock =
+                sServiceLock.get(mAdapterIndex);
+        WeakHashMap<IBluetoothManagerCallback, Void> serviceStateCallback;
+        synchronized (serviceLock) {
+           serviceStateCallback = sProxyServiceStateCallbacks.get(mAdapterIndex);
+        }
+        serviceLock.writeLock().lock();
         try {
-            sProxyServiceStateCallbacks.remove(cb);
+            serviceStateCallback.remove(cb);
             registerOrUnregisterAdapterLocked();
         } finally {
-            sServiceLock.writeLock().unlock();
+            serviceLock.writeLock().unlock();
         }
     }
 
@@ -3654,29 +3790,30 @@ public final class BluetoothAdapter {
      */
     @GuardedBy("sServiceLock") // with write lock
     private void registerOrUnregisterAdapterLocked() {
-        final boolean isRegistered = sServiceRegistered;
-        final boolean wantRegistered = !sProxyServiceStateCallbacks.isEmpty();
+        final boolean isRegistered = sServiceRegistered.get(mAdapterIndex);
+        final boolean wantRegistered = !sProxyServiceStateCallbacks.get(mAdapterIndex).isEmpty();
+        IBluetoothManagerCallback managerCallback = sManagerCallback.get(mAdapterIndex);
 
         if (isRegistered == wantRegistered) {
             return;
         }
         if (wantRegistered) {
             try {
-                sService =
+                sService.put(mAdapterIndex,
                         IBluetooth.Stub.asInterface(
-                                mManagerService.registerAdapter(sManagerCallback));
+                                mManagerService.registerAdapter(managerCallback)));
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
         } else {
             try {
-                mManagerService.unregisterAdapter(sManagerCallback);
-                sService = null;
+                mManagerService.unregisterAdapter(managerCallback);
+                sService.put(mAdapterIndex, null);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
         }
-        sServiceRegistered = wantRegistered;
+        sServiceRegistered.put(mAdapterIndex, wantRegistered);
     }
 
     /**
