@@ -1203,7 +1203,9 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         return;
       }
       if (it->second.state != CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED &&
-          it->second.state != CsTrackerState::STARTED) {
+          it->second.state != CsTrackerState::STARTED &&
+          it->second.state != CsTrackerState::STOPPED  &&
+          it->second.state != CsTrackerState::HOLD) {
         log::info("no procedure disable command needed for state {}.", (int)it->second.state);
         return;
       }
