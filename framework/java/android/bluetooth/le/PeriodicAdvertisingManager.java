@@ -366,6 +366,17 @@ public final class PeriodicAdvertisingManager {
                     }
                 });
             }
+
+            public void onEnhancedBigInfoAdvertisingReport(int syncHandle, boolean encrypted,
+                    int isoInterval) {
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                         Log.e(TAG, "Venk PAManager");
+                        callback.onEnhancedBigInfoAdvertisingReport(syncHandle, encrypted, isoInterval);
+                    }
+                });
+            }
         };
     }
 }
