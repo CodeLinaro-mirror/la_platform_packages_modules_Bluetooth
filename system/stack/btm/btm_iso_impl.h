@@ -865,8 +865,10 @@ struct iso_impl {
     if (big_params.max_transport_latency == 0) {
       big_params.max_transport_latency = 10;  // Default max transport latency
     }
-    if (big_params.rtn == 0) {
-      big_params.rtn = 2;  // Default RTN
+    // Apply default RTN=2 only if RTN=0 AND PHY is not Coded (0x04)
+    // For Coded PHY duplex mode, RTN=0 is valid
+    if (big_params.rtn == 0 && big_params.phy != 0x04) {
+      big_params.rtn = 2;  // Default RTN for non-Coded PHY
     }
     if (big_params.phy == 0) {
       big_params.phy = 2;  // Default PHY (LE 2M)
@@ -1159,8 +1161,10 @@ struct iso_impl {
     params[5] = last_dbig_params_.pgp_timeout;
     params[6] = last_dbig_params_.pgo_timeout;
     params[7] = last_dbig_params_.sgo_timeout;
-    params[8] = last_dbig_params_.tx_power;
-    // params[9..11] = 0 (reserved)
+    params[8] = last_dbig_params_.join_timeout;
+    params[9] = last_dbig_params_.exit_timeout;
+    params[10] = last_dbig_params_.remove_timeout;
+    params[11] = last_dbig_params_.terminate_timeout;
     return params;
   }
 

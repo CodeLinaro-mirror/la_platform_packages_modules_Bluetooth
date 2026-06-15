@@ -69,6 +69,7 @@ struct BroadcastSinkStateMachineConfig {
   bool is_public;               // Public broadcast announcement
   uint16_t pa_sync_timeout;     // PA sync timeout in ms
   std::optional<PublicBroadcastAnnouncementData> public_announcement;  // Public broadcast announcement data
+  std::vector<uint8_t> dbig_params;  // DBIG parameters from advertising packet
 
   BroadcastSinkStateMachineConfig()
       : reg_id(0),
@@ -79,12 +80,14 @@ struct BroadcastSinkStateMachineConfig {
         broadcast_name(""),
         is_public(false),
         pa_sync_timeout(0),
-        public_announcement(std::nullopt) {}
+        public_announcement(std::nullopt),
+        dbig_params() {}
 
   BroadcastSinkStateMachineConfig(uint32_t registration_id, RawAddress addr, uint8_t addr_type, uint8_t sid,
                                   uint32_t bcast_id, std::string bcast_name, bool pub,
                                   uint16_t pa_timeout,
-                                  std::optional<PublicBroadcastAnnouncementData> pub_announcement = std::nullopt)
+                                  std::optional<PublicBroadcastAnnouncementData> pub_announcement = std::nullopt,
+                                  std::vector<uint8_t> dbig_params_vec = {})
       : reg_id(registration_id),
         address(addr),
         address_type(addr_type),
@@ -93,7 +96,8 @@ struct BroadcastSinkStateMachineConfig {
         broadcast_name(std::move(bcast_name)),
         is_public(pub),
         pa_sync_timeout(pa_timeout),
-        public_announcement(std::move(pub_announcement)) {}
+        public_announcement(std::move(pub_announcement)),
+        dbig_params(std::move(dbig_params_vec)) {}
 
   bool operator==(const BroadcastSinkStateMachineConfig& other) const {
     return reg_id == other.reg_id && address == other.address &&
@@ -254,6 +258,14 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
    * @param num_bis       Number of BISes in the BIG
    */
   virtual void SetBigInfoParams(uint16_t iso_interval, uint8_t phy, uint8_t num_bis) = 0;
+
+  /**
+   * Set DBIG parameters from PA vendor LTV.
+   * Must be called before OnAudioStart() for enhanced broadcast sources.
+   *
+   * @param dbig_params  12-byte DBIG parameter array from PA vendor LTV
+   */
+  virtual void SetDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
 
   // Message processing
   virtual void ProcessMessage(Message msg, const void* data = nullptr) = 0;

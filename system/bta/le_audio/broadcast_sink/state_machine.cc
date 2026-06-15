@@ -28,6 +28,7 @@
 #include "common/strings.h"
 #include "hcidefs.h"
 #include "main/shim/le_scanning_manager.h"
+#include "osi/include/properties.h"
 #include "stack/include/btm_iso_api.h"
 #include "types/raw_address.h"
 
@@ -370,6 +371,17 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
               GetBroadcastId(), iso_interval,
               static_cast<uint32_t>(iso_interval) * 125 / 100,
               phy, num_bis);
+  }
+
+  void SetDbigParams(const std::vector<uint8_t>& dbig_params) override {
+    if (dbig_params.size() < 12) {
+      log::error("broadcast_id=0x{:x}, SetDbigParams: invalid size {} (expected 12)",
+                 GetBroadcastId(), dbig_params.size());
+      return;
+    }
+    sm_config_.dbig_params = dbig_params;
+    log::info("broadcast_id=0x{:x}, SetDbigParams: stored {} bytes, bis_ctrl_interval=0x{:02x}",
+              GetBroadcastId(), dbig_params.size(), dbig_params[3]);
   }
 
   void HandleHciEvent(uint16_t event, void* data) override {
@@ -954,13 +966,25 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
                  GetBroadcastId());
       return;
     }
+
+    // Use num_bis from biginfo report received from broadcaster
+    uint8_t num_bis = big_info_num_bis_;
+
+    std::vector<uint8_t> bis_indices;
+    for (uint8_t i = 1; i <= num_bis; i++) {
+      bis_indices.push_back(i);
+    }
+
+    log::info("broadcast_id=0x{:x}, BIS indices from biginfo: count={}",
+              GetBroadcastId(), num_bis);
+
     bluetooth::hci::iso_manager::big_sync_params params = {
         .sync_handle   = pa_sync_info_->sync_handle,
         .encryption    = is_encrypted_ ? static_cast<uint8_t>(0x01) : static_cast<uint8_t>(0x00),
         .broadcast_code = broadcast_code_.value_or(std::array<uint8_t, 16>({0})),
         .mse           = sink_config_.mse,
         .big_sync_timeout = sink_config_.big_sync_timeout,
-        .bis           = sink_config_.bis_indices,
+        .bis           = bis_indices,
     };
     IsoManager::GetInstance()->BigCreateSync(static_cast<uint8_t>(sm_config_.reg_id),
                                              std::move(params));
@@ -991,50 +1015,45 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     IsoManager::GetInstance()->TExitDbig(params);
   }
 
-  /**
-   * Select bis_control_event_interval from the parameter table:
-   *
-   *  ISO interval (1.25 ms units) | ISO interval | bis_control_event_interval
-   *  ─────────────────────────────┼──────────────┼───────────────────────────
-   *   ≤  6  ( 7.5 ms)             │  7.5 ms      │  12
-   *   ≤  8  (10   ms)             │ 10   ms      │   9
-   *   ≤ 16  (20   ms)             │ 20   ms      │   6
-   *   > 16  (30   ms)             │ 30   ms      │   4
-   *
-   * Both LE2M and Coded(S2) use the same mapping.
-   * iso_interval is in units of 1.25 ms (controller BIG Info Report field).
-   */
-  static uint8_t SelectBisControlEventInterval(uint16_t iso_interval_1_25ms) {
-    if (iso_interval_1_25ms <= 6)  return 12;  //  7.5 ms
-    if (iso_interval_1_25ms <= 8)  return 9;   // 10   ms
-    if (iso_interval_1_25ms <= 16) return 6;   // 20   ms
-    return 4;                                   // 30   ms
-  }
-
   void SendDbigSetupCommand() {
-    uint8_t bis_ctrl_interval = SelectBisControlEventInterval(big_info_iso_interval_);
-
     log::info("broadcast_id=0x{:x}, SendDbigSetupCommand: iso_interval={} ({}ms), "
-              "phy={}, num_bis={}, bis_control_event_interval={}",
+              "phy={}, num_bis={}",
               GetBroadcastId(), big_info_iso_interval_,
               static_cast<uint32_t>(big_info_iso_interval_) * 125 / 100,
-              big_info_phy_, big_info_num_bis_, bis_ctrl_interval);
+              big_info_phy_, big_info_num_bis_);
+
+    // Validate that DBIG params have been set via SetDbigParams()
+    if (sm_config_.dbig_params.size() < 12) {
+      log::error("broadcast_id=0x{:x}, SendDbigSetupCommand: dbig_params not set or too short ({} bytes). "
+                 "SetDbigParams() must be called with PA vendor LTV data before OnAudioStart().",
+                 GetBroadcastId(), sm_config_.dbig_params.size());
+      // Transition back to PA_SYNCED since we cannot proceed without DBIG params
+      SetState(SinkState::PA_SYNCED);
+      if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+      return;
+    }
 
     bluetooth::hci::iso_manager::dbig_create_params params = {};
-    params.dbig_handle                = static_cast<uint8_t>(sm_config_.reg_id);
-    params.dbig_feature_set           = 0x03;  // Feature set: duplex TX+RX
-    params.bis_detection_attempts     = 0x0A;  // 10 detection attempts
-    params.max_payload_dbig_control   = 0x1E;  // 30 bytes max payload
-    params.bis_control_event_interval = bis_ctrl_interval;
-    params.send_exit                  = 0x02;  // 2
-    params.pgp_timeout                = 0x0A;  // 10
-    params.pgo_timeout                = 0x0A;  // 10
-    params.sgo_timeout                = 0x06;  // 6
-    params.join_timeout               = 0x04;  //4
-    params.exit_timeout               = 0x04;  //4
-    params.remove_timeout             = 0x0A;  //10
-    params.terminate_timeout          = 0x0A;  //10
-    params.tx_power                   = 0x08;  // 8
+    params.dbig_handle = static_cast<uint8_t>(sm_config_.reg_id);
+
+    // Use values from advertising packet (PA vendor LTV)
+    params.dbig_feature_set           = sm_config_.dbig_params[0];
+    params.bis_detection_attempts     = sm_config_.dbig_params[1];
+    params.max_payload_dbig_control   = sm_config_.dbig_params[2];
+    params.bis_control_event_interval = sm_config_.dbig_params[3];
+    params.send_exit                  = sm_config_.dbig_params[4];
+    params.pgp_timeout                = sm_config_.dbig_params[5];
+    params.pgo_timeout                = sm_config_.dbig_params[6];
+    params.sgo_timeout                = sm_config_.dbig_params[7];
+    params.join_timeout               = sm_config_.dbig_params[8];
+    params.exit_timeout               = sm_config_.dbig_params[9];
+    params.remove_timeout             = sm_config_.dbig_params[10];
+    params.terminate_timeout          = sm_config_.dbig_params[11];
+    params.tx_power                   = 0x08;  // Not included in 12-byte format, use default
+
+    log::info("DBIG Params from advertising: bis_control_event_interval={}, join={}, exit={}, remove={}, terminate={}",
+              params.bis_control_event_interval, params.join_timeout, params.exit_timeout, params.remove_timeout, params.terminate_timeout);
+
     IsoManager::GetInstance()->CreateDbig(params);
   }
 

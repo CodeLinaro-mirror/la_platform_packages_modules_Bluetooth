@@ -576,10 +576,10 @@ bool setup_codec(uint32_t sample_rate, uint8_t bits_per_sample, uint8_t channel_
   //
   // The streamMap field is a fixed-size array uint32_t[48] at the LC3Parameters
   // level (not in txConfig/rxConfig). It encodes stream information for both
-  // TX and RX directions. Based on A14 logs:
+  // TX and RX directions. Based on A14 working logs:
   //   - TX (out): 1 entry with stream_id=0, audio_location=0, direction=0
-  //   - RX (in):  decoderOuputChannels entries (e.g., 4) with stream_ids 0-3,
-  //               audio_location=0, direction=1
+  //   - RX (in):  decoderOuputChannels entries (e.g., 3 for Coded PHY, 4 for LE2M)
+  //               with stream_ids 0-N, audio_location=0, direction=1
   //
   // The encoding format packs stream_id, audio_location, and direction into
   // a single uint32_t:
@@ -591,11 +591,15 @@ bool setup_codec(uint32_t sample_rate, uint8_t bits_per_sample, uint8_t channel_
   //   [0]       = TX stream (direction=0, stream_id=0)
   //   [1..N]    = RX streams (direction=1, stream_ids=0..N-1)
   //   [N+1..47] = unused (set to 0)
+  //
+  // Configuration based on PHY (from A14 working logs):
+  //   - Coded PHY: 1 TX (PGO) + 3 RX (PGP) = 4 total streams
+  //   - LE2M PHY:  1 TX (PGO) + 4 RX (PGP) = 5 total streams
   // ---------------------------------------------------------------------------
 
-  // Hardcoded: 1 TX + 4 RX = 5 streams (standard Aurachat 4-BIS config)
-  lc3.NumStreamIDGroup = 5;
-  uint8_t total_streams = 5;
+  // Calculate total streams dynamically: 1 TX + N RX (based on decoder_channel_count)
+  uint8_t total_streams = static_cast<uint8_t>(1 + duplex_codec_state_.decoder_channel_count);
+  lc3.NumStreamIDGroup = total_streams;
 
   // Initialize entire streamMap array to 0
   for (uint8_t i = 0; i < 48; i++) {

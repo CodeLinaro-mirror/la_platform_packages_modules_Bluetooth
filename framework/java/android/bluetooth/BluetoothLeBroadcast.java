@@ -619,6 +619,14 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             throw new IllegalStateException("No callback was ever registered");
         }
 
+        // Validate ISO interval - must be one of the allowed values (including 7.5ms)
+        if (isoInterval != 7.5f && isoInterval != 10.0f &&
+            isoInterval != 20.0f && isoInterval != 30.0f) {
+            throw new IllegalArgumentException(
+                "Invalid ISO interval: " + isoInterval +
+                ". Must be one of: 7.5, 10, 20, or 30 milliseconds");
+        }
+
         if (DBG) log("startEnhancedBroadcast with ISO interval: " + isoInterval);
         final IBluetoothLeAudio service = getService();
         if (service == null) {

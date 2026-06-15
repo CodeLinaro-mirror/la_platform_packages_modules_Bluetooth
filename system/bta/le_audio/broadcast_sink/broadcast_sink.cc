@@ -28,6 +28,7 @@
 #include "stack/include/hci_error_code.h"
 #include "hcidefs.h"
 #include "hcimsgs.h"
+#include "osi/include/properties.h"
 #include "types/bluetooth/uuid.h"
 #include "types/raw_address.h"
 
@@ -55,6 +56,24 @@ struct TrackedSource {
 
   TrackedSource() : is_notified(false) {}
 };
+
+/**
+ * Helper to check if Coded PHY is enabled for duplex broadcast
+ */
+static bool IsCodedPhyEnabled() {
+  return osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+}
+
+/**
+ * Get RX decoder channel count based on PHY
+ * Coded PHY: 3 RX channels, LE2M PHY: 4 RX channels
+ */
+static uint8_t GetRxDecoderChannelCount() {
+  bool coded_phy = IsCodedPhyEnabled();
+  uint8_t count = coded_phy ? 3 : 4;
+  log::info("GetRxDecoderChannelCount: coded_phy={}, returning {}", coded_phy, count);
+  return count;
+}
 
 /**
  * Helper function to generate PublicBroadcastAnnouncementData from raw metadata and features
@@ -553,6 +572,13 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     dbig_params_ = dbig_params;
     log::info("SetEnhancedDbigParams: stored {} bytes, bis_ctrl_interval=0x{:02x}",
               dbig_params_.size(), dbig_params_[3]);
+
+    // Propagate to all existing state machines
+    for (auto& [broadcast_id, tracked_source] : tracked_sources_) {
+      if (tracked_source.state_machine) {
+        tracked_source.state_machine->SetDbigParams(dbig_params);
+      }
+    }
   }
 
   void TerminateDbig() override {
@@ -713,7 +739,8 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
           broadcast_name,                            // broadcast_name
           is_public,                                 // is_public
           kDefaultPaSyncTimeout,                     // pa_sync_timeout
-          is_public ? public_announcement : std::nullopt  // public_announcement (only if is_public)
+          is_public ? public_announcement : std::nullopt,  // public_announcement (only if is_public)
+          dbig_params_                               // DBIG params from advertising packet
       );
 
       tracked_source.state_machine = BroadcastSinkStateMachine::CreateInstance(sm_config);
@@ -1249,8 +1276,18 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     // Sink HAL = RX/decoder: num_channels = N (all BISes) → decoder_channel_count = N
     // The QTI HAL uses decoder_channel_count to build N RX streams in the stream map.
     auto codec_config = BuildCodecConfiguration(sink_config);
-    log::info("StartSinkHalClient: num_channels={} for RX/decoder side (Sink HAL)",
-              codec_config.num_channels);
+
+    // For duplex (enhanced broadcast): decoder channel count based on PHY
+    if (sink_config.bis_indices.size() > 1) {
+      codec_config.num_channels = GetRxDecoderChannelCount();  // 3 (Coded) or 4 (LE2M)
+      log::info("StartSinkHalClient: Duplex mode - RX decoder num_channels={} (PHY-based), "
+                "total_bis={}",
+                codec_config.num_channels,
+                sink_config.bis_indices.size());
+    } else {
+      log::info("StartSinkHalClient: num_channels={} for RX/decoder side (Sink HAL)",
+                codec_config.num_channels);
+    }
 
     bool started = le_audio_sink_hal_client_->Start(codec_config, &audio_receiver_);
     if (!started) {

@@ -90,7 +90,8 @@ public:
   bool legacy_pdus = false;
   bool anonymous = false;
   bool include_tx_power = false;
-  bool use_le_coded_phy;       // Primary advertisement PHY is LE Coded
+  bool use_le_coded_phy;       // Primary advertisement PHY is LE Coded (backward compatibility)
+  uint8_t primary_advertising_phy = 0x01; // Raw PHY value: 0x01=1M, 0x03=Coded, 0x04=Coded S2
   uint8_t secondary_max_skip;  // maximum advertising events to be skipped, 0x0 send AUX_ADV_IND
                                // prior ot the next event
   SecondaryPhyType secondary_advertising_phy;

@@ -37,6 +37,12 @@ BroadcastConfiguration GetBroadcastConfig(
           osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
   log::info("AuraChat duplex mode enabled={}", aurachat_enabled);
   if (aurachat_enabled) {
+    // Check MTL to select configuration: MTL=5ms uses ISO 7.5ms, others use ISO 10ms
+    uint16_t mtl = (uint16_t)osi_property_get_int32("persist.vendor.btstack.transport_latency", 0);
+    if (mtl == 5) {
+      log::info("Using ISO 7.5ms duplex configuration (MTL=5ms)");
+      return aurachat_duplex_7p5ms;
+    }
     return aurachat_duplex_2m;
   }
 

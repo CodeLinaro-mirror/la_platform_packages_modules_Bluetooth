@@ -481,11 +481,23 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
             // Start searching with empty filter list (find all broadcasts) and default scan settings
             List<ScanFilter> filters = new ArrayList<>();
-            ScanSettings settings = new ScanSettings.Builder()
+            ScanSettings.Builder settingsBuilder = new ScanSettings.Builder()
                     .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                     .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-                    .setLegacy(false)
-                    .build();
+                    .setLegacy(false);
+
+            // Check if controller supports LE Coded PHY and set PHY accordingly
+            // For devices that support LE Coded PHY, scan on both LE 1M and LE Coded PHY
+            // For devices that only support LE 1M, scan on LE 1M only
+            if (mBluetoothAdapter != null && mBluetoothAdapter.isLeCodedPhySupported()) {
+                settingsBuilder.setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED);
+                Log.d(TAG, "Controller supports LE Coded PHY - scanning on both LE 1M and LE Coded PHY");
+            } else {
+                settingsBuilder.setPhy(android.bluetooth.BluetoothDevice.PHY_LE_1M);
+                Log.d(TAG, "Controller does not support LE Coded PHY - scanning on LE 1M only");
+            }
+
+            ScanSettings settings = settingsBuilder.build();
 
             mBroadcastSink.startScanningForSources(filters, settings);
         } catch (Exception e) {

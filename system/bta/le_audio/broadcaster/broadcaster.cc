@@ -253,9 +253,12 @@ public:
               .bis_configs = {},
       };
 
+      log::info("DEBUG: GetAllBisConfigCount() = {}, total GetNumBis() = {}",
+                subgroup_config.GetAllBisConfigCount(), subgroup_config.GetNumBis());
       for (uint8_t bis_cfg_idx = 0; bis_cfg_idx < subgroup_config.GetAllBisConfigCount();
            ++bis_cfg_idx) {
         auto bis_cfg_num_of_bises = subgroup_config.GetNumBis(bis_cfg_idx);
+        log::info("DEBUG: bis_cfg_idx={}, GetNumBis({}) = {}", bis_cfg_idx, bis_cfg_idx, bis_cfg_num_of_bises);
         for (uint8_t bis_num = 0; bis_num < bis_cfg_num_of_bises; ++bis_num) {
           // Internally BISes are indexed from 0 in each subgroup, but the BT
           // spec requires the indices to start from 1 in the entire BIG.
@@ -831,12 +834,15 @@ public:
       requirements.sink_pacs = std::vector<bluetooth::le_audio::types::acs_ac_record>{};
       bluetooth::le_audio::types::acs_ac_record pac_record;
       if (iso_interval == 7.5f) {
+        // ISO 7.5ms → Use 7.5ms frame duration
         pac_record.codec_spec_caps.Add(
           bluetooth::le_audio::codec_spec_caps::kLeAudioLtvTypeSupportedFrameDurations,
-          bluetooth::le_audio::codec_spec_caps::kLeAudioCodecFrameDur7500us 
+          bluetooth::le_audio::codec_spec_caps::kLeAudioCodecFrameDur7500us
         );
+        log::info("iso_interval=7.5ms, using 7.5ms frame duration");
       } else {
-        log::warn("iso_interval={}, defaulting to 10ms frame duration", iso_interval);
+        // Fallback for unexpected values
+        log::warn("iso_interval={}, using default 10ms frame duration", iso_interval);
         pac_record.codec_spec_caps.Add(
           bluetooth::le_audio::codec_spec_caps::kLeAudioLtvTypeSupportedFrameDurations,
           bluetooth::le_audio::codec_spec_caps::kLeAudioCodecFrameDur10000us
@@ -867,6 +873,7 @@ public:
       callbacks_->OnBroadcastCreated(bluetooth::le_audio::kBroadcastIdInvalid, false);
       return;
     }
+
     BroadcastStateMachineConfig msg = {
             .is_public = false,
             .broadcast_id = broadcast_id,
@@ -880,8 +887,25 @@ public:
     /* Prepare Broadcast audio session */
     if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
       const auto& broadcast_config = msg.config;
+
+      // For duplex broadcast, source (TX) and sink (RX) need different channel counts
+      // TX: 1 channel (mono, BIS 1 - PGO outgoing)
+      // RX: N-1 channels (BIS 2-N - PGP incoming)
+      auto source_hal_config = broadcast_config.GetAudioHalClientConfig();
+      auto sink_hal_config = broadcast_config.GetAudioHalClientConfig();
+
+      // Adjust channel counts for duplex mode
+      if (msg.broadcast_mode == bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+        uint8_t total_bis = GetTargetBisCountForDuplex();
+        source_hal_config.num_channels = 1;  // TX: mono stream on BIS 1
+        sink_hal_config.num_channels = total_bis;  // RX: 3 for Coded PHY, 4 for LE2M
+        log::info("CreateEnhancedAudioBroadcast: Duplex mode HAL config - "
+                  "Source (TX) channels=1, Sink (RX) channels={}, total_bis={}",
+                  sink_hal_config.num_channels, total_bis);
+      }
+
       auto is_started = instance->le_audio_source_hal_client_->Start(
-              broadcast_config.GetAudioHalClientConfig(), &audio_receiver_);
+              source_hal_config, &audio_receiver_);
       callbacks_->OnBroadcastAudioSessionCreated(is_started);
       if (!is_started) {
         log::error("Broadcast audio session can't be started");
@@ -889,7 +913,7 @@ public:
         return;
       }
       auto is_sink_started = instance->le_audio_sink_hal_client_->Start(
-          broadcast_config.GetAudioHalClientConfig(), &sink_audio_receiver_);
+          sink_hal_config, &sink_audio_receiver_);
       if (!is_sink_started) {
         log::error("Broadcast RX audio session can't be started");
         callbacks_->OnBroadcastCreated(broadcast_id, false);
@@ -1255,19 +1279,78 @@ public:
 
   uint8_t GetStreamingPhy(void) const override { return current_phy_; }
 
-  uint32_t ReadSupportedStates(void) override {
-    IsoManager::GetInstance()->ReadSupportedStates();
+  // Helper to check if Coded PHY is enabled for duplex broadcast
+  static bool IsCodedPhyEnabled() {
+    return osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+  }
 
-    // Pre-populate last_dbig_params_ so GetDbigParams() returns valid values
-    // when buildEnhancedPAVendorLTV() calls it during broadcast creation,
-    // before the first CreateDbig() has run and stored real params.
-    // Uses the same source-side constants that CreateDbig() sends to the controller.
+  // Coded PHY: 1 TX (PGO) + 2 RX (PGP) = 3 total BIS
+  // LE2M PHY:  1 TX (PGO) + 3 RX (PGP) = 4 total BIS
+  static uint8_t GetTargetBisCountForDuplex() {
+    bool coded_phy = IsCodedPhyEnabled();
+    uint8_t count = coded_phy ? 3 : 4;
+    log::info("GetTargetBisCountForDuplex: coded_phy={}, returning {}", coded_phy, count);
+    return count;
+  }
+
+  // Helper to calculate bis_control_event_interval from properties
+  // Same logic as state_machine.cc::GetBisControlEventInterval()
+  static uint8_t CalculateBisControlEventInterval() {
+    // Read from property (use 0 to detect if not set)
+    uint16_t mtl = (uint16_t)osi_property_get_int32("persist.vendor.btstack.transport_latency", 0);
+    bool coded_phy = IsCodedPhyEnabled();  // Use common helper
+
+    // If property not set (0), use default based on PHY
+    if (mtl == 0) {
+      mtl = coded_phy ? 25 : 10;  // Default: 25ms for Coded PHY, 10ms for LE2M
+    }
+
+    log::info("Calculating BIS Control Event Interval: transport_latency={} ms, coded_phy={}", mtl, coded_phy);
+
+    if (coded_phy) {
+      // Coded PHY: transport_latency = 5ms / 15ms / 25ms / 35ms
+      if (mtl == 5) {
+        return 12;  // ISO 7.5ms with Coded PHY
+      } else if (mtl == 15) {
+        return 9;
+      } else if (mtl == 25) {
+        return 6;
+      } else if (mtl == 35) {
+        return 4;
+      }
+    } else {
+      // LE2M PHY: transport_latency = 5ms / 10ms / 20ms / 30ms
+      if (mtl == 5) {
+        return 12;  // ISO 7.5ms with LE2M PHY
+      } else if (mtl == 10) {
+        return 9;
+      } else if (mtl == 20) {
+        return 6;
+      } else if (mtl == 30) {
+        return 4;
+      }
+    }
+
+    // Default fallback
+    log::warn("Unmatched transport_latency/PHY combination (mtl={}, coded={}), using default=9", mtl, coded_phy);
+    return 9;
+  }
+
+  uint32_t  ReadSupportedStates(void) override {
+    // Read controller capabilities (ISO features, etc.)
+    IsoManager::GetInstance()->ReadSupportedStates();
+    return IsoManager::GetInstance()->GetBroadcastStates();
+  }
+
+  // Initialize DBIG params by reading current property values
+  // Should be called every time before starting a broadcast to ensure fresh property reads
+  void InitializeDbigParams(void) {
     struct bluetooth::hci::iso_manager::dbig_create_params defaults = {
         .dbig_handle              = 0,
         .dbig_feature_set         = 3,
         .bis_detection_attempts   = 10,
         .max_payload_dbig_control = 30,
-        .bis_control_event_interval = 9,
+        .bis_control_event_interval = CalculateBisControlEventInterval(),
         .send_exit                = 2,
         .pgp_timeout              = 10,
         .pgo_timeout              = 10,
@@ -1279,10 +1362,14 @@ public:
         .tx_power                 = 8,
     };
     IsoManager::GetInstance()->StoreDbigParams(defaults);
-    return IsoManager::GetInstance()->GetBroadcastStates();
+    log::info("InitializeDbigParams: bis_control_event_interval={}", defaults.bis_control_event_interval);
   }
 
   std::vector<uint8_t> GetDbigParams(void) override {
+    // Refresh DBIG params with current property values before returning
+    // This ensures bis_control_event_interval reflects latest properties
+    // when building the PA vendor LTV
+    InitializeDbigParams();
     return IsoManager::GetInstance()->GetDbigParams();
   }
 

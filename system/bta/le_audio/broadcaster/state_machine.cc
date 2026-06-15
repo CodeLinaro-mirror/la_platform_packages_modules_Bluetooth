@@ -48,6 +48,7 @@
 #include "hci/le_advertising_manager.h"
 #include "hcidefs.h"
 #include "main/shim/le_advertising_manager.h"
+#include "osi/include/properties.h"
 #include "stack/include/btm_iso_api.h"
 #include "types/raw_address.h"
 
@@ -169,6 +170,14 @@ public:
   }
   BroadcastMode GetBroadcastMode() const override {
     return sm_config_.broadcast_mode;
+  }
+
+  uint8_t GetPaInterval() const override {
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      return GetPaIntervalForDuplex();
+    } else {
+      return BroadcastStateMachine::kPaIntervalMax;
+    }
   }
   void OnCreateAnnouncement(uint8_t advertising_sid, int8_t tx_power, uint8_t status) {
     log::info("advertising_sid={} tx_power={} status={}", advertising_sid, tx_power, status);
@@ -427,15 +436,29 @@ private:
       adv_params.advertising_event_properties = 0;
       adv_params.channel_map = kAdvertisingChannelAll;
       adv_params.tx_power = 8;
-      adv_params.primary_advertising_phy = PHY_LE_1M;
-      adv_params.secondary_advertising_phy = streaming_phy;
+
+      bool mBroadCastMode = (sm_config_.broadcast_mode == BroadcastMode::DUPLEX);
+      bool mBroadCastCodedPhy = IsCodedPhyEnabled();
+      if (mBroadCastMode && mBroadCastCodedPhy) {
+        log::info("Setting coded phy for DUPLEX broadcast");
+        adv_params.primary_advertising_phy = PHY_LE_CODED;
+        adv_params.secondary_advertising_phy = PHY_LE_CODED;
+      } else {
+        adv_params.primary_advertising_phy = PHY_LE_1M;
+        adv_params.secondary_advertising_phy = streaming_phy;
+      }
+      log::info("Advertising PHYs: primary={}, secondary={}",
+                adv_params.primary_advertising_phy, adv_params.secondary_advertising_phy);
+
       adv_params.scan_request_notification_enable = 0;
       adv_params.own_address_type = kBroadcastAdvertisingType;
 
       if (sm_config_.broadcast_mode == BroadcastMode::DUPLEX) {
-        periodic_params.max_interval = BroadcastStateMachine::kPaIntervalDuplex;
-        periodic_params.min_interval = BroadcastStateMachine::kPaIntervalDuplex;
+        uint16_t pa_interval = GetPaIntervalForDuplex();
+        periodic_params.max_interval = pa_interval;
+        periodic_params.min_interval = pa_interval;
         periodic_params.periodic_advertising_properties = 0x40;  // Bit 6: Include TxPower
+        log::info("Duplex mode: PA interval={} ({}ms)", pa_interval, (pa_interval * 1.25));
       } else {
         periodic_params.max_interval = BroadcastStateMachine::kPaIntervalMax;
         periodic_params.min_interval = BroadcastStateMachine::kPaIntervalMin;
@@ -465,6 +488,74 @@ private:
                            base::DoNothing());
   }
 
+  // Helper function to determine if Coded PHY is enabled for duplex broadcast
+  bool IsCodedPhyEnabled() const {
+    if (GetBroadcastMode() != BroadcastMode::DUPLEX) {
+      return false;
+    }
+    return osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+  }
+
+  // Helper function to get transport latency from property or config
+  // For DUPLEX mode: reads property persist.vendor.btstack.transport_latency
+  // For Auracast: uses config value only
+  uint16_t GetTransportLatency() const {
+    uint16_t mtl;
+
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      // DUPLEX mode: Read from property (overrides config value)
+      mtl = (uint16_t)osi_property_get_int32("persist.vendor.btstack.transport_latency", 0);
+
+      // If property is 0, use value from config as fallback
+      if (mtl == 0) {
+        mtl = sm_config_.config.qos.getMaxTransportLatency();
+      }
+    } else {
+      // Auracast: Always use config value
+      mtl = sm_config_.config.qos.getMaxTransportLatency();
+    }
+
+    return mtl;
+  }
+
+  // Helper function to calculate PA interval based on transport latency and PHY type
+  // PA Interval format: value * 1.25ms (e.g., 72 * 1.25ms = 90ms)
+  // Reads property persist.vendor.btstack.transport_latency
+  uint16_t GetPaIntervalForDuplex() const {
+    uint16_t mtl = GetTransportLatency();
+    bool coded_phy = IsCodedPhyEnabled();
+
+    log::info("transport_latency={} ms, coded_phy={}", mtl, coded_phy);
+
+    if (coded_phy) {
+      // Coded PHY: transport_latency = 15ms / 25ms / 35ms
+      if (mtl == 15) {
+        return 72;  // 72 * 1.25ms = 90ms
+      } else if (mtl == 25 || mtl == 35) {
+        return 96;  // 96 * 1.25ms = 120ms
+      }
+    } else {
+      // LE2M PHY: transport_latency = 10ms / 20ms / 30ms
+      if (mtl == 10) {
+        return 72;  // 72 * 1.25ms = 90ms
+      } else if (mtl == 20 || mtl == 30) {
+        return 96;  // 96 * 1.25ms = 120ms
+      }
+    }
+
+    // Default fallback
+    log::warn("Unmatched transport_latency/PHY combination (mtl={}, coded={}), using default PA interval 90ms", mtl, coded_phy);
+    return BroadcastStateMachine::kPaIntervalDuplex;
+  }
+
+  // Helper function to get number of BIS based on PHY type for duplex mode
+  uint8_t GetNumBisForDuplex() const {
+    bool coded_phy = IsCodedPhyEnabled();
+    uint8_t num_bis = coded_phy ? 3 : 4;  // 3 BIS for Coded PHY, 4 for LE2M
+    log::info("Number of BIS for duplex mode: {}, coded_phy={}", num_bis, coded_phy);
+    return num_bis;
+  }
+
   void CreateBig(void) {
     log::info("broadcast_id={}", GetBroadcastId());
     /* TODO: Figure out how to decide on the currently hard-codded params. */
@@ -473,7 +564,7 @@ private:
             .num_bis = sm_config_.config.GetNumBisTotal(),
             .sdu_itv = sm_config_.config.GetSduIntervalUs(),
             .max_sdu_size = sm_config_.config.GetMaxSduOctets(),
-            .max_transport_latency = sm_config_.config.qos.getMaxTransportLatency(),
+            .max_transport_latency = GetTransportLatency(),  // Read from property
             .rtn = sm_config_.config.qos.getRetransmissionNumber(),
             .phy = sm_config_.streaming_phy,
             .packing = 0x01, /* Interleaved */
@@ -483,17 +574,32 @@ private:
                                                   : std::array<uint8_t, 16>({0}),
     };
     if(GetBroadcastMode() == BroadcastMode::DUPLEX){
-      big_params.packing = 0x00;
-      big_params.num_bis = 4;
+      big_params.packing = 0x00;  // Sequential packing for duplex
+      big_params.num_bis = GetNumBisForDuplex();  // 3 for Coded PHY, 4 for LE2M
+
+      // Configure PHY and RTN based on Coded PHY property
+      if (IsCodedPhyEnabled()) {
+        big_params.phy = PHY_LE_CODED;  // PHY = 4 (Coded S2)
+        big_params.rtn = 0;  // RTN = 0 for Coded PHY
+        log::info("Duplex mode: Using Coded PHY (S2), PHY=4, RTN=0");
+      } else {
+        big_params.phy = PHY_LE_2M;  // PHY = 2 (LE2M)
+        big_params.rtn = 1;  // RTN = 1 for LE2M
+        log::info("Duplex mode: Using LE2M PHY, PHY=2, RTN=1");
+      }
     }
-    log::info("Number of BISES={}", big_params.num_bis);
+    log::info("Number of BISES={}, PHY={}, RTN={}, max_transport_latency={}",
+              big_params.num_bis, big_params.phy, big_params.rtn, big_params.max_transport_latency);
     IsoManager::GetInstance()->CreateBig(GetAdvertisingSid(), std::move(big_params));
   }
   void CreateDbig(void) {
     log::info("broadcast_id={}, creating DBIG for duplex mode", GetBroadcastId());
-    // All params were pre-seeded in ReadSupportedStates(); only the handle is dynamic.
+    // All params were pre-seeded in ReadSupportedStates() with calculated bis_control_event_interval.
+    // The handle is updated dynamically here.
     auto params = IsoManager::GetInstance()->GetStoredDbigParams();
     params.dbig_handle = GetAdvertisingSid();
+    log::info("DBIG params: handle={}, bis_control_event_interval={}",
+              params.dbig_handle, params.bis_control_event_interval);
     IsoManager::GetInstance()->CreateDbig(std::move(params));
   }
   void DisableAnnouncement(void) {
