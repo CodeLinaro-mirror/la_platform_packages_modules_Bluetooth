@@ -531,14 +531,15 @@ public class A2dpSinkService extends ProfileService {
         A2dpSinkStateMachine stateMachine = getOrCreateStateMachine(device);
         synchronized (sStateLock) {
             Log.d(TAG, "Device : " + device + "mStreamingDevice : "+mStreamingDevice);
-            if (event.mState == BluetoothProfile.STATE_DISCONNECTED
-                    && device.equals(mStreamingDevice)) {
+            if (event.mState == BluetoothProfile.STATE_DISCONNECTED) {
                 synchronized (mStreamHandlerLock) {
-                    if (sAudioIsEnabled == true) {
-                        mA2dpSinkStreamHandler
-                                .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
-                                .sendToTarget();
-                        sAudioIsEnabled = false;
+                    if (device.equals(mStreamingDevice)) {
+                        if (sAudioIsEnabled == true) {
+                            mA2dpSinkStreamHandler
+                                    .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
+                                    .sendToTarget();
+                            sAudioIsEnabled = false;
+                        }
                     }
                     if (mAudioManager != null) {
                         Message msg =
