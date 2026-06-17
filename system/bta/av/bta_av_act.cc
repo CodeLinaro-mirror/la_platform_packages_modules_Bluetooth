@@ -2299,17 +2299,10 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
   }
 
   log::verbose("rc_handle {}", rc_handle);
-  if (rc_handle == BTA_AV_RC_HANDLE_NONE  && btif_av_is_a2dp_sink_offload_enabled())
+  if (rc_handle == BTA_AV_RC_HANDLE_NONE && btif_av_is_a2dp_sink_offload_enabled())
   {
-      log::debug("Wait for an incoming connection");
-      if (p_scb != NULL)
-      {
-          bta_sys_start_timer(p_scb->avrc_ct_timer, AVRC_CONNECT_RETRY_DELAY_MS,
-                                 BTA_AV_SDP_AVRC_DISC_EVT,p_scb->hndl);
-          log::debug("incoming connection in progress, reset sdp disc handle");
-          p_cb->disc = 0;
-          return;
-      }
+    log::warn("bta_av_rc_disc_done: rc_handle none for peer {}, initiating AVRCP connection",
+              p_scb ? p_scb->PeerAddress() : RawAddress::kEmpty);
   }
 
   if (p_cb->sdp_a2dp_snk_handle) {
