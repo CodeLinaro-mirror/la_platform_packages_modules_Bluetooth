@@ -28,7 +28,9 @@ import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.AttributionSource;
+import android.content.BroadcastReceiver;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -74,6 +76,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private static final int MAX_BIG_SYNC_SOURCES = 1;
 
     private static final int DEFAULT_VOLUME_LEVEL = 15;
+
+    // Aurachat volume mapping constants (AM STREAM_VOICE_CALL → HFP SCO range)
+    private final int mMaxAmVcVol;
+    private final int mMinAmVcVol;
+    private static final int MAX_HFP_SCO_VOICE_CALL_VOLUME = 15;
+    private static final int MIN_HFP_SCO_VOICE_CALL_VOLUME = 1;
 
     // Handler message codes
     private static final int MSG_START              = 1;
@@ -124,6 +132,39 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     // AudioManager callback for monitoring broadcast input audio device changes
     private final AudioManagerAudioDeviceCallback mAudioManagerAudioDeviceCallback =
             new AudioManagerAudioDeviceCallback();
+
+    // BroadcastReceiver for STREAM_VOICE_CALL volume changes (Aurachat duplex volume tracking)
+    private final BroadcastReceiver mVolumeChangedReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context context, Intent intent) {
+            if (AudioManager.ACTION_VOLUME_CHANGED.equals(intent.getAction())) {
+                int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (streamType == AudioManager.STREAM_VOICE_CALL) {
+                    int currentVolumeIndex = intent.getIntExtra(
+                            AudioManager.EXTRA_VOLUME_STREAM_VALUE, -1);
+                    setDuplexBroadcastSpeakerVolume(currentVolumeIndex);
+                }
+            }
+        }
+    };
+
+    private void setDuplexBroadcastSpeakerVolume(int currentVolumeIndex) {
+        int volume = amToHfVol(currentVolumeIndex);
+        Log.d(TAG, "setAchatRxVolume currentVolumeIndex=" + currentVolumeIndex
+                + " volume=" + volume);
+        String keyValPairs = "achat_rx_volume=" + volume;
+        Log.d(TAG, "keyValPairs=" + keyValPairs);
+        mAudioManager.setParameters(keyValPairs);
+    }
+
+    private int amToHfVol(int amVol) {
+        int amRange = (mMaxAmVcVol > mMinAmVcVol) ? (mMaxAmVcVol - mMinAmVcVol) : 1;
+        int hfRange = MAX_HFP_SCO_VOICE_CALL_VOLUME - MIN_HFP_SCO_VOICE_CALL_VOLUME;
+        int hfOffset = (hfRange * (amVol - mMinAmVcVol)) / amRange;
+        int hfVol = MIN_HFP_SCO_VOICE_CALL_VOLUME + hfOffset;
+        Log.d(TAG, "AM -> HF " + amVol + " " + hfVol);
+        return hfVol;
+    }
 
     // AudioServer state callback for crash/recovery handling
     private final AudioManager.AudioServerStateCallback mAudioServerStateCallback =
@@ -252,6 +293,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             if (DBG) Log.d(TAG, "MSG_START: >>> setParameters(achat_rx_enable=true)");
                             mAudioManager.setParameters("achat_rx_enable=true");
                             if (DBG) Log.d(TAG, "MSG_START: <<< setParameters(achat_rx_enable=true) returned");
+                            int currentVolumeIndex = mAudioManager.getStreamVolume(
+                                    AudioManager.STREAM_VOICE_CALL);
+                            Log.d(TAG, "MSG_START: setting STREAM_VOICE_CALL volume to "
+                                    + currentVolumeIndex);
+                            setDuplexBroadcastSpeakerVolume(currentVolumeIndex);
                         }
                         break;
 
@@ -355,6 +401,15 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         // Register audio server state callback for crash/recovery
         mAudioManager.setAudioServerStateCallback(mHandler::post, mAudioServerStateCallback);
 
+        // Initialize AM voice-call volume range once so amToHfVol() can map correctly.
+        mMaxAmVcVol = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
+        mMinAmVcVol = mAudioManager.getStreamMinVolume(AudioManager.STREAM_VOICE_CALL);
+        Log.d(TAG, "volume from audio manager :: min:" + mMinAmVcVol + " max:" + mMaxAmVcVol);
+
+        // Register for STREAM_VOICE_CALL volume changes to keep achat_rx_volume in sync.
+        IntentFilter volumeFilter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+        registerReceiver(mVolumeChangedReceiver, volumeFilter);
+
         // Set service instance
         setLeAudioBroadcastSinkService(this);
     }
@@ -394,6 +449,13 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Unregister audio server state callback
         mAudioManager.clearAudioServerStateCallback();
+
+        // Unregister STREAM_VOICE_CALL volume change receiver
+        try {
+            unregisterReceiver(mVolumeChangedReceiver);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "cleanup: mVolumeChangedReceiver was not registered: " + e);
+        }
 
         // Shut down the handler thread gracefully
         mHandlerThread.quitSafely();

@@ -67,6 +67,8 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.Intent;
 import android.media.AudioDeviceCallback;
@@ -138,6 +140,12 @@ public class LeAudioService extends ProfileService {
 
     // Timeout for state machine thread join, to prevent potential ANR.
     private static final int SM_THREAD_JOIN_TIMEOUT_MS = 1000;
+
+    // Aurachat volume mapping constants (AM STREAM_VOICE_CALL → HFP SCO range)
+    private int mMaxAmVcVol;
+    private int mMinAmVcVol;
+    private static final int MAX_HFP_SCO_VOICE_CALL_VOLUME = 15;
+    private static final int MIN_HFP_SCO_VOICE_CALL_VOLUME = 1;
 
     /* 5 seconds timeout for Broadcast streaming state transition */
     private static final int CREATE_BROADCAST_TIMEOUT_MS = 5000;
@@ -370,6 +378,15 @@ public class LeAudioService extends ProfileService {
             Log.d(TAG, "Duplex broadcast mode: crash recovery — resetting AHAL TX+RX state");
             mAudioManager.setParameters("achat_rx_enable=false");
             mAudioManager.setParameters("achat_tx_enable=false");
+
+            // Initialize AM voice-call volume range once so amToHfVol() can map correctly.
+            mMaxAmVcVol = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
+            mMinAmVcVol = mAudioManager.getStreamMinVolume(AudioManager.STREAM_VOICE_CALL);
+            Log.d(TAG, "volume from audio manager :: min:" + mMinAmVcVol + " max:" + mMaxAmVcVol);
+
+            // Register for STREAM_VOICE_CALL volume changes to keep achat_rx_volume in sync.
+            IntentFilter volumeFilter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+            registerReceiver(mVolumeChangedReceiver, volumeFilter);
         }
 
         mLeAudioInbandRingtoneSupportedByPlatform =
@@ -904,6 +921,15 @@ public class LeAudioService extends ProfileService {
         }
 
         mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
+
+        // Unregister STREAM_VOICE_CALL volume change receiver (registered only in duplex mode)
+        if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
+            try {
+                unregisterReceiver(mVolumeChangedReceiver);
+            } catch (IllegalArgumentException e) {
+                Log.w(TAG, "cleanup: mVolumeChangedReceiver was not registered: " + e);
+            }
+        }
 
         mMcpService = null;
         mTbsService = null;
@@ -2758,9 +2784,46 @@ public class LeAudioService extends ProfileService {
 
         mAudioManager.setParameters("achat_tx_enable=true");
         mAudioManager.setParameters("achat_rx_enable=true");
+        int currentVolumeIndex = mAudioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+        Log.d(TAG, "handleA2dpAudioDeviceForAurachat: setting STREAM_VOICE_CALL volume to "
+                + currentVolumeIndex);
+        setDuplexBroadcastSpeakerVolume(currentVolumeIndex);
         return true;
     }
-  
+
+    private void setDuplexBroadcastSpeakerVolume(int currentVolumeIndex) {
+        int volume = amToHfVol(currentVolumeIndex);
+        Log.d(TAG, "setAchatRxVolume currentVolumeIndex=" + currentVolumeIndex
+                + " volume=" + volume);
+        String keyValPairs = "achat_rx_volume=" + volume;
+        Log.d(TAG, "keyValPairs=" + keyValPairs);
+        mAudioManager.setParameters(keyValPairs);
+    }
+
+    private int amToHfVol(int amVol) {
+        int amRange = (mMaxAmVcVol > mMinAmVcVol) ? (mMaxAmVcVol - mMinAmVcVol) : 1;
+        int hfRange = MAX_HFP_SCO_VOICE_CALL_VOLUME - MIN_HFP_SCO_VOICE_CALL_VOLUME;
+        int hfOffset = (hfRange * (amVol - mMinAmVcVol)) / amRange;
+        int hfVol = MIN_HFP_SCO_VOICE_CALL_VOLUME + hfOffset;
+        Log.d(TAG, "AM -> HF " + amVol + " " + hfVol);
+        return hfVol;
+    }
+
+    // BroadcastReceiver for STREAM_VOICE_CALL volume changes (Aurachat duplex source)
+    private final BroadcastReceiver mVolumeChangedReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (AudioManager.ACTION_VOLUME_CHANGED.equals(intent.getAction())) {
+                int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (streamType == AudioManager.STREAM_VOICE_CALL) {
+                    int currentVolumeIndex = intent.getIntExtra(
+                            AudioManager.EXTRA_VOLUME_STREAM_VALUE, -1);
+                    setDuplexBroadcastSpeakerVolume(currentVolumeIndex);
+                }
+            }
+        }
+    };
+
     @VisibleForTesting
     void handleAudioDeviceRemoved(
             BluetoothDevice device, int type, boolean isSink, boolean isSource) {
