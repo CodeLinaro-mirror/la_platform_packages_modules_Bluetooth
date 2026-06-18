@@ -1285,7 +1285,7 @@ class AvrcpControllerStateMachine extends StateMachine {
     private void setAbsVolume(int absVol) {
         int maxLocalVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
         int curLocalVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        int reqLocalVolume = (maxLocalVolume * absVol) / ABS_VOL_BASE;
+        int reqLocalVolume = Math.round((float)(maxLocalVolume * absVol) / ABS_VOL_BASE);
         debug(
                 "setAbsVolume: absVol = "
                         + absVol
