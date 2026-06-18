@@ -160,6 +160,12 @@ public:
     if ((p_act0->power_mode <= BTA_DM_PM_SNIFF7) && (p_act0->power_mode >= BTA_DM_PM_SNIFF)) {
       tBTM_PM_PWR_MD pwr_md = bta_dm_pm_get_sniff_entry(size_t(p_act0->power_mode & 0x0F));
       tBTA_DM_SSR_SPEC* p_spec = &p_bta_dm_ssr_spec[sniff_subrating_index];
+      bool is_sco_open_ssr0 = false;
+      // in qcom BT stack legacy sniff, when SCO_OPEN and subrating index is 0,
+      // max latency is always set to 2, maintaining the same here
+      if (state == ProfileState::BTA_SYS_SCO_OPEN &&
+          sniff_subrating_index == BTA_DM_PM_SSR0)
+        is_sco_open_ssr0 = true;
       return SniffOffloadConfig{
               .parameters_ =
                       {
@@ -168,7 +174,8 @@ public:
                               .sniff_attempts = pwr_md.attempt,
                               .sniff_timeout = pwr_md.timeout,
                               .link_idle_timeout = p_act0->timeout,
-                              .subrate_max_latency = p_spec->max_lat,
+                              .subrate_max_latency = is_sco_open_ssr0 ?
+                              (uint16_t) 2 : p_spec->max_lat,
                               .min_remote_timeout = p_spec->min_rmt_to,
                               .min_local_timeout = p_spec->min_loc_to,
                               .allow_exit_on_rx = sniff_params.allow_exit_on_rx,
