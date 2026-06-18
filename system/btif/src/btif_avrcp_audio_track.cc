@@ -79,7 +79,12 @@ static void BtifAvrcpAudioErrorHandle() {
     log::debug("AAudio Error handle: restart A2dp Sink AudioTrack");
     AAudioStream_requestStart(trackHolder->stream);
   }
+  std::thread* t = s_AudioEngine.thread;
   s_AudioEngine.thread = nullptr;
+  if (t != nullptr) {
+    t->detach();
+    delete t;
+  }
 }
 
 static void ErrorCallback(AAudioStream* /* stream */, void* /* userdata */, aaudio_result_t error) {
@@ -157,7 +162,7 @@ void BtifAvrcpAudioTrackDelete(void* handle) {
   if (trackHolder != NULL && trackHolder->stream != NULL) {
     log::verbose("Track.cpp: btStartTrack");
     AAudioStream_close(trackHolder->stream);
-    delete trackHolder->buffer;
+    delete[] trackHolder->buffer;
     delete trackHolder;
   }
 }
