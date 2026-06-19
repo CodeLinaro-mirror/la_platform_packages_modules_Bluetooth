@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bt_device_interop"
@@ -35,12 +40,14 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "btcore/include/module.h"
 #include "btif/include/btif_storage.h"
 #include "device/include/interop_config.h"
 #include "device/include/interop_database.h"
+#include "gd/os/parameter_provider.h"
 #include "osi/include/allocator.h"
 #include "osi/include/compat.h"
 #include "osi/include/config.h"
@@ -50,9 +57,19 @@
 using namespace bluetooth;
 
 #ifdef __ANDROID__
-static const char* INTEROP_DYNAMIC_FILE_PATH = "/data/misc/bluedroid/interop_database_dynamic.conf";
-static const char* INTEROP_STATIC_FILE_PATH =
+constexpr std::string_view kInteropDynamicPath       =
+        "/data/misc/bluedroid";
+constexpr std::string_view kInteropDynamicFilePath   =
+        "/data/misc/bluedroid/interop_database_dynamic.conf";
+constexpr std::string_view kInteropDynamicFilePrefix =
+        "interop_database_dynamic.conf";
+
+constexpr std::string_view kInteropStaticPath       =
+        "/apex/com.android.bt/etc/bluetooth";
+constexpr std::string_view kInteropStaticFilePath   =
         "/apex/com.android.bt/etc/bluetooth/interop_database.conf";
+constexpr std::string_view kInteropStaticFilePrefix =
+        "interop_database.conf";
 #elif TARGET_FLOSS
 #include <base/files/file_util.h>
 
@@ -60,9 +77,8 @@ static const char* INTEROP_STATIC_FILE_PATH =
 
 static const std::filesystem::path kDynamicConfigFileConfigFile =
         std::filesystem::temp_directory_path() / "interop_database_dynamic.conf";
-static const char* INTEROP_DYNAMIC_FILE_PATH = kDynamicConfigFileConfigFile.c_str();
 
-static const char* INTEROP_STATIC_FILE_PATH = "/var/lib/bluetooth/interop_database.conf";
+constexpr std::string_view kInteropStaticFilePath = "/var/lib/bluetooth/interop_database.conf";
 #else  // !TARGET_FLOSS and !__ANDROID__
 #include <base/files/file_util.h>
 
@@ -70,13 +86,38 @@ static const char* INTEROP_STATIC_FILE_PATH = "/var/lib/bluetooth/interop_databa
 
 static const std::filesystem::path kDynamicConfigFileConfigFile =
         std::filesystem::temp_directory_path() / "interop_database_dynamic.conf";
-static const char* INTEROP_DYNAMIC_FILE_PATH = kDynamicConfigFileConfigFile.c_str();
 
 static const std::filesystem::path kStaticConfigFileConfigFile =
         std::filesystem::temp_directory_path() / "interop_database.conf";
-
-static const char* INTEROP_STATIC_FILE_PATH = kStaticConfigFileConfigFile.c_str();
 #endif  // __ANDROID__
+
+static std::string GetInteropDynamicFilePath() {
+#ifdef __ANDROID__
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kInteropDynamicFilePath);
+  }
+  return std::string(kInteropDynamicPath) + "/" + name + "_" +
+         std::string(kInteropDynamicFilePrefix);
+#else
+  return kDynamicConfigFileConfigFile.string();
+#endif
+}
+
+static std::string GetInteropStaticFilePath() {
+#ifdef __ANDROID__
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(kInteropStaticFilePath);
+  }
+  return std::string(kInteropStaticPath) + "/" + name + "_" +
+         std::string(kInteropStaticFilePrefix);
+#elif defined(TARGET_FLOSS)
+  return std::string(kInteropStaticFilePath);
+#else
+  return kStaticConfigFileConfigFile.string();
+#endif
+}
 
 #define CASE_RETURN_STR(const) \
   case const:                  \
@@ -422,18 +463,18 @@ static int interop_config_init(void) {
   pthread_mutex_init(&file_lock, NULL);
   pthread_mutex_lock(&file_lock);
 
-  if (!stat(INTEROP_STATIC_FILE_PATH, &sts) && sts.st_size) {
-    if (!(config_static = config_new(INTEROP_STATIC_FILE_PATH))) {
-      log::warn("unable to load static config file for : {}", INTEROP_STATIC_FILE_PATH);
+  if (!stat(GetInteropStaticFilePath().c_str(), &sts) && sts.st_size) {
+    if (!(config_static = config_new(GetInteropStaticFilePath().c_str()))) {
+      log::warn("unable to load static config file for : {}", GetInteropStaticFilePath().c_str());
     }
   }
   if (!config_static && !(config_static = config_new_empty())) {
     goto error;
   }
 
-  if (!stat(INTEROP_DYNAMIC_FILE_PATH, &sts) && sts.st_size) {
-    if (!(config_dynamic = config_new(INTEROP_DYNAMIC_FILE_PATH))) {
-      log::warn("unable to load dynamic config file for : {}", INTEROP_DYNAMIC_FILE_PATH);
+  if (!stat(GetInteropDynamicFilePath().c_str(), &sts) && sts.st_size) {
+    if (!(config_dynamic = config_new(GetInteropDynamicFilePath().c_str()))) {
+      log::warn("unable to load dynamic config file for : {}", GetInteropDynamicFilePath().c_str());
     }
   }
   if (!config_dynamic && !(config_dynamic = config_new_empty())) {
@@ -453,7 +494,7 @@ static void interop_config_flush(void) {
   log::assert_that(config_dynamic.get() != NULL, "assert failed: config_dynamic.get() != NULL");
 
   pthread_mutex_lock(&file_lock);
-  config_save(*config_dynamic, INTEROP_DYNAMIC_FILE_PATH);
+  config_save(*config_dynamic, GetInteropDynamicFilePath());
   pthread_mutex_unlock(&file_lock);
 }
 

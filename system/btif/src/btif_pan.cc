@@ -176,13 +176,13 @@ static BtStatus btpan_jni_init(const btpan_callbacks_t* callbacks) {
   callback = *callbacks;
   jni_initialized = true;
   if (stack_initialized && !btpan_cb.enabled) {
-    btif_pan_init();
+    do_in_jni_thread(base::BindOnce(btif_pan_init));
   }
   return BtifStatus();
 }
 
 static void btpan_jni_cleanup() {
-  pan_disable();
+  do_in_jni_thread(base::BindOnce(pan_disable));
   jni_initialized = false;
 }
 

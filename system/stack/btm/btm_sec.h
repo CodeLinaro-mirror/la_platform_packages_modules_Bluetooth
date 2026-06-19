@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -307,6 +312,24 @@ void btm_remote_oob_data_reply(tBTM_STATUS res, const RawAddress& bd_addr, const
 
 /*******************************************************************************
  *
+ * Function         btm_remote_oob_extended_data_reply
+ *
+ * Description      This function is called to provide the remote OOB data for
+ *                  Simple Pairing in response to BTM_SP_RMT_OOB_EVT
+ *
+ * Parameters:      bd_addr     - Address of the peer device
+ *                  c           - simple pairing Hash C192
+ *                  r           - simple pairing Randomizer R192
+ *                  c_256       - simple pairing Hash C256
+ *                  r_256       - simple pairing Randomizer R256
+ *
+ ******************************************************************************/
+void btm_remote_oob_extended_data_reply(tBTM_STATUS res, const RawAddress& bd_addr,
+                                    const Octet16& c, const Octet16& r,
+                                    const Octet16& c_256, const Octet16& r_256);
+
+/*******************************************************************************
+ *
  * Function         btm_peer_supports_secure_connections
  *
  * Description      This function is called to check if the peer supports
@@ -545,6 +568,18 @@ void btm_rem_oob_req(const RawAddress& bd_addr);
  *
  ******************************************************************************/
 void btm_read_local_oob_complete(const tBTM_SP_LOC_OOB evt_data);
+
+/*******************************************************************************
+ *
+ * Function         btm_read_local_oob_extended_complete
+ *
+ * Description      This function is called when read local oob extended data is
+ *                  completed by the LM
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void btm_read_local_oob_extended_complete(const tBTM_SP_LOC_OOB evt_data);
 
 /*******************************************************************************
  *

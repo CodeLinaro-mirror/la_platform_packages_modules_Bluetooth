@@ -17,7 +17,9 @@
 
 package com.android.server.bluetooth
 
+import android.bluetooth.BluetoothAdapterCommon
 import android.bluetooth.IAdapter
+import android.bluetooth.IAdapterExt
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -29,7 +31,8 @@ import com.android.bluetooth.flags.Flags
 private const val TAG = "BluetoothComponent"
 
 /** Stores the package and component name of the Bluetooth application */
-class BluetoothComponent(context: Context) {
+class BluetoothComponent(context: Context, index: Int? =
+                         BluetoothAdapterCommon.ADAPTER_DEFAULT) {
     /**
      * The package name of the Bluetooth application.
      *
@@ -39,6 +42,8 @@ class BluetoothComponent(context: Context) {
 
     /** The component name of the Bluetooth AdapterService */
     val componentName: ComponentName
+
+    val adapterIndex: Int = index ?: BluetoothAdapterCommon.ADAPTER_DEFAULT
 
     init {
         val serviceInfo = validateServiceInfo(context)
@@ -73,7 +78,15 @@ class BluetoothComponent(context: Context) {
     @Throws(IllegalStateException::class)
     private fun validateServiceInfo(context: Context): ServiceInfo {
         val pm = context.packageManager
-        val intent = Intent(IAdapter::class.java.name)
+        val intent = if (BluetoothAdapterCommon.isAdapterDefault(adapterIndex)) {
+            Intent(IAdapter::class.java.name)
+        } else {
+            // All currently provisioned non-default adapters (index 1) share the IAdapterExt
+            // marker interface.  When adapters 2 and 3 are added they will each need their own
+            // AIDL marker interface (e.g. IAdapterExt2) registered in AndroidManifest.xml so
+            // that resolveService() can distinguish them.
+            Intent(IAdapterExt::class.java.name)
+        }
 
         // The Bluetooth UID is shared by a very limited number of packages.
         // We can optimize the resolveService lookup by only considering those packages.

@@ -15,10 +15,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
+#include "gd/os/parameter_provider.h"
 #include "osi/include/config.h"
 
 #define PROPERTY_ENABLE_LOGGING "persist.bluetooth.device_iot_config.enablelogging"
@@ -28,7 +37,7 @@
 #define FILE_CREATED_TIMESTAMP "TimeCreated"
 #define FILE_MODIFIED_TIMESTAMP "TimeModified"
 #define TIME_STRING_LENGTH sizeof("YYYY-MM-DD HH:MM:SS")
-static const char* TIME_STRING_FORMAT = "%Y-%m-%d %H:%M:%S";
+constexpr char kTimeStringFormat[] = "%Y-%m-%d %H:%M:%S";
 
 #ifndef DEVICES_MAX_NUM_IN_IOT_INFO_FILE
 #define DEVICES_MAX_NUM_IN_IOT_INFO_FILE 40
@@ -47,13 +56,39 @@ static const char* TIME_STRING_FORMAT = "%Y-%m-%d %H:%M:%S";
 #define IOT_CONFIG_SAVE_TIMER_FIRED_EVT 1
 
 #ifdef __ANDROID__
-static const char* IOT_CONFIG_FILE_PATH = "/data/misc/bluedroid/bt_remote_dev_info.conf";
-static const char* IOT_CONFIG_BACKUP_PATH = "/data/misc/bluedroid/bt_remote_dev_info.bak";
+constexpr std::string_view IOT_CONFIG_PATH        = "/data/misc/bluedroid";
+constexpr std::string_view IOT_CONFIG_FILE_PATH   = "/data/misc/bluedroid/bt_remote_dev_info.conf";
+constexpr std::string_view IOT_CONFIG_FILE_PREFIX = "bt_remote_dev_info.conf";
+
+constexpr std::string_view IOT_CONFIG_BACKUP_PATH   = "/data/misc/bluedroid/bt_remote_dev_info.bak";
+constexpr std::string_view IOT_CONFIG_BACKUP_PREFIX = "bt_remote_dev_info.bak";
 #else   // !__ANDROID__
-static const char* IOT_CONFIG_FILE_PATH = "bt_remote_dev_info.conf";
-static const char* IOT_CONFIG_BACKUP_PATH = "bt_remote_dev_info.bak";
+constexpr std::string_view IOT_CONFIG_PATH        = "";
+constexpr std::string_view IOT_CONFIG_FILE_PATH   = "bt_remote_dev_info.conf";
+constexpr std::string_view IOT_CONFIG_FILE_PREFIX = "bt_remote_dev_info.conf";
+
+constexpr std::string_view IOT_CONFIG_BACKUP_PATH   = "bt_remote_dev_info.bak";
+constexpr std::string_view IOT_CONFIG_BACKUP_PREFIX = "bt_remote_dev_info.bak";
 #endif  // __ANDROID__
-static const uint64_t CONFIG_SETTLE_PERIOD_MS = 12000;
+constexpr uint64_t kConfigSettlePeriodMs = 12000;
+
+inline std::string GetIotConfigFilePath() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(IOT_CONFIG_FILE_PATH);
+  }
+  return std::string(IOT_CONFIG_PATH) + "/" + name + "_" +
+         std::string(IOT_CONFIG_FILE_PREFIX);
+}
+
+inline std::string GetIotConfigBackupPath() {
+  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
+  if (name == "default") {
+    return std::string(IOT_CONFIG_BACKUP_PATH);
+  }
+  return std::string(IOT_CONFIG_PATH) + "/" + name + "_" +
+         std::string(IOT_CONFIG_BACKUP_PREFIX);
+}
 
 enum ConfigSource { NOT_LOADED, ORIGINAL, BACKUP, NEW_FILE, RESET };
 

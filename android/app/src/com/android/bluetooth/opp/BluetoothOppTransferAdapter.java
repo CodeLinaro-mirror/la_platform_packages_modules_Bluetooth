@@ -28,6 +28,11 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.opp;
@@ -47,6 +52,7 @@ import android.widget.ResourceCursorAdapter;
 import android.widget.TextView;
 
 import com.android.bluetooth.R;
+import com.android.bluetooth.btservice.AdapterService;
 
 import java.util.Date;
 
@@ -91,7 +97,7 @@ public class BluetoothOppTransferAdapter extends ResourceCursorAdapter {
 
         // target device
         tv = (TextView) view.findViewById(R.id.targetdevice);
-        BluetoothAdapter adapter = mContext.getSystemService(BluetoothManager.class).getAdapter();
+        BluetoothAdapter adapter = AdapterService.getAdapter();
         int destinationColumnId = cursor.getColumnIndexOrThrow(BluetoothShare.DESTINATION);
         BluetoothDevice remoteDevice =
                 adapter.getRemoteDevice(cursor.getString(destinationColumnId));

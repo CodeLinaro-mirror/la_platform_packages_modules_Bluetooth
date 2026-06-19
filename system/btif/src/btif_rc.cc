@@ -425,7 +425,9 @@ void btif_rc_check_pending_cmd(const RawAddress& peer_address) {
 
   if ((pending_cmds & RC_PENDING_ACT_REPORT_CONN) && btif_av_peer_is_source(peer_address)) {
     CTRL_HAL_CBACK(bt_rc_ctrl_callbacks->connection_state_cb, peer_address, kRcIsConnected,
-                   kBrowseIsDisconnected);
+                   (p_dev->br_state == BTRC_CONNECTION_STATE_CONNECTED)
+                   ? kBrowseIsConnected
+                   : kBrowseIsDisconnected);
   }
 }
 

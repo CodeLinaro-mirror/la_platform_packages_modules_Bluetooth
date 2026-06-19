@@ -53,6 +53,7 @@ typedef enum : uint8_t {
   BTA_DM_BOND_CANCEL_CMPL_EVT = 9,   /* Bond cancel complete indication */
   BTA_DM_SP_CFM_REQ_EVT = 10,        /* Simple Pairing User Confirmation request */
   BTA_DM_SP_KEY_NOTIF_EVT = 11,      /* Simple Pairing Passkey Notification */
+  BTA_DM_SP_RMT_OOB_EVT = 12,        /* Simple Pairing Remote OOB Data request. */
   BTA_DM_BLE_KEY_EVT = 15,           /* BLE SMP key event for peer device keys */
   BTA_DM_BLE_SEC_REQ_EVT = 16,       /* BLE SMP security request */
   BTA_DM_BLE_PASSKEY_NOTIF_EVT = 17, /* SMP passkey notification event */

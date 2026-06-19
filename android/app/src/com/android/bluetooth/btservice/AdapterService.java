@@ -13,6 +13,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -232,6 +237,9 @@ public class AdapterService extends Service {
 
     private static final int CONTROLLER_ENERGY_UPDATE_TIMEOUT_MILLIS = 100;
 
+    public static final int ENABLE = 0;
+    public static final int DISABLE = 1;
+
     private static final Duration PENDING_SOCKET_HANDOFF_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration GENERATE_LOCAL_OOB_DATA_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration PREFERRED_AUDIO_PROFILE_CHANGE_TIMEOUT = Duration.ofSeconds(10);
@@ -386,16 +394,31 @@ public class AdapterService extends Service {
 
     private volatile boolean mTestModeEnabled = false;
 
+    private int mAdapterIndex = 0;
+    private boolean mEnableNewAdapter = false;
+    private boolean mDisableNewAdapter = false;
+
+    private void initAdapter() {
+        mAdapterIndex = AdapterUtil.getAdapterIndex();
+        mAdapter = AdapterUtil.getAdapter();
+    }
+
+    public static BluetoothAdapter getAdapter() {
+        return AdapterUtil.getAdapter();
+    }
+
     /** Handlers for incoming service calls */
     private final AdapterServiceBinder mAdapterServiceBinder = new AdapterServiceBinder(this);
 
-    private final AdapterBinder mAdapterBinder = new AdapterBinder(this);
+    // Change type to protected as AdapterExtService changes mAdapterBinder
+    protected final AdapterBinder mAdapterBinder = new AdapterBinder(this);
 
     private volatile int mScanMode;
 
     private boolean mSuspend = false;
     private boolean mScanModeChangedDuringSuspend;
-    private String mLocalName; // Set when SystemServer bind to the AdapterService
+    // Change type to protected as AdapterExtService changes mLocalName
+    protected String mLocalName; // Set when SystemServer bind to the AdapterService
     private String mScanModeChangedDuringSuspendFrom;
     private int mScanModeAfterSuspend;
 
@@ -1032,16 +1055,17 @@ public class AdapterService extends Service {
         mStorage.initialize();
 
         Config.init(this);
+        initAdapter();
         mDeviceConfigListener.start();
 
-        MetricsLogger.getInstance().init(this, mRemoteDevices);
+        MetricsLogger.getInstance().init(this, mRemoteDevices, hciInstanceName);
 
         clearDiscoveryData();
         mAdapter = requireNonNull(getSystemService(BluetoothManager.class).getAdapter());
         boolean isCommonCriteriaMode =
                 requireNonNull(getSystemService(DevicePolicyManager.class))
                         .isCommonCriteriaModeEnabled(null);
-        mBluetoothKeystoreService.init(isCommonCriteriaMode);
+        mBluetoothKeystoreService.init(isCommonCriteriaMode, hciInstanceName);
         mBluetoothKeystoreService.start();
         int configCompareResult = mBluetoothKeystoreService.getCompareResult();
 
@@ -1059,6 +1083,7 @@ public class AdapterService extends Service {
             Log.d(TAG, "Loading JNI Library");
             System.loadLibrary("bluetooth_jni");
         }
+        mNativeInterface.setAdapterIndex(mAdapterIndex);
         mNativeInterface.init(
                 this,
                 mAdapterProperties,
@@ -1088,7 +1113,8 @@ public class AdapterService extends Service {
          * Android Automotive OS builds, in favor of a policy currently located in
          * CarBluetoothService.
          */
-        if (!isAutomotiveDevice && getResources().getBoolean(R.bool.enable_phone_policy)) {
+        if ((!isAutomotiveDevice || AdapterUtil.isDualBluetoothEnabled())
+            && getResources().getBoolean(R.bool.enable_phone_policy)) {
             Log.i(TAG, "Phone policy enabled");
             mPhonePolicy = Optional.of(new PhonePolicy(this, mLooper, mStorage));
         } else {
@@ -3222,6 +3248,14 @@ public class AdapterService extends Service {
         }
     }
 
+    public boolean loadRemoteOobData(
+            BluetoothDevice device, int transport, OobData remoteP192Data,
+            OobData remoteP256Data) {
+        byte[] addr = Util.getBytesFromAddress(device.getAddress());
+        return mNativeInterface.loadRemoteOobData(
+                addr, transport, remoteP192Data, remoteP256Data);
+    }
+
     public boolean isQuietModeEnabled() {
         Log.d(TAG, "isQuietModeEnabled(): Enabled = " + mQuietMode);
         return mQuietMode;
@@ -4151,6 +4185,10 @@ public class AdapterService extends Service {
         return mAdapterProperties.getLeMaximumAdvertisingDataLength();
     }
 
+    public long getSupportedProfilesBitMask() {
+        return Config.getSupportedProfilesBitMask();
+    }
+
     /**
      * Get the maximum number of connected audio devices.
      *
@@ -4158,6 +4196,16 @@ public class AdapterService extends Service {
      */
     public int getMaxConnectedAudioDevices() {
         return mAdapterProperties.getMaxConnectedAudioDevices();
+    }
+
+    /**
+     * Get the maximum number of connected audio devices.
+     *
+     * @return the maximum number of connected audio devices
+     */
+    public int getMaxConnectedAudioDevices(int profile) {
+        return mAdapterProperties.getMaxConnectedAudioDevices(
+                getSupportedProfilesBitMask(), profile);
     }
 
     /**
@@ -5225,6 +5273,43 @@ public class AdapterService extends Service {
         return mNativeInterface.pbapPseDynamicVersionUpgradeIsEnabled();
     }
 
+    public boolean isNewAdapter() {
+        return !AdapterUtil.isAdapterDefault();
+    }
+
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    public void handleDualAdapterMode(int option) {
+        if (AdapterUtil.isDualAdapterMode()) {
+            if (AdapterUtil.isAdapterDefault()) {
+                // In dual adapter mode, default adapter enable/disable
+                // enable/disable/discovery/canceldiscovery
+                // new adapter concurrently.
+                switch (option) {
+                    case ENABLE -> mEnableNewAdapter = AdapterExt.enable();
+                    case DISABLE -> mDisableNewAdapter = AdapterExt.disable();
+                    default -> Log.w(TAG, "Invalid option:" + option);
+                }
+            }
+        }
+    }
+
+    public boolean canEnableNewAdapter() {
+        int state = AdapterExt.getState();
+        // In system boot phase, user is switching from user 0 to user 10 which causes
+        // AdapterExt.enable() being rejected due to permission issue. Cover this case
+        // by checking the state of the new adapter.
+        return mEnableNewAdapter || AdapterExt.isTurningOn(state);
+    }
+
+    public boolean canDisableNewAdapter() {
+        return mDisableNewAdapter;
+    }
+
+    public void notifyNewAdapterState(boolean isOn) {
+        mAdapterState.sendMessage(AdapterState.NEW_ADAPTER_STATE_CHANGED,
+                isOn ? 1 : 0);
+    }
+
     /** Sets the battery level of the remote device */
     public void setBatteryLevel(BluetoothDevice device, int batteryLevel, boolean isBas) {
         if (batteryLevel == BATTERY_LEVEL_UNKNOWN) {
@@ -5420,6 +5505,30 @@ public class AdapterService extends Service {
         }
 
         BluetoothDevice device = deviceProp.getDevice();
+
+        if (AdapterUtil.isDualBluetoothEnabled()) {
+            BluetoothClass btClass = new BluetoothClass(deviceProp.getBluetoothClass());
+            if (AdapterUtil.isAdapterDefault()) {
+                // Default adapter: suppress headset, A2DP-source, and HID devices so only the
+                // 2nd adapter presents those profiles to the upper layer.
+                if (btClass.doesClassMatch(BluetoothClass.PROFILE_HEADSET)
+                        || btClass.doesClassMatch(BluetoothClass.PROFILE_A2DP)
+                        || btClass.doesClassMatch(BluetoothClass.PROFILE_HID)) {
+                    Log.d(TAG, "discoveryResultHandler: skip " + device
+                            + " on default adapter, class=" + btClass);
+                    return;
+                }
+            } else {
+                // 2nd adapter: suppress A2DP-sink devices so only the default adapter
+                // presents those to the upper layer.
+                if (btClass.doesClassMatch(BluetoothClass.PROFILE_A2DP_SINK)) {
+                    Log.d(TAG, "discoveryResultHandler: skip " + device
+                            + " on ext adapter, class=" + btClass);
+                    return;
+                }
+            }
+        }
+
         Intent intent = prepareDiscoveryResultIntent(deviceProp);
 
         synchronized (mDiscoveringPackages) {

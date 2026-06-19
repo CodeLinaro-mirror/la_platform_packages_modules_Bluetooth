@@ -189,6 +189,10 @@ public:
   virtual void BTM_RemoteOobDataReply(tBTM_STATUS res, const RawAddress& bd_addr, const Octet16& c,
                                       const Octet16& r) const = 0;
 
+  /** Provide the remote OOB data for Simple Pairing in response to BTM_SP_RMT_OOB_EVT. */
+  virtual void BTM_RemoteOobExtendedDataReply(tBTM_STATUS res, const RawAddress& bd_addr, const Octet16& c,
+                                      const Octet16& r, const Octet16& c_256, const Octet16& r_256) const = 0;
+
   /** Reply to PIN code request. */
   virtual void BTM_PINCodeReply(const RawAddress& bd_addr, tBTM_STATUS res, uint8_t pin_len,
                                 PinCode pin_code) const = 0;

@@ -73,6 +73,7 @@ java_library {
     libs: [
         "app-compat-annotations",
         "framework-annotations-lib",
+        "framework-bluetooth-pre-jarjar",
         "framework-configinfrastructure.stubs.module_lib",
         "framework-permission-s.stubs.module_lib",
         "framework-statsd.stubs.module_lib",

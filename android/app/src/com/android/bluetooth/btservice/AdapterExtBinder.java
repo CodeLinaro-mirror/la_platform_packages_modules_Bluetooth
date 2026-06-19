@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2025 The Android Open Source Project
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -11,20 +12,15 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
-package android.bluetooth;
+package com.android.bluetooth.btservice;
 
-@JavaPassthrough(annotation="@android.annotation.Hide")
-@JavaDerive(toString = true)
-@Backing(type="int")
-enum State {
-    OFF = 10,
-    TURNING_ON = 11,
-    ON = 12,
-    TURNING_OFF = 13,
-    BLE_TURNING_ON = 14,
-    BLE_ON = 15,
-    BLE_TURNING_OFF = 16,
-    NEW_ADAPTER = 17,
-}
+import android.bluetooth.IAdapterExt;
+
+class AdapterExtBinder extends IAdapterExt.Stub {}

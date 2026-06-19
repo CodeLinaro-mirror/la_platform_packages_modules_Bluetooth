@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 package com.android.bluetooth.btservice;
@@ -67,6 +72,9 @@ final class AdapterState extends StateMachine {
     static final int BREDR_STOP_TIMEOUT = 10;
     static final int BLE_STOP_TIMEOUT = 11;
     static final int BLE_START_TIMEOUT = 12;
+    static final int NEW_ADAPTER_STATE_CHANGED = 13;
+    static final int NEW_ADAPTER_ENABLE_TIMEOUT = 14;
+    static final int NEW_ADAPTER_DISABLE_TIMEOUT = 15;
 
     private static final boolean DEGRADED_PERFORMANCE =
             SystemProperties.getBoolean(
@@ -78,6 +86,8 @@ final class AdapterState extends StateMachine {
     private static final int BLE_STOP_TIMEOUT_DELAY;
     private static final int BREDR_START_TIMEOUT_DELAY;
     private static final int BREDR_STOP_TIMEOUT_DELAY;
+    private static final int NEW_ADAPTER_ENABLE_TIMEOUT_DELAY;
+    private static final int NEW_ADAPTER_DISABLE_TIMEOUT_DELAY;
     private static final boolean isAtMost25Q4 =
             Build.VERSION.SDK_INT_FULL <= Build.VERSION_CODES_FULL.BAKLAVA_1;
 
@@ -113,6 +123,8 @@ final class AdapterState extends StateMachine {
         }
         BREDR_START_TIMEOUT_DELAY = defaultDelay;
         BREDR_STOP_TIMEOUT_DELAY = defaultDelay;
+        NEW_ADAPTER_ENABLE_TIMEOUT_DELAY = defaultDelay/2;
+        NEW_ADAPTER_DISABLE_TIMEOUT_DELAY = defaultDelay/2;
     }
 
     private AdapterService mAdapterService;
@@ -123,9 +135,14 @@ final class AdapterState extends StateMachine {
     private final On mOn = new On(State.ON);
     private final Off mOff = new Off(State.OFF);
     private final BleOn mBleOn = new BleOn(State.BLE_ON);
+    private final NewAdapterState mNewAdapterState = new NewAdapterState(State.NEW_ADAPTER);
 
     private int mState = State.OFF;
     private int mPrevState = State.OFF;
+
+    private boolean mPendingOn = false;
+    private boolean mPendingOff = false;
+    private final int mAdapterIndex;
 
     AdapterState(AdapterService service, Looper looper) {
         super(TAG, looper);
@@ -136,7 +153,11 @@ final class AdapterState extends StateMachine {
         addState(mTurningOff);
         addState(mTurningBleOn);
         addState(mTurningBleOff);
+        if (isDualAdapterMode()) {
+            addState(mNewAdapterState);
+        }
         mAdapterService = service;
+        mAdapterIndex = AdapterUtil.getAdapterIndex();
         setInitialState(mOff);
         start();
     }
@@ -159,6 +180,9 @@ final class AdapterState extends StateMachine {
             case BLE_STOP_TIMEOUT -> "BLE_STOP_TIMEOUT";
             case BREDR_START_TIMEOUT -> "BREDR_START_TIMEOUT";
             case BREDR_STOP_TIMEOUT -> "BREDR_STOP_TIMEOUT";
+            case NEW_ADAPTER_STATE_CHANGED -> "NEW_ADAPTER_STATE_CHANGED";
+            case NEW_ADAPTER_ENABLE_TIMEOUT -> "NEW_ADAPTER_ENABLE_TIMEOUT";
+            case NEW_ADAPTER_DISABLE_TIMEOUT -> "NEW_ADAPTER_DISABLE_TIMEOUT";
             default -> "Unknown message (" + message + ")";
         };
     }
@@ -171,6 +195,12 @@ final class AdapterState extends StateMachine {
         if (mAdapterService != null) {
             mAdapterService = null;
         }
+    }
+
+    private static boolean isDualAdapterMode() {
+        // Dual adapter mode is only valid with default adapter.
+        return AdapterUtil.isDualAdapterMode() &&
+                AdapterUtil.isAdapterDefault();
     }
 
     @Override
@@ -216,11 +246,11 @@ final class AdapterState extends StateMachine {
         }
 
         void infoLog(String msg) {
-            Log.i(TAG, State.$.toString(mStateValue) + " : " + msg);
+            Log.i(TAG + "[adapter_" + mAdapterIndex + "]", State.$.toString(mStateValue) + " : " + msg);
         }
 
         void errorLog(String msg) {
-            Log.e(TAG, State.$.toString(mStateValue) + " : " + msg);
+            Log.e(TAG + "[adapter_" + mAdapterIndex + "]", State.$.toString(mStateValue) + " : " + msg);
         }
     }
 
@@ -295,7 +325,7 @@ final class AdapterState extends StateMachine {
         @Override
         public void enter() {
             super.enter();
-            Log.d(TAG, "Start Timeout Delay: " + BLE_START_TIMEOUT_DELAY);
+            infoLog("Start Timeout Delay: " + BLE_START_TIMEOUT_DELAY);
             sendMessageDelayed(BLE_START_TIMEOUT, BLE_START_TIMEOUT_DELAY);
             mAdapterService.bringUpBle();
         }
@@ -345,7 +375,7 @@ final class AdapterState extends StateMachine {
         @Override
         public boolean processMessage(Message msg) {
             switch (msg.what) {
-                case BREDR_STARTED -> transitionTo(mOn);
+                case BREDR_STARTED -> handleOn();
 
                 case BREDR_START_TIMEOUT -> {
                     errorLog(messageString(msg.what));
@@ -358,6 +388,16 @@ final class AdapterState extends StateMachine {
                 }
             }
             return true;
+        }
+
+        private void handleOn() {
+            if (isDualAdapterMode() &&
+                mAdapterService.canEnableNewAdapter()) {
+                mPendingOn = true;
+                transitionTo(mNewAdapterState);
+            } else {
+                transitionTo(mOn);
+            }
         }
     }
 
@@ -411,7 +451,7 @@ final class AdapterState extends StateMachine {
         @Override
         public void enter() {
             super.enter();
-            Log.d(TAG, "Stop Timeout Delay: " + BLE_STOP_TIMEOUT_DELAY);
+            infoLog("Stop Timeout Delay: " + BLE_STOP_TIMEOUT_DELAY);
             sendMessageDelayed(BLE_STOP_TIMEOUT, BLE_STOP_TIMEOUT_DELAY);
             mAdapterService.bringDownBle();
         }
@@ -425,11 +465,11 @@ final class AdapterState extends StateMachine {
         @Override
         public boolean processMessage(Message msg) {
             switch (msg.what) {
-                case BLE_STOPPED -> transitionTo(mOff);
+                case BLE_STOPPED -> handleOff();
 
                 case BLE_STOP_TIMEOUT -> {
+                    handleTimeoutOff();
                     errorLog(messageString(msg.what));
-                    transitionTo(mOff);
                 }
 
                 default -> {
@@ -438,6 +478,140 @@ final class AdapterState extends StateMachine {
                 }
             }
             return true;
+        }
+
+        private void handleOff() {
+            if (isDualAdapterMode() &&
+                mAdapterService.canDisableNewAdapter()) {
+                mPendingOff = true;
+                transitionTo(mNewAdapterState);
+            } else {
+                transitionTo(mOff);
+            }
+        }
+
+        private void handleTimeoutOff() {
+            if (isDualAdapterMode() &&
+                !AdapterExt.isOff(AdapterExt.getState())) {
+                mPendingOff = true;
+                AdapterExt.disable();
+                transitionTo(mNewAdapterState);
+            } else {
+                transitionTo(mOff);
+            }
+        }
+    }
+
+    private class NewAdapterState extends BaseAdapterState {
+        private static final String STATE_NAME = "NEW_ADAPTER_STATE";
+
+        NewAdapterState(int state) {
+            super(state);
+        }
+
+        @Override
+        public void enter() {
+            infoLog("entered ");
+            int state = AdapterExt.getState();
+            if (AdapterExt.isOn(state)) {
+                handleStateChanged(true);
+            } else if (AdapterExt.isOff(state)) {
+                handleStateChanged(false);
+            }
+
+            if (mPendingOn) {
+                sendMessageDelayed(NEW_ADAPTER_ENABLE_TIMEOUT,
+                        NEW_ADAPTER_ENABLE_TIMEOUT_DELAY);
+            } else if (mPendingOff) {
+                sendMessageDelayed(NEW_ADAPTER_DISABLE_TIMEOUT,
+                        NEW_ADAPTER_DISABLE_TIMEOUT_DELAY);
+            }
+        }
+
+        @Override
+        public void exit() {
+            infoLog("exited ");
+            removeMessages(NEW_ADAPTER_ENABLE_TIMEOUT);
+            removeMessages(NEW_ADAPTER_DISABLE_TIMEOUT);
+        }
+
+        @Override
+        public boolean processMessage(Message msg) {
+            switch (msg.what) {
+                case NEW_ADAPTER_STATE_CHANGED -> handleStateChanged(msg.arg1 == 1);
+
+                case NEW_ADAPTER_ENABLE_TIMEOUT -> {
+                    errorLog(messageString(msg.what));
+                    handleEnableTimeout();
+                }
+
+                case NEW_ADAPTER_DISABLE_TIMEOUT -> {
+                    errorLog(messageString(msg.what));
+                    handleDisableTimeout();
+                }
+
+                default -> {
+                    infoLog("Unhandled message - " + messageString(msg.what));
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void continueOn() {
+            if (mPendingOn) {
+                mPendingOn = false;
+                transitionTo(mOn);
+            }
+        }
+
+        private void continueOff() {
+            if (mPendingOff) {
+                mPendingOff = false;
+                transitionTo(mOff);
+            }
+        }
+
+        private void handleStateChanged(boolean isOn) {
+            infoLog("handleStateChanged isOn: " + String.valueOf(isOn));
+
+            if (isOn) {
+                // If default adapter is off, still disable new adapter
+                // although it's on. This is to guarantee that new adapter
+                // is kept same off state with default adapter.
+                if (mPendingOff) {
+                    AdapterExt.disable();
+                } else {
+                    // Both 2 adapter are enabled. Notify On state to upper layer.
+                    continueOn();
+                }
+            } else {
+                // Transit to Off state for default adapter, since new
+                // adapter is turned off.
+                continueOff();
+            }
+        }
+
+        private void handleEnableTimeout() {
+            // Transit to On state for default adapter, although new adapter
+            // can't be enabled in timeout.
+            continueOn();
+        }
+
+        private void handleDisableTimeout() {
+            // Transit to Off state for default adapter, although new adapter
+            // can't be disabled in timeout.
+            continueOff();
+        }
+
+        @Override
+        void infoLog(String msg) {
+            Log.i(TAG + "[adapter_" + mAdapterIndex + "]", STATE_NAME + " : " + msg);
+        }
+
+        @Override
+        void errorLog(String msg) {
+            Log.e(TAG + "[adapter_" + mAdapterIndex + "]", STATE_NAME + " : " + msg);
         }
     }
 }
