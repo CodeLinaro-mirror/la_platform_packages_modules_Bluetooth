@@ -1922,8 +1922,12 @@ private:
             com_android_bluetooth_flags_leaudio_fix_clear_cises_in_the_cig();
     bool is_c_to_p_sdu_config_mismatched =
             ((max_sdu_size_c_to_p == 0) != (sdu_interval_c_to_p == 0));
+    /* For sink-only configs, GetSduInterval(Source) returns kSduIntervalMin (255µs)
+     * instead of 0 when no Source ASE is active. Only flag a real mismatch when
+     * max_sdu_size is non-zero but interval is missing — the inverse case
+     * (size=0, interval=255) is the expected "no source direction" state. */
     bool is_p_to_c_sdu_config_mismatched =
-            ((max_sdu_size_p_to_c == 0) != (sdu_interval_p_to_c == 0));
+            (max_sdu_size_p_to_c != 0) && (sdu_interval_p_to_c == 0);
 
     if (no_direction_enabled_due_to_sdu_interval ||
         no_direction_enabled_due_max_latencies_setting ||
