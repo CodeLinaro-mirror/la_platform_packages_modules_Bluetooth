@@ -2079,17 +2079,9 @@ static void bta_jv_pm_conn_congested(tBTA_JV_PM_CB* p_cb) {
  ******************************************************************************/
 static void bta_jv_pm_conn_busy(tBTA_JV_PM_CB* p_cb) {
   if ((NULL != p_cb) && (BTA_JV_PM_IDLE_ST == p_cb->state)) {
-    tBTM_PM_MODE mode = BTM_PM_MD_ACTIVE;
-    if (BTM_ReadPowerMode(p_cb->peer_bd_addr, &mode)) {
-      if (mode == BTM_PM_MD_SNIFF) {
-        bta_jv_pm_state_change(p_cb, BTA_JV_CONN_BUSY);
-      } else {
-        p_cb->state = BTA_JV_PM_BUSY_ST;
-        log::verbose("bta_jv_pm_conn_busy:power mode: {}", mode);
-      }
-    } else {
-      bta_jv_pm_state_change(p_cb, BTA_JV_CONN_BUSY);
-    }
+    log::verbose("bta_jv_pm_conn_busy() cancel jv idle timer, send conn busy state to DM");
+    alarm_cancel(p_cb->idle_timer);
+    bta_jv_pm_state_change(p_cb, BTA_JV_CONN_BUSY);
   }
 }
 
