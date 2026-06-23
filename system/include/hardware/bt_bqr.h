@@ -32,7 +32,8 @@ public:
   /** Callback for BQR delivery to app level. */
   virtual void bqr_delivery_callback(const RawAddress remote_bd_addr, uint8_t lmp_ver,
                                      uint16_t lmp_subver, uint16_t manufacturer_id,
-                                     std::vector<uint8_t> bqr_raw_data) = 0;
+                                     std::vector<uint8_t> bqr_raw_data,
+                                     bool is_qc_bqr5_supported) = 0;
 };
 
 class BluetoothQualityReportInterface {

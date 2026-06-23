@@ -1355,4 +1355,8 @@ typedef struct {
 
 #define HCI_CONFIGURE_DATA_PATH_SUPPORTED(x) ((x)[45] & 0x20)
 
+// QC SoC add-on feature: vendor BQR5 support.
+// Applied to bt_device_soc_add_on_features_t::as_array, not standard LMP features.
+#define HCI_VENDOR_BQR5_SUPPORTED(x) ((x)[5] & 0x01)
+
 #endif
