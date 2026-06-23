@@ -1807,7 +1807,7 @@ public class BluetoothInCallService extends InCallService {
         // %2B is the URL-encoded form of '+'.
         // URIs may be percent-encoded when received
         // Decode it so the call URI matches the expected telephony format: tel:+<number>.
-        if (uri.contains("%")) {
+        if (uri != null && uri.contains("%")) {
             uri = Uri.parse(uri).decode(uri);
         }
         Log.i(TAG, "Call URI: " + uri);
