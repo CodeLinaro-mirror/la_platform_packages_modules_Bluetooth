@@ -228,6 +228,7 @@ public class LeAudioService extends ProfileService {
 
     LeAudioTmapGattServer mTmapGattServer;
     int mUnicastGroupIdDeactivatedForBroadcastTransition = LE_AUDIO_GROUP_ID_INVALID;
+    int mGroupDeactivatedByBassAssistant = LE_AUDIO_GROUP_ID_INVALID;
     int mCurrentAudioMode = AudioManager.MODE_NORMAL;
     boolean mCurrentRecordingMode = false;
     Optional<Integer> mBroadcastIdDeactivatedForUnicastTransition = Optional.empty();
@@ -3215,6 +3216,7 @@ public class LeAudioService extends ProfileService {
             }
 
             if (descriptor.isActive()) {
+                mGroupDeactivatedByBassAssistant = LE_AUDIO_GROUP_ID_INVALID;
                 mHandler.post(
                         () ->
                                 notifyGroupStatusChanged(
@@ -4203,6 +4205,13 @@ public class LeAudioService extends ProfileService {
 
                         /* Clear allowed context mask if there is no switch of group */
                         if (descriptor.areAllowedContextsModified()) {
+                            // Some headsets proactively release unicast ASEs on addSource() for
+                            // a non-collocated broadcast before PA/BIS sync completes. Cache the
+                            // group so setActiveGroupAllowedContextMask can reactivate it after
+                            // removeSource().
+                            mGroupDeactivatedByBassAssistant = groupId;
+                            Log.d(TAG, "ASE release during BASS addSource, cache group "
+                                    + groupId + " for reactivation");
                             setGroupAllowedContextMask(
                                     groupId,
                                     BluetoothLeAudio.CONTEXTS_ALL,
@@ -4760,6 +4769,9 @@ public class LeAudioService extends ProfileService {
                 descriptor.mIsConnected = false;
                 descriptor.mAutoActiveModeEnabled = true;
                 descriptor.mAvailableContexts = null;
+                if (groupId == mGroupDeactivatedByBassAssistant) {
+                    mGroupDeactivatedByBassAssistant = LE_AUDIO_GROUP_ID_INVALID;
+                }
                 if (descriptor.isActive()) {
                     Integer gettingActiveGroupId = getFirstGroupIdInGettingActiveState();
                     if (gettingActiveGroupId != LE_AUDIO_GROUP_ID_INVALID) {
@@ -4926,6 +4938,16 @@ public class LeAudioService extends ProfileService {
      */
     public void setActiveGroupAllowedContextMask(int sinkContextTypes, int sourceContextTypes) {
         setGroupAllowedContextMask(getActiveGroupId(), sinkContextTypes, sourceContextTypes);
+        if (mGroupDeactivatedByBassAssistant != LE_AUDIO_GROUP_ID_INVALID
+                && sinkContextTypes == BluetoothLeAudio.CONTEXTS_ALL
+                && sourceContextTypes == BluetoothLeAudio.CONTEXTS_ALL) {
+            BluetoothDevice leadDevice = getLeadDeviceForTheGroup(mGroupDeactivatedByBassAssistant);
+            Log.d(TAG, "setActiveGroupAllowedContextMask: reactivating group "
+                    + mGroupDeactivatedByBassAssistant + " via " + leadDevice);
+            if (leadDevice != null) {
+                setActiveDevice(leadDevice);
+            }
+        }
     }
 
     /**
