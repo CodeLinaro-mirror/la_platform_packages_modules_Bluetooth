@@ -922,6 +922,16 @@ bool L2CA_DisconnectReq(uint16_t cid) {
     return false;
   }
 
+  /* Guard against stale CCB with NULL RCB - indicates RCB/CCB lifecycle
+   * mismatch (e.g. PSM deregistered while channel still active). */
+  if (p_ccb->p_rcb == NULL) {
+    log::warn(
+        "L2CAP - p_rcb is NULL for L2CA_disc_req, CID: 0x{:04x}, state: {}, rcid: 0x{:04x}"
+        " - skipping disconnect to avoid null dereference",
+        cid, channel_state_text(p_ccb->chnl_state), p_ccb->remote_cid);
+    return false;
+  }
+
   log::debug("L2CAP Local disconnect request CID: 0x{:04x}", cid);
 
   l2c_csm_execute(p_ccb, L2CEVT_L2CA_DISCONNECT_REQ, NULL);
