@@ -3313,6 +3313,20 @@ public:
 
     if (leAudioDevice->conn_id_ != GATT_INVALID_CONN_ID) {
       log::debug("Already connected {}, conn_id=0x{:04x}", address, leAudioDevice->conn_id_);
+      /* Re-notify the upper layer in case it lost its state due to an
+       * unbond+rebond race where the Java state machine was recreated with
+       * group_id=-1 while the stack kept the live conn_id. Only do this when
+       * the device is fully connected — during the getting-ready phase a
+       * duplicate OPEN_EVT can arrive (from the background-connect
+       * re-registration in this same handler), and sending CONNECTED early
+       * would cause the Java state machine to log "bad state" when the real
+       * CONNECTED callback arrives after encryption/service-discovery. */
+      if (leAudioDevice->group_id_ != bluetooth::groups::kGroupUnknown &&
+          leAudioDevice->GetConnectionState() == DeviceConnectState::CONNECTED) {
+        callbacks_->OnGroupNodeStatus(address, leAudioDevice->group_id_,
+                                      GroupNodeStatus::ADDED);
+        callbacks_->OnConnectionState(ConnectionState::CONNECTED, address);
+      }
       return;
     }
 
