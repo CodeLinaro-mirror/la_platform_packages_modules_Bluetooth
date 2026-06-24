@@ -1336,7 +1336,9 @@ public class MediaControlGattService implements MediaControlGattServiceInterface
 
         if (mBluetoothGattServer == null) {
             BluetoothManager manager = mAdapterService.getSystemService(BluetoothManager.class);
-            BluetoothGattServer server = manager.openGattServer(mAdapterService, mServerCallback);
+            int adapterIndex = mAdapterService.getAdapter().getAdapterIndex();
+            BluetoothGattServer server = manager.openGattServer(mAdapterService,
+                    adapterIndex, mServerCallback);
             if (server == null) {
                 Log.e(TAG, "Failed to start BluetoothGattServer for MCP");
                 // TODO: This now effectively makes MCP unusable, but fixes tests
