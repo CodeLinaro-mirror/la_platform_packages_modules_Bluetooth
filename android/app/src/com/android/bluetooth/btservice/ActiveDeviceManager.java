@@ -614,9 +614,15 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                             + device);
             mA2dpConnectedDevices.remove(device);
             if (mA2dpActiveDevices.contains(device)) {
-                if (!setFallbackDeviceActiveLocked(device)) {
-                    setA2dpActiveDevice(device, false, false);
-                }
+                boolean hasFallback = setFallbackDeviceActiveLocked(device);
+                // Always deactivate the disconnecting A2DP device to clear its entry from
+                // A2dpService.mActiveDevices. Without this, if a LE Audio device is used as
+                // fallback, the deactivation call inside setFallbackDeviceActiveLocked targets
+                // the LE Audio device (not an A2DP device), leaving the disconnected A2DP
+                // device in mActiveDevices. The stale entry causes isActiveDevice() to return
+                // true on reconnect, triggering an early-return that skips the AudioManager
+                // notification, and audio routes to the built-in speaker instead.
+                setA2dpActiveDevice(device, hasFallback, false);
                 mA2dpActiveDevices.remove(device);
             }
         }
