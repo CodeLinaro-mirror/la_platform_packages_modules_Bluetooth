@@ -709,7 +709,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                         BluetoothStatsLog.BLUETOOTH_CROSS_LAYER_EVENT_REPORTED__STATE__START,
                         source.getUid());
 
-        if (Flags.vcpOnMainLooper() || Flags.hapOnMainLooper()) {
+        if (Flags.hapOnMainLooper()) {
             return service.syncPost(
                     () -> {
                         return service.connectAllEnabledProfiles(device);
@@ -752,7 +752,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
                 TAG,
                 "disconnectAllEnabledProfiles: device=" + device + ", from " + getUidPidString());
 
-        if (Flags.vcpOnMainLooper() || Flags.hapOnMainLooper()) {
+        if (Flags.hapOnMainLooper()) {
             return service.syncPost(
                     () -> {
                         return service.disconnectAllEnabledProfiles(device);

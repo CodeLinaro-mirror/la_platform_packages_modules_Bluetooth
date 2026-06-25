@@ -105,7 +105,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
@@ -809,17 +808,6 @@ public class LeAudioService extends ConnectableProfile {
 
     @VisibleForTesting
     int getAudioDeviceGroupVolume(int groupId) {
-        if (Flags.vcpOnMainLooper()) {
-            int defaultValue = IBluetoothVolumeControl.VOLUME_CONTROL_UNKNOWN_VOLUME;
-            return mAdapterService
-                    .getVolumeControlService()
-                    .map(
-                            vcs ->
-                                    vcs.syncPost(
-                                            v -> v.getAudioDeviceGroupVolume(groupId),
-                                            defaultValue))
-                    .orElse(defaultValue);
-        }
         final var volumeControl = mAdapterService.getVolumeControlService();
         if (volumeControl.isEmpty()) {
             return IBluetoothVolumeControl.VOLUME_CONTROL_UNKNOWN_VOLUME;
@@ -1954,7 +1942,9 @@ public class LeAudioService extends ConnectableProfile {
                         + mExposedActiveDevice);
 
         mAdapterService.handleActiveDeviceChange(mProfileId, device);
-        notifyVolumeControlServiceAboutActiveGroup(device);
+        if (device != null) {
+            notifyVolumeControlServiceAboutActiveGroup(device);
+        }
         sendActiveDeviceChangeIntent(device);
         if (device != null) {
             mNativeInterface.groupConfirmActive(getGroupId(device));
@@ -2404,23 +2394,7 @@ public class LeAudioService extends ConnectableProfile {
              * When adding new device, wait with notification until AudioManager is ready
              * with adding the device.
              */
-            if (!Flags.vcpOnMainLooper() || Looper.getMainLooper().isCurrentThread()) {
-                // Remove thread check when LeAudio is moved on the main thread
-                notifyActiveDeviceChanged(null);
-            } else {
-                Utils.enforceMainLooperIsNotUsed();
-                var future = new CompletableFuture<Void>();
-                mHandler.post(
-                        () -> {
-                            notifyActiveDeviceChanged(null);
-                            future.complete(null);
-                        });
-                try {
-                    future.get();
-                } catch (Exception e) {
-                    Log.wtf(TAG, "Can't execute notifyActiveDeviceChanged on main thread", e);
-                }
-            }
+            notifyActiveDeviceChanged(null);
         }
 
         return mActiveAudioOutDevice != null || mActiveAudioInDevice != null;
@@ -2642,7 +2616,6 @@ public class LeAudioService extends ConnectableProfile {
         if (currentlyActiveGroupId == LE_AUDIO_GROUP_ID_INVALID) {
             return activeDevices;
         }
-
         BluetoothDevice leadDevice = getConnectedGroupLeadDevice(currentlyActiveGroupId);
         activeDevices.set(0, leadDevice);
 
@@ -4555,11 +4528,7 @@ public class LeAudioService extends ConnectableProfile {
 
         final var vcs = mAdapterService.getVolumeControlService();
         if (vcs.isPresent() && Utils.arrayContains(featureUuids, BluetoothUuid.VOLUME_CONTROL)) {
-            if (Flags.vcpOnMainLooper()) {
-                vcs.get().syncPost(v -> v.setConnectionPolicy(device, connectionPolicy));
-            } else {
-                vcs.get().setConnectionPolicy(device, connectionPolicy);
-            }
+            vcs.get().setConnectionPolicy(device, connectionPolicy);
         }
 
         final var hapClient = mAdapterService.getHapClientService();
@@ -4790,11 +4759,7 @@ public class LeAudioService extends ConnectableProfile {
         } else {
             groupForVolume = currentlyActiveGroupId;
         }
-        if (Flags.vcpOnMainLooper()) {
-            vcs.get().syncPost(v -> v.setGroupVolume(groupForVolume, volume));
-        } else {
-            vcs.get().setGroupVolume(groupForVolume, volume);
-        }
+        vcs.get().setGroupVolume(groupForVolume, volume);
     }
 
     public void registerCallback(IBluetoothLeAudioCallback callback) {
