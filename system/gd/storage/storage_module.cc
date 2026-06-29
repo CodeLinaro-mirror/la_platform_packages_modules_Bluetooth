@@ -155,9 +155,9 @@ void StorageModule::SaveImmediately() {
   }
   auto start_time = std::chrono::steady_clock::now();
 #ifndef TARGET_FLOSS
-  log::assert_that(
-          LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_),
-          "assert failed: LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_)");
+  if (!LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_)) {
+    log::error("Unable to write config file to disk");
+  }
 #else
   if (!LegacyConfigFile::FromPath(config_file_path_).Write(pimpl_->cache_)) {
     log::error("Unable to write config file to disk");
