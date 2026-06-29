@@ -110,6 +110,7 @@ public final class AdvertisingSetParameters implements Parcelable {
         ADDRESS_TYPE_PUBLIC,
         ADDRESS_TYPE_RANDOM,
         ADDRESS_TYPE_RANDOM_NON_RESOLVABLE,
+        ADDRESS_TYPE_RANDOM_STATIC,
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface AddressTypeStatus {}
@@ -145,6 +146,14 @@ public final class AdvertisingSetParameters implements Parcelable {
      */
     @SystemApi
     public static final int ADDRESS_TYPE_RANDOM_NON_RESOLVABLE = 2;
+
+    /**
+     * Advertise own fixed Random Static address (identity address, no rotation).
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int ADDRESS_TYPE_RANDOM_STATIC = 3;
 
     private final boolean mIsLegacy;
     private final boolean mIsAnonymous;
@@ -523,7 +532,7 @@ public final class AdvertisingSetParameters implements Parcelable {
         public @NonNull Builder setOwnAddressType(@AddressTypeStatus int ownAddressType) {
             if (ownAddressType < AdvertisingSetParameters.ADDRESS_TYPE_DEFAULT
                     || ownAddressType
-                            > AdvertisingSetParameters.ADDRESS_TYPE_RANDOM_NON_RESOLVABLE) {
+                            > AdvertisingSetParameters.ADDRESS_TYPE_RANDOM_STATIC) {
                 throw new IllegalArgumentException("unknown address type " + ownAddressType);
             }
             mOwnAddressType = ownAddressType;
