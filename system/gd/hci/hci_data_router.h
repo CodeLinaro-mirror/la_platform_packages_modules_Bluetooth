@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -60,15 +65,18 @@ private:
     std::vector<AclView> unsent_packets;
     for (const auto& itr : waiting_packets_) {
       auto handle = itr.GetHandle();
-      if (!classic_acl_data_consumer_->SendPacketUpward(
-                  handle,
-                  [itr](struct acl_manager::assembler* assembler) {
-                    assembler->on_incoming_packet(itr);
-                  }) &&
-          !le_acl_data_consumer_->SendPacketUpward(handle,
-                                                   [itr](struct acl_manager::assembler* assembler) {
-                                                     assembler->on_incoming_packet(itr);
-                                                   })) {
+      bool sent =
+          (classic_acl_data_consumer_ != nullptr &&
+           classic_acl_data_consumer_->SendPacketUpward(
+               handle, [itr](struct acl_manager::assembler* assembler) {
+                 assembler->on_incoming_packet(itr);
+               })) ||
+          (le_acl_data_consumer_ != nullptr &&
+           le_acl_data_consumer_->SendPacketUpward(
+               handle, [itr](struct acl_manager::assembler* assembler) {
+                 assembler->on_incoming_packet(itr);
+               }));
+      if (!sent) {
         if (!timed_out) {
           unsent_packets.push_back(itr);
         } else {
@@ -103,13 +111,15 @@ private:
         handle == kMtkDebugHandle) {
       return;
     }
-    if (classic_acl_data_consumer_->SendPacketUpward(
+    if (classic_acl_data_consumer_ != nullptr &&
+        classic_acl_data_consumer_->SendPacketUpward(
                 handle, [&packet](struct acl_manager::assembler* assembler) {
                   assembler->on_incoming_packet(*packet);
                 })) {
       return;
     }
-    if (le_acl_data_consumer_->SendPacketUpward(
+    if (le_acl_data_consumer_ != nullptr &&
+        le_acl_data_consumer_->SendPacketUpward(
                 handle, [&packet](struct acl_manager::assembler* assembler) {
                   assembler->on_incoming_packet(*packet);
                 })) {
