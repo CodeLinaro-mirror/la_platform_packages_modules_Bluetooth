@@ -1694,6 +1694,15 @@ void l2cu_release_ccb(tL2C_CCB* p_ccb) {
           return;
         }
 
+        // Reset ATT idle timeout so a stale GATT timer (set while LECOC was
+        // active) does not prematurely drop the ACL. GATT manages teardown
+        // explicitly via L2CA_RemoveFixedChnl(ATT).
+        if (p_lcb->transport == BT_TRANSPORT_LE) {
+          constexpr int kAttIdx = L2CAP_ATT_CID - L2CAP_FIRST_FIXED_CHNL;
+          if (p_lcb->p_fixed_ccbs[kAttIdx] != nullptr) {
+            p_lcb->p_fixed_ccbs[kAttIdx]->fixed_chnl_idle_tout = L2CAP_NO_IDLE_TIMEOUT;
+          }
+        }
         l2cu_no_dynamic_ccbs(p_lcb);
       } else {
         /* Link is still active, adjust channel quotas. */
