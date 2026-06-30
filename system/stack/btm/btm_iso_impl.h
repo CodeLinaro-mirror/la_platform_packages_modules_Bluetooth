@@ -98,8 +98,13 @@ struct iso_impl {
   iso_impl() {
     iso_credits_ = shim::GetController()->GetControllerIsoBufferSize().total_num_le_packets_;
     iso_buffer_size_ = shim::GetController()->GetControllerIsoBufferSize().le_data_packet_length_;
-    log::info("{} created, iso credits: {}, buffer size: {}.", std::format_ptr(this),
-              iso_credits_.load(), iso_buffer_size_);
+    // Cache the duplex property once at init — it is a persistent property that
+    // does not change at runtime, so reading it on every ISO data path operation
+    // would be wasteful.
+    is_duplex_enabled_ =
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+    log::info("{} created, iso credits: {}, buffer size: {}, duplex: {}.", std::format_ptr(this),
+              iso_credits_.load(), iso_buffer_size_, is_duplex_enabled_);
   }
 
   ~iso_impl() { log::info("{} removed.", std::format_ptr(this)); }
@@ -378,9 +383,13 @@ struct iso_impl {
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
     if (status == HCI_SUCCESS) {
-      // Track INPUT and OUTPUT data paths with separate flags so that
-      // removing one does not incorrectly clear the other (duplex use-case).
-      if (data_path_dir == kIsoDataPathDirectionOut) {
+      // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
+      // kStateFlagIsBroadcastSync), track INPUT and OUTPUT data paths with
+      // separate flags so removing one does not clear the other.
+      // For unicast CIS, use the single kStateFlagHasDataPathSet as original.
+      if (is_duplex_enabled_ &&
+          (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync)) &&
+          data_path_dir == kIsoDataPathDirectionOut) {
         iso->state_flags |= kStateFlagHasOutputDataPathSet;
       } else {
         iso->state_flags |= kStateFlagHasDataPathSet;
@@ -448,10 +457,12 @@ struct iso_impl {
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
     if (status == HCI_SUCCESS) {
-      // Clear only the flag that corresponds to the direction being removed.
-      // Clearing kStateFlagHasDataPathSet (INPUT) when only the OUTPUT path
-      // was removed caused a crash when the INPUT path was later torn down.
-      if (data_path_dir == kIsoDataPathDirectionOut) {
+      // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
+      // kStateFlagIsBroadcastSync), clear only the direction-specific flag.
+      // For unicast CIS, clear kStateFlagHasDataPathSet as original.
+      if (is_duplex_enabled_ &&
+          (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync)) &&
+          data_path_dir == kIsoDataPathDirectionOut) {
         iso->state_flags &= ~kStateFlagHasOutputDataPathSet;
       } else {
         iso->state_flags &= ~kStateFlagHasDataPathSet;
@@ -473,14 +484,18 @@ struct iso_impl {
   void remove_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir) {
     iso_base* iso = GetIsoIfKnown(iso_handle);
     log::assert_that(iso != nullptr, "No such iso connection: 0x{:x}", iso_handle);
-    // Check the flag that corresponds to the direction being removed.
-    // For OUTPUT (RX duplex teardown) check kStateFlagHasOutputDataPathSet;
-    // for INPUT (TX teardown) check kStateFlagHasDataPathSet.
-    uint8_t required_flag = (data_path_dir == kIsoDataPathDirectionOut)
-                                    ? kStateFlagHasOutputDataPathSet
-                                    : kStateFlagHasDataPathSet;
-    log::assert_that((iso->state_flags & required_flag) == required_flag,
-                     "Data path not set");
+    // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
+    // kStateFlagIsBroadcastSync), either INPUT or OUTPUT flag may be set independently.
+    // For unicast CIS, only kStateFlagHasDataPathSet is used (original behavior).
+    if (is_duplex_enabled_ &&
+        (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
+      log::assert_that(
+              (iso->state_flags & (kStateFlagHasDataPathSet | kStateFlagHasOutputDataPathSet)) != 0,
+              "Data path not set");
+    } else {
+      log::assert_that((iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet,
+                       "Data path not set");
+    }
 
     btsnd_hcic_remove_iso_data_path(
             iso_handle, data_path_dir,
@@ -1614,6 +1629,9 @@ struct iso_impl {
   uint16_t broadcast_states_ = 0;
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
+  /* Cached once at construction — persist.vendor.qcom.bluetooth.enable_ba_duplex
+   * is a persistent property that does not change at runtime. */
+  bool is_duplex_enabled_ = false;
   base::WeakPtrFactory<iso_impl> weak_factory_{this};
 };
 
