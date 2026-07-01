@@ -22,6 +22,8 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "bta/hf_client/bta_hf_client_int.h"
+#include "bta/include/bta_hf_client_api.h"
 #include "bta/le_audio/le_audio_types.h"
 #include "btm_api_types.h"
 #include "btm_iso_api_types.h"
@@ -30,6 +32,7 @@
 #include "main/shim/le_scanning_manager.h"
 #include "osi/include/properties.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_vendor_api.h"
 #include "types/raw_address.h"
 
 using bluetooth::common::ToString;
@@ -146,6 +149,19 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
         enhanced_iso_phase_ = EnhancedIsoPhase::DBIG_SETUP;
         SendDbigSetupCommand();
         break;
+      case EnhancedIsoPhase::CALL_RESUME_READY:
+        /* Source HAL OnAudioResume (achat_tx_enable=true) after sync-only disable.
+         * The BIG is already alive; skip DBIG setup and start TX ISO paths directly. */
+        if (!big_sync_info_.has_value() || big_sync_info_->bis_conn_handles.empty()) {
+          log::error("broadcast_id=0x{:x}, OnAudioStart [call-resume TX]: no BIG sync info", GetBroadcastId());
+          return;
+        }
+        log::info("broadcast_id=0x{:x}, OnAudioStart [call-resume TX]: starting TX ISO path setup", GetBroadcastId());
+        enhanced_iso_phase_ = EnhancedIsoPhase::TX_SETUP;
+        enhanced_iso_setup_index_ = 0;
+        TriggerIsoDatapathSetup(big_sync_info_->bis_conn_handles[0],
+            bluetooth::hci::iso_manager::kIsoDataPathDirectionIn /* TX */);
+        break;
       case EnhancedIsoPhase::TX_DONE:
         if (!big_sync_info_.has_value() || big_sync_info_->bis_conn_handles.empty()) {
           log::error("broadcast_id=0x{:x}, OnAudioStart [2nd]: no BIG sync info", GetBroadcastId());
@@ -215,6 +231,9 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   std::optional<PaSyncInfo> GetPaSyncInfo() const override { return pa_sync_info_; }
   std::optional<BigSyncInfo> GetBigSyncInfo() const override { return big_sync_info_; }
   const BroadcastSinkStats& GetStats() const override { return stats_; }
+  bool IsEnhancedCallResumeReady() const override {
+    return is_enhanced_ && enhanced_iso_phase_ == EnhancedIsoPhase::CALL_RESUME_READY;
+  }
 
   void ProcessMessage(Message msg, const void* data) override {
     log::info("broadcast_id=0x{:x}, state={}, message={}", GetBroadcastId(),
@@ -424,6 +443,16 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           log::info("broadcast_id=0x{:x}, all TX ISO paths established", GetBroadcastId());
           enhanced_iso_phase_ = EnhancedIsoPhase::TX_DONE;
           enhanced_iso_setup_index_ = 0;
+          /* Clear stale teardown-completion flags from a prior call-preemption
+           * cycle. Without this, a second preemption's REMOVE_RX_PATHS can see
+           * tx_paths_removed_ still true from the FIRST cycle (never cleared
+           * after these TX paths were re-established) and wrongly conclude
+           * both TX and RX are torn down before the real REMOVE_TX_PATHS for
+           * THIS cycle has even been requested — jumping to sync-only early
+           * and leaving the BIG to be terminated instead when the real
+           * REMOVE_TX_PATHS/achat_tx_enable=false arrives at PA_SYNCED. */
+          tx_paths_removed_ = false;
+          rx_paths_removed_ = false;
           if (callbacks_) callbacks_->OnTxIsoPathsReady(GetBroadcastId());
         } else {
           TriggerIsoDatapathSetup(handles[enhanced_iso_setup_index_],
@@ -435,7 +464,11 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
                     GetBroadcastId());
           enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
           enhanced_iso_setup_index_ = 0;
+          /* See matching comment in the TX_SETUP branch above. */
+          tx_paths_removed_ = false;
+          rx_paths_removed_ = false;
           SetState(SinkState::BIG_SYNCED);
+          BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE);
           if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
         } else {
           TriggerIsoDatapathSetup(handles[enhanced_iso_setup_index_],
@@ -456,6 +489,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       if (it == handles.end()) {
         log::info("broadcast_id=0x{:x}, all ISO data paths established", GetBroadcastId());
         SetState(SinkState::BIG_SYNCED);
+        BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE);
         callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       } else {
         TriggerIsoDatapathSetup(*it, bluetooth::hci::iso_manager::kIsoDataPathDirectionOut);
@@ -518,10 +552,30 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
             TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
                 bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput /* RX */);
           } else if (rx_paths_removed_) {
-            /* RX already done — both paths removed, terminate BIG sync */
-            log::info("broadcast_id=0x{:x}, TX done, RX already done — terminating BIG sync",
-                      GetBroadcastId());
-            TExitDbig();
+            if (IsSuspendedByCall()) {
+              /* Call preemption: both TX and RX paths removed — enable sync-only.
+               * BIG termination never fires in this path (BIG stays alive), so
+               * OnBigSyncTerminated will never ack the source HAL suspend that
+               * was deferred in OnAudioSuspend(). Ack it now instead — TX ISO
+               * removal is already done, no need to wait for the DBIG_SYNC_ONLY
+               * HCI completion — to unblock
+               * setParameters("achat_tx_enable=false") in MSG_STOP. */
+              log::info("broadcast_id=0x{:x}, TX done, RX done, preempted — enabling sync-only",
+                        GetBroadcastId());
+              if (callbacks_) callbacks_->OnTxSuspendAckedBySyncOnly(GetBroadcastId());
+              static BroadcastSinkStateMachineImpl* s_ep = nullptr;
+              s_ep = this;
+              static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kEnable =
+                  [](uint8_t st, uint8_t sub, uint8_t hdl) {
+                    if (s_ep) OnSyncOnlyEnableCmpl(s_ep, st, sub, hdl);
+                  };
+              BTM_BleDbigSyncOnly(big_sync_info_->big_handle, 1 /* enable */, kEnable);
+            } else {
+              /* RX already done — both paths removed, terminate BIG sync */
+              log::info("broadcast_id=0x{:x}, TX done, RX already done — terminating BIG sync",
+                        GetBroadcastId());
+              TExitDbig();
+            }
           } else {
             /* Waiting for RX teardown (REMOVE_RX_PATHS not yet received) */
             log::info("broadcast_id=0x{:x}, TX done, waiting for RX teardown",
@@ -543,10 +597,26 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
             TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
                 bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput /* TX */);
           } else if (tx_paths_removed_) {
-            /* TX already done — both paths removed, terminate BIG sync */
-            log::info("broadcast_id=0x{:x}, RX done, TX already done — terminating BIG sync",
-                      GetBroadcastId());
-            TExitDbig();
+            if (IsSuspendedByCall()) {
+              /* See matching comment in the TX-done-last branch above: BIG stays
+               * alive in sync-only, so OnBigSyncTerminated never fires to ack
+               * the deferred source HAL suspend. Ack it here instead. */
+              log::info("broadcast_id=0x{:x}, RX done, TX done, preempted — enabling sync-only",
+                        GetBroadcastId());
+              if (callbacks_) callbacks_->OnTxSuspendAckedBySyncOnly(GetBroadcastId());
+              static BroadcastSinkStateMachineImpl* s_ep2 = nullptr;
+              s_ep2 = this;
+              static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kEnable2 =
+                  [](uint8_t st, uint8_t sub, uint8_t hdl) {
+                    if (s_ep2) OnSyncOnlyEnableCmpl(s_ep2, st, sub, hdl);
+                  };
+              BTM_BleDbigSyncOnly(big_sync_info_->big_handle, 1 /* enable */, kEnable2);
+            } else {
+              /* TX already done — both paths removed, terminate BIG sync */
+              log::info("broadcast_id=0x{:x}, RX done, TX already done — terminating BIG sync",
+                        GetBroadcastId());
+              TExitDbig();
+            }
           } else {
             /* Waiting for TX teardown (REMOVE_TX_PATHS not yet received) */
             log::info("broadcast_id=0x{:x}, RX done, waiting for TX teardown",
@@ -684,13 +754,16 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
    *                  When done → OnRxIsoPathsRemoved() → PA_SYNCED.
    */
   enum class EnhancedIsoPhase : uint8_t {
-    IDLE        = 0,
-    DBIG_SETUP  = 1,
-    TX_SETUP    = 2,
-    TX_DONE     = 3,
-    RX_SETUP    = 4,
-    TX_TEARDOWN = 5,
-    RX_TEARDOWN = 6,
+    IDLE             = 0,
+    DBIG_SETUP       = 1,
+    TX_SETUP         = 2,
+    TX_DONE          = 3,
+    RX_SETUP         = 4,
+    TX_TEARDOWN      = 5,
+    RX_TEARDOWN      = 6,
+    /* After OnSyncOnlyDisableCmpl: BIG alive, waiting for Source HAL
+     * OnAudioResume (achat_tx_enable=true) to kick off TX ISO path setup. */
+    CALL_RESUME_READY = 7,
   };
   EnhancedIsoPhase enhanced_iso_phase_;
   int enhanced_iso_setup_index_;
@@ -768,6 +841,20 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
               log::warn("broadcast_id=0x{:x}, no BASE data, cannot start BIG sync", GetBroadcastId());
               return;
             }
+            if (IsResumingAfterCall()) {
+              // BIG is still alive in sync-only mode — skip CreateBigSync.
+              // Send HCI VS DBIG_SYNC_ONLY(0); completion callback re-setups ISOs.
+              log::info("broadcast_id=0x{:x}, resuming after call — disabling sync-only",
+                        GetBroadcastId());
+              static BroadcastSinkStateMachineImpl* s_rp = nullptr;
+              s_rp = this;
+              static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kDisable =
+                  [](uint8_t st, uint8_t sub, uint8_t hdl) {
+                    if (s_rp) OnSyncOnlyDisableCmpl(s_rp, st, sub, hdl);
+                  };
+              BTM_BleDbigSyncOnly(big_sync_info_->big_handle, 0 /* disable */, kDisable);
+              return;
+            }
             SetState(SinkState::BIG_SYNCING);
             if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             if (is_enhanced_) {
@@ -840,6 +927,26 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
           },
           /* STREAMING */
           [this](const void*) {
+            // During call preemption, do NOT change state — stays BIG_SYNCED until
+            // OnSyncOnlyEnableCmpl transitions to PA_SYNCED after HCI VS completes.
+            if (IsSuspendedByCall()) {
+              log::info("broadcast_id=0x{:x}, call preemption REMOVE_TX_PATHS: "
+                        "starting TX ISO removal (state stays BIG_SYNCED)",
+                        GetBroadcastId());
+              tx_paths_removed_ = false;
+              pending_rx_teardown_ = false;
+              pending_tx_teardown_ = false;
+              if (big_sync_info_.has_value()) {
+                teardown_bis_handles_ = big_sync_info_->bis_conn_handles;
+              } else {
+                teardown_bis_handles_.clear();
+              }
+              enhanced_iso_phase_ = EnhancedIsoPhase::TX_TEARDOWN;
+              enhanced_iso_setup_index_ = 0;
+              TriggerIsoDatapathTeardown(teardown_bis_handles_[0],
+                  bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput /* TX */);
+              return;
+            }
             log::info("broadcast_id=0x{:x}, source HAL suspend (REMOVE_TX_PATHS): "
                       "starting TX ISO path removal",
                       GetBroadcastId());
@@ -880,6 +987,54 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
             log::info("broadcast_id=0x{:x}, already stopping", GetBroadcastId());
           },
       };
+
+  // Static callback: HCI VS DBIG_SYNC_ONLY(enable=1) complete during call preemption.
+  // State stays BIG_SYNCED until this fires, then transitions to PA_SYNCED.
+  static void OnSyncOnlyEnableCmpl(BroadcastSinkStateMachineImpl* self,
+                                   uint8_t status, uint8_t /*sub_opcode*/,
+                                   uint8_t /*dbig_handle*/) {
+    if (status != 0) {
+      log::error("DBIG_SYNC_ONLY enable failed for sink, status=0x{:02x}. Terminating BIG.",
+                 status);
+      self->SetSuspendedByCall(false);
+      self->TExitDbig();
+      return;
+    }
+    log::info("DBIG_SYNC_ONLY enabled for sink broadcast_id=0x{:x}, moving to PA_SYNCED",
+              self->GetBroadcastId());
+    self->SetSuspendedByCall(false);
+    // Equivalent of A14 SYNC_ONLY_MODE_ON_EVT: set INACTIVE to unblock parked SCO.
+    BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_INACTIVE);
+    self->SetState(SinkState::PA_SYNCED);
+    if (self->callbacks_) {
+      self->callbacks_->OnSyncOnlyModeActive(self->GetBroadcastId());
+      self->callbacks_->OnStateMachineEvent(self->GetBroadcastId(), self->GetState());
+    }
+  }
+
+  // Static callback: HCI VS DBIG_SYNC_ONLY(enable=0) complete after call ends.
+  // Re-setups ISO data paths on the existing BIG.
+  static void OnSyncOnlyDisableCmpl(BroadcastSinkStateMachineImpl* self,
+                                    uint8_t status, uint8_t /*sub_opcode*/,
+                                    uint8_t /*dbig_handle*/) {
+    if (status != 0) {
+      log::error("DBIG_SYNC_ONLY disable failed for sink, status=0x{:02x}. Full restart.", status);
+      self->SetResumingAfterCall(false);
+      self->CreateBigSync();
+      return;
+    }
+    log::info("DBIG_SYNC_ONLY disabled for sink broadcast_id=0x{:x}, waiting for HAL start requests",
+              self->GetBroadcastId());
+    self->SetResumingAfterCall(false);
+    /* Set CALL_RESUME_READY BEFORE changing state or invoking the callback so
+     * that any code running inside OnStateMachineEvent (e.g. pending-resume
+     * replays in broadcast_sink.cc) sees the correct phase immediately. */
+    self->enhanced_iso_setup_index_ = 0;
+    self->enhanced_iso_phase_ = EnhancedIsoPhase::CALL_RESUME_READY;
+    self->SetState(SinkState::BIG_SYNCING);
+    if (self->callbacks_)
+      self->callbacks_->OnStateMachineEvent(self->GetBroadcastId(), self->GetState());
+  }
 
   // STOP_SYNC handlers
   const std::array<msg_handler_t, static_cast<size_t>(SinkState::STATE_COUNT)>

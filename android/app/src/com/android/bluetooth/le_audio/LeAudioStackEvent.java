@@ -56,6 +56,9 @@ public class LeAudioStackEvent {
     public static final int EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE = EVENT_TYPE_UNICAST_MAX + 7;
     /** HCI_VS_LE_Texit_DBIG_Complete on PGO side. valueInt1=broadcastId, valueInt2=dbigHandle, valueInt3=status */
     public static final int EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE = EVENT_TYPE_UNICAST_MAX + 8;
+    /** HCI VS DBIG_SYNC_ONLY(enable=1) complete. ISO paths removed, controller idle, safe to send AT+BCC.
+     *  valueInt1=broadcastId */
+    public static final int EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE = EVENT_TYPE_UNICAST_MAX + 9;
 
     // DBIG status extended fields (shared by broadcaster and sink paths)
     public int dbigDevId = 0;
@@ -196,6 +199,8 @@ public class LeAudioStackEvent {
                 return "EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED";
             case EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE:
                 return "EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE";
+            case EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE:
+                return "EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE";
             case EVENT_TYPE_AUDIO_LOCAL_CODEC_CONFIG_CAPA_CHANGED:
                 return "EVENT_TYPE_AUDIO_LOCAL_CODEC_CONFIG_CAPA_CHANGED";
             case EVENT_TYPE_AUDIO_GROUP_CURRENT_CODEC_CONFIG_CHANGED:

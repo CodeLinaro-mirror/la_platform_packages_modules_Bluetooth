@@ -114,6 +114,11 @@ class LeAudioBroadcastSink {
    */
   virtual void StopEnhancedBroadcastSink(uint8_t mode) = 0;
 
+  // Atomically arms call-preemption (SetSuspendedByCall) and stops the BIG on
+  // the BTA main thread, eliminating the race where REMOVE_RX_PATHS arrives
+  // before SetSuspendedByCall is processed.
+  virtual void StopEnhancedBroadcastSinkPreempt(bluetooth::le_audio::broadcast_sink::BroadcastId broadcast_id) = 0;
+
   /**
    * Remove a broadcast source (stop PA sync)
    * Stops PA sync and removes the broadcast source completely.
@@ -174,4 +179,9 @@ class LeAudioBroadcastSink {
    * Only valid for enhanced (DBIG) sources. Operates on the single active enhanced source.
    */
   virtual void TerminateDbig() = 0;
+
+  // Arm/disarm sync-only mode on the given broadcast for HFP concurrency.
+  // Must be called before disabling achat audio paths on call-start (isCallActive=true),
+  // and before re-enabling them on call-end (isCallActive=false).
+  virtual void NotifyCallState(uint32_t broadcast_id, bool isCallActive) = 0;
 };

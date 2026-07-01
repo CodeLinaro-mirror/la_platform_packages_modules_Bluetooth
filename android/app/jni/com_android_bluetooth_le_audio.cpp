@@ -766,6 +766,7 @@ static jmethodID method_onBroadcastAudioSessionCreated;
 static jmethodID method_onDbigStatusChanged;
 static jmethodID method_onRemoveDeviceDbigComplete;
 static jmethodID method_onTexitDbigCompletePgo;  /* PGO side TExitDbig complete */
+static jmethodID method_onSyncOnlyModeActive;
 
 static LeAudioBroadcasterInterface* sLeAudioBroadcasterInterface = nullptr;
 static std::shared_timed_mutex sBroadcasterInterfaceMutex;
@@ -1252,6 +1253,15 @@ public:
     sCallbackEnv->CallVoidMethod(sBroadcasterCallbacksObj, method_onTexitDbigCompletePgo,
                                  (jint)broadcast_id, (jint)dbig_handle, (jint)status);
   }
+
+  void OnSyncOnlyModeActive(uint32_t broadcast_id) override {
+    log::info("OnSyncOnlyModeActive: broadcast_id=0x{:08x}", broadcast_id);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcasterCallbacksObj == nullptr) return;
+    sCallbackEnv->CallVoidMethod(sBroadcasterCallbacksObj, method_onSyncOnlyModeActive,
+                                 (jint)broadcast_id);
+  }
 };
 
 static LeAudioBroadcasterCallbacksImpl sLeAudioBroadcasterCallbacks;
@@ -1707,6 +1717,24 @@ static void RejectTerminateDbigNative(JNIEnv* /* env */, jobject /* object */,
   sLeAudioBroadcasterInterface->rejectTerminateDbig((uint32_t)broadcastId);
 }
 
+static void setDbigSyncOnlyNative(JNIEnv* /* env */, jobject /* object */,
+                                  jint dbig_handle, jboolean enable) {
+  log::info("setDbigSyncOnlyNative: dbig_handle=0x{:02x}, enable={}", (uint8_t)dbig_handle, (bool)enable);
+  BTM_BleDbigSyncOnly((uint8_t)dbig_handle, enable ? 1 : 0);
+}
+
+static void notifyCallStateNative(JNIEnv* /* env */, jobject /* object */,
+                                  jint broadcast_id, jboolean is_call_active) {
+  log::info("notifyCallStateNative: broadcast_id={}, is_call_active={}", (int)broadcast_id,
+            (bool)is_call_active);
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcasterInterfaceMutex);
+  if (!sLeAudioBroadcasterInterface) {
+    log::warn("notifyCallStateNative: broadcaster interface not initialized");
+    return;
+  }
+  sLeAudioBroadcasterInterface->notifyCallState((uint32_t)broadcast_id, (bool)is_call_active);
+}
+
 static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initNative", "()V", (void*)BroadcasterInitNative},
@@ -1731,6 +1759,8 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
           {"acceptTerminateDbigNative", "(I)V", (void*)AcceptTerminateDbigNative},
           {"rejectTerminateDbigNative", "(I)V", (void*)RejectTerminateDbigNative},
           {"stopEnhancedBroadcastNative", "(II)V", (void*)StopEnhancedBroadcastNative},
+          {"setDbigSyncOnlyNative", "(IZ)V", (void*)setDbigSyncOnlyNative},
+          {"notifyCallStateNative", "(IZ)V", (void*)notifyCallStateNative},
   };
 
   const int result = REGISTER_NATIVE_METHODS(
@@ -1749,6 +1779,7 @@ static int register_com_android_bluetooth_le_audio_broadcaster(JNIEnv* env) {
           {"onDbigStatusChanged", "(III[BI[CI)V", &method_onDbigStatusChanged},
           {"onRemoveDeviceDbigComplete", "(III)V", &method_onRemoveDeviceDbigComplete},
           {"onTexitDbigComplete", "(III)V", &method_onTexitDbigCompletePgo},
+          {"onSyncOnlyModeActive", "(I)V", &method_onSyncOnlyModeActive},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcasterNativeInterface",
                    javaMethods);
@@ -1826,6 +1857,7 @@ static jmethodID method_onBigSyncLost;
 static jmethodID method_onBigSyncTerminated;
 static jmethodID method_onSinkDbigStatusChanged;
 static jmethodID method_onTexitDbigComplete;
+static jmethodID method_onSinkSyncOnlyModeActive;
 
 static BroadcastSinkInterface* sBroadcastSinkInterface = nullptr;
 static std::shared_timed_mutex sBroadcastSinkInterfaceMutex;
@@ -2066,6 +2098,15 @@ public:
     sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onTexitDbigComplete,
                                  (jint)broadcast_id, (jint)dbig_handle, (jint)status);
   }
+
+  void OnSyncOnlyModeActive(bluetooth::le_audio::BroadcastId broadcast_id) override {
+    log::info("OnSyncOnlyModeActive (sink): broadcast_id=0x{:08x}", broadcast_id);
+    std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
+    CallbackEnv sCallbackEnv(__func__);
+    if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) return;
+    sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onSinkSyncOnlyModeActive,
+                                 (jint)broadcast_id);
+  }
 };
 
 static BroadcastSinkCallbacksImpl sBroadcastSinkCallbacks;
@@ -2221,6 +2262,16 @@ static void BroadcastSinkStopEnhancedBroadcastSinkNative(JNIEnv* /* env */, jobj
   sBroadcastSinkInterface->StopEnhancedBroadcastSink((uint8_t)mode);
 }
 
+static void BroadcastSinkStopEnhancedBroadcastSinkPreemptNative(JNIEnv* /* env */, jobject /* object */, jint broadcastId) {
+  log::info("BroadcastSinkStopEnhancedBroadcastSinkPreemptNative: broadcast_id=0x{:08x}", (int)broadcastId);
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::warn("BroadcastSinkStopEnhancedBroadcastSinkPreemptNative: sink interface not initialized");
+    return;
+  }
+  sBroadcastSinkInterface->StopEnhancedBroadcastSinkPreempt((bluetooth::le_audio::BroadcastId)broadcastId);
+}
+
 // Remove source - terminates both BIG and PA sync
 static void BroadcastSinkRemoveSourceNative(JNIEnv* env, jobject /* object */, jint broadcastId) {
   log::info("");
@@ -2338,6 +2389,18 @@ static void BroadcastSinkSourcePublicMetadataChangedNative(JNIEnv* env, jobject 
   }
 }
 
+static void BroadcastSinkNotifyCallStateNative(JNIEnv* /* env */, jobject /* object */,
+                                               jint broadcast_id, jboolean is_call_active) {
+  log::info("BroadcastSinkNotifyCallStateNative: broadcast_id=0x{:08x}, is_call_active={}",
+            (int)broadcast_id, (bool)is_call_active);
+  std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkInterfaceMutex);
+  if (!sBroadcastSinkInterface) {
+    log::warn("BroadcastSinkNotifyCallStateNative: sink interface not initialized");
+    return;
+  }
+  sBroadcastSinkInterface->notifyCallState((uint32_t)broadcast_id, (bool)is_call_active);
+}
+
 static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
   const JNINativeMethod methods[] = {
           {"initializeNative", "(I)V", (void*)BroadcastSinkInitNative},
@@ -2346,6 +2409,7 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
            (void*)BroadcastSinkAddSourceNative},
           {"startEnhancedBroadcastSinkNative", "(I[B)V", (void*)BroadcastSinkStartEnhancedBroadcastSinkNative},
           {"stopEnhancedBroadcastSinkNative", "(I)V", (void*)BroadcastSinkStopEnhancedBroadcastSinkNative},
+          {"stopEnhancedBroadcastSinkPreemptNative", "(I)V", (void*)BroadcastSinkStopEnhancedBroadcastSinkPreemptNative},
           {"removeSourceNative", "(I)V", (void*)BroadcastSinkRemoveSourceNative},
           {"destroySourceNative", "(I)V", (void*)BroadcastSinkDestroySourceNative},
           {"readSupportedStatesForSinkNative", "()I", (void*)BroadcastSinkReadSupportedStatesForSinkNative},
@@ -2354,6 +2418,7 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
           {"terminateDbigNative", "()V", (void*)BroadcastSinkTerminateDbigNative},
           {"sourcePublicMetadataChangedNative", "(ILjava/lang/String;[B)V",
            (void*)BroadcastSinkSourcePublicMetadataChangedNative},
+          {"notifyCallStateSinkNative", "(IZ)V", (void*)BroadcastSinkNotifyCallStateNative},
   };
 
   const int result = REGISTER_NATIVE_METHODS(
@@ -2380,6 +2445,7 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
           {"onBigSyncTerminated", "(III)V", &method_onBigSyncTerminated},
           {"onDbigStatusChanged", "(III[BI[CI)V", &method_onSinkDbigStatusChanged},
           {"onTexitDbigComplete", "(III)V", &method_onTexitDbigComplete},
+          {"onSyncOnlyModeActive", "(I)V", &method_onSinkSyncOnlyModeActive},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface",
                    javaMethods);

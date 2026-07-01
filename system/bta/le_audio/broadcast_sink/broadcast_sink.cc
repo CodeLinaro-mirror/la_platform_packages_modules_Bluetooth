@@ -434,8 +434,10 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     }
 
     // StopEnhancedBroadcastSink requested by user - clear stale suspend flags.
-    pending_source_suspend_ = false;
-    pending_sink_suspend_   = false;
+    pending_source_suspend_   = false;
+    pending_sink_suspend_     = false;
+    pending_sink_hal_resume_  = false;
+    pending_source_hal_resume_ = false;
 
     // Store the TExitDbig mode on the state machine before teardown fires.
     state_machine->SetTexitMode(mode);
@@ -457,6 +459,37 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
      *
      * Calling Stop() here would trigger duplicate OnAudioSuspend callbacks
      * and race with the MSG_STOP-driven teardown. */
+  }
+
+  void StopEnhancedBroadcastSinkPreempt(BroadcastId broadcast_id) override {
+    log::info("StopEnhancedBroadcastSinkPreempt: broadcast_id=0x{:08x} — arming sync-only preemption",
+              broadcast_id);
+
+    if (tracked_sources_.count(broadcast_id) == 0) {
+      log::error("StopEnhancedBroadcastSinkPreempt: no such broadcast_id=0x{:08x}", broadcast_id);
+      return;
+    }
+    auto& tracked_source = tracked_sources_[broadcast_id];
+    if (!tracked_source.state_machine) {
+      log::error("StopEnhancedBroadcastSinkPreempt: no state machine for broadcast_id=0x{:08x}",
+                 broadcast_id);
+      return;
+    }
+
+    // Arm the preemption flag BEFORE HAL paths are disabled so that
+    // REMOVE_RX_PATHS / REMOVE_TX_PATHS handlers see IsSuspendedByCall()==true
+    // and enter sync-only mode instead of terminating the BIG.
+    tracked_source.state_machine->SetSuspendedByCall(true);
+
+    // Clear stale suspend flags (same as StopEnhancedBroadcastSink).
+    pending_source_suspend_  = false;
+    pending_sink_suspend_    = false;
+    pending_sink_hal_resume_ = false;
+    pending_source_hal_resume_ = false;
+
+    log::info("StopEnhancedBroadcastSinkPreempt: SetSuspendedByCall armed for broadcast_id=0x{:08x}. "
+              "MSG_STOP from Java will drive HAL teardown.",
+              broadcast_id);
   }
 
   void RemoveSource(BroadcastId broadcast_id) override {
@@ -541,8 +574,10 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         le_audio_source_hal_client_.reset();
       }
       /* Reset suspend flags so a fresh start finds them clean. */
-      pending_source_suspend_ = false;
-      pending_sink_suspend_   = false;
+      pending_source_suspend_  = false;
+      pending_sink_suspend_    = false;
+      pending_sink_hal_resume_ = false;
+      pending_source_hal_resume_ = false;
 
       /* Unregister DBIG callbacks when the last source is destroyed (role transition). */
       if (dbig_callbacks_registered_) {
@@ -578,6 +613,21 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       if (tracked_source.state_machine) {
         tracked_source.state_machine->SetDbigParams(dbig_params);
       }
+    }
+  }
+
+  void NotifyCallState(uint32_t broadcast_id, bool isCallActive) override {
+    log::info("NotifyCallState: broadcast_id=0x{:08x}, isCallActive={}", broadcast_id, isCallActive);
+    if (tracked_sources_.count(broadcast_id) == 0) {
+      log::warn("NotifyCallState: unknown broadcast_id=0x{:08x}", broadcast_id);
+      return;
+    }
+    auto& source = tracked_sources_[broadcast_id];
+    if (!source.state_machine) return;
+    if (isCallActive) {
+      source.state_machine->SetSuspendedByCall(true);
+    } else {
+      source.state_machine->SetResumingAfterCall(true);
     }
   }
 
@@ -1349,6 +1399,15 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
   std::unique_ptr<bluetooth::le_audio::LeAudioSourceAudioHalClient> le_audio_source_hal_client_; // Source HAL client (TX, 1st HIDL start)
   bool pending_source_suspend_ = false;  // Set when source HAL OnAudioSuspend arrives (StopEnhancedBroadcastSink)
   bool pending_sink_suspend_   = false;  // Set when sink   HAL OnAudioSuspend arrives (StopEnhancedBroadcastSink)
+  /* Set when sink HAL OnAudioResume arrives while an enhanced source is still in
+   * CALL_RESUME_READY phase (waiting for Source HAL start to finish TX paths).
+   * Replayed in OnTxIsoPathsReady once TX paths are ready. */
+  bool pending_sink_hal_resume_ = false;
+  /* Set when source HAL OnAudioResume fires during call-resume (PA_SYNCED +
+   * IsResumingAfterCall).  START_BIG_SYNC is sent immediately to trigger
+   * DBIG_SYNC_ONLY(0); OnSyncOnlyDisableCmpl replays OnAudioStart() when the
+   * state moves to BIG_SYNCING + CALL_RESUME_READY. */
+  bool pending_source_hal_resume_ = false;
   bool dbig_callbacks_registered_ = false;  // DBIG callbacks registered lazily in StartEnhancedBroadcastSink
 
   /* DBIG params set via SetEnhancedDbigParams() from PA vendor LTV */
@@ -1418,6 +1477,23 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
         case SinkState::BIG_SYNCING:
           log::info("State machine transitioned to BIG_SYNCING for broadcast_id=0x{:06X}", broadcast_id);
+          /* After OnSyncOnlyDisableCmpl: state=BIG_SYNCING, phase=CALL_RESUME_READY.
+           * Replay any HAL resume callbacks that arrived while DBIG_SYNC_ONLY(0)
+           * was in flight (before state was BIG_SYNCING). */
+          if (tracked_source.state_machine->IsEnhanced()) {
+            if (instance->pending_source_hal_resume_) {
+              instance->pending_source_hal_resume_ = false;
+              log::info("BIG_SYNCING: replaying pending source HAL resume (call-resume TX) "
+                        "for broadcast_id=0x{:06X}", broadcast_id);
+              tracked_source.state_machine->OnAudioStart();
+            }
+            if (instance->pending_sink_hal_resume_) {
+              /* Sink resume arrived before TX paths are done — keep it deferred;
+               * OnTxIsoPathsReady will fire it after TX ISO paths complete. */
+              log::info("BIG_SYNCING: pending sink HAL resume still deferred "
+                        "(waiting for TX paths) for broadcast_id=0x{:06X}", broadcast_id);
+            }
+          }
           break;
 
         case SinkState::BIG_SYNCED:
@@ -1533,6 +1609,18 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
                   "for broadcast_id=0x{:08x}", broadcast_id);
         instance->le_audio_source_hal_client_->ConfirmStreamingRequest(false);
       }
+
+      /* If sink HAL OnAudioResume arrived early (before TX paths were ready),
+       * it was deferred.  Replay it now so RX ISO path setup proceeds. */
+      if (instance->pending_sink_hal_resume_) {
+        instance->pending_sink_hal_resume_ = false;
+        log::info("OnTxIsoPathsReady: replaying deferred sink HAL resume for "
+                  "broadcast_id=0x{:08x}", broadcast_id);
+        auto it = instance->tracked_sources_.find(broadcast_id);
+        if (it != instance->tracked_sources_.end() && it->second.state_machine) {
+          it->second.state_machine->OnAudioStart();
+        }
+      }
     }
 
     void OnBigSyncEstablished(uint32_t broadcast_id, uint8_t big_handle,
@@ -1623,6 +1711,28 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
                   broadcast_id);
         instance->le_audio_sink_hal_client_->ConfirmSuspendRequest();
         instance->pending_sink_suspend_ = false;
+      }
+    }
+
+    void OnTxSuspendAckedBySyncOnly(uint32_t broadcast_id) override {
+      if (!instance) return;
+      log::info("OnTxSuspendAckedBySyncOnly: broadcast_id=0x{:08x}", broadcast_id);
+      // TX ISO paths were removed during call preemption but BIG was kept alive
+      // (sync-only mode). BIG termination never fires, so ack the source HAL
+      // suspend here instead — unblocks achat_tx_enable=false in MSG_STOP.
+      if (instance->pending_source_suspend_ && instance->le_audio_source_hal_client_) {
+        log::info("OnTxSuspendAckedBySyncOnly: acking source HAL suspend for "
+                  "broadcast_id=0x{:08x}", broadcast_id);
+        instance->le_audio_source_hal_client_->ConfirmSuspendRequest();
+        instance->pending_source_suspend_ = false;
+      }
+    }
+
+    void OnSyncOnlyModeActive(uint32_t broadcast_id) override {
+      if (!instance) return;
+      log::info("OnSyncOnlyModeActive (sink): broadcast_id=0x{:08x}", broadcast_id);
+      if (instance->callbacks_) {
+        instance->callbacks_->OnSyncOnlyModeActive(broadcast_id);
       }
     }
 
@@ -1803,6 +1913,35 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
         auto state = tracked_source.state_machine->GetState();
         if (state == SinkState::PA_SYNCED) {
+          /* Skip SSR recovery if we are in call-resume mode.  Two checks:
+           *  1. IsResumingAfterCall() — set by notifyCallState(false) (async, may not
+           *     have arrived yet when achat_tx_enable=true fires this callback).
+           *  2. GetBigSyncInfo().has_value() — race-safe: big_sync_info_ is only
+           *     cleared on a real BIG sync loss, so if it is still set the BIG is
+           *     alive in sync-only and OnSyncOnlyDisableCmpl is in flight to re-setup
+           *     ISO paths.  Sending a new DBIG create here would fail 0x0c (Command
+           *     Disallowed) and abort the correct re-setup path. */
+          if (tracked_source.state_machine->IsResumingAfterCall()) {
+            /* Call-resume: BIG is alive in sync-only.  Fire START_BIG_SYNC which
+             * enters the PA_SYNCED handler and sends DBIG_SYNC_ONLY(0).
+             * OnSyncOnlyDisableCmpl then sets state→BIG_SYNCING +
+             * phase=CALL_RESUME_READY and OnAudioStart() drives TX ISO paths. */
+            log::info("Source HAL OnAudioResume: call-resume — sending START_BIG_SYNC "
+                      "to disable sync-only for broadcast_id=0x{:08x}", broadcast_id);
+            instance->pending_source_hal_resume_ = true;
+            tracked_source.state_machine->ProcessMessage(
+                BroadcastSinkStateMachine::Message::START_BIG_SYNC, nullptr);
+            return;
+          }
+          if (tracked_source.state_machine->GetBigSyncInfo().has_value()) {
+            /* Sync-only disable already in flight (IsResumingAfterCall was cleared
+             * by OnSyncOnlyDisableCmpl but we arrived here before state moved to
+             * BIG_SYNCING).  Nothing to do — OnSyncOnlyDisableCmpl will drive
+             * the resume via pending_source_hal_resume_. */
+            log::info("Source HAL OnAudioResume: sync-only disable in flight "
+                      "— skipping for broadcast_id=0x{:08x}", broadcast_id);
+            return;
+          }
           log::info("Source HAL OnAudioResume: ADSP SSR recovery — re-sending "
                     "START_BIG_SYNC for broadcast_id=0x{:08x}", broadcast_id);
           /* Re-register DBIG callbacks in case they were cleared during teardown. */
@@ -1897,18 +2036,42 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
       /* For enhanced sources this is the 2nd HIDL start (sink HAL client).
        * Forward to the state machine in BIG_SYNCING state with phase TX_DONE
-       * so it starts RX ISO data path setup. */
+       * so it starts RX ISO data path setup.
+       *
+       * Defer cases (set pending_sink_hal_resume_, replayed by OnTxIsoPathsReady
+       * or OnStateMachineEvent(BIG_SYNCING)):
+       *  1. BIG_SYNCING + CALL_RESUME_READY: TX paths not yet set up.
+       *  2. PA_SYNCED + IsResumingAfterCall: DBIG_SYNC_ONLY(0) still in flight;
+       *     state hasn't moved to BIG_SYNCING yet. */
       bool handled_enhanced = false;
       for (auto& [broadcast_id, tracked_source] : instance->tracked_sources_) {
         if (!tracked_source.state_machine) continue;
+        if (!tracked_source.state_machine->IsEnhanced()) continue;
 
         auto state = tracked_source.state_machine->GetState();
-        if (tracked_source.state_machine->IsEnhanced() &&
-            state == SinkState::BIG_SYNCING) {
-          log::info("Sink HAL OnAudioResume: forwarding 2nd HIDL start to enhanced "
-                    "source broadcast_id=0x{:08x}", broadcast_id);
-          tracked_source.state_machine->OnAudioStart();
+        if (state == SinkState::PA_SYNCED &&
+            tracked_source.state_machine->IsResumingAfterCall()) {
+          /* DBIG_SYNC_ONLY(0) is in flight — state will move to BIG_SYNCING +
+           * CALL_RESUME_READY soon.  Defer until OnStateMachineEvent(BIG_SYNCING)
+           * replays this resume. */
+          log::info("Sink HAL OnAudioResume: sync-only disable in flight (PA_SYNCED) — "
+                    "deferring for broadcast_id=0x{:08x}", broadcast_id);
+          instance->pending_sink_hal_resume_ = true;
           handled_enhanced = true;
+          break;
+        }
+        if (state == SinkState::BIG_SYNCING) {
+          if (tracked_source.state_machine->IsEnhancedCallResumeReady()) {
+            log::info("Sink HAL OnAudioResume: TX paths not ready yet (CALL_RESUME_READY) — "
+                      "deferring until OnTxIsoPathsReady for broadcast_id=0x{:08x}", broadcast_id);
+            instance->pending_sink_hal_resume_ = true;
+            handled_enhanced = true;
+          } else {
+            log::info("Sink HAL OnAudioResume: forwarding 2nd HIDL start to enhanced "
+                      "source broadcast_id=0x{:08x}", broadcast_id);
+            tracked_source.state_machine->OnAudioStart();
+            handled_enhanced = true;
+          }
           break;
         }
       }

@@ -51,6 +51,8 @@ import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.AdapterService;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.btservice.storage.DatabaseManager;
+import com.android.bluetooth.hfpclient.HeadsetClientService;
+import com.android.bluetooth.hfpclient.HfpClientCall;
 import com.android.bluetooth.le_scan.ScanController;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
@@ -60,6 +62,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -190,6 +193,13 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     // True while an enhanced (enhanced broadcast) broadcast session is actively streaming.
     // Used to re-send MSG_START after an AudioServer restart.
     private volatile boolean mIsEnhancedStreaming = false;
+
+    // True when the broadcast was suspended by an HFP call; reset to false when call ends.
+    private volatile boolean mPreemptedByCall = false;
+
+    // Saves mActiveBroadcastInDevice before it is nulled at PA_SYNCED (preemption) so it
+    // can be restored to AudioManager when the call ends and BIG_SYNCED fires on resume.
+    private BluetoothDevice mBroadcastInDeviceBeforeCall = null;
 
     /*
      * Set to true when EVENT_TYPE_BIG_SYNC_LOST is received and we have already sent
@@ -386,6 +396,8 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             // This ensures startEnhancedBroadcastSink() starts from a clean state.
             mIsEnhancedStreaming = false;
             mBigSyncLostPending = false;
+            mPreemptedByCall = false;
+            mBroadcastInDeviceBeforeCall = null;
             mPendingEnhancedSourceDevice = null;
             mActiveBroadcastInDevice = null;
             mBroadcastSinkDescriptors.clear();
@@ -462,6 +474,9 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Clear callbacks
         mCallbacks.kill();
+
+        mPreemptedByCall = false;
+        mBroadcastInDeviceBeforeCall = null;
     }
 
     /*
@@ -700,6 +715,101 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
         if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_NOTIFY_SINK_STOPPED after MSG_REMOVE_ACTIVE_DEVICE");
         mHandler.sendMessage(stopNotify);
+    }
+
+    /**
+     * Called by HFP HeadsetClientStateMachine when a call or VR session starts/ends.
+     * Uses sync-only mode: only the audio HAL paths (achat_tx/rx) are toggled; the BIG
+     * remains alive (sync maintained) so audio can resume quickly when the call ends.
+     * The HCI DBIG Sync-Only command is sent separately by LeAudioService.
+     *
+     * @param isCallActive {@code true} if call is starting, {@code false} if call ended.
+     */
+    public void onCallStateChanged(boolean isCallActive) {
+        Log.d(TAG, "onCallStateChanged: isCallActive=" + isCallActive
+                + ", mIsEnhancedStreaming=" + mIsEnhancedStreaming
+                + ", mPreemptedByCall=" + mPreemptedByCall);
+
+        if (isCallActive && mIsEnhancedStreaming && !mPreemptedByCall) {
+            // Find the BIG_SYNCED enhanced broadcast to preempt.
+            Optional<Integer> activeSinkId = mBroadcastSinkDescriptors.entrySet().stream()
+                    .filter(e -> e.getValue().mSinkState
+                            == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED)
+                    .map(Map.Entry::getKey)
+                    .findFirst();
+
+            mPreemptedByCall = true;
+            // 1. Atomically arm the preemption flag in the native state machine AND
+            //    clear stale suspend flags — all on the BTA main thread, in the same
+            //    do_in_main_thread call — so that when MSG_STOP triggers
+            //    achat_rx/tx_enable=false, the REMOVE_RX_PATHS / REMOVE_TX_PATHS
+            //    handlers already see IsSuspendedByCall()==true and enter sync-only
+            //    mode instead of terminating the BIG.
+            if (activeSinkId.isPresent()) {
+                if (mNativeInterface != null) {
+                    mNativeInterface.stopEnhancedBroadcastSinkPreempt(activeSinkId.get());
+                }
+            }
+            // 2. Disable audio HAL paths — MM Audio sends REMOVE_TX/RX_PATHS.
+            Log.d(TAG, "onCallStateChanged: suspending audio HAL for call (sync-only)");
+            mHandler.sendEmptyMessage(MSG_STOP);
+            // NOTE: resumeScoIfRequired is called from SINK_STATE_PA_SYNCED handler
+            // (after OnSyncOnlyEnableCmpl), not here — same timing fix as PGO side.
+        } else if (!isCallActive && mPreemptedByCall) {
+            // Find the PA_SYNCED sink to resume (moved to PA_SYNCED by sync-only enable cmpl).
+            Optional<Integer> activeSinkId = mBroadcastSinkDescriptors.entrySet().stream()
+                    .filter(e -> e.getValue().mSinkState
+                            == LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED)
+                    .map(Map.Entry::getKey)
+                    .findFirst();
+
+            mPreemptedByCall = false;
+            if (activeSinkId.isPresent()) {
+                if (mNativeInterface != null) {
+                    mNativeInterface.notifyCallState(activeSinkId.get(), false);
+                }
+            }
+            // Re-activate the A2DP device in AudioManager, then WAIT for the real
+            // onAudioDevicesAdded() callback to send MSG_START — do not send it directly
+            // here. MSG_START's setParameters("achat_tx_enable=true") BLOCKS until the
+            // vendor AHAL acks, and that ack needs an active A2DP device/audio patch to
+            // route through. Rather than assuming the device is active in time (which
+            // caused ack timeouts), wait for AudioManager's own confirmation that the
+            // device is active — the same mechanism the normal join path already uses
+            // (see startEnhancedBroadcastSink()/onAudioDevicesAdded() below).
+            if (mBroadcastInDeviceBeforeCall != null) {
+                Log.d(TAG, "onCallStateChanged: re-activating broadcast device in "
+                        + "AudioManager, will resume once onAudioDevicesAdded fires: "
+                        + mBroadcastInDeviceBeforeCall);
+                updateBroadcastActiveInDevice(
+                        mBroadcastInDeviceBeforeCall, mActiveBroadcastInDevice, true);
+                mBroadcastInDeviceBeforeCall = null;
+            } else {
+                // No device was saved before the call (e.g. it was already inactive) —
+                // there is no device-added transition to wait for, so send MSG_START
+                // directly, same as before.
+                Log.d(TAG, "onCallStateChanged: no device to re-activate, "
+                        + "resuming audio HAL directly after call end");
+                mHandler.sendEmptyMessage(MSG_START);
+            }
+        }
+    }
+
+    private static void resumeScoIfRequired(HeadsetClientService hfpService) {
+        for (BluetoothDevice device : hfpService.getConnectedDevices()) {
+            List<HfpClientCall> calls = hfpService.getCurrentCalls(device);
+            if (calls == null || calls.isEmpty()) continue;
+            for (HfpClientCall call : calls) {
+                int state = call.getState();
+                if (state == HfpClientCall.CALL_STATE_TERMINATED) continue;
+                if (state == HfpClientCall.CALL_STATE_INCOMING && !call.isInBandRing()) continue;
+                Log.d(TAG, "resumeScoIfRequired: connecting SCO for device=" + device
+                        + " callState=" + state);
+                hfpService.connectAudio(device);
+                return;
+            }
+        }
+        Log.d(TAG, "resumeScoIfRequired: no eligible call found for SCO");
     }
 
     /*
@@ -1232,27 +1342,41 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                         + "to MSG_NOTIFY_SINK_STOPPED for broadcastId="
                                         + event.broadcastId);
                             } else if (previousState == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED) {
-                                /* BIG sync lost unexpectedly (BIG_SYNCED → PA_SYNCED).
-                                 * Notification queued via MSG_NOTIFY_SINK_STOPPED from
-                                 * EVENT_TYPE_BIG_SYNC_LOST. Do NOT duplicate here. */
-                                if (DBG) Log.d(TAG, "BIG_SYNCED→PA_SYNCED: notification deferred "
-                                        + "to MSG_NOTIFY_SINK_STOPPED for broadcastId="
-                                        + event.broadcastId);
-                                descriptor.mPendingMetadataUpdate = null;
+                                if (mPreemptedByCall) {
+                                    // BIG_SYNCED→PA_SYNCED due to call preemption (sync-only cmpl).
+                                    // A2DP deactivation and resumeScoIfRequired are handled in
+                                    // EVENT_TYPE_SINK_SYNC_ONLY_ACTIVE which fires from the same
+                                    // OnSyncOnlyEnableCmpl callback — no action needed here.
+                                    Log.d(TAG, "BIG_SYNCED→PA_SYNCED: call preemption, "
+                                            + "sync-only active event will handle SCO + A2DP");
+                                } else {
+                                    /* BIG sync lost unexpectedly — leave notification deferred. */
+                                    if (DBG) Log.d(TAG, "BIG_SYNCED→PA_SYNCED: leave notification "
+                                            + "deferred to EVENT_TYPE_BIG_SYNC_LOST for broadcastId="
+                                            + event.broadcastId);
+                                    descriptor.mPendingMetadataUpdate = null;
+                                }
                             }
                             break;
 
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCING:
                             if (DBG) Log.d(TAG, "Sink state: BIG_SYNCING for broadcastId=" + event.broadcastId);
-                            // BIG sync in progress
+                            // BIG sync in progress. Call-end resume (PA_SYNCED -> BIG_SYNCING,
+                            // sync-only disabled) is driven by onCallStateChanged(false)
+                            // re-activating the A2DP device, which triggers onAudioDevicesAdded()
+                            // -> MSG_START (achat_tx_enable=true) -> native OnAudioResume ->
+                            // START_BIG_SYNC -> this BIG_SYNCING transition. No action needed here.
                             break;
 
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED:
                             if (DBG) Log.d(TAG, "Sink state: BIG_SYNCED for broadcastId=" + event.broadcastId
                                     + " — join notification sent via EVENT_TYPE_BIG_SYNC_CREATED");
-                            /* Active-device update and join/metadata-update notification are
-                             * handled in EVENT_TYPE_BIG_SYNC_CREATED (carries bigHandle +
-                             * bisHandles).  Do NOT duplicate those calls here. */
+                             /* Active-device update and join/metadata-update notification are
+                              * handled in EVENT_TYPE_BIG_SYNC_CREATED (carries bigHandle +
+                             * bisHandles).  Do NOT duplicate those calls here.
+                             * Call-end resume (PA_SYNCED → BIG_SYNCING → BIG_SYNCED) re-activates
+                             * the A2DP device earlier, from onCallStateChanged(false) — see
+                             * mBroadcastInDeviceBeforeCall there. */
                             break;
 
                         case LeAudioBroadcastSinkStackEvent.SINK_STATE_DISABLING:
@@ -1444,6 +1568,29 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                         // Forward Texit complete immediately; the handler queue ensures it runs
                         // after any already-queued MSG_STOP / MSG_REMOVE_ACTIVE_DEVICE.
                         notifyTexitDbigComplete(event.broadcastId, event.valueInt1, status);
+                    }
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SINK_SYNC_ONLY_ACTIVE: {
+                    // HCI VS DBIG_SYNC_ONLY(enable=1) completed: ISO paths removed,
+                    // controller idle, BIG alive. Mirrors PGO EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE.
+                    Log.d(TAG, "SINK_SYNC_ONLY_ACTIVE: broadcastId=" + event.broadcastId
+                            + " mPreemptedByCall=" + mPreemptedByCall);
+                    if (mPreemptedByCall) {
+                        // Deactivate A2DP device in AudioManager — mirrors A14's
+                        // btif_ahim_ack_stream_profile_suspended at SYNC_ONLY_MODE_ON_EVT.
+                        if (mActiveBroadcastInDevice != null) {
+                            mBroadcastInDeviceBeforeCall = mActiveBroadcastInDevice;
+                            Log.d(TAG, "SINK_SYNC_ONLY_ACTIVE: deactivating broadcast device "
+                                    + "in AudioManager");
+                            updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
+                        }
+                        // Controller is idle — safe to send AT+BCC now.
+                        HeadsetClientService hfpService =
+                                HeadsetClientService.getHeadsetClientService();
+                        if (hfpService != null) {
+                            resumeScoIfRequired(hfpService);
+                        }
                     }
                     break;
                 }

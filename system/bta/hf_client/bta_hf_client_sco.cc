@@ -218,6 +218,40 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
   get_btm_client_interface().sco.BTM_EScoConnRsp(p_data->sco_inx, hci_status, &resp);
 }
 
+void bta_hf_client_dup_broadcast_state_changed(tBTA_HF_CLIENT_DATA* p_data) {
+  uint8_t state = p_data->hdr.layer_specific;
+  log::info("New DUP_BROADCAST HFP state: {}", state);
+
+  int max = bta_hf_client_get_max_devices();
+  for (int i = 1; i <= max; i++) {
+    tBTA_HF_CLIENT_CB* cb = bta_hf_client_find_cb_by_handle(i);
+    if (cb != NULL) cb->dup_broadcast_state = state;
+  }
+
+  if (state == BTA_HF_CLIENT_DUP_BROADCAST_STATE_INACTIVE) {
+    for (int i = 1; i <= max; i++) {
+      tBTA_HF_CLIENT_CB* cb = bta_hf_client_find_cb_by_handle(i);
+      if (cb != NULL && cb->pending_vr_sco_data != NULL) {
+        log::info("DUP_BROADCAST inactive: processing parked SCO on handle {}", cb->handle);
+        bta_hf_client_process_pending_sco_for_cb(cb);
+        break;
+      }
+    }
+  }
+}
+
+void bta_hf_client_process_pending_sco_for_cb(tBTA_HF_CLIENT_CB* client_cb) {
+  if (client_cb == NULL || client_cb->pending_vr_sco_data == NULL) {
+    log::warn("No pending SCO data or invalid CB");
+    return;
+  }
+  log::info("DUP_BROADCAST inactive: processing parked SCO request");
+  bta_hf_client_sco_conn_rsp(client_cb, &client_cb->pending_vr_sco_data->conn_evt);
+  client_cb->sco_state = BTA_HF_CLIENT_SCO_OPENING_ST;
+  osi_free(client_cb->pending_vr_sco_data);
+  client_cb->pending_vr_sco_data = NULL;
+}
+
 /*******************************************************************************
  *
  * Function         bta_hf_client_sco_connreq_cback
@@ -238,6 +272,30 @@ static void bta_hf_client_esco_connreq_cback(tBTM_ESCO_EVT event, tBTM_ESCO_EVT_
   }
 
   if (event != BTM_ESCO_CONN_REQ_EVT) {
+    return;
+  }
+
+  // Park SCO if VR is active and broadcast teardown is still in progress
+  if (client_cb->is_vr_active &&
+      client_cb->dup_broadcast_state == BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE) {
+    log::warn("VR active + DUP_BROADCAST active: parking SCO request");
+    if (client_cb->pending_vr_sco_data) {
+      osi_free(client_cb->pending_vr_sco_data);
+    }
+    client_cb->pending_vr_sco_data =
+        (tBTA_HF_CLIENT_ESCO_DATA*)osi_malloc(sizeof(tBTA_HF_CLIENT_ESCO_DATA));
+    memcpy(&client_cb->pending_vr_sco_data->conn_evt, &p_data->conn_evt,
+           sizeof(tBTM_ESCO_CONN_REQ_EVT_DATA));
+    client_cb->pending_vr_sco_data->cb_handle = client_cb->handle;
+    return;
+  }
+
+  // Reject SCO if broadcast preemption is still in progress (non-VR call)
+  if (client_cb->dup_broadcast_state == BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE) {
+    log::error("Rejecting SCO: DUP_BROADCAST preemption in progress");
+    enh_esco_params_t resp = {};
+    get_btm_client_interface().sco.BTM_EScoConnRsp(p_data->conn_evt.sco_inx,
+                                                   HCI_ERR_HOST_REJECT_DEVICE, &resp);
     return;
   }
 

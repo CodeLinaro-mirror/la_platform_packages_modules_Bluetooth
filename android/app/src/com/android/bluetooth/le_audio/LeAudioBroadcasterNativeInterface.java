@@ -176,6 +176,15 @@ public class LeAudioBroadcasterNativeInterface {
         sendMessageToService(event);
     }
 
+    @VisibleForTesting
+    public void onSyncOnlyModeActive(int broadcastId) {
+        Log.d(TAG, "onSyncOnlyModeActive: broadcastId=" + broadcastId);
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE);
+        event.valueInt1 = broadcastId;
+        sendMessageToService(event);
+    }
+
     /**
      * Initializes the native interface.
      *
@@ -355,6 +364,34 @@ public class LeAudioBroadcasterNativeInterface {
         removeDeviceDbigNative(devId, name, reason);
     }
 
+    /** Accept PGP terminate request (sends TExitDbig TERMINATE as PGO). */
+    public void acceptTerminateDbig(int broadcastId) {
+        Log.d(TAG, "acceptTerminateDbig: broadcastId=" + broadcastId);
+        acceptTerminateDbigNative(broadcastId);
+    }
+
+    /** Reject PGP terminate request (sends TExitDbig REJECT_TERMINATE as PGO). */
+    public void rejectTerminateDbig(int broadcastId) {
+        Log.d(TAG, "rejectTerminateDbig: broadcastId=" + broadcastId);
+        rejectTerminateDbigNative(broadcastId);
+    }
+
+    /**
+     * Callback: HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+     * status=0x00 success (DBIG terminated); other = error.
+     */
+    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+        Log.d(TAG, "onTexitDbigComplete (PGO): broadcastId=" + broadcastId
+                + ", dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE);
+        event.valueInt1 = broadcastId;
+        event.valueInt2 = dbigHandle;
+        event.valueInt3 = status;
+        sendMessageToService(event);
+    }
+
     // Native methods that call into the JNI interface
     private native void initNative();
 
@@ -439,35 +476,25 @@ public class LeAudioBroadcasterNativeInterface {
 
     private native void setJoinControlNative(boolean enable);
     private native void removeDeviceDbigNative(int devId, byte[] name, int reason);
-
-    /** Accept PGP terminate request (sends TExitDbig TERMINATE as PGO). */
-    public void acceptTerminateDbig(int broadcastId) {
-        Log.d(TAG, "acceptTerminateDbig: broadcastId=" + broadcastId);
-        acceptTerminateDbigNative(broadcastId);
-    }
-
-    /** Reject PGP terminate request (sends TExitDbig REJECT_TERMINATE as PGO). */
-    public void rejectTerminateDbig(int broadcastId) {
-        Log.d(TAG, "rejectTerminateDbig: broadcastId=" + broadcastId);
-        rejectTerminateDbigNative(broadcastId);
-    }
-
-    /**
-     * Callback: HCI_VS_LE_Texit_DBIG_Complete on PGO side.
-     * status=0x00 success (DBIG terminated); other = error.
-     */
-    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
-        Log.d(TAG, "onTexitDbigComplete (PGO): broadcastId=" + broadcastId
-                + ", dbigHandle=" + dbigHandle
-                + ", status=0x" + Integer.toHexString(status));
-        LeAudioStackEvent event = new LeAudioStackEvent(
-                LeAudioStackEvent.EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE);
-        event.valueInt1 = broadcastId;
-        event.valueInt2 = dbigHandle;
-        event.valueInt3 = status;
-        sendMessageToService(event);
-    }
-
     private native void acceptTerminateDbigNative(int broadcastId);
     private native void rejectTerminateDbigNative(int broadcastId);
+    private native void setDbigSyncOnlyNative(int dbigHandle, boolean enable);
+    private native void notifyCallStateNative(int broadcastId, boolean isCallActive);
+
+    /**
+     * Send HCI VS LE DBIG Sync-Only command.
+     * Enable=true puts the DBIG in sync-only mode (BIG stays alive, no audio data).
+     * Enable=false resumes normal audio data transfer.
+     * Called from services when an HFP call or VR session preempts the duplex broadcast.
+     *
+     * @param dbigHandle DBIG handle (0 for the currently active DBIG)
+     * @param enable     true to enter sync-only, false to exit
+     */
+    public void setDbigSyncOnly(int dbigHandle, boolean enable) {
+        setDbigSyncOnlyNative(dbigHandle, enable);
+    }
+
+    public void notifyCallState(int broadcastId, boolean isCallActive) {
+        notifyCallStateNative(broadcastId, isCallActive);
+    }
 }

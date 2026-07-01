@@ -91,6 +91,12 @@ class BroadcastSinkInterfaceImpl
                            Unretained(LeAudioBroadcastSink::Get()), mode));
   }
 
+  void StopEnhancedBroadcastSinkPreempt(BroadcastId broadcast_id) override {
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::StopEnhancedBroadcastSinkPreempt,
+                           Unretained(LeAudioBroadcastSink::Get()),
+                           broadcast_id));
+  }
+
   void RemoveSource(BroadcastId broadcast_id) override {
     do_in_main_thread(Bind(&LeAudioBroadcastSink::RemoveSource,
                            Unretained(LeAudioBroadcastSink::Get()),
@@ -137,6 +143,12 @@ class BroadcastSinkInterfaceImpl
                            Unretained(LeAudioBroadcastSink::Get()), dbig_params));
   }
 
+  void notifyCallState(uint32_t broadcast_id, bool isCallActive) override {
+    do_in_main_thread(Bind(&LeAudioBroadcastSink::NotifyCallState,
+                           Unretained(LeAudioBroadcastSink::Get()),
+                           broadcast_id, isCallActive));
+  }
+
   void terminateDbig() override {
     do_in_main_thread(Bind(&LeAudioBroadcastSink::TerminateDbig,
                            Unretained(LeAudioBroadcastSink::Get())));
@@ -149,6 +161,12 @@ class BroadcastSinkInterfaceImpl
               broadcast_id, dbig_handle, status);
     do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnTexitDbigComplete,
                           Unretained(callbacks_), broadcast_id, dbig_handle, status));
+  }
+
+  void OnSyncOnlyModeActive(BroadcastId broadcast_id) override {
+    log::info("OnSyncOnlyModeActive: broadcast_id=0x{:08x}", broadcast_id);
+    do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnSyncOnlyModeActive,
+                          Unretained(callbacks_), broadcast_id));
   }
 
   void SourcePublicMetadataChanged(BroadcastId broadcast_id,

@@ -922,6 +922,22 @@ void btsnd_hcic_ble_remove_device_dbig(uint8_t dbig_handle,
                                    param_len, std::move(cb));
 }
 
+void btsnd_hcic_ble_dbig_sync_only(uint8_t dbig_handle,
+                                   uint8_t enable,
+                                   base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // sub_opcode (1) + dbig_handle (1) + enable (1) = 3 bytes
+  const uint16_t param_len = 3;
+  uint8_t param[3];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_DBIG_SYNC_ONLY_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, enable);
+
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_DBIG_SYNC_ONLY, param,
+                            param_len, std::move(cb));
+}
+
 void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,
                                     uint16_t sync_handle,
                                     uint8_t encryption,

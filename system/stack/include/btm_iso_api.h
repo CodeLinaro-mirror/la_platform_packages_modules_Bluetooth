@@ -324,6 +324,17 @@ public:
   virtual void JoinControl(struct iso_manager::dbig_join_control_params params);
 
   /**
+   * Send HCI VS LE DBIG Sync-Only command.
+   * When enable=1 the DBIG enters sync-only mode (BIG stays alive, no audio data).
+   * When enable=0 normal audio data transfer resumes.
+   * Used to preempt duplex broadcast during an HFP call/VR session.
+   *
+   * @param dbig_handle DBIG handle (use 0 for the currently active DBIG)
+   * @param enable      1 = enter sync-only mode, 0 = exit sync-only mode
+   */
+  virtual void SetSyncOnly(struct iso_manager::dbig_sync_only_params params);
+
+  /**
    * Send HCI_VS_LE_Texit_DBIG command to perform a timed exit from a DBIG
    *
    * @param params texit parameters including dbig_handle, texit_mode, reason, and callback

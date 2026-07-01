@@ -1292,3 +1292,21 @@ void BTM_SetJoinControl(bool enable) {
 
   bluetooth::hci::IsoManager::GetInstance()->JoinControl(params);
 }
+
+/*******************************************************************************
+ *
+ * Function         BTM_BleDbigSyncOnly
+ *
+ * Description      Send the HCI VS LE DBIG Sync-Only command.
+ *                  enable=1 → enter sync-only mode (BIG alive, no audio data)
+ *                  enable=0 → exit sync-only mode (resume audio data)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_BleDbigSyncOnly(uint8_t dbig_handle, uint8_t enable,
+                         bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* p_cb) {
+  log::info("BTM_BleDbigSyncOnly: dbig_handle=0x{:02x}, enable={}", dbig_handle, enable);
+  bluetooth::hci::iso_manager::dbig_sync_only_params params = {dbig_handle, enable, p_cb};
+  bluetooth::hci::IsoManager::GetInstance()->SetSyncOnly(params);
+}

@@ -80,6 +80,8 @@ import com.android.bluetooth.btservice.MetricsLogger;
 import com.android.bluetooth.btservice.ProfileService;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hfp.HeadsetService;
+import com.android.bluetooth.le_audio.LeAudioService;
+import com.android.bluetooth.le_audio.LeAudioBroadcastSinkService;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.IState;
 import com.android.internal.util.State;
@@ -160,6 +162,9 @@ public class HeadsetClientStateMachine extends StateMachine {
     private final AdapterService mAdapterService;
     private final HeadsetClientService mService;
     private final HeadsetService mHeadsetService;
+    private LeAudioService mLeAudioService;
+    private LeAudioBroadcastSinkService mLeAudioBroadcastSinkService;
+    private boolean mIsBroadcastPreempted = false;
 
     // Set of calls that represent the accurate state of calls that exists on AG and the calls that
     // are currently in process of being notified to the AG from HF.
@@ -435,6 +440,12 @@ public class HeadsetClientStateMachine extends StateMachine {
 
     private void queryCallsDone() {
         debug("queryCallsDone");
+        boolean wasCallActive = getCall(HfpClientCall.CALL_STATE_ACTIVE,
+                HfpClientCall.CALL_STATE_HELD,
+                HfpClientCall.CALL_STATE_DIALING,
+                HfpClientCall.CALL_STATE_ALERTING,
+                HfpClientCall.CALL_STATE_INCOMING,
+                HfpClientCall.CALL_STATE_WAITING) != null;
         // mCalls has two types of calls:
         // (a) Calls that are received from AG of a previous iteration of queryCallsStart()
         // (b) Calls that are outgoing initiated from HF
@@ -571,6 +582,10 @@ public class HeadsetClientStateMachine extends StateMachine {
                 // Send update with original object (UUID, idx).
                 sendCallChangedIntent(cOrig);
             }
+        }
+
+        if (wasCallActive && mCalls.isEmpty() && !mService.isAnyAudioConnected()) {
+            notifyBroadcastServices(false);
         }
 
         if (mCalls.size() > 0) {
@@ -1277,6 +1292,11 @@ public class HeadsetClientStateMachine extends StateMachine {
                         case StackEvent.EVENT_TYPE_CALLHELD:
                             debug("Connecting: event type: call states during slc ");
                             mService.CallStatesDuringSlc(event.device, event.type, event.valueInt);
+                            if (event.valueInt > 0) {
+                                Log.d(TAG, "Call indicator during SLC " + event.type
+                                        + "=" + event.valueInt + ", preempting broadcast streams.");
+                                notifyBroadcastServices(true);
+                            }
                             deferMessage(message);
                             break;
                         case StackEvent.EVENT_TYPE_CMD_RESULT:
@@ -1739,6 +1759,13 @@ public class HeadsetClientStateMachine extends StateMachine {
                             mVoiceRecognitionActive = event.valueInt;
                             broadcastVoiceRecognitionStateChanged(
                                     event.device, oldState, mVoiceRecognitionActive);
+                            boolean isVrStarted = (mVoiceRecognitionActive
+                                    == HeadsetClientHalConstants.VR_STATE_STARTED);
+                            if (isVrStarted) {
+                                notifyBroadcastServices(true);
+                            } else if (!mService.isAnyAudioConnected()) {
+                                notifyBroadcastServices(false);
+                            }
                             break;
                         case StackEvent.EVENT_TYPE_CALL:
                         case StackEvent.EVENT_TYPE_CALLSETUP:
@@ -1746,6 +1773,11 @@ public class HeadsetClientStateMachine extends StateMachine {
                         case StackEvent.EVENT_TYPE_RESP_AND_HOLD:
                         case StackEvent.EVENT_TYPE_CLIP:
                         case StackEvent.EVENT_TYPE_CALL_WAITING:
+                            if (event.valueInt > 0) {
+                                Log.d(TAG, "Call indicator " + event.type + "=" + event.valueInt
+                                        + ", preempting broadcast streams.");
+                                notifyBroadcastServices(true);
+                            }
                             sendMessage(QUERY_CURRENT_CALLS);
                             break;
                         case StackEvent.EVENT_TYPE_CURRENT_CALLS:
@@ -2205,6 +2237,9 @@ public class HeadsetClientStateMachine extends StateMachine {
                     // even if the audio connection snapped may not be a good idea.
                     routeHfpAudio(false);
                     returnAudioFocusIfNecessary();
+                    if (mCalls.isEmpty() && !mService.isAnyAudioConnected() && !mService.isVrActive()) {
+                        notifyBroadcastServices(false);
+                    }
                     transitionTo(mConnected);
                     break;
 
@@ -2641,5 +2676,39 @@ public class HeadsetClientStateMachine extends StateMachine {
     @VisibleForTesting
     int getInBandRingtonePolicyProperty() {
         return mInBandRingtonePolicyProperty;
+    }
+
+    public boolean isVoiceRecognitionActive() {
+        return mVoiceRecognitionActive == HeadsetClientHalConstants.VR_STATE_STARTED;
+    }
+
+    private void notifyBroadcastServices(boolean isCallOrVRActive) {
+        if (mLeAudioService == null) mLeAudioService = LeAudioService.getLeAudioService();
+        if (mLeAudioBroadcastSinkService == null)
+            mLeAudioBroadcastSinkService = LeAudioBroadcastSinkService.getLeAudioBroadcastSinkService();
+
+        if (isCallOrVRActive) {
+            if (!mIsBroadcastPreempted) {
+                if (mLeAudioService != null) mLeAudioService.onCallStateChanged(true);
+                if (mLeAudioBroadcastSinkService != null)
+                    mLeAudioBroadcastSinkService.onCallStateChanged(true);
+                mIsBroadcastPreempted = true;
+                Log.d(TAG, "notifyBroadcastServices: preempting duplex broadcast for call/VR.");
+            } else {
+                // Broadcast already preempted (DBIG_SYNC_ONLY done, broadcast in CONFIGURED).
+                // This second call-active event means an incoming call was answered — the first
+                // resumeScoIfRequired() skipped it (no in-band ring). Trigger SCO now.
+                Log.d(TAG, "notifyBroadcastServices: already preempted, triggering SCO resume.");
+                if (mLeAudioService != null) mLeAudioService.resumeScoForBroadcast();
+            }
+        } else {
+            if (mIsBroadcastPreempted) {
+                if (mLeAudioService != null) mLeAudioService.onCallStateChanged(false);
+                if (mLeAudioBroadcastSinkService != null)
+                    mLeAudioBroadcastSinkService.onCallStateChanged(false);
+                mIsBroadcastPreempted = false;
+                Log.d(TAG, "notifyBroadcastServices: resuming after call/VR end.");
+            }
+        }
     }
 }

@@ -214,6 +214,22 @@ public:
   void SetMuted(bool muted) { is_muted_ = muted; }
   bool IsMuted() const { return is_muted_; }
 
+  // Call-preemption state for sync-only mode.
+  // SetSuspendedByCall(true)  — set BEFORE achat_rx/tx_enable=false so that
+  //   OnRemoveIsoDataPath skips TerminateBig and sends HCI VS DBIG_SYNC_ONLY(1).
+  // SetSuspendedByCall(false) — set on call-end so that the CONFIGURED resume
+  //   path sends HCI VS DBIG_SYNC_ONLY(0) + re-setups ISOs instead of CreateBig.
+  void SetSuspendedByCall(bool suspended) {
+    suspended_by_call_ = suspended;
+    resuming_after_call_ = false;
+  }
+  bool IsSuspendedByCall() const { return suspended_by_call_; }
+  void SetResumingAfterCall(bool resuming) {
+    resuming_after_call_ = resuming;
+    suspended_by_call_ = false;
+  }
+  bool IsResumingAfterCall() const { return resuming_after_call_; }
+
   virtual void SetStreamingDirection(uint8_t direction) = 0;
   virtual uint8_t GetStreamingDirection() const = 0;
   virtual BroadcastMode GetBroadcastMode() const = 0;
@@ -237,6 +253,8 @@ protected:
   uint8_t advertising_sid_ = kAdvSidUndefined;
   bool is_muted_ = false;
   uint8_t streaming_direction_ = kStreamingDirectionNone;
+  bool suspended_by_call_ = false;
+  bool resuming_after_call_ = false;
 
   RawAddress addr_ = RawAddress::kEmpty;
   uint8_t addr_type_ = 0;
@@ -254,6 +272,9 @@ public:
                                     RawAddress address) = 0;
   virtual void OnBigCreated(const std::vector<uint16_t>& conn_handle) = 0;
   virtual void OnAnnouncementUpdated(uint32_t broadcast_id) = 0;
+  // Fired when HCI VS DBIG_SYNC_ONLY(enable=1) completes — ISO paths removed,
+  // controller idle, safe to send AT+BCC for SCO setup.
+  virtual void OnSyncOnlyModeActive(uint32_t broadcast_id) = 0;
 };
 
 std::ostream& operator<<(

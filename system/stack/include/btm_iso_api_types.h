@@ -221,6 +221,15 @@ struct dbig_set_devid_params {
   dbig_set_devid_cmpl_cb* p_cb;
 };
 
+typedef void dbig_sync_only_cmpl_cb(uint8_t status, uint8_t sub_opcode, uint8_t dbig_handle);
+
+/* Parameters for HCI_VS_LE_DBIG_SYNC_ONLY command */
+struct dbig_sync_only_params {
+  uint8_t dbig_handle;
+  uint8_t enable;
+  dbig_sync_only_cmpl_cb* p_cb;
+};
+
 /* Parameters for HCI_VS_LE_Remove_Device_DBIG command */
 struct dbig_remove_device_params {
   uint8_t dbig_handle;

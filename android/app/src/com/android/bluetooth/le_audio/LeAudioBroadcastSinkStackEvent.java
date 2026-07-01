@@ -79,6 +79,13 @@ public class LeAudioBroadcastSinkStackEvent {
      */
     public static final int EVENT_TYPE_TEXIT_DBIG_COMPLETE = 15;
 
+    /**
+     * HCI VS DBIG_SYNC_ONLY(enable=1) completed on PGP side.
+     * All ISO paths removed, controller idle, BIG alive in sync-only mode.
+     * Safe to send AT+BCC now. {@code broadcastId} = broadcast ID.
+     */
+    public static final int EVENT_TYPE_SINK_SYNC_ONLY_ACTIVE = 16;
+
     // DBIG status extended fields
     public int dbigDevId = 0;
     public byte[] dbigName;

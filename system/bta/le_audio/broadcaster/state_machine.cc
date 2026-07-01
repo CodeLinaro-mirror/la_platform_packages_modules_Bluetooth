@@ -38,6 +38,8 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "bta/hf_client/bta_hf_client_int.h"
+#include "bta/include/bta_hf_client_api.h"
 #include "bta/le_audio/broadcaster/broadcaster_types.h"
 #include "bta/le_audio/le_audio_types.h"
 #include "btm_api_types.h"
@@ -50,6 +52,7 @@
 #include "main/shim/le_advertising_manager.h"
 #include "osi/include/properties.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_vendor_api.h"
 #include "types/raw_address.h"
 
 using bluetooth::common::ToString;
@@ -300,6 +303,27 @@ private:
           [](const void*) { /* Do nothing */ },
           /* in CONFIGURED state */
           [this](const void*) {
+            if (IsResumingAfterCall()) {
+              // BIG is still alive in sync-only mode — do not recreate it.
+              // Send HCI VS DBIG_SYNC_ONLY(0) to re-enable audio data.
+              // The completion callback re-setups ISO data paths.
+              log::info("Resuming after call for broadcast_id={}, disabling sync-only",
+                        GetBroadcastId());
+              using CbFn = void(BroadcastStateMachineImpl*, uint8_t, uint8_t, uint8_t);
+              static CbFn* const kCb = &BroadcastStateMachineImpl::OnSyncOnlyDisableCmpl;
+              // Build a plain C function pointer compatible with dbig_sync_only_cmpl_cb
+              // by binding 'this' via a file-scope trampoline stored as thread_local.
+              // Simpler: use a lambda that captures nothing (convertible to fn ptr) with
+              // a side-channel through a static pointer — matching A14's pattern.
+              static BroadcastStateMachineImpl* s_pending = nullptr;
+              s_pending = this;
+              static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kTrampoline =
+                  [](uint8_t st, uint8_t sub, uint8_t hdl) {
+                    if (s_pending) kCb(s_pending, st, sub, hdl);
+                  };
+              BTM_BleDbigSyncOnly(GetAdvertisingSid(), 0 /* disable */, kTrampoline);
+              return;
+            }
             SetState(State::ENABLING);
             if(GetBroadcastMode() == BroadcastMode::DUPLEX){
               CreateDbig();
@@ -372,6 +396,15 @@ private:
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
           [this](const void*) {
+            // During call preemption, do NOT change state — stays STREAMING
+            // until OnSyncOnlyEnableCmpl transitions to CONFIGURED after the
+            // HCI VS command completes. Both the Rx and Tx SUSPEND_STREAM_REQs
+            // come through here; TriggerIsoDatapathTeardown selects the correct
+            // direction (OUTPUT for Rx, INPUT for Tx) based on IsRxStreaming().
+            if (IsSuspendedByCall()) {
+              TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+              return;
+            }
             if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
               //Only remove RX ISO_Datapath state will remain streaming.
               TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
@@ -382,24 +415,60 @@ private:
             }
           }};
 
-  const std::array<msg_handler_t, BroadcastStateMachine::STATE_COUNT> resume_msg_handlers{
-          /* in STOPPED state */
-          [](const void*) { /* Do nothing */ },
-          /* in CONFIGURING state */
-          [](const void*) { /* Do nothing */ },
-          /* in CONFIGURED state */
-          [this](const void*) {
-            SetState(State::ENABLING);
-            CreateBig();
-          },
-          /* in ENABLING state */
-          [](const void*) { /* Do nothing */ },
-          /* in DISABLING state */
-          [](const void*) { /* Do nothing */ },
-          /* in STOPPING state */
-          [](const void*) { /* Do nothing */ },
-          /* in STREAMING state */
-          [](const void*) { /* Already streaming */ }};
+  // Static callback invoked when HCI VS DBIG_SYNC_ONLY(enable=1) completes
+  // during call preemption. Only now do we transition to CONFIGURED — the
+  // state machine stays in STREAMING until this fires (matching A14 behaviour).
+  static void OnSyncOnlyEnableCmpl(BroadcastStateMachineImpl* self,
+                                   uint8_t status, uint8_t /*sub_opcode*/,
+                                   uint8_t /*dbig_handle*/) {
+    if (status != 0) {
+      log::error("DBIG_SYNC_ONLY enable failed, status=0x{:02x}. Terminating BIG.", status);
+      self->SetSuspendedByCall(false);
+      self->TerminateBig();
+      return;
+    }
+    log::info("DBIG_SYNC_ONLY enabled for broadcast_id={}, moving to CONFIGURED",
+              self->GetBroadcastId());
+    self->SetSuspendedByCall(false);
+    // ISO paths (TX and RX) were just torn down for sync-only. Reset the streaming
+    // direction so the resume's ISO re-setup starts from NONE and correctly walks
+    // NONE -> TX -> Bidirectional in OnSetupIsoDataPath (mirroring the fresh-start
+    // sequence), instead of reading a stale Bidirectional value left over from
+    // before the call and wrongly concluding RX is already set up — which acks
+    // the wrong HAL client (sink instead of source) for the resumed TX start.
+    if (self->GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      self->SetStreamingDirection(kStreamingDirectionNone);
+    }
+    // Equivalent to A14's SYNC_ONLY_MODE_ON_EVT handler:
+    // notify HF client stack that broadcast is now in sync-only (INACTIVE)
+    // so any parked SCO (VR usecase) is accepted and processed.
+    BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_INACTIVE);
+    self->SetState(State::CONFIGURED);
+    self->callbacks_->OnStateMachineEvent(self->GetBroadcastId(), self->GetState(), nullptr);
+    // Notify upper layer that sync-only mode is now fully active.
+    // ISO paths are removed and the controller is idle — safe to send AT+BCC.
+    self->callbacks_->OnSyncOnlyModeActive(self->GetBroadcastId());
+  }
+
+  // Static callback invoked when HCI VS DBIG_SYNC_ONLY(enable=0) completes
+  // after a call ends. Re-setups ISO data paths on the existing BIG.
+  static void OnSyncOnlyDisableCmpl(BroadcastStateMachineImpl* self,
+                                    uint8_t status, uint8_t /*sub_opcode*/,
+                                    uint8_t /*dbig_handle*/) {
+    if (status != 0) {
+      log::error("DBIG_SYNC_ONLY disable failed, status=0x{:02x}. Falling back to full restart.",
+                 status);
+      self->SetResumingAfterCall(false);
+      self->SetState(State::ENABLING);
+      self->CreateBig();
+      return;
+    }
+    log::info("DBIG_SYNC_ONLY disabled for broadcast_id={}, re-setting up ISO data paths",
+              self->GetBroadcastId());
+    self->SetResumingAfterCall(false);
+    self->SetState(State::ENABLING);
+    self->TriggerIsoDatapathSetup(self->active_config_->connection_handles[0]);
+  }
 
   void OnAddressResponse(uint8_t addr_type, RawAddress addr) {
     log::info("own address={}, type={}", addr, addr_type);
@@ -408,6 +477,11 @@ private:
 
     /* Ext. advertisings are already on */
     SetState(State::CONFIGURED);
+
+    // Normal BIG create complete → arm SCO guard (not during preemption resume).
+    if (!IsSuspendedByCall() && !IsResumingAfterCall()) {
+      BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE);
+    }
 
     callbacks_->OnStateMachineCreateStatus(GetBroadcastId(), true);
     callbacks_->OnStateMachineEvent(GetBroadcastId(), State::CONFIGURED);
@@ -665,6 +739,9 @@ private:
       }
       /* It was the last BIS to set up - change state to streaming */
       SetState(State::STREAMING);
+      // Broadcast is now live — arm the SCO guard so any SCO arriving while
+      // streaming is rejected until the broadcast properly suspends.
+      BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE);
       if(GetBroadcastMode() == BroadcastMode::DUPLEX){
         uint8_t current_direction = GetStreamingDirection();
         if(current_direction == kStreamingDirectionNone){
@@ -708,6 +785,25 @@ private:
         // Remove RX streaming direction (only TX remains active)
         SetStreamingDirection(GetStreamingDirection() & ~kStreamingDirectionRx);
         callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), this);
+        return;
+      }
+      // If this ISO teardown was triggered by call preemption, do NOT terminate
+      // the BIG. Send HCI VS DBIG_SYNC_ONLY(enable=1) and wait for the command
+      // complete before transitioning — state stays STREAMING until then,
+      // matching A14 behaviour (BTIF_BAP_BROADCAST_SYNC_ONLY_MODE_ON_EVT).
+      if (IsSuspendedByCall()) {
+        log::info("Call preemption: ISO paths removed for broadcast_id={}, "
+                  "sending DBIG_SYNC_ONLY(1), waiting for cmd cmpl",
+                  GetBroadcastId());
+        static BroadcastStateMachineImpl* s_enable_pending = nullptr;
+        s_enable_pending = this;
+        static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kEnableTrampoline =
+            [](uint8_t st, uint8_t sub, uint8_t hdl) {
+              if (s_enable_pending)
+                OnSyncOnlyEnableCmpl(s_enable_pending, st, sub, hdl);
+            };
+        BTM_BleDbigSyncOnly(GetAdvertisingSid(), 1 /* enable */, kEnableTrampoline);
+        // Do NOT change state here — wait for OnSyncOnlyEnableCmpl.
         return;
       }
       TerminateBig(pending_stop_mode_);

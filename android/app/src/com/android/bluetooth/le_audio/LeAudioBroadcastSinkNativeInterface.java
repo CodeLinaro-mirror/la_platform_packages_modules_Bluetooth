@@ -135,6 +135,16 @@ public class LeAudioBroadcastSinkNativeInterface {
     }
 
     /**
+     * Atomically arm call-preemption (SetSuspendedByCall) on the native state machine and
+     * prepare it for HAL teardown. Must be called before MSG_STOP so the REMOVE_RX/TX_PATHS
+     * handlers see the preemption flag and enter sync-only mode instead of terminating the BIG.
+     */
+    public void stopEnhancedBroadcastSinkPreempt(int broadcastId) {
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSinkPreempt(): broadcastId=" + broadcastId);
+        stopEnhancedBroadcastSinkPreemptNative(broadcastId);
+    }
+
+    /**
      * Remove a broadcast source (stop PA sync).
      *
      * @param broadcastId Broadcast ID to remove
@@ -436,6 +446,7 @@ public class LeAudioBroadcastSinkNativeInterface {
      */
     private native void startEnhancedBroadcastSinkNative(int broadcastId, byte[] broadcastCode);
     private native void stopEnhancedBroadcastSinkNative(int mode);
+    private native void stopEnhancedBroadcastSinkPreemptNative(int broadcastId);
     private native void removeSourceNative(int broadcastId);
     private native void destroySourceNative(int broadcastId);
     private native void sourcePublicMetadataChangedNative(int broadcastId,
@@ -513,4 +524,17 @@ public class LeAudioBroadcastSinkNativeInterface {
     }
 
     private native void terminateDbigNative();
+    private native void notifyCallStateSinkNative(int broadcastId, boolean isCallActive);
+
+    public void notifyCallState(int broadcastId, boolean isCallActive) {
+        notifyCallStateSinkNative(broadcastId, isCallActive);
+    }
+
+    public void onSyncOnlyModeActive(int broadcastId) {
+        if (DBG) Log.d(TAG, "onSyncOnlyModeActive(): broadcastId=" + broadcastId);
+        LeAudioBroadcastSinkStackEvent event = new LeAudioBroadcastSinkStackEvent(
+                LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SINK_SYNC_ONLY_ACTIVE);
+        event.broadcastId = broadcastId;
+        sendMessageToService(event);
+    }
 }

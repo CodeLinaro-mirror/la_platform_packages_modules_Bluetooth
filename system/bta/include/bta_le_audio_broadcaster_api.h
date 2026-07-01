@@ -107,15 +107,13 @@ public:
                                 const std::vector<uint8_t>& name,
                                 uint8_t reason) = 0;
 
-  /**
-   * Accept PGP terminate request — sends HCI_VS_LE_Texit_DBIG(TERMINATE) as PGO.
-   * @param broadcast_id  broadcast_id of the active enhanced broadcast
-   */
+  // Accept PGP terminate request — PGO sends TExitDbig(TERMINATE).
   virtual void AcceptTerminateDbig(uint32_t broadcast_id) = 0;
 
-  /**
-   * Reject PGP terminate request — sends HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE) as PGO.
-   * @param broadcast_id  broadcast_id of the active enhanced broadcast
-   */
+  // Reject PGP terminate request — PGO sends TExitDbig(REJECT_TERMINATE).
   virtual void RejectTerminateDbig(uint32_t broadcast_id) = 0;
+
+  // Sets the suspended-by-call / resuming-after-call flag on the active
+  // broadcast state machine to gate BIG teardown during HFP concurrency.
+  virtual void NotifyCallState(uint32_t broadcast_id, bool isCallActive) = 0;
 };

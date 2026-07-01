@@ -594,6 +594,13 @@ public:
   virtual void OnTexitDbigComplete(uint32_t broadcast_id,
                                    uint8_t dbig_handle,
                                    uint8_t status) = 0;
+
+  /**
+   * Callback fired when HCI VS DBIG_SYNC_ONLY(enable=1) completes successfully.
+   * At this point ISO data paths are removed and the controller is idle — safe
+   * to send AT+BCC and establish SCO.
+   */
+  virtual void OnSyncOnlyModeActive(uint32_t broadcast_id) = 0;
 };
 
 class LeAudioBroadcasterInterface {
@@ -692,17 +699,27 @@ public:
                                 uint8_t reason) = 0;
 
   /**
-   * Accept a PGP terminate request (spec §4.9 PGO Remote Host Terminate procedure).
-   * Sends HCI_VS_LE_Texit_DBIG(TERMINATE) as PGO, terminating the DBIG.
-   * Called when PGO user accepts the terminate dialog triggered by DBIG status bit 10.
+   * Accept the PGP terminate request (spec §5.3 PGP Terminates — PGO accepts).
+   * Sends HCI_VS_LE_Texit_DBIG(TERMINATE) so the PGO BT FW tears down the DBIG.
+   * Completion delivered via OnTexitDbigComplete() callback.
+   *
+   * @param broadcast_id  Broadcast ID of the DUPLEX source
    */
   virtual void acceptTerminateDbig(uint32_t broadcast_id) = 0;
 
   /**
-   * Reject a PGP terminate request.
-   * Sends HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE). Does NOT terminate the DBIG.
+   * Reject the PGP terminate request (spec §5.3 PGP Terminates — PGO rejects).
+   * Sends HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE) so the PGO BT FW signals the PGP.
+   * Completion delivered via OnTexitDbigComplete() callback.
+   *
+   * @param broadcast_id  Broadcast ID of the DUPLEX source
    */
   virtual void rejectTerminateDbig(uint32_t broadcast_id) = 0;
+
+  // Arm/disarm sync-only mode on the given broadcast for HFP concurrency.
+  // Must be called before disabling achat audio paths on call-start (isCallActive=true),
+  // and before re-enabling them on call-end (isCallActive=false).
+  virtual void notifyCallState(uint32_t broadcast_id, bool isCallActive) = 0;
 };
 
 } /* namespace le_audio */

@@ -142,6 +142,13 @@ class BroadcastSinkCallbacks {
   virtual void OnTexitDbigComplete(BroadcastId broadcast_id,
                                    uint8_t dbig_handle,
                                    uint8_t status) = 0;
+
+  /**
+   * Called when HCI VS DBIG_SYNC_ONLY(enable=1) completes on the PGP side:
+   * all ISO paths removed, controller idle, BIG alive in sync-only mode.
+   * Safe to send AT+BCC now. Mirrors PGO's LeAudioBroadcasterCallbacks::OnSyncOnlyModeActive.
+   */
+  virtual void OnSyncOnlyModeActive(BroadcastId broadcast_id) = 0;
 };
 
 // Interface from JNI to BTIF layer
@@ -183,6 +190,12 @@ class BroadcastSinkInterface {
       const std::optional<BroadcastCode>& broadcast_code) = 0;
 
   virtual void StopEnhancedBroadcastSink(uint8_t mode) = 0;
+
+  // Atomically arms call-preemption (SetSuspendedByCall) and stops the BIG on
+  // the BTA main thread. Must be used instead of separate NotifyCallState +
+  // StopEnhancedBroadcastSink calls to eliminate the race where REMOVE_RX_PATHS
+  // arrives before SetSuspendedByCall is processed.
+  virtual void StopEnhancedBroadcastSinkPreempt(BroadcastId broadcast_id) = 0;
 
   // Source removal (terminates both PA and BIG sync)
   virtual void RemoveSource(BroadcastId broadcast_id) = 0;
@@ -233,6 +246,9 @@ class BroadcastSinkInterface {
    * @param dbig_params  12-byte parameter vector
    */
   virtual void setEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
+
+  // Arm/disarm sync-only mode for HFP concurrency (same pattern as broadcaster).
+  virtual void notifyCallState(uint32_t broadcast_id, bool isCallActive) = 0;
 
   /**
    * Terminate the DBIG (spec §5.3 PGP Terminates procedure).

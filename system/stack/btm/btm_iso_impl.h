@@ -1367,6 +1367,45 @@ struct iso_impl {
                                params.dbig_handle, params.dev_id, params.reason));
   }
 
+  void on_sync_only_cmd_cmpl(uint8_t* stream, uint16_t len) {
+    uint8_t status = 0xFF;
+    uint8_t sub_opcode = HCI_VS_LE_DBIG_SYNC_ONLY_SUB_OPCODE;
+    uint8_t dbig_handle = 0xFF;
+
+    if (len < 3) {
+      log::warn("Insufficient return parameters for DBIG sync-only cmd complete, len={}", len);
+      status = HCI_ERR_UNSPECIFIED;
+    } else {
+      STREAM_TO_UINT8(status, stream);
+      STREAM_TO_UINT8(sub_opcode, stream);
+      STREAM_TO_UINT8(dbig_handle, stream);
+    }
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SyncOnly complete",
+                   std::format("status:{}, sub_opcode:0x{:02x}, dbig_handle:0x{:02x}",
+                               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
+                               dbig_handle));
+
+    if (sync_only_cmpl_cb_ != nullptr) {
+      (*sync_only_cmpl_cb_)(status, sub_opcode, dbig_handle);
+      sync_only_cmpl_cb_ = nullptr;
+    }
+  }
+
+  void sync_only(struct iso_manager::dbig_sync_only_params params) {
+    log::info("DBIG SyncOnly: dbig_handle=0x{:02x}, enable={}", params.dbig_handle, params.enable);
+
+    sync_only_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_dbig_sync_only(
+        params.dbig_handle, params.enable,
+        base::BindRepeating(&iso_impl::on_sync_only_cmd_cmpl,
+                            weak_factory_.GetWeakPtr()));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SyncOnly",
+                   std::format("dbig_handle:0x{:02x}, enable:{}", params.dbig_handle, params.enable));
+  }
+
   void on_set_devid_cmd_cmpl(uint8_t* stream, uint16_t len) {
     uint8_t status = 0;
     uint8_t sub_opcode = 0;
@@ -1696,6 +1735,7 @@ struct iso_impl {
   /* Callback pointers for DBIG commands */
   dbig_join_control_complete_cb* join_control_complete_cb_ = nullptr;
   dbig_texit_cmpl_cb* texit_dbig_cmpl_cb_ = nullptr;
+  dbig_sync_only_cmpl_cb* sync_only_cmpl_cb_ = nullptr;
   dbig_set_devid_cmpl_cb* set_devid_cmpl_cb_ = nullptr;
   dbig_remove_device_cmpl_cb* remove_device_dbig_cmpl_cb_ = nullptr;
   dbig_create_params last_dbig_params_ = {};

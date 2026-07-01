@@ -976,6 +976,21 @@ public:
     return iter != instance->broadcasts_.cend();
   }
 
+  // True if any broadcast is resuming from a call preemption (BIG kept alive in
+  // sync-only mode, NotifyCallState(false) already set SetResumingAfterCall(true)).
+  // Such a resume was explicitly coordinated by the call state machine and does not
+  // race a fresh unicast CIS setup, so it must not be blocked by is_iso_running_.
+  static bool IsAnyoneResumingAfterCall() {
+    if (!instance) {
+      return false;
+    }
+
+    auto const& iter = std::find_if(
+            instance->broadcasts_.cbegin(), instance->broadcasts_.cend(),
+            [](auto const& sm) { return sm.second->IsResumingAfterCall(); });
+    return iter != instance->broadcasts_.cend();
+  }
+
   bool IsLeAudioBroadcastActive() {
     auto const& iter = std::find_if(
             broadcasts_.cbegin(), broadcasts_.cend(), [](auto const& sm) {
@@ -1228,6 +1243,19 @@ public:
     log::info("RejectTerminateDbig: broadcast_id={} — PGO rejecting PGP terminate request",
               broadcast_id);
     SendTexitDbigAsPgo(broadcast_id, HCI_TEXIT_MODE_REJECT_TERMINATE);
+  }
+
+  void NotifyCallState(uint32_t broadcast_id, bool isCallActive) override {
+    log::info("NotifyCallState: broadcast_id={}, isCallActive={}", broadcast_id, isCallActive);
+    if (broadcasts_.count(broadcast_id) == 0) {
+      log::warn("NotifyCallState: unknown broadcast_id={}", broadcast_id);
+      return;
+    }
+    if (isCallActive) {
+      broadcasts_[broadcast_id]->SetSuspendedByCall(true);
+    } else {
+      broadcasts_[broadcast_id]->SetResumingAfterCall(true);
+    }
   }
 
   void GetBroadcastMetadata(uint32_t broadcast_id) override {
@@ -1749,6 +1777,11 @@ private:
     void OnAnnouncementUpdated(uint32_t broadcast_id) {
       instance->GetBroadcastMetadata(broadcast_id);
     }
+
+    void OnSyncOnlyModeActive(uint32_t broadcast_id) {
+      log::info("OnSyncOnlyModeActive: broadcast_id={}, notifying upper layer", broadcast_id);
+      instance->callbacks_->OnSyncOnlyModeActive(broadcast_id);
+    }
   } state_machine_callbacks_;
 
   static class BroadcastAdvertisingCallbacks : public ::AdvertisingCallbacks {
@@ -2001,8 +2034,16 @@ private:
         /* If there is ongoing ISO traffic, it might be not torn down unicast stream. Resume of
          * broadcast stream would be triggered from IsoTrafficEventCb context, once ISO would be
          * released.
-         */
-        if (!IsAnyoneStreaming() && instance->is_iso_running_) {
+         *
+         * Exception: call-resume. NotifyCallState(false) already set
+         * SetResumingAfterCall(true) on the affected broadcast(s) before this
+         * OnAudioResume — that resume was explicitly coordinated via DBIG_SYNC_ONLY,
+         * not a fresh cold start racing unicast CIS setup. Waiting for
+         * IsoTrafficEventCb(false) here is wrong: is_iso_running_ reflects unrelated
+         * unicast ISO/CIS traffic and may never clear, permanently stranding the
+         * broadcast in CONFIGURED with no resume and no onAudioDevicesAdded. */
+        if (!IsAnyoneStreaming() && instance->is_iso_running_ &&
+            !IsAnyoneResumingAfterCall()) {
           log::debug("iso is busy, skip resume request");
           return;
         }

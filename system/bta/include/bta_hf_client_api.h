@@ -393,4 +393,7 @@ void BTA_HfClientDumpStatistics(int fd);
  *
  ******************************************************************************/
 int get_default_hf_client_features();
+
+void BTA_HfClientDupBroadcastStateChanged(uint8_t state);
+
 #endif /* BTA_HF_CLIENT_API_H */

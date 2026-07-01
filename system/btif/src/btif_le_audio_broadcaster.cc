@@ -174,6 +174,11 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                           Unretained(callbacks_), broadcast_id, dbig_handle, status));
   }
 
+  void OnSyncOnlyModeActive(uint32_t broadcast_id) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnSyncOnlyModeActive,
+                          Unretained(callbacks_), broadcast_id));
+  }
+
   /**
    * Accept a PGP terminate request by sending HCI_VS_LE_Texit_DBIG(TERMINATE).
    * Called when PGO user accepts the terminate dialog.
@@ -198,6 +203,12 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
     do_in_main_thread(Bind(&LeAudioBroadcaster::RemoveDeviceDbig,
                            Unretained(LeAudioBroadcaster::Get()),
                            dev_id, name, reason));
+  }
+
+  void notifyCallState(uint32_t broadcast_id, bool isCallActive) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::NotifyCallState,
+                           Unretained(LeAudioBroadcaster::Get()),
+                           broadcast_id, isCallActive));
   }
 
   void Stop(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Stop)); }

@@ -268,6 +268,12 @@ void IsoManager::JoinControl(struct iso_manager::dbig_join_control_params params
   }
 }
 
+void IsoManager::SetSyncOnly(struct iso_manager::dbig_sync_only_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->sync_only(params);
+  }
+}
+
 void IsoManager::TExitDbig(struct iso_manager::dbig_texit_params params) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->texit_dbig(params);

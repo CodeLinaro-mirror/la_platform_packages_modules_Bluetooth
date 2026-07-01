@@ -32,6 +32,7 @@ import static android.content.pm.PackageManager.FEATURE_WATCH;
 import static java.util.Objects.requireNonNull;
 
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothHeadsetClient;
 import android.bluetooth.BluetoothHeadsetClientCall;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSinkAudioPolicy;
@@ -1115,5 +1116,40 @@ public class HeadsetClientService extends ProfileService {
                 }
             }
         }
+    }
+
+    public boolean isVoiceRecognitionActive(BluetoothDevice device) {
+        HeadsetClientStateMachine sm = getStateMachine(device);
+        if (sm == null) {
+            Log.w(TAG, "isVoiceRecognitionActive: no state machine for " + device);
+            return false;
+        }
+        if (sm.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
+            return false;
+        }
+        return sm.isVoiceRecognitionActive();
+    }
+
+    public synchronized boolean isAnyAudioConnected() {
+        List<BluetoothDevice> connectedDevices = getConnectedDevices();
+        for (BluetoothDevice device : connectedDevices) {
+            HeadsetClientStateMachine sm = getStateMachine(device);
+            if (sm != null) {
+                int audioState = sm.getAudioState(device);
+                if (audioState == BluetoothHeadsetClient.STATE_AUDIO_CONNECTED
+                        || audioState == BluetoothHeadsetClient.STATE_AUDIO_CONNECTING) {
+                    Log.d(TAG, "isAnyAudioConnected: device " + device + " has active audio");
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public synchronized boolean isVrActive() {
+        for (BluetoothDevice device : getConnectedDevices()) {
+            if (isVoiceRecognitionActive(device)) return true;
+        }
+        return false;
     }
 }

@@ -561,6 +561,8 @@ static void bta_hf_client_handle_bvra(tBTA_HF_CLIENT_CB* client_cb, uint32_t val
     return;
   }
 
+  client_cb->is_vr_active = (value != 0);
+
   bta_hf_client_evt_val(client_cb, BTA_HF_CLIENT_VOICE_REC_EVT, value);
 }
 

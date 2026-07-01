@@ -219,6 +219,9 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
   virtual std::optional<PaSyncInfo> GetPaSyncInfo() const = 0;
   virtual std::optional<BigSyncInfo> GetBigSyncInfo() const = 0;
   virtual const BroadcastSinkStats& GetStats() const = 0;
+  /* True while waiting for Source HAL start (achat_tx_enable=true) after
+   * sync-only disable.  Sink HAL start must defer until TX paths are ready. */
+  virtual bool IsEnhancedCallResumeReady() const = 0;
 
   // HCI event handlers
   virtual void HandleHciEvent(uint16_t event, void* data) = 0;
@@ -267,6 +270,23 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
    */
   virtual void SetDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
 
+  // Call-preemption state for sync-only mode.
+  // SetSuspendedByCall(true) — set BEFORE achat disable so REMOVE_TX/RX_PATHS
+  //   handlers skip SetState(DISABLING) and OnRemoveIsoDataPath skips
+  //   TerminateBigSync, sending HCI VS DBIG_SYNC_ONLY(1) instead.
+  // SetResumingAfterCall(true) — set on call-end so the PA_SYNCED resume path
+  //   sends HCI VS DBIG_SYNC_ONLY(0) + re-setups ISOs instead of a full BIG sync.
+  void SetSuspendedByCall(bool suspended) {
+    suspended_by_call_ = suspended;
+    resuming_after_call_ = false;
+  }
+  bool IsSuspendedByCall() const { return suspended_by_call_; }
+  void SetResumingAfterCall(bool resuming) {
+    resuming_after_call_ = resuming;
+    suspended_by_call_ = false;
+  }
+  bool IsResumingAfterCall() const { return resuming_after_call_; }
+
   // Message processing
   virtual void ProcessMessage(Message msg, const void* data = nullptr) = 0;
 
@@ -278,6 +298,9 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
   void SetState(SinkState state) {
     StateMachine::SetState(static_cast<std::underlying_type<SinkState>::type>(state));
   }
+
+  bool suspended_by_call_ = false;
+  bool resuming_after_call_ = false;
 };
 
   // Callbacks from state machine to broadcast sink manager
@@ -332,6 +355,23 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
    * @param broadcast_id  Broadcast ID of the enhanced source
    */
   virtual void OnRxIsoPathsRemoved(uint32_t broadcast_id) = 0;
+
+  /**
+   * Called by the state machine when HCI VS DBIG_SYNC_ONLY(enable=1) completes
+   * during call preemption. At this point TX ISO paths are removed and the BIG
+   * is in sync-only mode. The BTA layer must acknowledge the TX (source HAL)
+   * suspend that was deferred because BIG termination was skipped.
+   *
+   * @param broadcast_id  Broadcast ID of the preempted enhanced source
+   */
+  virtual void OnTxSuspendAckedBySyncOnly(uint32_t broadcast_id) = 0;
+
+  /**
+   * Called when HCI VS DBIG_SYNC_ONLY(enable=1) completes: all ISO paths removed,
+   * controller idle, BIG alive in sync-only mode.
+   * Safe to send AT+BCC now. Mirrors PGO's LeAudioBroadcasterCallbacks::OnSyncOnlyModeActive.
+   */
+  virtual void OnSyncOnlyModeActive(uint32_t broadcast_id) = 0;
 
   // BIG sync events
   virtual void OnBigSyncEstablished(uint32_t broadcast_id, uint8_t big_handle,

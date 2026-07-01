@@ -45,6 +45,7 @@ import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothHeadsetClient;
 import android.bluetooth.BluetoothLeAudio;
 import android.bluetooth.BluetoothLeAudioCodecConfig;
 import android.bluetooth.BluetoothLeAudioCodecStatus;
@@ -108,6 +109,8 @@ import com.android.bluetooth.csip.CsipSetCoordinatorService;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hap.HapClientService;
 import com.android.bluetooth.hfp.HeadsetService;
+import com.android.bluetooth.hfpclient.HeadsetClientService;
+import com.android.bluetooth.hfpclient.HfpClientCall;
 import com.android.bluetooth.mcp.McpService;
 import com.android.bluetooth.tbs.TbsGatt;
 import com.android.bluetooth.tbs.TbsService;
@@ -257,6 +260,11 @@ public class LeAudioService extends ProfileService {
     boolean mIsSinkStreamMonitorModeEnabled = false;
     boolean mIsBroadcastPausedFromOutside = false;
     boolean mHasFallback = false;
+    private boolean mPreemptedByCall = false;
+    private boolean mScoConnectSent = false;
+    // Saves mActiveBroadcastAudioDevice before it is nulled at EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE
+    // (call preemption) so it can be restored to AudioManager when the call ends.
+    private BluetoothDevice mBroadcastAudioDeviceBeforeCall = null;
     boolean mPendingEnhancedBroadcast = false;
     private byte[] mCachedArgs = null;
     private int mCachedOpcode = -1;
@@ -370,14 +378,46 @@ public class LeAudioService extends ProfileService {
 
         mTmapStarted = registerTmap();
 
+        // Initialize a dedicated background thread so that blocking AChat setParameters()
+        // calls (crash recovery and per-event enable/disable) never stall the main looper.
+        mAchatHandlerThread = new android.os.HandlerThread("LeAudioService.AChat");
+        mAchatHandlerThread.start();
+        mAchatHandler = new Handler(mAchatHandlerThread.getLooper()) {
+            @Override
+            public void handleMessage(android.os.Message msg) {
+                switch (msg.what) {
+                    case MSG_ACHAT_START:
+                        Log.d(TAG, "MSG_ACHAT_START: enabling AChat TX+RX");
+                        mAudioManager.setParameters("achat_tx_enable=true");
+                        mAudioManager.setParameters("achat_rx_enable=true");
+                        break;
+                    case MSG_ACHAT_STOP:
+                        Log.d(TAG, "MSG_ACHAT_STOP: disabling AChat RX then TX");
+                        mAudioManager.setParameters("achat_rx_enable=false");
+                        mAudioManager.setParameters("achat_tx_enable=false");
+                        break;
+                    default:
+                        super.handleMessage(msg);
+                        break;
+                }
+            }
+        };
+
         // Crash recovery: if BT process was killed while a duplex broadcast was streaming,
         // AHAL retains achat_tx/rx_enable=true and doesn't know BT died.
-        // Reset unconditionally on every restart so AHAL is in a known-clean state
-        // before the next startEnhancedBroadcast.
+        // Post MSG_ACHAT_STOP off-thread so the main looper is not blocked at service init.
         if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-            Log.d(TAG, "Duplex broadcast mode: crash recovery — resetting AHAL TX+RX state");
-            mAudioManager.setParameters("achat_rx_enable=false");
-            mAudioManager.setParameters("achat_tx_enable=false");
+            Log.d(TAG, "Duplex broadcast mode: crash recovery — posting MSG_ACHAT_STOP");
+            mAchatHandler.sendEmptyMessage(MSG_ACHAT_STOP);
+            // Reset all enhanced broadcast state that may be stale from before BT turned off.
+            // This ensures createEnhancedBroadcast() starts from a clean state.
+            mIsEnhancedBroadcastStreaming = false;
+            mActiveBroadcastAudioDevice = null;
+            mBroadcastDescriptors.clear();
+            mBroadcastIdPendingStart = Optional.empty();
+            mBroadcastIdPendingStop = Optional.empty();
+            mBroadcastIdDeactivatedForUnicastTransition = Optional.empty();
+            Log.d(TAG, "Duplex broadcast mode: enhanced broadcast state reset complete");
 
             // Initialize AM voice-call volume range once so amToHfVol() can map correctly.
             mMaxAmVcVol = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
@@ -715,6 +755,25 @@ public class LeAudioService extends ProfileService {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final AudioManagerAudioDeviceCallback mAudioManagerAudioDeviceCallback =
             new AudioManagerAudioDeviceCallback();
+
+    // Handler message codes for duplex-broadcast AChat parameter changes.
+    // Kept separate from mHandler so the blocking setParameters() calls never stall the
+    // main-looper thread (mirrors the pattern in LeAudioBroadcastSinkService).
+    private static final int MSG_ACHAT_START = 101;
+    private static final int MSG_ACHAT_STOP  = 102;
+
+    /** Background thread that owns mAchatHandler. */
+    @SuppressWarnings("FieldCanBeFinal")
+    private android.os.HandlerThread mAchatHandlerThread;
+
+    /** Handler for off-thread AChat TX/RX enable/disable calls (duplex broadcast only). */
+    private final Handler mAchatHandler;
+
+    /**
+     * True while a duplex (enhanced) broadcast session is actively streaming.
+     * Prevents MSG_ACHAT_START from being sent for standard (non-enhanced) A2DP events.
+     */
+    private volatile boolean mIsEnhancedBroadcastStreaming = false;
     private final AudioModeChangeListener mAudioModeChangeListener = new AudioModeChangeListener();
 
     @Override
@@ -819,6 +878,8 @@ public class LeAudioService extends ProfileService {
             mIsSinkStreamMonitorModeEnabled = false;
         }
         mIsBroadcastPausedFromOutside = false;
+        mPreemptedByCall = false;
+        mScoConnectSent = false;
 
         clearCreateBroadcastTimeoutCallback();
 
@@ -841,38 +902,39 @@ public class LeAudioService extends ProfileService {
         // device for active group.
         mGroupReadLock.lock();
         try {
-            try {
-                for (Map.Entry<Integer, LeAudioGroupDescriptor> entry :
-                        mGroupDescriptorsView.entrySet()) {
-                    LeAudioGroupDescriptor descriptor = entry.getValue();
-                    Integer groupId = entry.getKey();
-                    if (descriptor.isActive()) {
-                        descriptor.setActiveState(ACTIVE_STATE_INACTIVE);
-                        updateActiveDevices(
-                                groupId,
-                                descriptor.mDirection,
-                                AUDIO_DIRECTION_NONE,
-                                false,
-                                false,
-                                false);
-                        break;
-                    }
+            for (Map.Entry<Integer, LeAudioGroupDescriptor> entry :
+                    mGroupDescriptorsView.entrySet()) {
+                LeAudioGroupDescriptor descriptor = entry.getValue();
+                Integer groupId = entry.getKey();
+                if (descriptor.isActive()) {
+                    descriptor.setActiveState(ACTIVE_STATE_INACTIVE);
+                    updateActiveDevices(
+                            groupId,
+                            descriptor.mDirection,
+                            AUDIO_DIRECTION_NONE,
+                            false,
+                            false,
+                            false);
+                    break;
                 }
-
-                // Destroy state machines and stop handler thread
-                for (LeAudioDeviceDescriptor descriptor : mDeviceDescriptors.values()) {
-                    LeAudioStateMachine sm = descriptor.mStateMachine;
-                    if (sm == null) {
-                        continue;
-                    }
-                    sm.quit();
-                    sm.cleanup();
-                }
-            } finally {
-                // Upgrade to write lock
-                mGroupReadLock.unlock();
-                mGroupWriteLock.lock();
             }
+
+            // Destroy state machines and stop handler thread
+            for (LeAudioDeviceDescriptor descriptor : mDeviceDescriptors.values()) {
+                LeAudioStateMachine sm = descriptor.mStateMachine;
+                if (sm == null) {
+                    continue;
+                }
+                sm.quit();
+                sm.cleanup();
+            }
+        } finally {
+            mGroupReadLock.unlock();
+        }
+
+        // Upgrade to write lock to clear descriptor maps
+        mGroupWriteLock.lock();
+        try {
             mDeviceDescriptors.clear();
             mGroupDescriptors.clear();
         } finally {
@@ -921,15 +983,6 @@ public class LeAudioService extends ProfileService {
         }
 
         mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
-
-        // Unregister STREAM_VOICE_CALL volume change receiver (registered only in duplex mode)
-        if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-            try {
-                unregisterReceiver(mVolumeChangedReceiver);
-            } catch (IllegalArgumentException e) {
-                Log.w(TAG, "cleanup: mVolumeChangedReceiver was not registered: " + e);
-            }
-        }
 
         mMcpService = null;
         mTbsService = null;
@@ -1556,6 +1609,8 @@ public class LeAudioService extends ProfileService {
                 broadcastSettings.getSubgroupSettings().stream().mapToInt(
                                                    s -> s.getPreferredQuality()).toArray();
         mPendingEnhancedBroadcast = true;
+        mIsEnhancedBroadcastStreaming = true;
+        Log.d(TAG, "createEnhancedBroadcast: mIsEnhancedBroadcastStreaming=true");
         mLeAudioBroadcasterNativeInterface
                 .get()
                 .createEnhancedBroadcast(
@@ -1872,6 +1927,208 @@ public class LeAudioService extends ProfileService {
         mAudioManager.setParameters("achat_rx_enable=false");
         mAudioManager.setParameters("achat_tx_enable=false");
         mLeAudioBroadcasterNativeInterface.get().stopEnhancedBroadcast(broadcastId, mode);
+    }
+
+    /**
+     * Called by HFP HeadsetClientStateMachine when a call or VR session starts/ends.
+     *
+     * On call start:
+     *   1. Disables achat audio HAL paths so SCO can be accepted by the controller.
+     *   2. Sends HCI VS DBIG Sync-Only(enable) so the BIG stays alive (no audio data).
+     *   3. Calls resumeScoIfRequired() to unblock the pending SCO connection.
+     *
+     * On call end:
+     *   4. Sends HCI VS DBIG Sync-Only(disable) to resume audio data on the BIG.
+     *   5. Re-enables achat audio HAL paths to restore broadcast audio.
+     *
+     * @param isCallActive {@code true} if call is starting, {@code false} if call ended.
+     */
+    public void onCallStateChanged(boolean isCallActive) {
+        Log.d(TAG, "onCallStateChanged: isCallActive=" + isCallActive
+                + ", mPreemptedByCall venk=" + mPreemptedByCall);
+
+        if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
+            Log.w(TAG, "onCallStateChanged: broadcaster native interface not available");
+            return;
+        }
+
+        if (isCallActive && !mIsEnhancedBroadcastStreaming) {
+            Log.d(TAG, "onCallStateChanged: no active enhanced broadcast, skipping preemption");
+            return;
+        }
+
+        // Find the active enhanced (duplex) broadcast ID.
+        Optional<Integer> activeDuplexId = mBroadcastDescriptors.entrySet().stream()
+                .filter(e -> Boolean.TRUE.equals(e.getValue().mIsEnhanced))
+                .map(Map.Entry::getKey)
+                .findFirst();
+
+        if (isCallActive) {
+            if (mPreemptedByCall) {
+                Log.d(TAG, "onCallStateChanged: already preempted, ignoring duplicate");
+                return;
+            }
+            mPreemptedByCall = true;
+            // 1. Tell the native state machine that ISO path removal is a preemption,
+            //    NOT a regular stop — so it skips TerminateBig and enters sync-only mode.
+            if (activeDuplexId.isPresent()) {
+                mLeAudioBroadcasterNativeInterface.get()
+                        .notifyCallState(activeDuplexId.get(), true);
+            }
+            // 2. Disable audio HAL paths — MM Audio will send SUSPEND_STREAM_REQ
+            //    which triggers ISO path removal in the native state machine.
+            mAudioManager.setParameters("achat_rx_enable=false");
+            mAudioManager.setParameters("achat_tx_enable=false");
+            Log.d(TAG, "onCallStateChanged: achat paths disabled, sync-only preemption armed");
+            // NOTE: resumeScoIfRequired() is called from EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE
+            // (i.e. after OnSyncOnlyEnableCmpl), not here — the HCI VS command is async
+            // and dup_broadcast_state must be INACTIVE before we trigger AT+BCC.
+        } else {
+            if (!mPreemptedByCall) {
+                Log.d(TAG, "onCallStateChanged: not preempted, ignoring call-end");
+                return;
+            }
+            mPreemptedByCall = false;
+            mScoConnectSent = false;
+            // notifyCallState(false) sets SetResumingAfterCall(true) in the native state
+            // machine, posted onto the BT main thread. It must be posted before the
+            // achat_tx_enable=true that will eventually reach OnAudioResume() on that same
+            // thread, so ProcessMessage(START) takes the sync-only-disable branch instead of
+            // the cold-start CreateDbig/CreateBig path. Deferring achat_tx/rx_enable=true to
+            // onAudioDevicesAdded() (below) — instead of sending it directly here — keeps
+            // this ordering intact, since it only fires after the AudioManager round-trip
+            // triggered by updateBroadcastActiveDevice() below.
+            if (activeDuplexId.isPresent()) {
+                mLeAudioBroadcasterNativeInterface.get()
+                        .notifyCallState(activeDuplexId.get(), false);
+            }
+            // 5. Re-activate the broadcast A2DP device in AudioManager, then WAIT for the real
+            //    onAudioDevicesAdded() callback (below) to send achat_tx/rx_enable=true — do not
+            //    send it directly here. The vendor AHAL needs an active A2DP device/audio patch
+            //    to route its stack response through when acking the resumed TX start; sending
+            //    achat_tx_enable=true before that device is confirmed active causes the AHAL
+            //    ack to time out (~4.5s) even though ConfirmStreamingRequest() is called
+            //    correctly and promptly on the BT stack side.
+            //    mActiveBroadcastAudioDevice was nulled at EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE
+            //    (call preemption); restore it here.
+            if (mActiveBroadcastAudioDevice == null && mBroadcastAudioDeviceBeforeCall != null) {
+                Log.d(TAG, "onCallStateChanged: re-activating broadcast device in "
+                        + "AudioManager, will resume once onAudioDevicesAdded fires: "
+                        + mBroadcastAudioDeviceBeforeCall);
+                updateBroadcastActiveDevice(
+                        mBroadcastAudioDeviceBeforeCall, mActiveBroadcastAudioDevice, true);
+                mBroadcastAudioDeviceBeforeCall = null;
+            } else {
+                // No saved device to reactivate — no device-added transition to wait for,
+                // so send achat_tx/rx_enable=true directly.
+                Log.d(TAG, "onCallStateChanged: no device to re-activate, "
+                        + "resuming audio HAL directly after call end");
+                mAudioManager.setParameters("achat_tx_enable=true");
+                mAudioManager.setParameters("achat_rx_enable=true");
+            }
+            Log.d(TAG, "onCallStateChanged: notifyCallState posted");
+        }
+    }
+
+    /**
+     * After the broadcast has released its ISO data paths (achat disabled + DBIG sync-only),
+     * connect SCO audio for any call that is waiting on an HFP-connected device.
+     * Mirrors A14 BroadcastService.resumeScoIfRequired().
+     */
+    private void resumeScoIfRequired() {
+        HeadsetClientService hfpService = HeadsetClientService.getHeadsetClientService();
+        if (hfpService == null) {
+            Log.w(TAG, "resumeScoIfRequired: HeadsetClientService unavailable");
+            return;
+        }
+
+        for (BluetoothDevice device : hfpService.getConnectedDevices()) {
+            List<HfpClientCall> calls = hfpService.getCurrentCalls(device);
+            Log.d(TAG, "resumeScoIfRequired: device=" + device
+                    + " calls=" + (calls == null ? "null" : calls.size()));
+
+            // mCalls may be empty when resumeScoForBroadcast() is triggered by a CALLSETUP
+            // or CALL indicator before the CLCC poll response has come back. The indicator
+            // itself is proof a call is active. Connect SCO directly — the AG will reject
+            // AT+BCC harmlessly if it does not want SCO at this moment, and resumeScoForBroadcast
+            // will retry on the next indicator (CALL=1 → ACTIVE).
+            if (calls == null || calls.isEmpty()) {
+                int audioState = hfpService.getAudioState(device);
+                Log.d(TAG, "resumeScoIfRequired: mCalls empty, audioState=" + audioState
+                        + " — connecting SCO directly (indicator-driven)");
+                if (audioState == BluetoothHeadsetClient.STATE_AUDIO_CONNECTED
+                        || audioState == BluetoothHeadsetClient.STATE_AUDIO_CONNECTING) {
+                    Log.d(TAG, "resumeScoIfRequired: SCO already active/connecting, skipping");
+                    mScoConnectSent = true;
+                    return;
+                }
+                hfpService.connectAudio(device);
+                mScoConnectSent = true;
+                return;
+            }
+
+            for (HfpClientCall call : calls) {
+                int state = call.getState();
+                int callId = call.getId();
+                boolean inBand = call.isInBandRing();
+                Log.d(TAG, "resumeScoIfRequired: callId=" + callId
+                        + " state=" + state + " inBandRing=" + inBand);
+
+                if (state == HfpClientCall.CALL_STATE_TERMINATED) {
+                    Log.d(TAG, "resumeScoIfRequired: skip callId=" + callId
+                            + " TERMINATED(" + state + ")");
+                    continue;
+                }
+                if (state == HfpClientCall.CALL_STATE_INCOMING && !inBand) {
+                    Log.d(TAG, "resumeScoIfRequired: skip callId=" + callId
+                            + " INCOMING(" + state + ") no in-band ring");
+                    continue;
+                }
+
+                int audioState = hfpService.getAudioState(device);
+                Log.d(TAG, "resumeScoIfRequired: eligible callId=" + callId
+                        + " state=" + state + " audioState=" + audioState
+                        + " (0=disconnected,1=connecting,2=connected)");
+
+                if (audioState == BluetoothHeadsetClient.STATE_AUDIO_CONNECTED
+                        || audioState == BluetoothHeadsetClient.STATE_AUDIO_CONNECTING) {
+                    Log.d(TAG, "resumeScoIfRequired: SCO already active/connecting"
+                            + " (audioState=" + audioState + ") for device=" + device
+                            + ", skipping connectAudio");
+                    mScoConnectSent = true;
+                    return;
+                }
+
+                Log.d(TAG, "resumeScoIfRequired: calling connectAudio for device=" + device
+                        + " callId=" + callId + " callState=" + state);
+                hfpService.connectAudio(device);
+                mScoConnectSent = true;
+                return;
+            }
+        }
+        Log.d(TAG, "resumeScoIfRequired: no eligible call found for SCO");
+    }
+
+    /**
+     * Called by HFP HeadsetClientStateMachine when a call transitions to a state that needs SCO
+     * while the broadcast is already in sync-only mode (mPreemptedByCall=true, DBIG_SYNC_ONLY
+     * already completed). This covers two cases:
+     *   - Incoming call (no in-band ring): BROADCAST_STATE_PAUSED fired but resumeScoIfRequired()
+     *     skipped it. Now that the call is ACTIVE, trigger SCO.
+     *   - Outgoing call where the AG rejected / deferred SCO during ALERTING: retry on CALL=1.
+     */
+    public void resumeScoForBroadcast() {
+        Log.d(TAG, "resumeScoForBroadcast: mPreemptedByCall=" + mPreemptedByCall
+                + " mScoConnectSent=" + mScoConnectSent);
+        if (!mPreemptedByCall) {
+            Log.d(TAG, "resumeScoForBroadcast: not preempted, ignoring");
+            return;
+        }
+        if (mScoConnectSent) {
+            Log.d(TAG, "resumeScoForBroadcast: connectAudio already sent, skipping");
+            return;
+        }
+        resumeScoIfRequired();
     }
 
     /**
@@ -2880,10 +3137,17 @@ public class LeAudioService extends ProfileService {
 
             for (AudioDeviceInfo deviceInfo : addedDevices) {
                 if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
-                    Log.d(TAG, "OnAudioDevicesadded received for A2DP device");
+                    Log.d(TAG, "onAudioDevicesAdded: A2DP device added");
+                    String addr = deviceInfo.getAddress();
+                    if (addr.equals("00:00:00:00:00:00")) {
+                        continue;
+                    }
                     if (SystemProperties.getBoolean(
-                            "persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-                        handleA2dpAudioDeviceForAurachat(deviceInfo);
+                            "persist.vendor.qcom.bluetooth.enable_ba_duplex", false)
+                            && mIsEnhancedBroadcastStreaming) {
+                        Log.d(TAG, "onAudioDevicesAdded: enhanced broadcast active"
+                                + " — sending MSG_ACHAT_START");
+                        mAchatHandler.sendEmptyMessage(MSG_ACHAT_START);
                     }
                 }
                 
@@ -3839,8 +4103,8 @@ public class LeAudioService extends ProfileService {
 
     private void notifyGroupStreamStatusChanged(int groupId, int groupStreamStatus) {
         synchronized (mLeAudioCallbacks) {
+            mutex.lock();
             try {
-                mutex.lock();
                 int n = mLeAudioCallbacks.beginBroadcast();
                 for (int i = 0; i < n; i++) {
                     try {
@@ -4844,6 +5108,13 @@ public class LeAudioService extends ProfileService {
                                             broadcastId,
                                             BluetoothStatusCodes.REASON_LOCAL_APP_REQUEST));
 
+                    if (mIsEnhancedBroadcastStreaming) {
+                        mIsEnhancedBroadcastStreaming = false;
+                        Log.d(TAG, "BROADCAST_STATE_STOPPED: enhanced broadcast ended"
+                                + " — posting MSG_ACHAT_STOP");
+                        mAchatHandler.sendEmptyMessage(MSG_ACHAT_STOP);
+                    }
+
                     transitionFromBroadcastToUnicast();
                     destroyBroadcast(broadcastId);
                     break;
@@ -4920,6 +5191,18 @@ public class LeAudioService extends ProfileService {
                                 updateBroadcastActiveDevice(device, mActiveBroadcastAudioDevice, true);
                             }
                         }
+                    } else if (previousState == LeAudioStackEvent.BROADCAST_STATE_PAUSED
+                            && isAnyBroadcastInStreamingState()) {
+                        // Broadcast resumed from sync-only call preemption (PAUSED → STREAMING).
+                        // Re-activate the broadcast A2DP device in AudioManager — mirrors A14's
+                        // stream restart path after call end. mActiveBroadcastAudioDevice was
+                        // nulled at EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE; restore it now so
+                        // PAL can start the A2DP stream cleanly from standby.
+                        if (!Objects.equals(device, mActiveBroadcastAudioDevice)) {
+                            Log.d(TAG, "BROADCAST_STATE_STREAMING (resume from PAUSED): "
+                                    + "re-activating broadcast device in AudioManager");
+                            updateBroadcastActiveDevice(device, mActiveBroadcastAudioDevice, true);
+                        }
                     }
 
                     if (mBroadcastIdPendingStop.isPresent()) {
@@ -4969,6 +5252,7 @@ public class LeAudioService extends ProfileService {
                     mCreateBroadcastQueue.clear();
                 }
                 mPendingEnhancedBroadcast = false;
+                mIsEnhancedBroadcastStreaming = false;
                 return;
             }
 
@@ -5023,6 +5307,25 @@ public class LeAudioService extends ProfileService {
             } else {
                 Log.w(TAG, "EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE: broadcastId=" + broadcastId
                         + " not enhanced — skip");
+            }
+        } else if (stackEvent.type
+                == LeAudioStackEvent.EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE) {
+            // HCI VS DBIG_SYNC_ONLY(enable=1) completed: ISO paths removed, controller idle.
+            // Deactivate the broadcast A2DP device in AudioManager — mirrors A14's
+            // btif_ahim_ack_stream_profile_suspended(A2DP) in btif_bap_dbig_sync_only_cmpl_cb.
+            // This puts A2DP in standby (not abruptly stopped) so PAL exits the A2DP stream
+            // cleanly and can restart when the call ends without hitting "suspend state" error.
+            final int broadcastId = stackEvent.valueInt1;
+            Log.d(TAG, "EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE: broadcastId=" + broadcastId
+                    + " mPreemptedByCall=" + mPreemptedByCall);
+            if (mPreemptedByCall) {
+                if (mActiveBroadcastAudioDevice != null) {
+                    Log.d(TAG, "EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE: "
+                            + "deactivating broadcast device in AudioManager");
+                    mBroadcastAudioDeviceBeforeCall = mActiveBroadcastAudioDevice;
+                    updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
+                }
+                resumeScoIfRequired();
             }
         } else if (stackEvent.type == LeAudioStackEvent.EVENT_TYPE_NATIVE_INITIALIZED) {
             mLeAudioNativeIsInitialized = true;
@@ -6128,8 +6431,8 @@ public class LeAudioService extends ProfileService {
             volumeControlService.handleGroupNodeAdded(groupId, device);
         }
         synchronized (mLeAudioCallbacks) {
+            mutex.lock();
             try {
-                mutex.lock();
                 int n = mLeAudioCallbacks.beginBroadcast();
                 for (int i = 0; i < n; i++) {
                     try {
@@ -6212,8 +6515,8 @@ public class LeAudioService extends ProfileService {
 
     private void notifyGroupNodeRemoved(BluetoothDevice device, int groupId) {
         synchronized (mLeAudioCallbacks) {
+            mutex.lock();
             try {
-                mutex.lock();
                 int n = mLeAudioCallbacks.beginBroadcast();
                 for (int i = 0; i < n; i++) {
                     try {
@@ -6231,8 +6534,8 @@ public class LeAudioService extends ProfileService {
 
     private void notifyGroupStatusChanged(int groupId, int status) {
         synchronized (mLeAudioCallbacks) {
+            mutex.lock();
             try {
-                mutex.lock();
                 int n = mLeAudioCallbacks.beginBroadcast();
                 for (int i = 0; i < n; i++) {
                     try {
@@ -6250,8 +6553,8 @@ public class LeAudioService extends ProfileService {
 
     private void notifyUnicastCodecConfigChanged(int groupId, BluetoothLeAudioCodecStatus status) {
         synchronized (mLeAudioCallbacks) {
+            mutex.lock();
             try {
-                mutex.lock();
                 int n = mLeAudioCallbacks.beginBroadcast();
                 for (int i = 0; i < n; i++) {
                     try {
@@ -6891,12 +7194,14 @@ public class LeAudioService extends ProfileService {
                 }
 
                 mPendingEnhancedBroadcast = false;
+                mIsEnhancedBroadcastStreaming = false;
                 mHandler.post(() -> notifyBroadcastStartFailed(BluetoothStatusCodes.ERROR_TIMEOUT));
             } else {
                 Log.w(TAG, "Failed to start Broadcast in time: " + mBroadcastId);
 
                 mCreateBroadcastTimeoutEvent = null;
                 mPendingEnhancedBroadcast = false;
+                mIsEnhancedBroadcastStreaming = false;
 
                 if (getLeAudioService() == null) {
                     Log.e(TAG, "CreateBroadcastTimeoutEvent: No LE Audio service");
