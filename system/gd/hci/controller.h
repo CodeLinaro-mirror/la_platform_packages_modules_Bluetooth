@@ -166,6 +166,8 @@ public:
   // LE controller commands
   virtual void LeSetEventMask(uint64_t le_event_mask) override;
 
+  virtual uint64_t GetLeEventMask() const override;
+
   virtual LeBufferSize GetLeBufferSize() const override;
 
   virtual uint64_t GetLeSupportedStates() const override;

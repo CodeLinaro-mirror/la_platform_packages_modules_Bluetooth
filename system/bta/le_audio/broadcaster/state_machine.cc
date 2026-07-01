@@ -509,7 +509,12 @@ private:
       adv_params.max_interval = 0x0140; /* 320 * 0,625 = 200ms */
       adv_params.advertising_event_properties = 0;
       adv_params.channel_map = kAdvertisingChannelAll;
-      adv_params.tx_power = 8;
+
+      // Read tx_power from system property, defaulting to 8
+      char value[PROPERTY_VALUE_MAX] = {'\0'};
+      osi_property_get("persist.vendor.service.bt.txpower", value, "8");
+      log::info("tx_power={}", adv_params.tx_power);
+      adv_params.tx_power = atoi(value);
 
       bool mBroadCastMode = (sm_config_.broadcast_mode == BroadcastMode::DUPLEX);
       bool mBroadCastCodedPhy = IsCodedPhyEnabled();

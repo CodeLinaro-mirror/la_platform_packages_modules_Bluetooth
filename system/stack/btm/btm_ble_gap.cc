@@ -795,6 +795,37 @@ bool BTM_BleConfigPrivacy(bool privacy_mode) {
  ******************************************************************************/
 bool BTM_BleLocalPrivacyEnabled(void) { return btm_cb.ble_ctr_cb.privacy_mode != BTM_PRIVACY_NONE; }
 
+/*******************************************************************************
+ *
+ * Function         BTM_BleGetLeEventMask
+ *
+ * Description      This function is called to get the LE event mask
+ *                  currently programmed into the controller.
+ *
+ * Returns          uint64_t: The current LE event mask.
+ *
+ ******************************************************************************/
+uint64_t BTM_BleGetLeEventMask(void) {
+  return bluetooth::shim::GetController()->GetLeEventMask();
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_BleSetLeEventMask
+ *
+ * Description      This function is called to set the LE event mask in the
+ *                  controller.
+ *
+ * Parameters:      le_event_mask: The 64-bit LE event mask to set.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_BleSetLeEventMask(uint64_t le_event_mask) {
+  log::info("Setting LE Event Mask in Controller: 0x{:016x}", le_event_mask);
+  bluetooth::shim::GetController()->LeSetEventMask(le_event_mask);
+}
+
 static bool is_resolving_list_bit_set(void* data, void* /* context */) {
   tBTM_SEC_DEV_REC* p_dev_rec = static_cast<tBTM_SEC_DEV_REC*>(data);
 

@@ -410,4 +410,30 @@ bool BTM_BleLocalPrivacyEnabled(void);
  ******************************************************************************/
 void BTM_BleGetEncKeyMaterial(uint8_t* enc_key_value);
 
+/*******************************************************************************
+ *
+ * Function         BTM_BleGetLeEventMask
+ *
+ * Description      This function is called to get the LE event mask
+ *                  currently programmed into the controller.
+ *
+ * Returns          uint64_t: The current LE event mask.
+ *
+ ******************************************************************************/
+uint64_t BTM_BleGetLeEventMask(void);
+
+/*******************************************************************************
+ *
+ * Function         BTM_BleSetLeEventMask
+ *
+ * Description      This function is called to set the LE event mask in the
+ *                  controller.
+ *
+ * Parameters:      le_event_mask: The 64-bit LE event mask to set.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_BleSetLeEventMask(uint64_t le_event_mask);
+
 #endif

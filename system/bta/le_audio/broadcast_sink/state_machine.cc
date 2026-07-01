@@ -31,6 +31,7 @@
 #include "hcidefs.h"
 #include "main/shim/le_scanning_manager.h"
 #include "osi/include/properties.h"
+#include "stack/include/btm_ble_api.h"
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/btm_vendor_api.h"
 #include "types/raw_address.h"
@@ -43,6 +44,13 @@ using bluetooth::hci::iso_manager::big_terminate_sync_cmpl_evt;
 
 using namespace bluetooth::le_audio::broadcast_sink;
 using namespace bluetooth;
+
+/* Power optimization: while a BIG sync is active, the LE BIGInfo Advertising
+ * Report and LE Periodic Advertising Report V2 events are redundant. The
+ * mask is updated directly at BigCreateSync (CreateBigSync()) and restored
+ * directly at each teardown path (OnBigSyncLost(), OnTexitDbigComplete()). */
+static uint64_t original_le_event_mask = 0;
+static bool original_le_event_mask_saved = false;
 
 namespace {
 
@@ -675,6 +683,14 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
        * (status!=0, e.g. 0x0E), nothing was actually torn down — the BIG is still
        * alive, so big_sync_info_ must be preserved for subsequent TX/RX suspend
        * teardown to find the real BIS handles. */
+          /* Power optimization: DBIG (enhanced BIG) sync is torn down — restore
+      * the LE event mask saved in OnBigSyncEstablished(). */
+      if (original_le_event_mask_saved) {
+        log::info("broadcast_id=0x{:x}, OnTexitDbigComplete: restoring LE Event Mask 0x{:016x}",
+          GetBroadcastId(), original_le_event_mask);
+          BTM_BleSetLeEventMask(original_le_event_mask);
+          original_le_event_mask_saved = false;
+      }
       big_sync_info_ = std::nullopt;
     }
 
@@ -1214,6 +1230,12 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
               static_cast<uint32_t>(big_info_iso_interval_) * 125 / 100,
               big_info_phy_, big_info_num_bis_);
 
+    // Read tx_power from system property, defaulting to 8
+    char value[PROPERTY_VALUE_MAX] = {'\0'};
+    osi_property_get("persist.vendor.service.bt.txpower", value, "8");
+    int tx_power_value = atoi(value);
+    log::info("tx_power={}", tx_power_value);
+
     // Validate that DBIG params have been set via SetDbigParams()
     if (sm_config_.dbig_params.size() < 12) {
       log::error("broadcast_id=0x{:x}, SendDbigSetupCommand: dbig_params not set or too short ({} bytes). "
@@ -1241,7 +1263,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     params.exit_timeout               = sm_config_.dbig_params[9];
     params.remove_timeout             = sm_config_.dbig_params[10];
     params.terminate_timeout          = sm_config_.dbig_params[11];
-    params.tx_power                   = 0x08;  // Not included in 12-byte format, use default
+    params.tx_power                   = tx_power_value;
 
     log::info("DBIG Params from advertising: bis_control_event_interval={}, join={}, exit={}, remove={}, terminate={}",
               params.bis_control_event_interval, params.join_timeout, params.exit_timeout, params.remove_timeout, params.terminate_timeout);
@@ -1258,6 +1280,22 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
       SetState(SinkState::PA_SYNCED);
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       return;
+    }
+
+    /* Power optimization: BIG sync is established — LE BIGInfo Advertising
+     * Report and LE Periodic Advertising Report V2 events are now redundant
+     * for this source, so disable them until the BIG sync is torn down. */
+    if (!original_le_event_mask_saved) {
+      original_le_event_mask = BTM_BleGetLeEventMask();
+      original_le_event_mask_saved = true;
+
+      uint64_t new_mask = original_le_event_mask;
+      new_mask &= ~HCI_LE_BIGINFO_ADVERTISING_REPORT_EVENT_BIT;
+      new_mask &= ~HCI_LE_PERIODIC_ADVERTISING_REPORT_V2_EVENT_BIT;
+
+      log::info("broadcast_id=0x{:x}, OnBigSyncEstablished: LE Event Mask 0x{:016x} -> 0x{:016x}",
+                GetBroadcastId(), original_le_event_mask, new_mask);
+      BTM_BleSetLeEventMask(new_mask);
     }
 
     BigSyncInfo info;
@@ -1299,6 +1337,16 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   void OnBigSyncLost(big_sync_lost_evt* evt) {
     log::warn("broadcast_id=0x{:x}, big_handle={}, reason=0x{:02x}",
               GetBroadcastId(), evt->big_handle, evt->reason);
+
+    /* Power optimization: BIG sync is gone — restore the LE event mask
+     * saved in OnBigSyncEstablished(), regardless of whether this state
+     * machine still tracks the handle. */
+    if (original_le_event_mask_saved) {
+      log::info("broadcast_id=0x{:x}, OnBigSyncLost: restoring LE Event Mask 0x{:016x}",
+                GetBroadcastId(), original_le_event_mask);
+      BTM_BleSetLeEventMask(original_le_event_mask);
+      original_le_event_mask_saved = false;
+    }
 
     if (!big_sync_info_.has_value() || big_sync_info_->big_handle != evt->big_handle) return;
 

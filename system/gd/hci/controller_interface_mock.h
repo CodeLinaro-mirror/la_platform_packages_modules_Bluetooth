@@ -135,6 +135,7 @@ public:
                uint16_t host_total_num_synchronous_data_packets));
   // LE controller commands
   MOCK_METHOD(void, LeSetEventMask, (uint64_t le_event_mask));
+  MOCK_METHOD(uint64_t, GetLeEventMask, (), (const));
   MOCK_METHOD(LeBufferSize, GetLeBufferSize, (), (const));
   MOCK_METHOD(uint64_t, GetLeSupportedStates, (), (const));
   MOCK_METHOD(LeBufferSize, GetControllerIsoBufferSize, (), (const));
