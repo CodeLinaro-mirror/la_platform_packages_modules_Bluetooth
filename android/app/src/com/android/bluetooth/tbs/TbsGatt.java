@@ -410,6 +410,7 @@ public class TbsGatt {
         gattService.addCharacteristic(mCallControlPointOptionalOpcodesCharacteristic);
         gattService.addCharacteristic(mTerminationReasonCharacteristic);
         if (Utils.isTbsPtsTestMode()) {
+           mBearerSignalStrengthReportingIntervalCharecteristic.setValue(new byte[] {(byte) 2});
            gattService.addCharacteristic(mBearerSignalStrengthCharacteristic);
            gattService.addCharacteristic(mBearerSignalStrengthReportingIntervalCharecteristic);
         }
