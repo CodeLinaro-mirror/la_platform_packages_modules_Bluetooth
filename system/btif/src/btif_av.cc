@@ -3928,6 +3928,16 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
         }
         break;
       } else {
+        // In non-coexist mode, resolve the peer address from the RC handle
+        // before falling through. AVRCP control commands (e.g.
+        // REGISTER_NOTIFICATION for abs vol) can arrive before the A2DP
+        // stream is active, so ActivePeer() alone returns kEmpty and the
+        // event gets dropped.
+        const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
+        btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
+        if (peer_address != RawAddress::kEmpty) {
+          break;
+        }
         [[fallthrough]];
       }
     }

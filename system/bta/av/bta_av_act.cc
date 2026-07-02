@@ -552,6 +552,10 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
   }
 
   i = p_data->rc_conn_chg.handle;
+  if (i >= BTA_AV_NUM_RCB) {
+    log::error("rc handle:{} out of bounds (max {})", i, BTA_AV_NUM_RCB);
+    return;
+  }
   if (p_cb->rcb[i].handle == BTA_AV_RC_HANDLE_NONE) {
     log::error("not a valid handle:{} any more", i);
     return;
