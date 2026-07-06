@@ -3591,15 +3591,15 @@ public class AdapterService extends Service {
             mHeadsetClientService.disconnect(device);
         }
 
-        boolean inCall = mHeadsetService != null
-                && mHeadsetService.isInCall();
-        boolean ringing = mHeadsetService != null
-                && mHeadsetService.isRinging();
-        Log.d(TAG, "Call and Ringing Status are:" + inCall + " " + ringing);
-        Log.d(TAG, "Checking in A2DP Disconnect delay BL");
+        if (mHeadsetService != null) {
+            Log.d(TAG,"Call and Ringing Status are:"+mHeadsetService.isInCall() +" "
+                 +mHeadsetService.isRinging());
+        }
+        Log.d(TAG,"Checking in A2DP Disconnect delay BL");
 
         //Adding A2DP Disconnect delay for blacklisted devices
-        if (isDelayA2dpDiscDevice(device) && (inCall || ringing)) {
+        if (isDelayA2dpDiscDevice(device) && mHeadsetService != null &&
+                  (mHeadsetService.isInCall() || mHeadsetService.isRinging())) {
            Log.e(TAG,"isDelayA2dpDiscDevice sleep 400ms");
               SystemClock.sleep(400);
         }
