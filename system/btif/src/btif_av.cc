@@ -3294,13 +3294,9 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
     case BTIF_AV_SINK_OFFLOAD_STOP_CFM_EVT: {
       // MM-Audio sessoin is stopped
       // check the last vsc_command status.
-      // During SHO, SetActivePeer() switches active away from this peer before
-      // mm-audio stops its session, so IsActivePeer() is false here. A normal
-      // user-initiated stop arrives while this peer is still active. Only send
-      // AVDTP SUSPEND in the SHO case to tear down the old remote source.
-      if (!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) && !peer_.IsActivePeer() &&
-          !peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
-        log::debug("SHO: suspending non-active peer {}", peer_.PeerAddress());
+      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) &&
+         !peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
+        log::debug("Sending suspend to a2dp source peer : {}", peer_.PeerAddress());
         peer_.SetFlags(BtifAvPeer::kFlagLocalSuspendPending);
         BTA_AvStop(peer_.BtaHandle(), true);
         break;
@@ -3932,6 +3928,16 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
         }
         break;
       } else {
+        // In non-coexist mode, resolve the peer address from the RC handle
+        // before falling through. AVRCP control commands (e.g.
+        // REGISTER_NOTIFICATION for abs vol) can arrive before the A2DP
+        // stream is active, so ActivePeer() alone returns kEmpty and the
+        // event gets dropped.
+        const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
+        btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
+        if (peer_address != RawAddress::kEmpty) {
+          break;
+        }
         [[fallthrough]];
       }
     }
