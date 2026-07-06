@@ -80,6 +80,19 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
     private static final int DEFAULT_VOLUME_LEVEL = 15;
 
+    /*
+     * Fixed placeholder address used for ALL interactions with the audio framework
+     * (AudioManager.handleBluetoothActiveDeviceChanged / ACTION_ACTIVE_DEVICE_CHANGED)
+     * for the enhanced broadcast active device, instead of the real broadcast source
+     * address.  AudioService's AudioDeviceInventory tracks BT active devices by address
+     * in system_server, which does not restart when the BT process crashes/restarts.
+     * Using one fixed address means a fresh LeAudioBroadcastSinkService instance can
+     * always force-clear any stale entry left behind by an unclean shutdown (crash,
+     * kill -9) by issuing a "remove" for this same address — no need to persist the
+     * real source device's address across process death to do so.
+     */
+    private static final String DUMMY_AUDIO_DEVICE_ADDRESS = "FA:CE:FA:CE:FA:CE";
+
     // Aurachat volume mapping constants (AM STREAM_VOICE_CALL → HFP SCO range)
     private final int mMaxAmVcVol;
     private final int mMinAmVcVol;
@@ -402,9 +415,29 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             mActiveBroadcastInDevice = null;
             mBroadcastSinkDescriptors.clear();
             mFoundSources.clear();
+            // Force-clear any stale AudioDeviceInventory entry left behind by an unclean
+            // shutdown (BT process crash/kill).  Since every enhanced broadcast active
+            // device always uses the same fixed placeholder address (see
+            // DUMMY_AUDIO_DEVICE_ADDRESS), this fresh service instance can issue the
+            // "remove" unconditionally — no need to have persisted the real source
+            // device's address across process death.  Harmless no-op if AudioService's
+            // inventory has no matching entry.
+            //
+            // Must run AFTER MSG_STOP's achat_rx/tx_enable=false have actually executed on
+            // mHandlerThread — not just after they've been posted.  MSG_STOP is asynchronous
+            // (sendEmptyMessage returns immediately), so this is posted as a follow-up message
+            // on the same handler to get the FIFO ordering guarantee, mirroring the
+            // MSG_STOP -> MSG_REMOVE_ACTIVE_DEVICE pattern used everywhere else in this file.
+            // Clearing the audio device first would risk AudioPolicyManager tearing down the
+            // device/stream context that BTAurachat's RX/TX-stop path may still need.
+            Log.d(TAG, "Duplex broadcast mode: posting stale audio device clear after MSG_STOP");
+            mHandler.post(() -> {
+                Log.d(TAG, "Duplex broadcast mode: clearing stale audio active device entry");
+                updateBroadcastActiveInDevice(null, getDummyAudioDevice(), true);
+            });
             Log.d(TAG, "Duplex broadcast mode: enhanced broadcast state reset complete");
-            Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES");
-            mHandler.sendEmptyMessage(MSG_READ_SUPPORTED_STATES);
+            Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES with 1s delay");
+            mHandler.sendEmptyMessageDelayed(MSG_READ_SUPPORTED_STATES, 1000);
         }
 
         // Register audio device callback
@@ -437,6 +470,19 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Clear service instance
         setLeAudioBroadcastSinkService(null);
+
+        // Notify AudioManager the broadcast device is going inactive so its
+        // AudioDeviceInventory drops the stale entry.  Without this, the synthetic
+        // A2DP address used for the enhanced broadcast stays marked "available" across
+        // a BT toggle (AudioService/system_server never restarts), so the next
+        // handleBluetoothActiveDeviceChanged() for the same address after BT comes back
+        // on is a no-op — AudioManager never fires onAudioDevicesAdded, MSG_START never
+        // runs, and the sink is stuck in BIG_SYNCING forever on the next join.
+        if (mActiveBroadcastInDevice != null) {
+            if (DBG) Log.d(TAG, "cleanup: clearing stale active broadcast device: "
+                    + mActiveBroadcastInDevice);
+            updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
+        }
 
         // Stop any ongoing search
         synchronized (mStateLock) {
@@ -965,6 +1011,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
      */
     public void setAttributes(int devId, byte[] name) {
         Log.d(TAG, "setAttributes: devId=" + devId);
+        if (name == null) {
+            Log.d(TAG, "setAttributes: name is null, ignoring request");
+            return;
+        }
         LeAudioBroadcasterNativeInterface nativeInterface =
                 LeAudioBroadcasterNativeInterface.getInstance();
         if (nativeInterface == null) {
@@ -978,9 +1028,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Ensure name is exactly 10 octets
         byte[] nameBytes = new byte[10];
-        if (name != null) {
-            System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
-        }
+        System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
         nativeInterface.setAttributes(devIdBytes, nameBytes);
     }
 
@@ -2156,23 +2204,42 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             return;
         }
 
+        // Always use a fixed placeholder address for the audio-framework-facing device
+        // identity (see DUMMY_AUDIO_DEVICE_ADDRESS) instead of the real broadcast source
+        // address, so a fresh service instance after a BT process crash can always
+        // force-clear a stale AudioDeviceInventory entry using this same known address —
+        // no need to persist the real source device's address across process death.
+        BluetoothDevice audioNewDevice = (newDevice != null) ? getDummyAudioDevice() : null;
+        BluetoothDevice audioPreviousDevice =
+                (previousDevice != null) ? getDummyAudioDevice() : null;
 
-        if (newDevice != null) {
-            mAudioManager.handleBluetoothActiveDeviceChanged(newDevice, previousDevice,
+        if (audioNewDevice != null) {
+            mAudioManager.handleBluetoothActiveDeviceChanged(audioNewDevice, audioPreviousDevice,
                     BluetoothProfileConnectionInfo.createA2dpInfo(true, DEFAULT_VOLUME_LEVEL));
         } else {
-            mAudioManager.handleBluetoothActiveDeviceChanged(newDevice, previousDevice,
+            mAudioManager.handleBluetoothActiveDeviceChanged(audioNewDevice, audioPreviousDevice,
                     BluetoothProfileConnectionInfo.createA2dpInfo(true, -1));
         }
 
         // Broadcast ACTION_ACTIVE_DEVICE_CHANGED so that other system components
         // (e.g. Settings, AudioService) are notified of the new A2DP active device.
         Intent intent = new Intent(BluetoothA2dp.ACTION_ACTIVE_DEVICE_CHANGED);
-        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, newDevice);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, audioNewDevice);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
                 | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
         sendBroadcast(intent, BLUETOOTH_CONNECT);
-        if (DBG) Log.d(TAG, "Sent ACTION_ACTIVE_DEVICE_CHANGED intent for device: " + newDevice);
+        if (DBG) Log.d(TAG, "Sent ACTION_ACTIVE_DEVICE_CHANGED intent for device: "
+                + audioNewDevice);
+    }
+
+    /*
+     * Returns a BluetoothDevice wrapping the fixed placeholder address used for all
+     * audio-framework interactions (see DUMMY_AUDIO_DEVICE_ADDRESS).  Constructing this
+     * from a raw address requires no active BT connection and works even before/after
+     * a BT process crash, since it is just a value object.
+     */
+    private static BluetoothDevice getDummyAudioDevice() {
+        return BluetoothAdapter.getDefaultAdapter().getRemoteDevice(DUMMY_AUDIO_DEVICE_ADDRESS);
     }
 
     /*

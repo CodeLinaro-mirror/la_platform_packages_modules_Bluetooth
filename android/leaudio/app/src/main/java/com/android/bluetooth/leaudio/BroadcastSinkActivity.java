@@ -428,6 +428,18 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 mStopSearchButton.setEnabled(false);
             } else {
                 mStartSearchButton.setEnabled(true);
+                // Service just connected — re-read PGP FW capability now that the
+                // BluetoothLeBroadcastSink proxy is bound. setupViewModel() may have
+                // read it before the proxy was available (returning -1/0 on BT restart).
+                int freshCap = mViewModel.getEnhancedBroadcastSinkCap();
+                if (freshCap > 0 && freshCap != mPgpSinkCap) {
+                    mPgpSinkCap = freshCap;
+                    Log.i(TAG, "PGP sink capability refreshed after service connect: 0x"
+                            + Integer.toHexString(mPgpSinkCap)
+                            + " [Terminate=" + ((mPgpSinkCap & 0x01) != 0 ? "Y" : "N")
+                            + ", Remove=" + ((mPgpSinkCap & 0x02) != 0 ? "Y" : "N") + "]");
+                    refreshTerminateButtonVisibility();
+                }
             }
         });
 

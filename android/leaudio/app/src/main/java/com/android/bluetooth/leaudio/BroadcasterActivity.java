@@ -129,6 +129,13 @@ public class BroadcasterActivity extends AppCompatActivity {
     private AudioManager mAudioManager;
     /** Reference to the currently visible broadcast-info dialog (for in-place refresh). */
     private AlertDialog mCurrentInfoDialog = null;
+    /** Reference to the currently visible PGP-terminate-request dialog.  Bit10 in the DBIG
+     *  status is a level bit that FW keeps re-asserting on subsequent status reports for the
+     *  same outstanding request (not an edge-triggered "new request" signal), so without this
+     *  guard every re-assertion after the user already pressed Accept/Reject would pop up a
+     *  brand new dialog, making it look like the previous one was never dismissed. */
+    private AlertDialog mTerminateRequestDialog = null;
+    private int mTerminateRequestBroadcastId = -1;
 
     private final BroadcastReceiver mDbigStatusReceiver =
             new BroadcastReceiver() {
@@ -213,13 +220,29 @@ public class BroadcasterActivity extends AppCompatActivity {
                             Log.w(TAG, "bit10 terminate request but not enhanced broadcast — ignoring");
                         } else {
                             final int activeBroadcastId = mStreamingBroadcastId;
-                            if (activeBroadcastId >= 0) {
-                                runOnUiThread(() -> showTerminateRequestDialog(activeBroadcastId));
-                            } else {
+                            if (activeBroadcastId < 0) {
                                 Log.w(TAG, "Terminate request but no active broadcast — ignoring");
+                            } else if (mTerminateRequestDialog != null
+                                    && mTerminateRequestDialog.isShowing()
+                                    && mTerminateRequestBroadcastId == activeBroadcastId) {
+                                // Bit10 is a level bit — FW keeps re-asserting it in subsequent
+                                // status reports for the same outstanding request until it is
+                                // actually cleared. Don't stack a duplicate dialog on top of the
+                                // one already awaiting the user's Accept/Reject decision.
+                                Log.d(TAG, "Terminate request dialog already showing for "
+                                        + "broadcastId=" + activeBroadcastId + " — ignoring re-assert");
+                            } else {
+                                runOnUiThread(() -> showTerminateRequestDialog(activeBroadcastId));
                             }
                         }
                     }
+                    // NOTE: bit10 clearing on its own must NOT dismiss mTerminateRequestDialog.
+                    // FW re-asserts/clears bit10 rapidly across consecutive status reports
+                    // (observed clearing within ~15ms of being set) independent of whether the
+                    // user has actually responded yet, so treating a bare bit10-clear as
+                    // "request withdrawn" would auto-dismiss the dialog before the user ever
+                    // gets a chance to see or answer it. The dialog is dismissed only by the
+                    // user's own Accept/Reject action in showTerminateRequestDialog().
 
                     // bit0 (0x0001) - at least one BIS is AVAILABLE
                     // bit1 (0x0002) - a BIS is OCCUPIED by the LOCAL device
@@ -1502,7 +1525,8 @@ public class BroadcasterActivity extends AppCompatActivity {
      */
     private void showTerminateRequestDialog(int broadcastId) {
         Log.i(TAG, "showTerminateRequestDialog: broadcastId=" + broadcastId);
-        new AlertDialog.Builder(this)
+        mTerminateRequestBroadcastId = broadcastId;
+        mTerminateRequestDialog = new AlertDialog.Builder(this)
                 .setTitle("PGP Requesting DBIG Termination")
                 .setMessage("A device in the DBIG group is requesting to terminate the entire "
                         + "DBIG (broadcast ID " + broadcastId + ").\n\n"
@@ -1513,12 +1537,16 @@ public class BroadcasterActivity extends AppCompatActivity {
                             + broadcastId);
                     mViewModel.acceptTerminateDbig(broadcastId);
                     Toast.makeText(this, "Terminating DBIG…", Toast.LENGTH_SHORT).show();
+                    mTerminateRequestDialog = null;
+                    mTerminateRequestBroadcastId = -1;
                 })
                 .setNegativeButton("Reject", (dialog, which) -> {
                     Log.i(TAG, "PGO rejected terminate request — sending TExitDbig(REJECT) for "
                             + broadcastId);
                     mViewModel.rejectTerminateDbig(broadcastId);
                     Toast.makeText(this, "Terminate request rejected", Toast.LENGTH_SHORT).show();
+                    mTerminateRequestDialog = null;
+                    mTerminateRequestBroadcastId = -1;
                 })
                 .setCancelable(false)
                 .show();

@@ -1688,6 +1688,7 @@ public class BluetoothProxy {
 
     public boolean setAttributesForSink(int devId, byte[] name) {
         if (mBluetoothLeBroadcastSink == null) return false;
+        if (name == null) return false;
         mBluetoothLeBroadcastSink.setAttributes(devId, name);
         return true;
     }

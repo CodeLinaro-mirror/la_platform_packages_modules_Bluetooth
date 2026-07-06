@@ -670,7 +670,11 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     log::info("broadcast_id=0x{:x}, dbig_handle={}, status=0x{:02x}, reason=0x{:02x}",
               GetBroadcastId(), dbig_handle, status, reason);
 
-    if (big_sync_info_.has_value() && big_sync_info_->big_handle == dbig_handle) {
+    if (status == 0 && big_sync_info_.has_value() && big_sync_info_->big_handle == dbig_handle) {
+      /* Only clear on success (status=0x00). If PGO rejected the TExitDbig
+       * (status!=0, e.g. 0x0E), nothing was actually torn down — the BIG is still
+       * alive, so big_sync_info_ must be preserved for subsequent TX/RX suspend
+       * teardown to find the real BIS handles. */
       big_sync_info_ = std::nullopt;
     }
 
@@ -716,9 +720,42 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
         SetState(SinkState::IDLE);
         if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
       }
-    } else {
-      log::warn("broadcast_id=0x{:x}, TExitDbig complete in unexpected state={}",
+    } else if ((GetState() == SinkState::BIG_SYNCED || GetState() == SinkState::BIG_SYNCING) &&
+               status == 0) {
+      /* PGP-initiated terminate accepted by PGO (status=0x00 success): FW terminated
+       * the BIG/DBIG remotely and already tore down both TX and RX ISO paths on its
+       * own — no local DISABLING/STOPPING teardown message was ever sent, so the
+       * state machine is still sitting in BIG_SYNCED/BIG_SYNCING when this completion
+       * arrives.  Must still transition state here; otherwise this source is left
+       * permanently reporting BIG_SYNCED/BIG_SYNCING with no big_sync_info_, which
+       * causes TerminateDbig()'s "find the active enhanced source" lookup to keep
+       * matching this stale entry instead of a subsequently-joined source.
+       *
+       * If status != 0 (e.g. 0x0E), PGO rejected the terminate request — the BIG is
+       * still alive and nothing was torn down, so this branch must NOT run; fall
+       * through to the unhandled-state warning below and leave state/teardown
+       * bookkeeping untouched. */
+      log::info("broadcast_id=0x{:x}, TExitDbig complete ({}, PGP-initiated terminate)",
                 GetBroadcastId(), SinkStateToString(GetState()));
+      enhanced_iso_phase_ = EnhancedIsoPhase::IDLE;
+      teardown_bis_handles_.clear();
+      enhanced_iso_setup_index_ = 0;
+      tx_paths_removed_ = false;
+      rx_paths_removed_ = false;
+      pending_rx_teardown_ = false;
+      pending_tx_teardown_ = false;
+      if (pa_sync_info_.has_value()) {
+        log::info("broadcast_id=0x{:x}, TExitDbig complete → PA_SYNCED", GetBroadcastId());
+        SetState(SinkState::PA_SYNCED);
+      } else {
+        log::info("broadcast_id=0x{:x}, TExitDbig complete, PA sync gone → IDLE",
+                  GetBroadcastId());
+        SetState(SinkState::IDLE);
+      }
+      if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
+    } else {
+      log::warn("broadcast_id=0x{:x}, TExitDbig complete in unexpected state={} (status=0x{:02x})",
+                GetBroadcastId(), SinkStateToString(GetState()), status);
     }
   }
 

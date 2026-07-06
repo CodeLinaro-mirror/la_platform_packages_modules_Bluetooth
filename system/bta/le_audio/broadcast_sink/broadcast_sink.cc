@@ -634,12 +634,18 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
   void TerminateDbig() override {
     log::info("TerminateDbig: PGP requesting to terminate DBIG (spec §5.3)");
 
-    /* Only one enhanced source is active at a time — find it. */
+    /* Only one enhanced source is active at a time — find it.  Require an actual
+     * BigSyncInfo, not just a BIG_SYNCED/BIG_SYNCING state label: a source whose
+     * DBIG was already torn down but whose state machine did not transition out of
+     * BIG_SYNCED/BIG_SYNCING (state-machine desync) would otherwise be selected here
+     * and shadow the real active source, causing this request to fail against stale
+     * state instead of ever reaching the currently-streaming source. */
     BroadcastId broadcast_id = bluetooth::le_audio::kBroadcastIdInvalid;
     for (auto& kv : tracked_sources_) {
       if (kv.second.state_machine && kv.second.state_machine->IsEnhanced()) {
         auto s = kv.second.state_machine->GetState();
-        if (s == SinkState::BIG_SYNCED || s == SinkState::BIG_SYNCING) {
+        if ((s == SinkState::BIG_SYNCED || s == SinkState::BIG_SYNCING) &&
+            kv.second.state_machine->GetBigSyncInfo().has_value()) {
           broadcast_id = kv.first;
           break;
         }

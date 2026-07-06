@@ -335,10 +335,13 @@ public class LeAudioService extends ProfileService {
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
                 if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-                    int pgoCap = broadcastNativeInterface.readSupportedStates();
-                    Log.i(TAG, "PGO FW capability: 0x" + Integer.toHexString(pgoCap)
-                            + " [Terminate=" + ((pgoCap & 0x01) != 0 ? "supported" : "not_supported")
-                            + ", Remove=" + ((pgoCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+                    final LeAudioBroadcasterNativeInterface ni = broadcastNativeInterface;
+                    mHandler.postDelayed(() -> {
+                        int pgoCap = ni.readSupportedStates();
+                        Log.i(TAG, "PGO FW capability: 0x" + Integer.toHexString(pgoCap)
+                                + " [Terminate=" + ((pgoCap & 0x01) != 0 ? "supported" : "not_supported")
+                                + ", Remove=" + ((pgoCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+                    }, 1200);
                 }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
 
@@ -357,10 +360,13 @@ public class LeAudioService extends ProfileService {
                         requireNonNull(LeAudioBroadcasterNativeInterface.getInstance());
                 broadcastNativeInterface.init();
                 if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)) {
-                    int pgoCap2 = broadcastNativeInterface.readSupportedStates();
-                    Log.i(TAG, "PGO FW capability: 0x" + Integer.toHexString(pgoCap2)
-                            + " [Terminate=" + ((pgoCap2 & 0x01) != 0 ? "supported" : "not_supported")
-                            + ", Remove=" + ((pgoCap2 & 0x02) != 0 ? "supported" : "not_supported") + "]");
+                    final LeAudioBroadcasterNativeInterface ni2 = broadcastNativeInterface;
+                    mHandler.postDelayed(() -> {
+                        int pgoCap2 = ni2.readSupportedStates();
+                        Log.i(TAG, "PGO FW capability: 0x" + Integer.toHexString(pgoCap2)
+                                + " [Terminate=" + ((pgoCap2 & 0x01) != 0 ? "supported" : "not_supported")
+                                + ", Remove=" + ((pgoCap2 & 0x02) != 0 ? "supported" : "not_supported") + "]");
+                    }, 1200);
                 }
                 mLeAudioBroadcasterNativeInterface = Optional.of(broadcastNativeInterface);
                 mTmapRoleMask =
@@ -417,6 +423,25 @@ public class LeAudioService extends ProfileService {
             mBroadcastIdPendingStart = Optional.empty();
             mBroadcastIdPendingStop = Optional.empty();
             mBroadcastIdDeactivatedForUnicastTransition = Optional.empty();
+            // Force-clear any stale AudioDeviceInventory entry left behind by an unclean
+            // shutdown (BT process crash/kill).  The enhanced broadcast always uses the same
+            // fixed placeholder address FF:FF:FF:FF:FF:FF, so this can be issued
+            // unconditionally — no need to have persisted the real device across process
+            // death.  Harmless no-op if AudioService's inventory has no matching entry.
+            //
+            // Must run AFTER MSG_ACHAT_STOP's achat_rx/tx_enable=false have actually executed
+            // on mAchatHandlerThread — not just after they've been posted.  sendEmptyMessage()
+            // returns immediately, so this is posted as a follow-up message on the same
+            // handler to get the FIFO ordering guarantee.  Clearing the audio device first
+            // would risk AudioPolicyManager tearing down the device/stream context that
+            // BTAurachat's RX/TX-stop path may still need.
+            Log.d(TAG, "Duplex broadcast mode: posting stale audio device clear after MSG_ACHAT_STOP");
+            mAchatHandler.post(() -> {
+                BluetoothDevice dummyDevice = mAdapterService.getDeviceFromByte(
+                        Utils.getBytesFromAddress("FF:FF:FF:FF:FF:FF"));
+                Log.d(TAG, "Duplex broadcast mode: clearing stale audio active device entry");
+                updateBroadcastActiveDevice(null, dummyDevice, true, true);
+            });
             Log.d(TAG, "Duplex broadcast mode: enhanced broadcast state reset complete");
 
             // Initialize AM voice-call volume range once so amToHfVol() can map correctly.
@@ -886,6 +911,22 @@ public class LeAudioService extends ProfileService {
         mHasFallback = false;
         mPendingEnhancedBroadcast = false;
         removeActiveDevice(false);
+
+        // Notify AudioManager the enhanced broadcast device is going inactive so its
+        // AudioDeviceInventory drops the stale entry.  Without this, the fixed placeholder
+        // A2DP address used for the enhanced broadcast (FF:FF:FF:FF:FF:FF) stays marked
+        // "available" across a BT toggle (AudioService/system_server never restarts), so the
+        // next handleBluetoothActiveDeviceChanged() for the same address after BT comes back
+        // on is a no-op — onAudioDevicesAdded/MSG_ACHAT_START never fire, and the next
+        // enhanced broadcast never progresses past BROADCAST_STATE_PAUSED.
+        // Guarded on the duplex broadcast property so unicast / standard broadcast sessions
+        // are never affected.
+        if (SystemProperties.getBoolean("persist.vendor.qcom.bluetooth.enable_ba_duplex", false)
+                && mActiveBroadcastAudioDevice != null) {
+            Log.d(TAG, "cleanup: clearing stale enhanced broadcast audio device: "
+                    + mActiveBroadcastAudioDevice);
+            updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true, true);
+        }
 
         if (mTmapGattServer == null) {
             Log.w(TAG, "TMAP GATT server should never be null before stop() is called");
@@ -2169,6 +2210,10 @@ public class LeAudioService extends ProfileService {
      */
     public void setAttributes(int devId, byte[] name) {
         Log.d(TAG, "setAttributes: devId=" + devId);
+        if (name == null) {
+            Log.d(TAG, "setAttributes: name is null, ignoring request");
+            return;
+        }
         if (!mLeAudioBroadcasterNativeInterface.isPresent()) {
             Log.w(TAG, "setAttributes: Native interface not available.");
             return;
@@ -2180,9 +2225,7 @@ public class LeAudioService extends ProfileService {
 
         // Ensure name is exactly 10 octets
         byte[] nameBytes = new byte[10];
-        if (name != null) {
-            System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
-        }
+        System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
         mLeAudioBroadcasterNativeInterface.get().setAttributes(devIdBytes, nameBytes);
     }
 
