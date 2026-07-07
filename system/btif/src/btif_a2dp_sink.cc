@@ -772,6 +772,14 @@ static void btif_a2dp_sink_set_focus_state_event(btif_a2dp_sink_focus_state_t st
   if (btif_a2dp_sink_cb.rx_focus_state == BTIF_A2DP_SINK_FOCUS_NOT_GRANTED) {
     fixed_queue_flush(btif_a2dp_sink_cb.rx_audio_queue, osi_free);
     btif_a2dp_sink_cb.rx_flush = true;
+    log::debug("re-init decoder to clear the buffer");
+    if (btif_a2dp_sink_cb.decoder_interface &&
+      (btif_a2dp_sink_cb.decoder_interface->decoder_init)) {
+      if (!btif_a2dp_sink_cb.decoder_interface->decoder_init(
+              btif_a2dp_sink_on_decode_complete)) {
+          log::error("failed to initialize decoder");
+      }
+    }
   } else if (btif_a2dp_sink_cb.rx_focus_state == BTIF_A2DP_SINK_FOCUS_GRANTED) {
     btif_a2dp_sink_cb.rx_flush = false;
   }
