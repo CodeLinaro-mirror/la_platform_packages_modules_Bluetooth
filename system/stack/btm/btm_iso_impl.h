@@ -1263,7 +1263,17 @@ struct iso_impl {
       texit_dbig_cmpl_cb_ = nullptr;
     }
 
-    if (status == HCI_SUCCESS) {
+    /* status==HCI_SUCCESS only means the HCI_VS_LE_Texit_DBIG command itself was
+     * accepted by the controller — it does NOT mean the DBIG/BIG was torn down.
+     * That is only true when the mode we actually sent was TERMINATE or EXIT.
+     * For REJECT_TERMINATE the BIG/BIS stay alive on the air, so erasing the BIS
+     * map here would desync host bookkeeping from the still-live ISO connections
+     * and crash (log::assert_that) the next time a real teardown looks them up. */
+    bool big_actually_terminated = (status == HCI_SUCCESS) &&
+            (last_texit_mode_ == HCI_TEXIT_MODE_TERMINATE ||
+             last_texit_mode_ == HCI_TEXIT_MODE_EXIT);
+
+    if (big_actually_terminated) {
       // Clean up BIS entries for this DBIG - similar to process_big_sync_lost_pkt
       log::info("DBIG TExitDbig successful for dbig_handle: {}, cleaning up BIS entries", dbig_handle);
       bool is_known_handle = false;
@@ -1287,6 +1297,10 @@ struct iso_impl {
       for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
         callbacks(false);  // Notify broadcaster.cc that ISO traffic stopped
       }
+    } else if (status == HCI_SUCCESS) {
+      log::info("DBIG TExitDbig command succeeded but mode=0x{:02x} did not terminate the "
+                "BIG (e.g. REJECT_TERMINATE) — BIS entries for dbig_handle: {} left intact",
+                last_texit_mode_, dbig_handle);
     } else {
       log::error("DBIG TExitDbig failed, status: {}, dbig_handle: {}", status, dbig_handle);
     }
@@ -1308,6 +1322,7 @@ struct iso_impl {
               params.dbig_handle, params.texit_mode, params.reason);
 
     texit_dbig_cmpl_cb_ = params.p_cb;
+    last_texit_mode_ = params.texit_mode;
 
     btsnd_hcic_ble_texit_dbig(params.dbig_handle, params.texit_mode, params.reason,
                                base::BindRepeating([](uint8_t*, uint16_t) {}));
@@ -1739,6 +1754,12 @@ struct iso_impl {
   dbig_set_devid_cmpl_cb* set_devid_cmpl_cb_ = nullptr;
   dbig_remove_device_cmpl_cb* remove_device_dbig_cmpl_cb_ = nullptr;
   dbig_create_params last_dbig_params_ = {};
+  /* texit_mode from the most recently sent HCI_VS_LE_Texit_DBIG command. HCI_SUCCESS on
+   * the TExitDbig complete event only means the command itself was accepted by the
+   * controller — it does NOT mean the DBIG/BIG was actually torn down. That is only true
+   * for TERMINATE/EXIT modes; for REJECT_TERMINATE the BIG stays alive and the BIS ISO
+   * connections are still in use, so on_texit_dbig_event() must not erase them. */
+  uint8_t last_texit_mode_ = HCI_TEXIT_MODE_TERMINATE;
 
   std::atomic<uint16_t> broadcast_states_{0};
   /** True while a HCI_VS_LE_READ_SUPPORTED_STATES command is in-flight.
