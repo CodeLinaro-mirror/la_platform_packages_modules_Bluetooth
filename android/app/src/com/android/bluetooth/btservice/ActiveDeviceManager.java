@@ -1807,11 +1807,22 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                         Log.d(TAG, "New LeAudioActiveDevice is " + mLeAudioActiveDevice);
                         return true;
                     }
-                    Log.i(
-                            TAG,
-                            "setLeAudioActiveDevice: New LeAudioDevice is a part of an active"
-                                    + " group");
-                    return true;
+                    /* Guard against stale mLeAudioActiveDevice: verify the group is
+                     * actually active before skipping setActiveDevice(). A stale reference
+                     * from a session where GROUP_STATUS_ACTIVE was never received satisfies
+                     * the lead-device equality check above but the group remains inactive,
+                     * preventing setActiveGroupWithDevice / groupSetActiveNative from ever
+                     * running and leaving getActiveDevices as Lead[null]/member_1[null]. */
+                    int groupId = leAudio.get().getGroupId(device);
+                    boolean groupIsActive = (groupId != android.bluetooth.IBluetoothLeAudio.LE_AUDIO_GROUP_ID_INVALID)
+                            && (groupId == leAudio.get().getActiveGroupId());
+                    if (groupIsActive) {
+                        Log.d(TAG, "New LeAudioDevice is a part of an active group");
+                        return true;
+                    }
+                    Log.w(TAG, "Lead device is set but group " + groupId
+                            + " is not active — stale mLeAudioActiveDevice reference, "
+                            + "proceeding with full group activation");
                 }
                 success = leAudio.get().setActiveDevice(device);
             }
