@@ -1334,6 +1334,15 @@ static void l2c_csm_open(tL2C_CCB* p_ccb, tL2CEVT event, void* p_data) {
   uint16_t credit = 0;
   tL2CAP_LE_CFG_INFO* p_le_cfg = (tL2CAP_LE_CFG_INFO*)p_data;
 
+  if (p_ccb->p_rcb == NULL) {
+    log::error(
+        "LCID: 0x{:04x}  st: OPEN  evt: {} p_rcb == NULL, rcid: 0x{:04x}, chnl_state: {} "
+        "- possible RCB/CCB lifecycle mismatch or stale CCB",
+        p_ccb->local_cid, l2c_csm_get_event_name(event), p_ccb->remote_cid,
+        channel_state_text(p_ccb->chnl_state));
+    return;
+  }
+
   log::verbose("LCID: 0x{:04x}  st: OPEN  evt: {} psm: {}", p_ccb->local_cid,
                l2c_csm_get_event_name(event), psm_to_text(p_ccb->p_rcb->psm));
 
