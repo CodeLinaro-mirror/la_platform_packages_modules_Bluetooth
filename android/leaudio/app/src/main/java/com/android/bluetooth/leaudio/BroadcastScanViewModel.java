@@ -183,4 +183,8 @@ public class BroadcastScanViewModel extends AndroidViewModel {
             mBluetooth.scanForBroadcasts(mScanDelegatorDevice, true);
         }
     }
+
+    public boolean setAchatAttributes(int devId, byte[] name) {
+        return mBluetooth.setAchatAttributesForSink(devId, name);
+    }
 }
