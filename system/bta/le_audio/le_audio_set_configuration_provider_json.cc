@@ -415,7 +415,7 @@ private:
     types::BidirectionalPair<std::vector<AseConfiguration>> subconfigs;
     uint8_t packing_type = bluetooth::hci::kIsoCigPackingSequential;
 
-    if (android::sysprop::bluetooth::LeAudio::iso_interleaved_packing_enabled().value_or(false)) {
+    if (android::sysprop::bluetooth::LeAudio::iso_interleaved_packing_enabled().value_or(true)) {
       log::info("Switching to default interleaved packing for CIG.");
       packing_type = bluetooth::hci::kIsoCigPackingInterleaved;
     }

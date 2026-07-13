@@ -51,6 +51,9 @@
    /** Set VA name */
    virtual void SetVaName(std::string va_name) = 0;
 
+   /** Reject VA session */
+   virtual void RejectVaSession(const RawAddress& bd_addr) = 0;
+
    /** Closes the interface */
    virtual void Cleanup(void) = 0;
  };

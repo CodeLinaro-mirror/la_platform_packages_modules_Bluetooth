@@ -24,6 +24,7 @@ import static java.util.Objects.requireNonNullElseGet;
 import android.annotation.NonNull;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothUtils;
 import android.content.BroadcastReceiver;
@@ -174,6 +175,7 @@ public class AvrcpTargetService extends ProfileService {
         IntentFilter filter = new IntentFilter();
         filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY);
         filter.addAction(AudioManager.ACTION_VOLUME_CHANGED);
+        filter.addAction(BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED);
         registerReceiver(mReceiver, filter);
     }
 
@@ -220,6 +222,24 @@ public class AvrcpTargetService extends ProfileService {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
+            if (action.equals(BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED)) {
+                int btState =
+                        intent.getIntExtra(
+                                BluetoothHeadset.EXTRA_STATE,
+                                BluetoothHeadset.STATE_AUDIO_DISCONNECTED);
+                Log.i(TAG, "receiveBtEvent ACTION_AUDIO_STATE_CHANGED: " + btState);
+                if (btState == BluetoothHeadset.STATE_AUDIO_DISCONNECTED) {
+                    final var headset = getAdapterService().getHeadsetService();
+                    if (headset.isPresent()
+                            && !headset.get().isInCall()
+                            && !headset.get().isRinging()
+                            && headset.get().getSystemInterface() != null
+                            && !headset.get().getSystemInterface().isScoManagedByAudioEnabled()) {
+                        Log.i(TAG, "SCO disconnected and call state is idle, update playback status");
+                        mNativeInterface.sendMediaUpdate(false, true, false);
+                    }
+                }
+            }
             if (!action.equals(AudioManager.ACTION_VOLUME_CHANGED)) {
                 return;
             }

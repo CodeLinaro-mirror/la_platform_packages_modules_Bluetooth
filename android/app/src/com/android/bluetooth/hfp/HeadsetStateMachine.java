@@ -414,6 +414,14 @@ class HeadsetStateMachine extends StateMachine {
         // Should not be called from enter() method
         void broadcastConnectionState(BluetoothDevice device, int fromState, int toState) {
             stateLogD("broadcastConnectionState " + device + ": " + fromState + "->" + toState);
+            if (mHeadsetService == null) {
+                Log.e(TAG, "HeadsetService is null");
+                return;
+            }
+            if (mHeadsetService.isVoipLeaWarEnabled()) {
+                mHeadsetService.updateConnState(device, toState);
+                return;
+            }
             mHeadsetService.onConnectionStateChangedFromStateMachine(device, fromState, toState);
             Intent intent = new Intent(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
             intent.putExtra(BluetoothProfile.EXTRA_PREVIOUS_STATE, fromState);

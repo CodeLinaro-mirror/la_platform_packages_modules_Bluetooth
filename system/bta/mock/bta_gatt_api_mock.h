@@ -198,6 +198,8 @@ public:
   virtual tGATT_STATUS HandleValueIndication(uint16_t /* conn_id */, uint16_t /* attr_id */,
                                              std::vector<uint8_t> /* value */,
                                              bool /* need_confirm */) = 0;
+  virtual tGATT_STATUS HandleValueNotification(uint16_t /* conn_id */, uint16_t /* attr_id */,
+                                               std::vector<uint8_t> /* value */) = 0;
   virtual tGATT_STATUS HandleMultipleValueNotification(
           tCONN_ID /* conn_id */,
           const std::vector<tGATT_VALUE>& /* notifications */) = 0;
@@ -221,6 +223,8 @@ public:
   MOCK_METHOD(bool, DeleteService, (tGATT_IF server_if, uint16_t service_id));
   MOCK_METHOD(tGATT_STATUS, HandleValueIndication,
               (uint16_t conn_id, uint16_t attr_id, std::vector<uint8_t> value, bool need_confirm));
+  MOCK_METHOD(tGATT_STATUS, HandleValueNotification,
+              (uint16_t conn_id, uint16_t attr_id, std::vector<uint8_t> value));
   MOCK_METHOD(tGATT_STATUS, HandleMultipleValueNotification,
               (tCONN_ID conn_id, const std::vector<tGATT_VALUE>& notifications));
   MOCK_METHOD(void, SendRsp,

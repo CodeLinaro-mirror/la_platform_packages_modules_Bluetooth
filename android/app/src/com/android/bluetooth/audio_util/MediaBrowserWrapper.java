@@ -26,6 +26,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.android.bluetooth.R;
+import com.android.bluetooth.Utils;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -390,6 +391,18 @@ class MediaBrowserWrapper {
                     }
                     browsableContent.add(new ListItem(data));
                 }
+            }
+
+            /*
+             * Youtube music is not loading the empty folders as children of any root.
+             * To avoid that, add an empty folder for AVRCP/TG/MCN/CB/BI-02-C.
+             * Also, in IXIT, put this as TSPX_empty_folder - "\Songs"
+             */
+            if (Utils.isPtsTestModeAddEmptyFolder() && browsableContent.size() == 3) {
+                Folder f = new Folder("dummyID", false, "Songs",
+                        (int) MediaDescription.BT_FOLDER_TYPE_MIXED);
+                browsableContent.add(new ListItem(f));
+                Log.d(TAG, "onChildrenLoaded: Add empty folder");
             }
 
             mRunHandler.post(() -> executeCallbacks(parentId, browsableContent));

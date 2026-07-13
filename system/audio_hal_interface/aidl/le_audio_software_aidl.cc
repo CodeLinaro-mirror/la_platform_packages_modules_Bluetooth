@@ -942,6 +942,7 @@ AudioConfiguration stream_config_to_hal_audio_config(
         LeAudioConfiguration ucast_config = {
                 .peerDelayUs = static_cast<int32_t>(peer_delay),
                 .leAudioCodecConfig = LeAudioCodecConfiguration(lc3_config)};
+        ucast_config.codecType = CodecType::LC3;
 
         for (auto& info : offload_config.stream_map) {
           ucast_config.streamMap.push_back({

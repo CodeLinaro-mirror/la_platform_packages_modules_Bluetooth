@@ -499,6 +499,10 @@ void bta_hh_connect_upgrade(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
   const tBTA_HH_API_CONN& api_conn = p_data->api_conn;
   if (api_conn.link_spec.transport != BT_TRANSPORT_LE || !api_conn.direct) {
     log::info("Already connecting to {}", api_conn.link_spec);
+    // Re-arm the background connection in case the device was removed from
+    // the accept list while the state machine was stuck in W4_CONN_ST (e.g.
+    // after a service-changed indication followed by an ACL timeout).
+    bta_hh_le_add_dev_bg_conn(p_cb);
     return;
   }
 

@@ -533,7 +533,12 @@ final class LeAudioStateMachine extends StateMachine {
                         + getConnectionStateName(prevState)
                         + "->"
                         + getConnectionStateName(newState));
-        mService.notifyConnectionStateChanged(mDevice, newState, prevState);
+        CallAudio callAudio = CallAudio.get();
+        boolean isVoIPWarEnabled = false;
+        if (callAudio != null) {
+            isVoIPWarEnabled = callAudio.isVoipLeaWarEnabled();
+        }
+        mService.notifyConnectionStateChanged(mDevice, newState, prevState, isVoIPWarEnabled);
     }
 
     private static String messageWhatToString(int what) {

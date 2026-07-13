@@ -270,7 +270,11 @@ static tGATT_STATUS read_attr_value(uint16_t handle, tGATT_VALUE* p_value, bool 
           if (btm_cb.encrypted_advertising_data_supported) {
             uint8_t* p_encr_material = p;
             uint8_t* p_temp = p_encr_material;
-
+            // PTS override: Check if authorization should be enforced for Encrypted Data Key Material
+            if (stack_config_get_interface()->get_pts_enable_authorization_encr_data_key()) {
+                log::info("PTS_EnableAuthorizationEncrDataKey is set, returning GATT_INSUF_AUTHORIZATION");
+                return GATT_INSUF_AUTHORIZATION;
+            }
             REVERSE_ARRAY_TO_STREAM(p_encr_material, attr_value.enc_key_material.session_key,
                                     ENC_KEY_LEN);
             REVERSE_ARRAY_TO_STREAM(p_encr_material, attr_value.enc_key_material.init_vector,
@@ -453,8 +457,7 @@ static void cl_op_cmpl(tGAP_CLCB& clcb, bool status, uint16_t len, uint8_t* p_na
   /* if no further activity is requested in callback, drop the link */
   if (clcb.connected) {
     if (btm_cb.encrypted_advertising_data_supported) {
-      if (!send_cl_request(clcb) &&
-          (clcb.enc_key_stage <= GAP_ENC_KEY_CONNECTING || !clcb.is_enc_key_info_in_progress)) {
+      if (!send_cl_request(clcb) && (clcb.enc_key_stage <= GAP_ENC_KEY_CONNECTING)) {
         log::debug(" Calling GATT Disconnect");
         GATT_Disconnect(clcb.conn_id);
         clcb_dealloc(clcb);
@@ -705,7 +708,8 @@ bool accept_client_operation(const RawAddress& peer_bda, uint16_t uuid, uint16_t
     p_clcb->connected = true;
   }
 
-  if (!stack::leConnectionConnect(gatt_if, p_clcb->bda, BLE_ADDR_PUBLIC, BTM_BLE_DIRECT_CONNECTION, 0, false, com::android::bluetooth::flags::gatt_conn_settings())) {
+  if (!stack::leConnectionConnect(gatt_if, p_clcb->bda, BLE_ADDR_PUBLIC, BTM_BLE_OPPORTUNISTIC,
+                                  0, false, com_android_bluetooth_flags_gatt_conn_settings())) {
     return false;
   }
 

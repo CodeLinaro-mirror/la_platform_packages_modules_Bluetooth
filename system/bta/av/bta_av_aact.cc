@@ -3272,7 +3272,11 @@ static void bta_av_vendor_offload_start_v2(tBTA_AV_SCB* p_scb, A2dpCodecConfigEx
 }
 
 void bta_av_vendor_offload_stop() {
-  if (!check_controller_support_offload_v2()) {
+  bool is_a2dp_offload_codec_extensibility_enabled_ =
+    osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_offload_codec_extensibility", true);
+
+  if (!check_controller_support_offload_v2() ||
+      !is_a2dp_offload_codec_extensibility_enabled_) {
     bta_qti_av_vendor_offload_stop();
     return;
   }
@@ -3498,7 +3502,11 @@ void bta_av_qti_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 void bta_av_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   tBTA_AV bta_av_data = {};
 
-  if (!check_controller_support_offload_v2()) {
+  bool is_a2dp_offload_codec_extensibility_enabled_ =
+    osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_offload_codec_extensibility", true);
+
+  if (!check_controller_support_offload_v2() ||
+      !is_a2dp_offload_codec_extensibility_enabled_) {
     bta_av_qti_offload_req(p_scb, p_data);
     return;
   }

@@ -525,6 +525,23 @@ struct btif_storage_update_csis_info {
 };
 extern struct btif_storage_update_csis_info btif_storage_update_csis_info;
 
+struct btif_storage_set_vap_server_data {
+  std::function<void(const RawAddress& addr, const std::vector<uint8_t>& data)> body{
+          [](const RawAddress& /* addr */, const std::vector<uint8_t>& /* data */) {}};
+  void operator()(const RawAddress& addr, const std::vector<uint8_t>& data) { body(addr, data); }
+};
+extern struct btif_storage_set_vap_server_data btif_storage_set_vap_server_data;
+
+struct btif_storage_get_vap_server_data {
+  static bool return_value;
+  std::function<bool(const RawAddress& addr, std::vector<uint8_t>& data)> body{
+          [](const RawAddress& /* addr */, std::vector<uint8_t>& /* data */) {
+            return return_value;
+          }};
+  bool operator()(const RawAddress& addr, std::vector<uint8_t>& data) { return body(addr, data); }
+};
+extern struct btif_storage_get_vap_server_data btif_storage_get_vap_server_data;
+
 }  // namespace btif_profile_storage
 }  // namespace mock
 }  // namespace test

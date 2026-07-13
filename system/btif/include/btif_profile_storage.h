@@ -143,6 +143,12 @@ void btif_storage_leaudio_clear_service_data(const RawAddress& address);
 /** Remove Le Audio device from the storage */
 void btif_storage_remove_leaudio(const RawAddress& address);
 
+/** Gets VAP Server CCC and values binary from NVRAM */
+bool btif_storage_get_vap_server_data(const RawAddress& address, std::vector<uint8_t>& data);
+
+/** Sets VAP Server CCC and values binary to NVRAM */
+void btif_storage_set_vap_server_data(const RawAddress& address, const std::vector<uint8_t>& data);
+
 /** Load bonded Le Audio devices */
 void btif_storage_load_bonded_leaudio(void);
 

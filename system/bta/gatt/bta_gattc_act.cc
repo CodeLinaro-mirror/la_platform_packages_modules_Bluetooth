@@ -853,7 +853,11 @@ static void bta_gattc_cfg_mtu_cmpl(tBTA_GATTC_CLCB* p_clcb, const tBTA_GATTC_OP_
   cb_data.cfg_mtu.status = p_data->status;
   cb_data.cfg_mtu.mtu = p_clcb->p_srcb->mtu;
 
-  (*p_clcb->p_rcb->p_cback)(BTA_GATTC_CFG_MTU_EVT, &cb_data);
+  if (p_clcb->p_rcb && p_clcb->p_rcb->p_cback) {
+    (*p_clcb->p_rcb->p_cback)(BTA_GATTC_CFG_MTU_EVT, &cb_data);
+  } else {
+    log::warn("p_rcb or p_cback is null, skipping MTU callback");
+  }
 }
 
 /** operation completed */

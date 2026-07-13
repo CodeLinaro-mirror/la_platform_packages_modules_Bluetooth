@@ -33,6 +33,7 @@
    virtual void Initialize(VapServerCallbacks* callbacks) = 0;
    virtual void SetCcid(int ccid) = 0;
    virtual void SetVaName(std::string va_name) = 0;
+   virtual void RejectVaSession(const RawAddress& bd_addr) = 0;
    virtual void NotifyVaSessionStarted(std::vector<RawAddress> devices, bool is_success) = 0;
    virtual void NotifyVaSessionStopped(std::vector<RawAddress> devices, bool is_success) = 0;
    virtual void DebugDump(int fd) = 0;

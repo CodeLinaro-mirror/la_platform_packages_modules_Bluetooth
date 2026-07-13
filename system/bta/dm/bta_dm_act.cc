@@ -1715,11 +1715,42 @@ void bta_dm_clear_filter_accept_list(void) {
  * Function         bta_dm_disconnect_all_acls
  *
  * Description      Disconnects all ACL connections.
+ *                  Aligned with bta_dm_disable_timer_cback: if the disable
+ *                  timer is already running (set by bta_dm_bredr_cleanup to
+ *                  allow RFCOMM graceful teardown), defer to it rather than
+ *                  sending HCI_Disconnect immediately.  Otherwise iterate the
+ *                  link-db and call btm_remove_acl() per link, which goes
+ *                  through the proper stack layers instead of bypassing them.
  *
  ******************************************************************************/
 void bta_dm_disconnect_all_acls(void) {
   log::verbose("bta_dm_disconnect_all_acls in bta_dm_act");
-  bluetooth::shim::BTM_DisconnectAllAcls();
+
+  /* If bta_dm_bredr_cleanup already armed the disable_timer, let it fire so
+   * that RFCOMM can complete its DISC/UA exchange before the ACL is torn
+   * down.  Forcing an immediate HCI_Disconnect here would race with the
+   * graceful RFCOMM teardown and produce RFC_MX_EVENT_DISC_IND instead of
+   * the expected UA response. */
+  if (alarm_is_scheduled(bta_dm_cb.disable_timer)) {
+    log::warn(
+        "bta_dm_disconnect_all_acls: disable_timer already scheduled "
+        "(bta_dm_bredr_cleanup pending) – deferring to graceful teardown");
+    return;
+  }
+
+  /* No pending graceful-teardown timer: disconnect every link the same way
+   * bta_dm_disable_timer_cback does (btm_remove_acl, not
+   * BTM_DisconnectAllAcls), so upper-layer protocols get a chance to clean
+   * up before the link goes away. */
+  uint8_t i;
+  log::warn("bta_dm_disconnect_all_acls: num acl links={} device count={}",
+            BTM_GetNumAclLinks(), bta_dm_cb.link_db.count);
+  if (BTM_GetNumAclLinks()) {
+    for (i = 0; i < bta_dm_cb.link_db.count; i++) {
+      btm_remove_acl(bta_dm_cb.link_db.links[i].addr,
+                     bta_dm_cb.link_db.links[i].transport);
+    }
+  }
 }
 
 /*******************************************************************************

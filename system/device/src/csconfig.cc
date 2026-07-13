@@ -86,11 +86,11 @@ static const tCS_CONFIG_STATIC cs_config_static_data[] = {
  */
 static const tCS_PROCEDURE_STATIC cs_procedure_static_data[] = {
     /* Procedure 0 (Frequency 0): MaxDuration=0x2710 (10000), min=1000ms, max=5000ms - LOW frequency */
-    {0x2710, 1000, 5000, 0, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255},
+    {0x2710, 1000, 5000, 5, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255},
     /* Procedure 1 (Frequency 1): MaxDuration=0x2710 (10000), min=500ms, max=1000ms - MEDIUM frequency */
-    {0x2710, 500, 1000, 0, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255},
+    {0x2710, 500, 1000, 5, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255},
     /* Procedure 2 (Frequency 2): MaxDuration=0x2710 (10000), min=150ms, max=500ms - HIGH frequency */
-    {0x2710, 150, 500, 0, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255}
+    {0x2710, 150, 500, 5, {0xE2, 0x04, 0x00}, {0x80, 0x84, 0x1E}, 1, 128, 255, 255}
 };
 
 
@@ -161,6 +161,16 @@ void InitializecsProcedureSettings(void) {
         proc.snr_control_reflector = static_data->snr_control_reflector;
 
         cs_procedure_settings.push_back(proc);
+    }
+
+    char max_proc_count_str[PROPERTY_VALUE_MAX];
+    if (osi_property_get("persist.bluetooth.bcs.max_proc_count", max_proc_count_str, "")) {
+        uint16_t override_count = atoi(max_proc_count_str);
+        log::info("persist.bluetooth.bcs.max_proc_count overriding max_proc_count to {}",
+                  override_count);
+        for (size_t i = 0; i < cs_procedure_settings.size(); i++) {
+            cs_procedure_settings[i].max_proc_count = override_count;
+        }
     }
 
     log::info("All CS Procedure Settings are parsed successfully\n");

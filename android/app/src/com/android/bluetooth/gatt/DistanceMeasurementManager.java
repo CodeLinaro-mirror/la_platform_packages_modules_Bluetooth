@@ -178,8 +178,11 @@ public class DistanceMeasurementManager {
 
     List<DistanceMeasurementMethod> getSupportedDistanceMeasurementMethods() {
         List<DistanceMeasurementMethod> methods = new ArrayList<>();
-        methods.add(
-                new DistanceMeasurementMethod.Builder(DISTANCE_MEASUREMENT_METHOD_RSSI).build());
+        if (mAdapterService.isLeBlePowerControlRequestSupported()) {
+            methods.add(
+                    new DistanceMeasurementMethod.Builder(DISTANCE_MEASUREMENT_METHOD_RSSI)
+                            .build());
+        }
         if (mAdapterService.isLeChannelSoundingSupported()) {
             methods.add(
                     new DistanceMeasurementMethod.Builder(

@@ -137,6 +137,7 @@ public class AdapterProperties {
     private boolean mIsLeConnectedIsochronousStreamPeripheralSupported;
     private boolean mIsLeIsochronousBroadcasterSupported;
     private boolean mIsLeChannelSoundingSupported;
+    private boolean mIsLeBlePowerControlRequestSupported;
 
     private int mNumberOfSupportedOffloadedLeCocSockets;
     private int mNumberOfSupportedOffloadedRfcommSockets;
@@ -304,6 +305,10 @@ public class AdapterProperties {
 
     boolean isLeChannelSoundingSupported() {
         return mIsLeChannelSoundingSupported;
+    }
+
+    boolean isLeBlePowerControlRequestSupported() {
+        return mIsLeBlePowerControlRequestSupported;
     }
 
     int getLeMaximumAdvertisingDataLength() {
@@ -785,6 +790,7 @@ public class AdapterProperties {
         mIsLeHighDataThroughputPhySupported = ((0xFF & ((int) val[31])) != 0);
         mIsLeConnectedIsochronousStreamPeripheralSupported = ((0xFF & ((int) val[32])) != 0);
         mIsLeBigSetChannelClassificationSupported = ((0xFF & ((int) val[33])) != 0);
+        mIsLeBlePowerControlRequestSupported = ((0xFF & ((int) val[34])) != 0);
 
         debugLog(
                 "BT_PROPERTY_LOCAL_LE_FEATURES: update from BT controller"
@@ -827,7 +833,9 @@ public class AdapterProperties {
                         + (", isLeHighDataThroughputPhySupported = "
                                 + mIsLeHighDataThroughputPhySupported)
                         + (", isLeBigSetChannelClassificationSupported = "
-                                + mIsLeBigSetChannelClassificationSupported));
+                                + mIsLeBigSetChannelClassificationSupported)
+                        + (", isLeBlePowerControlRequestSupported = "
+                                + mIsLeBlePowerControlRequestSupported));
         invalidateIsOffloadedFilteringSupportedCache();
     }
 

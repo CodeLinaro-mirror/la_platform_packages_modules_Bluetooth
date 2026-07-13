@@ -48,6 +48,10 @@ class VapServerServiceInterfaceImpl : public VapServerInterface, public VapServe
     bluetooth::vap::GetVapServer()->SetVaName(va_name);
   }
 
+  void RejectVaSession(const RawAddress& bd_addr) override {
+    bluetooth::vap::GetVapServer()->RejectVaSession(bd_addr);
+  }
+
   void Cleanup(void) override { bluetooth::vap::GetVapServer()->Cleanup(); }
 
   void OnInitialized() override {

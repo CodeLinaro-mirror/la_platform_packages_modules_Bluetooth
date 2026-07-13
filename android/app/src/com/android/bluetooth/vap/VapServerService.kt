@@ -184,23 +184,14 @@ constructor(
     fun onStartVaSession(device: BluetoothDevice) {
         Log.d(TAG, "start VA session by remote Headset:$device")
 
-        // Ensure the remote device is the active LE Audio device before activating VA
-        val leAudioService: LeAudioService? = adapterService.getLeAudioService().orElse(null)
-        if (leAudioService != null) {
-            val activeDevices: List<BluetoothDevice?> = leAudioService.getActiveDevices()
-            val isActive = activeDevices.contains(device)
-            if (!isActive) {
-                Log.d(TAG, "Device $device is not the active LE Audio device, setting it active")
-                leAudioService.setActiveDevice(device)
-            } else {
-                Log.d(TAG, "Device $device is already the active LE Audio device")
-            }
-        } else {
-            Log.w(TAG, "LeAudioService not available, skipping active device check for $device")
+        if (shouldRejectVaSession(device)) {
+            mNativeInterface.rejectVaSession(device)
+            return
         }
 
         if (!activateVoiceRecognition(device)) {
             Log.w(TAG, "start VA session by remote Headset: failed request from $device")
+            mNativeInterface.rejectVaSession(device)
         }
     }
 
@@ -214,6 +205,44 @@ constructor(
         if (!deactivateVoiceRecognition(device)) {
             Log.w(TAG, "stop VA session by remote Headset: failed request from $device")
         }
+    }
+
+    @VisibleForTesting
+    fun shouldRejectVaSession(device: BluetoothDevice): Boolean {
+        // HFP Parity: Reject VA requests if the user is currently on a phone call.
+        val telecomManager = getSystemService(android.telecom.TelecomManager::class.java)
+        if (telecomManager != null && telecomManager.isInCall) {
+            Log.w(TAG, "start VA session rejected: User is in an active phone call")
+            return true
+        }
+
+        val leAudioService = adapterService.getLeAudioService().orElse(null)
+        if (leAudioService == null) {
+            Log.e(TAG, "LeAudioService is not available, cannot process VA request for $device")
+            return true
+        }
+
+        val activeDevices = leAudioService.activeDevices
+        val isAlreadyActive =
+            activeDevices.contains(device) ||
+                (leAudioService.getGroupId(device) != BluetoothLeAudio.GROUP_ID_INVALID &&
+                    activeDevices.any {
+                        leAudioService.getGroupId(it) == leAudioService.getGroupId(device)
+                    })
+
+        if (!isAlreadyActive) {
+            Log.i(TAG, "Device $device is not the active LE Audio device. Setting it as active.")
+            val setActiveSuccess = leAudioService.setActiveDevice(device)
+            if (!setActiveSuccess) {
+                Log.w(
+                    TAG,
+                    "Failed to set $device as the active LE Audio device. Rejecting VA start.",
+                )
+                return true
+            }
+        }
+
+        return false
     }
 
     companion object {

@@ -157,3 +157,15 @@ std::optional<bool> btif_storage_get_remote_host_sc_support(const RawAddress& /*
 std::optional<bool> btif_storage_get_remote_controller_sc_support(const RawAddress& /* address */) {
   return true;
 }
+
+void btif_storage_set_vap_server_data(const RawAddress& address,
+                                      const std::vector<uint8_t>& data) {
+  log::assert_that(btif_storage_interface != nullptr, "Mock storage module not set!");
+  btif_storage_interface->SetVapServerData(address, data);
+}
+
+bool btif_storage_get_vap_server_data(const RawAddress& address,
+                                      std::vector<uint8_t>& data) {
+  log::assert_that(btif_storage_interface != nullptr, "Mock storage module not set!");
+  return btif_storage_interface->GetVapServerData(address, data);
+}

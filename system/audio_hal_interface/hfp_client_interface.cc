@@ -566,9 +566,9 @@ void HfpClientInterface::Offload::CancelStreamingRequest() {
       return;
     case aidl::hfp::HFP_CTRL_CMD_SUSPEND:
       log::info("suspends");
+      instance->ResetPendingCmd();
       aidl::hfp::HfpEncodingTransport::offloading_hal_interface->StreamSuspended(
               aidl::BluetoothAudioCtrlAck::SUCCESS_FINISHED);
-      instance->ResetPendingCmd();
       return;
     default:
       log::warn("Invalid state, {}", pending_cmd);

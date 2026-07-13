@@ -153,6 +153,7 @@ import com.android.bluetooth.hfp.HeadsetService;
 import com.android.bluetooth.hfpclient.HeadsetClientService;
 import com.android.bluetooth.hid.HidDeviceService;
 import com.android.bluetooth.hid.HidHostService;
+import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.le_audio.LeAudioBroadcast;
 import com.android.bluetooth.le_audio.LeAudioPeripheralService;
 import com.android.bluetooth.le_audio.LeAudioService;
@@ -386,6 +387,7 @@ public class AdapterService extends Service {
 
     private GattService mGattService;
     private ScanController mScanController;
+    private CallAudio mCallAudio;
 
     private volatile boolean mTestModeEnabled = false;
 
@@ -1103,6 +1105,7 @@ public class AdapterService extends Service {
 
         mActiveDeviceManager = new ActiveDeviceManager(this, mStorage);
         mActiveDeviceManager.start();
+        mCallAudio = CallAudio.get();
 
         mCompanionManager = new CompanionManager(this);
 
@@ -2420,6 +2423,20 @@ public class AdapterService extends Service {
      * @return a Bundle containing the preferred audio profiles for the device
      */
     public Bundle getPreferredAudioProfiles(BluetoothDevice device) {
+        if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
+            final var leAudioWar = getLeAudioService();
+            if (!isDualModeAudioEnabled()
+                    && leAudioWar.isPresent()
+                    && leAudioWar.get().isLeAudioDuplexSupported(device)
+                    && leAudioWar.get().getConnectionState(device) == STATE_CONNECTED) {
+                Bundle defaultPreferencesBundle = new Bundle();
+                Log.d(TAG, "getPreferredAudioProfiles: return LE_AUDIO profile while VOIP WAR enabled");
+                defaultPreferencesBundle.putInt(BluetoothAdapter.AUDIO_MODE_OUTPUT_ONLY, BluetoothProfile.LE_AUDIO);
+                defaultPreferencesBundle.putInt(BluetoothAdapter.AUDIO_MODE_DUPLEX, BluetoothProfile.LE_AUDIO);
+                return defaultPreferencesBundle;
+            }
+        }
+
         final var leAudio = getLeAudioService();
         if (!isDualModeAudioEnabled() || leAudio.isEmpty() || !isDualModeAudioSinkDevice(device)) {
             return Bundle.EMPTY;
@@ -3717,11 +3734,17 @@ public class AdapterService extends Service {
                     Log.e(TAG, "getActiveDevices: HeadsetService is null");
                     break;
                 }
-                BluetoothDevice device = headset.get().getActiveDevice();
+                BluetoothDevice device;
+                if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
+                    device = mCallAudio.getActiveDevice();
+                    Log.i(TAG, "getActiveDevices: CallAudio device: " + device);
+                } else {
+                    device = headset.get().getActiveDevice();
+                    Log.i(TAG, "getActiveDevices: Headset device: " + device);
+                }
                 if (device != null) {
                     activeDevices.add(device);
                 }
-                Log.i(TAG, "getActiveDevices: Headset device: " + device);
             }
             case BluetoothProfile.A2DP -> {
                 final var a2dp = getA2dpService();
@@ -4168,6 +4191,10 @@ public class AdapterService extends Service {
      */
     public boolean isLeChannelSoundingSupported() {
         return mAdapterProperties.isLeChannelSoundingSupported();
+    }
+
+    public boolean isLeBlePowerControlRequestSupported() {
+        return mAdapterProperties.isLeBlePowerControlRequestSupported();
     }
 
     /**

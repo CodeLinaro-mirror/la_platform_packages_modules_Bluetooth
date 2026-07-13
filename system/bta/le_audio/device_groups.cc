@@ -657,7 +657,7 @@ uint8_t LeAudioDeviceGroup::GetPacking(void) const {
     return stream_conf.conf->packing;
   }
 
-  if (android::sysprop::bluetooth::LeAudio::iso_interleaved_packing_enabled().value_or(false)) {
+  if (android::sysprop::bluetooth::LeAudio::iso_interleaved_packing_enabled().value_or(true)) {
     log::info("No stream configuration has been set, return Interleaved packing type");
     return bluetooth::hci::kIsoCigPackingInterleaved;
   }
@@ -1575,6 +1575,8 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConf
       return types::LeAudioConfigurationStrategy::RFU;
     }
 
+    bool mTmapPts =
+             osi_property_get_bool("persist.bluetooth.tmap.pts", false);
     /* Simple strategy picker */
     log::debug("Group {} size {}", group_id_, expected_group_size);
     if (expected_group_size > 1) {
@@ -1601,7 +1603,7 @@ types::LeAudioConfigurationStrategy LeAudioDeviceGroup::FindGroupStrategyForConf
                                      ? config_element->codec.GetChannelCountPerIsoStream()
                                      : 1;
     log::debug("max_channel_count {}", max_channel_count);
-    if (max_channel_count == 1) {
+    if (max_channel_count == 1 && !mTmapPts) {
       return types::LeAudioConfigurationStrategy::STEREO_TWO_CISES_PER_DEVICE;
     }
 
@@ -2280,7 +2282,19 @@ bool LeAudioDeviceGroup::IsAudioSetConfigurationSupported(
 
     // Use strategy for the whole group (not only the connected devices)
     auto required_snk_strategy = FindGroupStrategyForConfig(audio_set_conf);
-    auto const strategy = utils::GetStrategyForAseConfig(ase_confs, device_cnt);
+    auto strategy = utils::GetStrategyForAseConfig(ase_confs, device_cnt);
+
+    /* When the group-size flag is enabled, device_cnt above is forced to the
+     * desired group size, so GetStrategyForAseConfig can no longer reject a
+     * single-ASE config in a multi-device group (it used to return RFU). Re-add
+     * that rejection here, but gate it on the real connected device count so a
+     * single connected earbud (which legitimately uses a single-ASE config) is
+     * not affected. */
+    if (com_android_bluetooth_flags_leaudio_always_use_group_size_to_check_audio_config() &&
+        ase_cnt == 1 && NumOfAvailableForDirection(direction) > 1) {
+      log::debug("Ase count doesn't satisfy real device number");
+      strategy = types::LeAudioConfigurationStrategy::RFU;
+    }
 
     log::debug(
             "Number of devices: {}, number of cfg ASEs: {},  Max req ASE per device: {} "

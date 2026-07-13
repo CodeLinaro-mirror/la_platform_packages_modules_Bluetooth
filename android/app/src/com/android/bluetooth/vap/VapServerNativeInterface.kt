@@ -40,6 +40,10 @@ class VapServerNativeInterface(nativeCallback: VapServerNativeCallback) :
         setVaNameNative(vaName)
     }
 
+    fun rejectVaSession(device: BluetoothDevice) = rejectVaSessionNative(getByteAddress(device))
+
+    private fun getByteAddress(device: BluetoothDevice) = Util.getBytesFromAddress(device.address)
+
     // Native methods that call into the JNI interface
     private external fun initNative()
 
@@ -48,6 +52,8 @@ class VapServerNativeInterface(nativeCallback: VapServerNativeCallback) :
     private external fun cleanupNative()
 
     private external fun setVaNameNative(vaName: String?)
+
+    private external fun rejectVaSessionNative(address: ByteArray)
 
     companion object {
         private val TAG = VapServerNativeInterface::class.java.simpleName

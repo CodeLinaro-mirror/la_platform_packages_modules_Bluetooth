@@ -89,7 +89,7 @@ static const uint16_t bta_hh_uuid_to_rtp_type[BTA_LE_HID_RTP_UUID_MAX][2] = {
         {GATT_UUID_BATTERY_LEVEL, BTA_HH_RPTT_INPUT}};
 
 static void bta_hh_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data);
-static void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB* p_cb);
+void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB* p_cb);
 static void bta_hh_process_cache_rpt(tBTA_HH_DEV_CB* p_cb, tBTA_HH_RPT_CACHE_ENTRY* p_rpt_cache,
                                      uint8_t num_rpt);
 static bool bta_hh_le_iso_data_callback(const RawAddress& addr, uint16_t cis_conn_hdl,
@@ -2179,7 +2179,7 @@ void bta_hh_le_get_dscp_act(tBTA_HH_DEV_CB* p_cb) {
  * Returns          void
  *
  ******************************************************************************/
-static void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB* p_cb) {
+void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB* p_cb) {
   if (p_cb->in_bg_conn) {
     return;
   }

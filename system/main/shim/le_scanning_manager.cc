@@ -473,8 +473,10 @@ void BleScannerInterfaceImpl::SyncTxParameters(RawAddress addr, uint8_t mode, ui
 
 void BleScannerInterfaceImpl::RegisterCallbacks(ScanningCallbacks* callbacks) {
   log::info("in shim layer");
-  scanning_callbacks_ = callbacks;
-  RegisterCallbacksNative(callbacks, kScannerClientIdJni);
+  scanning_callbacks_ = (callbacks != nullptr) ? callbacks : default_scanning_callback;
+  if (callbacks != nullptr) {
+    RegisterCallbacksNative(callbacks, kScannerClientIdJni);
+  }
 }
 
 void BleScannerInterfaceImpl::RegisterCallbacksNative(ScanningCallbacks* callbacks,

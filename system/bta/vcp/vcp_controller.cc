@@ -1122,8 +1122,12 @@ public:
     for (const auto& addr : op->devices_) {
       bluetooth::log::warn("{},", addr);
     }
-    alarm_set_on_mloop(op->operation_timeout_, kOperationMonitorTimeoutMs,
-                       operation_timeout_callback, INT_TO_PTR(operation_id));
+
+    /* The remote did not notify Volume State after a successful Set Absolute
+     * Volume / (Un)Mute write. Drop the stuck head so subsequent volume
+     * operations are not blocked behind it, and continue the queue. */
+    ongoing_operations_.erase(op);
+    StartQueueOperation();
   }
 
   void StartQueueOperation(void) {

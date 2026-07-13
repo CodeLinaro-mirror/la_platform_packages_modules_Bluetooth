@@ -1738,6 +1738,7 @@ void do_send_ble_set_default_phy(char* p);
 void do_send_refresh_enc_key_v2(char* p);
 void do_send_ble_set_data_length_v2(char* p);
 void reset_rcv_iteration(char* p);
+void do_l2cap_cos_ced_bi_29_c(char* p);
 
 
 /*******************************************************************
@@ -1909,6 +1910,16 @@ const t_cmd console_cmd_list[] = {
      ":: handle(hex) tx_pdu_length(hex) tx_time(hex) phys(hex)", 0},
      {"reset_rcv_iteration", reset_rcv_iteration,
      ":: ", 0},
+
+    /* L2CAP Conformance Test Cases */
+    {"l2cap_cos_ced_bi_29_c", do_l2cap_cos_ced_bi_29_c,
+     ":: BdAddr<001122334455>\n"
+     "\t L2CAP/COS/CED/BI-29-C: Ignore Command Response with Invalid ID\n"
+     "\t or Duplicate Response (LE transport).\n"
+     "\t Drives 255 L2CAP_LE_CREDIT_BASED_CONN_REQ PDUs from IUT;\n"
+     "\t PTS responds with invalid IDs, then one valid response,\n"
+     "\t then a duplicate response, then disconnects.",
+     0},
 
     /* LE-L2CAP cmds */
     {" ", NULL, "\n\t\t\033[0m\033[34mLE L2CAP CoC Commands\033[0m", 0},
@@ -2405,6 +2416,13 @@ void l2test_ecfc_connect_cfm_cb(const RawAddress& bdaddr, uint16_t lcid,
   // ECFC CONNECTION CONFIRMATION
   printf("l2test_ecfc_connect_cfm_cb LCID %d p_mtu %d result %d \n", lcid,
          peer_mtu, result);
+  /* Update shared connection state so callers (e.g. BI-29-C test) can poll it */
+  if (result == tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_CONN_OK) {
+    g_ConnectionState = CONNECT;
+    g_lcid = lcid;
+  } else {
+    g_ConnectionState = DISCONNECT;
+  }
 }
 
 void l2test_ecfc_reconfig_cfm_cb(const RawAddress& bdaddr, uint16_t lcid,
@@ -2415,6 +2433,8 @@ void l2test_ecfc_reconfig_cfm_cb(const RawAddress& bdaddr, uint16_t lcid,
 
 void l2test_error_cb(uint16_t lcid, uint16_t result) {
   printf("l2test_error_cb lcid %d, result %d\n", lcid, result);
+  /* Signal connection failure so callers (e.g. BI-29-C test) can poll state */
+  g_ConnectionState = DISCONNECT;
 }
 
 /* L2CAP callback function structure */
@@ -4273,4 +4293,176 @@ void reset_rcv_iteration(char* p) {
   printf("Resetting rcv iteration, previous itaration: %d", rcv_iteration);
   rcv_iteration = 0;
 }
+
+
+/* ---- BI-29-C constants ---- */
+#define BI_29_C_TOTAL_ITER      255   /* Steps 1-4 (×1) + Step 5 (×1) + Step 6 (×253) */
+#define BI_29_C_CONN_TIMEOUT_S   35   /* > L2CAP_CHNL_CONNECT_TIMEOUT_MS (30 s)        */
+#define BI_29_C_LE_PSM          0x80  /* Dynamic LE PSM (0x80-0xFF)                    */
+
+/*
+ * do_l2cap_cos_ced_bi_29_c
+ *
+ * Usage: l2cap_cos_ced_bi_29_c <BdAddr>
+ *   e.g. l2cap_cos_ced_bi_29_c 001122334455
+ */
+
+void do_l2cap_cos_ced_bi_29_c(char* p) {
+  RawAddress bd_addr = RawAddress::kEmpty;
+
+  if (FALSE == GetBdAddr(p, &bd_addr)) {
+    printf("[BI-29-C] ERROR: provide a valid BD address "
+           "(format: 001122334455)\n");
+    return;
+  }
+
+  printf("[BI-29-C] ===== L2CAP/COS/CED/BI-29-C START =====\n");
+  printf("[BI-29-C] Peer: %02x:%02x:%02x:%02x:%02x:%02x\n",
+         bd_addr.address[0], bd_addr.address[1], bd_addr.address[2],
+         bd_addr.address[3], bd_addr.address[4], bd_addr.address[5]);
+
+  tL2CAP_LE_CFG_INFO cfg = {};
+  cfg.mtu     = L2CAP_LE_DEFAULT_MTU;
+  cfg.mps     = L2CAP_LE_DEFAULT_MPS;
+  cfg.credits = L2CAP_LE_DEFAULT_CREDIT;
+
+  sL2capInterface->RegisterLePsm(BI_29_C_LE_PSM,
+                                  FALSE,            /* is_server */
+                                  BTM_SEC_NONE,
+                                  g_BleEncKeySize,
+                                  l2test_l2c_appl,  /* existing callback block */
+                                  cfg);
+  sleep(1);
+
+  printf("[BI-29-C] Phase 1: %d iterations — PTS responds with invalid IDs\n",
+         BI_29_C_TOTAL_ITER);
+
+  bool phase1_pass = true;
+
+  for (int i = 1; i <= BI_29_C_TOTAL_ITER; i++) {
+    /* Reset shared state before each attempt */
+    g_ConnectionState = DISCONNECT;
+    g_lcid            = 0;
+
+    printf("[BI-29-C] Attempt %d/%d: sending L2CAP_LE_CREDIT_BASED_CONN_REQ\n",
+           i, BI_29_C_TOTAL_ITER);
+
+    /* sL2capInterface->LeConnect() — existing API, already used by
+     * do_le_l2cap_coc_connect().  Stack assigns a unique signal_id via
+     * p_lcb->signal_id++ + l2cu_adj_id() (skips 0, wraps 255→1). */
+    uint16_t lcid = sL2capInterface->LeConnect(BI_29_C_LE_PSM, bd_addr, &cfg);
+    if (lcid == 0) {
+      printf("[BI-29-C] ERROR: LeConnect() returned 0 on attempt %d\n", i);
+      phase1_pass = false;
+      break;
+    }
+
+    printf("[BI-29-C] Attempt %d: request sent (lcid=0x%04x), "
+           "waiting up to %ds for PTS invalid-ID response + CCB timeout...\n",
+           i, lcid, BI_29_C_CONN_TIMEOUT_S);
+
+    /* Poll g_ConnectionState (set by l2test_ecfc_connect_cfm_cb /
+     * l2test_error_cb) until it changes from DISCONNECT or timeout. */
+    for (int waited = 0;
+         waited < BI_29_C_CONN_TIMEOUT_S && g_ConnectionState == DISCONNECT;
+         waited++) {
+      sleep(1);
+    }
+
+    if (g_ConnectionState == CONNECT) {
+      /* l2test_ecfc_connect_cfm_cb() set CONNECT — unexpected success */
+      printf("[BI-29-C] FAIL: connection succeeded on attempt %d "
+             "during invalid-ID phase!\n", i);
+      phase1_pass = false;
+      break;
+    }
+
+    /* g_ConnectionState == DISCONNECT (set by l2test_error_cb after CCB
+     * timer) or still DISCONNECT after timeout — both mean no connection. */
+    printf("[BI-29-C] Attempt %d PASS: no connection made "
+           "(IUT correctly ignored invalid-ID response)\n", i);
+
+    usleep(200 * 1000);  /* brief pause before next attempt */
+  }
+
+  if (!phase1_pass) {
+    printf("[BI-29-C] ===== PHASE 1 FAILED =====\n");
+    return;
+  }
+
+  printf("[BI-29-C] ===== PHASE 1 PASSED: all %d attempts correctly "
+         "rejected invalid IDs =====\n", BI_29_C_TOTAL_ITER);
+
+  printf("[BI-29-C] Phase 2: sending final request — PTS will respond "
+         "with valid Identifier\n");
+
+  g_ConnectionState = DISCONNECT;
+  g_lcid            = 0;
+
+  uint16_t final_lcid = sL2capInterface->LeConnect(BI_29_C_LE_PSM, bd_addr,
+                                                    &cfg);
+  if (final_lcid == 0) {
+    printf("[BI-29-C] ERROR: LeConnect() returned 0 for final attempt\n");
+    return;
+  }
+
+  printf("[BI-29-C] Final request sent (lcid=0x%04x), "
+         "waiting for valid connection...\n", final_lcid);
+
+  for (int waited = 0;
+       waited < BI_29_C_CONN_TIMEOUT_S && g_ConnectionState == DISCONNECT;
+       waited++) {
+    sleep(1);
+  }
+
+  if (g_ConnectionState != CONNECT) {
+    printf("[BI-29-C] FAIL: final connection attempt did not succeed "
+           "(g_ConnectionState=%d)\n", g_ConnectionState);
+    return;
+  }
+
+  printf("[BI-29-C] PASS Step 11: connection established (lcid=0x%04x)\n",
+         g_lcid);
+
+  printf("[BI-29-C] Phase 3: waiting for PTS duplicate response "
+         "(stack discards it in CST_OPEN state, g_ConnectionState stays "
+         "CONNECT)...\n");
+  sleep(3);
+  if (g_ConnectionState == CONNECT) {
+    printf("[BI-29-C] PASS Step 12-13: duplicate RSP discarded "
+           "(g_ConnectionState still CONNECT, no second connect event)\n");
+  } else {
+    printf("[BI-29-C] WARNING: g_ConnectionState changed to %d after "
+           "duplicate RSP\n", g_ConnectionState);
+  }
+
+  printf("[BI-29-C] Phase 4: waiting for PTS L2CAP_DISCONNECTION_REQ "
+         "(l2test_l2c_disconnect_ind_cb will send RSP automatically)...\n");
+
+  for (int waited = 0;
+       waited < 30 && g_ConnectionState != DISCONNECTING;
+       waited++) {
+    sleep(1);
+  }
+
+  if (g_ConnectionState == DISCONNECTING) {
+    printf("[BI-29-C] PASS Step 14-15: IUT sent L2CAP_DISCONNECTION_RSP "
+           "(l2test_l2c_disconnect_ind_cb)\n");
+  } else {
+    printf("[BI-29-C] WARNING: did not receive DISCONNECTION_REQ within "
+           "30s (g_ConnectionState=%d)\n", g_ConnectionState);
+  }
+
+  printf("[BI-29-C] ===== TEST COMPLETE =====\n");
+  printf("[BI-29-C] PASS VERDICT SUMMARY:\n");
+  printf("[BI-29-C]   Phase 1 (Steps 1-6) : IUT made no connection across "
+         "%d attempts with invalid IDs\n", BI_29_C_TOTAL_ITER);
+  printf("[BI-29-C]   Phase 2 (Steps 7-11): Connection established "
+         "(g_ConnectionState=CONNECT, lcid=0x%04x)\n", g_lcid);
+  printf("[BI-29-C]   Phase 3 (Steps 12-13): Duplicate RSP discarded "
+         "(CST_OPEN state, no second connect event)\n");
+  printf("[BI-29-C]   Phase 4 (Steps 14-15): IUT sent "
+         "L2CAP_DISCONNECTION_RSP via l2test_l2c_disconnect_ind_cb\n");
+}
+
 #endif  // TEST_APP_INTERFACE

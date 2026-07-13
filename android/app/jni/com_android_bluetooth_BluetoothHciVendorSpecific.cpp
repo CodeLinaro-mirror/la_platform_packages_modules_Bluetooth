@@ -36,6 +36,22 @@ static jmethodID method_onEvent;
 static jmethodID method_onAclEvent;
 static jobject mCallbacksObj = nullptr;
 
+// Returns true if it is safe to invoke a Java callback on the current thread.
+// During stack shutdown the JVM is detached from the callback thread
+// (callback_thread_event(DISASSOCIATE_JVM) nulls the callback env and clears
+// the callback-thread flag), yet vendor HCI events already queued on that same
+// thread can still run afterwards. Constructing CallbackEnv with a null env, or
+// off the callback thread, asserts fatally when jni_batch_memory_management is
+// enabled; even its destructor dereferences the env unconditionally under that
+// flag. So the callbacks must bail out via this check *before* constructing
+// CallbackEnv. The DISASSOCIATE_JVM teardown, this check and the construction
+// all run serially on the same (jni) callback thread, so the env cannot
+// transition to null between the check and the construction. Callers must hold
+// callbacks_mutex (guards mCallbacksObj against init/cleanup on other threads).
+static bool isJniCallbackReady() {
+  return mCallbacksObj != nullptr && getCallbackEnv() != nullptr && isCallbackThread();
+}
+
 class BluetoothHciVendorSpecificCallbacksImpl
     : public bluetooth::hci_vs::BluetoothHciVendorSpecificCallbacks {
 public:
@@ -44,12 +60,11 @@ public:
   void onCommandStatus(uint16_t ocf, uint8_t status, Cookie cookie) override {
     log::info("");
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
-
-    CallbackEnv callbackEnv(__func__);
-    if (!callbackEnv.valid() || mCallbacksObj == nullptr) {
+    if (!isJniCallbackReady()) {
       return;
     }
 
+    CallbackEnv callbackEnv(__func__);
     auto j_cookie = toJByteArray(callbackEnv.get(), cookie);
     if (!j_cookie.get()) {
       log::error("Error while allocating byte array for cookie");
@@ -64,12 +79,11 @@ public:
                          Cookie cookie) override {
     log::info("");
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
-
-    CallbackEnv callbackEnv(__func__);
-    if (!callbackEnv.valid() || mCallbacksObj == nullptr) {
+    if (!isJniCallbackReady()) {
       return;
     }
 
+    CallbackEnv callbackEnv(__func__);
     auto j_return_parameters = toJByteArray(callbackEnv.get(), return_parameters);
     auto j_cookie = toJByteArray(callbackEnv.get(), cookie);
     if (!j_return_parameters.get() || !j_cookie.get()) {
@@ -84,12 +98,11 @@ public:
   void onEvent(uint8_t code, std::vector<uint8_t> data) override {
     log::info("");
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
-
-    CallbackEnv callbackEnv(__func__);
-    if (!callbackEnv.valid() || mCallbacksObj == nullptr) {
+    if (!isJniCallbackReady()) {
       return;
     }
 
+    CallbackEnv callbackEnv(__func__);
     auto j_data = toJByteArray(callbackEnv.get(), data);
     if (!j_data.get()) {
       log::error("Error while allocating byte array for event data");
@@ -102,12 +115,11 @@ public:
   void onAclEvent(uint16_t handle, std::vector<uint8_t> data) override {
     log::info("");
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
-
-    CallbackEnv callbackEnv(__func__);
-    if (!callbackEnv.valid() || mCallbacksObj == nullptr) {
+    if (!isJniCallbackReady()) {
       return;
     }
 
+    CallbackEnv callbackEnv(__func__);
     auto j_data = toJByteArray(callbackEnv.get(), data);
     if (!j_data.get()) {
       log::error("Error while allocating byte array for ACL event data");

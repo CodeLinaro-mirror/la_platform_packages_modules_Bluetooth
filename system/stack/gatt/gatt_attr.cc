@@ -1175,7 +1175,8 @@ bool gatt_sr_is_cl_change_aware(tGATT_TCB& tcb) {
 void gatt_sr_init_cl_status(tGATT_TCB& tcb) {
   tcb.cl_supp_feat = btif_storage_get_gatt_cl_supp_feat(tcb.peer_bda);
   // This is used to reset bit when robust caching is disabled
-  if (!gatt_sr_is_robust_caching_enabled()) {
+  if (!gatt_sr_is_robust_caching_enabled() &&
+      !stack_config_get_interface()->get_pts_gatt_disable_cl_caching_bit_reset()) {
     tcb.cl_supp_feat &= ~BLE_GATT_CL_SUP_FEAT_CACHING_BITMASK;
   }
 
@@ -1315,7 +1316,8 @@ static tGATT_STATUS gatt_sr_write_cl_supp_feat(tCONN_ID conn_id, uint8_t* write_
   bool curr_caching_state = gatt_sr_is_cl_robust_caching_supported(tcb);
 
   tcb.cl_supp_feat = (tmp.front() & BLE_GATT_CL_SUP_FEAT_NON_RFU_BITMASK);
-  if (!gatt_sr_is_robust_caching_enabled()) {
+  if (!gatt_sr_is_robust_caching_enabled() &&
+      !stack_config_get_interface()->get_pts_gatt_disable_cl_caching_bit_reset()) {
     // remove robust caching bit
     tcb.cl_supp_feat &= ~BLE_GATT_CL_SUP_FEAT_CACHING_BITMASK;
     log::info("reset robust caching bit, conn_id=0x{:x}, bda={}", conn_id, tcb.peer_bda);

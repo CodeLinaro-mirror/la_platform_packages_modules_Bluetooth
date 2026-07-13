@@ -93,6 +93,15 @@ public:
           local_encoding_contexts_types_.sink.set(context_type);
         }
       }
+
+      bool pts_gmap_mxlt =
+           osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap_mxlt", false);
+      if(pts_gmap_mxlt) {
+        log::info(" pts_gmap_mxlt is true, force GAME context");
+        local_encoding_contexts_types_.source.set(LeAudioContextType::GAME);
+        local_encoding_contexts_types_.sink.set(LeAudioContextType::GAME);
+        local_decoding_context_types_.set(LeAudioContextType::GAME);
+      }
     }
 
     log::info("local_encoding_contexts_types_.source: {}, local_encoding_contexts_types_.sink: {}, ",

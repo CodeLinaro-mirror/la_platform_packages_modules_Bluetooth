@@ -825,7 +825,7 @@ public class TbsGeneric {
             bearer.callback.onAcceptCall(requestId, callId);
             opResult = TbsGatt.CALL_CONTROL_POINT_RESULT_SUCCESS;
             final var leAudio = mAdapterService.getLeAudioService();
-            if (leAudio.isEmpty()) {
+            if (!leAudio.isEmpty()) {
                 Log.d(TAG, "processCallControlOp(): clear cached ccp ops");
                 leAudio.get().clearCachedRemoteCcpOps();
             }
@@ -909,7 +909,7 @@ public class TbsGeneric {
                                 return;
                             } else {
                                 final var leAudio = mAdapterService.getLeAudioService();
-                                if (leAudio.isEmpty()) {
+                                if (!leAudio.isEmpty()) {
                                     Log.d(TAG, "onCallControlPointRequest: caching ccp operation");
                                     leAudio.get().cacheRemoteCcpOps(opcode, args);
                                 }

@@ -1657,6 +1657,9 @@ void bta_jv_rfcomm_connect(tBTA_SEC sec_mask, uint8_t remote_scn, const RawAddre
   bluetooth::metrics::LogRfcommNativeStartEvent(
           peer_bd_addr, bluetooth::metrics::EventType::RFCOMM_SOCKET_NATIVE_CONNECTION, app_uid);
 
+  get_security_client_interface().BTM_SetSecurityLevel(true, "RFC_MUX", BTM_SEC_SERVICE_RFC_MUX,
+                                                      sec_mask, BT_PSM_RFCOMM,
+                                                      BTM_SEC_PROTO_RFCOMM, 0);
   port_status = RFCOMM_CreateConnectionWithSecurity(UUID_SERVCLASS_SERIAL_PORT, remote_scn, false,
                                                     BTA_JV_DEF_RFC_MTU, peer_bd_addr, &handle,
                                                     bta_jv_port_mgmt_cl_cback, sec_mask, cfg);

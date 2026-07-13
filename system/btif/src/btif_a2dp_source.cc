@@ -542,24 +542,13 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
     return;
   }
 
-  encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
-                                  btif_a2dp_source_enqueue_callback);
-
-  if (com_android_bluetooth_flags_ldac_rate_control()) {
-    stack::l2cap::get_interface().L2CA_SetRateControlEnabled(
-            peer_address, get_rate_control_enabled(a2dp_codec_config));
-  }
-
-  // Save a local copy of the encoder_interval_ms
-  btif_a2dp_source_cb.encoder_interface = encoder_interface;
-  btif_a2dp_source_cb.encoder_interval_ms =
-          btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms();
-
   tBTM_BLE_VSC_CB vsc_cb = {};
   BTM_BleGetVendorCapabilities(&vsc_cb);
   bool supports_a2dp_hw_offload_v2 = vsc_cb.a2dp_offload_v2_support;
+  bool is_a2dp_offload_codec_extensibility_enabled_ =
+    osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_offload_codec_extensibility", true);
 
-  if (!supports_a2dp_hw_offload_v2) {
+  if (!supports_a2dp_hw_offload_v2 || !is_a2dp_offload_codec_extensibility_enabled_) {
     tBT_FLOW_SPEC flow_spec;
     memset(&flow_spec, 0x00, sizeof(flow_spec));
 
@@ -591,7 +580,21 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
         log::warn("Cannot send FlowSpec: status {}", status);
       }
     }
+    log::debug("FlowSpec Bitrate for codec {}:{}",codec_config.codec_type, flow_spec.peak_bandwidth);
   }
+
+  encoder_interface->encoder_init(&peer_params, a2dp_codec_config, btif_a2dp_source_read_callback,
+                                  btif_a2dp_source_enqueue_callback);
+
+  if (com_android_bluetooth_flags_ldac_rate_control()) {
+    stack::l2cap::get_interface().L2CA_SetRateControlEnabled(
+            peer_address, get_rate_control_enabled(a2dp_codec_config));
+  }
+
+  // Save a local copy of the encoder_interval_ms
+  btif_a2dp_source_cb.encoder_interface = encoder_interface;
+  btif_a2dp_source_cb.encoder_interval_ms =
+          btif_a2dp_source_cb.encoder_interface->get_encoder_interval_ms();
 
   if (bluetooth::audio::a2dp::is_hal_enabled()) {
     bluetooth::audio::a2dp::ahal_codec_configuration config = {

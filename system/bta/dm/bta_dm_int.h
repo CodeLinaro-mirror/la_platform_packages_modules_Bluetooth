@@ -341,7 +341,7 @@ void bta_dm_eir_update_uuid(uint16_t uuid16, bool adding);
 void bta_dm_eir_update_cust_uuid(const tBTA_CUSTOM_UUID& curr, bool adding);
 
 tBTM_PM_PWR_MD bta_dm_pm_get_sniff_entry(size_t index);
-void bta_dm_disable_timer_cback(void);
+void bta_dm_disable_timer_cback(void* data);
 void bta_dm_bredr_cleanup(void);
 void bta_dm_bredr_startup(void);
 void bta_dm_process_ssr(void);

@@ -17,6 +17,16 @@ flag {
 }
 
 flag {
+    name: "eatt_legacy_early_disconnect"
+    namespace: "bluetooth"
+    description: "Kill-switch to restore the legacy behavior of tearing down EATT immediately when the last GATT holder is removed. Default behavior (flag off) defers EATT teardown to the natural ACL-drop path so post-bond profile bursts can reuse existing bearers."
+    bug: "0"
+    metadata {
+        purpose: PURPOSE_BUGFIX
+    }
+}
+
+flag {
     name: "check_mapclient_connection_policy_for_ancs"
     namespace: "bluetooth"
     description: "Check MapClient connection policy for ANCS"

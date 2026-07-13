@@ -655,6 +655,16 @@ public class PhonePolicy implements AdapterService.BluetoothStateCallback {
                     mStorage.onDeviceDisconnected(device, profile);
                 }
             }
+            if (profile == BluetoothProfile.A2DP
+                    && prevState == STATE_DISCONNECTING
+                    && mConnectOtherProfilesDeviceSet.contains(device)) {
+                // A2DP disconnected while a connectOtherProfile timer (triggered by this same
+                // A2DP connection) is still pending. Suppress the retry to avoid reconnecting
+                // a profile the remote just closed.
+                Log.d(TAG, "processProfileStateChanged: suppress A2DP retry, "
+                        + "A2DP disconnected while connectOtherProfile timer is pending");
+                mA2dpRetrySet.add(device);
+            }
             handleAllProfilesDisconnected(device);
         }
     }

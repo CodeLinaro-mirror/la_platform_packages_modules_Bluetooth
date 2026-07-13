@@ -1433,7 +1433,9 @@ public class ScanManager {
         Log.d(
                 TAG,
                 "configureFilterParameter(): "
-                        + ("onFoundTimeout=" + onFoundTimeout)
+                        + ("filterIndex=" + filterIndex)
+                        + (" rssiThreshold=" + rssiThreshold)
+                        + (" onFoundTimeout=" + onFoundTimeout)
                         + (" onLostTimeout=" + onLostTimeout)
                         + (" onFoundCount=" + onFoundCount)
                         + (" numOfTrackingEntries=" + numOfTrackingEntries));

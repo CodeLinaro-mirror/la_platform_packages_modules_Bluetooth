@@ -79,7 +79,7 @@ public class BleConnectionFragment extends Fragment {
         mSpinnerBtAddress.setAdapter(mBondedBtDevicesArrayAdapter);
 
         mViewModel =
-                new ViewModelProvider(requireParentFragment()).get(BleConnectionViewModel.class);
+                new ViewModelProvider(requireParentFragment() instanceof InitiatorFragment ? requireActivity() : requireParentFragment()).get(BleConnectionViewModel.class);
         mViewModel
                 .getGattState()
                 .observe(

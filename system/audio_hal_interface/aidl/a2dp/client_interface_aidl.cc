@@ -202,10 +202,11 @@ void BluetoothAudioClientInterface::FetchAudioProvider() {
     }
   }
 
-  log::assert_that(provider_factory_ != nullptr,
-                   "IBluetoothAudioProvidersFactory::openProvider({}) failed {} times",
-                   toString(transport_->GetSessionType()), kFetchAudioProviderRetryNumber);
-  log::assert_that(provider_ != nullptr, "assert failed: provider_ != nullptr");
+  if (provider_factory_ == nullptr || provider_ == nullptr) {
+    log::error("IBluetoothAudioProvidersFactory::openProvider({}) failed {} times, giving up",
+               toString(transport_->GetSessionType()), kFetchAudioProviderRetryNumber);
+    return;
+  }
 
   binder_status_t binder_status =
           AIBinder_linkToDeath(provider_factory_->asBinder().get(), death_recipient_.get(), this);

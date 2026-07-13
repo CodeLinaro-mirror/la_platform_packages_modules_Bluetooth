@@ -70,6 +70,7 @@
 #include "stack/include/smp_api_types.h"
 #include "stack/l2cap/l2c_api.h"
 #include "stack/l2cap/l2c_int.h"
+#include "internal_include/stack_config.h"
 
 using namespace bluetooth;
 
@@ -1353,10 +1354,22 @@ void btm_ble_connection_established(const RawAddress& bda) {
 
   // Encrypt the link if device is bonded
   if (p_device->sec_rec.is_le_link_key_known()) {
-    btm_ble_set_encryption(bda, BTM_BLE_SEC_ENCRYPT,
-                           p_device->role_central ? HCI_ROLE_CENTRAL : HCI_ROLE_PERIPHERAL);
+    if (stack_config_get_interface()->get_pts_le_disable_encryp()) {
+      log::info("PTS_LeDisableEncryp is set, skipping auto-encryption for bonded device:{}", bda);
+      /* Clear the encrypted flag so the GATT permission check correctly
+       * returns Insufficient Encryption when the link is not encrypted.
+       * Without this, the flag retained from the previous connection causes
+       * the GATT server to treat the link as encrypted and allow reads that
+       * require encryption. */
+      BtmDevice* p_dev_mutable = btm_get_dev(bda);
+      if (p_dev_mutable) {
+        p_dev_mutable->sec_rec.reset_le_device_encrypted();
+      }
+    } else {     
+      btm_ble_set_encryption(bda, BTM_BLE_SEC_ENCRYPT,
+                             p_device->role_central ? HCI_ROLE_CENTRAL : HCI_ROLE_PERIPHERAL);
+    }
   }
-
   // Read device name if it is not known already, we may need it for pairing
   if (!p_device->sec_rec.is_name_known()) {
     btm_ble_read_remote_name(bda, nullptr);

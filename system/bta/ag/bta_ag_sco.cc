@@ -77,7 +77,7 @@ constexpr uint8_t LTV_TYPE_SCO_RELAY_MODE    =  0x012;
 
 /* Codec negotiation timeout */
 #ifndef BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS
-#define BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS (3 * 1000) /* 3 seconds */
+#define BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS (5 * 1000) /* 5 seconds */
 #endif
 
 #define BTM_VOICE_SETTING_CVSD                                                                     \
@@ -593,7 +593,7 @@ void bta_ag_create_sco(tBTA_AG_SCB* p_scb, bool is_orig) {
       }
       if (is_hf_client_enabled) {
          log::info("hf_client is also enabled. using always t2 settings");
-         params.packet_types = ESCO_PKT_TYPES_MASK_NO_3_EV3 |
+         params.packet_types = ESCO_PKT_TYPES_MASK_EV3 | ESCO_PKT_TYPES_MASK_NO_3_EV3 |
                 ESCO_PKT_TYPES_MASK_NO_2_EV5 | ESCO_PKT_TYPES_MASK_NO_3_EV5;
       }
     } else {

@@ -263,6 +263,7 @@ typedef struct {
   bool le_hdt_phy_supported;
   bool le_connected_isochronous_stream_peripheral_supported;
   bool le_big_set_channel_map_classification_support;
+  bool le_power_control_request_supported;
 } __attribute__((packed)) bt_local_le_features_t;
 
 typedef struct {

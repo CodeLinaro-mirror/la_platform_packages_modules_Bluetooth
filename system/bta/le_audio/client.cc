@@ -522,6 +522,11 @@ public:
             ToString(configuration_context_type_), ToString(audio_receiver_state_),
             audio_hal_check_in_progress, audio_hal_is_capable_to_send_empty_metadata_);
 
+    if (audio_receiver_state_ != AudioState::STARTED) {
+      log::debug("Do not reconfigure - audio receiver state is not STARTED");
+      return;
+    }
+
     auto group = aseGroups_.FindById(active_group_id_);
 
     /* Workaround warning.
@@ -1767,9 +1772,17 @@ public:
         log::info("Call is ended, speed up reconfiguration for media");
         if (group->GetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING &&
             group->GetTargetState() == AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
-          log::info("stack is pending for CONVERSATIONAL streaming, defer media reconfiguration");
-          defer_media_reconfig_ = true;
-          return;
+          if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+              LeAudioBroadcaster::Get()->IsLeAudioBroadcastActive() &&
+              ((in_call_metadata_context_types_.sink.none() &&
+               in_call_metadata_context_types_.source.none()) ||
+               in_call_metadata_context_types_.source.test(LeAudioContextType::MEDIA))) {
+            log::info("Broadcast is active, skip defer and proceed with SetInCall handling");
+          } else {
+            log::info("stack is pending for CONVERSATIONAL streaming, defer media reconfiguration");
+            defer_media_reconfig_ = true;
+            return;
+          }
         }
         if (in_call_metadata_context_types_.sink.none() &&
             in_call_metadata_context_types_.source.none()) {
@@ -5814,6 +5827,16 @@ public:
 
     group->ClearReconfigStartPendingDirs(bluetooth::le_audio::types::kLeAudioDirectionSink);
 
+    if (configuration_context_type_ != LeAudioContextType::LIVE &&
+        configuration_context_type_ != LeAudioContextType::GAME &&
+        configuration_context_type_ != LeAudioContextType::CONVERSATIONAL &&
+        audio_receiver_state_ == AudioState::IDLE &&
+        !group->IsPendingConfiguration() &&
+        !group->IsSuspendedForReconfiguration()) {
+      local_metadata_context_types_.sink.clear();
+      audioContextTypeManager_->SetDecodingSessionMetadata({});
+    }
+
     /* Get configuration context type from the audioContextTypeManager only when it is unknown */
     auto [new_context_type, _] = audioContextTypeManager_->GetAudioContextsForTheGroup(
             group, get_remote_directions_for_context_type_manager(
@@ -6629,13 +6652,21 @@ public:
       return;
     }
 
+    StopVbcCloseTimeout();
+
     group->dsa_.mode = dsa_mode;
 
     /* allow reconfigure only if the new source context is bi-directional
        (or) not in suspended for reconfiguration (or) receiver state is idle
        to avoid the additional reconfigurations.
     */
-    if ((local_metadata_context_types_.source.test(LeAudioContextType::MEDIA) &&
+    if (local_metadata_context_types_.sink.test(LeAudioContextType::LIVE) &&
+        !local_metadata_context_types_.source.test(LeAudioContextType::LIVE) &&
+        !local_metadata_context_types_.source.test(LeAudioContextType::CONVERSATIONAL) &&
+        !local_metadata_context_types_.source.test(LeAudioContextType::GAME)) {
+      log::warn("Skip ReconfigureOrUpdateRemote to LIVE, source context is non-bidirectional: {}",
+                ToString(local_metadata_context_types_.source));
+    } else if ((local_metadata_context_types_.source.test(LeAudioContextType::MEDIA) &&
          configuration_context_type_ == LeAudioContextType::LIVE) &&
         (group->IsPendingConfiguration() || group->IsSuspendedForReconfiguration() ||
          group->IsReconfigStartPendingDir(bluetooth::le_audio::types::kLeAudioDirectionSink))) {
@@ -7729,6 +7760,12 @@ public:
               if (track_in_call_update_ == IN_CALL_UPDATE_FROM_BT_APP_AND_BT_HAL) {
                 log::warn("Both BT App and UpdateMetadata received for call,"
                           " send reconfigurationComplete to BT HAL");
+                if (!group->IsDirectionAvailableForConfiguration(configuration_context_type_,
+                                               bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+                  log::warn("invalidated config, fetching again for configuration_context_type_: {}",
+                             common::ToString(configuration_context_type_));
+                  group->GetConfiguration(configuration_context_type_);
+                }
                 reconfigurationComplete();
                 notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
                 notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
@@ -7747,8 +7784,8 @@ public:
                                 ? bluetooth::le_audio::types::kLeAudioDirectionSource
                                 : bluetooth::le_audio::types::kLeAudioDirectionSink;
                 auto config_ =
-                        audioContextTypeManager_->GetAudioContextsForTheGroup(
-            group, get_remote_directions_for_context_type_manager(remote_direction));
+                        audioContextTypeManager_->GetAudioContextsForTheGroup(group,
+                          get_remote_directions_for_context_type_manager(remote_direction));
                 auto remote_contexts = config_.second;
 
                 GroupStream(group, configuration_context_type_, remote_contexts);
@@ -8091,7 +8128,7 @@ private:
   std::unique_ptr<LeAudioSourceAudioHalClient> le_audio_source_hal_client_;
   std::unique_ptr<LeAudioSinkAudioHalClient> le_audio_sink_hal_client_;
   static constexpr uint64_t kAudioSuspentKeepIsoAliveTimeoutMs = 500;
-  static constexpr uint64_t kAudioSuspentKeepIsoAliveDuringCallTimeoutMs = 2000;
+  static constexpr uint64_t kAudioSuspentKeepIsoAliveDuringCallTimeoutMs = 500;
   static constexpr uint64_t kAudioDisableTimeoutMs = 3000;
   static constexpr uint64_t kAudioUpdateRelaxedConnIntervalTimeoutMs = 15000;
   static constexpr char kAudioSuspentKeepIsoAliveTimeoutMsProp[] =

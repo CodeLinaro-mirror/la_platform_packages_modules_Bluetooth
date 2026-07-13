@@ -49,6 +49,7 @@ import com.android.bluetooth.Utils;
 import com.android.bluetooth.R;
 import com.android.bluetooth.a2dp.A2dpService;
 import com.android.bluetooth.flags.Flags;
+import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.storage.BluetoothStorageManager;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
@@ -913,6 +914,8 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 /* Look for fallback if all devices from the active group disconnected. */
                 BluetoothDevice leadDevice = leAudio.get().getLeadDevice(device);
 
+                leAudio.get().deviceDisconnected(device, false);
+
                 List<BluetoothDevice> connectedDevices = mLeAudioConnectedDevices;
 
                 if (Objects.equals(mLeAudioActiveDevice, leadDevice)
@@ -949,7 +952,6 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
             }
 
-            leAudio.get().deviceDisconnected(device, hasFallbackDevice);
         }
     }
 
@@ -1112,6 +1114,11 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 }
             }
 
+            CallAudio mCallAudio = CallAudio.get();
+            if (mCallAudio != null && isVoipLeaWarEnabled()) {
+                mCallAudio.updateActiveDevice(device, mCallAudio.HFP);
+            }
+
             if (!Objects.equals(mHfpActiveDevice, device)) {
                 if (device != null) {
                     setHearingAidActiveDevice(null, /* stopAudio= */ false);
@@ -1239,11 +1246,18 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 return;
             }
 
+            CallAudio mCallAudio = CallAudio.get();
+            if (mCallAudio != null && isVoipLeaWarEnabled()) {
+                mCallAudio.updateActiveDevice(device, mCallAudio.LE_AUDIO_VOICE);
+            }
+
             // Just assign locally the new value
             if (device != null && !Objects.equals(mLeAudioActiveDevice, device)) {
                 if (!Utils.isDualModeAudioEnabled()) {
                     setA2dpActiveDevice(null, /* stopAudio= */ false);
-                    setHfpActiveDevice(null);
+                    if (mHfpActiveDevice != null) {
+                        setHfpActiveDevice(null);
+                    }
                 } else {
                     boolean isCsipSupported = Util.arrayContains(mAdapterService.getRemoteUuids(device),
                                                        BluetoothUuid.COORDINATED_SET);
@@ -1339,6 +1353,15 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
     }
 
     private class AudioManagerAudioDeviceCallback extends AudioDeviceCallback {
+        private static boolean isWiredDeviceType(AudioDeviceInfo deviceInfo) {
+            return switch (deviceInfo.getType()) {
+                case AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                     AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                     AudioDeviceInfo.TYPE_USB_HEADSET -> true;
+                default -> false;
+            };
+        }
+
         @Override
         public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
             if (!true) {
@@ -1346,6 +1369,12 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
             }
             if (!mAdapterService.isAvailable()) {
                 Log.e(TAG, "Callback called when AdapterService is stopped");
+                return;
+            }
+
+            if (Arrays.stream(addedDevices)
+                    .anyMatch(AudioManagerAudioDeviceCallback::isWiredDeviceType)) {
+                wiredAudioDeviceConnected();
                 return;
             }
 
@@ -1441,6 +1470,13 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 return;
             }
 
+            if (Arrays.stream(removedDevices)
+                    .anyMatch(AudioManagerAudioDeviceCallback::isWiredDeviceType)) {
+                synchronized (mLock) {
+                    setFallbackDeviceActiveLocked(null);
+                }
+            }
+
             for (AudioDeviceInfo deviceInfo : removedDevices) {
                 String address = deviceInfo.getAddress();
                 if (address == null || address.equals("00:00:00:00:00:00")) {
@@ -1483,6 +1519,10 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     case AudioDeviceInfo.TYPE_BLE_HEADSET,
                             AudioDeviceInfo.TYPE_BLE_SPEAKER,
                             AudioDeviceInfo.TYPE_BLE_HEARING_AID -> {
+                        CallAudio mCallAudio = CallAudio.get();
+                        if (mCallAudio != null && isVoipLeaWarEnabled()) {
+                            mCallAudio.updateActiveDevice(null, mCallAudio.LE_AUDIO_VOICE);
+                        }
                         mAdapterService
                                 .getLeAudioService()
                                 .ifPresent(
@@ -1513,6 +1553,10 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                                              });
                     }
                     case AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
+                        CallAudio mCallAudio = CallAudio.get();
+                        if (mCallAudio != null && isVoipLeaWarEnabled()) {
+                            mCallAudio.updateActiveDevice(null, mCallAudio.HFP);
+                        }
                         mAdapterService
                                 .getHeadsetService()
                                 .ifPresent(s -> s.handleAudioDeviceRemoved(device));
@@ -2028,17 +2072,17 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                 Log.i(TAG, "Found an A2DP fallback device: " + device + ", going for Music" +
                            "player pause");
                 setA2dpActiveDevice(null, /* stopAudio= */ false);
+                /* Clear LE Audio active device before setting A2DP fallback to ensure
+                 * AudioPolicyService processes the LE Audio removal first.*/
+                if (!Utils.isDualModeAudioEnabled()) {
+                    setLeAudioActiveDevice(null, /* stopAudio= */ true);
+                }
                 Log.d(TAG, "Setting A2DP fallback device as the Active Device");
                 setA2dpActiveDevice(device, /* stopAudio= */ true);
                 if (Objects.equals(headsetFallbackDevice, device)) {
                     setHfpActiveDevice(device);
                 } else {
                     setHfpActiveDevice(null);
-                }
-                /* If dual mode is enabled, LEA will be made active once all supported
-                classic audio profiles are made active for the device. */
-                if (!Utils.isDualModeAudioEnabled()) {
-                    setLeAudioActiveDevice(null, /* stopAudio= */ false);
                 }
                 setHearingAidActiveDevice(null, /* stopAudio= */ false);
             } else {
@@ -2255,6 +2299,14 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
         }
         sb.append(device).append(": ").append(mAdapterService.getRemoteName(device)).append("\n");
     }
+
+    boolean isVoipLeaWarEnabled() {
+        CallAudio mCallAudio = CallAudio.get();
+        if (mCallAudio != null) {
+            return mCallAudio.isVoipLeaWarEnabled();
+        }
+        return false;
+    }    
 
     protected void dump(PrintWriter writer) {
         StringBuilder sb = new StringBuilder();

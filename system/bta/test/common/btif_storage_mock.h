@@ -58,6 +58,9 @@ public:
                                  uint16_t* preparation_delay, uint16_t* codecs) = 0;
   virtual void AddHearingAid(const asha::HearingDevice* dev_info) = 0;
 
+  virtual bool GetVapServerData(const RawAddress& address, std::vector<uint8_t>& data) = 0;
+  virtual void SetVapServerData(const RawAddress& address, const std::vector<uint8_t>& data) = 0;
+
   virtual ~BtifStorageInterface() = default;
 };
 
@@ -101,6 +104,10 @@ public:
                uint16_t* render_delay, uint16_t* preparation_delay, uint16_t* codecs),
               (override));
   MOCK_METHOD((void), AddHearingAid, (const asha::HearingDevice* dev_info), (override));
+  MOCK_METHOD((bool), GetVapServerData, (const RawAddress& address, std::vector<uint8_t>& data),
+              (override));
+  MOCK_METHOD((void), SetVapServerData, (const RawAddress& address, const std::vector<uint8_t>& data),
+              (override));
 };
 
 /**

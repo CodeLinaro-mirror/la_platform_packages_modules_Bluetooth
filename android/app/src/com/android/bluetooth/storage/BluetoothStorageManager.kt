@@ -254,11 +254,6 @@ constructor(
     fun onBondStateChanged(device: BluetoothDevice, fromState: Int, toState: Int) {
         if (toState == BOND_NONE) {
             removeDevice(device)
-        } else if (fromState == BOND_BONDED) {
-            // Remove the permissions for unbonded devices
-            setMessageAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN)
-            setPhonebookAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN)
-            setSimAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN)
         } else if (toState == BOND_BONDED) {
             // Leverage blockingUpdateData logic to migrate to persistent storage
             dataStore.blockingUpdateData { storage ->

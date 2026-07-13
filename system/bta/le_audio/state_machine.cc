@@ -745,7 +745,12 @@ public:
     } else {
       SetTargetState(group, AseState::BTA_LE_AUDIO_ASE_STATE_CODEC_CONFIGURED);
     }
-    return PrepareAndSendCodecConfigToTheGroup(group);
+    if (!PrepareAndSendCodecConfigToTheGroup(group)) {
+      group->PrintDebugState();
+      cancel_watchdog_if_needed(group->group_id_);
+      return false;
+    }
+    return true;
   }
 
   bool EnableStreamingDirection(LeAudioDeviceGroup* group, uint8_t remote_direction) {
@@ -2375,36 +2380,70 @@ private:
         log::info("Fill HDT parameters in CIS");
         cis_cfg.coded_rates_c_to_p = 0x0003;
         cis_cfg.coded_rates_p_to_c = 0x0003;
-        // Read HDT rate from property; 0 (default) means all rates supported.
-        // Use 7 to represent rate 7.5 (since property is integer).
-        int32_t hdt_rate_prop = osi_property_get_int32(
+        // HDT rate bitmap property (persist.vendor.qcom.bluetooth.hdt_rate):
+        //   Per spec, Rates_C_To_P / Rates_P_To_C must be a CONTIGUOUS bitmask
+        //   (no zero between the lowest and highest set bit).
+        //   Bit mapping (matches HDT_RATE_* constants):
+        //     bit 0 → 2   Mbps  (HDT_RATE_2)
+        //     bit 1 → 3   Mbps  (HDT_RATE_3)
+        //     bit 2 → 4   Mbps  (HDT_RATE_4)
+        //     bit 3 → 6   Mbps  (HDT_RATE_6)
+        //     bit 4 → 7.5 Mbps  (HDT_RATE_7_5)
+        //   Examples:
+        //     0x00 (default) → all rates (0x1F)
+        //     0x01           → 2 Mbps only
+        //     0x07           → 2, 3, 4 Mbps   (contiguous range)
+        //     0x18           → 6, 7.5 Mbps    (contiguous range)
+        //     0x05           → rejected (gap at bit 1), fallback to all
+        static const uint16_t kHdtAllRatesBitmask =
+            (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 | HDT_RATE_6 | HDT_RATE_7_5);
+
+        int32_t hdt_rates_raw_prop = osi_property_get_int32(
             "persist.vendor.qcom.bluetooth.hdt_rate", 0);
-        uint16_t hdt_rates;
-        switch (hdt_rate_prop) {
-          case 2:
-            hdt_rates = HDT_RATE_2;
-            break;
-          case 3:
-            hdt_rates = HDT_RATE_3;
-            break;
-          case 4:
-            hdt_rates = HDT_RATE_4;
-            break;
-          case 6:
-            hdt_rates = HDT_RATE_6;
-            break;
-          case 7:
-            hdt_rates = HDT_RATE_7_5;
-            break;
-          default:
-            hdt_rates = (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 |
-                         HDT_RATE_6 | HDT_RATE_7_5);
-            break;
+
+        uint16_t hdt_allowed_rates = kHdtAllRatesBitmask;
+        if (hdt_rates_raw_prop == 0) {
+          // 0 → advertise support for all HDT rates (default/unconfigured).
+          log::info("HDT rate property unset; advertising all rates "
+                    "(bitmask=0x{:02x})", kHdtAllRatesBitmask);
+        } else if (hdt_rates_raw_prop < 0) {
+          // Negative values are invalid; property is defined as a bitmask.
+          log::warn("HDT rate property {} is negative/invalid; "
+                    "falling back to all rates (bitmask=0x{:02x})",
+                    hdt_rates_raw_prop, kHdtAllRatesBitmask);
+        } else if ((static_cast<uint32_t>(hdt_rates_raw_prop) &
+                    ~static_cast<uint32_t>(kHdtAllRatesBitmask)) != 0) {
+          // Property contains bits outside the valid 5-bit HDT rate range.
+          log::warn("HDT rate property 0x{:02x} contains bits outside valid "
+                    "HDT rate range (valid mask=0x{:02x}); "
+                    "falling back to all rates",
+                    hdt_rates_raw_prop, kHdtAllRatesBitmask);
+        } else {
+          // Validate contiguity: a bitmask M is contiguous iff adding the
+          // lowest set bit carries cleanly past all set bits leaving none behind.
+          //   lowest_set_bit = M & (~M + 1)  — unsigned negation, no signed UB.
+          //   Contiguous iff (M + lowest_set_bit) & M == 0.
+          // All arithmetic done in uint32_t to avoid uint16_t promotion issues.
+          uint32_t hdt_rates_candidate = static_cast<uint32_t>(hdt_rates_raw_prop);
+          uint32_t lowest_rate_bit =
+              hdt_rates_candidate & (~hdt_rates_candidate + 1u);
+          bool is_contiguous_range =
+              ((hdt_rates_candidate + lowest_rate_bit) & hdt_rates_candidate) == 0;
+          if (is_contiguous_range) {
+            hdt_allowed_rates = static_cast<uint16_t>(hdt_rates_candidate);
+            log::info("HDT rate property 0x{:02x} is a valid contiguous rate "
+                      "bitmask; using configured rates",
+                      hdt_allowed_rates);
+          } else {
+            log::warn("HDT rate property 0x{:02x} is non-contiguous (spec "
+                      "requires no gap between lowest and highest set rate bit); "
+                      "falling back to all rates (bitmask=0x{:02x})",
+                      hdt_rates_raw_prop, kHdtAllRatesBitmask);
+          }
         }
-        log::info("HDT rates set to 0x{:02x} (property value: {})",
-                  hdt_rates, hdt_rate_prop);
-        cis_cfg.hdt_rates_c_to_p = hdt_rates;
-        cis_cfg.hdt_rates_p_to_c = hdt_rates;
+        log::info("Final HDT allowed rates bitmask: 0x{:02x}", hdt_allowed_rates);
+        cis_cfg.hdt_rates_c_to_p = hdt_allowed_rates;
+        cis_cfg.hdt_rates_p_to_c = hdt_allowed_rates;
         cis_cfg.hdt_mic_length = HDT_MIC_LENGTH_128_BITS; //0x02
         cis_cfg.hdt_packet_format = HDT_PACKET_FORMAT_ANY_SUPPORTED; //0x00
       }
@@ -3700,7 +3739,10 @@ private:
 
     log::assert_that(ase, "shouldn't be called without an active ASE");
     do {
-      if (!(ase->direction & remote_directions)) {
+      bool pts_gmap_mxlt =
+           osi_property_get_bool("persist.vendor.qcom.bluetooth.pts_gmap_mxlt", false);
+      // pts_gmap_mxlt is enabled, enable source ASE unconditionally
+      if (!(ase->direction & remote_directions) && !pts_gmap_mxlt) {
         log::info("group_id: {}, {}, ase_id: {} ({:#x}), enabled_directions {:#x} not to enable",
                   leAudioDevice->group_id_, leAudioDevice->address_, ase->id, ase->direction,
                   remote_directions);

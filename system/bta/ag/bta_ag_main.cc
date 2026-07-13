@@ -576,7 +576,7 @@ static void bta_ag_better_state_machine(tBTA_AG_SCB* p_scb, uint16_t event,
           bta_ag_start_open(p_scb, data);
           break;
         case BTA_AG_RFC_OPEN_EVT:
-          p_scb->state = BTA_AG_OPEN_ST;
+          p_scb->state = BTA_AG_OPENING_ST;
           bta_ag_rfc_acp_open(p_scb, data);
           bta_ag_sco_listen(p_scb, data);
           break;

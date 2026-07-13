@@ -72,6 +72,7 @@ import com.android.bluetooth.btservice.InteropUtil;
 import com.android.bluetooth.csip.CsipSetCoordinatorService;
 import com.android.bluetooth.flags.Flags;
 import com.android.bluetooth.hfpclient.HeadsetClientStateMachine;
+import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.metrics.MetricsLogger;
 import com.android.bluetooth.profile.ConnectableProfile;
 import com.android.bluetooth.profile.ProfileService;
@@ -1070,6 +1071,31 @@ public class HeadsetService extends ConnectableProfile {
         return getNonIdleAudioDevices().size() > 0;
     }
 
+    public boolean isVoipLeaWarEnabled() {
+        CallAudio mCallAudio = CallAudio.get();
+        if (mCallAudio != null) {
+            return mCallAudio.isVoipLeaWarEnabled();
+        }
+        return false;
+    }
+
+    public void updateConnState(BluetoothDevice device, int newState) {
+        CallAudio mCallAudio = CallAudio.get();
+        if (mCallAudio != null) {
+            mCallAudio.onConnStateChange(device, newState, mCallAudio.HFP);
+        }
+    }
+
+    public boolean isScoOrCallActive() {
+        Log.d(
+                TAG,
+                "isScoOrCallActive(): Call Active:"
+                        + mSystemInterface.isInCall()
+                        + " Call is Ringing:"
+                        + mSystemInterface.isRinging());
+        return mSystemInterface.isInCall() || mSystemInterface.isRinging() || isAudioOn();
+    }
+
     boolean isAudioConnected(BluetoothDevice device) {
         synchronized (mStateMachines) {
             final HeadsetStateMachine stateMachine = mStateMachines.get(device);
@@ -1548,13 +1574,13 @@ public class HeadsetService extends ConnectableProfile {
                 });
     }
 
-    boolean isVirtualCallStarted() {
+    public boolean isVirtualCallStarted() {
         synchronized (mStateMachines) {
             return mVirtualCallStarted;
         }
     }
 
-    boolean startScoUsingVirtualVoiceCall() {
+    public boolean startScoUsingVirtualVoiceCall() {
         Log.i(TAG, "startScoUsingVirtualVoiceCall: " + Util.getUidPidString());
         synchronized (mStateMachines) {
             // TODO(b/79660380): Workaround in case voice recognition was not terminated properly
@@ -1610,6 +1636,13 @@ public class HeadsetService extends ConnectableProfile {
                 Log.w(TAG, "startScoUsingVirtualVoiceCall: no active device");
                 return false;
             }
+            if (isVoipLeaWarEnabled() && !mSystemInterface.isScoManagedByAudioEnabled()) {
+                CallAudio mCallAudio = CallAudio.get();
+                if (mCallAudio != null && mCallAudio.getBroadcastedActiveDevice() == null) {
+                    Log.w(TAG, "startScoUsingVirtualVoiceCall: Broadcasted HFP Active Device is null");
+                    return false;
+                }
+            }
             if (SystemProperties.getBoolean(REJECT_SCO_IF_HFPC_CONNECTED_PROPERTY, false)
                     && isHeadsetClientConnected()) {
                 Log.w(TAG, "startScoUsingVirtualVoiceCall: rejected SCO since HFPC is connected!");
@@ -1649,7 +1682,7 @@ public class HeadsetService extends ConnectableProfile {
         lock.unlock();
     }
 
-    boolean stopScoUsingVirtualVoiceCall() {
+    public boolean stopScoUsingVirtualVoiceCall() {
         Log.i(TAG, "stopScoUsingVirtualVoiceCall: " + Util.getUidPidString());
         synchronized (mStateMachines) {
             // 1. Check if virtual call has already started
@@ -2303,7 +2336,7 @@ public class HeadsetService extends ConnectableProfile {
      * @param fromState from which connection state is the change
      * @param toState to which connection state is the change
      */
-    void onConnectionStateChangedFromStateMachine(
+    public void onConnectionStateChangedFromStateMachine(
             BluetoothDevice device, int fromState, int toState) {
         if (fromState != STATE_DISCONNECTED && toState == STATE_DISCONNECTED) {
             if (device.equals(mActiveDevice)) {
@@ -2627,6 +2660,11 @@ public class HeadsetService extends ConnectableProfile {
         logD("broadcastActiveDevice: " + device);
 
         getAdapterService().handleActiveDeviceChange(getProfileId(), device);
+
+        if (isVoipLeaWarEnabled()) {
+            logD("broadcastActiveDevice: don't broadcast active device here for VoIP war");
+            return;
+        }
 
         BluetoothStatsLog.write(
                 BluetoothStatsLog.BLUETOOTH_ACTIVE_DEVICE_CHANGED,

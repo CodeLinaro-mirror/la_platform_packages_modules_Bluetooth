@@ -51,6 +51,7 @@
 #include "main/shim/entry.h"
 #include "os/system_properties.h"
 #include "osi/include/allocator.h"
+#include "stack/gatt/gatt_int.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_psm_types.h"
 #include "stack/include/btm_ble_addr.h"
@@ -1499,6 +1500,35 @@ bool L2CA_RemoveFixedChnl(uint16_t fixed_cid, const RawAddress& rem_bda) {
 
 /*******************************************************************************
  *
+ * Function         l2c_only_eatt_dynamic_ccbs
+ *
+ * Description      Returns true if the link has at least one dynamic CCB and
+ *                  every dynamic CCB on it is an EATT (BT_PSM_EATT) bearer.
+ *                  EATT bearers are owned by GATT clients, not the L2CAP layer,
+ *                  so once the last GATT holder is gone they must not keep the
+ *                  ACL alive. Any non-EATT dynamic CCB (e.g. a GAP/L2CAP LE CoC
+ *                  app socket) makes this return false so the idle timer is not
+ *                  armed and that socket is left untouched.
+ *
+ * Returns          bool
+ *
+ ******************************************************************************/
+static bool l2c_only_eatt_dynamic_ccbs(const tL2C_LCB* p_lcb) {
+  if (!p_lcb->ccb_queue.p_first_ccb) {
+    return false;
+  }
+
+  for (const tL2C_CCB* p_ccb = p_lcb->ccb_queue.p_first_ccb; p_ccb; p_ccb = p_ccb->p_next_ccb) {
+    if (p_ccb->p_rcb == nullptr || p_ccb->p_rcb->psm != BT_PSM_EATT) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/*******************************************************************************
+ *
  * Function         L2CA_SetLeGattTimeout
  *
  * Description      Higher layers call this function to set the idle timeout for
@@ -1524,9 +1554,20 @@ bool L2CA_SetLeGattTimeout(const RawAddress& rem_bda, uint16_t idle_tout) {
 
   p_lcb->p_fixed_ccbs[kAttCid - L2CAP_FIRST_FIXED_CHNL]->fixed_chnl_idle_tout = idle_tout;
 
-  if (p_lcb->in_use && p_lcb->link_state == LST_CONNECTED && !p_lcb->ccb_queue.p_first_ccb) {
-    /* If there are no dynamic CCBs, (re)start the idle timer in case we changed
-     * it */
+  if (p_lcb->in_use && p_lcb->link_state == LST_CONNECTED &&
+      (!p_lcb->ccb_queue.p_first_ccb ||
+       (p_lcb->transport == BT_TRANSPORT_LE &&
+        !gatt_num_app_hold_links(p_lcb->remote_bd_addr, BT_TRANSPORT_LE) &&
+        l2c_only_eatt_dynamic_ccbs(p_lcb)))) {
+    /* (Re)start the idle timer if there are no dynamic CCBs, or if no GATT app
+     * is holding the LE link and the only dynamic CCBs left are EATT bearers.
+     * EATT bearers exist solely to serve GATT clients, so once the last GATT
+     * holder is gone they must not keep the ACL alive. We additionally require
+     * that every remaining dynamic CCB is EATT so that a non-EATT LE CoC app
+     * socket (e.g. ASHA audio, a BluetoothSocket) on the same ACL is left
+     * untouched. When the timer expires l2c_link_timeout() drops the ACL, which
+     * cascades the EATT CCB cleanup. A GATT client that rejoins inside the
+     * window sets the timeout back to infinity and cancels the alarm. */
     l2cu_no_dynamic_ccbs(p_lcb);
   }
 

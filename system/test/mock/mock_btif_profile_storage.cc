@@ -108,6 +108,10 @@ bt_status_t btif_storage_load_hidd::return_value = BT_STATUS_SUCCESS;
 bt_status_t btif_storage_remove_hid_info::return_value = BT_STATUS_SUCCESS;
 bt_status_t btif_storage_remove_hidd::return_value = BT_STATUS_SUCCESS;
 bt_status_t btif_storage_set_hidd::return_value = BT_STATUS_SUCCESS;
+bool btif_storage_get_vap_server_data::return_value = false;
+
+struct btif_storage_set_vap_server_data btif_storage_set_vap_server_data;
+struct btif_storage_get_vap_server_data btif_storage_get_vap_server_data;
 
 }  // namespace btif_profile_storage
 }  // namespace mock
@@ -314,5 +318,15 @@ void btif_storage_update_csis_info(const RawAddress& addr) {
   inc_func_call_count(__func__);
   test::mock::btif_profile_storage::btif_storage_update_csis_info(addr);
 }
+
+void btif_storage_set_vap_server_data(const RawAddress& addr, const std::vector<uint8_t>& data) {
+  inc_func_call_count(__func__);
+  test::mock::btif_profile_storage::btif_storage_set_vap_server_data(addr, data);
+}
+bool btif_storage_get_vap_server_data(const RawAddress& addr, std::vector<uint8_t>& data) {
+  inc_func_call_count(__func__);
+  return test::mock::btif_profile_storage::btif_storage_get_vap_server_data(addr, data);
+}
+
 // Mocked functions complete
 // END mockcify generation

@@ -139,7 +139,9 @@ private constructor(
 
     override fun toString() =
         "ScanClient(${appScanStats.name}" +
-            "id=$scannerId, mode[${ScanMode(scanModeApp)}, used=${ScanMode(settings.scanMode)}])"
+            "id=$scannerId, mode[${ScanMode(scanModeApp)}, used=${ScanMode(settings.scanMode)}]," +
+            " scanType=${if (settings.scanType == ScanSettings.SCAN_TYPE_PASSIVE) "PASSIVE" else "ACTIVE"}," +
+            " rssiThreshold=${settings.rssiThreshold})"
 
     /**
      * Update scan settings with the new scan mode.

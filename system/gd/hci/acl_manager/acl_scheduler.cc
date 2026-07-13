@@ -274,23 +274,56 @@ private:
       auto entry = std::move(pending_outgoing_operations_.front());
       pending_outgoing_operations_.pop_front();
       outgoing_entry_ = std::move(entry);
-      std::visit([](auto&& variant) { variant.callback(); }, outgoing_entry_.value());
-     } else if (!pending_outgoing_operations_.empty()){
-      if (const RemoteNameRequestQueueEntry* peek =
-                  std::get_if<RemoteNameRequestQueueEntry>(&pending_outgoing_operations_.front())) {
-        if (incoming_connecting_address_set_.contains(peek->address) &&
-              !outgoing_entry_.has_value()) {
-            log::info("Pending connections is RNR;so sending RNR");
-            auto entry = std::move(pending_outgoing_operations_.front());
-            pending_outgoing_operations_.pop_front();
-            outgoing_entry_ = std::move(entry);
-            std::visit([](auto&& variant) { variant.callback(); }, outgoing_entry_.value());
+      std::visit([](auto& v) {
+        auto cb = std::move(v.callback);
+        cb.Invoke();
+      }, outgoing_entry_.value());
+      log::info("Exit, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
+      return;
+    }
+
+    if (!pending_outgoing_operations_.empty()) {
+      if (const auto* peek =
+              std::get_if<RemoteNameRequestQueueEntry>(&pending_outgoing_operations_.front())) {
+        if (incoming_connecting_address_set_.contains(peek->address) && !outgoing_entry_.has_value()) {
+          log::info("Front is eligible RNR; dispatching");
+          auto entry = std::move(pending_outgoing_operations_.front());
+          pending_outgoing_operations_.pop_front();
+          outgoing_entry_ = std::move(entry);
+          std::visit([](auto& v) {
+            auto cb = std::move(v.callback);
+            cb.Invoke();
+          }, outgoing_entry_.value());
+          log::info("Exit, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
+          return;
         }
       }
-    } else {
-      // log the reasons on why we're not sending the next operation
-      log_try_dequeue_next_operation();
+
+      if (!outgoing_entry_.has_value() && !incoming_connecting_address_set_.empty()) {
+        auto it = std::find_if(
+            pending_outgoing_operations_.begin(), pending_outgoing_operations_.end(),
+            [this](const QueueEntry& e) {
+              if (auto* rnr = std::get_if<RemoteNameRequestQueueEntry>(&e)) {
+                return incoming_connecting_address_set_.count(rnr->address) > 0;
+              }
+              return false;
+            });
+        if (it != pending_outgoing_operations_.end()) {
+          auto entry = std::move(*it);
+          pending_outgoing_operations_.erase(it);
+          outgoing_entry_ = std::move(entry);
+          std::visit([](auto& v) {
+            auto cb = std::move(v.callback);
+            cb.Invoke();
+          }, outgoing_entry_.value());
+          log::info("Promoted and dispatched eligible RNR from queue.");
+          log::info("Exit, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
+          return;
+        }
+      }
     }
+
+    log_try_dequeue_next_operation();
     log::info("Exit, outgoing_entry_.has_value() : {}", outgoing_entry_.has_value());
   }
 

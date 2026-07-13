@@ -22,6 +22,7 @@
  static const uint16_t kCccValueSize = 0x02;
  static const uint16_t kVaSessionStateSize = 0x01;
  static const uint16_t kVaUuidSize = 16;
+ static constexpr int kSaveVapDataDelayMs = 250;
 
  namespace uuid {
  static const uint16_t kGenericVasService16Bit = 0x185F;

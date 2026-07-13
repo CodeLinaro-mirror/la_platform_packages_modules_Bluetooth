@@ -175,7 +175,15 @@ bool SMP_PairCancel(const RawAddress& bd_addr) {
   tSMP_CB* p_cb = &smp_cb;
 
   log::verbose("state={} flag=0x{:x}", p_cb->state, p_cb->flags);
-  if (p_cb->state != SMP_STATE_IDLE && p_cb->pairing_bda == bd_addr) {
+
+  // An outgoing bond was initiated (WE_STARTED_DD set) but the LE link is not up
+  // yet, so SMP state is still IDLE. Honor the cancel here too, otherwise the
+  // fixed channel leaks and BTM stays stuck in WAIT_AUTH_COMPLETE until timeout.
+  bool started_but_not_connected =
+          (p_cb->state == SMP_STATE_IDLE) && (p_cb->flags & SMP_PAIR_FLAGS_WE_STARTED_DD);
+
+  if (((p_cb->state != SMP_STATE_IDLE) || started_but_not_connected) &&
+      p_cb->pairing_bda == bd_addr) {
     p_cb->is_pair_cancel = true;
     log::verbose("set fail reason Unknown");
     tSMP_INT_DATA smp_int_data;

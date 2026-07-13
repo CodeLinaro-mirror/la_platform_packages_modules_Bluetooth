@@ -22,6 +22,7 @@
    void Initialize(VapServerCallbacks* /*callbacks*/) override {}
    void SetCcid(int /*ccid*/) override {}
    void SetVaName(std::string /*va_name*/) override {}
+   void RejectVaSession(const RawAddress& /*bd_addr*/) override {}
    void NotifyVaSessionStarted(std::vector<RawAddress> /*devices*/, bool /*is_success*/) override {}
    void NotifyVaSessionStopped(std::vector<RawAddress> /*devices*/, bool /*is_success*/) override {}
    void DebugDump(int /*fd*/) override {}

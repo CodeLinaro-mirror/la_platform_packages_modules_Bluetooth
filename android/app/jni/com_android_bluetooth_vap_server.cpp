@@ -183,11 +183,25 @@
    }
  }
 
+ static void rejectVaSessionNative(JNIEnv* env, jobject /* object */, jbyteArray address) {
+   std::unique_lock<std::shared_timed_mutex> interface_lock(interface_mutex);
+
+   if (!sVapServerInterface) {
+     log::error("Failed to get Bluetooth VAP Server Interface");
+     return;
+   }
+
+   RawAddress bd_addr = addressFromJByteArray(env, address);
+
+   sVapServerInterface->RejectVaSession(bd_addr);
+ }
+
  int register_com_android_bluetooth_vap_server(JNIEnv* env) {
    const JNINativeMethod methods[] = {
            {"initNative", "()V", reinterpret_cast<void*>(initNative)},
            {"setCcidNative", "(I)V", reinterpret_cast<void*>(setCcidNative)},
            {"setVaNameNative", "(Ljava/lang/String;)V", reinterpret_cast<void*>(setVaNameNative)},
+           {"rejectVaSessionNative", "([B)V", reinterpret_cast<void*>(rejectVaSessionNative)},
            {"cleanupNative", "()V", reinterpret_cast<void*>(cleanupNative)},
    };
    const char* jniNativeInterfaceClass = "com/android/bluetooth/vap/VapServerNativeInterface";

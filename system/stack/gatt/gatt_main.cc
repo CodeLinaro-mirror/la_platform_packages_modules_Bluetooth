@@ -350,8 +350,15 @@ void gatt_update_app_use_link_flag(tGATT_IF gatt_if, tGATT_TCB* p_tcb, bool is_a
       }
       // acl link is connected but no application needs to use the link
       if (p_tcb->att_lcid == L2CAP_ATT_CID && is_valid_handle) {
-        /* Drop EATT before closing ATT */
-        EattExtension::GetInstance()->Disconnect(p_tcb->peer_bda);
+        /* Don't tear EATT down here. Idle timer is armed below; if no GATT
+         * client rejoins within the window, btm_sec_disconnect will drop the
+         * ACL and L2CAP cascades the EATT CCB cleanup. Tearing EATT down
+         * eagerly kills bearers that the next post-bond profile burst could
+         * have reused. eatt_legacy_early_disconnect is a kill-switch back to
+         * the old behavior. */
+        if (com_android_bluetooth_flags_eatt_legacy_early_disconnect()) {
+          EattExtension::GetInstance()->Disconnect(p_tcb->peer_bda);
+        }
 
         /* for fixed channel, set the timeout value to
            GATT_LINK_IDLE_TIMEOUT_WHEN_NO_APP seconds */

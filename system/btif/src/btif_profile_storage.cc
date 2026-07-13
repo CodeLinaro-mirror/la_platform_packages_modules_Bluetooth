@@ -683,6 +683,32 @@ void btif_storage_set_leaudio_supported_context_types(const RawAddress& addr,
           addr, sink_supported_context_type, source_supported_context_type));
 }
 
+/** Gets VAP Server CCC and values binary from NVRAM */
+bool btif_storage_get_vap_server_data(const RawAddress& address, std::vector<uint8_t>& data) {
+  size_t val_size = btif_config_get_bin_length(
+      address.ToString(), BTIF_STORAGE_KEY_VAP_SERVER_CCC_AND_VALUES_BIN);
+  if (val_size == 0) {
+    return false;
+  }
+  data.resize(val_size);
+  if (!btif_config_get_bin(address.ToString(), BTIF_STORAGE_KEY_VAP_SERVER_CCC_AND_VALUES_BIN,
+                           data.data(), &val_size)) {
+    return false;
+  }
+  return true;
+}
+
+/** Sets VAP Server CCC and values binary to NVRAM */
+void btif_storage_set_vap_server_data(const RawAddress& address, const std::vector<uint8_t>& data) {
+  do_in_jni_thread(BindOnce(
+          [](const RawAddress& bd_addr, std::vector<uint8_t> val) {
+            auto bdstr = bd_addr.ToString();
+            btif_config_set_bin(bdstr, BTIF_STORAGE_KEY_VAP_SERVER_CCC_AND_VALUES_BIN, val.data(),
+                                val.size());
+          },
+          address, data));
+}
+
 /** Loads information about bonded Le Audio devices */
 void btif_storage_load_bonded_leaudio() {
   for (const auto& bd_addr : btif_config_get_paired_devices()) {
