@@ -1777,8 +1777,8 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         cs_responder_trackers_[connection_handle].used_config_id = config_id;
       }
     }
-    CsTracker* live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
-                                               valid_responder_states);
+    CsTracker* live_tracker = get_live_tracker(
+            connection_handle, config_id, valid_requester_states, valid_responder_states, true);
     if (live_tracker == nullptr) {
       log::warn("Can't find cs tracker for connection_handle {}", connection_handle);
       return;
@@ -1912,7 +1912,8 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
   }
 
   CsTracker* get_live_tracker(uint16_t connection_handle, uint8_t config_id,
-                              uint8_t valid_requester_states, uint8_t valid_responder_states) {
+                              uint8_t valid_requester_states, uint8_t valid_responder_states,
+                              bool check_config_id) {
     // CAVEAT: if the remote is sending request with the same config id, the behavior is undefined.
     auto req_it = cs_requester_trackers_.find(connection_handle);
     if (req_it != cs_requester_trackers_.end() && req_it->second.state != CsTrackerState::STOPPED &&
@@ -1921,7 +1922,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       if (req_it->second.state == CsTrackerState::WAIT_FOR_CONFIG_COMPLETE) {
         req_config_id = req_it->second.requesting_config_id;
       }
-      if (req_config_id == config_id) {
+      if (!check_config_id || req_config_id == config_id) {
         return &(req_it->second);
       }
     }
@@ -2019,16 +2020,18 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
               static_cast<uint8_t>(CsTrackerState::INIT) |
               static_cast<uint8_t>(CsTrackerState::STARTED) |
               static_cast<uint8_t>(CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED);
-      live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
-                                      valid_responder_states);
+      // Don't check for config id, as the remote may enable a different config id from the one
+      // that was created last.
+      live_tracker = get_live_tracker(connection_handle, 0, valid_requester_states,
+                                      valid_responder_states, false);
       if (live_tracker == nullptr) {
         log::error("enable - no tracker is available for {}", connection_handle);
         return;
       }
       if (live_tracker->used_config_id != config_id) {
-        log::warn("config_id {} doesn't match the assigned one {}.", config_id,
+        log::warn("config_id {} doesn't match the assigned one {}, update it.", config_id,
                   live_tracker->used_config_id);
-        return;
+        live_tracker->used_config_id = config_id;
       }
 
       // maybe dead code, leave it here for safe. controller may never send 'ENABLED' with error.
@@ -2112,7 +2115,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         valid_requester_states |= static_cast<uint8_t>(CsTrackerState::STOPPED);
         uint8_t valid_responder_states = static_cast<uint8_t>(CsTrackerState::STARTED);
         live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
-                                        valid_responder_states);
+                                        valid_responder_states, true);
         if (live_tracker == nullptr) {
           auto it = cs_requester_trackers_.find(connection_handle);
           if (it != cs_requester_trackers_.end() && it->second.state == CsTrackerState::HOLD) {
@@ -2201,7 +2204,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       }
       connection_handle = cs_event_result.GetConnectionHandle();
       live_tracker = get_live_tracker(connection_handle, cs_event_result.GetConfigId(),
-                                      valid_requester_states, valid_responder_states);
+                                      valid_requester_states, valid_responder_states, true);
       if (live_tracker == nullptr) {
         log::error("no live tracker is available for {}", connection_handle);
         return;
@@ -2252,7 +2255,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       }
       connection_handle = cs_event_result.GetConnectionHandle();
       live_tracker = get_live_tracker(connection_handle, cs_event_result.GetConfigId(),
-                                      valid_requester_states, valid_responder_states);
+                                      valid_requester_states, valid_responder_states, true);
       procedure_done_status = cs_event_result.GetProcedureDoneStatus();
       subevent_done_status = cs_event_result.GetSubeventDoneStatus();
       procedure_abort_reason = cs_event_result.GetProcedureAbortReason();
