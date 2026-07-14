@@ -56,7 +56,7 @@ bool is_hal_enabled() {
   return false;
 }
 
-bool is_aidl_enabled(){
+bool is_aidl_enabled() {
   LOG(INFO) << __func__;
   if (HalVersionManager::GetHalTransport() ==
      BluetoothAudioHalTransport::AIDL) {
@@ -105,7 +105,7 @@ bool init(bluetooth::common::MessageLoopThread* message_loop,
     return aidl::a2dp::init(message_loop, stream_callbacks, offload_enabled);
   } else if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::QTI_HIDL) {
     LOG(INFO) << __func__ << ": qti_hidl init";
-    return qti_hidl::a2dp::init(message_loop);
+    return qti_hidl::a2dp::init(message_loop, stream_callbacks);
   }
   return false;
 }
@@ -133,7 +133,7 @@ bool setup_codec(A2dpCodecConfig* a2dp_config, uint16_t peer_mtu,
     return aidl::a2dp::setup_codec(a2dp_config, peer_mtu, preferred_encoding_interval_us);
   } else if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::QTI_HIDL) {
     LOG(INFO) << __func__ << ": qti_hidl setup_codec";
-    return qti_hidl::a2dp::setup_codec();
+    return qti_hidl::a2dp::setup_codec(a2dp_config);
   }
   return false;
 }

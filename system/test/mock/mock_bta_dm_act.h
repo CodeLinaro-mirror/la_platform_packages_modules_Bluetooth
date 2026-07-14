@@ -113,6 +113,18 @@ struct BTA_dm_on_hw_on {
 };
 extern struct BTA_dm_on_hw_on BTA_dm_on_hw_on;
 
+// Name: BTA_dm_remove_on_disconnect
+// Params: const RawAddress bd_addr, tBT_TRANSPORT transport
+// Return: void
+struct BTA_dm_remove_on_disconnect {
+  std::function<void(const RawAddress bd_addr, tBT_TRANSPORT transport)> body{
+          [](const RawAddress /* bd_addr */, tBT_TRANSPORT /* transport */) {}};
+  void operator()(const RawAddress bd_addr, tBT_TRANSPORT transport) {
+    body(bd_addr, transport);
+  }
+};
+extern struct BTA_dm_remove_on_disconnect BTA_dm_remove_on_disconnect;
+
 // Name: BTA_dm_report_role_change
 // Params: const RawAddress bd_addr, tHCI_ROLE new_role, tHCI_STATUS hci_status
 // Return: void

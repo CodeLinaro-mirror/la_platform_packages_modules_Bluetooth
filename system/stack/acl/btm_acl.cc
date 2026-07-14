@@ -175,6 +175,9 @@ void NotifyAclLinkDown(tACL_CONN& p_acl) {
   if (p_acl.link_up_issued) {
     p_acl.link_up_issued = false;
     BTA_dm_acl_down(p_acl.remote_addr, p_acl.transport);
+  } else {
+    log::debug("Remove the device: {}", p_acl.remote_addr);
+    BTA_dm_remove_on_disconnect(p_acl.remote_addr, p_acl.transport);
   }
 }
 

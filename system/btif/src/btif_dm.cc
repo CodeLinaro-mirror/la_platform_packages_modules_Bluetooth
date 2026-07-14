@@ -1693,13 +1693,13 @@ static void btif_on_service_discovery_results(RawAddress bd_addr,
           (bd_addr == pairing_cb.bd_addr || bd_addr == pairing_cb.static_bdaddr);
 
   if (results_for_bonding_device && result != BTA_SUCCESS &&
-      pairing_cb.state == BT_BOND_STATE_BONDED &&
+      (pairing_cb.state == BT_BOND_STATE_BONDED || pairing_cb.sdp_attempts) &&
       pairing_cb.sdp_attempts < BTIF_DM_MAX_SDP_ATTEMPTS_AFTER_PAIRING) {
     if (pairing_cb.sdp_attempts) {
       log::warn("SDP failed after bonding re-attempting for {}", bd_addr);
       pairing_cb.sdp_attempts++;
       bluetooth::metrics::LogSDPComplete(bd_addr, result);
-      btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_BR_EDR);
+      btif_dm_sdp_delay_timer(&bd_addr);
     } else {
       log::warn("SDP triggered by someone failed when bonding");
     }
@@ -2392,25 +2392,7 @@ void btif_dm_sec_evt(tBTA_DM_SEC_EVT event, tBTA_DM_SEC* p_data) {
  * Returns          void
  *
  ******************************************************************************/
-static const char* dump_dm_acl_event(tBTA_DM_ACL_EVT event) {
-  switch (event) {
-    case BTA_DM_LINK_UP_EVT:
-      return "BTA_DM_LINK_UP_EVT";
-    case BTA_DM_LINK_UP_FAILED_EVT:
-      return "BTA_DM_LINK_UP_FAILED_EVT";
-    case BTA_DM_LINK_DOWN_EVT:
-      return "BTA_DM_LINK_DOWN_EVT";
-    case BTA_DM_LE_FEATURES_READ:
-      return "BTA_DM_LE_FEATURES_READ";
-    case BTA_DM_LPP_OFFLOAD_FEATURES_READ:
-      return "BTA_DM_LPP_OFFLOAD_FEATURES_READ";
-    default:
-      return "UNKNOWN_BTA_DM_ACL_EVT";
-  }
-}
-
 void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
-  log::debug("ACL event: {}", dump_dm_acl_event(event));
   RawAddress bd_addr;
 
   switch (event) {
@@ -2431,19 +2413,6 @@ void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
           is_device_le_audio_capable(bd_addr)) {
         stack::l2cap::get_interface().L2CA_LockBleConnParamsForProfileConnection(bd_addr, true);
       }
-
-      // If ACL came up and we still have pending SDP scheduled for this bonded device, start it now.
-      if ((pairing_cb.state == BT_BOND_STATE_BONDED) &&
-          (bd_addr == pairing_cb.bd_addr || bd_addr == pairing_cb.static_bdaddr) &&
-          (pairing_cb.sdp_over_classic == btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED)) {
-        log::info("ACL up and SDP pending for {}, starting service discovery", bd_addr);
-        // Ensure inquiry is stopped before attempting service discovery
-        btif_dm_cancel_discovery();
-        if (pairing_cb.sdp_attempts == 0) {
-          pairing_cb.sdp_attempts = 1;
-        }
-        btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_BR_EDR);
-      }
       break;
 
     case BTA_DM_LINK_UP_FAILED_EVT:
@@ -2460,7 +2429,6 @@ void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
       bd_addr = p_data->link_down.bd_addr;
       btm_set_bond_type_dev(p_data->link_down.bd_addr, BOND_TYPE_UNKNOWN);
       GetInterfaceToProfiles()->onLinkDown(bd_addr, p_data->link_down.transport_link_type);
-      bta_dm_disc_stop();
 
       bt_conn_direction_t direction;
       switch (btm_get_acl_disc_reason_code()) {
@@ -3012,6 +2980,14 @@ DEV_CLASS btif_dm_get_local_class_of_device() {
           "Check LE audio enabled status, update class of device to '0x{:x}, "
           "0x{:x}, 0x{:x}'",
           device_class[0], device_class[1], device_class[2]);
+  if(osi_property_get_bool("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", true)) {
+    log::info("Changing COD for Sink device");
+    device_class[0] = 0x20; //Service class as Audio
+    device_class[1] = 0x04; // major dev class as Audio / Video
+    device_class[2] = 0x04; // minor dev class as Wearable headset device
+    log::debug("Updated class of device '0x{:x}, 0x{:x}, 0x{:x}' from CoD system property",
+             device_class[0], device_class[1], device_class[2]);
+  }
 #endif
   return device_class;
 }

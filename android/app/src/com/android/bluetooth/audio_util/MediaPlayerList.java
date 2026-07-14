@@ -374,13 +374,32 @@ public class MediaPlayerList {
 
     /** Sets the {@link #mBrowsingPlayerId} and returns the number of items in current path */
     public void setBrowsedPlayer(int playerId, String currentPath, SetBrowsedPlayerCallback cb) {
+        Log.i(TAG, "Browse Refactor " + Flags.browsingRefactor() +
+                   " Multi player support " + Util.areMultiplePlayersSupported() +
+                   " SetAddressplayer " + Flags.setAddressedPlayer());
+        Log.i(TAG, "Request playerid  " + playerId + " Current Browseid " + mBrowsingPlayerId +
+                   " current path " + currentPath);
         if (Flags.browsingRefactor()) {
             if (!Util.areMultiplePlayersSupported()) {
-                cb.run(
-                        playerId,
-                        playerId == BLUETOOTH_PLAYER_ID,
-                        currentPath,
-                        mMediaBrowserWrappers.size());
+                // if currentPath is not empty, process it
+                if (!currentPath.equals("")) {
+                    getFolderItems(
+                         playerId,
+                         currentPath,
+                         (parentId, itemList) -> {
+                             cb.run(
+                                      playerId,
+                                      playerId == BLUETOOTH_PLAYER_ID,
+                                      currentPath,
+                                      itemList.size());
+                         });
+                } else {
+                    cb.run(
+                            playerId,
+                            playerId == BLUETOOTH_PLAYER_ID,
+                            currentPath,
+                            mMediaBrowserWrappers.size());
+                }
                 return;
             }
             if (!haveMediaBrowser(playerId)) {
@@ -551,8 +570,26 @@ public class MediaPlayerList {
     public PlaybackState getCurrentPlayStatus() {
         final MediaPlayerWrapper player = getActivePlayer();
         if (player == null && !mAudioPlaybackIsActive) return null;
-
         PlaybackState state = player == null ? null : player.getPlaybackState();
+        Log.d(TAG, "Player state in whole" + state);
+
+        if (mCurrMediaData != null) {
+            Log.d(TAG, "CurrMediaData state in whole " + mCurrMediaData.state);
+            PlaybackState currMediaDataState = mCurrMediaData.state;
+            if (currMediaDataState != null) {
+                if (currMediaDataState.getState() == PlaybackState.STATE_FAST_FORWARDING
+                        || currMediaDataState.getState() == PlaybackState.STATE_REWINDING) {
+                    Log.d(TAG, "CurrMediaData state is " + currMediaDataState.getState());
+                    return new PlaybackState.Builder()
+                            .setState(
+                                    currMediaDataState.getState(),
+                                    state == null ? 0 : state.getPosition(),
+                                    state == null ? 1.0f : state.getPlaybackSpeed()
+                            )
+                            .build();
+                }
+            }
+        }
         if (mAudioPlaybackIsActive
                 && (state == null || state.getState() != PlaybackState.STATE_PLAYING)) {
             return new PlaybackState.Builder()
@@ -1382,6 +1419,13 @@ public class MediaPlayerList {
                             && player.getPlaybackState().getState() == PlaybackState.STATE_PLAYING
                             && (data.state.getState() != PlaybackState.STATE_PLAYING)) {
                         Log.d(TAG, "Some audio playbacks are still active, drop it");
+                        return;
+                    }
+
+                    if (mAudioPlaybackIsActive &&
+                            (data.state.getState() == PlaybackState.STATE_PAUSED ||
+                            data.state.getState() == PlaybackState.STATE_STOPPED)) {
+                        Log.d(TAG, "Audio playback is still active, drop state=" + data.state);
                         return;
                     }
                     sendMediaUpdate(data);

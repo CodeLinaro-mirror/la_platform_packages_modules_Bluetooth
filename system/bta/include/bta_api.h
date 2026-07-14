@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -379,8 +382,13 @@ enum {
  * must insure that order is maintained.
  */
 #ifndef BTA_DM_PM_SNIFF_MAX
+#ifdef TARGET_SUPPORTS_WEARABLES
+#define BTA_DM_PM_SNIFF_MAX 2048
+#define BTA_DM_PM_SNIFF_MIN 1024
+#else
 #define BTA_DM_PM_SNIFF_MAX 800
 #define BTA_DM_PM_SNIFF_MIN 400
+#endif
 #define BTA_DM_PM_SNIFF_ATTEMPT 4
 #define BTA_DM_PM_SNIFF_TIMEOUT 1
 #endif

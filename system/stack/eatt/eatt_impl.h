@@ -161,6 +161,16 @@ struct eatt_impl {
       eatt_dev = add_eatt_device(bda);
     }
 
+    eatt_dev->eatt_tcb_ = gatt_find_tcb_by_addr(eatt_dev->bda_, BT_TRANSPORT_LE);
+  
+    if (!eatt_dev->eatt_tcb_) {
+      // We cannot stand up EATT bearers without a GATT TCB
+      log::warn("EATT connect ind: no GATT TCB for {}", bda);
+      stack::l2cap::get_interface().L2CA_ConnectCreditBasedRsp(
+        bda, identifier, lcids,
+        tL2CAP_LE_RESULT_CODE::L2CAP_LE_RESULT_NO_RESOURCES, nullptr);
+      return false;
+    }
     uint16_t max_mps = shim::GetController()->GetLeBufferSize().le_data_packet_length_;
 
     tL2CAP_LE_CFG_INFO local_coc_cfg = {
@@ -175,12 +185,6 @@ struct eatt_impl {
                 &local_coc_cfg)) {
       log::warn("Unable to respond L2CAP le_coc credit indication peer:{}", bda);
       return false;
-    }
-
-    if (!eatt_dev->eatt_tcb_) {
-      eatt_dev->eatt_tcb_ = gatt_find_tcb_by_addr(eatt_dev->bda_, BT_TRANSPORT_LE);
-      log::assert_that(eatt_dev->eatt_tcb_ != nullptr,
-                       "assert failed: eatt_dev->eatt_tcb_ != nullptr");
     }
 
     for (uint16_t cid : lcids) {

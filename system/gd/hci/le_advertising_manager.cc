@@ -260,6 +260,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   size_t GetNumberOfAdvertisingInstances() const { return num_instances_; }
 
   size_t GetNumberOfAdvertisingInstancesInUse() const {
+    std::lock_guard<std::mutex> lock(id_mutex_);
     return std::count_if(advertising_sets_.begin(), advertising_sets_.end(),
                          [](const auto& set) { return set.second.in_use; });
   }
@@ -450,6 +451,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   }
 
   AdvertiserId allocate_advertiser() {
+    std::unique_lock lock(id_mutex_);
     // number of LE_MULTI_ADVT start from 1
     AdvertiserId id = advertising_api_type_ == AdvertisingApiType::ANDROID_HCI ? 1 : 0;
     while (id < num_instances_ && advertising_sets_.count(id) != 0) {
@@ -2081,7 +2083,7 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
   storage::ConfigCache* configcache_;
   storage::StorageModule* storage_module_;
   EncrDataKey* key_iv = new EncrDataKey;
-  std::mutex id_mutex_;
+  mutable std::mutex id_mutex_;
   size_t num_instances_;
   std::vector<hci::EnabledSet> enabled_sets_;
   // map to mapping the id from java layer and advertier id

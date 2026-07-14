@@ -32,6 +32,7 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.SystemProperties;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -108,12 +109,14 @@ class AvrcpControllerStateMachine extends StateMachine {
 
     // Notification types for Avrcp protocol JNI.
     private static final byte NOTIFICATION_RSP_TYPE_INTERIM = 0x00;
+    private static final byte NOTIFICATION_RSP_TYPE_CHANGED = 0x01;
 
     private final AdapterService mAdapterService;
     private final AudioManager mAudioManager;
     private final GetFolderList mGetFolderList;
     private final boolean mIsVolumeFixed;
     private final SparseArray<AvrcpPlayer> mAvailablePlayerList;
+    private A2dpSinkService mA2dpSinkService;
 
     @VisibleForTesting final BrowseTree mBrowseTree;
 
@@ -133,10 +136,15 @@ class AvrcpControllerStateMachine extends StateMachine {
     private boolean mShouldSendPlayOnFocusRecovery = false;
     private boolean mRemoteControlConnected = false;
     private boolean mBrowsingConnected = false;
+    private boolean mIsSplitSink = false;
+    private boolean mAbsVolNotificationRequested = false;
 
     private AvrcpPlayer mAddressedPlayer;
     private int mAddressedPlayerId;
     private int mVolumeNotificationLabel = -1;
+    private int mVolumeChangedNotificationsToIgnore = 0;
+    private int mPreviousPercentageVol = -1;
+    private int cachedVolumeIndex = 0;
 
     // Number of items to get in a single fetch
     static final int ITEM_PAGE_SIZE = 20;
@@ -188,6 +196,10 @@ class AvrcpControllerStateMachine extends StateMachine {
         mAudioManager = mAdapterService.getSystemService(AudioManager.class);
         mIsVolumeFixed = mAudioManager.isVolumeFixed() || isControllerAbsoluteVolumeEnabled;
 
+        if (A2dpSinkService.isEnabled()) {
+            mIsSplitSink = SystemProperties.
+                    getBoolean("persist.vendor.qcom.bluetooth.a2dp_sink_offload.enabled", false);
+        }
         setInitialState(mDisconnected);
 
         debug("State machine created");
@@ -278,6 +290,7 @@ class AvrcpControllerStateMachine extends StateMachine {
 
     @VisibleForTesting
     boolean isActive() {
+        debug("isActive :" + mDevice.equals(mService.getActiveDevice())+ "Device : "+mDevice);
         return mDevice.equals(mService.getActiveDevice());
     }
 
@@ -555,11 +568,59 @@ class AvrcpControllerStateMachine extends StateMachine {
 
                 case MESSAGE_PROCESS_REGISTER_ABS_VOL_NOTIFICATION:
                     mVolumeNotificationLabel = msg.arg1;
+                    mAbsVolNotificationRequested = true;
                     mNativeInterface.sendRegisterAbsVolRsp(
                             mDeviceAddress,
                             NOTIFICATION_RSP_TYPE_INTERIM,
                             getAbsVolume(),
                             mVolumeNotificationLabel);
+                    return true;
+
+                case MESSAGE_PROCESS_VOLUME_CHANGED_NOTIFICATION:
+                    if (mVolumeChangedNotificationsToIgnore > 0) {
+                        mVolumeChangedNotificationsToIgnore--;
+                        if (mVolumeChangedNotificationsToIgnore == 0) {
+                            removeMessages(MESSAGE_INTERNAL_ABS_VOL_TIMEOUT);
+                        }
+                    } else {
+                        if (mAbsVolNotificationRequested) {
+                            int percentageVol = getAbsVolume();
+                            Log.d(TAG, " percentageVol = " + percentageVol);
+                            if (percentageVol != mPreviousPercentageVol) {
+                                    Log.d(TAG, " Sending Changed Response = " + percentageVol +
+                                          " label: " + msg.arg1 + " mPreviousPercentageVol: " +
+                                          mPreviousPercentageVol);
+                                if (mIsSplitSink) {
+                                    int currIndex = mAudioManager.getStreamVolume(
+                                                            AudioManager.STREAM_MUSIC);
+                                    String volume_param  = "btsink_volume=" + currIndex;
+                                    mAudioManager.setParameters(volume_param);
+                                }
+                                mPreviousPercentageVol = percentageVol;
+                                Log.d(TAG,"cachedVolumeIndex : "+ cachedVolumeIndex +"mm index:"+
+                                       mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC));
+                                if (cachedVolumeIndex !=
+                                    mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+                                    mNativeInterface.sendRegisterAbsVolRsp(
+                                    mDeviceAddress,
+                                    NOTIFICATION_RSP_TYPE_CHANGED,
+                                    getAbsVolume(),
+                                    mVolumeNotificationLabel);
+
+                                    mAbsVolNotificationRequested = false;
+                                    cachedVolumeIndex =
+                                        mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                                }
+                            }
+                        }
+                    }
+                    return true;
+                case MESSAGE_INTERNAL_ABS_VOL_TIMEOUT:
+                    // Volume changed notifications should come back promptly from the
+                    // AudioManager, if for some reason some notifications were squashed don't
+                    // prevent future notifications.
+                    Log.d(TAG, "Timed out on volume changed notification");
+                    mVolumeChangedNotificationsToIgnore = 0;
                     return true;
 
                 case MESSAGE_GET_FOLDER_ITEMS:
@@ -603,12 +664,8 @@ class AvrcpControllerStateMachine extends StateMachine {
                     debug(
                             "Connected: Playback status = "
                                     + AvrcpControllerUtils.playbackStateToString(msg.arg1));
+                    mA2dpSinkService = A2dpSinkService.getA2dpSinkService();
                     mAddressedPlayer.setPlayStatus(msg.arg1);
-                    if (!isActive()) {
-                        sendMessage(
-                                MSG_AVRCP_PASSTHRU, AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
-                        return true;
-                    }
 
                     BluetoothMediaBrowserService.onPlaybackStateChanged(
                             mAddressedPlayer.getPlaybackState());
@@ -625,10 +682,12 @@ class AvrcpControllerStateMachine extends StateMachine {
                             && focusState == AudioManager.AUDIOFOCUS_NONE) {
                         if (shouldRequestFocus()) {
                             mSessionCallbacks.onPrepare();
+                            mA2dpSinkService.informTGStatePlaying(mDevice, true);
                         } else {
                             sendMessage(
                                     MSG_AVRCP_PASSTHRU,
                                     AvrcpControllerService.PASS_THRU_CMD_ID_PAUSE);
+                            mA2dpSinkService.informTGStatePlaying(mDevice, false);
                         }
                     }
                     return true;
@@ -1245,6 +1304,13 @@ class AvrcpControllerStateMachine extends StateMachine {
         if (reqLocalVolume != curLocalVolume) {
             mAudioManager.setStreamVolume(
                     AudioManager.STREAM_MUSIC, reqLocalVolume, AudioManager.FLAG_SHOW_UI);
+        }
+
+        if (mIsSplitSink) {
+            String volume_param = "btsink_volume="+reqLocalVolume;
+            Log.d(TAG,"setAbsVolume : "+volume_param);
+            mAudioManager.setParameters(volume_param);
+            cachedVolumeIndex = reqLocalVolume;
         }
     }
 

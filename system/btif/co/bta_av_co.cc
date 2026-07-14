@@ -140,7 +140,14 @@ bool BtaAvCo::IsSupportedCodec(btav_a2dp_codec_index_t codec_index) {
 A2dpCodecConfig* BtaAvCo::GetActivePeerCurrentCodec() {
   std::lock_guard<std::recursive_mutex> lock(peer_cache_->codec_lock_);
 
+  // Try to get the active source peer first
   BtaAvCoPeer* active_peer = bta_av_source_state_.getActivePeer();
+
+  // Fallback to active sink peer if no source peer is active
+  if (active_peer == nullptr) {
+    active_peer = bta_av_sink_state_.getActivePeer();
+  }
+
   if (active_peer == nullptr || active_peer->GetCodecs() == nullptr) {
     return nullptr;
   }
@@ -1732,13 +1739,4 @@ A2dpCodecConfig* bta_av_co_get_codec_config_a2dp_sink(
   }
 
   return p_peer->GetCodecs()->findSinkCodecConfig(p_codec_info);
-}
-
-uint16_t bta_av_co_get_peer_mtu_sink(const RawAddress& peer_address) {
-  BtaAvCoPeer* p_peer = bta_av_co_cb.peer_cache_->FindPeer(peer_address);
-  if (p_peer == nullptr) {
-    return 0;
-  }
-
-  return p_peer->mtu;
 }

@@ -331,7 +331,7 @@ bool l2c_link_hci_disc_comp(uint16_t handle, tHCI_REASON reason) {
   if (p_lcb->ccb_queue.p_first_ccb != nullptr || p_lcb->p_pending_ccb) {
     log::debug("l2c_link_hci_disc_comp: Restarting pending ACL request");
     /* Release any held buffers */
-    while (!list_is_empty(p_lcb->link_xmit_data_q)) {
+    while (p_lcb->link_xmit_data_q != NULL && !list_is_empty(p_lcb->link_xmit_data_q)) {
       BT_HDR* p_buf = static_cast<BT_HDR*>(list_front(p_lcb->link_xmit_data_q));
       list_remove(p_lcb->link_xmit_data_q, p_buf);
       osi_free(p_buf);

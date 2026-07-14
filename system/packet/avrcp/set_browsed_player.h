@@ -17,6 +17,7 @@
 #pragma once
 
 #include "avrcp_browse_packet.h"
+#include <stack>
 
 namespace bluetooth {
 namespace avrcp {
@@ -29,26 +30,31 @@ public:
                                                                       uint16_t uid_counter,
                                                                       uint32_t num_items_in_folder,
                                                                       uint8_t folder_depth,
-                                                                      std::string folder_name);
+                                                                      std::stack<std::string> &folder_name,
+                                                                      uint16_t browse_mtu);
 
   virtual size_t size() const override;
   virtual bool Serialize(const std::shared_ptr<::bluetooth::Packet>& pkt) override;
+  size_t GetFolderItemsSize(std::stack<std::string> &folder_name_list);
 
 protected:
   Status status_;
   uint16_t uid_counter_;
   uint32_t num_items_in_folder_;
   uint8_t folder_depth_;
-  std::string folder_name_;
+  std::stack<std::string> folder_name_list_;
+  uint16_t browse_mtu_;
 
   SetBrowsedPlayerResponseBuilder(Status status, uint16_t uid_counter, uint32_t num_items_in_folder,
-                                  uint8_t folder_depth, std::string folder_name)
+                                  uint8_t folder_depth, std::stack<std::string> &folder_name_list,
+                                  uint16_t browse_mtu)
       : BrowsePacketBuilder(BrowsePdu::SET_BROWSED_PLAYER),
         status_(status),
         uid_counter_(uid_counter),
         num_items_in_folder_(num_items_in_folder),
         folder_depth_(folder_depth),
-        folder_name_(folder_name) {}
+        folder_name_list_(folder_name_list),
+        browse_mtu_(browse_mtu) {}
 };
 
 class SetBrowsedPlayerRequest : public BrowsePacket {

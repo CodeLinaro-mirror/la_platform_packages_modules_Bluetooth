@@ -18,19 +18,24 @@ package com.android.bluetooth.gatt;
 
 import static com.android.bluetooth.Utils.callerIsSystemOrActiveOrManagedUser;
 import static com.android.bluetooth.Utils.checkConnectPermissionForDataDelivery;
+import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
 
 import static java.util.Objects.requireNonNull;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothStatusCodes;
+import android.bluetooth.GattOffloadSession;
 import android.bluetooth.IBluetoothGatt;
 import android.bluetooth.IBluetoothGattCallback;
 import android.bluetooth.IBluetoothGattServerCallback;
 import android.content.AttributionSource;
 import android.os.ParcelUuid;
+import android.annotation.RequiresPermission;
 
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.ProfileService.IProfileServiceBinder;
@@ -58,6 +63,18 @@ class GattServiceBinder extends IBluetoothGatt.Stub implements IProfileServiceBi
         GattService service = mService;
 
         if (!Utils.checkServiceAvailable(service, TAG)) {
+            return null;
+        }
+
+        return service;
+    }
+
+    @RequiresPermission(BLUETOOTH_CONNECT)
+    private GattService getServiceAndEnforceConnect(AttributionSource source) {
+        GattService service = mService;
+
+        if (!Utils.checkServiceAvailable(service, TAG)
+                || !Utils.checkConnectPermissionForDataDelivery(service, source, TAG)) {
             return null;
         }
 
@@ -520,6 +537,70 @@ class GattServiceBinder extends IBluetoothGatt.Stub implements IProfileServiceBi
             return;
         }
         service.disconnectAll(source);
+    }
+
+    @Override
+    public GattOffloadSession.InnerParcel offloadClientCharacteristics(
+            IBluetoothGattCallback callback,
+            BluetoothDevice device,
+            BluetoothGattService gattService,
+            List<BluetoothGattCharacteristic> characteristics,
+            long endpointId,
+            long hubId,
+            AttributionSource source) {
+        GattService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            throw new IllegalArgumentException("Service is null");
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        return service.offloadClientCharacteristics(
+                callback, device, gattService, characteristics, endpointId, hubId, source);
+    }
+
+    @Override
+    public void unoffloadClientCharacteristics(
+            IBluetoothGattCallback callback,
+            BluetoothDevice device,
+            int sessionId,
+            AttributionSource source) {
+        GattService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            throw new IllegalArgumentException("Service is null");
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.unoffloadClientCharacteristics(callback, device, sessionId, source);
+    }
+
+    @Override
+    public GattOffloadSession.InnerParcel offloadServerCharacteristics(
+            IBluetoothGattServerCallback callback,
+            BluetoothDevice device,
+            BluetoothGattService gattService,
+            List<BluetoothGattCharacteristic> characteristics,
+            long endpointId,
+            long hubId,
+            AttributionSource source) {
+        GattService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            throw new IllegalArgumentException("Service is null");
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        return service.offloadServerCharacteristics(
+                callback, device, gattService, characteristics, endpointId, hubId, source);
+    }
+
+    @Override
+    public void unoffloadServerCharacteristics(
+            IBluetoothGattServerCallback callback,
+            BluetoothDevice device,
+            int sessionId,
+            AttributionSource source) {
+        GattService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            throw new IllegalArgumentException("Service is null");
+        }
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.unoffloadServerCharacteristics(callback, device, sessionId, source);
     }
 
     @Override

@@ -79,6 +79,7 @@ import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.BluetoothUtils;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.BufferConstraints;
+import android.bluetooth.GattOffloadCapabilities;
 import android.bluetooth.IBluetoothCallback;
 import android.bluetooth.IBluetoothConnectionCallback;
 import android.bluetooth.IBluetoothGatt;
@@ -2842,7 +2843,9 @@ public class AdapterService extends Service {
 
         // Pairing is unreliable while scanning, so cancel discovery
         // Note, remove this when native stack improves
-        mNativeInterface.cancelDiscovery();
+        if (mAdapterProperties.isDiscovering()) {
+            mNativeInterface.cancelDiscovery();
+        }
 
         Message msg = mBondStateMachine.obtainMessage(BondStateMachine.CREATE_BOND);
         msg.obj = device;
@@ -5214,5 +5217,24 @@ public class AdapterService extends Service {
     public boolean isRfcommSocketOffloadSupported() {
         int val = getNumberOfSupportedOffloadedRfcommSockets();
         return val > 0;
+    }
+
+    /** Check if the offloaded GATT client is supported. */
+    public boolean isGattClientOffloadSupported() {
+        int val = mAdapterProperties.getSupportedOffloadedGattClientProperties();
+        return val != 0;
+    }
+
+    /** Check if the offloaded GATT server is supported. */
+    public boolean isGattServerOffloadSupported() {
+        int val = mAdapterProperties.getSupportedOffloadedGattServerProperties();
+        return val != 0;
+    }
+
+    /** Get the supported GATT offload capabilities. */
+    public GattOffloadCapabilities.InnerParcel getSupportedGattOffloadCapabilities() {
+        return new GattOffloadCapabilities.InnerParcel(
+                mAdapterProperties.getSupportedOffloadedGattClientProperties(),
+                mAdapterProperties.getSupportedOffloadedGattServerProperties());
     }
 }

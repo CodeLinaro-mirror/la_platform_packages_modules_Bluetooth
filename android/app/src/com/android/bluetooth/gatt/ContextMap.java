@@ -17,6 +17,7 @@ package com.android.bluetooth.gatt;
 
 import static com.android.bluetooth.util.AttributionSourceUtil.getLastAttributionTag;
 
+import android.bluetooth.BluetoothDevice;
 import android.annotation.Nullable;
 import android.content.AttributionSource;
 import android.content.Context;
@@ -49,7 +50,7 @@ import java.util.function.Predicate;
  *
  * @param <C> the callback type for this map
  */
-public class ContextMap<C> {
+public class ContextMap<C extends IInterface> {
     private static final String TAG =
             GattServiceConfig.TAG_PREFIX + ContextMap.class.getSimpleName();
 
@@ -70,6 +71,10 @@ public class ContextMap<C> {
             this.appId = appId;
             this.startTime = SystemClock.elapsedRealtime();
         }
+        int connId() { return connId; }
+        String address() { return address; }
+        int appId() { return appId; }
+        long startTime() { return startTime; }
     }
 
     /** Application entry mapping UUIDs to appIDs and callbacks. */
@@ -90,7 +95,7 @@ public class ContextMap<C> {
         @Nullable public final String attributionTag;
 
         /** Application callbacks */
-        public C callback;
+        public final C callback;
 
         /** Death recipient */
         private IBinder.DeathRecipient mDeathRecipient;
@@ -108,6 +113,10 @@ public class ContextMap<C> {
             this.appUid = appUid;
             this.name = name;
             this.attributionTag = getLastAttributionTag(attrSource);
+        }
+
+        C getCallback() {
+            return callback;
         }
 
         /** Link death recipient */
@@ -305,6 +314,15 @@ public class ContextMap<C> {
         return app;
     }
 
+    App getByCallbackId(C callbackId) {
+        App app =
+                getAppByPredicate(entry -> entry.getCallback().asBinder() == callbackId.asBinder());
+        if (app == null) {
+            Log.e(TAG, "Context not found for callbackID " + callbackId);
+        }
+        return app;
+    }
+
     /** Get an application context by UUID. */
     public App getByUuid(UUID uuid) {
         App app = getAppByPredicate(entry -> entry.uuid.equals(uuid));
@@ -368,6 +386,33 @@ public class ContextMap<C> {
             }
         }
         return null;
+    }
+
+    /**
+     * Returns all connection IDs for a given device.
+     *
+     * <p>Devices are allowed to have multiple underlying connections (ATT bearers) to a remote
+     * device. When using BR/EDR, these can be different L2CAP connections targeting the ATT
+     * assigned PSM. When using LE, there's typically one underlying link targeting the fixed ATT
+     * channel for LE. When a device is dual mode, they can use any combination of these links.
+     *
+     * <p>One ATT bearer disconnecting doesn't necessarily mean the entire underlying connection is
+     * gone. We need to use all connections to carefully communicate state to GATT applications.
+     * When requesting a disconnection, we also need to make sure to request a disconnection on all
+     * connections, not just a single connection.
+     *
+     * <p>This function provides a way to get all connections for a device so we can do the above.
+     */
+    List<Connection> getConnectionsByDevice(int appId, BluetoothDevice device) {
+        List<Connection> currentConnections = new ArrayList<>();
+        synchronized (mConnectionsLock) {
+            for (Connection connection : mConnections) {
+                if ( connection.appId == appId && (device != null && device.getAddress().equals(connection.address))) {
+                    currentConnections.add(connection);
+                }
+            }
+        }
+        return currentConnections;
     }
 
     public List<Connection> getConnectionByApp(int appId) {

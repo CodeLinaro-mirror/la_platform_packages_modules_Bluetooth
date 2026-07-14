@@ -75,6 +75,7 @@ public class A2dpSinkStreamHandler extends Handler {
     public static final int DISCONNECT = 6; // Remote device was disconnected
     public static final int AUDIO_FOCUS_CHANGE = 7; // Audio focus callback with associated change
     public static final int REQUEST_FOCUS = 8; // Request focus when the media service is active
+    public static final int RELEASE_FOCUS = 10; // Release focus when requested
     public static final int START_SINK = 11;  // notify Audio HAL to start split sink
     public static final int STOP_SINK = 12; // notify Audio HAL to stop split sink
     public static final int SET_ACTIVE = 13;  // notify Audio HAL active changed
@@ -218,6 +219,10 @@ public class A2dpSinkStreamHandler extends Handler {
             case DISCONNECT:
                 // Remote device has disconnected, restore everything to default state.
                 mStreamAvailable = false;
+                break;
+
+            case RELEASE_FOCUS:
+                abandonAudioFocus();
                 break;
 
             case AUDIO_FOCUS_CHANGE:

@@ -1353,7 +1353,8 @@ public final class BluetoothSocket implements Closeable {
         mMaxRxPacketSize = (bb.getShort() & 0xffff); // Convert to unsigned value
         long uuidLsb = bb.getLong();
         long uuidMsb = bb.getLong();
-        mConnectionUuid = new ParcelUuid(new UUID(uuidMsb, uuidLsb));
+        ParcelUuid connectionUuid = new ParcelUuid(new UUID(uuidMsb, uuidLsb));
+        mConnectionUuid = connectionUuid;
         mSocketId = bb.getLong();
         String RemoteAddr = convertAddr(addr);
         if (VDBG) {
@@ -1372,7 +1373,7 @@ public final class BluetoothSocket implements Closeable {
                             + " MaxTxPktSize: "
                             + mMaxTxPacketSize
                             + " mConnectionUuid: "
-                            + mConnectionUuid.toString()
+                            + connectionUuid.toString()
                             + " mSocketId: "
                             + mSocketId);
         }

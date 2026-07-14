@@ -40,6 +40,7 @@
 #include "bta/dm/bta_dm_gatt_client.h"
 #include "bta/dm/bta_dm_int.h"
 #include "bta/dm/bta_dm_sec_int.h"
+#include "bta/dm/bta_dm_pm_offload.h"
 #include "bta/include/bta_api.h"
 #include "bta/include/bta_dm_acl.h"
 #include "bta/include/bta_dm_api.h"
@@ -319,6 +320,7 @@ void BTA_dm_on_hw_on() {
   /* if sniff is offload, no need to handle it in the stack */
   if (osi_property_get_bool(kPropertySniffOffloadEnabled, false)) {
     log::info("Sniff offloaded. Skip bta_dm_init_pm.");
+    bta_dm_init_pm_offload();
   } else {
     /* initialize bluetooth low power manager */
     bta_dm_init_pm();
@@ -833,6 +835,10 @@ static void bta_dm_acl_down(const RawAddress& bd_addr, tBT_TRANSPORT transport) 
 
 void BTA_dm_acl_down(const RawAddress bd_addr, tBT_TRANSPORT transport) {
   do_in_main_thread(base::BindOnce(bta_dm_acl_down, bd_addr, transport));
+}
+
+void BTA_dm_remove_on_disconnect(const RawAddress bd_addr, tBT_TRANSPORT transport) {
+  do_in_main_thread(base::BindOnce(bta_dm_remove_on_disconnect, bd_addr, transport));
 }
 
 /*******************************************************************************

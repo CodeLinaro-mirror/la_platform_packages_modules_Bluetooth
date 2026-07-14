@@ -101,13 +101,6 @@ void Stack::StartEverything() {
       pimpl_->snoop_logger_ = std::make_shared<hal::SnoopLogger>(new Handler(stack_thread_));
     }
 
-#if TARGET_FLOSS
-    modules.add<sysprops::SyspropsModule>();
-#else
-    if (com::android::bluetooth::flags::socket_settings_api()) {  // Added with aosp/3286716
-      modules.add<lpp::LppOffloadManager>();
-    }
-#endif
     modules.add<hal::HciHal>();
     modules.add<hci::HciLayer>();
 
@@ -119,6 +112,14 @@ void Stack::StartEverything() {
     modules.add<hci::MsftExtensionManager>();
     modules.add<hci::LeScanningManager>();
     modules.add<hci::DistanceMeasurementManager>();
+
+#if TARGET_FLOSS
+    modules.add<sysprops::SyspropsModule>();
+#else
+    if (com::android::bluetooth::flags::socket_settings_api()) {  // Added with aosp/3286716
+      modules.add<lpp::LppOffloadManager>();
+    }
+#endif
 
     management_thread_ = new Thread("management_thread", Thread::Priority::NORMAL);
     management_handler_ = new Handler(management_thread_);
@@ -295,7 +296,7 @@ void Stack::handle_shut_down(std::promise<void> promise) {
 std::chrono::milliseconds Stack::get_gd_stack_timeout_ms(bool is_start) {
   auto gd_timeout = os::GetSystemPropertyUint32(
           is_start ? "bluetooth.gd.start_timeout" : "bluetooth.gd.stop_timeout",
-          /* default_value = */ is_start ? 8000 : 5000);
+          /* default_value = */ is_start ? 30000 : 5000);
   return std::chrono::milliseconds(gd_timeout *
                                    os::GetSystemPropertyUint32("ro.hw_timeout_multiplier",
                                                                /* default_value = */ 1));

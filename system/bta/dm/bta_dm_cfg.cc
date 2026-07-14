@@ -14,6 +14,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -98,6 +101,8 @@ const tBTA_DM_RM* p_bta_dm_rm_cfg = &bta_dm_rm_cfg[0];
 
 #define BTA_DM_NUM_PM_ENTRY 25 /* number of entries in bta_dm_pm_cfg except the first */
 #define BTA_DM_NUM_PM_SPEC 16  /* number of entries in bta_dm_pm_spec */
+
+size_t bta_dm_get_num_pm_entry() { return BTA_DM_NUM_PM_ENTRY; }
 
 tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_CFG bta_dm_pm_cfg[BTA_DM_NUM_PM_ENTRY + 1] = {
         {BTA_ID_SYS, BTA_DM_NUM_PM_ENTRY, 0}, /* reserved: specifies length of this table. */
@@ -262,14 +267,22 @@ tBTA_DM_PM_TYPE_QUALIFIER tBTA_DM_PM_SPEC* get_bta_dm_pm_spec() {
           {(BTA_DM_PM_SNIFF), /* allow sniff */
            (BTA_DM_PM_SSR2),  /* the SSR entry */
            {
+#ifdef TARGET_SUPPORTS_WEARABLES
+                   {{BTA_DM_PM_SNIFF_A2DP_IDX, BTA_FTC_IDLE_TO_SNIFF_DELAY_MS}, {BTA_DM_PM_NO_ACTION, 0}},    /* conn open  active */
+#else
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},    /* conn open  active */
+#endif
                    {{BTA_DM_PM_NO_PREF, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* conn close  */
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},    /* app open */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* app close */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco open  */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}}, /* sco close   */
+#ifdef TARGET_SUPPORTS_WEARABLES
+                   {{BTA_DM_PM_SNIFF_A2DP_IDX, 1200}, {BTA_DM_PM_NO_ACTION, 0}}, /* idle */
+#else
                    {{BTA_DM_PM_SNIFF_A2DP_IDX, BTA_JVC_IDLE_TO_SNIFF_DELAY_MS},
                     {BTA_DM_PM_NO_ACTION, 0}},                          /* idle */
+#endif
                    {{BTA_DM_PM_ACTIVE, 0}, {BTA_DM_PM_NO_ACTION, 0}},   /* busy */
                    {{BTA_DM_PM_NO_ACTION, 0}, {BTA_DM_PM_NO_ACTION, 0}} /* mode change retry */
            }},

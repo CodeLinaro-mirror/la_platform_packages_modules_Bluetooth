@@ -15,6 +15,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
  ******************************************************************************/
 
 /******************************************************************************
@@ -86,13 +89,21 @@
 // How long to wait before activating sniff mode after entering the
 // idle state for server FT/RFCOMM, OPS connections
 #ifndef BTA_FTS_OPS_IDLE_TO_SNIFF_DELAY_MS
+#ifdef TARGET_SUPPORTS_WEARABLES
+#define BTA_FTS_OPS_IDLE_TO_SNIFF_DELAY_MS 1000
+#else
 #define BTA_FTS_OPS_IDLE_TO_SNIFF_DELAY_MS 7000
+#endif
 #endif
 
 // How long to wait before activating sniff mode after entering the
 // idle state for client FT/RFCOMM connections
 #ifndef BTA_FTC_IDLE_TO_SNIFF_DELAY_MS
+#ifdef TARGET_SUPPORTS_WEARABLES
+#define BTA_FTC_IDLE_TO_SNIFF_DELAY_MS 1000
+#else
 #define BTA_FTC_IDLE_TO_SNIFF_DELAY_MS 5000
+#endif
 #endif
 
 // ------------------End added from bdroid_buildcfg.h---------------------

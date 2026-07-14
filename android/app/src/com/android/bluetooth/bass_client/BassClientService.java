@@ -1023,10 +1023,13 @@ public class BassClientService extends ProfileService {
             return;
         }
 
-        /* Don't bother active group (external broadcaster scenario) with SOUND EFFECTS */
+        // Don't bother active group (external broadcaster scenario) with
+        // SOUND EFFECTS and NOTIFICATIONS
         if (!mIsAllowedContextOfActiveGroupModified && isDevicePartOfActiveUnicastGroup(sink)) {
             leAudioService.setActiveGroupAllowedContextMask(
-                    BluetoothLeAudio.CONTEXTS_ALL & ~BluetoothLeAudio.CONTEXT_TYPE_SOUND_EFFECTS,
+                    BluetoothLeAudio.CONTEXTS_ALL &
+                         ~(BluetoothLeAudio.CONTEXT_TYPE_SOUND_EFFECTS |
+                           BluetoothLeAudio.CONTEXT_TYPE_NOTIFICATIONS),
                     BluetoothLeAudio.CONTEXTS_ALL);
             mIsAllowedContextOfActiveGroupModified = true;
         }

@@ -71,6 +71,7 @@
 #include <utility>
 #include <vector>
 
+#include "bta/include/bta_gatt_api.h"
 #include "com_android_bluetooth.h"
 #include "com_android_bluetooth_flags.h"
 #include "hardware/ble_advertiser.h"
@@ -191,6 +192,7 @@ static jmethodID method_onClientPhyRead;
 static jmethodID method_onClientConnUpdate;
 static jmethodID method_onServiceChanged;
 static jmethodID method_onClientSubrateChange;
+static jmethodID method_onClientCharacteristicsUnoffloaded;
 
 /**
  * Server callback methods
@@ -213,6 +215,7 @@ static jmethodID method_onServerPhyUpdate;
 static jmethodID method_onServerPhyRead;
 static jmethodID method_onServerConnUpdate;
 static jmethodID method_onServerSubrateChange;
+static jmethodID method_onServerCharacteristicsUnoffloaded;
 
 /**
  * Advertiser callback methods
@@ -261,6 +264,12 @@ static jmethodID method_onBigInfoReport;
 static jmethodID method_onDistanceMeasurementStarted;
 static jmethodID method_onDistanceMeasurementStopped;
 static jmethodID method_onDistanceMeasurementResult;
+
+static struct {
+  jclass clazz;
+  jmethodID constructor;
+} android_bluetooth_GattOffloadSession;
+
 
 /**
  * Static variables
@@ -586,6 +595,17 @@ static void btgattc_subrate_change_cb(int conn_id, uint16_t subrate_factor, uint
                                latency, cont_num, timeout, status);
 }
 
+static void btgattc_characteristics_unoffloaded_cb(int conn_id, int session_id, uint8_t status) {
+  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mCallbacksObj) {
+    return;
+  }
+
+  sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onClientCharacteristicsUnoffloaded, conn_id,
+                               session_id, status);
+}
+
 static const btgatt_client_callbacks_t sGattClientCallbacks = {
         btgattc_register_app_cb,
         btgattc_open_cb,
@@ -607,6 +627,7 @@ static const btgatt_client_callbacks_t sGattClientCallbacks = {
         btgattc_conn_updated_cb,
         btgattc_service_changed_cb,
         btgattc_subrate_change_cb,
+        btgattc_characteristics_unoffloaded_cb,
 };
 
 /**
@@ -852,6 +873,17 @@ static void btgatts_subrate_change_cb(int conn_id, uint16_t subrate_factor, uint
                                latency, cont_num, timeout, status);
 }
 
+static void btgatts_characteristics_unoffloaded_cb(int conn_id, int session_id, uint8_t status) {
+  std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
+  CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbackEnv.valid() || !mCallbacksObj) {
+    return;
+  }
+
+  sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onServerCharacteristicsUnoffloaded, conn_id,
+                               session_id, status);
+}
+
 static const btgatt_server_callbacks_t sGattServerCallbacks = {
         btgatts_register_app_cb,
         btgatts_connection_cb,
@@ -870,6 +902,7 @@ static const btgatt_server_callbacks_t sGattServerCallbacks = {
         btgatts_phy_updated_cb,
         btgatts_conn_updated_cb,
         btgatts_subrate_change_cb,
+        btgatts_characteristics_unoffloaded_cb,
 };
 
 /**
@@ -1251,6 +1284,15 @@ static void initializeNative(JNIEnv* env, jobject object) {
     mCallbacksObj = NULL;
   }
 
+  android_bluetooth_GattOffloadSession.clazz = (jclass)env->NewGlobalRef(
+          env->FindClass("android/bluetooth/GattOffloadSession$InnerParcel"));
+  if (android_bluetooth_GattOffloadSession.clazz == nullptr) {
+    log::error("Failed to allocate Global Ref for GattOffloadSession class");
+    return;
+  }
+  android_bluetooth_GattOffloadSession.constructor =
+          env->GetMethodID(android_bluetooth_GattOffloadSession.clazz, "<init>", "(II)V");
+
   sGattIf = (btgatt_interface_t*)btIf->get_profile_interface(BT_PROFILE_GATT_ID);
   if (sGattIf == NULL) {
     log::error("Failed to get Bluetooth GATT Interface");
@@ -1292,6 +1334,9 @@ static void cleanupNative(JNIEnv* env, jobject /* object */) {
     sGattIf->cleanup();
     sGattIf = NULL;
   }
+
+  env->DeleteGlobalRef(android_bluetooth_GattOffloadSession.clazz);
+  android_bluetooth_GattOffloadSession.clazz = nullptr;
 
   if (mCallbacksObj != NULL) {
     env->DeleteGlobalRef(mCallbacksObj);
@@ -2146,12 +2191,8 @@ static void gattServerReadPhyNative(JNIEnv* env, jobject /* object */, jint serv
   sGattIf->server->read_phy(bda, base::Bind(&readServerPhyCb, serverIf, bda));
 }
 
-static void gattServerAddServiceNative(JNIEnv* env, jobject /* object */, jint server_if,
-                                       jobject gatt_db_elements) {
-  if (!sGattIf) {
-    return;
-  }
-
+static std::vector<btgatt_db_element_t> convertToDbElementsVector(JNIEnv* env,
+                                                                  jobject gatt_db_elements) {
   jmethodID arrayGet;
   jmethodID arraySize;
 
@@ -2215,7 +2256,16 @@ static void gattServerAddServiceNative(JNIEnv* env, jobject /* object */, jint s
 
     db.push_back(curr);
   }
+  return db;
+}
 
+static void gattServerAddServiceNative(JNIEnv* env, jobject /* object */, jint server_if,
+                                       jobject gatt_db_elements) {
+  if (!sGattIf) {
+    return;
+  }
+
+  std::vector<btgatt_db_element_t> db = convertToDbElementsVector(env, gatt_db_elements);
   sGattIf->server->add_service(server_if, db.data(), db.size());
 }
 
@@ -2762,6 +2812,60 @@ static void transferSetInfoNative(JNIEnv* env, jobject /* object */, jint pa_sou
   sScanner->TransferSetInfo(str2addr(env, addr), service_data, adv_handle, pa_source);
 }
 
+static jobject gattClientOffloadCharacteristicsNative(JNIEnv* env, jobject /* object */,
+                                                      jint conn_id, jobject gatt_db_elements,
+                                                      jlong endpoint_Id, jlong hub_id) {
+  if (!sGattIf) {
+    return env->NewObject(android_bluetooth_GattOffloadSession.clazz,
+                          android_bluetooth_GattOffloadSession.constructor,
+                          BTGATT_OFFLOAD_SESSION_ID_UNKNOWN, tGATT_STATUS::GATT_ERROR);
+  }
+
+  btgatt_offload_result_t result{BTGATT_OFFLOAD_SESSION_ID_UNKNOWN, tGATT_STATUS::GATT_ERROR};
+  std::vector<btgatt_db_element_t> db = convertToDbElementsVector(env, gatt_db_elements);
+  sGattIf->client->offload_characteristics(conn_id, db.data(), db.size(), endpoint_Id, hub_id,
+                                           &result);
+  return env->NewObject(android_bluetooth_GattOffloadSession.clazz,
+                        android_bluetooth_GattOffloadSession.constructor, result.session_id,
+                        result.status);
+}
+
+static jobject gattServerOffloadCharacteristicsNative(JNIEnv* env, jobject /* object */,
+                                                      jint conn_id, jobject gatt_db_elements,
+                                                      jlong endpoint_Id, jlong hub_id) {
+  if (!sGattIf) {
+    return env->NewObject(android_bluetooth_GattOffloadSession.clazz,
+                          android_bluetooth_GattOffloadSession.constructor,
+                          BTGATT_OFFLOAD_SESSION_ID_UNKNOWN, tGATT_STATUS::GATT_ERROR);
+  }
+  btgatt_offload_result_t result{BTGATT_OFFLOAD_SESSION_ID_UNKNOWN, tGATT_STATUS::GATT_ERROR};
+  std::vector<btgatt_db_element_t> db = convertToDbElementsVector(env, gatt_db_elements);
+  sGattIf->server->offload_characteristics(conn_id, db.data(), db.size(), endpoint_Id, hub_id,
+                                           &result);
+  return env->NewObject(android_bluetooth_GattOffloadSession.clazz,
+                        android_bluetooth_GattOffloadSession.constructor, result.session_id,
+                        result.status);
+}
+
+static void gattClientUnoffloadCharacteristicsNative(JNIEnv* /* env */, jobject /* object */,
+                                                     jint conn_id, jint session_id) {
+  if (!sGattIf) {
+    return;
+  }
+
+  sGattIf->client->unoffload_characteristics(conn_id, session_id);
+}
+
+static void gattServerUnoffloadCharacteristicsNative(JNIEnv* /* env */, jobject /* object */,
+                                                     jint conn_id, jint session_id) {
+  if (!sGattIf) {
+    return;
+  }
+
+  sGattIf->server->unoffload_characteristics(conn_id, session_id);
+}
+
+
 static void gattTestNative(JNIEnv* env, jobject /* object */, jint command, jlong uuid1_lsb,
                            jlong uuid1_msb, jstring bda1, jint p1, jint p2, jint p3, jint p4,
                            jint p5) {
@@ -3061,7 +3165,16 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"gattServerSendResponseNative", "(IIIIII[BI)V", (void*)gattServerSendResponseNative},
           {"gattSubrateRequestNative", "(ILjava/lang/String;IIIII)I",
            (void*)gattSubrateRequestNative},
-
+          {"gattClientOffloadCharacteristicsNative",
+           "(ILjava/util/List;JJ)Landroid/bluetooth/GattOffloadSession$InnerParcel;",
+           (void*)gattClientOffloadCharacteristicsNative},
+          {"gattServerOffloadCharacteristicsNative",
+           "(ILjava/util/List;JJ)Landroid/bluetooth/GattOffloadSession$InnerParcel;",
+           (void*)gattServerOffloadCharacteristicsNative},
+          {"gattClientUnoffloadCharacteristicsNative", "(II)V",
+           (void*)gattClientUnoffloadCharacteristicsNative},
+          {"gattServerUnoffloadCharacteristicsNative", "(II)V",
+           (void*)gattServerUnoffloadCharacteristicsNative},
           {"gattTestNative", "(IJJLjava/lang/String;IIIII)V", (void*)gattTestNative},
   };
   const int result =
@@ -3093,6 +3206,8 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"onClientConnUpdate", "(IIIII)V", &method_onClientConnUpdate},
           {"onServiceChanged", "(I)V", &method_onServiceChanged},
           {"onClientSubrateChange", "(IIIIII)V", &method_onClientSubrateChange},
+          {"onClientCharacteristicsUnoffloaded", "(III)V",
+           &method_onClientCharacteristicsUnoffloaded},
 
           // Server callbacks
           {"onServerRegistered", "(IIJJ)V", &method_onServerRegistered},
@@ -3116,6 +3231,8 @@ static int register_com_android_bluetooth_gatt_(JNIEnv* env) {
           {"onServerPhyUpdate", "(IIII)V", &method_onServerPhyUpdate},
           {"onServerConnUpdate", "(IIIII)V", &method_onServerConnUpdate},
           {"onServerSubrateChange", "(IIIIII)V", &method_onServerSubrateChange},
+          {"onServerCharacteristicsUnoffloaded", "(III)V",
+           &method_onServerCharacteristicsUnoffloaded},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/gatt/GattNativeInterface", javaMethods);
   return 0;

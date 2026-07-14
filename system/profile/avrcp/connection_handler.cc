@@ -105,13 +105,37 @@ bool ConnectionHandler::CleanUp() {
   log::assert_that(instance_ != nullptr, "assert failed: instance_ != nullptr");
 
   // TODO (apanicke): Cleanup the SDP Entries here
+
+  // Invalidate weak pointers first to prevent async callbacks from executing
+  // during cleanup. This must happen before any device operations.
+  instance_->weak_ptr_factory_.InvalidateWeakPtrs();
+
   std::lock_guard<std::recursive_mutex> lock(device_map_lock);
-  for (auto entry = instance_->device_map_.begin(); entry != instance_->device_map_.end();) {
-    auto curr = entry;
-    entry++;
-    curr->second->DeviceDisconnected();
-    instance_->avrc_->Close(curr->first);
-    if (curr->first == acceptor_arcp_handle) {
+
+  // Keep shared_ptr references alive during cleanup to prevent use-after-free.
+  // Also store handles separately since we'll clear device_map_ before closing.
+  std::vector<std::shared_ptr<Device>> devices_to_cleanup;
+  std::vector<uint8_t> handles_to_close;
+
+  for (auto& entry : instance_->device_map_) {
+    devices_to_cleanup.push_back(entry.second);
+    handles_to_close.push_back(entry.first);
+  }
+
+  // Call DeviceDisconnected() on all devices
+  for (auto& device : devices_to_cleanup) {
+    device->DeviceDisconnected();
+  }
+
+  // Clear maps before closing connections. This prevents the callbacks
+  // from trying to clean up devices again, avoiding double-free.
+  instance_->device_map_.clear();
+  instance_->feature_map_.clear();
+
+  // Close AVRCP connections.
+  for (auto handle : handles_to_close) {
+    instance_->avrc_->Close(handle);
+    if (handle == acceptor_arcp_handle) {
       acceptor_arcp_handle = -1;
     }
   }
@@ -119,10 +143,6 @@ bool ConnectionHandler::CleanUp() {
     log::info("{}: clear avrcp handle {}", __func__, acceptor_arcp_handle);
     instance_->avrc_->Close((uint8_t) acceptor_arcp_handle);
   }
-  instance_->device_map_.clear();
-  instance_->feature_map_.clear();
-
-  instance_->weak_ptr_factory_.InvalidateWeakPtrs();
 
   delete instance_;
   instance_ = nullptr;

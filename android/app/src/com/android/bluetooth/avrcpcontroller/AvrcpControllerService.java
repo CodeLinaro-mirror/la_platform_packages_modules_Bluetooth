@@ -24,7 +24,10 @@ import static java.util.Objects.requireNonNull;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.AudioManager;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.sysprop.BluetoothProperties;
@@ -45,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /** Provides Bluetooth AVRCP Controller profile, as a service in the Bluetooth application. */
 public class AvrcpControllerService extends ProfileService {
@@ -105,8 +109,8 @@ public class AvrcpControllerService extends ProfileService {
     private final BrowseTree mBrowseTree;
 
     @VisibleForTesting
-    final Map<BluetoothDevice, AvrcpControllerStateMachine> mDeviceStateMap =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentMap<BluetoothDevice, AvrcpControllerStateMachine>
+                                 mDeviceStateMap = new ConcurrentHashMap<>();
 
     private BluetoothDevice mActiveDevice = null;
 
@@ -173,6 +177,7 @@ public class AvrcpControllerService extends ProfileService {
         setActiveDevice(null);
         Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
         stopService(stopIntent);
+        unregisterReceiver(mBroadcastReceiver);
         for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
             stateMachine.quitNow();
         }
@@ -208,9 +213,30 @@ public class AvrcpControllerService extends ProfileService {
         }
     }
 
+    private final BroadcastReceiver mBroadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "onReceive(): action: " + action);
+            if (action.equals(AudioManager.ACTION_VOLUME_CHANGED)) {
+                int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (streamType == AudioManager.STREAM_MUSIC) {
+                        synchronized (mDeviceStateMap) {
+                            for (AvrcpControllerStateMachine sm : mDeviceStateMap.values()) {
+                                if (sm != null) {
+                                    sm.sendMessage(
+                                            AvrcpControllerStateMachine.MESSAGE_PROCESS_VOLUME_CHANGED_NOTIFICATION);
+                                }
+                            }
+                        }
+                }
+            }
+        }
+    };
+
     /** Set the current active device, notify devices of activity status */
     @VisibleForTesting
-    boolean setActiveDevice(BluetoothDevice device) {
+    public boolean setActiveDevice(BluetoothDevice device) {
         Log.d(TAG, "setActiveDevice(device=" + device + ")");
         A2dpSinkService a2dpSinkService = A2dpSinkService.getA2dpSinkService();
         if (a2dpSinkService == null) {
@@ -226,6 +252,10 @@ public class AvrcpControllerService extends ProfileService {
 
         // Try and update the active device
         synchronized (mActiveDeviceLock) {
+            if (device == null) {
+              Log.d(TAG, "Ignore A2dpSink setActiveDevice as device : "+device);
+              return true;
+            }
             if (a2dpSinkService.setActiveDevice(device)) {
                 mActiveDevice = device;
 
@@ -293,6 +323,25 @@ public class AvrcpControllerService extends ProfileService {
                 }
             }
         }
+    }
+
+    public void sendPassThroughCmd(BluetoothDevice device, int keyCode, int keyState) {
+        Log.v(TAG, "sendPassThroughCmd keyCode: " + keyCode + " keyState: "
+                + keyState + ", To: " + device);
+        if (device == null) {
+            Log.e(TAG, "sendPassThroughCmd: Device is null");
+            return;
+        }
+        if (!mDeviceStateMap.containsKey(device)) {
+            Log.e(TAG, " Device " + device + " does not match connected devices");
+            return;
+        }
+        AvrcpControllerStateMachine mAvrcpCtSm = getStateMachine(device);
+        if (mAvrcpCtSm == null)
+            return;
+        mAvrcpCtSm.sendMessage(
+                AvrcpControllerStateMachine.MSG_AVRCP_PASSTHRU,
+                keyCode, keyState, device);
     }
 
     /*Java API*/
@@ -366,6 +415,8 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     synchronized void onConnectionStateChanged(
             boolean remoteControlConnected, boolean browsingConnected, BluetoothDevice device) {
+        Log.d(TAG, "onConnectionStateChanged: RC = " + remoteControlConnected
+                    + ", BR = " + browsingConnected + ", for: " + device);
         StackEvent event =
                 StackEvent.connectionStateChanged(remoteControlConnected, browsingConnected);
         AvrcpControllerStateMachine stateMachine = getOrCreateStateMachine(device);
@@ -638,7 +689,11 @@ public class AvrcpControllerService extends ProfileService {
     }
 
     public List<BluetoothDevice> getConnectedDevices() {
-        return getDevicesMatchingConnectionStates(new int[] {BluetoothAdapter.STATE_CONNECTED});
+        List<BluetoothDevice> devices = new ArrayList<>();
+        for (AvrcpControllerStateMachine sm : mDeviceStateMap.values()) {
+            devices.add(sm.getDevice());
+        }
+        return devices;
     }
 
     protected AvrcpControllerStateMachine getStateMachine(BluetoothDevice device) {
@@ -663,6 +718,7 @@ public class AvrcpControllerService extends ProfileService {
         // we quit the new one so we don't leak a thread
         if (existingStateMachine == null) {
             newStateMachine.start();
+            registerReceiver(device);
             return newStateMachine;
         } else {
             // If you try to quit a StateMachine that hasn't been constructed yet, the StateMachine
@@ -675,6 +731,12 @@ public class AvrcpControllerService extends ProfileService {
 
     protected AvrcpCoverArtManager getCoverArtManager() {
         return mCoverArtManager;
+    }
+
+    void registerReceiver(BluetoothDevice device) {
+        Log.d(TAG, " Register receiver for device: " + device);
+        IntentFilter filter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+        registerReceiver(mBroadcastReceiver, filter);
     }
 
     List<BluetoothDevice> getDevicesMatchingConnectionStates(int[] states) {
