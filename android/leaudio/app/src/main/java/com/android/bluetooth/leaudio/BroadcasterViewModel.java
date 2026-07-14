@@ -45,6 +45,22 @@ public class BroadcasterViewModel extends AndroidViewModel {
         return mBluetooth.startBroadcast(settings);
     }
 
+    public boolean startEnhancedBroadcast(BluetoothLeBroadcastSettings settings, float isoInterval) {
+        return mBluetooth.startEnhancedBroadcast(settings, isoInterval);
+    }
+
+    public boolean setAchatAttributes(int devId, byte[] name) {
+        return mBluetooth.setAchatAttributes(devId, name);
+    }
+
+    public boolean setDbigJoinControl(boolean mode) {
+        return mBluetooth.setDbigJoinControl(mode);
+    }
+
+    public boolean stopEnhancedBroadcast(int broadcastId) {
+        return mBluetooth.stopEnhancedBroadcast(broadcastId);
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         return mBluetooth.stopBroadcast(broadcastId);
     }

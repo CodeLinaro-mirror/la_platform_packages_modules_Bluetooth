@@ -152,6 +152,10 @@ public class BroadcastScanViewModel extends AndroidViewModel {
         mBluetooth.addBroadcastSource(sink, sourceMetadata);
     }
 
+    public void removeBroadcastSource(BluetoothDevice sink, int sourceId ) {
+        mBluetooth.removeBroadcastSource(sink, sourceId);
+    }
+
     public void refreshBroadcasts() {
         // Concatenate local broadcasts to the scanned broadcast list
         List<BluetoothLeBroadcastMetadata> localSessionBroadcasts =
@@ -160,5 +164,27 @@ public class BroadcastScanViewModel extends AndroidViewModel {
                 localSessionBroadcasts);
         new_arr.addAll(mScanSessionBroadcasts.values());
         mAllBroadcasts.postValue(new_arr);
+    }
+
+    public void clearBroadcastList() {
+        mScanSessionBroadcasts = new HashMap<>();
+        ArrayList<BluetoothLeBroadcastMetadata> new_arr = new ArrayList<>();
+        List<BluetoothLeBroadcastMetadata> localSessionBroadcasts = mBluetooth.getAllLocalBroadcasts();
+        if (localSessionBroadcasts != null) {
+            new_arr.addAll(localSessionBroadcasts);
+        }
+        mAllBroadcasts.postValue(new_arr);
+    }
+
+    public void reinitializeAfterBluetoothToggle() {
+        Log.d(TAG, "reinitializeAfterBluetoothToggle: attempting to restore scanning state");
+        if (mIsActivityScanning && mScanDelegatorDevice != null) {
+            Log.d(TAG, "reinitializeAfterBluetoothToggle: restarting scan");
+            mBluetooth.scanForBroadcasts(mScanDelegatorDevice, true);
+        }
+    }
+
+    public boolean setAchatAttributes(int devId, byte[] name) {
+        return mBluetooth.setAchatAttributesForSink(devId, name);
     }
 }

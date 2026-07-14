@@ -75,6 +75,24 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
 
     private final Map<Callback, Executor> mCallbackExecutorMap = new HashMap<>();
 
+    /**
+     * Used as an Intent for DBIG status {@link ACTION_DBIG_STATUS_CHANGED} intent.
+     * It contains the action for DBIG_STATUS.
+     * @hide
+     */
+   @SystemApi
+   @RequiresBluetoothConnectPermission
+    public static final String ACTION_DBIG_STATUS_CHANGED =
+            "android.bluetooth.action.DBIG_STATUS_CHANGED";
+    /**
+     * Used as a int extra field in {@link ACTION_DBIG_STATUS_CHANGED} intent.
+     * It contains the DBIG status.
+     * @hide
+     */
+    @SystemApi
+    public static final String EXTRA_DBIG_STATUS =
+            "android.bluetooth.extra.DBIG_STATUS";
+
     @SuppressLint("AndroidFrameworkBluetoothPermission")
     private final IBluetoothLeBroadcastCallback mCallback =
             new IBluetoothLeBroadcastCallback.Stub() {
@@ -621,6 +639,69 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Start broadcasting to nearby devices using {@link BluetoothLeBroadcastSettings} with a
+     * specified ISO interval.
+     *
+     * <p>This is an overloaded version of {@link #startBroadcast(BluetoothLeBroadcastSettings)}
+     * that allows setting the ISO (Isochronous) interval atomically with broadcast start.
+     *
+     * <p>The ISO interval defines the time between consecutive BIS (Broadcast Isochronous Stream)
+     * events. Valid values are: 7.5, 10, 20, or 30 milliseconds.
+     *
+     * <p>On success, {@link Callback#onBroadcastStarted(int, int)} will be invoked with
+     * {@link BluetoothStatusCodes#REASON_LOCAL_APP_REQUEST} reason code.
+     * On failure, {@link Callback#onBroadcastStartFailed(int)} will be invoked with reason code.
+     *
+     * @param broadcastSettings broadcast settings for this broadcast group
+     * @param isoInterval the ISO interval in milliseconds. Must be one of: 7.5, 10, 20, or 30
+     * @throws IllegalStateException if callback was not registered
+     * @throws NullPointerException if <var>broadcastSettings</var> is null
+     * @throws IllegalArgumentException if <var>isoInterval</var> is not a valid value
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(
+            allOf = {
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+            })
+    public void startEnhancedBroadcast(@NonNull BluetoothLeBroadcastSettings broadcastSettings,
+            float isoInterval) {
+        Objects.requireNonNull(broadcastSettings, "broadcastSettings cannot be null");
+        if (mCallbackExecutorMap.isEmpty()) {
+            throw new IllegalStateException("No callback was ever registered");
+        }
+
+        // Validate ISO interval - must be one of the allowed values
+        if (isoInterval != 7.5f && isoInterval != 10.0f &&
+            isoInterval != 20.0f && isoInterval != 30.0f) {
+            throw new IllegalArgumentException(
+                "Invalid ISO interval: " + isoInterval +
+                ". Must be one of: 7.5, 10, 20, or 30 milliseconds");
+        }
+
+        if (DBG) log("startEnhancedBroadcast with ISO interval: " + isoInterval);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                service.startEnhancedBroadcast(broadcastSettings, isoInterval,
+                        mAttributionSource, recv);
+                recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+            } catch (TimeoutException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } catch (SecurityException e) {
+                throw e;
+            }
+        }
+    }
+
+    /**
      * Update the broadcast with <var>broadcastId</var> with new <var>contentMetadata</var>
      *
      * On success, {@link Callback#onBroadcastUpdated(int, int)} will be invoked with reason code
@@ -746,6 +827,48 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             try {
                 final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
                 service.stopBroadcast(broadcastId, mAttributionSource, recv);
+                recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+            } catch (TimeoutException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } catch (SecurityException e) {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * Stop enhanced broadcasting.
+     *
+     * On success, {@link Callback#onBroadcastStopped(int, int)} will be invoked with reason code
+     * {@link BluetoothStatusCodes#REASON_LOCAL_APP_REQUEST} and the <var>broadcastId</var>
+     * On failure, {@link Callback#onBroadcastStopFailed(int)} will be invoked with reason code
+     *
+     * @param broadcastId as defined by the Basic Audio Profile
+     * @throws IllegalStateException if callback was not registered
+     * @hide
+     */
+    @SystemApi
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+    })
+    public void stopEnhancedBroadcast(int broadcastId) {
+        if (mCallbackExecutorMap.isEmpty()) {
+            throw new IllegalStateException("No callback was ever registered");
+        }
+
+        if (DBG) log("stopEnhancedBroadcast");
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                service.stopEnhancedBroadcast(broadcastId, mAttributionSource, recv);
                 recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
             } catch (TimeoutException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
@@ -912,6 +1035,120 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
             }
         }
         return defaultValue;
+    }
+
+    /**
+     * Set Achat-specific attributes for the broadcast source.
+     *
+     * <p>This method allows setting device-specific attributes including a 12-bit device ID
+     * and a shortened device name for Achat functionality.
+     *
+     * @param devId Device ID (12-bit value, 0-4095). Will be packed into 2 octets with
+     *              the most significant 4 bits set to 0.
+     * @param name Device name (up to 10 octets, UTF-8 encoded). If null or empty,
+     *             defaults to all zeros. If longer than 10 octets, will be truncated.
+     * @throws IllegalArgumentException if devId is not in the valid range (0-4095) or
+     *                                  if name length exceeds 10 octets
+     * @throws IllegalStateException if callback was not registered
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+    })
+    public void setAchatAttributes(int devId, @NonNull byte[] name) {
+        // Validate devId (12-bit, 0-4095)
+        if (devId < 0 || devId > 4095) {
+            Log.e(TAG, "setAchatAttributes: invalid devId=" + devId + " (must be 0-4095)");
+            throw new IllegalArgumentException(
+                    "Invalid devId: " + devId + ". Must be 0-4095 (12-bit)");
+        }
+
+        // Validate name: must not be null
+        Objects.requireNonNull(name, "name cannot be null");
+
+        // Validate name: must not be empty
+        if (name.length == 0) {
+            Log.e(TAG, "setAchatAttributes: name is empty, ignoring request");
+            return;
+        }
+
+        // Validate name: must not exceed 10 octets
+        if (name.length > 10) {
+            Log.e(TAG, "setAchatAttributes: name length=" + name.length
+                    + " exceeds 10 octets, ignoring request");
+            return;
+        }
+
+        // Validate name: must not be all spaces and must not contain any space
+        String nameStr = new String(name, java.nio.charset.StandardCharsets.UTF_8);
+        if (nameStr.trim().isEmpty()) {
+            Log.e(TAG, "setAchatAttributes: name consists entirely of spaces, ignoring request");
+            return;
+        }
+        if (nameStr.contains(" ")) {
+            Log.e(TAG, "setAchatAttributes: name contains space character(s): \""
+                    + nameStr + "\", ignoring request");
+            return;
+        }
+
+        byte[] nameBytes = name;
+
+        if (DBG) Log.d(TAG, "setAchatAttributes: devId=" + devId
+                + ", name=\"" + nameStr + "\", nameLen=" + name.length);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) Log.d(TAG, Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                service.setAchatAttributes(devId, nameBytes, mAttributionSource, recv);
+                recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+            } catch (TimeoutException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } catch (SecurityException e) {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * Set DBIG Join Control mode for the broadcast source.
+     *
+     * <p>Controls whether the broadcast source joins or leaves the DBIG (Dynamic Broadcast
+     * Isochronous Group).
+     *
+     * @param mode true to join the DBIG, false to leave
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(allOf = {
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+    })
+    public void setDbigJoinControl(boolean mode) {
+        if (DBG) Log.d(TAG, "setDbigJoinControl: mode=" + mode);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) Log.d(TAG, Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                final SynchronousResultReceiver<Integer> recv = SynchronousResultReceiver.get();
+                service.setDbigJoinControl(mode, mAttributionSource, recv);
+                recv.awaitResultNoInterrupt(getSyncTimeout()).getValue(null);
+            } catch (TimeoutException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } catch (SecurityException e) {
+                throw e;
+            }
+        }
     }
 
     /**

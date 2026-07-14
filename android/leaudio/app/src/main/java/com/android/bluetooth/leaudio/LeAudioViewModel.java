@@ -121,6 +121,10 @@ public class LeAudioViewModel extends AndroidViewModel {
         return bluetoothProxy.isLeAudioBroadcastSourceSupported();
     }
 
+    public LiveData<Boolean> getBroadcastReady() {
+        return bluetoothProxy.getBroadcastReady();
+    }
+
     public void connectBass(BluetoothDevice sink, boolean connect) {
         bluetoothProxy.connectBass(sink, connect);
     }
@@ -152,5 +156,13 @@ public class LeAudioViewModel extends AndroidViewModel {
         int sourceId = receiver_id;
         BluetoothLeBroadcastMetadata metadata = null;
         return bluetoothProxy.modifyBroadcastSource(sink, sourceId, metadata);
+    }
+
+    public boolean setAchatAttributesForSink(int devId, byte[] name) {
+        return bluetoothProxy.setAchatAttributesForSink(devId, name);
+    }
+
+    public boolean setAchatAttributesForSource(int devId, byte[] name) {
+        return bluetoothProxy.setAchatAttributes(devId, name);
     }
 }

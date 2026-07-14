@@ -157,8 +157,31 @@ public class BluetoothProxy {
                         intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
                 if (toState == BluetoothAdapter.STATE_ON) {
                     enabledBluetoothMutable.postValue(true);
+                    // Reinitialize profiles and devices after Bluetooth turns ON
+                    initLeAudioBroadcastProxy();
+                    initBassProxy();
+                    queryLeAudioDevices();
+                    // If there were active scan delegators before toggle, restart scanning
+                    if (mBluetoothLeBroadcastAssistant != null && !mBroadcastScanDelegatorDevices.isEmpty()) {
+                        mBluetoothLeBroadcastAssistant.startSearchingForSources(new ArrayList<>());
+                        if (mBassEventListener != null) {
+                            mBassEventListener.onScanningStateChanged(true);
+                        }
+                    }
                 } else if (toState == BluetoothAdapter.STATE_OFF) {
                     enabledBluetoothMutable.postValue(false);
+                    // Stop any ongoing broadcast scans and clear delegators when Bluetooth turns OFF
+                    if (mBluetoothLeBroadcastAssistant != null) {
+                        try {
+                            mBluetoothLeBroadcastAssistant.stopSearchingForSources();
+                        } catch (Exception e) {
+                            Log.w("BluetoothProxy", "Error stopping search after BT OFF", e);
+                        }
+                    }
+                    mBroadcastScanDelegatorDevices.clear();
+                    if (mBassEventListener != null) {
+                        mBassEventListener.onScanningStateChanged(false);
+                    }
                 }
             }
         }
@@ -286,6 +309,7 @@ public class BluetoothProxy {
     private final MutableLiveData<Integer /* broadcastId */> mBroadcastAddedMutableLive;
     private final MutableLiveData<Pair<Integer /* reason */, Integer /* broadcastId */>> mBroadcastRemovedMutableLive;
     private final MutableLiveData<String> mBroadcastStatusMutableLive;
+    private final MutableLiveData<Boolean> mBroadcastReadyMutable;
     private final BluetoothLeBroadcast.Callback mBroadcasterCallback =
             new BluetoothLeBroadcast.Callback() {
                 @Override
@@ -504,6 +528,7 @@ public class BluetoothProxy {
         mBroadcastPlaybackStoppedMutableLive = new MutableLiveData<>();
         mBroadcastAddedMutableLive = new MutableLiveData();
         mBroadcastRemovedMutableLive = new MutableLiveData<>();
+        mBroadcastReadyMutable = new MutableLiveData<>(false);
 
         MutableLiveData<String> mBroadcastStatusMutableLive;
 
@@ -676,10 +701,21 @@ public class BluetoothProxy {
                         break;
                     case BluetoothProfile.LE_AUDIO_BROADCAST:
                         mBluetoothLeBroadcast = (BluetoothLeBroadcast) bluetoothProfile;
-                        try {
-                            mBluetoothLeBroadcast.registerCallback(mExecutor, mBroadcasterCallback);
-                        } catch (IllegalArgumentException e) {
-                            Log.e("Broadcast", "Application callback already registered.");
+
+                        // Check if broadcast is actually supported after connection
+                        if (isLeAudioBroadcastSourceSupported()) {
+                            try {
+                                mBluetoothLeBroadcast.registerCallback(mExecutor, mBroadcasterCallback);
+                                mBroadcastReadyMutable.postValue(true); // Signal broadcast is ready
+                                Log.d("BluetoothProxy", "LE Audio Broadcast profile ready and supported");
+                            } catch (IllegalArgumentException e) {
+                                Log.e("Broadcast", "Application callback already registered.");
+                            }
+                        } else {
+                            Log.w("BluetoothProxy", "LE Audio Broadcast not supported on this device");
+                            // Optionally close the profile if not supported
+                            bluetoothAdapter.closeProfileProxy(BluetoothProfile.LE_AUDIO_BROADCAST, mBluetoothLeBroadcast);
+                            mBluetoothLeBroadcast = null;
                         }
                         break;
                     case BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT:
@@ -803,7 +839,8 @@ public class BluetoothProxy {
     }
 
     private void initBassProxy() {
-        if (!isLeAudioBroadcastScanAssistanSupported()) return;
+        // Remove early return check - always try to initialize the profile
+        // The support check will be done after the profile connection is established
         bluetoothAdapter.getProfileProxy(this.application, profileListener,
                 BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT);
     }
@@ -1327,7 +1364,8 @@ public class BluetoothProxy {
     }
 
     private void initLeAudioBroadcastProxy() {
-        if (!isLeAudioBroadcastSourceSupported()) return;
+        // Remove early return check - always try to initialize the profile
+        // The support check will be done after the profile connection is established
         if (mBluetoothLeBroadcast == null) {
             bluetoothAdapter.getProfileProxy(this.application, profileListener,
                     BluetoothProfile.LE_AUDIO_BROADCAST);
@@ -1366,6 +1404,10 @@ public class BluetoothProxy {
         return mBroadcastStatusMutableLive;
     }
 
+    public LiveData<Boolean> getBroadcastReady() {
+        return mBroadcastReadyMutable;
+    }
+
     public boolean startBroadcast(BluetoothLeBroadcastSettings settings) {
         if (mBluetoothLeBroadcast == null)
             return false;
@@ -1373,9 +1415,40 @@ public class BluetoothProxy {
         return true;
     }
 
+    public boolean startEnhancedBroadcast(BluetoothLeBroadcastSettings settings, float isoInterval) {
+        if (mBluetoothLeBroadcast == null)
+            return false;
+        mBluetoothLeBroadcast.startEnhancedBroadcast(settings, isoInterval);
+        return true;
+    }
+
+    public boolean setAchatAttributes(int devId, byte[] name) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.setAchatAttributes(devId, name);
+        return true;
+    }
+
+    public boolean setAchatAttributesForSink(int devId, byte[] name) {
+        if (mBluetoothLeBroadcastAssistant == null) return false;
+        mBluetoothLeBroadcastAssistant.setAchatAttributes(devId, name);
+        return true;
+    }
+
+    public boolean setDbigJoinControl(boolean mode) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.setDbigJoinControl(mode);
+        return true;
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         if (mBluetoothLeBroadcast == null) return false;
         mBluetoothLeBroadcast.stopBroadcast(broadcastId);
+        return true;
+    }
+
+    public boolean stopEnhancedBroadcast(int broadcastId) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.stopEnhancedBroadcast(broadcastId);
         return true;
     }
 

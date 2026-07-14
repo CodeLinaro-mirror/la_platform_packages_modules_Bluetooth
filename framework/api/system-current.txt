@@ -501,12 +501,18 @@ package android.bluetooth {
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_PRIVILEGED) public int getMaximumSubgroupsPerBroadcast();
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public boolean isPlaying(int);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void registerCallback(@NonNull java.util.concurrent.Executor, @NonNull android.bluetooth.BluetoothLeBroadcast.Callback);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void setAchatAttributes(int, @NonNull byte[]);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void setDbigJoinControl(boolean);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void startBroadcast(@NonNull android.bluetooth.BluetoothLeAudioContentMetadata, @Nullable byte[]);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void startBroadcast(@NonNull android.bluetooth.BluetoothLeBroadcastSettings);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void startEnhancedBroadcast(@NonNull android.bluetooth.BluetoothLeBroadcastSettings, float);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void stopBroadcast(int);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void stopEnhancedBroadcast(int);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void unregisterCallback(@NonNull android.bluetooth.BluetoothLeBroadcast.Callback);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void updateBroadcast(int, @NonNull android.bluetooth.BluetoothLeAudioContentMetadata);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void updateBroadcast(int, @NonNull android.bluetooth.BluetoothLeBroadcastSettings);
+    field public static final String ACTION_DBIG_STATUS_CHANGED = "android.bluetooth.action.DBIG_STATUS_CHANGED";
+    field public static final String EXTRA_DBIG_STATUS = "android.bluetooth.extra.DBIG_STATUS";
   }
 
   public static interface BluetoothLeBroadcast.Callback {
@@ -533,6 +539,7 @@ package android.bluetooth {
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void modifySource(@NonNull android.bluetooth.BluetoothDevice, int, @NonNull android.bluetooth.BluetoothLeBroadcastMetadata);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void registerCallback(@NonNull java.util.concurrent.Executor, @NonNull android.bluetooth.BluetoothLeBroadcastAssistant.Callback);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void removeSource(@NonNull android.bluetooth.BluetoothDevice, int);
+    method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void setAchatAttributes(int, @NonNull byte[]);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public boolean setConnectionPolicy(@NonNull android.bluetooth.BluetoothDevice, int);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void startSearchingForSources(@NonNull java.util.List<android.bluetooth.le.ScanFilter>);
     method @RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_PRIVILEGED}) public void stopSearchingForSources();
@@ -789,6 +796,7 @@ package android.bluetooth {
     field public static final int QUALITY_REPORT_ID_MONITOR = 1; // 0x1
     field public static final int QUALITY_REPORT_ID_SCO_CHOPPY = 4; // 0x4
     field public static final int QUALITY_REPORT_ID_VENDOR_SPECIFIC = 16; // 0x10
+    field public static final int QUALITY_REPORT_ID_VS_DBIG_MONITOR = 4; // 0x4
     field public static final int QUALITY_REPORT_ID_VS_DISC_MONITOR = 1; // 0x1
     field public static final int QUALITY_REPORT_ID_VS_MISC_MONITOR = 2; // 0x2
   }
@@ -862,6 +870,64 @@ package android.bluetooth {
     method @Nullable public static String linkQualityToString(int);
     method public void writeToParcel(@NonNull android.os.Parcel, int);
     field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrVsA2dpChoppy> CREATOR;
+  }
+
+  public static final class BluetoothQualityReport.BqrVsDbigMonitoring implements android.os.Parcelable {
+    method public int describeContents();
+    method public int getCurrEventCount();
+    method public int getPgoDirection();
+    method @Nullable public android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring.PgoOtaControl getPgoOtaControl();
+    method public int getPgoTxPowerLevel();
+    method public int getRole();
+    method public int getRxStreamNum();
+    method @NonNull public java.util.List<android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring.RxStreamInfo> getRxStreams();
+    method public int getSgoDirection();
+    method public int getSgoLastRxCtrlEventCount();
+    method @Nullable public android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring.SgoOtaControl getSgoOtaControl();
+    method public int getSgoRssi();
+    method public int getStreamNum();
+    method public int getTxConnHandle();
+    method public int getTxPowerLevel();
+    method public int getTxStreamNum();
+    method public void writeToParcel(@NonNull android.os.Parcel, int);
+    field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring> CREATOR;
+  }
+
+  public static final class BluetoothQualityReport.BqrVsDbigMonitoring.PgoOtaControl implements android.os.Parcelable {
+    ctor public BluetoothQualityReport.BqrVsDbigMonitoring.PgoOtaControl(@NonNull java.nio.ByteBuffer, int);
+    method public int describeContents();
+    method public int getDbigId();
+    method public int getSgoId();
+    method @NonNull public int[] getStatusBis();
+    method public boolean isDbigIndActive();
+    method public boolean isDbigNormalMode();
+    method public boolean isSgoDefined();
+    method public void writeToParcel(@NonNull android.os.Parcel, int);
+    field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring.PgoOtaControl> CREATOR;
+  }
+
+  public static final class BluetoothQualityReport.BqrVsDbigMonitoring.RxStreamInfo implements android.os.Parcelable {
+    ctor public BluetoothQualityReport.BqrVsDbigMonitoring.RxStreamInfo(int, int, int, int);
+    method public int describeContents();
+    method public int getMicFailureCount();
+    method public int getRssi();
+    method public int getRxConnHandle();
+    method public int getUnreceivedRxCount();
+    method public void writeToParcel(@NonNull android.os.Parcel, int);
+    field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring.RxStreamInfo> CREATOR;
+  }
+
+  public static final class BluetoothQualityReport.BqrVsDbigMonitoring.SgoOtaControl implements android.os.Parcelable {
+    ctor public BluetoothQualityReport.BqrVsDbigMonitoring.SgoOtaControl(@NonNull java.nio.ByteBuffer, int);
+    method public int describeContents();
+    method public int getDbigId();
+    method public int getSgoId();
+    method @NonNull public int[] getStatusBis();
+    method public boolean isDbigIndActive();
+    method public boolean isDbigNormalMode();
+    method public boolean isSgoDefined();
+    method public void writeToParcel(@NonNull android.os.Parcel, int);
+    field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrVsDbigMonitoring.SgoOtaControl> CREATOR;
   }
 
   public static final class BluetoothQualityReport.BqrVsDiscoveryMonitoring implements android.os.Parcelable {

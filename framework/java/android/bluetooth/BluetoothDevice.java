@@ -1510,6 +1510,11 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     public static final int PHY_LE_CODED = 3;
 
     /**
+     * Bluetooth LE Coded PHY s = 2 . Used to refer to LE Coded Physical Channel for advertising, scanning
+     * or connection.
+     */
+    public static final int PHY_LE_CODED_S2 = 4;
+    /**
      * Bluetooth LE 1M PHY mask. Used to specify LE 1M Physical Channel as one of many available
      * options in a bitmask.
      */
