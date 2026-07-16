@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -68,6 +73,7 @@ typedef enum : uint8_t {
   HCI_ERR_CONTROLLER_BUSY = 0x3A,
   HCI_ERR_UNACCEPT_CONN_INTERVAL = 0x3B,     // stack/l2cap/l2c_ble
   HCI_ERR_ADVERTISING_TIMEOUT = 0x3C,        // stack/btm/btm_ble
+  HCI_ERR_MIC_FAILURE = 0x3D,                // stack/btm/btm_sec
   HCI_ERR_CONN_FAILED_ESTABLISHMENT = 0x3E,  // GATT_CONN_FAIL_ESTABLISH
   HCI_ERR_LIMIT_REACHED = 0x43,              // stack/btm/btm_ble_multi_adv.cc
   HCI_ERR_CANCELLED_BY_LOCAL_HOST = 0x44,    // stack/btm/btm_iso_impl.h
@@ -119,6 +125,7 @@ inline std::string hci_error_code_text(const tHCI_ERROR_CODE& error_code) {
     CASE_RETURN_TEXT(HCI_ERR_HOST_BUSY_PAIRING);
     CASE_RETURN_TEXT(HCI_ERR_UNACCEPT_CONN_INTERVAL);
     CASE_RETURN_TEXT(HCI_ERR_ADVERTISING_TIMEOUT);
+    CASE_RETURN_TEXT(HCI_ERR_MIC_FAILURE);
     CASE_RETURN_TEXT(HCI_ERR_CONN_FAILED_ESTABLISHMENT);
     CASE_RETURN_TEXT(HCI_ERR_LIMIT_REACHED);
     CASE_RETURN_TEXT(HCI_ERR_CANCELLED_BY_LOCAL_HOST);
@@ -207,6 +214,8 @@ inline bt_status_t hci_error_to_bt_status(const tHCI_ERROR_CODE& error_code) {
       return BT_STATUS_PARM_INVALID;
     case HCI_ERR_ADVERTISING_TIMEOUT: /* 0x3C */
       return BT_STATUS_TIMEOUT;
+    case HCI_ERR_MIC_FAILURE: /* 0x3D */
+      return BT_STATUS_AUTH_FAILURE;
     case HCI_ERR_CONN_FAILED_ESTABLISHMENT: /* 0x3E */
       return BT_STATUS_FAIL;
     case HCI_ERR_LIMIT_REACHED: /* 0x43 */

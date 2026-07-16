@@ -15,6 +15,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #define LOG_TAG "bt_hf_client"
@@ -270,6 +275,7 @@ static void bta_hf_client_handle_ok(tBTA_HF_CLIENT_CB* client_cb) {
   switch (client_cb->at_cb.current_cmd) {
     case BTA_HF_CLIENT_AT_BIA:
     case BTA_HF_CLIENT_AT_BCC:
+    case BTA_HF_CLIENT_AT_VENDOR_SPECIFIC:
     case BTA_HF_CLIENT_AT_BIEV:
       break;
     case BTA_HF_CLIENT_AT_BCS:
