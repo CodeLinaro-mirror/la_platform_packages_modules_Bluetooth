@@ -2079,6 +2079,50 @@ public:
   void SetInGame(bool in_game) override {
     log::debug("in_game: {}", in_game);
     audioContextTypeManager_->SetInGame(in_game);
+
+    /* SetInGame is a laggy hint (ActivityManager UID importance) that can arrive up to
+     * GAME_BACKGROUND_MONITOR_MS (120 s) after a game is closed. If the group is still
+     * configured to GAME when the flag finally clears, force a corrective reconfiguration
+     * to the resolved (non-game) context. This mirrors SetInCall(false) and covers the case
+     * where the HAL sends no source-metadata update during the window (e.g. audio paused),
+     * so the stale GAME config would otherwise linger. When a HAL MEDIA update already
+     * corrected configuration_context_type_ away from GAME, this is a no-op. */
+    if (in_game) {
+      return;
+    }
+
+    if (active_group_id_ == bluetooth::groups::kGroupUnknown) {
+      log::debug("There is no active group");
+      return;
+    }
+
+    if (defer_notify_inactive_until_stop_) {
+      log::debug("Device is pending for inactive until stop.");
+      return;
+    }
+
+    if (configuration_context_type_ != LeAudioContextType::GAME) {
+      log::debug("configuration_context_type_ is {}, no corrective reconfig needed",
+                 ToString(configuration_context_type_));
+      return;
+    }
+
+    LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+    if (!group) {
+      log::warn("Invalid group: {}", static_cast<int>(active_group_id_));
+      return;
+    }
+
+    if (!group->IsStreaming() &&
+        group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
+      log::debug("group {} is not streaming or targeting streaming, skip corrective reconfig",
+                 active_group_id_);
+      return;
+    }
+
+    log::info("Game ended while configured to GAME, reconfigure group {} to resolved context",
+              active_group_id_);
+    ReconfigureOrUpdateRemote(group, bluetooth::le_audio::types::kLeAudioDirectionSink);
   }
 
   void StartAudioSession(LeAudioDeviceGroup* group) {
