@@ -1492,10 +1492,14 @@ public:
              * drive announcement teardown (same path as HCI_BLE_TERM_BIG_CPL_EVT).
              * Handles both STOPPING (explicit stop) and DISABLING (timer-triggered
              * suspend raced ahead and put state to DISABLING before STOP arrived).
-             * Unregister DBIG callbacks now that the controller acked exit. */
+             * Only unregister DBIG callbacks for a genuine STOPPING teardown: DISABLING
+             * keeps the announcement alive and expects a resume-triggered CreateDbig()
+             * that goes through ProcessMessage(START) directly, not through
+             * CreateEnhancedAudioBroadcast() — the only place that re-registers them.
+             * Unregistering here would silently drop the next DBIG create-complete. */
             log::info("kIsoEventDbigTexitCmpl: state={} — triggering announcement teardown, broadcast_id={}",
                       ToString(state), broadcast_id);
-            if (dbig_callbacks_registered_) {
+            if (state == BroadcastStateMachine::State::STOPPING && dbig_callbacks_registered_) {
               IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
               dbig_callbacks_registered_ = false;
             }

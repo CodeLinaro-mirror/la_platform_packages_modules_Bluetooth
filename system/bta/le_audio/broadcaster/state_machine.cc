@@ -869,17 +869,33 @@ private:
 
   void HandleTexitDbigCmpl() override {
     log::info("HandleTexitDbigCmpl: state={}", ToString(GetState()));
-    if (GetState() == BroadcastStateMachine::State::STOPPING ||
-        GetState() == BroadcastStateMachine::State::DISABLING) {
-      /* TExitDbig was sent by StopEnhancedAudioBroadcast — proceed with
-       * announcement teardown exactly as HCI_BLE_TERM_BIG_CPL_EVT does.
-       * Handles both STOPPING (explicit user stop) and DISABLING (the
-       * 0ms big_terminate_timer_ fired SuspendAudioBroadcasts() which put
-       * the state into DISABLING before the STOP message arrived). */
-      active_config_ = std::nullopt;
-      if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
-        SetStreamingDirection(kStreamingDirectionNone);
-      }
+    if (GetState() != BroadcastStateMachine::State::STOPPING &&
+        GetState() != BroadcastStateMachine::State::DISABLING) {
+      return;
+    }
+
+    /* Mirror HCI_BLE_TERM_BIG_CPL_EVT exactly: DISABLING (audio-suspend,
+     * e.g. the 0ms big_terminate_timer_ fired SuspendAudioBroadcasts() which
+     * put the state into DISABLING before the STOP message arrived) goes
+     * back to CONFIGURED and keeps the announcement alive so the PGP can
+     * stay synced and resume without a fresh session. Only a genuine
+     * STOPPING (explicit user stop) tears the announcement down. */
+    active_config_ = std::nullopt;
+    bool disabling = GetState() == BroadcastStateMachine::State::DISABLING;
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      SetStreamingDirection(kStreamingDirectionNone);
+    }
+    if (GetState() != BroadcastStateMachine::State::STOPPING) {
+      SetState(State::CONFIGURED);
+    }
+
+    if (disabling) {
+      log::info("BIG terminated during DISABLING, keeping announcement alive, big_id={}",
+                GetAdvertisingSid());
+      callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), nullptr);
+    } else {
+      log::info("BIG terminated during STOPPING, tearing down announcement, big_id={}",
+                GetAdvertisingSid());
       DisableAnnouncement();
     }
   }
