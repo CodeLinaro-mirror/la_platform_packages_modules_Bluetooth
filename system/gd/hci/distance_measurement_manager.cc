@@ -1044,15 +1044,6 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      log::info("min_subevent_len {} max_subevent_len {} preferred_peer_antenna {}",
 	        min_subevent_len, max_subevent_len, procedure_setting.preferred_peer_antenna);
 
-     if (procedure_setting.preferred_peer_antenna & 0x01)
-       preferred_peer_antenna.use_first_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x02)
-       preferred_peer_antenna.use_second_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x04)
-       preferred_peer_antenna.use_third_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x08)
-       preferred_peer_antenna.use_fourth_ordered_antenna_element_ = 1;
-
      uint16_t conn_interval = cs_requester_trackers_[connection_handle].conn_interval_;
      uint16_t min_period_time_ms = procedure_setting.min_period_between_proc;
      uint16_t max_period_time_ms = procedure_setting.max_period_between_proc;
@@ -1061,21 +1052,46 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      uint16_t max_period_between_proc;
      uint8_t tmp_tone_antenna_config_sel =  tone_antenna_config_selection;
 
+
+     if(conn_interval * 2 > max_period_time_ms)  {
+      log::info("max_period_time_ms ({}) < conn_interval*2 ({}), clamping max_period_time_ms to conn_interval*2",
+              max_period_time_ms, conn_interval * 2);
+        max_period_time_ms = conn_interval * 2;
+     }
+     if(conn_interval * 2 > min_period_time_ms)  {
+      log::info("min_period_time_ms ({}) < conn_interval*2 ({}), clamping min_period_time_ms to conn_interval*2",
+              min_period_time_ms, conn_interval * 2);
+         min_period_time_ms = conn_interval * 2;
+      }
      if (config_used) {
        min_period_between_proc = procedure_setting.min_period_between_proc;
        max_period_between_proc = procedure_setting.max_period_between_proc;
        tmp_tone_antenna_config_sel =  procedure_setting.tone_ant_cfg_selection;
+
+       uint8_t preferred_ant_val = procedure_setting.preferred_peer_antenna;
+       preferred_peer_antenna.use_first_ordered_antenna_element_ = preferred_ant_val & 0x01;
+       preferred_peer_antenna.use_second_ordered_antenna_element_ = (preferred_ant_val >> 1) & 0x01;
+       preferred_peer_antenna.use_third_ordered_antenna_element_ = (preferred_ant_val >> 2) & 0x01;
+       preferred_peer_antenna.use_fourth_ordered_antenna_element_ = (preferred_ant_val >> 3) & 0x01;
+
        log::info("Using local config: min_period_between_proc={}, max_period_between_proc={}, "
-                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
-                  tmp_tone_antenna_config_sel);
+                 "tone_antenna_config_sel={}, preferred_peer_antenna={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel, preferred_ant_val);
      } else {
        min_period_between_proc = static_cast<uint16_t>(std::round(
            (double)min_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
        max_period_between_proc = static_cast<uint16_t>(std::round(
            (double)max_period_time_ms / (conn_interval * kConnIntervalUnitMs)));
+
+       uint8_t preferred_ant_val = cs_preferred_peer_antenna_mapping_table_[tone_antenna_config_selection];
+       preferred_peer_antenna.use_first_ordered_antenna_element_ = preferred_ant_val & 0x01;
+       preferred_peer_antenna.use_second_ordered_antenna_element_ = (preferred_ant_val >> 1) & 0x01;
+       preferred_peer_antenna.use_third_ordered_antenna_element_ = (preferred_ant_val >> 2) & 0x01;
+       preferred_peer_antenna.use_fourth_ordered_antenna_element_ = (preferred_ant_val >> 3) & 0x01;
+
        log::info("Using static config: min_period_between_proc={}, max_period_between_proc={}, "
-                 "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
-                  tmp_tone_antenna_config_sel);
+                 "tone_antenna_config_sel={}, preferred_peer_antenna={}", min_period_between_proc, max_period_between_proc,
+                  tmp_tone_antenna_config_sel, preferred_ant_val);
      }
 
      log::info("config_avb: conn_interval={}, min_period_time={}ms, max_period_time={}ms, "
@@ -1187,7 +1203,9 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
         return;
       }
       if (it->second.state != CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED &&
-          it->second.state != CsTrackerState::STARTED) {
+          it->second.state != CsTrackerState::STARTED &&
+          it->second.state != CsTrackerState::STOPPED  &&
+          it->second.state != CsTrackerState::HOLD) {
         log::info("no procedure disable command needed for state {}.", (int)it->second.state);
         return;
       }
@@ -1214,6 +1232,17 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           return;
         }
         reset_tracker_on_stopped(it->second);
+      }
+    } else if (enable == Enable::DISABLED && status == ErrorCode::CONTROLLER_BUSY) {
+      log::info("controller busy for procedure disable, schedule retry.");
+      procedure_disable_in_progress = false;
+      auto it = cs_requester_trackers_.find(connection_handle);
+      if (it != cs_requester_trackers_.end() && it->second.procedure_schedule_guard_alarm != nullptr) {
+        it->second.procedure_schedule_guard_alarm->Cancel();
+        it->second.procedure_schedule_guard_alarm->Schedule(
+                common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
+                             connection_handle, Enable::DISABLED),
+                std::chrono::milliseconds(kProcedureScheduleGuardMs));
       }
     } else if (enable == Enable::ENABLED && status_view.GetStatus() != ErrorCode::SUCCESS) {
       if (cs_requester_trackers_.count(connection_handle) == 0) {
@@ -1692,6 +1721,14 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
           while (!data_list.empty()) {
             data_list.erase(data_list.begin());
           }
+          if (live_tracker->state == CsTrackerState::STOPPED ||
+              live_tracker->state == CsTrackerState::HOLD ||
+              live_tracker->used_config_id == kInvalidConfigId) {
+            log::info("measurement already stopped, skip re-enable after delayed RAS packets. "
+                      "state {} config_id {}",
+                      (int)live_tracker->state, live_tracker->used_config_id);
+            return;
+          }
           send_le_cs_procedure_enable(connection_handle, Enable::ENABLED);
           return;
         }
@@ -2014,6 +2051,11 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
   void parse_ras_segments(RangingHeader ranging_header, PacketViewForRecombination& segment_data,
                           uint16_t connection_handle) {
     log::info("Data size {}, Ranging_header {}", segment_data.size(), ranging_header.ToString());
+    if (cs_requester_trackers_[connection_handle].procedure_data_list.empty()) {
+      log::warn("No procedure data available for connection_handle {}, ignore delayed RAS packet",
+                connection_handle);
+      return;
+    }
     if ((cs_requester_trackers_[connection_handle]
             .procedure_data_list.back().counter & kRangingCounterMask)
         - ranging_header.ranging_counter_ >= kProcedureDataBufferSize) {
