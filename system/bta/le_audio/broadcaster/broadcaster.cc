@@ -1373,6 +1373,12 @@ public:
   // Initialize DBIG params by reading current property values
   // Should be called every time before starting a broadcast to ensure fresh property reads
   void InitializeDbigParams(void) {
+    // Read tx_power from system property, defaulting to 8
+    char value[PROPERTY_VALUE_MAX] = {'\0'};
+    osi_property_get("persist.vendor.service.bt.txpower", value, "8");
+    uint8_t tx_power_value = static_cast<uint8_t>(atoi(value));
+    log::info("tx_power={}", tx_power_value);
+
     struct bluetooth::hci::iso_manager::dbig_create_params defaults = {
         .dbig_handle              = 0,
         .dbig_feature_set         = 3,
@@ -1387,10 +1393,10 @@ public:
         .exit_timeout             = 4,
         .remove_timeout           = 10,
         .terminate_timeout        = 10,
-        .tx_power                 = 8,
+        .tx_power                 = tx_power_value,
     };
     IsoManager::GetInstance()->StoreDbigParams(defaults);
-    log::info("InitializeDbigParams: bis_control_event_interval={}", defaults.bis_control_event_interval);
+    log::info("InitializeDbigParams: bis_control_event_interval={} , tx_power={}", defaults.bis_control_event_interval, defaults.tx_power);
   }
 
   std::vector<uint8_t> GetDbigParams(void) override {

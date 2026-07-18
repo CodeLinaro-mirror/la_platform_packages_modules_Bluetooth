@@ -864,6 +864,7 @@ struct Controller::impl {
     std::unique_ptr<LeSetEventMaskBuilder> packet = LeSetEventMaskBuilder::Create(le_event_mask);
     hci_->EnqueueCommand(std::move(packet), module_.GetHandler()->BindOnce(
                                                     check_complete<LeSetEventMaskCompleteView>));
+    le_event_mask_ = le_event_mask;
   }
 
 #define OP_CODE_MAPPING(name)                                                     \
@@ -1270,6 +1271,7 @@ struct Controller::impl {
   Address mac_address_{};
   std::string local_name_{};
   LeBufferSize le_buffer_size_{};
+  uint64_t le_event_mask_{};
   std::vector<uint8_t> local_supported_codec_ids_{};
   std::vector<uint32_t> local_supported_vendor_codec_ids_{};
   LeBufferSize iso_buffer_size_{};
@@ -1486,6 +1488,8 @@ void Controller::HostBufferSize(uint16_t host_acl_data_packet_length,
 void Controller::LeSetEventMask(uint64_t le_event_mask) {
   CallOn(impl_.get(), &impl::le_set_event_mask, le_event_mask);
 }
+
+uint64_t Controller::GetLeEventMask() const { return impl_->le_event_mask_; }
 
 LeBufferSize Controller::GetLeBufferSize() const { return impl_->le_buffer_size_; }
 

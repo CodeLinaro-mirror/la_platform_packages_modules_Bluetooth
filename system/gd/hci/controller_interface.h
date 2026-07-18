@@ -161,6 +161,8 @@ public:
   // LE controller commands
   virtual void LeSetEventMask(uint64_t le_event_mask) = 0;
 
+  virtual uint64_t GetLeEventMask() const = 0;
+
   virtual LeBufferSize GetLeBufferSize() const = 0;
 
   virtual uint64_t GetLeSupportedStates() const = 0;

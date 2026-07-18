@@ -29,6 +29,7 @@
 #include "hci/le_scanning_interface.h"
 #include "hci/le_scanning_reassembler.h"
 #include "os/alarm.h"
+#include "osi/include/properties.h"
 
 namespace bluetooth {
 namespace hci {
@@ -83,6 +84,10 @@ public:
   void Init(hci::LeScanningInterface* le_scanning_interface, os::Handler* handler) {
     le_scanning_interface_ = le_scanning_interface;
     handler_ = handler;
+
+    // Read duplex broadcast property
+    is_duplex_enabled_ = osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+    log::info("[PSync]: Duplex broadcast enabled: {}", is_duplex_enabled_);
   }
 
   void SetScanningCallback(ScanningCallback* callbacks) { callbacks_ = callbacks; }
@@ -361,6 +366,23 @@ public:
     uint16_t sync_handle = event_view.GetSyncHandle();
     auto periodic_sync = GetEstablishedSyncFromHandle(sync_handle);
     if (periodic_sync == periodic_syncs_.end()) {
+      // Only check for duplicate terminates if duplex broadcast is enabled
+      if (is_duplex_enabled_) {
+        // PA sync not in ESTABLISHED state - check if it's been terminated
+        // StopSync() erases from list before sending terminate command.
+        // If sync_handle not present in list, PA already terminated - don't send duplicate.
+        bool is_present = IsSyncHandlePresent(sync_handle);
+        log::info("[PSync]: PA report - handle {} not ESTABLISHED state,"
+                  "duplex_enabled={}, IsSyncHandlePresent={}",
+                  sync_handle, is_duplex_enabled_, is_present);
+        if (!is_present) {
+          log::verbose("[PSync]: PA report for terminated sync_handle {},"
+                      "ignoring to prevent duplicate terminate",
+                       sync_handle);
+          return;
+        }
+      }
+      // Sync exists but not established (IDLE/PENDING state) - send terminate
       log::warn("[PSync]: index not found for handle {}", sync_handle);
       le_scanning_interface_->EnqueueCommand(
               hci::LePeriodicAdvertisingTerminateSyncBuilder::Create(sync_handle),
@@ -465,6 +487,23 @@ public:
     uint16_t sync_handle = event_view.GetSyncHandle();
     auto periodic_sync = GetEstablishedSyncFromHandle(sync_handle);
     if (periodic_sync == periodic_syncs_.end()) {
+      // Only check for duplicate terminates if duplex broadcast is enabled
+      if (is_duplex_enabled_) {
+        // PA sync not in ESTABLISHED state - check if it's been terminated
+        // StopSync() erases from list before sending terminate command.
+        // If sync_handle not present in list, PA already terminated - don't send duplicate.
+        bool is_present = IsSyncHandlePresent(sync_handle);
+        log::info("[PSync]: BIG info report - handle {} not in ESTABLISHED state,"
+                  "duplex_enabled={}, IsSyncHandlePresent={}",
+                  sync_handle, is_duplex_enabled_, is_present);
+        if (!is_present) {
+          log::verbose("[PSync]: BIG info report for terminated sync_handle {},"
+                       "ignoring to prevent duplicate terminate",
+                       sync_handle);
+          return;
+        }
+      }
+      // Sync exists but not established (IDLE/PENDING state) - send terminate
       log::warn("[PSync]: index not found for handle {}", sync_handle);
       le_scanning_interface_->EnqueueCommand(
               hci::LePeriodicAdvertisingTerminateSyncBuilder::Create(sync_handle),
@@ -493,6 +532,17 @@ private:
       }
     }
     return periodic_syncs_.end();
+  }
+
+  // Helper to check if sync_handle exists in periodic_syncs_ list (any state)
+  // Used to prevent duplicate PA terminate commands when reports arrive after StopSync()
+  bool IsSyncHandlePresent(uint16_t handle) {
+    for (auto it = periodic_syncs_.begin(); it != periodic_syncs_.end(); it++) {
+      if (it->sync_handle == handle) {
+        return true;
+      }
+    }
+    return false;
   }
 
   std::list<PeriodicSyncStates>::iterator GetSyncFromAddressWithTypeAndSid(
@@ -618,6 +668,7 @@ private:
   LeScanningReassembler scanning_reassembler_;
   bool sync_received_callback_registered_ = false;
   int sync_received_callback_id{};
+  bool is_duplex_enabled_ = false;  // Track if duplex broadcast is enabled
 };
 
 }  // namespace hci
