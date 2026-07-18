@@ -136,6 +136,16 @@ public class BroadcasterActivity extends AppCompatActivity {
      *  brand new dialog, making it look like the previous one was never dismissed. */
     private AlertDialog mTerminateRequestDialog = null;
     private int mTerminateRequestBroadcastId = -1;
+    /** broadcastId for which the user pressed Reject and bit10 has not yet been observed LOW
+     *  since. PGP/FW keeps re-sending the same logical terminate request for a while after the
+     *  reject completes (observed 100-300ms in the field, but the exact duration isn't
+     *  guaranteed), so rather than guessing a cooldown length, this guard stays armed until we
+     *  see bit10 actually clear for this broadcastId — that's the real signal the outstanding
+     *  request is done. Only a bit10 assertion AFTER that clearing edge is treated as a new
+     *  request and allowed to reopen the dialog. Also force-cleared to -1 everywhere
+     *  mStreamingBroadcastId is reset to -1 (broadcast stopped/removed, BT off) so a guard for
+     *  a now-gone broadcast can never suppress a genuinely new request on a reused ID. */
+    private int mRejectPendingBroadcastId = -1;
 
     private final BroadcastReceiver mDbigStatusReceiver =
             new BroadcastReceiver() {
@@ -231,18 +241,35 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 // one already awaiting the user's Accept/Reject decision.
                                 Log.d(TAG, "Terminate request dialog already showing for "
                                         + "broadcastId=" + activeBroadcastId + " — ignoring re-assert");
+                            } else if (mRejectPendingBroadcastId == activeBroadcastId) {
+                                // PGP/FW keeps re-sending the same terminate request after PGO's
+                                // own reject completes, until bit10 is actually observed LOW for
+                                // this broadcastId (see mRejectPendingBroadcastId javadoc). This
+                                // re-assertion is a retry of the request the user already
+                                // answered, not a new one — don't reopen the dialog for it.
+                                Log.d(TAG, "Terminate request for broadcastId=" + activeBroadcastId
+                                        + " re-asserted before bit10 cleared since user's Reject"
+                                        + " — ignoring retry");
                             } else {
                                 runOnUiThread(() -> showTerminateRequestDialog(activeBroadcastId));
                             }
                         }
+                    } else if (mRejectPendingBroadcastId >= 0) {
+                        // bit10 observed LOW: the outstanding request the user rejected is done.
+                        // Clear the guard so a future bit10 assertion for this (or any) broadcast
+                        // is treated as a genuinely new request and allowed to reopen the dialog.
+                        Log.d(TAG, "bit10 cleared — reject-pending guard released for broadcastId="
+                                + mRejectPendingBroadcastId);
+                        mRejectPendingBroadcastId = -1;
                     }
-                    // NOTE: bit10 clearing on its own must NOT dismiss mTerminateRequestDialog.
-                    // FW re-asserts/clears bit10 rapidly across consecutive status reports
-                    // (observed clearing within ~15ms of being set) independent of whether the
-                    // user has actually responded yet, so treating a bare bit10-clear as
-                    // "request withdrawn" would auto-dismiss the dialog before the user ever
-                    // gets a chance to see or answer it. The dialog is dismissed only by the
-                    // user's own Accept/Reject action in showTerminateRequestDialog().
+                    // NOTE: bit10 clearing releases the reject-pending guard above, but must
+                    // NOT dismiss mTerminateRequestDialog. FW re-asserts/clears bit10 rapidly
+                    // across consecutive status reports (observed clearing within ~15ms of being
+                    // set) independent of whether the user has actually responded yet, so
+                    // treating a bare bit10-clear as "request withdrawn" would auto-dismiss the
+                    // dialog before the user ever gets a chance to see or answer it. The dialog
+                    // is dismissed only by the user's own Accept/Reject action in
+                    // showTerminateRequestDialog().
 
                     // bit0 (0x0001) - at least one BIS is AVAILABLE
                     // bit1 (0x0002) - a BIS is OCCUPIED by the LOCAL device
@@ -950,6 +977,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 mStreamingBroadcastId = broadcastId;
                             } else {
                                 mStreamingBroadcastId = -1;
+                                mRejectPendingBroadcastId = -1;
                             }
                             Log.i(TAG, "getEnhancedBroadcastCap: 0x" + Integer.toHexString(enhancedCap)
                                     + " [Terminate_in_PGO=" + ((enhancedCap & 0x01) != 0 ? "supported" : "not_supported")
@@ -998,6 +1026,7 @@ public class BroadcasterActivity extends AppCompatActivity {
 
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, false);
                             mStreamingBroadcastId = -1;  // no longer streaming
+                            mRejectPendingBroadcastId = -1;
                         });
 
         mViewModel
@@ -1079,6 +1108,7 @@ public class BroadcasterActivity extends AppCompatActivity {
             mLastBisDevIds = null;
             mJoinControlAutoEnabledIds.clear();
             mStreamingBroadcastId = -1;
+            mRejectPendingBroadcastId = -1;
             // Dismiss any open broadcast-info dialog
             if (mCurrentInfoDialog != null && mCurrentInfoDialog.isShowing()) {
                 mCurrentInfoDialog.dismiss();
@@ -1547,6 +1577,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                     Toast.makeText(this, "Terminate request rejected", Toast.LENGTH_SHORT).show();
                     mTerminateRequestDialog = null;
                     mTerminateRequestBroadcastId = -1;
+                    mRejectPendingBroadcastId = broadcastId;
                 })
                 .setCancelable(false)
                 .show();
