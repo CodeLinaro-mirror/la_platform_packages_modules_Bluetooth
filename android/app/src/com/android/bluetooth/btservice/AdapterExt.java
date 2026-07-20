@@ -34,8 +34,6 @@ public final class AdapterExt {
 
     private static Context sContext;
 
-    private static int sNewAdapterState = BluetoothAdapter.STATE_OFF;
-
     private static final BroadcastReceiver sReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -46,18 +44,6 @@ public final class AdapterExt {
                 int prevState = intent.getIntExtra(BluetoothAdapter.EXTRA_PREVIOUS_STATE,
                         BluetoothAdapter.ERROR);
                 handleActionStateChanged(state, prevState);
-
-                // Bluetooth adapter is in BluetoothAdpater.STATE_BLE_TURNING_OFF actually
-                // when state retrieved from intent is BluetoothAdapter.STATE_OFF.
-                // Hence don't update sNewAdapterState in this case.
-                if (state != BluetoothAdapter.STATE_OFF) {
-                    sNewAdapterState = state;
-                }
-            } else if (BluetoothAdapterExt.ACTION_BLE_STATE_CHANGED.equals(action)) {
-                int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
-                        BluetoothAdapter.ERROR);
-
-                sNewAdapterState = state;
             }
         }
     };
@@ -70,7 +56,6 @@ public final class AdapterExt {
     private static void init() {
         IntentFilter filter = new IntentFilter();
         filter.addAction(BluetoothAdapterExt.ACTION_STATE_CHANGED);
-        filter.addAction(BluetoothAdapterExt.ACTION_BLE_STATE_CHANGED);
         sContext.registerReceiver(sReceiver, filter);
     }
 
@@ -141,7 +126,9 @@ public final class AdapterExt {
     }
 
     public static int getState() {
-        return sNewAdapterState;
+        BluetoothAdapter adapter = getAdapter();
+        if (adapter == null) return BluetoothAdapter.STATE_OFF;
+        return adapter.getState();
     }
 
     public static boolean isOn(int state) {
