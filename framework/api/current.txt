@@ -572,6 +572,8 @@ package android.bluetooth {
     method @NonNull public android.bluetooth.BluetoothSocket createUsingSocketSettings(@NonNull android.bluetooth.BluetoothSocketSettings) throws java.io.IOException;
     method public int describeContents();
     method @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public boolean fetchUuidsWithSdp();
+    method @NonNull public android.bluetooth.BluetoothAdapter getAdapter();
+    method public int getAdapterIndex();
     method public String getAddress();
     method public int getAddressType();
     method @Nullable @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT) public String getAlias();

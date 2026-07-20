@@ -430,7 +430,6 @@ class AdapterProperties {
     // This function shall be invoked from BondStateMachine whenever the bond
     // state changes.
     @VisibleForTesting
-    @RequiresPermission(BLUETOOTH_CONNECT)
     void onBondStateChanged(BluetoothDevice device, int state) {
         if (device == null) {
             Log.w(TAG, "onBondStateChanged, device is null");
@@ -446,9 +445,6 @@ class AdapterProperties {
             prop.setBondState(state);
 
             if (state == BluetoothDevice.BOND_BONDED) {
-                // Always save remote CoD into bt_config.conf if bonding is done
-                // in 2nd Bluetooth adapter where there is no device searching
-                updateRemoteBluetoothClass(device);
                 // add if not already in list
                 if (!mBondedDevices.contains(device)) {
                     debugLog("Adding bonded device:" + device);
@@ -805,7 +801,6 @@ class AdapterProperties {
         }
     }
 
-    @RequiresPermission(BLUETOOTH_CONNECT)
     private void updateBondedDevices(byte[] val) {
         int number = val.length / TYPED_BD_ADDR_LEN;
         int addressType;
@@ -1001,21 +996,6 @@ class AdapterProperties {
 
     private static Intent newIntent(String action, String newAction) {
         return AdapterUtil.newIntent(action, newAction);
-    }
-
-    @RequiresPermission(BLUETOOTH_CONNECT)
-    private void updateRemoteBluetoothClass(BluetoothDevice device) {
-        if(AdapterUtil.isAdapterDefault(device)) {
-            return;
-        }
-
-        DeviceProperties deviceProp = mRemoteDevices.getDeviceProperties(device);
-        if (AdapterUtil.getDefaultBluetoothClass() == deviceProp.getBluetoothClass()) {
-            // Get CoD of remote Bluetooth device from default adapter where device
-            // searching is executed
-            BluetoothDevice counterpartDevice = AdapterUtil.getCounterpartDevice(device);
-            deviceProp.setBluetoothClass(counterpartDevice.getBluetoothClass());
-        }
     }
 
     protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {

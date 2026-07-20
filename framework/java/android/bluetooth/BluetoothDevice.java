@@ -1648,6 +1648,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
     // Invalid Gatt Id
     private static final int ADAPTER_DEFAULT = BluetoothAdapterCommon.ADAPTER_DEFAULT;
 
+    private final BluetoothAdapter mAdapter;
     private final String mAddress;
     @AddressType private final int mAddressType;
 
@@ -1655,9 +1656,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
 
     private final int mAdapterIndex;
 
-    private static IBluetooth getService(int adapterIndex) {
-        BluetoothAdapter adapter = getAdapter(adapterIndex);
-        return adapter.getBluetoothService();
+    private IBluetooth getServiceInternal() {
+        return mAdapter.getBluetoothService();
     }
 
     /**
@@ -1675,7 +1675,6 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         if (!BluetoothAdapterCommon.validAdapter(adapterIndex)) {
             throw new IllegalArgumentException("Invalid adapter index: " + adapterIndex);
         }
-        mAdapterIndex = adapterIndex;
 
         if (!BluetoothAdapter.checkBluetoothAddress(address)) {
             throw new IllegalArgumentException(address + " is not a valid Bluetooth address");
@@ -1693,8 +1692,8 @@ public final class BluetoothDevice implements Parcelable, Attributable {
                             + BluetoothUtils.toAnonymizedAddress(address));
         }
 
-        getBluetooth();  // ensures sService is initialized
-
+        mAdapterIndex = adapterIndex;
+        mAdapter = getAdapter(adapterIndex);
         mAddress = address;
         mAddressType = addressType;
         mAttributionSource = AttributionSource.myAttributionSource();
@@ -1756,10 +1755,42 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         this(in.readString(), in.readInt());
     }
 
-    /** @hide */
+    /**
+     * Returns the index of the {@link BluetoothAdapter} this device was obtained from.
+     *
+     * <p>In a dual-Bluetooth configuration two physical adapters are present:
+     * <ul>
+     *   <li>Index {@code 0} — the default adapter ({@link BluetoothAdapter#getDefaultAdapter()})
+     *   <li>Index {@code 1} — the secondary adapter (Ext1,
+     *       {@link android.bluetooth.BluetoothAdapterUtil#getNewAdapter()})
+     * </ul>
+     * On a single-adapter device this method always returns {@code 0}.
+     *
+     * <p>Use this index to determine which physical radio discovered or bonded the device, for
+     * example when filtering paired-device lists or routing connections to the correct adapter.
+     *
+     * @return the zero-based index of the Bluetooth adapter associated with this device
+     */
+    @SuppressLint("UnflaggedApi")
     @RequiresNoPermission
     public int getAdapterIndex() {
         return mAdapterIndex;
+    }
+
+    /**
+     * Returns the {@link BluetoothAdapter} this device was obtained from.
+     *
+     * <p>In a dual-Bluetooth configuration there are two adapters (default and Ext1). This method
+     * lets callers (e.g. {@link com.android.settingslib.bluetooth.CachedBluetoothDevice}) identify
+     * which adapter a device belongs to without using reflection.
+     *
+     * @return the {@link BluetoothAdapter} associated with this device
+     */
+    @SuppressLint("UnflaggedApi")
+    @NonNull
+    @RequiresNoPermission
+    public BluetoothAdapter getAdapter() {
+        return mAdapter;
     }
 
     /** @hide */
@@ -4310,11 +4341,7 @@ public final class BluetoothDevice implements Parcelable, Attributable {
         return adapter;
     }
 
-    private BluetoothAdapter getAdapter() {
-        return getAdapter(mAdapterIndex);
-    }
-
     private IBluetooth getBluetooth() {
-        return getService(mAdapterIndex);
+        return getServiceInternal();
     }
 }

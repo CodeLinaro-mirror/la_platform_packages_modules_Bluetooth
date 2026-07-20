@@ -225,8 +225,6 @@ public class AdapterService extends Service {
 
     public static final int ENABLE = 0;
     public static final int DISABLE = 1;
-    public static final int START_DISCOVERY = 2;
-    public static final int CANCEL_DISCOVERY = 3;
 
     private static final Duration PENDING_SOCKET_HANDOFF_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration GENERATE_LOCAL_OOB_DATA_TIMEOUT = Duration.ofSeconds(2);
@@ -2730,15 +2728,6 @@ public class AdapterService extends Service {
         UserHandle callingUser = Binder.getCallingUserHandle();
         Log.d(TAG, "startDiscovery");
         String callingPackage = source.getPackageName();
-        // Internal discovery triggered by the system Bluetooth package,
-        // which itself lacks the required permissions.
-        // Since results are not broadcast externally, permission checks can be safely skipped.
-        String bluetoothPackage = "com.android.bluetooth";
-        if (bluetoothPackage.equals(callingPackage) &&
-            (!AdapterUtil.isAdapterDefault())) {
-            Log.d(TAG, "Internal discovery initiated, skipping permission checks");
-            return mNativeInterface.startDiscovery();
-        }
         mAppOps.checkPackage(Binder.getCallingUid(), callingPackage);
         boolean isQApp = Utils.checkCallerTargetSdk(this, callingPackage, Build.VERSION_CODES.Q);
         boolean hasDisavowedLocation =
@@ -4945,7 +4934,7 @@ public class AdapterService extends Service {
         return AdapterUtil.isAdapter1();
     }
 
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public void handleDualAdapterMode(int option) {
         if (AdapterUtil.isDualAdapterMode()) {
             if (AdapterUtil.isAdapterDefault()) {
@@ -4955,13 +4944,6 @@ public class AdapterService extends Service {
                 switch (option) {
                     case ENABLE -> mEnableNewAdapter = AdapterExt.enable();
                     case DISABLE -> mDisableNewAdapter = AdapterExt.disable();
-                    // HOGP is deployed on the new adapter in dual BT mode.
-                    // Pairing requires device info from the Bluetooth core stack,
-                    // so discovery must be triggered on the new adapter.
-                    case START_DISCOVERY -> AdapterExt.startDiscovery();
-                    // Cancel discovery on the new adapter as well,
-                    // to keep adapter states consistent in dual adapter mode.
-                    case CANCEL_DISCOVERY -> AdapterExt.cancelDiscovery();
                     default -> Log.w(TAG, "Invalid option:" + option);
                 }
             }
