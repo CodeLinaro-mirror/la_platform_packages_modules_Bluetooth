@@ -3291,7 +3291,12 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
     case BTIF_AV_SINK_OFFLOAD_STOP_CFM_EVT: {
       // MM-Audio sessoin is stopped
       // check the last vsc_command status.
-      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) &&
+      // Only send AVDTP SUSPEND when this peer is no longer the active one (SHO
+      // teardown of the old peer). For the active peer -- which includes the
+      // ADSP-SSR/HAL-restart-recovery case -- stay on the local VSC-only path so
+      // we never block waiting on real AVDTP signaling to a peer whose link may
+      // still be down during recovery.
+      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) && !peer_.IsActivePeer() &&
          !peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
         log::debug("Sending suspend to a2dp source peer : {}", peer_.PeerAddress());
         peer_.SetFlags(BtifAvPeer::kFlagLocalSuspendPending);

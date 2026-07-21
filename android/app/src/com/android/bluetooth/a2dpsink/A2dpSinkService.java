@@ -612,6 +612,14 @@ public class A2dpSinkService extends ProfileService {
                     mStreamingDevice = device;
                 }
                 mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.SRC_STR_START);
+                if (mIsSplitSink) {
+                    // Mirror the AUDIO_STATE_STOPPED branch below: a stream can restart
+                    // here (e.g. after ADSP SSR auto-recovery) without going through
+                    // onStartIndCallback, which is the only other place this gets set.
+                    // Without this, sAudioIsEnabled stays stuck false and the next
+                    // onSuspendIndCallback silently no-ops.
+                    sAudioIsEnabled = true;
+                }
             } else if (state == StackEvent.AUDIO_STATE_STOPPED
                     || state == StackEvent.AUDIO_STATE_REMOTE_SUSPEND) {
                 mA2dpSinkStreamHandler.sendEmptyMessage(A2dpSinkStreamHandler.SRC_STR_STOP);
