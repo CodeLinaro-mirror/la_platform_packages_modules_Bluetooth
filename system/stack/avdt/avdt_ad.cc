@@ -81,28 +81,6 @@ uint8_t avdt_ad_type_to_tcid(uint8_t type, AvdtpScb* p_scb) {
 
 /*******************************************************************************
  *
- * Function         avdt_ad_tcid_to_type
- *
- * Description      Derives the channel type from the TCID.
- *
- *
- * Returns          Channel type value.
- *
- ******************************************************************************/
-static uint8_t avdt_ad_tcid_to_type(uint8_t tcid) {
-  if (tcid == 0) {
-    return AVDT_CHAN_SIG;
-  }
-  /* tcid translates to type based on number of channels, as follows:
-  ** only media channel   :  tcid=1,2,3,4,5,6...  type=1,1,1,1,1,1...
-  ** media and report     :  tcid=1,2,3,4,5,6...  type=1,2,1,2,1,2...
-  ** media, report, recov :  tcid=1,2,3,4,5,6...  type=1,2,3,1,2,3...
-  */
-  return ((tcid + AVDT_CHAN_NUM_TYPES - 2) % (AVDT_CHAN_NUM_TYPES - 1)) + 1;
-}
-
-/*******************************************************************************
- *
  * Function         avdt_ad_init
  *
  * Description      Initialize adaptation layer.
@@ -291,7 +269,7 @@ void avdt_ad_tc_close_ind(AvdtpTransportChannel* p_tbl) {
 
   log::verbose("p_tbl: {} state: {} tcid: {} type: {} ccb_idx: {} scb_hdl: {}",
                std::format_ptr(p_tbl), tc_state_text(p_tbl->state), p_tbl->tcid,
-               tc_type_text(avdt_ad_tcid_to_type(p_tbl->tcid)), p_tbl->ccb_idx,
+               tc_type_text(tc_tcid_to_type(p_tbl->tcid)), p_tbl->ccb_idx,
                avdtp_cb.ad.rt_tbl[p_tbl->ccb_idx][p_tbl->tcid].scb_hdl);
 
   close.old_tc_state = p_tbl->state;
@@ -314,7 +292,7 @@ void avdt_ad_tc_close_ind(AvdtpTransportChannel* p_tbl) {
     return;
   }
   close.tcid = p_tbl->tcid;
-  close.type = avdt_ad_tcid_to_type(p_tbl->tcid);
+  close.type = tc_tcid_to_type(p_tbl->tcid);
   tAVDT_SCB_EVT avdt_scb_evt;
   avdt_scb_evt.close = close;
   avdt_scb_event(p_scb, AVDT_SCB_TC_CLOSE_EVT, &avdt_scb_evt);
@@ -340,7 +318,7 @@ void avdt_ad_tc_open_ind(AvdtpTransportChannel* p_tbl) {
 
   log::verbose("p_tbl: {} state: {} tcid: {} type: {} ccb_idx: {} scb_hdl: {}",
                std::format_ptr(p_tbl), tc_state_text(p_tbl->state), p_tbl->tcid,
-               tc_type_text(avdt_ad_tcid_to_type(p_tbl->tcid)), p_tbl->ccb_idx,
+               tc_type_text(tc_tcid_to_type(p_tbl->tcid)), p_tbl->ccb_idx,
                avdtp_cb.ad.rt_tbl[p_tbl->ccb_idx][p_tbl->tcid].scb_hdl);
 
   p_tbl->state = AVDT_AD_ST_OPEN;
@@ -372,7 +350,7 @@ void avdt_ad_tc_open_ind(AvdtpTransportChannel* p_tbl) {
   /* put lcid in event data */
   open.peer_mtu = p_tbl->peer_mtu;
   open.lcid = avdtp_cb.ad.rt_tbl[p_tbl->ccb_idx][p_tbl->tcid].lcid;
-  open.hdr.err_code = avdt_ad_tcid_to_type(p_tbl->tcid);
+  open.hdr.err_code = tc_tcid_to_type(p_tbl->tcid);
   tAVDT_SCB_EVT avdt_scb_evt;
   avdt_scb_evt.open = open;
   avdt_scb_event(p_scb, AVDT_SCB_TC_OPEN_EVT, &avdt_scb_evt);
@@ -398,7 +376,7 @@ void avdt_ad_tc_cong_ind(AvdtpTransportChannel* p_tbl, bool is_congested) {
 
   log::verbose("p_tbl: {} state: {} tcid: {} type: {} ccb_idx: {} scb_hdl: {} is_congested: {}",
                std::format_ptr(p_tbl), tc_state_text(p_tbl->state), p_tbl->tcid,
-               tc_type_text(avdt_ad_tcid_to_type(p_tbl->tcid)), p_tbl->ccb_idx,
+               tc_type_text(tc_tcid_to_type(p_tbl->tcid)), p_tbl->ccb_idx,
                avdtp_cb.ad.rt_tbl[p_tbl->ccb_idx][p_tbl->tcid].scb_hdl, is_congested);
 
   /* if signaling channel, notify ccb of congestion */
@@ -438,7 +416,7 @@ void avdt_ad_tc_data_ind(AvdtpTransportChannel* p_tbl, BT_HDR* p_buf) {
   AvdtpScb* p_scb;
 
   /* store type (media, recovery, reporting) */
-  p_buf->layer_specific = avdt_ad_tcid_to_type(p_tbl->tcid);
+  p_buf->layer_specific = tc_tcid_to_type(p_tbl->tcid);
 
   /* if signaling channel, handle control message */
   if (p_tbl->tcid == 0) {
@@ -584,6 +562,5 @@ void avdt_ad_close_req(uint8_t type, AvdtpCcb* p_ccb, AvdtpScb* p_scb) {
       if (!stack::l2cap::get_interface().L2CA_DisconnectReq(lcid)) {
         log::warn("Unable to disconnect L2CAP lcid: 0x{:04x}", lcid);
       }
-      avdt_ad_tc_close_ind(p_tbl);
   }
 }
