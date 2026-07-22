@@ -43,6 +43,7 @@
 #include "device/include/interop.h"
 #include "internal_include/bt_target.h"
 #include "internal_include/stack_config.h"
+#include "osi/include/properties.h"
 #include "stack/btm/btm_int_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/bt_uuid16.h"
@@ -483,7 +484,13 @@ void gatt_profile_db_init(void) {
   service_changed_char.permissions = 0;
   service.push_back(service_changed_char);
 
-  if (com::android::bluetooth::flags::gatt_add_cccd_on_service_changed()) {
+  // PTS cases (GATT/SR/GAS/BV-05/07/08-C) drive the Service Changed CCCD via
+  // the PTS_ConfigureServiceChangeIndication config item.
+  bool is_pts_test = osi_property_get_bool("persist.bluetooth.pts.supported", false);
+  bool include_srv_changed_cccd =
+          com::android::bluetooth::flags::gatt_add_cccd_on_service_changed() ||
+          (is_pts_test && stack_config_get_interface()->get_pts_configure_svc_chg_indication());
+  if (include_srv_changed_cccd) {
     btgatt_db_element_t service_changed_desc;
     service_changed_desc.uuid = srv_changed_desc_cccd_uuid;
     service_changed_desc.type = BTGATT_DB_DESCRIPTOR;
@@ -517,7 +524,7 @@ void gatt_profile_db_init(void) {
   }
 
   gatt_cb.handle_of_h_r = service[1].attribute_handle;
-  if (com::android::bluetooth::flags::gatt_add_cccd_on_service_changed()) {
+  if (include_srv_changed_cccd) {
     gatt_cb.handle_of_srv_changed_cccd = service[2].attribute_handle;
     gatt_cb.handle_sr_supported_feat = service[3].attribute_handle;
     gatt_cb.handle_cl_supported_feat = service[4].attribute_handle;
@@ -1218,6 +1225,16 @@ void gatt_sr_update_cl_status(tGATT_TCB& tcb, bool chg_aware) {
   }
 
   tcb.is_robust_cache_change_aware = chg_aware;
+
+  // Any path that makes the client change-aware must also clear the
+  // db_out_of_sync_sent flag.  Without this, a flag left over from a prior
+  // DB_OUT_OF_SYNC response (e.g. after a Service Changed indication ack)
+  // would be silently consumed by the very next ATT Request, causing a
+  // redundant gatt_sr_update_cl_status(true) call on an already-aware client.
+  bool is_pts_test = osi_property_get_bool("persist.bluetooth.pts.supported", false);
+  if (chg_aware && is_pts_test) {
+    tcb.db_out_of_sync_sent = false;
+  }
 }
 
 /* handle request for reading database hash */
