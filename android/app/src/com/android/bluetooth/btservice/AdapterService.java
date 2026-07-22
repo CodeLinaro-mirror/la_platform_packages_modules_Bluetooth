@@ -5527,6 +5527,12 @@ public class AdapterService extends Service {
                     return;
                 }
             }
+            // Discard the device with DUMO type but being discovered in LE transport, so
+            // that LE-Audio supported headset/earbuds would not display twice in the list
+            if (deviceProp.getDeviceType() == BluetoothDevice.DEVICE_TYPE_DUAL
+                    && deviceProp.getDiscoveryResultType() == BluetoothDevice.DEVICE_TYPE_LE) {
+                return;
+            }
         }
 
         Intent intent = prepareDiscoveryResultIntent(deviceProp);
