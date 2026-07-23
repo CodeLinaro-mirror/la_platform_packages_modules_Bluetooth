@@ -348,21 +348,35 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     pa_sync_info_ = std::nullopt;
     base_data_ = std::nullopt;
 
-    /* PA sync is independent of BIG sync after the initial setup phase.
-     * BIG sync can continue even after PA sync is lost or terminated.
-     * Do NOT touch big_sync_info_, enhanced ISO state, or state machine
-     * state here — the audio stream keeps running.
-     *
-     * If BIG sync is subsequently lost, OnBigSyncLost() will check
-     * pa_sync_info_.has_value() and transition to IDLE (no PA to return to)
-     * instead of PA_SYNCED.
-     *
-     * Do NOT call OnStateMachineEvent() here. The current state has not changed
-     * (still BIG_SYNCED), so there is no state transition to report. Calling
-     * OnStateMachineEvent(BIG_SYNCED) would incorrectly re-trigger the 2nd HIDL
-     * start ack (ConfirmStreamingRequest on sink HAL) in broadcast_sink.cc, which
-     * must only fire once when RX ISO paths are first established. */
     callbacks_->OnPaSyncLost(GetBroadcastId(), lost_handle);
+
+    if (big_sync_info_.has_value()) {
+      /* PA sync is independent of BIG sync after the initial setup phase.
+       * BIG sync can continue even after PA sync is lost or terminated.
+       * Do NOT touch big_sync_info_, enhanced ISO state, or state machine
+       * state here — the audio stream keeps running.
+       *
+       * If BIG sync is subsequently lost, OnBigSyncLost() will check
+       * pa_sync_info_.has_value() and transition to IDLE (no PA to return to)
+       * instead of PA_SYNCED.
+       *
+       * Do NOT call OnStateMachineEvent() here. The current state has not changed
+       * (still BIG_SYNCED), so there is no state transition to report. Calling
+       * OnStateMachineEvent(BIG_SYNCED) would incorrectly re-trigger the 2nd HIDL
+       * start ack (ConfirmStreamingRequest on sink HAL) in broadcast_sink.cc, which
+       * must only fire once when RX ISO paths are first established. */
+      return;
+    }
+
+    /* No BIG sync active — this source has nothing left to wait for (no PA to
+     * rescan, no BIG stream to keep alive). Go straight to IDLE instead of
+     * parking at PA_SYNCED, so Java's SINK_STATE_IDLE handler tears down and
+     * releases this PA-sync slot immediately, without needing a further API
+     * call (e.g. leaveSource/removeSource) from the app. */
+    log::info("broadcast_id=0x{:x}, PA sync lost with no BIG sync active → IDLE",
+              GetBroadcastId());
+    SetState(SinkState::IDLE);
+    if (callbacks_) callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
   }
 
   void OnPeriodicScanResult(uint16_t sync_handle, int8_t tx_power, int8_t rssi, uint8_t status,
