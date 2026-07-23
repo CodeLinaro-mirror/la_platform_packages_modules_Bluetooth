@@ -878,16 +878,16 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      max_subevent_len = (procedure_setting.max_subevent_len[0] |
 		         procedure_setting.max_subevent_len[1] <<8 |
                          procedure_setting.max_subevent_len[2]<<16);
-     log::info("min_subevent_len {} max_subevent_len {} preferred_peer_antenna {}",
-	        min_subevent_len, max_subevent_len, procedure_setting.preferred_peer_antenna);
+     log::info("min_subevent_len {} max_subevent_len {} preferred_peer_antenna_value {}",
+	        min_subevent_len, max_subevent_len, preferred_peer_antenna_value);
 
-     if (procedure_setting.preferred_peer_antenna & 0x01)
+     if (preferred_peer_antenna_value & 0x01)
        preferred_peer_antenna.use_first_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x02)
+     if (preferred_peer_antenna_value & 0x02)
        preferred_peer_antenna.use_second_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x04)
+     if (preferred_peer_antenna_value & 0x04)
        preferred_peer_antenna.use_third_ordered_antenna_element_ = 1;
-     if (procedure_setting.preferred_peer_antenna & 0x08)
+     if (preferred_peer_antenna_value & 0x08)
        preferred_peer_antenna.use_fourth_ordered_antenna_element_ = 1;
 
      uint16_t conn_interval = cs_requester_trackers_[connection_handle].conn_interval_;
@@ -901,7 +901,6 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
      if (config_used) {
        min_period_between_proc = procedure_setting.min_period_between_proc;
        max_period_between_proc = procedure_setting.max_period_between_proc;
-       tmp_tone_antenna_config_sel =  procedure_setting.tone_ant_cfg_selection;
        log::info("Using local config: min_period_between_proc={}, max_period_between_proc={}, "
                  "tone_antenna_config_sel={}", min_period_between_proc, max_period_between_proc,
                   tmp_tone_antenna_config_sel);
