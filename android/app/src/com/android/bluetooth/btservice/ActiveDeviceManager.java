@@ -1461,11 +1461,21 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
         Log.d(TAG, "Most recently connected device: " + device);
         if (mAudioMode == AudioManager.MODE_NORMAL) {
             if (Objects.equals(a2dpFallbackDevice, device)) {
-                Log.d(TAG, "Found an A2DP fallback device: " + device + ", going for Music" +
-                           "player pause");
-                setA2dpActiveDevice(null, true);
-                Log.d(TAG, "Setting A2DP fallback device as the Active Device");
-                setA2dpActiveDevice(device);
+                if (Objects.equals(mA2dpActiveDevice, device)) {
+                    /* The fallback device is already the active A2DP device (it was never
+                     * really deactivated). Skip the redundant remove + re-set, which would
+                     * otherwise make the device flicker inactive -> active. */
+                    Log.i(
+                            TAG,
+                            "A2DP fallback device is already active, skip re-activation: "
+                                    + device);
+                } else {
+                    Log.d(TAG, "Found an A2DP fallback device: " + device + ", going for Music" +
+                               "player pause");
+                    setA2dpActiveDevice(null, true);
+                    Log.d(TAG, "Setting A2DP fallback device as the Active Device");
+                    setA2dpActiveDevice(device);
+                }
                 if (Objects.equals(headsetFallbackDevice, device)) {
                     setHfpActiveDevice(device);
                 } else {

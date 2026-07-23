@@ -153,6 +153,7 @@ public:
   virtual std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
   GetLocalAudioOutputCodecCapa();
   virtual std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetLocalAudioInputCodecCapa();
+  std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetOffloadingPreference() const;
 
 private:
   CodecManager();
