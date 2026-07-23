@@ -1175,6 +1175,21 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     }
   }
 
+  void update_cs_procedure_to_medium_frequency(uint16_t connection_handle, const CsTracker& tracker) {
+    tCS_PROCEDURE_PARAM medium_procedure_setting;
+    if (!get_cs_procedure_settings(1, &medium_procedure_setting)) {
+      log::warn("Failed to get MEDIUM frequency procedure settings for connection_handle {}",
+                connection_handle);
+      return;
+    }
+
+    set_cs_params_[connection_handle].address = tracker.address;
+    set_cs_params_[connection_handle].cs_proc_settings.clear();
+    set_cs_params_[connection_handle].cs_proc_settings.push_back(medium_procedure_setting);
+    log::info("Updated CS procedure parameters to MEDIUM frequency for connection_handle {}",
+              connection_handle);
+  }
+
   void send_le_cs_set_procedure_parameters(uint16_t connection_handle, uint8_t config_id,
                                            uint8_t remote_num_antennas_supported,
                                            uint8_t remote_max_antenna_paths_supported) {
@@ -2039,7 +2054,9 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
                       (int)live_tracker->state, live_tracker->used_config_id);
             return;
           }
-          send_le_cs_procedure_enable(connection_handle, Enable::ENABLED);
+          send_le_cs_set_procedure_parameters(connection_handle, live_tracker->used_config_id,
+                                              live_tracker->remote_num_antennas_supported_,
+                                              live_tracker->remote_max_antenna_paths_supported_);
           return;
         }
         procedure_disable_in_progress = false;
@@ -2441,9 +2458,11 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     if ((cs_requester_trackers_[connection_handle]
             .procedure_data_list.back().counter & kRangingCounterMask)
         - ranging_header.ranging_counter_ >= kProcedureDataBufferSize) {
-      log::warn("Delay in receiving RAS packets, restarting procedures!");
+      log::warn("Delay in receiving RAS packets, restarting procedures with MEDIUM frequency!");
       is_ras_packets_delayed = true;
       cs_requester_trackers_[connection_handle].disable_due_to_ras_packets_delayed = true;
+      update_cs_procedure_to_medium_frequency(connection_handle,
+                                              cs_requester_trackers_[connection_handle]);
       send_le_cs_procedure_enable(connection_handle, Enable::DISABLED);
       return;
     }
@@ -2919,7 +2938,20 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       kProcedureDataBufferSize = static_cast<uint8_t>(atoi(proc_buffer_size));
     }
     if (data_list.size() > kProcedureDataBufferSize) {
-      log::warn("buffer full, drop procedure data with counter: {}", data_list.front().counter);
+      log::warn("Delay in receiving RAS packets, buffers are full because of that! Restarting procedures with MEDIUM frequency!");
+      is_ras_packets_delayed = true;
+      live_tracker->disable_due_to_ras_packets_delayed = true;
+      uint16_t connection_handle = 0xFFFF;
+      for (const auto& pair : cs_requester_trackers_) {
+        if (&pair.second == live_tracker) {
+          connection_handle = pair.first;
+          break;
+        }
+      }
+      if (connection_handle != 0xFFFF) {
+        update_cs_procedure_to_medium_frequency(connection_handle, *live_tracker);
+        send_le_cs_procedure_enable(connection_handle, Enable::DISABLED);
+      }
       data_list.erase(data_list.begin());
     }
     return &data_list.back();

@@ -1335,7 +1335,7 @@ TEST_F(IsoManagerDeathTest, EstablishCisInvalidResponsePacket) {
 TEST_F(IsoManagerTest, EstablishCisInvalidCommandStatus) {
   IsoManager::GetInstance()->CreateCig(client_handle_, volatile_test_cig_create_cmpl_evt_.cig_id,
                                        kDefaultCigParams);
-  uint16_t invalid_status = 0x0001;
+  uint8_t invalid_status = 0x01;
 
   ON_CALL(hcic_interface_, CreateCis)
           .WillByDefault([invalid_status](uint8_t /* num_cis */,

@@ -1665,6 +1665,21 @@ class HeadsetStateMachine extends StateMachine {
                     }
                     transitionTo(mConnected);
                 }
+                case STACK_EVENT -> {
+                    HeadsetStackEvent event = (HeadsetStackEvent) message.obj;
+                    // SCO is still being set up: when SCO is managed by audio, handling a volume
+                    // change now would block on the AudioPolicyService lock (held by SCO patch
+                    // setup). Defer it so it is handled once we have left AudioConnecting
+                    // (AudioOn/Connected).
+                    if (event.type == HeadsetStackEvent.EVENT_TYPE_VOLUME_CHANGED
+                            && mDevice.equals(event.device)
+                            && mSystemInterface.isScoManagedByAudioEnabled()) {
+                        stateLogD("Deferring volume change while AudioConnecting: " + event);
+                        deferMessage(message);
+                        break;
+                    }
+                    return super.processMessage(message);
+                }
                 default -> {
                     return super.processMessage(message);
                 }
@@ -2216,6 +2231,7 @@ class HeadsetStateMachine extends StateMachine {
 
     @VisibleForTesting
     void processVolumeEvent(int volumeType, int volume) {
+        log("Enter processVolumeEvent " );
         // Only current active device can change SCO volume
         if (!mDevice.equals(mHeadsetService.getActiveDevice())) {
             Log.w(TAG, "processVolumeEvent, ignored because " + mDevice + " is not active");
@@ -2253,6 +2269,7 @@ class HeadsetStateMachine extends StateMachine {
         } else {
             Log.e(TAG, "Bad volume type: " + volumeType);
         }
+        log("exit processVolumeEvent " );
     }
 
     private void processCallStatesDelayed(HeadsetCallState callState)

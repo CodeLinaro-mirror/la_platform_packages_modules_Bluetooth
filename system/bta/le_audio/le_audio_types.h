@@ -1602,6 +1602,7 @@ struct stream_parameters {
   uint8_t num_of_channels;
   int num_of_devices;
   void clear() {
+    audio_channel_allocation = 0;
     num_of_channels = 0;
     num_of_devices = 0;
     stream_config.clear();

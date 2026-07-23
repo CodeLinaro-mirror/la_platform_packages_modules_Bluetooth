@@ -1623,11 +1623,12 @@ public class BluetoothInCallService extends InCallService {
 
         // Don't send host call information when IMS calls are conferenced
         String subsNum = getSubscriberNumber();
-        if (subsNum != null && address != null) {
-           if (subsNum.equals(address)) {
-              Log.w(TAG, "return without sending host call in CLCC");
-              return;
-           }
+        if ((isPartOfConference || isConferenceWithNoChildren)
+                && subsNum != null
+                && address != null
+                && subsNum.equals(address)) {
+            Log.w(TAG, "return without sending host call in CLCC");
+            return;
         }
 
         int addressType = address == null ? -1 : PhoneNumberUtils.toaFromString(address);
@@ -2783,12 +2784,7 @@ public class BluetoothInCallService extends InCallService {
             addressUri = call.getHandle();
         }
 
-        String uri;
-        if (addressUri == null) {
-            uri = null;
-        } else {
-            uri = addressUri.getScheme() + ":" + addressUri.getSchemeSpecificPart();
-        }
+        String uri = (addressUri == null) ? "" : addressUri.toString();
 
         int callFlags = call.isIncoming() ? 0 : BluetoothLeCall.FLAG_OUTGOING_CALL;
 

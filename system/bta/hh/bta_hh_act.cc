@@ -427,10 +427,16 @@ void bta_hh_sdp_cmpl(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
 
     tBTA_HH_CONN conn_dat = {
             .link_spec = p_cb->link_spec, .status = status, .handle = p_cb->hid_handle};
-    (*bta_hh_cb.p_cback)(BTA_HH_OPEN_EVT, (tBTA_HH*)&conn_dat);
 
-    /* move state machine W4_CONN ->IDLE */
+    /* Move the state machine W4_CONN -> IDLE and tear down / cancel the
+     * connection BEFORE reporting the failure upward. Reporting
+     * BTA_HH_OPEN_EVT is what triggers the background reconnect in
+     * hh_open_handler; performing the cancel first ensures the local GATT
+     * connection and its background-connection state are fully cleared before
+     * the reconnect is armed, so the reconnect cannot race the cancel. */
     bta_hh_sm_execute(p_cb, BTA_HH_API_CLOSE_EVT, NULL);
+
+    (*bta_hh_cb.p_cback)(BTA_HH_OPEN_EVT, (tBTA_HH*)&conn_dat);
 
     /* if this is an outgoing connection to an unknown device, clean up cb */
     if (p_cb->app_id == 0 && !p_cb->incoming_conn) {

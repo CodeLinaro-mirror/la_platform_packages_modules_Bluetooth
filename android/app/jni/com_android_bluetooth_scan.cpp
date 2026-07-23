@@ -144,6 +144,10 @@ public:
 
     ScopedLocalRef<jstring> address = addressToJString(sCallbackEnv, bda);
     ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(adv_data.size()));
+    if (!jb.get()) {
+      log::error("Failed to allocate jbyteArray for adv_data");
+      return;
+    }
     sCallbackEnv->SetByteArrayRegion(jb.get(), 0, adv_data.size(), (jbyte*)adv_data.data());
 
     sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onScanResult, event_type, addr_type,
@@ -167,8 +171,16 @@ public:
 
     ScopedLocalRef<jbyteArray> jb_adv_pkt(sCallbackEnv.get(),
                                           sCallbackEnv->NewByteArray(track_info.adv_packet_len));
+    if (!jb_adv_pkt.get()) {
+      log::error("Failed to allocate jbyteArray for adv_packet");
+      return;
+    }
     ScopedLocalRef<jbyteArray> jb_scan_rsp(
             sCallbackEnv.get(), sCallbackEnv->NewByteArray(track_info.scan_response_len));
+    if (!jb_scan_rsp.get()) {
+      log::error("Failed to allocate jbyteArray for scan_response");
+      return;
+    }
 
     sCallbackEnv->SetByteArrayRegion(jb_adv_pkt.get(), 0, track_info.adv_packet_len,
                                      (jbyte*)track_info.adv_packet.data());
@@ -203,6 +215,10 @@ public:
       return;
     }
     ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(data.size()));
+    if (!jb.get()) {
+      log::error("Failed to allocate jbyteArray for batch scan data");
+      return;
+    }
     sCallbackEnv->SetByteArrayRegion(jb.get(), 0, data.size(), (jbyte*)data.data());
 
     sCallbackEnv->CallVoidMethod(mScanCallbacksObj, method_onBatchScanReports, status, client_if,
@@ -251,6 +267,10 @@ public:
     }
 
     ScopedLocalRef<jbyteArray> jb(sCallbackEnv.get(), sCallbackEnv->NewByteArray(data.size()));
+    if (!jb.get()) {
+      log::error("Failed to allocate jbyteArray for sync report data");
+      return;
+    }
     sCallbackEnv->SetByteArrayRegion(jb.get(), 0, data.size(), (jbyte*)data.data());
 
     sCallbackEnv->CallVoidMethod(mPeriodicScanCallbacksObj, method_onSyncReport, sync_handle,

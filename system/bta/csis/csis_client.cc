@@ -2258,6 +2258,7 @@ private:
     /* Reject invalid lengths and indications as they are not supported */
     if (!evt.is_notify || evt.len > GATT_MAX_ATTR_LEN) {
       log::error(": rejected BTA_GATTC_NOTIF_EVT. is_notify = {}, len= {}", evt.is_notify, evt.len);
+      return;
     }
 
     OnCsisNotification(evt.conn_id, evt.handle, evt.len, evt.value);

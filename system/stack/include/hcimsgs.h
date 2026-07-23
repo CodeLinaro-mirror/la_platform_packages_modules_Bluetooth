@@ -308,8 +308,8 @@ struct EXT_CIS_CFG {
   uint8_t rtn_c_to_p;
   uint8_t rtn_p_to_c;
   // New parameters from v2 and v3 of LE Set CIG Parameters command
-  uint16_t coded_rates_c_to_p;
-  uint16_t coded_rates_p_to_c;
+  uint8_t coded_rates_c_to_p;
+  uint8_t coded_rates_p_to_c;
   uint16_t hdt_rates_c_to_p;
   uint16_t hdt_rates_p_to_c;
   uint8_t hdt_mic_length;
@@ -322,7 +322,7 @@ void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint
                                    uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,
                                    base::OnceCallback<void(uint8_t*, uint16_t)> cb);
 
-void btsnd_hcic_set_cig_params_v3(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint32_t sdu_itv_p_to_c,
+void btsnd_hcic_set_cig_params_v2(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint32_t sdu_itv_p_to_c,
                                   uint8_t sca, uint8_t packing, uint8_t framing,
                                   uint16_t max_trans_lat_p_to_c, uint16_t max_trans_lat_c_to_p,
                                   uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,

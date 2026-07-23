@@ -1027,6 +1027,7 @@ AudioConfiguration stream_config_to_hal_audio_config(
               .codecType = CodecType::VENDOR,
               .peerDelayUs = static_cast<int32_t>(peer_delay),
               .leAudioCodecConfig = LeAudioCodecConfiguration(vendor_config)};
+
       for (auto& info : offload_config.stream_map) {
         ucast_config.streamMap.push_back({
                 .streamHandle = info.stream_handle,

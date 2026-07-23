@@ -1053,6 +1053,13 @@ void l2c_packets_completed(uint16_t handle, uint16_t num_sent) {
       break;
     case BT_TRANSPORT_LE:
       l2cb.controller_le_xmit_window += num_sent;
+      if (l2cb.controller_le_xmit_window > l2cb.num_lm_ble_bufs) {
+        log::warn(
+                "controller_le_xmit_window {} exceeds num_lm_ble_bufs {}, capping to prevent "
+                "uint16_t overflow",
+                l2cb.controller_le_xmit_window, l2cb.num_lm_ble_bufs);
+        l2cb.controller_le_xmit_window = l2cb.num_lm_ble_bufs;
+      }
       if (p_lcb->is_round_robin_scheduling()) {
         l2cb.update_outstanding_le_packets(num_sent);
       }

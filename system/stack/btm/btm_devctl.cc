@@ -103,11 +103,12 @@ void BTM_db_reset(void) {
     btm_cb.devcb.p_rln_cmpl_cb = NULL;
   }
 
-  if (btm_cb.devcb.p_rssi_cmpl_cb) {
-    tBTM_READ_RSSI_CB* p_cb = btm_cb.devcb.p_rssi_cmpl_cb;
-    (*p_cb)(tBTM_STATUS::BTM_DEV_RESET, 0, RawAddress::kEmpty);
-    btm_cb.devcb.p_rssi_cmpl_cb = NULL;
+  for (auto& [handle, entry] : btm_cb.devcb.rssi_pending_map) {
+    if (entry && entry->p_cb) {
+      (*entry->p_cb)(tBTM_STATUS::BTM_DEV_RESET, 0, RawAddress::kEmpty);
+    }
   }
+  btm_cb.devcb.rssi_pending_map.clear();
 
   if (btm_cb.devcb.p_automatic_flush_timeout_cmpl_cb) {
     tBTM_READ_AUTOMATIC_FLUSH_TIMEOUT_CB* p_cb = btm_cb.devcb.p_automatic_flush_timeout_cmpl_cb;

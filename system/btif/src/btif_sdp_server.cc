@@ -442,8 +442,15 @@ static BtStatus remove_sdp_record_in_main_thread(int record_id) {
 
 BtStatus remove_sdp_record(int record_id) {
   if (com_android_bluetooth_flags_btsec_sdp_database_thread_sync()) {
-      return get_main_thread()->DoInThreadSynchronously(&remove_sdp_record_in_main_thread,
-                                                      record_id);
+    // Use async dispatch to avoid aborting when bt_main_thread is backlogged
+    // (DoInThreadSynchronously can abort on timeout — CR 4580398).
+    // Fallback to a direct call on the same thread if posting fails.
+    if (!do_in_main_thread(base::BindOnce([](int id) { remove_sdp_record_in_main_thread(id); },
+                                          record_id))) {
+      log::warn("do_in_main_thread failed, calling remove_sdp_record_in_main_thread directly");
+      return remove_sdp_record_in_main_thread(record_id);
+    }
+    return BtifStatus();
   }
 
   return remove_sdp_record_in_main_thread(record_id);

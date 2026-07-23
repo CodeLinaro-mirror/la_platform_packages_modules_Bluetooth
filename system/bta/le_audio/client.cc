@@ -1010,8 +1010,13 @@ public:
                                                       "s_state: " + ToString(audio_sender_state_));
       if (audio_receiver_state_ == AudioState::IDLE) {
         LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
-                                       bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+        if (group &&
+            (group->IsDirectionAvailableForConfiguration(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSource) ||
+             group->HasCodecConfigurationForDirection(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSource))) {
           log::info("Suspended for SNK since current context has directional config");
           le_audio_sink_hal_client_->SuspendedForReconfiguration();
         }
@@ -1028,8 +1033,13 @@ public:
                                                       "s_state: " + ToString(audio_sender_state_));
       if (audio_sender_state_ == AudioState::IDLE) {
         LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
-                                         bluetooth::le_audio::types::kLeAudioDirectionSink)) {
+        if (group &&
+            (group->IsDirectionAvailableForConfiguration(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSink) ||
+             group->HasCodecConfigurationForDirection(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSink))) {
           log::info("Suspended for SRC since current context has directional config");
           le_audio_source_hal_client_->SuspendedForReconfiguration();
         }
@@ -1700,9 +1710,18 @@ public:
                              configuration_context_type_ != LeAudioContextType::CONVERSATIONAL))) {
       log::debug("{} is not streaming or not configuring to other contexts", active_group_id_);
       if (!in_call) {
-        log::info("Clear decoding session metadata while call ended");
+        log::info("Clear decoding and encoding session metadata while call ended");
         std::vector<record_track_metadata_v7> empty_tracks = {};
         audioContextTypeManager_->SetDecodingSessionMetadata(empty_tracks);
+        /* Also clear encoding metadata so updateVoipState() resets in_voip_ after a
+         * rejected call (RINGING->DISCONNECTED before streaming began). Without this,
+         * CONVERSATIONAL set during RINGING persists and causes the next MIC session to
+         * select CONVERSATIONAL context instead of LIVE. Safe to clear unconditionally:
+         * this branch is only reached when the group is not streaming and not targeting
+         * streaming, so no active Audio HAL source session exists that could have set
+         * valid non-call encoding metadata. */
+        std::vector<struct playback_track_metadata_v7> empty_enc_tracks = {};
+        audioContextTypeManager_->SetEncodingSessionMetadata(empty_enc_tracks);
       }
       if (group && group->IsSuspendedForReconfiguration()) {
         log::error("AHAL is still in suspend state, send resume.");
@@ -1727,6 +1746,12 @@ public:
       if (group->IsDirectionAvailableForConfiguration(
           configuration_context_type_, bluetooth::le_audio::types::kLeAudioDirectionSink)) {
         in_call_metadata_context_types_.source = local_metadata_context_types_.source;
+        /* Do not cache transient RINGTONE as the pre-call restore context. When a ringtone
+         * plays during RINGING, local_metadata may hold RINGTONE. If a subsequent
+         * SetInCall(true) snapshots it, SetInCall(false) teardown would restore RINGTONE,
+         * keeping in_voip_=true after the call ends. Strip it at save time so the cache
+         * always holds a valid post-call resumable context (MEDIA, LIVE, GAME, etc.). */
+        in_call_metadata_context_types_.source.unset(LeAudioContextType::RINGTONE);
       }
       if (group->IsDirectionAvailableForConfiguration(
           configuration_context_type_, bluetooth::le_audio::types::kLeAudioDirectionSource)) {
@@ -1795,6 +1820,17 @@ public:
                    local_metadata_context_types_.source.to_string());
         in_call_metadata_context_types_.sink.clear();
         in_call_metadata_context_types_.source.clear();
+        /* Remove RINGTONE from the restored post-call context before calling
+         * OverrideContextTypes. RINGTONE in in_call_metadata indicates a stale
+         * ringtone backup caused by a concurrent SetInCall(true) overwriting the
+         * original pre-call MEDIA/LIVE snapshot. Leaving it causes updateVoipState()
+         * to keep in_voip_=true, which makes a subsequent MIC recording session
+         * select CONVERSATIONAL instead of LIVE. */
+        local_metadata_context_types_.source.unset(LeAudioContextType::RINGTONE);
+        if (local_metadata_context_types_.sink.none() &&
+            local_metadata_context_types_.source.none()) {
+          local_metadata_context_types_.source.set(LeAudioContextType::MEDIA);
+        }
         // Force reconfig
         audioContextTypeManager_->OverrideContextTypes(local_metadata_context_types_);
         reconfigure = true;
@@ -1843,6 +1879,11 @@ public:
       if (configuration_context_type_ == LeAudioContextType::CONVERSATIONAL) {
         log::info("Voip call is ended, clear sink context type");
         local_metadata_context_types_.sink.clear();
+        /* Strip RINGTONE from source before OverrideContextTypes: when the VoIP call
+         * setup involved ringtone playback, local_metadata.source can still hold RINGTONE
+         * at teardown. Passing it to OverrideContextTypes causes updateVoipState() to keep
+         * in_voip_=true, breaking subsequent MIC recording context selection. */
+        local_metadata_context_types_.source.unset(LeAudioContextType::RINGTONE);
         audioContextTypeManager_->OverrideContextTypes(local_metadata_context_types_);
       }
     }
@@ -5900,6 +5941,17 @@ public:
         log::warn("Audio HAL did not set metadata for local source");
       }
       */
+
+      /* Some earbuds update available contexts when synced to non-collocated
+       * broadcast, causing unicast resume to fail. In source monitor mode,
+       * notify BASS to suspend broadcast receivers so the context can be
+       * restored for unicast.
+       */
+      if (source_monitor_mode_ &&
+              audioContextTypeManager_->IsAnyMetadataSet(
+                      bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+        handleInvalidContextTypeResumeRequest(group);
+      }
       CancelLocalAudioSourceStreamingRequestWithUnsupported();
       return;
     }
@@ -6784,6 +6836,31 @@ public:
     BidirectionalPair<AudioContexts> remote_metadata = config.second;
     if (!remote_metadata.sink.any() && !remote_metadata.source.any()) {
       log::warn("No valid metadata to update or reconfigure to");
+      /* Some earbuds, once synced to a broadcast, update their available audio
+       * context to no longer allow MEDIA/GAME. With GAME not allowed on the
+       * group, the context resolution above yields no valid metadata, so the
+       * stack can neither reconfigure the unicast group to GAME nor deliver the
+       * GAME metadata update to the upper layer (Java) on the normal path.
+       *
+       * In that case, while a broadcast is streaming, explicitly notify the
+       * upper layer of the GAME context here so it marks the broadcast device
+       * inactive and the Audio Framework stops sending BIS frames before the
+       * unicast (VBC) stream is brought up. Otherwise BIS and CIS frames overlap
+       * and the controller crashes on a frame-length mismatch. Notify once on
+       * the edge. */
+      if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+          LeAudioBroadcaster::Get()->IsLeAudioBroadcastStreaming() &&
+          new_config_context == LeAudioContextType::GAME) {
+        if (!game_broadcast_inactive_notified_) {
+          game_broadcast_inactive_notified_ = true;
+          log::info(
+                  "GAME not allowed while synced to broadcast, notify upper layer "
+                  "to set broadcast inactive");
+          callbacks_->OnMetadataUpdate(LeAudioContextToIntContent(LeAudioContextType::GAME));
+        }
+      } else {
+        game_broadcast_inactive_notified_ = false;
+      }
       /* Avoid reconfiguring to MEDIA while a broadcast is active and the unicast
       * group is streaming. Reconfiguring during an active broadcast can disrupt
       * playback. GAME context is exempt because it requires low-latency unicast
@@ -7451,8 +7528,13 @@ public:
     if (audio_sender_state_ >= AudioState::READY_TO_START) {
       if (audio_receiver_state_ == AudioState::IDLE) {
         LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
-                                       bluetooth::le_audio::types::kLeAudioDirectionSource)) {
+        if (group &&
+            (group->IsDirectionAvailableForConfiguration(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSource) ||
+             group->HasCodecConfigurationForDirection(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSource))) {
           log::info("Reconfiguration complete for SNK since current context has SNK config");
           previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSource;
         }
@@ -7462,8 +7544,13 @@ public:
     if (audio_receiver_state_ >= AudioState::READY_TO_START) {
       if (audio_sender_state_ == AudioState::IDLE) {
         LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
-        if (group && group->IsDirectionAvailableForConfiguration(configuration_context_type_,
-                                         bluetooth::le_audio::types::kLeAudioDirectionSink)) {
+        if (group &&
+            (group->IsDirectionAvailableForConfiguration(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSink) ||
+             group->HasCodecConfigurationForDirection(
+                     configuration_context_type_,
+                     bluetooth::le_audio::types::kLeAudioDirectionSink))) {
           log::info("Reconfiguration complete for SRC since current context has SRC config");
           previously_active_directions |= bluetooth::le_audio::types::kLeAudioDirectionSink;
         }
@@ -7678,7 +7765,6 @@ public:
         }
 
         if (!IsInCall() && defer_media_reconfig_) {
-          reconfigurationComplete();
           in_call_ = true;
           defer_media_reconfig_ = false;
           SetInCall(false);
@@ -7760,12 +7846,6 @@ public:
               if (track_in_call_update_ == IN_CALL_UPDATE_FROM_BT_APP_AND_BT_HAL) {
                 log::warn("Both BT App and UpdateMetadata received for call,"
                           " send reconfigurationComplete to BT HAL");
-                if (!group->IsDirectionAvailableForConfiguration(configuration_context_type_,
-                                               bluetooth::le_audio::types::kLeAudioDirectionSource)) {
-                  log::warn("invalidated config, fetching again for configuration_context_type_: {}",
-                             common::ToString(configuration_context_type_));
-                  group->GetConfiguration(configuration_context_type_);
-                }
                 reconfigurationComplete();
                 notifyAudioLocalSink(UnicastMonitorModeStatus::SUSPENDED);
                 notifyAudioLocalSource(UnicastMonitorModeStatus::SUSPENDED);
@@ -7791,7 +7871,6 @@ public:
                 GroupStream(group, configuration_context_type_, remote_contexts);
               }
               if (defer_call_reconfig_) {
-                reconfigurationComplete();
                 in_call_ = false;
                 defer_call_reconfig_ = false;
                 SetInCall(true);
@@ -8163,6 +8242,11 @@ private:
 
   /* Assume that  Audio HAL can send empty metadata when tracks are closed */
   bool audio_hal_is_capable_to_send_empty_metadata_ = true;
+
+  /* Set once we have notified the upper layer that broadcast became inactive due
+   * to GAME source metadata, so the notification is sent only on the edge and
+   * not on every metadata update while broadcast is streaming. */
+  bool game_broadcast_inactive_notified_ = false;
 
   // Member variables should appear before the WeakPtrFactory, to ensure
   // that any WeakPtrs are invalidated before its members

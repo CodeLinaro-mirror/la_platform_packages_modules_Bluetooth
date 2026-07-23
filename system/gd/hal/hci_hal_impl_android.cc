@@ -92,11 +92,10 @@ public:
         hw_timeout_multiplier != 1) {
       log::warn("Running in degraded performance mode due to slow hardware");
       start_timeout = std::chrono::milliseconds(8000) * hw_timeout_multiplier;
-    } else if (bluetooth::os::GetSystemPropertyUint32("ro.build.version.sdk", 99) < 37) {
-      start_timeout = std::chrono::milliseconds(
-              os::GetSystemPropertyUint32("bluetooth.gd.start_timeout", 8000));
     } else {
-      start_timeout = std::chrono::milliseconds(8000);
+      uint32_t gd_start_timeout = os::GetSystemPropertyUint32("bluetooth.gd.start_timeout", 8000);
+      log::info("waitForInitialization: Using bluetooth.gd.start_timeout = {} ms", gd_start_timeout);
+      start_timeout = std::chrono::milliseconds(gd_start_timeout);
     }
 
     auto init_status = init_promise_.get_future().wait_for(start_timeout);

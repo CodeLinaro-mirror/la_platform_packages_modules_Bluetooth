@@ -619,7 +619,7 @@ static BtStatus btif_gattc_read_remote_rssi(int client_if, const RawAddress& bd_
   CHECK_BTGATT_INIT();
   rssi_request_client_if = client_if;
 
-  return do_in_jni_thread(base::BindOnce(
+  return do_in_main_thread(base::BindOnce(
           [](int client_if, const RawAddress& bd_addr) {
             if (get_btm_client_interface().link_controller.BTM_ReadRSSI(
                         bd_addr, btm_read_rssi_cb) != tBTM_STATUS::BTM_CMD_STARTED) {

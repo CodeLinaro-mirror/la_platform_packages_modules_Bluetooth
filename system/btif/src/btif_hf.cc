@@ -319,6 +319,7 @@ static void clear_phone_state_multihf(btif_hf_cb_t* hf_cb) {
 
 static void reset_control_block(btif_hf_cb_t* hf_cb) {
   hf_cb->state = BTHF_CONNECTION_STATE_DISCONNECTED;
+  hf_cb->audio_state = BTHF_AUDIO_STATE_DISCONNECTED;
   hf_cb->is_initiator = false;
   hf_cb->connected_bda = RawAddress::kEmpty;
   hf_cb->peer_feat = 0;

@@ -912,4 +912,18 @@ TEST(UtilsTest, test_type_mapping) {
 }
 
 }  // namespace types
+
+TEST(StreamParametersTest, test_clear) {
+  stream_parameters params;
+  params.audio_channel_allocation = 0x03;
+  params.num_of_channels = 2;
+  params.num_of_devices = 1;
+
+  params.clear();
+
+  EXPECT_EQ(params.audio_channel_allocation, 0u);
+  EXPECT_EQ(params.num_of_channels, 0);
+  EXPECT_EQ(params.num_of_devices, 0);
+}
+
 }  // namespace bluetooth::le_audio

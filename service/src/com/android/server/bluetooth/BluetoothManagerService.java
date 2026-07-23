@@ -1760,11 +1760,16 @@ public class BluetoothManagerService {
                         + (" prevState=" + State.$.toString(prevState))
                         + (" newState=" + State.$.toString(newState)));
         // Send broadcast message to everyone else
-        Intent intent =
+        Intent intent = 
                 new Intent(action)
                         .putExtra(EXTRA_PREVIOUS_STATE, prevState)
                         .putExtra(EXTRA_STATE, newState)
                         .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        if (!action.equals(ACTION_STATE_CHANGED)) {
+            intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+        } else {
+            intent.setFlags(Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+        }
         mContext.sendBroadcastAsUser(intent, mUser, null, getTempAllowlistBroadcastOptions());
     }
 

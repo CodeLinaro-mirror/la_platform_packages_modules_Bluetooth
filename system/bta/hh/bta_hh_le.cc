@@ -1831,6 +1831,7 @@ void bta_hh_gatt_cancel(tBTA_HH_DEV_CB* p_cb) {
     log::debug("Cancel GATT connection: gatt_if={}, addr={}, conn_id={}",
                 bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, p_cb->conn_id);
     if (p_cb->conn_id == GATT_INVALID_CONN_ID) {
+      bta_hh_le_remove_dev_bg_conn(p_cb);
       BTA_GATTC_CancelOpen(bta_hh_cb.gatt_if,
                        p_cb->link_spec.addrt.bda, true);
     } else {

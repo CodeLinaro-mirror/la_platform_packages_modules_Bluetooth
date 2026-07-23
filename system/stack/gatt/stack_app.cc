@@ -25,6 +25,7 @@
 #include "stack/connection_manager/connection_manager.h"
 #include "stack/gatt/gatt_int.h"
 #include "stack/include/gatt_api.h"
+#include "stack/include/l2cap_interface.h"
 
 using namespace bluetooth;
 
@@ -202,6 +203,11 @@ void appStartIf(tGATT_IF gatt_if) {
       p_tcb = gatt_find_tcb_by_addr(bda, transport);
       log::info("GATT interface {} already has connected device {}", gatt_if, bda);
       if (p_reg->app_cb.p_conn_cb && p_tcb) {
+        if (!l2cap::get_interface().L2CA_IsLinkEstablished(bda, transport)) {
+          log::warn("L2CAP link disconnecting for {}, skip open callback gatt_if={}", bda, gatt_if);
+          start_idx = ++found_idx;
+          continue;
+        }
         conn_id = gatt_create_conn_id(p_tcb->tcb_idx, gatt_if);
         log::info("Invoking callback with connection id {}", conn_id);
         (*p_reg->app_cb.p_conn_cb)(gatt_if, bda, conn_id, true, GATT_CONN_OK, transport);

@@ -39,7 +39,7 @@ void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint
   hcic_interface->SetCigParams(cig_id, std::move(cig_params), std::move(cb));
 }
 
-void btsnd_hcic_set_cig_params_v3(uint8_t cig_id, uint32_t sdu_itv_mtos, uint32_t sdu_itv_stom,
+void btsnd_hcic_set_cig_params_v2(uint8_t cig_id, uint32_t sdu_itv_mtos, uint32_t sdu_itv_stom,
                                   uint8_t sca, uint8_t packing, uint8_t framing,
                                   uint16_t max_trans_lat_stom, uint16_t max_trans_lat_mtos,
                                   uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,

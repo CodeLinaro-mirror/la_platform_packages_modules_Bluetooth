@@ -679,12 +679,13 @@ public:
    ** Function         L2CA_IsLinkEstablished
    **
    ** Description      Check if a BR/EDR or BLE link to the remote device is
-   **                  established.
+   **                  established and not in the process of disconnecting.
    **
    ** Parameters:      bd_addr: Peer bluetooth device address
    **                  transport: Transport to check (BR/EDR or BLE)
    **
-   ** Returns          true if peer is connected false otherwise
+   ** Returns          true if peer is connected and the link is not
+   **                  disconnecting, false otherwise
    **
    ******************************************************************************/
   virtual bool L2CA_IsLinkEstablished(const RawAddress& bd_addr, tBT_TRANSPORT transport) = 0;

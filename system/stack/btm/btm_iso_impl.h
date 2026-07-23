@@ -445,7 +445,7 @@ struct iso_impl {
     log::debug(" isPhyHdt: {}", isPhyHdt);
     bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
     if(isPhyHdt && hdt_enabled && shim::GetController()->SupportsBleHDTPhy()) {
-      btsnd_hcic_set_cig_params_v3(
+      btsnd_hcic_set_cig_params_v2(
               cig_id, cig_params.sdu_itv_c_to_p, cig_params.sdu_itv_p_to_c, cig_params.sca,
               cig_params.packing, cig_params.framing, cig_params.max_trans_lat_c_to_p,
               cig_params.max_trans_lat_p_to_c, cig_params.cis_cfgs.size(), cig_params.cis_cfgs.data(),
@@ -523,13 +523,13 @@ struct iso_impl {
                    std::format("cig_id:0x{:02x} (f:{})", cig_id, force));
   }
 
-  void on_status_establish_cis(struct cis_establish_params conn_params, uint8_t* stream,
+  void on_status_establish_cis(const struct cis_establish_params conn_params, uint8_t* stream,
                                uint16_t len) {
     uint8_t status;
 
-    log::assert_that(len == 2, "Invalid packet length: {}", len);
+    log::assert_that(len == 1, "Invalid packet length: {}", len);
 
-    STREAM_TO_UINT16(status, stream);
+    STREAM_TO_UINT8(status, stream);
 
     for (auto cis_param : conn_params.conn_pairs) {
       cis_establish_cmpl_evt evt;

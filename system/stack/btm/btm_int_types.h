@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "common/circular_buffer.h"
 #include "stack/acl/acl.h"
@@ -46,15 +47,27 @@ extern bluetooth::common::TimestamperInMilliseconds timestamper_in_milliseconds;
 /* Define a structure to hold all the BTM data
  */
 
+/* One pending Read RSSI request per link (hci_handle).
+ * Replaces the former global single-slot p_rssi_cmpl_cb / read_rssi_timer, so
+ * that Read RSSI requests on different links can be in flight concurrently
+ * without blocking each other (a single handle is still kept serial). */
+struct tBTM_RSSI_PENDING {
+  uint16_t hci_handle;
+  tBTM_READ_RSSI_CB* p_cb;
+  alarm_t* timer;
+
+  ~tBTM_RSSI_PENDING() { alarm_free(timer); }
+};
+
 /* Define the Device Management control structure
  */
 typedef struct tBTM_DEVCB {
   tBTM_CMPL_CB* p_rln_cmpl_cb; /* Callback function to be called when  */
                                /* read local name function complete    */
 
-  alarm_t* read_rssi_timer;          /* Read RSSI timer */
-  tBTM_READ_RSSI_CB* p_rssi_cmpl_cb; /* Callback function to be called when  */
-                                     /* read RSSI function completes */
+  /* Pending Read RSSI requests indexed by hci_handle */
+  std::unordered_map<uint16_t /* hci_handle */, std::unique_ptr<tBTM_RSSI_PENDING>>
+          rssi_pending_map;
 
   alarm_t* read_automatic_flush_timeout_timer;     /* Read Automatic Flush Timeout */
                                                    /* timer */
@@ -78,13 +91,12 @@ typedef struct tBTM_DEVCB {
   tBTM_NOTIFY_SSR_CB * p_ssr_cb;
 
   void Init() {
-    read_rssi_timer = alarm_new("btm.read_rssi_timer");
     read_automatic_flush_timeout_timer = alarm_new("btm.read_automatic_flush_timeout_timer");
     conn_proc_timer = alarm_new("btm.conn_proc_timer");
   }
 
   void Free() {
-    alarm_free(read_rssi_timer);
+    rssi_pending_map.clear();
     alarm_free(read_automatic_flush_timeout_timer);
     alarm_free(conn_proc_timer);
   }
@@ -140,7 +152,9 @@ public:
   bluetooth::stack::rnr::RemoteNameRequest rnr;
 
   void Init() {
-    memset(&devcb, 0, sizeof(devcb));
+    /* devcb contains a std::unordered_map (rssi_pending_map), so it is not
+     * trivially-copyable and must not be memset().*/
+    devcb = {};
     memset(&ble_ctr_cb, 0, sizeof(ble_ctr_cb));
     memset(&cmn_ble_vsc_cb, 0, sizeof(cmn_ble_vsc_cb));
     memset(&btm_inq_vars, 0, sizeof(btm_inq_vars));

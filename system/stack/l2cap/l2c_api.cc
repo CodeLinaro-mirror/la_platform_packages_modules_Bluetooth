@@ -1734,7 +1734,8 @@ uint16_t L2CA_FlushChannel(uint16_t lcid, uint16_t num_to_flush) {
 }
 
 bool L2CA_IsLinkEstablished(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
-  return l2cu_find_lcb_by_bd_addr(bd_addr, transport) != nullptr;
+  tL2C_LCB* p_lcb = l2cu_find_lcb_by_bd_addr(bd_addr, transport);
+  return p_lcb != nullptr && p_lcb->link_state != LST_DISCONNECTING;
 }
 
 /*******************************************************************************

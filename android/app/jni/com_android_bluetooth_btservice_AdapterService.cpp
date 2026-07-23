@@ -229,6 +229,20 @@ static void remote_device_properties_callback(bt_status_t status, RawAddress bd_
     return;
   }
 
+  // Under jni_batch_memory_management the CallbackEnv constructor asserts
+  // fatally (SIGABRT) when the JVM callback env is null or this does not run on
+  // the callback thread, and the valid() check below is then dead code. This
+  // callback is dispatched as a queued closure on the jni thread and can run
+  // while the env is detached: callback_thread_event() posts ASSOCIATE_JVM /
+  // DISASSOCIATE_JVM (which set / null callbackEnv) asynchronously to this same
+  // thread, so during enable/disable churn the closure may execute before the
+  // attach or after the detach. Bail out *before* constructing CallbackEnv to
+  // restore graceful drop-on-teardown.
+  if (getCallbackEnv() == nullptr || !isCallbackThread()) {
+    log::error("Callback env not ready; dropping remote device properties update");
+    return;
+  }
+
   CallbackEnv sCallbackEnv(__func__);
   if (!sCallbackEnv.valid()) {
     return;
@@ -347,6 +361,17 @@ static void address_consolidate_callback(RawAddress main_bd_addr, RawAddress sec
     return;
   }
 
+  // Bail out before constructing CallbackEnv when the JVM callback env is
+  // detached: under jni_batch_memory_management the CallbackEnv constructor
+  // asserts fatally on a null env, and addressToJByteArray() below would
+  // dereference it anyway. This closure runs on the jni thread and can be
+  // dispatched while the env is detached during enable/disable churn (see
+  // remote_device_properties_callback for the full rationale).
+  if (getCallbackEnv() == nullptr || !isCallbackThread()) {
+    log::error("Callback env not ready; dropping address consolidate update");
+    return;
+  }
+
   CallbackEnv sCallbackEnv(__func__);
 
   ScopedLocalRef<jbyteArray> main_addr = addressToJByteArray(sCallbackEnv, main_bd_addr);
@@ -361,6 +386,17 @@ static void le_address_associate_callback(RawAddress main_bd_addr, RawAddress se
   std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
   if (!sJniCallbacksObj) {
     log::error("JNI obj is null. Failed to call JNI callback");
+    return;
+  }
+
+  // Bail out before constructing CallbackEnv when the JVM callback env is
+  // detached: under jni_batch_memory_management the CallbackEnv constructor
+  // asserts fatally on a null env, and addressToJByteArray() below would
+  // dereference it anyway. This closure runs on the jni thread and can be
+  // dispatched while the env is detached during enable/disable churn (see
+  // remote_device_properties_callback for the full rationale).
+  if (getCallbackEnv() == nullptr || !isCallbackThread()) {
+    log::error("Callback env not ready; dropping le address associate update");
     return;
   }
 

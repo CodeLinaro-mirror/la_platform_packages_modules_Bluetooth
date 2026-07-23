@@ -436,6 +436,9 @@ struct LeScanningManagerImpl::impl : public LeAddressManagerCallback {
                                            int8_t tx_power, int8_t rssi,
                                            uint16_t periodic_advertising_interval,
                                            const std::vector<uint8_t>& advertising_data) {
+    Address adv_addrs = address;
+    uint8_t adv_addrs_type = address_type;
+
     RawAddress raw_address = ToRawAddress(address);
     tBLE_ADDR_TYPE ble_addr_type = to_ble_addr_type(address_type);
 
@@ -466,7 +469,7 @@ struct LeScanningManagerImpl::impl : public LeAddressManagerCallback {
                                                     processed_report->data.size())) {
         Address pseudo_address;
         bool pseudoAddresssAvailable = scanning_callbacks_->OnFetchPseudoAddressFromIdentityAddress(
-                address, address_type, &pseudo_address);
+                adv_addrs, adv_addrs_type, &pseudo_address);
         if (pseudoAddresssAvailable) {
           auto enc_key_material =
                   storage_module_->GetBin(pseudo_address.ToString(), BTIF_STORAGE_KEY_ENCR_DATA)
@@ -483,16 +486,16 @@ struct LeScanningManagerImpl::impl : public LeAddressManagerCallback {
               processed_report->data = decrypted_data;
               log::info(
                       "Decryption succesfully  addr: {} , pseudo_address: {} data: {}",
-                      address.ToString().c_str(), pseudo_address.ToString().c_str(),
+                      adv_addrs.ToString().c_str(), pseudo_address.ToString().c_str(),
                       base::HexEncode(processed_report->data.data(), processed_report->data.size())
                               .c_str());
             }
           } else {
             log::info("enc_key_material size is <= 0  addr: {} , pseudo_address: {}",
-                      address.ToString().c_str(), pseudo_address.ToString().c_str());
+                      adv_addrs.ToString().c_str(), pseudo_address.ToString().c_str());
           }
         } else {
-          log::info("pseudo_address not available {}", address.ToString().c_str());
+          log::info("pseudo_address not available {}", adv_addrs.ToString().c_str());
         }
       }
     }

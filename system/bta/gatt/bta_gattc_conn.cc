@@ -482,6 +482,19 @@ void bta_gattc_conn_cback(tGATT_IF client_if, const RawAddress& remote_bda, tCON
       std::ignore = GATT_Disconnect(conn_id);
       return;
     }
+    if (!bluetooth::stack::l2cap::get_interface().L2CA_IsLinkEstablished(remote_bda, transport)) {
+      log::warn("L2CAP link disconnecting for {}, rejecting GATT open conn_id=0x{:x}", remote_bda,
+                conn_id);
+      /* The link is tearing down. Release the GATT-layer hold and return before
+       * allocating a CLCB. connecting_to (and any background-connection state) is left
+       * untouched so the impending disconnect callback is still recognized by
+       * is_interested_in_connection() and the app receives exactly one failure open
+       * callback - matching the normal connection-failure flow for both direct and
+       * background connections. */
+      std::ignore = GATT_Disconnect(conn_id);
+      return;
+    }
+
     p_clreg->connecting_to.erase(remote_bda);
 
     tBTA_GATTC_CLCB* p_clcb = bta_gattc_find_alloc_clcb(client_if, remote_bda, transport);

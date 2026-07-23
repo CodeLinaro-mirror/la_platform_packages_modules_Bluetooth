@@ -1239,13 +1239,6 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type, cha
         p_scb->masked_features &= ~(BTA_AG_FEAT_3WAY);
       }
 
-     if (interop_match_addr_or_name(INTEROP_DISABLE_CODEC_NEGOTIATION,
-          p_scb->peer_addr, btif_storage_get_remote_device_property)) {
-          log::verbose("disable codec negotiation, remote for blacklisted device");
-          p_scb->masked_features = p_scb->masked_features & ~(BTA_AG_FEAT_CODEC);
-          p_scb->peer_features = p_scb->peer_features & ~(BTA_AG_PEER_FEAT_CODEC);
-      }
-
       bluetooth::metrics::LogMetricHfpAgVersion(p_scb->peer_addr, p_scb->peer_version);
 
       if (interop_match_addr(INTEROP_INBAND_RINGTONE_SET_TO_FALSE, p_scb->peer_addr)) {

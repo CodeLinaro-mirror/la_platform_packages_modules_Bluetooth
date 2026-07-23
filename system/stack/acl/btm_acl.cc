@@ -40,6 +40,8 @@
 #include <com_android_bluetooth_flags.h>
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
 #include "bta/gatt/bta_gattc_int.h"
 #include "bta/include/bta_dm_acl.h"
@@ -1545,11 +1547,6 @@ uint8_t* BTM_ReadRemoteFeatures(const RawAddress& addr) {
 tBTM_STATUS BTM_ReadRSSI(const RawAddress& remote_bda, tBTM_READ_RSSI_CB* p_cb) {
   tACL_CONN* p = NULL;
 
-  /* If someone already waiting on the version, do not allow another */
-  if (btm_cb.devcb.p_rssi_cmpl_cb) {
-    return tBTM_STATUS::BTM_BUSY;
-  }
-
   auto dev_info = get_btm_client_interface().peer.BTM_ReadDevInfo(remote_bda);
   if (dev_info.device_type & BT_DEVICE_TYPE_BLE) {
     p = internal_.btm_bda_to_acl(remote_bda, BT_TRANSPORT_LE);
@@ -1560,9 +1557,21 @@ tBTM_STATUS BTM_ReadRSSI(const RawAddress& remote_bda, tBTM_READ_RSSI_CB* p_cb) 
   }
 
   if (p) {
-    btm_cb.devcb.p_rssi_cmpl_cb = p_cb;
-    alarm_set_on_mloop(btm_cb.devcb.read_rssi_timer, BTM_DEV_REPLY_TIMEOUT_MS,
-                       btm_read_rssi_timeout, NULL);
+    /* Serialize only within the same link: reject only when this handle
+     * already has a Read RSSI in flight. Different handles never block. */
+    if (btm_cb.devcb.rssi_pending_map.count(p->hci_handle) > 0) {
+      log::warn("Read RSSI already in flight, peer:{} handle:0x{:04x}", remote_bda,
+                p->hci_handle);
+      return tBTM_STATUS::BTM_BUSY;
+    }
+
+    auto entry = std::make_unique<tBTM_RSSI_PENDING>();
+    entry->hci_handle = p->hci_handle;
+    entry->p_cb = p_cb;
+    entry->timer = alarm_new("btm.read_rssi_timer");
+    alarm_set_on_mloop(entry->timer, BTM_DEV_REPLY_TIMEOUT_MS, btm_read_rssi_timeout,
+                       reinterpret_cast<void*>(static_cast<uintptr_t>(p->hci_handle)));
+    btm_cb.devcb.rssi_pending_map[p->hci_handle] = std::move(entry);
 
     btsnd_hcic_read_rssi(p->hci_handle);
     return tBTM_STATUS::BTM_CMD_STARTED;
@@ -1582,13 +1591,28 @@ tBTM_STATUS BTM_ReadRSSI(const RawAddress& remote_bda, tBTM_READ_RSSI_CB* p_cb) 
  * Returns          void
  *
  ******************************************************************************/
-void btm_read_rssi_timeout(void* /* data */) {
-  tBTM_READ_RSSI_CB* p_cb = btm_cb.devcb.p_rssi_cmpl_cb;
-  btm_cb.devcb.p_rssi_cmpl_cb = NULL;
-  log::warn("Read RSSI timed out");
-  if (p_cb) {
-    (*p_cb)(tBTM_STATUS::BTM_DEVICE_TIMEOUT, 0, RawAddress::kEmpty);
+void btm_read_rssi_timeout(void* data) {
+  uint16_t handle = static_cast<uint16_t>(reinterpret_cast<uintptr_t>(data));
+  log::warn("Read RSSI timed out, handle=0x{:04x}", handle);
+
+  auto it = btm_cb.devcb.rssi_pending_map.find(handle);
+  if (it == btm_cb.devcb.rssi_pending_map.end()) {
+    return;
   }
+
+  /* Detach the entry from the map but defer its destruction to the main loop:
+   * we are currently in the callback context of this entry->timer, so freeing
+   * it here would call alarm_free() on the running alarm, which is forbidden
+   * (see osi/include/alarm.h). */
+  std::unique_ptr<tBTM_RSSI_PENDING> pending = std::move(it->second);
+  btm_cb.devcb.rssi_pending_map.erase(it);
+
+  if (pending->p_cb) {
+    (*pending->p_cb)(tBTM_STATUS::BTM_DEVICE_TIMEOUT, 0, RawAddress::kEmpty);
+  }
+
+  do_in_main_thread(
+      base::BindOnce([](std::unique_ptr<tBTM_RSSI_PENDING>) {}, std::move(pending)));
 }
 
 /*******************************************************************************
@@ -1602,34 +1626,42 @@ void btm_read_rssi_timeout(void* /* data */) {
  *
  ******************************************************************************/
 void btm_read_rssi_complete(bluetooth::hci::CommandCompleteView view) {
-  tBTM_READ_RSSI_CB* p_cb = btm_cb.devcb.p_rssi_cmpl_cb;
+  auto read_rssi_complete = bluetooth::hci::ReadRssiCompleteView::Create(view);
+  if (!read_rssi_complete.IsValid()) {
+    /* No handle available, cannot locate the pending entry; the corresponding
+     * request will be cleaned up by its own timeout alarm. */
+    log::warn("Invalid Read RSSI complete event");
+    return;
+  }
 
-  alarm_cancel(btm_cb.devcb.read_rssi_timer);
-  btm_cb.devcb.p_rssi_cmpl_cb = NULL;
+  uint16_t handle = read_rssi_complete.GetConnectionHandle();
+  auto it = btm_cb.devcb.rssi_pending_map.find(handle);
+  if (it == btm_cb.devcb.rssi_pending_map.end()) {
+    log::warn("No pending rssi req, handle=0x{:04x}", handle);
+    return;
+  }
+
+  std::unique_ptr<tBTM_RSSI_PENDING> entry = std::move(it->second);
+  btm_cb.devcb.rssi_pending_map.erase(it);
+  alarm_cancel(entry->timer);
 
   /* If there was a registered callback, call it */
-  if (p_cb) {
-    auto read_rssi_complete = bluetooth::hci::ReadRssiCompleteView::Create(view);
+  if (entry->p_cb) {
     RawAddress address = RawAddress::kEmpty;
     tBTM_STATUS status = tBTM_STATUS::BTM_SUCCESS;
     int8_t rssi = 0;
 
-    if (read_rssi_complete.IsValid()) {
-      if (read_rssi_complete.GetStatus() == bluetooth::hci::ErrorCode::SUCCESS) {
-        uint16_t handle = read_rssi_complete.GetConnectionHandle();
-        tACL_CONN* p_acl_cb = internal_.acl_get_connection_from_handle(handle);
-        if (p_acl_cb != nullptr) {
-          address = p_acl_cb->link_spec.addrt.bda;
-        }
-        rssi = static_cast<int8_t>(read_rssi_complete.GetRssi());
-      } else {
-        status = tBTM_STATUS::BTM_ERR_PROCESSING;
+    if (read_rssi_complete.GetStatus() == bluetooth::hci::ErrorCode::SUCCESS) {
+      tACL_CONN* p_acl_cb = internal_.acl_get_connection_from_handle(handle);
+      if (p_acl_cb != nullptr) {
+        address = p_acl_cb->link_spec.addrt.bda;
       }
+      rssi = static_cast<int8_t>(read_rssi_complete.GetRssi());
     } else {
       status = tBTM_STATUS::BTM_ERR_PROCESSING;
     }
 
-    (*p_cb)(status, rssi, address);
+    (*entry->p_cb)(status, rssi, address);
   }
 }
 
@@ -2075,6 +2107,16 @@ void on_acl_br_edr_failed(const RawAddress& bda, tHCI_STATUS status, bool locall
 void btm_acl_disconnected(tHCI_STATUS status, uint16_t handle, tHCI_REASON reason) {
   if (status != HCI_SUCCESS) {
     log::warn("Received disconnect with error:{}", hci_error_code_text(status));
+  }
+
+  auto rssi_it = btm_cb.devcb.rssi_pending_map.find(handle);
+  if (rssi_it != btm_cb.devcb.rssi_pending_map.end()) {
+    std::unique_ptr<tBTM_RSSI_PENDING> entry = std::move(rssi_it->second);
+    btm_cb.devcb.rssi_pending_map.erase(rssi_it);
+    alarm_cancel(entry->timer);
+    if (entry->p_cb) {
+      (*entry->p_cb)(tBTM_STATUS::BTM_ERR_PROCESSING, 0, RawAddress::kEmpty);
+    }
   }
 
   /* There can be a case when we rejected PIN code authentication */

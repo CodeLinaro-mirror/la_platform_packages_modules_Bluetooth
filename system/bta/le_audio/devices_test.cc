@@ -2861,6 +2861,157 @@ TEST_F(LeAudioDeviceSubrateTest, onSubrateChangedSuccess) {
   ASSERT_EQ(device_->GetSubrateState(), SubrateState::ENABLED);
 }
 
+TEST(LeAudioDeviceGroupTest, test_RemoveCisFromStreamIfNeeded_Normal) {
+  LeAudioDeviceGroup* group = new LeAudioDeviceGroup(1);
+  auto device = std::make_shared<LeAudioDevice>(RawAddress::kAny, DeviceConnectState::CONNECTED);
+
+  // Add an active ASE to device
+  struct ase test_ase(0x0000, 0x0000, types::kLeAudioDirectionSink, 1);
+  test_ase.active = true;
+  test_ase.cis_conn_hdl = 0x0060;
+  test_ase.codec_config.channel_count_per_iso_stream = 1;
+  device->ases_.push_back(test_ase);
+
+  group->AddNode(device);
+
+  auto direction = types::kLeAudioDirectionSink;
+  auto& params = group->stream_conf.stream_params.get(direction);
+  params.num_of_devices = 1;
+  params.num_of_channels = 1;
+  params.audio_channel_allocation = 0x01;  // Left
+
+  stream_map_info info(0x0060, 0x01, true);
+  params.stream_config.stream_map.push_back(info);
+
+  // Call RemoveCisFromStreamIfNeeded
+  group->RemoveCisFromStreamIfNeeded(device.get(), 0x0060);
+
+  // Verify allocation is cleared
+  EXPECT_EQ(params.audio_channel_allocation, 0u);
+  EXPECT_EQ(params.num_of_devices, 0);
+  EXPECT_EQ(params.num_of_channels, 0);
+
+  delete group;
+}
+
+TEST(LeAudioDeviceGroupTest, test_CleanupFlow_ResetsAllocation) {
+  LeAudioDeviceGroup* group = new LeAudioDeviceGroup(1);
+  auto device = std::make_shared<LeAudioDevice>(RawAddress::kAny, DeviceConnectState::CONNECTED);
+  group->AddNode(device);
+
+  auto direction = types::kLeAudioDirectionSink;
+  auto& params = group->stream_conf.stream_params.get(direction);
+  params.num_of_devices = 1;
+  params.num_of_channels = 1;
+  params.audio_channel_allocation = 0x01;  // Left
+
+  stream_map_info info(0x0060, 0x01, true);
+  params.stream_config.stream_map.push_back(info);
+
+  // Simulate timeout handling calling ClearSinksFromConfiguration
+  group->ClearSinksFromConfiguration();
+
+  // Verify allocation is cleared because of our fix in clear()!
+  EXPECT_EQ(params.audio_channel_allocation, 0u);
+
+  // Now simulate RemoveCisFromStreamIfNeeded being called after map is cleared
+  group->RemoveCisFromStreamIfNeeded(device.get(), 0x0060);
+
+  // Should still be 0
+  EXPECT_EQ(params.audio_channel_allocation, 0u);
+
+  delete group;
+}
+
+TEST(LeAudioDeviceGroupTest, test_TWS_OneEarbudDisconnects) {
+  LeAudioDeviceGroup* group = new LeAudioDeviceGroup(1);
+  auto device_left =
+          std::make_shared<LeAudioDevice>(GetTestAddress(0), DeviceConnectState::CONNECTED);
+  auto device_right =
+          std::make_shared<LeAudioDevice>(GetTestAddress(1), DeviceConnectState::CONNECTED);
+
+  // Add active ASEs to devices
+  struct ase ase_l(0x0000, 0x0000, types::kLeAudioDirectionSink, 1);
+  ase_l.active = true;
+  ase_l.cis_conn_hdl = 0x0060;
+  ase_l.codec_config.channel_count_per_iso_stream = 1;
+  device_left->ases_.push_back(ase_l);
+
+  struct ase ase_r(0x0000, 0x0000, types::kLeAudioDirectionSink, 2);
+  ase_r.active = true;
+  ase_r.cis_conn_hdl = 0x0061;
+  ase_r.codec_config.channel_count_per_iso_stream = 1;
+  device_right->ases_.push_back(ase_r);
+
+  group->AddNode(device_left);
+  group->AddNode(device_right);
+
+  auto direction = types::kLeAudioDirectionSink;
+  auto& params = group->stream_conf.stream_params.get(direction);
+  params.num_of_devices = 2;
+  params.num_of_channels = 2;
+  params.audio_channel_allocation = 0x03;  // Left + Right
+
+  stream_map_info info_l(0x0060, 0x01, true);
+  stream_map_info info_r(0x0061, 0x02, true);
+  params.stream_config.stream_map.push_back(info_l);
+  params.stream_config.stream_map.push_back(info_r);
+
+  // Disconnect Right earbud (Handle 0x0061)
+  group->RemoveCisFromStreamIfNeeded(device_right.get(), 0x0061);
+
+  // Verify allocation is updated to just Left (0x01)
+  EXPECT_EQ(params.audio_channel_allocation, 0x01u);
+  EXPECT_EQ(params.num_of_devices, 1);
+  EXPECT_EQ(params.num_of_channels, 1);
+
+  delete group;
+}
+
+TEST(LeAudioDeviceGroupTest, test_TWS_TimeoutAndReconnectSingle) {
+  LeAudioDeviceGroup* group = new LeAudioDeviceGroup(1);
+  auto device_left =
+          std::make_shared<LeAudioDevice>(GetTestAddress(0), DeviceConnectState::CONNECTED);
+  group->AddNode(device_left);
+
+  auto direction = types::kLeAudioDirectionSink;
+  auto& params = group->stream_conf.stream_params.get(direction);
+
+  // Simulate previous state was Stereo (0x03) and was cleared by timeout
+  params.audio_channel_allocation = 0x03;
+  params.num_of_channels = 2;
+  params.num_of_devices = 2;
+
+  // Call ClearSinksFromConfiguration (simulating timeout cleanup)
+  group->ClearSinksFromConfiguration();
+
+  // Verify it is 0 now because of our fix!
+  ASSERT_EQ(params.audio_channel_allocation, 0u);
+
+  // Now simulate reconnection of ONLY Left earbud
+  struct ase ase_l(0x0000, 0x0000, types::kLeAudioDirectionSink, 1);
+  ase_l.active = true;
+  ase_l.cis_conn_hdl = 0x0060;
+  ase_l.codec_config.channel_count_per_iso_stream = 1;
+  // Set allocation in codec_config to 0x01 (Left)
+  ase_l.codec_config.params.Add(codec_spec_conf::kLeAudioLtvTypeAudioChannelAllocation,
+                                (uint32_t)0x01);
+
+  // Simulation of AddCisToStreamConfiguration:
+  params.num_of_devices++;
+  params.num_of_channels += ase_l.codec_config.channel_count_per_iso_stream;
+  auto ase_audio_channel_allocation = ase_l.codec_config.GetAudioChannelAllocation();
+  params.audio_channel_allocation |= ase_audio_channel_allocation;
+
+  stream_map_info info(0x0060, ase_audio_channel_allocation, true);
+  params.stream_config.stream_map.push_back(info);
+
+  // Verify allocation is ONLY Left (0x01), NOT Stereo (0x03)!
+  EXPECT_EQ(params.audio_channel_allocation, 0x01u);
+
+  delete group;
+}
+
 INSTANTIATE_TEST_CASE_P(Test, LeAudioAseConfigurationTest,
                         ::testing::Values(kLeAudioCodingFormatLC3,
                                           kLeAudioCodingFormatVendorSpecific));
