@@ -1422,6 +1422,24 @@ public class BluetoothProxy {
         return true;
     }
 
+    public boolean setAchatAttributes(int devId, byte[] name) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.setAchatAttributes(devId, name);
+        return true;
+    }
+
+    public boolean setAchatAttributesForSink(int devId, byte[] name) {
+        if (mBluetoothLeBroadcastAssistant == null) return false;
+        mBluetoothLeBroadcastAssistant.setAchatAttributes(devId, name);
+        return true;
+    }
+
+    public boolean setDbigJoinControl(boolean mode) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.setDbigJoinControl(mode);
+        return true;
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         if (mBluetoothLeBroadcast == null) return false;
         mBluetoothLeBroadcast.stopBroadcast(broadcastId);
