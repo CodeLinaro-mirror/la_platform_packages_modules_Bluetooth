@@ -189,6 +189,7 @@ public:
     SetCodecLocation(CodecLocation::ADSP);
   }
   void start(const std::vector<btle_audio_codec_config_t>& offloading_preference) {
+    offloading_preference_ = offloading_preference;
     dual_bidirection_swb_supported_ =
             osi_property_get_bool("bluetooth.leaudio.dual_bidirection_swb.supported", false);
     bluetooth::le_audio::AudioSetConfigurationProvider::Initialize(GetCodecLocation());
@@ -244,6 +245,10 @@ public:
 
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetLocalAudioOutputCodecCapa() {
     return codec_output_capa;
+  }
+
+  std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetOffloadingPreference() const {
+    return offloading_preference_;
   }
 
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetLocalAudioInputCodecCapa() {
@@ -1388,6 +1393,7 @@ private:
 
   std::optional<ProviderInfo> codec_provider_info_;
 
+  std::vector<btle_audio_codec_config_t> offloading_preference_;
   std::vector<btle_audio_codec_config_t> codec_input_capa = {};
   std::vector<btle_audio_codec_config_t> codec_output_capa = {};
   int broadcast_target_config = -1;
@@ -1564,6 +1570,14 @@ CodecManager::GetLocalAudioInputCodecCapa() {
   }
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t> empty{};
   return empty;
+}
+
+std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
+CodecManager::GetOffloadingPreference() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->codec_manager_impl_->GetOffloadingPreference();
+  }
+  return {};
 }
 
 void CodecManager::UpdateActiveAudioConfig(

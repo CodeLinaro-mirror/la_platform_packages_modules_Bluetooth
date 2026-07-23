@@ -526,6 +526,12 @@ void ConnectionHandler::SdpCb(RawAddress bdaddr, SdpCallback cb, tSDP_DISCOVERY_
   uint16_t peer_features = 0;
   uint16_t peer_avrcp_version = 0;
 
+  if (disc_db == nullptr) {
+    log::error("SdpCb: disc_db is null, aborting SDP callback");
+    cb.Run(tSDP_STATUS::SDP_GENERIC_ERROR, 0, 0);
+    return;
+  }
+
   // TODO (apanicke): Replace this in favor of our own supported features.
   sdp_record = sdp_->FindServiceInDb(disc_db, UUID_SERVCLASS_AV_REMOTE_CONTROL, nullptr);
   if (sdp_record != nullptr) {

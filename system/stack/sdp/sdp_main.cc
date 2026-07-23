@@ -334,9 +334,19 @@ void sdp_disconnect(tCONN_CB* p_ccb, tSDP_REASON reason) {
   /* Check if we have a connection ID */
   if (ccb.connection_id != 0) {
     ccb.disconnect_reason = reason;
-    if (tSDP_STATUS::SDP_SUCCESS == reason && sdpu_process_pend_ccb_same_cid(*p_ccb)) {
+    if (tSDP_STATUS::SDP_SUCCESS == reason) {
       sdpu_callback(ccb, reason);
       sdpu_release_ccb(ccb);
+      if (sdpu_process_pend_ccb_same_cid(ccb)) {
+        log::info(
+                "sdp_disconnect: Pending CCB found for same CID {}, activated after callback",
+                ccb.connection_id);
+        return;
+      }
+      if (!stack::l2cap::get_interface().L2CA_DisconnectReq(ccb.connection_id)) {
+        log::warn("Unable to disconnect L2CAP peer:{} cid:{}", ccb.device_address,
+                  ccb.connection_id);
+      }
       return;
     } else {
       if (!stack::l2cap::get_interface().L2CA_DisconnectReq(ccb.connection_id)) {
