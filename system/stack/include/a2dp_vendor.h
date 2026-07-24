@@ -26,9 +26,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <vector>
 
 #include "a2dp_codec_api.h"
+#include "a2dp_vendor_ldac.h"
 #include "stack/include/bt_hdr.h"
 
 typedef enum {
@@ -73,6 +75,21 @@ bool A2DP_IsVendorPeerSinkCodecValid(const uint8_t* p_codec_info);
 // Returns true if the vendor-specific A2DP Sink codec is supported,
 // otherwise false.
 tA2DP_STATUS A2DP_IsVendorSinkCodecSupported(const uint8_t* p_codec_info);
+
+// Computes the {min, max} offload bitrate hint (bps) for a vendor-specific
+// codec from its codec-specific quality selector and the sample rate, without
+// needing the negotiated codec config. Used by stack callers to translate a
+// Developer-Options bit-rate change into a hint passed to
+// bluetooth::audio::a2dp::provider::get_a2dp_configuration(), so the audio HAL
+// interface module does not need to depend on stack codec constants.
+// |codec_id| identifies the codec; |codec_specific_1| is the codec's quality
+// selector; |sample_rate| is the sampling frequency in Hz. Returns the bitrate
+// range for codecs that support this hint (currently LDAC), or std::nullopt if
+// the codec has no such hint (the caller should then leave the HAL bitrate
+// hint unset).
+std::optional<A2dpBitrateRange> A2DP_VendorGetBitRateRange(bluetooth::a2dp::CodecId codec_id,
+                                                          int64_t codec_specific_1,
+                                                          int sample_rate);
 
 // Gets the Vendor ID for the vendor-specific A2DP codec.
 // |p_codec_info| contains information about the codec capabilities.
