@@ -1666,6 +1666,28 @@ public:
                ToString(previous_context_type));
     pre_configuration_context_type_ = previous_context_type;
     group->SetPendingConfiguration();
+
+    /* Race guard: if the group is already releasing towards IDLE (e.g. the audio
+     * suspend-timeout fired a GroupStop just before this reconfiguration was
+     * requested), StopStream() below early-returns in IsReleasingOrIdle() and no
+     * fresh RELEASING status callback is raised. In that case the RELEASING
+     * handler already ran with pending_configuration unset and therefore skipped
+     * SuspendedForReconfiguration(). Drive it here so the Audio HAL is suspended
+     * for reconfiguration (ack CTRL_ACK_RECONFIGURATION) and the pending
+     * configuration can complete, instead of leaving audio_sender_state_ /
+     * audio_receiver_state_ stuck in RELEASING. */
+    if (group->IsReleasingOrIdle() &&
+        (audio_sender_state_ != AudioState::IDLE ||
+         audio_receiver_state_ != AudioState::IDLE) &&
+        !group->IsSuspendedForReconfiguration()) {
+      log::warn(
+              "group {} already releasing/idle; driving SuspendedForReconfiguration "
+              "for the late pending configuration",
+              group->group_id_);
+      SuspendedForReconfiguration();
+      group->SetSuspendedForReconfiguration();
+    }
+
     groupStateMachine_->StopStream(group);
     speed_start_setup(group->group_id_, configuration_context_type_, group->NumOfConnected(), true);
   }
