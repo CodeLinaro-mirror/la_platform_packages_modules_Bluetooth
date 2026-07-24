@@ -3099,8 +3099,12 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
           // stream only if we did not already initiate a local suspend.
           if (!peer_.CheckFlags(BtifAvPeer::kFlagLocalSuspendPending)) {
             peer_.SetFlags(BtifAvPeer::kFlagRemoteSuspend);
-            // once remote suspend flag is set , disable the sniff
-            modify_sniff_policy(false, peer_.PeerAddress());
+            // Once remote suspend flag is set,
+            // Disable sniff only when DUT is Source (peer is Sink)
+            // For A2DP Sink (peer is Source), allow sniff during suspend
+            if (peer_.IsSink()) {
+              modify_sniff_policy(false, peer_.PeerAddress());
+            }
           }
         }
       } else if(p_av->suspend.initiator == true &&
