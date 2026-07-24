@@ -2299,6 +2299,11 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
   }
 
   log::verbose("rc_handle {}", rc_handle);
+  if (rc_handle == BTA_AV_RC_HANDLE_NONE && btif_av_is_a2dp_sink_offload_enabled())
+  {
+    log::warn("bta_av_rc_disc_done: rc_handle none for peer {}, initiating AVRCP connection",
+              p_scb ? p_scb->PeerAddress() : RawAddress::kEmpty);
+  }
 
   if (p_cb->sdp_a2dp_snk_handle) {
     /* This is Sink + CT + TG(Abs Vol) */
@@ -2310,22 +2315,6 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
 
     if (peer_features & BTA_AV_FEAT_COVER_ARTWORK) {
       cover_art_psm = bta_avk_get_cover_art_psm();
-    }
-
-    /* Fallback for SDP cache corruption: if peer_features is still 0 but the
-     * SDP discovery database contains an AVRCP Target record, the
-     * ATTR_ID_SERVICE_CLASS_ID_LIST attribute was likely missing or malformed
-     * (observed as "features length 0 instead of 2").  Assume basic CT+TG
-     * support so that bta_av_rc_create() is called with AVCT_ROLE_INITIATOR
-     * and AVRC_Open() is actually attempted rather than leaving the stack in
-     * ACCEPTOR-only mode. */
-    if (peer_features == 0 && p_cb->p_disc_db != NULL &&
-        get_legacy_stack_sdp_api()->db.SDP_FindServiceInDb(
-                p_cb->p_disc_db, UUID_SERVCLASS_AV_REM_CTRL_TARGET, NULL) != NULL) {
-      log::warn(
-              "peer_features=0 but AVRCP TG SDP record present; assuming "
-              "basic CT+TG support to force INITIATOR open");
-      peer_features = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT;
     }
 
     log::verbose("populating rem ctrl target bip psm 0x{:x}", cover_art_psm);
@@ -2415,24 +2404,6 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
       if (peer_features != 0) {
         DEVICE_IOT_CONFIG_ADDR_SET_HEX(p_scb->PeerAddress(), IOT_CONF_KEY_AVRCP_FEATURES,
                                        peer_features, IOT_CONF_BYTE_NUM_2);
-      }
-      /* If the AVRCP connection was still not established after the SDP
-       * discovery and connection-creation attempt, schedule a retry via
-       * BTA_AV_AVRC_TIMER_EVT so that bta_av_open_rc() is invoked and
-       * bta_av_rc_disc() re-initiates the SDP discovery.  This covers:
-       *   (a) IBS/UART sleep race: SDP CCB was stuck in CONN_SETUP until the
-       *       SDP inactivity timer fired with SDP_CONN_FAILED.
-       *   (b) Transient bta_av_rc_create() failure (no link resources).
-       *   (c) SDP cache corruption returning zero peer features.
-       * Reset use_rc so that bta_av_open_rc() will attempt the discovery. */
-      if (rc_handle == BTA_AV_RC_HANDLE_NONE && btif_av_is_a2dp_sink_offload_enabled()) {
-        log::debug(
-                "AVRCP connection not established after SDP; scheduling retry "
-                "via avrc_ct_timer (peer: {})",
-                p_scb->PeerAddress());
-        p_scb->use_rc = true;
-        bta_sys_start_timer(p_scb->avrc_ct_timer, AVRC_CONNECT_RETRY_DELAY_MS,
-                            BTA_AV_AVRC_TIMER_EVT, p_scb->hndl);
       }
     }
   } else {
