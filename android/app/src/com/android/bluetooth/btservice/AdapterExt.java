@@ -41,19 +41,29 @@ public final class AdapterExt {
                         BluetoothAdapter.ERROR);
                 int prevState = intent.getIntExtra(BluetoothAdapter.EXTRA_PREVIOUS_STATE,
                         BluetoothAdapter.ERROR);
-                handleActionStateChanged(state, prevState);
 
                 // Bluetooth adapter is in BluetoothAdapter.STATE_BLE_TURNING_OFF actually
-                // when state retrieved from intent is BluetoothAdapter.STATE_OFF.
-                // Hence don't update sNewAdapterState in this case.
+                // when state retrieved from intent is BluetoothAdapter.STATE_OFF. The
+                // authoritative OFF signal is ACTION_BLE_STATE_CHANGED handled below, so
+                // skip cache/notify here for STATE_OFF to avoid delivering the OFF
+                // notification before the default adapter has transitioned into
+                // NewAdapterState (which would leave it waiting on the disable timeout).
                 if (state != BluetoothAdapter.STATE_OFF) {
                     sNewAdapterState = state;
+                    handleActionStateChanged(state, prevState);
                 }
             } else if (BluetoothAdapterExt.ACTION_BLE_STATE_CHANGED.equals(action)) {
                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
                         BluetoothAdapter.ERROR);
 
                 sNewAdapterState = state;
+                if (isOff(state)) {
+                    AdapterService adapterService =
+                            AdapterService.deprecatedGetAdapterService();
+                    if (adapterService != null) {
+                        adapterService.notifyNewAdapterState(false);
+                    }
+                }
             }
         }
     };
