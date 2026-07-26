@@ -360,8 +360,18 @@ public class MediaPlayerList {
         if (mMediaPlayerIds.containsKey(packageName)) {
             return mMediaPlayers.get(mMediaPlayerIds.get(packageName));
         }
-        d("Failed to find active player");
-        return null;
+        if (A2dpService.isDualA2dp()) {
+            // QC dual-A2DP multizone: the device must be bound to a zone-mapped
+            // player. If it isn't (e.g. binding not done yet), keep the original
+            // behavior and do not fall back, to preserve per-zone isolation.
+            d("Failed to find active player");
+            return null;
+        }
+        // AOSP A2DP source (dual-A2DP disabled): there is no zone binding, so fall
+        // back to the standard active player. This keeps AVRCP-target play status /
+        // metadata reflecting the currently active media session.
+        d("No zone-bound player for " + device + "; falling back to active player");
+        return getActivePlayer();
     }
 
      /**
@@ -384,7 +394,25 @@ public class MediaPlayerList {
         int action = pushed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP;
         KeyEvent event = new KeyEvent(action, AvrcpPassthrough.toKeyCode(key));
         // Send a media key event to a media player
-        mMediaSessionManager.dispatchMediaKeyEvent(event, getPlayerPackageName(device));
+        String packageName = getPlayerPackageName(device);
+        if (!packageName.isEmpty()) {
+            // Device is bound to a zone-mapped player (QC dual-A2DP multizone): route
+            // the key event to that specific player.
+            mMediaSessionManager.dispatchMediaKeyEvent(event, packageName);
+        } else if (!A2dpService.isDualA2dp()) {
+            // AOSP A2DP source (dual-A2DP disabled): no zone binding exists, so
+            // dispatch to the global active media session so play/pause/next
+            // passthrough commands still reach the active player.
+            d("sendMediaKeyEventExt: no zone-bound player for " + device
+                    + "; dispatching to active media session");
+            mMediaSessionManager.dispatchMediaKeyEvent(event, false);
+        } else {
+            // QC dual-A2DP but the device is not bound yet: preserve original
+            // behavior (dispatch with empty package name, i.e. no target).
+            Log.w(TAG, "sendMediaKeyEventExt: device " + device
+                    + " not bound to a media player yet; key event has no target");
+            mMediaSessionManager.dispatchMediaKeyEvent(event, packageName);
+        }
     }
 
     /** Sets the {@link #mBrowsingPlayerId} and returns the number of items in current path */
@@ -1054,7 +1082,19 @@ public class MediaPlayerList {
         // Ensure that metadata is synced on the new player
         if (!player.isMetadataSynced(data)) {
             Log.w(TAG, "setActivePlayer(): Metadata not synced on new player");
-            return;
+            if (A2dpService.isDualA2dp()) {
+                // Dual-A2DP drives per-device updates via setActivePlayerExt(); keep
+                // the original behavior (do not broadcast) to preserve zone isolation.
+                return;
+            }
+            // Single-zone (non dual-A2DP): do NOT return. Even when the track metadata
+            // is not yet consistent with the queue, we must still push the current play
+            // status: if the player was already in PLAYING state when it became active,
+            // no controller callback will fire afterwards, so this is the only
+            // opportunity to notify the remote AVRCP-CT (e.g. headset). Without this,
+            // the headset keeps believing playback is stopped and keeps sending PLAY
+            // instead of PAUSE. Any stale track metadata is corrected by a later
+            // onMetadataChanged update.
         }
 
         if (mAudioPlaybackIsActive) {
@@ -1533,6 +1573,20 @@ public class MediaPlayerList {
                 BluetoothDevice device = mActiveBluetoothDevices.get(packagename);
                 d("mediaUpdatedCallbackExt: Find active device " + device);
                 sendMediaUpdateExt(device, data);
+            } else if (!A2dpService.isDualA2dp()) {
+                // AOSP A2DP source (dual-A2DP disabled): there is no zone binding, so
+                // the per-device Ext push has no target. Fall back to the standard
+                // broadcast update. Without this, play-status changes (e.g. NONE ->
+                // PLAYING) never reach the AVRCP stack, and the remote AVRCP-CT
+                // (headset) is never notified that playback started, so it keeps
+                // sending PLAY instead of PAUSE.
+                d("mediaUpdatedCallbackExt: no zone-bound device for " + packagename
+                        + "; falling back to broadcast sendMediaUpdate");
+                sendMediaUpdate(data);
+            } else {
+                // QC dual-A2DP but the player is not bound to a device yet: preserve
+                // original behavior and drop the update until binding happens.
+                e("Failed to find " + packagename + " from active Bluetooth devices");
             }
         }
     };

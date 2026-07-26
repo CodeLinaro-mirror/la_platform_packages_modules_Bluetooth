@@ -3110,8 +3110,16 @@ void btm_sec_auth_complete(uint16_t handle, tHCI_STATUS status) {
   }
 
   if (was_authenticating == false) {
-    if (status != HCI_SUCCESS && old_state != BTM_PAIR_STATE_IDLE) {
-      NotifyBondingChange(*p_dev_rec, status);
+    if (status != HCI_SUCCESS) {
+      if (old_state != BTM_PAIR_STATE_IDLE) {
+        NotifyBondingChange(*p_dev_rec, status);
+      } else if (btm_sec_cb.pairing_disabled) {
+        // If pairing mode is disabled, the pairing state remains in IDLE.
+        // In this case, the bond state should still be reported so that the
+        // upper layer (JAVA service) can remove the device from the paired
+        // list when bonding fails because pairing was not allowed.
+        NotifyBondingChange(*p_dev_rec, HCI_ERR_PAIRING_NOT_ALLOWED);
+      }
     }
     return;
   }
@@ -3241,6 +3249,10 @@ static bool btm_sec_perform_ctkd(tBTM_SEC_DEV_REC* p_dev_rec) {
         p_dev_rec->sec_rec.new_encryption_key_is_p256 = false;
 
         if (!interop_match_addr(INTEROP_DISABLE_OUTGOING_BR_SMP, &p_dev_rec->bd_addr)) {
+          /* Disable role switch during SMP-BR (CTKD); restored on completion. */
+          log::verbose("disable role switch for SMP over BR/EDR");
+          get_btm_client_interface().link_policy.BTM_block_role_switch_for(
+                  p_dev_rec->bd_addr);
           log::verbose("start SM over BR/EDR");
           SMP_BR_PairWith(p_dev_rec->bd_addr);
           return true;
@@ -3949,6 +3961,11 @@ void btm_sec_disconnected(uint16_t handle, tHCI_REASON reason, std::string comme
                                             ? BT_TRANSPORT_BR_EDR
                                             : BT_TRANSPORT_LE;
   bool pairing_transport_matches = (transport == pairing_transport);
+
+  /* Best-effort restore role-switch policy in case CTKD left it blocked. */
+  if (transport == BT_TRANSPORT_BR_EDR) {
+    get_btm_client_interface().link_policy.BTM_unblock_role_switch_for(p_dev_rec->bd_addr);
+  }
 
   /* clear unused flags */
   p_dev_rec->sm4 &= BTM_SM4_TRUE;

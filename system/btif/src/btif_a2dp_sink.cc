@@ -247,6 +247,7 @@ static void btif_a2dp_sink_startup_delayed() {
 static void btif_a2dp_sink_on_decode_complete([[maybe_unused]] uint8_t* data,
                                               [[maybe_unused]] uint32_t len) {
 #ifdef __ANDROID__
+  if (btif_a2dp_sink_cb.audio_track == nullptr) return;
   BtifAvrcpAudioTrackWriteData(btif_a2dp_sink_cb.audio_track, reinterpret_cast<void*>(data), len);
 #endif
 }
@@ -303,16 +304,17 @@ static bool btif_a2dp_sink_initialize_a2dp_control_block(const RawAddress& peer_
   btif_a2dp_sink_cb.channel_count = channel_count;
   btif_a2dp_sink_cb.codec_index = A2DP_SinkCodecIndex(codec_config);
 
-  btif_a2dp_sink_cb.audio_track =
+  // Release any AudioTrack left over from a previous session. The new track
+  // will be created lazily in btif_a2dp_sink_on_start_track() once AVDTP
+  // START and AudioFocus are both ready, avoiding a PAL device contention
+  // with AudioFlinger's MEDIA_PLAYBACK stream.
 #ifdef __ANDROID__
-          BtifAvrcpAudioTrackCreate(sample_rate, bits_per_sample, channel_count);
-#else
-          NULL;
-#endif
-  if (btif_a2dp_sink_cb.audio_track == nullptr) {
-    log::error("track creation failed");
-    return false;
+  if (btif_a2dp_sink_cb.audio_track != nullptr) {
+    BtifAvrcpAudioTrackStop(btif_a2dp_sink_cb.audio_track);
+    BtifAvrcpAudioTrackDelete(btif_a2dp_sink_cb.audio_track);
+    btif_a2dp_sink_cb.audio_track = nullptr;
   }
+#endif
   log::info("A2DP sink control block initialized");
   return true;
 }
@@ -675,8 +677,8 @@ void btif_handle_incoming_encoded_data(BT_HDR *p_msg) {
 
 uint8_t btif_a2dp_sink_enqueue_buf(BT_HDR* p_pkt) {
   LockGuard lock(g_mutex);
-  /* Flush enabled or audio track is nullptr, do not enqueue */
-  if (btif_a2dp_sink_cb.rx_flush || btif_a2dp_sink_cb.audio_track == nullptr) {
+  /* Flush enabled, do not enqueue */
+  if (btif_a2dp_sink_cb.rx_flush) {
     return fixed_queue_length(btif_a2dp_sink_cb.rx_audio_queue);
   }
 
@@ -840,6 +842,26 @@ static void btif_a2dp_sink_on_start_track() {
   log::info("");
 
 #ifndef OS_GENERIC
+  // Create the AudioTrack here rather than at session start (Connected state).
+  // AudioFlinger transiently activates a MEDIA_PLAYBACK stream on the same
+  // PAL output device (id 3) when the A2DP Sink connection is established,
+  // then closes it via a standby timer (~1-2 s). If the PCM_OFFLOAD stream
+  // (opened by mode AAUDIO_PERFORMANCE_MODE_HD_APTX for 24-bit codecs) races
+  // with MEDIA_PLAYBACK, PAL sees deviceCount 1->2 and skips setMediaConfig
+  // for PCM_OFFLOAD, leaving the hardware path unconfigured (silent output).
+  // By deferring AudioTrack creation to here -- which is called only after
+  // both AVDTP START and AudioFocus are granted (~7-10 s post-Connected) --
+  // the MEDIA_PLAYBACK standby timer has already fired and PAL device id 3 is
+  // at deviceCount 0 when PCM_OFFLOAD opens it.
+  if (btif_a2dp_sink_cb.audio_track == nullptr) {
+    btif_a2dp_sink_cb.audio_track = BtifAvrcpAudioTrackCreate(
+        btif_a2dp_sink_cb.sample_rate, btif_a2dp_sink_cb.bits_per_sample,
+        btif_a2dp_sink_cb.channel_count);
+    if (btif_a2dp_sink_cb.audio_track == nullptr) {
+      log::error("audio track creation failed");
+      return;
+    }
+  }
   BtifAvrcpAudioTrackStart(btif_a2dp_sink_cb.audio_track);
 #endif
   return;

@@ -2434,6 +2434,9 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
     case BTIF_AV_CONNECT_REQ_EVT: {
       log::warn("Peer {} : Ignore {} for same device", peer_.PeerAddress(),
                 BtifAvEvent::EventName(event));
+      btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_CONNECTED,
+                                   bt_status_t::BT_STATUS_SUCCESS, BTA_AV_SUCCESS,
+                                   peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
       btif_queue_advance();
     } break;
 

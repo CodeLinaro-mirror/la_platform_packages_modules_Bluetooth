@@ -922,8 +922,19 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                      pass_through_packet->GetKeyState());
 
       // TODO (apanicke): Use an enum for media key ID's
-      if (pass_through_packet->GetOperationId() == 0x44 &&
-          pass_through_packet->GetKeyState() == KeyState::PUSHED) {
+      if (pass_through_packet->GetOperationId() == 0x44) {
+        // The play key (0x44) is dispatched from an asynchronous GetPlayStatusExt
+        // callback (below), which takes several extra thread hops compared to the
+        // synchronous path used by other keys. If we let the RELEASED packet fall
+        // through to the synchronous SendKeyEvent below, the UP (RELEASED) can be
+        // delivered to the media session BEFORE the DOWN (PUSHED), producing a
+        // malformed key event that the player rejects - so the user has to press
+        // twice. To guarantee DOWN-before-UP ordering, we ignore the RELEASED packet
+        // here and synthesize the PUSHED+RELEASED pair together inside the PUSHED
+        // callback (both go through the same FIFO JNI queue, preserving order).
+        if (pass_through_packet->GetKeyState() != KeyState::PUSHED) {
+          break;
+        }
         // We need to get the play status since we need to know
         // what the actual playstate is without being modified
         // by whether the device is active.
@@ -942,8 +953,11 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
                       return;
                     }
                   }
-                  // 0x44 is OperationId play
+                  // 0x44 is OperationId play. Send the DOWN immediately followed by
+                  // the UP so the media session sees a complete, correctly ordered
+                  // key press.
                   d->media_interface_->SendKeyEvent(d->address_, 0x44, KeyState::PUSHED);
+                  d->media_interface_->SendKeyEvent(d->address_, 0x44, KeyState::RELEASED);
                 },
                 weak_ptr_factory_.GetWeakPtr()));
         return;

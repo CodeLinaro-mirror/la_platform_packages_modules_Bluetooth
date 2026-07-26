@@ -74,7 +74,6 @@ struct AclScheduler::impl {
             incoming_connecting_address_set_.find(address) !=
                     incoming_connecting_address_set_.end()) {
           log::warn("Incoming connection request also exists for {}", address);
-          incoming_connecting_address_set_.erase(address);
         }
         try_dequeue_next_operation();
         return;
