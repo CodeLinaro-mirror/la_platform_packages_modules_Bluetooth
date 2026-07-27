@@ -254,7 +254,23 @@ public class AvrcpControllerService extends ProfileService {
             return true;
         }
 
-        // Try and update the active device
+        // Skip A2DP active-device clear when only AVRCP disconnects; A2DP Sink session must stay intact.
+        if (device == null && currentActiveDevice != null
+                && a2dpSinkService.getConnectionState(currentActiveDevice) == STATE_CONNECTED) {
+            Log.d(TAG, "setActiveDevice(null): A2DP Sink still connected to "
+                    + currentActiveDevice + ", skipping A2DP active device clear");
+            synchronized (mActiveDeviceLock) {
+                mActiveDevice = null;
+                AvrcpControllerStateMachine oldStateMachine = getStateMachine(currentActiveDevice);
+                if (oldStateMachine != null) {
+                    oldStateMachine.setDeviceState(DEVICE_STATE_INACTIVE);
+                }
+                BluetoothMediaBrowserService.reset();
+            }
+            return true;
+        }
+
+	// Try and update the active device
         synchronized (mActiveDeviceLock) {
             if (device == null) {
               Log.d(TAG, "Ignore A2dpSink setActiveDevice as device : "+device);
