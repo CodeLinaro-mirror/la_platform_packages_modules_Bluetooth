@@ -321,6 +321,7 @@ static long data_size = -1;
 static uint16_t g_PSM = 0;
 static uint16_t g_lcid = 0;
 static bool g_test_indi_reset_CCCD = false;
+static bool g_bonding_required = false;  // set true for bonding tests (e.g. BV-03-C), false for no-bonding (e.g. BV-01-C)
 
 enum {
   SEND,
@@ -1594,6 +1595,7 @@ void do_smp_pair_cancel(char* p);
 void do_smp_security_grant(char* p);
 void do_smp_passkey_reply(char* p);
 void do_smp_encrypt(char* p);
+void do_set_bonding(char* p);
 void do_le_gap_conn_param_update(char* p);
 void do_le_gap_attr_init(char* p);
 void do_le_set_char_len(char* p);
@@ -1738,6 +1740,7 @@ const t_cmd console_cmd_list[] = {
      ":: BdAddr<00112233445566>, res<>, passkey<>", 0},
     //{ "smp_encrypt", do_smp_encrypt, "::", 0 },
     {"remove_bond", do_remove_bond, "bd_addr", 0},
+    {"set_bonding", do_set_bonding, ":: 0=no-bonding, 1=bonding", 0},
     {"l2cap_send_data_cid", do_l2cap_send_data_cid,
      ":: BdAddr<00112233445566>, CID<>", 0},
 
@@ -2022,7 +2025,8 @@ static void acl_state_changed(bt_status_t status, RawAddress* remote_bd_addr,
       remote_bd_addr->address[4], remote_bd_addr->address[5],
       (state == BT_ACL_STATE_CONNECTED) ? "ACL Connected" : "ACL Disconnected");
   remote_bd_address = *remote_bd_addr;
-  if (g_test_indi_reset_CCCD && state == BT_ACL_STATE_DISCONNECTED) {
+  if (g_test_indi_reset_CCCD && state == BT_ACL_STATE_DISCONNECTED &&
+      !g_bonding_required) {
     printf("Reset CCCD after disconnection\n");
     memset(attr_value, 0, sizeof(attr_value));
     g_test_indi_reset_CCCD = false;
@@ -3768,6 +3772,13 @@ void do_remove_bond(char* p) {
          bd_addr.address[0], bd_addr.address[1], bd_addr.address[2],
          bd_addr.address[3], bd_addr.address[4], bd_addr.address[5]);
   sBtInterface->remove_bond(&bd_addr);
+}
+
+void do_set_bonding(char* p) {
+  int val = get_int(&p, 0);
+  g_bonding_required = (val != 0);
+  printf("set_bonding: g_bonding_required=%d (%s)\n", g_bonding_required,
+         g_bonding_required ? "bonding" : "no-bonding");
 }
 
 void do_le_gap_conn_param_update(char* p) {
