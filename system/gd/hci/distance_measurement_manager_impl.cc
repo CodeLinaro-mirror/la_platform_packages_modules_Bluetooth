@@ -1913,7 +1913,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
 
   CsTracker* get_live_tracker(uint16_t connection_handle, uint8_t config_id,
                               uint8_t valid_requester_states, uint8_t valid_responder_states,
-                              bool check_config_id) {
+                              bool check_config_id = true) {
     // CAVEAT: if the remote is sending request with the same config id, the behavior is undefined.
     auto req_it = cs_requester_trackers_.find(connection_handle);
     if (req_it != cs_requester_trackers_.end() && req_it->second.state != CsTrackerState::STOPPED &&
@@ -1929,7 +1929,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
 
     auto res_it = cs_responder_trackers_.find(connection_handle);
     if (res_it != cs_responder_trackers_.end() &&
-        (res_it->second.used_config_id == kInvalidConfigId ||
+        (!check_config_id || res_it->second.used_config_id == kInvalidConfigId ||
          res_it->second.used_config_id == config_id) &&
         (valid_responder_states == static_cast<uint8_t>(CsTrackerState::UNSPECIFIED) ||
          (valid_responder_states & static_cast<uint8_t>(res_it->second.state)) != 0)) {
@@ -2020,16 +2020,18 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
               static_cast<uint8_t>(CsTrackerState::INIT) |
               static_cast<uint8_t>(CsTrackerState::STARTED) |
               static_cast<uint8_t>(CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED);
-      // Don't check for config id, as the remote may enable a different config id from the one
-      // that was created last.
-      live_tracker = get_live_tracker(connection_handle, 0, valid_requester_states,
-                                      valid_responder_states, false);
+      // Don't check the config id here: the remote may have created multiple configs
+      // (e.g. config_id 0, 1, 2) before enabling an earlier one, and the tracker's
+      // used_config_id only reflects the most recently created config. Applies to both
+      // the requester and responder trackers - see get_live_tracker().
+      live_tracker = get_live_tracker(connection_handle, config_id, valid_requester_states,
+                                      valid_responder_states, /*check_config_id=*/false);
       if (live_tracker == nullptr) {
         log::error("enable - no tracker is available for {}", connection_handle);
         return;
       }
       if (live_tracker->used_config_id != config_id) {
-        log::warn("config_id {} doesn't match the assigned one {}, update it.", config_id,
+        log::warn("config_id {} doesn't match the assigned one {}, updating it.", config_id,
                   live_tracker->used_config_id);
         live_tracker->used_config_id = config_id;
       }
