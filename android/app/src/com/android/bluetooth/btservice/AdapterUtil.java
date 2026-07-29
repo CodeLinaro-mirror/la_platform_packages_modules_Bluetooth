@@ -152,6 +152,9 @@ public final class AdapterUtil {
     }
 
     public static boolean isProfileSupported(int profileId) {
+        if (isCTSRunning()) {
+            return true;
+        }
         if (sDualBluetooth == true && isAdapterDefault()) {
             if (profileId == BluetoothProfile.LE_AUDIO_BROADCAST ||
                 profileId == BluetoothProfile.CSIP_SET_COORDINATOR ||
@@ -171,6 +174,9 @@ public final class AdapterUtil {
     }
 
     public static boolean isProfileSupported(long supportedProfiles, int profileId) {
+        if (isCTSRunning()) {
+            return true;
+        }
         return (supportedProfiles & (1 << profileId)) != 0;
     }
 
@@ -223,5 +229,9 @@ public final class AdapterUtil {
 
     public static int getDefaultBluetoothClass() {
         return DEFAULT_BLUETOOTH_CLASS;
+    }
+
+    public static boolean isCTSRunning() {
+        return BluetoothAdapterUtil.isCTSRunning(sContext);
     }
 }
