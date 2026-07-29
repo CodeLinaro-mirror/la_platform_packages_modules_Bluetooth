@@ -2089,14 +2089,16 @@ public:
   }
 
   void OnTexitDbigComplete(bluetooth::le_audio::BroadcastId broadcast_id,
-                            uint8_t dbig_handle, uint8_t status) override {
-    log::info("OnTexitDbigComplete: broadcast_id=0x{:08x}, dbig_handle={}, status=0x{:02x}",
-              broadcast_id, dbig_handle, status);
+                            uint8_t dbig_handle, uint8_t status, uint8_t reason) override {
+    log::info("OnTexitDbigComplete: broadcast_id=0x{:08x}, dbig_handle={}, status=0x{:02x}, "
+              "reason=0x{:02x}",
+              broadcast_id, dbig_handle, status, reason);
     std::shared_lock<std::shared_timed_mutex> lock(sBroadcastSinkCallbacksMutex);
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid() || sBroadcastSinkCallbacksObj == nullptr) return;
     sCallbackEnv->CallVoidMethod(sBroadcastSinkCallbacksObj, method_onTexitDbigComplete,
-                                 (jint)broadcast_id, (jint)dbig_handle, (jint)status);
+                                 (jint)broadcast_id, (jint)dbig_handle, (jint)status,
+                                 (jint)reason);
   }
 
   void OnSyncOnlyModeActive(bluetooth::le_audio::BroadcastId broadcast_id) override {
@@ -2444,7 +2446,7 @@ static int register_com_android_bluetooth_le_audio_broadcast_sink(JNIEnv* env) {
           {"onBigSyncLost", "(III)V", &method_onBigSyncLost},
           {"onBigSyncTerminated", "(III)V", &method_onBigSyncTerminated},
           {"onDbigStatusChanged", "(III[BI[CI)V", &method_onSinkDbigStatusChanged},
-          {"onTexitDbigComplete", "(III)V", &method_onTexitDbigComplete},
+          {"onTexitDbigComplete", "(IIII)V", &method_onTexitDbigComplete},
           {"onSyncOnlyModeActive", "(I)V", &method_onSinkSyncOnlyModeActive},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/le_audio/LeAudioBroadcastSinkNativeInterface",

@@ -1141,7 +1141,7 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         if (callbacks_ && tracked_source.state_machine &&
             tracked_source.state_machine->IsEnhanced()) {
           callbacks_->OnTexitDbigComplete(broadcast_id, texit_evt->dbig_handle,
-                                          texit_evt->status);
+                                          texit_evt->status, texit_evt->reason);
         } else if (!tracked_source.state_machine ||
                    !tracked_source.state_machine->IsEnhanced()) {
           log::warn("kIsoEventDbigTexitCmpl: broadcast_id=0x{:08x} not enhanced — skip callback",

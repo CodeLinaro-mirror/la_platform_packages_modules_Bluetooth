@@ -510,16 +510,20 @@ public class LeAudioBroadcastSinkNativeInterface {
     /**
      * Callback when HCI_VS_LE_Texit_DBIG_Complete event is received.
      * status=0x00 success; status=0x0E rejected by PGO.
+     * reason=HCI disconnect reason code carried in the event (e.g. 0x13 Remote User
+     * Terminated), meaningful when status == 0x00.
      */
-    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status, int reason) {
         Log.d(TAG, "onTexitDbigComplete(): broadcastId=" + broadcastId
                 + ", dbigHandle=" + dbigHandle
-                + ", status=0x" + Integer.toHexString(status));
+                + ", status=0x" + Integer.toHexString(status)
+                + ", reason=0x" + Integer.toHexString(reason));
         LeAudioBroadcastSinkStackEvent event = new LeAudioBroadcastSinkStackEvent(
                 LeAudioBroadcastSinkStackEvent.EVENT_TYPE_TEXIT_DBIG_COMPLETE);
         event.broadcastId = broadcastId;
         event.valueInt1 = dbigHandle;
         event.reason = status;
+        event.valueInt2 = reason;
         sendMessageToService(event);
     }
 

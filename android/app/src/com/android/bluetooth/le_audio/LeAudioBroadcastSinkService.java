@@ -1530,9 +1530,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_TEXIT_DBIG_COMPLETE: {
                     int status = event.reason;
+                    int hciReason = event.valueInt2;
                     if (DBG) Log.d(TAG, "TExitDbig complete: broadcastId=" + event.broadcastId
                             + ", dbigHandle=" + event.valueInt1
                             + ", status=0x" + Integer.toHexString(status)
+                            + ", hciReason=0x" + Integer.toHexString(hciReason)
                             + ", mPgpRequestedTerminate=" + mPgpRequestedTerminate);
 
                     if (mPgpRequestedTerminate) {
@@ -1547,7 +1549,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                     mBroadcastSinkDescriptors.get(event.broadcastId);
                             if (desc != null) {
                                 desc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
-                                desc.mBigSyncLostHciReason = 0x13; // Remote terminated
+                                desc.mBigSyncLostHciReason = hciReason;
                                 desc.mPendingMetadataUpdate = null;
                             }
                             mIsEnhancedStreaming = false;
@@ -1556,7 +1558,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             // Defer notification until cleanup is complete.
                             android.os.Message pgpTermNotify = mHandler.obtainMessage(
                                     MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
-                                    BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED);
+                                    hciReasonToSdkReason(hciReason));
                             mHandler.sendMessage(pgpTermNotify);
                         } else {
                             // PGO rejected the request — no cleanup needed, just notify the app.
@@ -1596,7 +1598,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                 mBroadcastSinkDescriptors.get(event.broadcastId);
                         if (pgoDesc != null) {
                             pgoDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
-                            pgoDesc.mBigSyncLostHciReason = 0x13; // Remote terminated
+                            pgoDesc.mBigSyncLostHciReason = hciReason;
                             pgoDesc.mPendingMetadataUpdate = null;
                         }
                         mIsEnhancedStreaming = false;
@@ -1604,7 +1606,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                         mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
                         android.os.Message pgoTermNotify = mHandler.obtainMessage(
                                 MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
-                                BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED);
+                                hciReasonToSdkReason(hciReason));
                         mHandler.sendMessage(pgoTermNotify);
                         // Queue Texit complete notification last — fires after full cleanup.
                         android.os.Message texitNotify = mHandler.obtainMessage(

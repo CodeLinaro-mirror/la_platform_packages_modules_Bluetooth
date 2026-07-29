@@ -156,11 +156,13 @@ class BroadcastSinkInterfaceImpl
 
   void OnTexitDbigComplete(BroadcastId broadcast_id,
                             uint8_t dbig_handle,
-                            uint8_t status) override {
-    log::info("OnTexitDbigComplete: broadcast_id=0x{:08x}, dbig_handle={}, status=0x{:02x}",
-              broadcast_id, dbig_handle, status);
+                            uint8_t status,
+                            uint8_t reason) override {
+    log::info("OnTexitDbigComplete: broadcast_id=0x{:08x}, dbig_handle={}, status=0x{:02x}, "
+              "reason=0x{:02x}",
+              broadcast_id, dbig_handle, status, reason);
     do_in_jni_thread(Bind(&BroadcastSinkCallbacks::OnTexitDbigComplete,
-                          Unretained(callbacks_), broadcast_id, dbig_handle, status));
+                          Unretained(callbacks_), broadcast_id, dbig_handle, status, reason));
   }
 
   void OnSyncOnlyModeActive(BroadcastId broadcast_id) override {
