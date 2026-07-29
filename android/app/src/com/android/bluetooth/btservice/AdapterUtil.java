@@ -59,7 +59,7 @@ public final class AdapterUtil {
         sAdapterIndex = Application.getProcessName().equals(sContext.getPackageName()) ?
                ADAPTER_DEFAULT : ADAPTER_1;
         sAdapter = getAdapter(sAdapterIndex);
-        sDualAdapterMode = SystemProperties.getBoolean("persist.bluetooth.dual_adapter_mode", false);
+        sDualAdapterMode = (!BluetoothAdapterUtil.isCTSRunning(sContext)) && SystemProperties.getBoolean("persist.bluetooth.dual_adapter_mode", false);
         sFilterDevice = getFilterDeviceConfig();
         if (isDualAdapterMode() && isAdapterDefault()) {
             // In dual adapter mode, default adapter needs to monitor
