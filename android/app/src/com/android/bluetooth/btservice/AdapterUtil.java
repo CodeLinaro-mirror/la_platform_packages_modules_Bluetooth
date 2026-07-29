@@ -140,10 +140,16 @@ public final class AdapterUtil {
     }
 
     public static boolean isProfileSupported(int profileId) {
+        if (isCTSRunning()) {
+            return true;
+        }
         return sProfiles.get(sAdapterIndex).contains(profileId);
     }
 
     public static boolean isProfileSupported(long supportedProfiles, int profileId) {
+        if (isCTSRunning()) {
+            return true;
+        }
         return (supportedProfiles & (1 << profileId)) != 0;
     }
 
@@ -196,5 +202,9 @@ public final class AdapterUtil {
 
     public static int getDefaultBluetoothClass() {
         return DEFAULT_BLUETOOTH_CLASS;
+    }
+
+    public static boolean isCTSRunning() {
+        return BluetoothAdapterUtil.isCTSRunning(sContext);
     }
 }

@@ -287,8 +287,10 @@ public class Config {
 
     static long getSupportedProfilesBitMask() {
         long mask = 0;
+        boolean cts = AdapterUtil.isCTSRunning();
         for (ProfileConfig config : PROFILE_SERVICES_AND_FLAGS) {
-            if (config.mSupported && AdapterUtil.isProfileSupported(config.mProfileId)) {
+            if (config.mSupported &&
+                (cts || AdapterUtil.isProfileSupported(config.mProfileId))) {
                 mask |= (1L << config.mProfileId);
             }
         }
