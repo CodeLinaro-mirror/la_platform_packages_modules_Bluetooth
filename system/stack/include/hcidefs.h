@@ -1076,7 +1076,7 @@ typedef struct {
 #define HCI_LE_2M_PHY_SUPPORTED(x) ((x)[1] & 0x01)
 #define HCI_LE_CODED_PHY_SUPPORTED(x) ((x)[1] & 0x08)
 /* TODO: Decide and change bit number for HDT support */
-#define HCI_LE_HDT_PHY_SUPPORTED(x) ((x)[247] & 0x01)
+#define HCI_LE_HDT_PHY_SUPPORTED(x) ((x)[247] & 0x40)
 #define HCI_LE_EXTENDED_ADVERTISING_SUPPORTED(x) ((x)[1] & 0x10)
 #define HCI_LE_PERIODIC_ADVERTISING_SUPPORTED(x) ((x)[1] & 0x20)
 #define HCI_LE_PERIODIC_ADVERTISING_SYNC_TRANSFER_SENDER(x) ((x)[3] & 0x01)
