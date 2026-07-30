@@ -1580,6 +1580,8 @@ public:
         lex_enablement_changed = lex_enabled != group->IsLeXCodecEnabled() && group->IsLeXDevice();
         log::debug("Enabling LeX Codec, enablement_changed={}", lex_enablement_changed);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::SOUNDEFFECTS);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::NOTIFICATIONS);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
       } else if (output_codec_config.codec_type ==
           bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT) {
@@ -1587,6 +1589,8 @@ public:
         lex_enablement_changed = lex_enabled != group->IsLeXCodecEnabled() && group->IsLeXDevice();
         log::debug("Disabling LeX Codec, enablement_changed={}", lex_enablement_changed);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::SOUNDEFFECTS);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::NOTIFICATIONS);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
       }
     }
@@ -2079,6 +2083,50 @@ public:
   void SetInGame(bool in_game) override {
     log::debug("in_game: {}", in_game);
     audioContextTypeManager_->SetInGame(in_game);
+
+    /* SetInGame is a laggy hint (ActivityManager UID importance) that can arrive up to
+     * GAME_BACKGROUND_MONITOR_MS (120 s) after a game is closed. If the group is still
+     * configured to GAME when the flag finally clears, force a corrective reconfiguration
+     * to the resolved (non-game) context. This mirrors SetInCall(false) and covers the case
+     * where the HAL sends no source-metadata update during the window (e.g. audio paused),
+     * so the stale GAME config would otherwise linger. When a HAL MEDIA update already
+     * corrected configuration_context_type_ away from GAME, this is a no-op. */
+    if (in_game) {
+      return;
+    }
+
+    if (active_group_id_ == bluetooth::groups::kGroupUnknown) {
+      log::debug("There is no active group");
+      return;
+    }
+
+    if (defer_notify_inactive_until_stop_) {
+      log::debug("Device is pending for inactive until stop.");
+      return;
+    }
+
+    if (configuration_context_type_ != LeAudioContextType::GAME) {
+      log::debug("configuration_context_type_ is {}, no corrective reconfig needed",
+                 ToString(configuration_context_type_));
+      return;
+    }
+
+    LeAudioDeviceGroup* group = aseGroups_.FindById(active_group_id_);
+    if (!group) {
+      log::warn("Invalid group: {}", static_cast<int>(active_group_id_));
+      return;
+    }
+
+    if (!group->IsStreaming() &&
+        group->GetTargetState() != AseState::BTA_LE_AUDIO_ASE_STATE_STREAMING) {
+      log::debug("group {} is not streaming or targeting streaming, skip corrective reconfig",
+                 active_group_id_);
+      return;
+    }
+
+    log::info("Game ended while configured to GAME, reconfigure group {} to resolved context",
+              active_group_id_);
+    ReconfigureOrUpdateRemote(group, bluetooth::le_audio::types::kLeAudioDirectionSink);
   }
 
   void StartAudioSession(LeAudioDeviceGroup* group) {
@@ -3366,6 +3414,20 @@ public:
 
     if (leAudioDevice->conn_id_ != GATT_INVALID_CONN_ID) {
       log::debug("Already connected {}, conn_id=0x{:04x}", address, leAudioDevice->conn_id_);
+      /* Re-notify the upper layer in case it lost its state due to an
+       * unbond+rebond race where the Java state machine was recreated with
+       * group_id=-1 while the stack kept the live conn_id. Only do this when
+       * the device is fully connected — during the getting-ready phase a
+       * duplicate OPEN_EVT can arrive (from the background-connect
+       * re-registration in this same handler), and sending CONNECTED early
+       * would cause the Java state machine to log "bad state" when the real
+       * CONNECTED callback arrives after encryption/service-discovery. */
+      if (leAudioDevice->group_id_ != bluetooth::groups::kGroupUnknown &&
+          leAudioDevice->GetConnectionState() == DeviceConnectState::CONNECTED) {
+        callbacks_->OnGroupNodeStatus(address, leAudioDevice->group_id_,
+                                      GroupNodeStatus::ADDED);
+        callbacks_->OnConnectionState(ConnectionState::CONNECTED, address);
+      }
       return;
     }
 
