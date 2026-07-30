@@ -1580,6 +1580,8 @@ public:
         lex_enablement_changed = lex_enabled != group->IsLeXCodecEnabled() && group->IsLeXDevice();
         log::debug("Enabling LeX Codec, enablement_changed={}", lex_enablement_changed);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::SOUNDEFFECTS);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::NOTIFICATIONS);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
       } else if (output_codec_config.codec_type ==
           bluetooth::le_audio::btle_audio_codec_index_t::LE_AUDIO_CODEC_INDEX_SOURCE_DEFAULT) {
@@ -1587,6 +1589,8 @@ public:
         lex_enablement_changed = lex_enabled != group->IsLeXCodecEnabled() && group->IsLeXDevice();
         log::debug("Disabling LeX Codec, enablement_changed={}", lex_enablement_changed);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::MEDIA);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::SOUNDEFFECTS);
+        group->UpdateAudioSetConfigurationCache(LeAudioContextType::NOTIFICATIONS);
         group->UpdateAudioSetConfigurationCache(LeAudioContextType::CONVERSATIONAL);
       }
     }
