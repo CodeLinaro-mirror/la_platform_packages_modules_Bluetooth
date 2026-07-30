@@ -90,6 +90,11 @@ public class BroadcasterActivity extends AppCompatActivity {
     /** True when this device already occupies a BIS (i.e. we are the source). */
     private boolean mLocalOccupyingBis = false;
 
+    /** Last known broadcast features – used to suppress duplicate DBIG info toasts. */
+    private int mLastBroadcastFeatures = -1;
+    /** Last known BIS DevID array – used to suppress duplicate DBIG info toasts. */
+    private int[] mLastBisDevIds = null;
+
     private AudioManager mAudioManager;
 
     /* --------------------------------------------------------------
@@ -121,6 +126,43 @@ public class BroadcasterActivity extends AppCompatActivity {
             Log.d(TAG, "Received broadcast action: " + action);
             if (BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED.equals(action)) {
                 int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+                int[] bisDevIds = intent.getIntArrayExtra(
+                        "android.bluetooth.extra.DBIG_BIS_DEV_IDS");
+                int broadcastFeatures = intent.getIntExtra(
+                        "android.bluetooth.extra.DBIG_BROADCAST_FEATURES", 0);
+
+                int totalBis = (bisDevIds != null) ? bisDevIds.length : 0;
+                int occupiedCount = 0;
+                int availableCount = 0;
+                if (bisDevIds != null) {
+                    for (int devIdEntry : bisDevIds) {
+                        if (devIdEntry != 0) { // Non-zero means acquired/occupied BIS slot
+                            occupiedCount++;
+                        } else { // 0 means free BIS slot
+                            availableCount++;
+                        }
+                    }
+                }
+
+                Log.i(TAG, "DBIG: total BIS =" + totalBis
+                        + ", BIS occupied=" + occupiedCount
+                        + ", BIS available=" + availableCount
+                        + ", features=0x" + Integer.toHexString(broadcastFeatures)
+                        + ", bisDevIds=" + (bisDevIds != null
+                            ? java.util.Arrays.toString(bisDevIds) : "null"));
+
+                boolean featuresChanged = (broadcastFeatures != mLastBroadcastFeatures);
+                boolean bisDevIdsChanged = !java.util.Arrays.equals(bisDevIds, mLastBisDevIds);
+                if (featuresChanged || bisDevIdsChanged) {
+                    mLastBroadcastFeatures = broadcastFeatures;
+                    mLastBisDevIds = (bisDevIds != null) ? java.util.Arrays.copyOf(bisDevIds, bisDevIds.length) : null;
+                    Toast.makeText(context,
+                            "DBIG: totalBis=" + totalBis
+                                    + ", occupiedBis=" + occupiedCount
+                                    + ", availableBis=" + availableCount
+                                    + ", features=0x" + Integer.toHexString(broadcastFeatures),
+                            Toast.LENGTH_SHORT).show();
+                }
 
                 boolean newDeviceAdded = (status & 0x0100) != 0;
                 Log.d(TAG, "Device added bit"+ newDeviceAdded);
@@ -135,14 +177,14 @@ public class BroadcasterActivity extends AppCompatActivity {
                             : "";
                     Log.i(TAG, "New device added to DBIG: devId=0x"
                             + String.format("%04X", devId) + ", name=" + nameStr);
-                   Toast.makeText(context,
+                    Toast.makeText(context,
                              "New device joined DBIG: DevID=" + devId
                             + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
                 }
                 // bit 9 (0x0200) – device is exiting / removed from DBIG
                 boolean deviceRemoved = (status & 0x0200) != 0;
-                Log.d(TAG, "Device removed bit"+ newDeviceAdded);
+                Log.d(TAG, "Device removed bit" + deviceRemoved);
                 if (deviceRemoved) {
                     int devId = intent.getIntExtra(
                             "android.bluetooth.extra.DBIG_DEV_ID", -1);
@@ -243,15 +285,21 @@ public class BroadcasterActivity extends AppCompatActivity {
                 Toast.LENGTH_SHORT).show();
         itemsAdapter.updateBroadcastPlayback(pair.second, true);
 
+        // Log Enhanced Broadcast Source capabilities when broadcast enters playing state
+        int enhancedCap = mViewModel.getEnhancedBroadcastCap();
+        Log.i(TAG, "getEnhancedBroadcastCap: 0x" + Integer.toHexString(enhancedCap)
+                + " [Terminate_in_PGO=" + ((enhancedCap & 0x01) != 0 ? "supported" : "not_supported")
+                + ", Remove_in_PGO=" + ((enhancedCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+
         // Automatically enable DBIG Join Control when broadcast enters playing state
-        Log.d(TAG, "Broadcast playing – auto-enabling DBIG Join Control");
-        boolean joinResult = mViewModel.setDbigJoinControl(true);
-        Log.d(TAG, "Auto DBIG Join Control enable: result=" + joinResult);
+        Log.d(TAG, "Broadcast playing – auto-enabling Join Control");
+        boolean joinResult = mViewModel.setJoinControl(true);
+        Log.d(TAG, "Auto Join Control enable: result=" + joinResult);
         if (joinResult) {
             mJoinControlEnabled = true;
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                     .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
-            Toast.makeText(this, "DBIG Join Control auto-enabled (broadcast playing)",
+            Toast.makeText(this, "Join Control auto-enabled (broadcast playing)",
                     Toast.LENGTH_SHORT).show();
         }
     });
@@ -746,7 +794,7 @@ public class BroadcasterActivity extends AppCompatActivity {
 
         // "Join Enable" – visible only when join control is currently disabled
         btnJoinEnable.setOnClickListener(v -> {
-            boolean result = mViewModel.setDbigJoinControl(true);
+            boolean result = mViewModel.setJoinControl(true);
             Log.d(TAG, "DBIG Join Enable: result=" + result);
             if (result) {
                 mJoinControlEnabled = true;
@@ -763,7 +811,7 @@ public class BroadcasterActivity extends AppCompatActivity {
 
         // "Join Disable" – visible only when join control is currently enabled
         btnJoinDisable.setOnClickListener(v -> {
-            boolean result = mViewModel.setDbigJoinControl(false);
+            boolean result = mViewModel.setJoinControl(false);
             Log.d(TAG, "DBIG Join Disable: result=" + result);
             if (result) {
                 mJoinControlEnabled = false;

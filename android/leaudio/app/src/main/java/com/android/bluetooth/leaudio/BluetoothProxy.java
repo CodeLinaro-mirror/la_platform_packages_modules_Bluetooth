@@ -1422,22 +1422,37 @@ public class BluetoothProxy {
         return true;
     }
 
-    public boolean setAchatAttributes(int devId, byte[] name) {
+    public boolean setAttributes(int devId, byte[] name) {
         if (mBluetoothLeBroadcast == null) return false;
-        mBluetoothLeBroadcast.setAchatAttributes(devId, name);
+        mBluetoothLeBroadcast.setAttributes(devId, name);
         return true;
     }
 
-    public boolean setAchatAttributesForSink(int devId, byte[] name) {
+    public boolean setAttributesForSink(int devId, byte[] name) {
         if (mBluetoothLeBroadcastAssistant == null) return false;
-        mBluetoothLeBroadcastAssistant.setAchatAttributes(devId, name);
+        mBluetoothLeBroadcastAssistant.setAttributes(devId, name);
         return true;
     }
 
-    public boolean setDbigJoinControl(boolean mode) {
+    public boolean setJoinControl(boolean mode) {
         if (mBluetoothLeBroadcast == null) return false;
-        mBluetoothLeBroadcast.setDbigJoinControl(mode);
+        mBluetoothLeBroadcast.setJoinControl(mode);
         return true;
+    }
+
+    public int getEnhancedBroadcastCap() {
+        if (mBluetoothLeBroadcast == null) return -1;
+        return mBluetoothLeBroadcast.getEnhancedBroadcastCap();
+    }
+
+    public int getEnhancedBroadcastSinkCap() {
+        if (mBluetoothLeBroadcastAssistant == null) return -1;
+        return mBluetoothLeBroadcastAssistant.getEnhancedBroadcastSinkCap();
+    }
+
+    public int getEnhancedBroadcastSourceCap() {
+        if (mBluetoothLeBroadcastAssistant == null) return -1;
+        return mBluetoothLeBroadcastAssistant.getEnhancedBroadcastSourceCap();
     }
 
     public boolean stopBroadcast(int broadcastId) {
