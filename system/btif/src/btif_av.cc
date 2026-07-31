@@ -2636,6 +2636,16 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
       log::info("updating the codec configuration for low_latency={}", is_low_latency);
 
       peer_.SetLowLatencyMode(is_low_latency);
+
+      // QTI legacy aptX-Adaptive offload (codec extensibility disabled) requires an explicit
+      // APTX_LL/HQ codec mode to be pushed to the BTSoC. UpdateCodecConfig() returns early on
+      // the metadata path and never sends it, leaving the dongle stuck in HQ, so send the
+      // codec mode update explicitly here.
+      if (!btif_av_source.IsA2dpOffloadCodecExtensibilityEnabled()) {
+        btif_av_source.SetGamingMode(is_low_latency);
+        btif_av_update_codec_mode();
+      }
+
       btav_a2dp_codec_audio_context_t audio_context =
               is_low_latency ? BTAV_A2DP_CODEC_AUDIO_CONTEXT_GAME
                              : BTAV_A2DP_CODEC_AUDIO_CONTEXT_MEDIA;
@@ -2936,6 +2946,16 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
         log::info("updating the codec configuration for low_latency={}", is_low_latency);
 
         peer_.SetLowLatencyMode(is_low_latency);
+
+        // QTI legacy aptX-Adaptive offload (codec extensibility disabled) requires an explicit
+        // APTX_LL/HQ codec mode to be pushed to the BTSoC. UpdateCodecConfig() returns early on
+        // the metadata path and never sends it, leaving the dongle stuck in HQ, so send the
+        // codec mode update explicitly here.
+        if (!btif_av_source.IsA2dpOffloadCodecExtensibilityEnabled()) {
+          btif_av_source.SetGamingMode(is_low_latency);
+          btif_av_update_codec_mode();
+        }
+
         btav_a2dp_codec_audio_context_t audio_context =
                 is_low_latency ? BTAV_A2DP_CODEC_AUDIO_CONTEXT_GAME
                                : BTAV_A2DP_CODEC_AUDIO_CONTEXT_MEDIA;
