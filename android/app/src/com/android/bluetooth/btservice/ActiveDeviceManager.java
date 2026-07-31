@@ -625,7 +625,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
 
                     // Makes LEA inactive if device is made active for HFP & dual mode is disabled
                     if (hfpMadeActive && !Utils.isDualModeAudioEnabled()) {
-                        setLeAudioActiveDevice(null, /* stopAudio= */ false);
+                        setLeAudioActiveDevice(null, /* stopAudio= */ true);
                     }
                 } else {
                     Log.i(TAG, "HFP activation is suspended until A2DP connected: " + device);
@@ -1158,7 +1158,7 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     /* HFP device becoming active is not dual mode and was not set as
                      * active LE Audio device. Inactivate LE Audio device.
                      */
-                    setLeAudioActiveDevice(null, /* stopAudio= */ false);
+                    setLeAudioActiveDevice(null, /* stopAudio= */ true);
                 }
                 if (device != null && Utils.isDualModeAudioEnabled()
                         && !mAdapterService.isProfileSupported(device, BluetoothProfile.LE_AUDIO)) {

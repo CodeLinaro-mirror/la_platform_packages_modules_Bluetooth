@@ -907,7 +907,12 @@ public:
     /* There is an issue with a closing stream. It might be during
      * reconfiguration, so make sure to cancel stream request if needed
      */
-    CancelStreamingRequest();
+    if (group->IsPendingConfiguration() || group->IsSuspendedForReconfiguration()) {
+      group->ClearPendingConfiguration();
+      reconfigurationComplete();
+    } else {
+      CancelStreamingRequest();
+    }
 
     /* Check if stream was closing for the purpose of Disconnecting the whole group
      */
