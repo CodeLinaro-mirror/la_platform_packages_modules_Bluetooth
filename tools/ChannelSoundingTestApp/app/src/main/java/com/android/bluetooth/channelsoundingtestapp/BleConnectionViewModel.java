@@ -267,6 +267,7 @@ public class BleConnectionViewModel extends AndroidViewModel {
                 new AdvertiseData.Builder()
                         .setIncludeDeviceName(true)
                         .addServiceUuid(new ParcelUuid(Constants.CS_TEST_SERVICE_UUID))
+                        .addServiceUuid(new ParcelUuid(Constants.RANGING_SERVICE_UUID))
                         .build();
 
         printLog("Start connectable advertising");
