@@ -24,10 +24,20 @@ import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.Random;
+
+import androidx.appcompat.app.AlertDialog;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -171,6 +181,15 @@ public class MainActivity extends AppCompatActivity {
                                   Toast.LENGTH_SHORT).show();
                 }
                 return true;
+
+            case R.id.action_set_achat_attributes:
+                launchSetAchatAttributesDialog();
+                return true;
+
+            case R.id.action_set_achat_attributes_source:
+                launchSetAchatAttributesForSourceDialog();
+                return true;
+
             default:
                 // If we got here, the user's action was not recognized.
                 // Invoke the superclass to handle it.onCreate
@@ -231,6 +250,9 @@ public class MainActivity extends AppCompatActivity {
                 if (deviceList == null || deviceList.size() == 0)
                     leAudioViewModel.queryDevices();
             } else {
+                // Reset Achat attributes when Bluetooth is toggled off
+                leAudioViewModel.setAchatAttributesForSink(0, null);
+                Log.d("MainActivity", "BT disabled – Achat attributes reset to null");
                 Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                 startActivityForResult(enableBtIntent, 1);
             }
@@ -245,6 +267,201 @@ public class MainActivity extends AppCompatActivity {
             if (isReady) {
                 Toast.makeText(MainActivity.this,
                               "LE Audio Broadcast is ready", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /**
+     * Generates a 12-bit positive DevID (1–4095) seeded from the current time
+     * to minimise duplicates across calls.
+     */
+    private int generateDevId() {
+        Random rng = new Random(System.currentTimeMillis());
+        // nextInt(4095) gives [0, 4094]; +1 shifts to [1, 4095]
+        return rng.nextInt(4095) + 1;
+    }
+
+    /**
+     * Shows a dialog to set Achat-specific attributes (DevID and Name) for the Sink.
+     * DevID is auto-generated; the user only enters the Name.
+     * Calls the Sink-side API {@code setAchatAttributesForSink} on confirmation.
+     */
+    private void launchSetAchatAttributesDialog() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+        layout.setPadding(padding, padding, padding, padding);
+
+        // Read-only DevID display
+        final TextView devIdDisplay = new TextView(this);
+        devIdDisplay.setTextSize(16);
+        devIdDisplay.setPadding(padding / 2, padding / 2, padding / 2, padding / 2);
+        devIdDisplay.setText("DevID: (not generated yet)");
+        layout.addView(devIdDisplay);
+
+        // "Generate DevID" button
+        Button btnGenerate = new Button(this);
+        btnGenerate.setText("Generate DevID");
+        layout.addView(btnGenerate);
+
+        // Holds the currently generated devId; -1 means none generated yet
+        final int[] generatedDevId = {-1};
+
+        btnGenerate.setOnClickListener(v -> {
+            generatedDevId[0] = generateDevId();
+            devIdDisplay.setText("DevID: " + generatedDevId[0]);
+            Log.d("MainActivity", "Generated DevID=" + generatedDevId[0]);
+        });
+
+        final EditText nameInput = new EditText(this);
+        nameInput.setHint("Name (up to 10 chars)");
+        nameInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        nameInput.setMaxLines(1);
+        nameInput.setFilters(new android.text.InputFilter[]{
+                new android.text.InputFilter.LengthFilter(10)});
+        layout.addView(nameInput);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Set Achat Attributes (Sink)");
+        builder.setView(layout);
+        builder.setNegativeButton("Cancel", (dialog, which) -> { /* no-op */ });
+        builder.setPositiveButton("Set", null);
+
+        AlertDialog dialog = builder.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            int devId = generatedDevId[0];
+            if (devId == -1) {
+                Toast.makeText(this, "Please generate a Device ID first", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Keep existing range validation
+            if (devId < 0 || devId > 4095) {
+                Toast.makeText(this, "Device ID must be between 0 and 4095",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            String nameStr = nameInput.getText().toString();
+            if (nameStr.isEmpty()) {
+                Toast.makeText(this, "Name is required", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            byte[] nameBytes = nameStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (nameBytes.length < 10) {
+                byte[] padded = new byte[10];
+                System.arraycopy(nameBytes, 0, padded, 0, nameBytes.length);
+                nameBytes = padded;
+            } else if (nameBytes.length > 10) {
+                byte[] truncated = new byte[10];
+                System.arraycopy(nameBytes, 0, truncated, 0, 10);
+                nameBytes = truncated;
+            }
+
+            boolean result = leAudioViewModel.setAchatAttributesForSink(devId, nameBytes);
+            if (result) {
+                // Persist the AGP DevID so BroadcastScanActivity can compare against DBIG status
+                getSharedPreferences("achat_prefs", MODE_PRIVATE)
+                        .edit()
+                        .putInt("agp_dev_id", devId)
+                        .apply();
+                Log.d("MainActivity", "Achat attributes set: DevID=" + devId + ", Name=" + nameStr);
+                Toast.makeText(this,
+                        "Achat attributes set: DevID=" + devId + ", Name=" + nameStr,
+                        Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
+            } else {
+                Toast.makeText(this, "Failed to set Achat attributes", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /**
+     * Shows a dialog to set Achat-specific attributes (DevID and Name) for the PGO (source).
+     * DevID is auto-generated; the user only enters the Name.
+     * Calls the source-side API {@code setAchatAttributesForSource} on confirmation.
+     */
+    private void launchSetAchatAttributesForSourceDialog() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+        layout.setPadding(padding, padding, padding, padding);
+
+        // Read-only DevID display
+        final TextView devIdDisplay = new TextView(this);
+        devIdDisplay.setTextSize(16);
+        devIdDisplay.setPadding(padding / 2, padding / 2, padding / 2, padding / 2);
+        devIdDisplay.setText("DevID: (not generated yet)");
+        layout.addView(devIdDisplay);
+
+        // "Generate DevID" button
+        Button btnGenerate = new Button(this);
+        btnGenerate.setText("Generate DevID");
+        layout.addView(btnGenerate);
+
+        // Holds the currently generated devId; -1 means none generated yet
+        final int[] generatedDevId = {-1};
+
+        btnGenerate.setOnClickListener(v -> {
+            generatedDevId[0] = generateDevId();
+            devIdDisplay.setText("DevID: " + generatedDevId[0]);
+            Log.d("MainActivity", "Generated DevID (PGO)=" + generatedDevId[0]);
+        });
+
+        final EditText nameInput = new EditText(this);
+        nameInput.setHint("Name (up to 10 chars)");
+        nameInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        nameInput.setMaxLines(1);
+        nameInput.setFilters(new android.text.InputFilter[]{
+                new android.text.InputFilter.LengthFilter(10)});
+        layout.addView(nameInput);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Set Achat Attributes (PGO)");
+        builder.setView(layout);
+        builder.setNegativeButton("Cancel", (dialog, which) -> { /* no-op */ });
+        builder.setPositiveButton("Set", null);
+
+        AlertDialog dialog = builder.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            int devId = generatedDevId[0];
+            if (devId == -1) {
+                Toast.makeText(this, "Please generate a Device ID first", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Keep existing range validation
+            if (devId < 0 || devId > 4095) {
+                Toast.makeText(this, "Device ID must be between 0 and 4095",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            String nameStr = nameInput.getText().toString();
+            if (nameStr.isEmpty()) {
+                Toast.makeText(this, "Name is required", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            byte[] nameBytes = nameStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (nameBytes.length < 10) {
+                byte[] padded = new byte[10];
+                System.arraycopy(nameBytes, 0, padded, 0, nameBytes.length);
+                nameBytes = padded;
+            } else if (nameBytes.length > 10) {
+                byte[] truncated = new byte[10];
+                System.arraycopy(nameBytes, 0, truncated, 0, 10);
+                nameBytes = truncated;
+            }
+
+            boolean result = leAudioViewModel.setAchatAttributesForSource(devId, nameBytes);
+            if (result) {
+                Log.d("MainActivity", "Achat attributes set (PGO): DevID=" + devId + ", Name=" + nameStr);
+                Toast.makeText(this,
+                        "Achat attributes set (PGO): DevID=" + devId + ", Name=" + nameStr,
+                        Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
+            } else {
+                Toast.makeText(this, "Failed to set Achat attributes (PGO)", Toast.LENGTH_SHORT).show();
             }
         });
     }

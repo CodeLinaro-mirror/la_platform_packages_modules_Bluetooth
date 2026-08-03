@@ -26,15 +26,20 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.NumberPicker;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -87,6 +92,19 @@ public class BroadcasterActivity extends AppCompatActivity {
 
     private AudioManager mAudioManager;
 
+    /* --------------------------------------------------------------
+     *  Join Control state – persisted across app restarts / crashes
+     * -------------------------------------------------------------- */
+    private static final String PREFS_NAME = "leaudio_prefs";
+    private static final String KEY_JOIN_CONTROL_ENABLED = "join_control_enabled";
+
+    /**
+     * Tracks whether DBIG Join Control is currently enabled.
+     * Default is {@code true} (join control on by default).
+     * Persisted in SharedPreferences so the state survives crashes.
+     */
+    private boolean mJoinControlEnabled = true;
+
     /**
      * Receiver for {@link BluetoothLeBroadcast#ACTION_DBIG_STATUS_CHANGED}.
      * The broadcast contains a bit‑field in {@link BluetoothLeBroadcast#EXTRA_DBIG_STATUS}
@@ -103,6 +121,45 @@ public class BroadcasterActivity extends AppCompatActivity {
             Log.d(TAG, "Received broadcast action: " + action);
             if (BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED.equals(action)) {
                 int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+
+                boolean newDeviceAdded = (status & 0x0100) != 0;
+                Log.d(TAG, "Device added bit"+ newDeviceAdded);
+                if (newDeviceAdded) {
+                    int devId = intent.getIntExtra(
+                            "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    byte[] nameBytes = intent.getByteArrayExtra(
+                            "android.bluetooth.extra.DBIG_NAME");
+                    String nameStr = (nameBytes != null)
+                            ? new String(nameBytes,
+                                    java.nio.charset.StandardCharsets.UTF_8).trim()
+                            : "";
+                    Log.i(TAG, "New device added to DBIG: devId=0x"
+                            + String.format("%04X", devId) + ", name=" + nameStr);
+                   Toast.makeText(context,
+                             "New device joined DBIG: DevID=" + devId
+                            + ", Name=" + nameStr,
+                            Toast.LENGTH_LONG).show();
+                }
+                // bit 9 (0x0200) – device is exiting / removed from DBIG
+                boolean deviceRemoved = (status & 0x0200) != 0;
+                Log.d(TAG, "Device removed bit"+ newDeviceAdded);
+                if (deviceRemoved) {
+                    int devId = intent.getIntExtra(
+                            "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    byte[] nameBytes = intent.getByteArrayExtra(
+                            "android.bluetooth.extra.DBIG_NAME");
+                    String nameStr = (nameBytes != null)
+                            ? new String(nameBytes,
+                                    java.nio.charset.StandardCharsets.UTF_8).trim()
+                            : "";
+                    Log.i(TAG, "Device removed from DBIG: devId=0x"
+                            + String.format("%04X", devId) + ", name=" + nameStr);
+                    Toast.makeText(context,
+                            "Device exited DBIG: DevID"
+                                    +  devId
+                                    + ", Name=" + nameStr,
+                            Toast.LENGTH_LONG).show();
+                }
 
                 // -------------------------------------------------------------
                 // Bit definitions (as defined by the framework)
@@ -145,6 +202,11 @@ public class BroadcasterActivity extends AppCompatActivity {
     // Initialize AudioManager once
     mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
+    // Restore persisted Join Control state (default: enabled = true)
+    mJoinControlEnabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(KEY_JOIN_CONTROL_ENABLED, true);
+    Log.d(TAG, "Restored Join Control state: enabled=" + mJoinControlEnabled);
+
     /* ---------- Floating‑action button (Add new broadcast) ---------- */
     FloatingActionButton fab = findViewById(R.id.broadcast_fab);
     fab.setOnClickListener(view -> launchAddBroadcastDialog());
@@ -180,6 +242,18 @@ public class BroadcasterActivity extends AppCompatActivity {
                 "Playing broadcast " + pair.second + ", reason " + pair.first,
                 Toast.LENGTH_SHORT).show();
         itemsAdapter.updateBroadcastPlayback(pair.second, true);
+
+        // Automatically enable DBIG Join Control when broadcast enters playing state
+        Log.d(TAG, "Broadcast playing – auto-enabling DBIG Join Control");
+        boolean joinResult = mViewModel.setDbigJoinControl(true);
+        Log.d(TAG, "Auto DBIG Join Control enable: result=" + joinResult);
+        if (joinResult) {
+            mJoinControlEnabled = true;
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
+            Toast.makeText(this, "DBIG Join Control auto-enabled (broadcast playing)",
+                    Toast.LENGTH_SHORT).show();
+        }
     });
 
     mViewModel.getBroadcastPlaybackStoppedMutableLive().observe(this, pair -> {
@@ -277,7 +351,6 @@ public class BroadcasterActivity extends AppCompatActivity {
         final EditText public_content = alertView.findViewById(R.id.broadcast_public_content_input);
         final Spinner phyTypeSpinner = alertView.findViewById(R.id.phy_type_spinner);
         final EditText iso_interval_input = alertView.findViewById(R.id.iso_interval_input);
-
         // Populate the context‑type picker
         contextPicker.setMinValue(1);
         contextPicker.setMaxValue(
@@ -418,7 +491,7 @@ public class BroadcasterActivity extends AppCompatActivity {
 
                     if (broadcastStarted) {
                         // The framework creates a BIS for the source immediately.
-                        // Mark it locally so the UI shows “Relinquish”.
+                        // Mark it locally so the UI shows "Relinquish".
                         mLocalOccupyingBis = false;
                         mBisAvailability = BisAvailability.UNKNOWN; // optional helper
                         String message = "Broadcast was created";
@@ -582,13 +655,44 @@ public class BroadcasterActivity extends AppCompatActivity {
         EditText programInfoInput = alertView.findViewById(R.id.broadcast_program_info_input);
         EditText broadcastNameInput = alertView.findViewById(R.id.broadcast_name_input);
         EditText publicContentInput = alertView.findViewById(R.id.broadcast_public_content_input);
-
         // Hide fields that cannot be changed for an existing broadcast
         alertView.findViewById(R.id.broadcast_code_input).setVisibility(View.GONE);
         alertView.findViewById(R.id.is_public_checkbox).setVisibility(View.GONE);
         alertView.findViewById(R.id.context_picker).setVisibility(View.GONE);
+        // Hide PHY and ISO interval (not modifiable on existing broadcast)
+        alertView.findViewById(R.id.phy_type_spinner).setVisibility(View.GONE);
+        alertView.findViewById(R.id.textView_phy).setVisibility(View.GONE);
+        alertView.findViewById(R.id.iso_interval_input).setVisibility(View.GONE);
+        alertView.findViewById(R.id.textView23).setVisibility(View.GONE);
+        // Build a container: inflated form + two instant Join Control buttons
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.addView(alertView);
 
-        modifyAlert.setView(alertView)
+        int dp8 = (int) (8 * getResources().getDisplayMetrics().density);
+        LinearLayout joinRow = new LinearLayout(this);
+        joinRow.setOrientation(LinearLayout.HORIZONTAL);
+        joinRow.setPadding(dp8, dp8, dp8, dp8);
+
+        Button btnJoinEnable = new Button(this);
+        btnJoinEnable.setText("Join Enable");
+        LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        p1.setMargins(dp8, 0, dp8, 0);
+        btnJoinEnable.setLayoutParams(p1);
+
+        Button btnJoinDisable = new Button(this);
+        btnJoinDisable.setText("Join Disable");
+        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        p2.setMargins(dp8, 0, dp8, 0);
+        btnJoinDisable.setLayoutParams(p2);
+
+        joinRow.addView(btnJoinEnable);
+        joinRow.addView(btnJoinDisable);
+        container.addView(joinRow);
+
+        modifyAlert.setView(container)
                 .setNegativeButton("Cancel", (d, w) -> {/* no‑op */ })
                 .setPositiveButton("Update", (d, w) -> {
                     // Build new private content metadata
@@ -627,7 +731,52 @@ public class BroadcasterActivity extends AppCompatActivity {
                     }
                 });
 
-        modifyAlert.show();
+        AlertDialog modifyDialog = modifyAlert.show();
+
+        // Show only the button that represents the action the user can take next.
+        //   Join Control enabled  → only "Join Disable" is visible
+        //   Join Control disabled → only "Join Enable"  is visible
+        if (mJoinControlEnabled) {
+            btnJoinEnable.setVisibility(View.GONE);
+            btnJoinDisable.setVisibility(View.VISIBLE);
+        } else {
+            btnJoinDisable.setVisibility(View.GONE);
+            btnJoinEnable.setVisibility(View.VISIBLE);
+        }
+
+        // "Join Enable" – visible only when join control is currently disabled
+        btnJoinEnable.setOnClickListener(v -> {
+            boolean result = mViewModel.setDbigJoinControl(true);
+            Log.d(TAG, "DBIG Join Enable: result=" + result);
+            if (result) {
+                mJoinControlEnabled = true;
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
+                btnJoinEnable.setVisibility(View.GONE);
+                btnJoinDisable.setVisibility(View.VISIBLE);
+            }
+            Toast.makeText(this,
+                    result ? "DBIG Join Control: Enabled"
+                           : "Failed to enable DBIG Join Control",
+                    Toast.LENGTH_SHORT).show();
+        });
+
+        // "Join Disable" – visible only when join control is currently enabled
+        btnJoinDisable.setOnClickListener(v -> {
+            boolean result = mViewModel.setDbigJoinControl(false);
+            Log.d(TAG, "DBIG Join Disable: result=" + result);
+            if (result) {
+                mJoinControlEnabled = false;
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putBoolean(KEY_JOIN_CONTROL_ENABLED, false).apply();
+                btnJoinDisable.setVisibility(View.GONE);
+                btnJoinEnable.setVisibility(View.VISIBLE);
+            }
+            Toast.makeText(this,
+                    result ? "DBIG Join Control: Disabled"
+                           : "Failed to disable DBIG Join Control",
+                    Toast.LENGTH_SHORT).show();
+        });
     }
 
     /** Re‑creates the broadcast‑info dialog if it is currently visible. */
