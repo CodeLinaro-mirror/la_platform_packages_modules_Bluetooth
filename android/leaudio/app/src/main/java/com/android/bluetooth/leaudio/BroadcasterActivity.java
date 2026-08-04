@@ -872,6 +872,13 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     btnJoinEnable.setVisibility(View.VISIBLE);
                                 }
 
+                                // Broadcast content cannot be changed once the PGO is running
+                                // an enhanced (DBIG-capable) broadcast — grey out "Update".
+                                Button btnUpdate = modifyDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                                boolean pgoSupportsUpdate = mPgoEnhancedCap == 0;
+                                btnUpdate.setEnabled(pgoSupportsUpdate);
+                                btnUpdate.setAlpha(pgoSupportsUpdate ? 1.0f : 0.4f);
+
                                 // "Join Enable" – visible only when join control is currently disabled
                                 btnJoinEnable.setOnClickListener(v -> {
                                 boolean result = mViewModel.setJoinControl(true);
