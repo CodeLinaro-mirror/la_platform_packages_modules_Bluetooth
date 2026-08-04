@@ -44,6 +44,7 @@
 #include "devices.h"
 #include "le_audio_log_history.h"
 #include "le_audio_types.h"
+#include "stack/include/btm_ble_api_types.h"
 
 namespace bluetooth::le_audio {
 
@@ -534,6 +535,8 @@ private:
   std::vector<std::weak_ptr<LeAudioDevice>> leAudioDevices_;
   bool active_confirmed_;
 };
+
+tBTM_BLE_CONN_TYPE GetLeAudioDefaultBackgroundConnectType();
 
 /* LeAudioDeviceGroup class represents a wraper helper over all device groups in
  * le audio implementation. It allows to operate on device group from a list

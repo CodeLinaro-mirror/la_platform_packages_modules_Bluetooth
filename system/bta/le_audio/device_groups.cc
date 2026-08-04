@@ -80,6 +80,17 @@ using types::CisType;
 using types::DataPathState;
 using types::LeAudioContextType;
 
+static constexpr char kLeAudioReconnectAllowListProp[] =
+        "persist.bluetooth.leaudio.reconnect_allow_list";
+
+tBTM_BLE_CONN_TYPE GetLeAudioDefaultBackgroundConnectType() {
+  if (osi_property_get_int32(kLeAudioReconnectAllowListProp, 0) != 0) {
+    return BTM_BLE_BKG_CONNECT_ALLOW_LIST;
+  }
+
+  return BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS;
+}
+
 /* LeAudioDeviceGroup Class methods implementation */
 void LeAudioDeviceGroup::AddNode(const std::shared_ptr<LeAudioDevice>& leAudioDevice) {
   leAudioDevice->group_id_ = group_id_;
@@ -2582,7 +2593,7 @@ void LeAudioDeviceGroup::Enable(int gatt_if) {
               bluetooth::common::ToString(GetState()), address);
 
     if (connection_state == DeviceConnectState::DISCONNECTED) {
-      BTA_GATTC_Open(gatt_if, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
+      BTA_GATTC_Open(gatt_if, address, GetLeAudioDefaultBackgroundConnectType());
       device_iter.lock()->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
     }
   }
@@ -2620,7 +2631,7 @@ void LeAudioDeviceGroup::ApplyReconnectionMode(int gatt_if) {
   for (const auto& device_iter : leAudioDevices_) {
     BTA_GATTC_CancelOpen(gatt_if, device_iter.lock()->address_, false);
     BTA_GATTC_Open(gatt_if, device_iter.lock()->address_,
-                   BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
+                   GetLeAudioDefaultBackgroundConnectType());
     log::info("Group {} in state {}. Adding {} to default reconnection mode", group_id_,
               bluetooth::common::ToString(GetState()), device_iter.lock()->address_);
     device_iter.lock()->SetConnectionState(DeviceConnectState::CONNECTING_AUTOCONNECT);
