@@ -244,6 +244,10 @@ final class AdapterState extends StateMachine {
                     transitionTo(mTurningBleOffState);
                     break;
 
+                case NEW_ADAPTER_STATE_CHANGED:
+                    deferMessage(msg);
+                    break;
+
                 default:
                     infoLog("Unhandled message - " + messageString(msg.what));
                     return false;
@@ -310,6 +314,10 @@ final class AdapterState extends StateMachine {
                     transitionTo(mTurningBleOffState);
                     break;
 
+                case NEW_ADAPTER_STATE_CHANGED:
+                    deferMessage(msg);
+                    break;
+
                 default:
                     infoLog("Unhandled message - " + messageString(msg.what));
                     return false;
@@ -348,6 +356,10 @@ final class AdapterState extends StateMachine {
                 case BREDR_START_TIMEOUT:
                     errorLog(messageString(msg.what));
                     transitionTo(mTurningOffState);
+                    break;
+
+                case NEW_ADAPTER_STATE_CHANGED:
+                    deferMessage(msg);
                     break;
 
                 default:
@@ -400,6 +412,10 @@ final class AdapterState extends StateMachine {
                     transitionTo(mTurningBleOffState);
                     break;
 
+                case NEW_ADAPTER_STATE_CHANGED:
+                    deferMessage(msg);
+                    break;
+
                 default:
                     infoLog("Unhandled message - " + messageString(msg.what));
                     return false;
@@ -443,6 +459,10 @@ final class AdapterState extends StateMachine {
                     handleTimeoutOff();
                     errorLog(messageString(msg.what));
                     transitionTo(mOffState);
+                    break;
+
+                case NEW_ADAPTER_STATE_CHANGED:
+                    deferMessage(msg);
                     break;
 
                 default:
