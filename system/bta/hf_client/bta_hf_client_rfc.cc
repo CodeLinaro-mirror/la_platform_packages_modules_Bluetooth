@@ -280,11 +280,17 @@ void bta_hf_client_rfc_do_close(tBTA_HF_CLIENT_DATA* p_data) {
     tBTA_HF_CLIENT_RFC* p_buf = (tBTA_HF_CLIENT_RFC*)osi_malloc(sizeof(tBTA_HF_CLIENT_RFC));
     p_buf->hdr.event = BTA_HF_CLIENT_RFC_CLOSE_EVT;
     bta_sys_sendmsg(p_buf);
+  }
 
-    /* Cancel SDP if it had been started. */
-    if (client_cb->p_disc_db) {
-      (void)get_legacy_stack_sdp_api()->service.SDP_CancelServiceSearch(client_cb->p_disc_db);
-      osi_free_and_reset((void**)&client_cb->p_disc_db);
-    }
+  /* In the scenario of concurrent HFP connections in bi-direction, if the incoming
+   * connection is rejected by upper application and the associated SDP procedure
+   * is not canceled and cleaned at once. The pointer client_cb->p_disc_db might be
+   * overwritten by the 2nd outgoing connection. When the SDP result of the 1st
+   * incoming connection is returned, the allocated database memory block for the 2nd
+   * connection will be wrongly freed and cause crash eventually. So, just cancel
+   * SDP if it had been started. */
+  if (client_cb->p_disc_db) {
+    (void)get_legacy_stack_sdp_api()->service.SDP_CancelServiceSearch(client_cb->p_disc_db);
+    osi_free_and_reset((void**)&client_cb->p_disc_db);
   }
 }
