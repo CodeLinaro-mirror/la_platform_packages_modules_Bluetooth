@@ -1402,6 +1402,40 @@ tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(const RawAddress& bd_addr) {
  ******************************************************************************/
 uint8_t BTM_GetSecurityMode() { return btm_sec_cb.security_mode; }
 
+/**
+ * Return true for states where the device is actually engaged in a pairing
+ * exchange (either legacy PIN flow or SSP flow). These are the states during
+ * which clearing security flags would be harmful.
+ *
+ * Explicitly excludes:
+ * - BTM_PAIR_STATE_IDLE: nothing ongoing
+ * - BTM_PAIR_STATE_GET_REM_NAME: pre-check/read-remote-name phase (outgoing)
+ * - BTM_PAIR_STATE_WAIT_DISCONNECT: post-failure drain
+ */
+static inline bool is_true_pairing_exchange_state(tBTM_PAIRING_STATE s) {
+  switch (s) {
+    case BTM_PAIR_STATE_IDLE:
+    case BTM_PAIR_STATE_WAIT_DISCONNECT:
+    case BTM_PAIR_STATE_GET_REM_NAME:
+      return false;
+    default:
+      return true;
+  }
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_SecIsPairingBusyFor
+ *
+ * Description      Busy predicate: true if we are in a real pairing exchange
+ *                  ither incoming or outgoing) for the same device.
+ *
+ ******************************************************************************/
+bool BTM_SecIsPairingBusyFor(const RawAddress& bd_addr) {
+  return (btm_sec_cb.pairing_bda == bd_addr) &&
+         is_true_pairing_exchange_state(btm_sec_cb.pairing_state);
+}
+
 /************************************************************************
  *              I N T E R N A L     F U N C T I O N S
  ************************************************************************/
