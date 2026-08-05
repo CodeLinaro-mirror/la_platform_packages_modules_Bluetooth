@@ -992,6 +992,13 @@ static void btu_hcif_hdl_command_complete(uint16_t opcode, uint8_t* p, uint16_t 
     case HCI_WRITE_VOICE_SETTINGS:
       break;
 
+    case HCI_CONFIGURE_DATA_PATH:
+      // LE Audio ISO data-path configuration completion (codec_manager
+      // encode/decode setup/teardown, CIS/BIS datapath setup). Fire-and-forget
+      // at this legacy dispatch layer -- no caller registers a completion
+      // callback, so no further action is required here on completion.
+      break;
+
     default:
       log::error("Command complete for opcode:0x{:02x} should not be handled here", opcode);
       break;
