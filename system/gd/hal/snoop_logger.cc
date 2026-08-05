@@ -1195,14 +1195,11 @@ void SnoopLogger::Capture(const HciPacket& immutable_packet, Direction direction
       socket_->Write(packet.data(), (size_t)(length - 1));
     }
 
-    // std::ofstream::flush() pushes user data into kernel memory. The data will be written even if
-    // this process crashes. However, data will be lost if there is a kernel panic, which is out of
-    // scope of BT snoop log. NOTE: std::ofstream::write() followed by std::ofstream::flush() has
-    // similar effect as UNIX write(fd, data, len)
-    //       as write() syscall dumps data into kernel memory directly
-    if (!btsnoop_ostream_.flush()) {
-      log::error("Failed to flush, error: \"{}\"", strerror(errno));
-    }
+  // Removed per-packet flush: fflush() on the HAL binder callback thread blocks
+  // under storage I/O pressure (b/493507987, CRs-Fixed: 4541674), causing the
+  // binder watchdog to SIGABRT com.android.bluetooth after >4500ms stall.
+  // Data safety: the stream buffer (~8KB) reaches the kernel on natural overflow
+  // or file close, which is acceptable for diagnostic snoop logs.
   }
 }
 
