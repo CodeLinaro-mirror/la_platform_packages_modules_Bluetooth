@@ -177,7 +177,7 @@ public class AvrcpControllerService extends ProfileService {
             setComponentAvailable(COVER_ART_PROVIDER, true);
             mCoverArtManager = new AvrcpCoverArtManager(this, new ImageDownloadCallback());
         }
-        sBrowseTree = new BrowseTree(null);
+        setBrowseTree(new BrowseTree(null));
         setAvrcpControllerService(this);
 
         // Start the media browser service.
@@ -187,24 +187,28 @@ public class AvrcpControllerService extends ProfileService {
     }
 
     @Override
-    public synchronized void stop() {
-        setActiveDevice(null);
-        Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
-        stopService(stopIntent);
-        for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
-            stateMachine.quitNow();
-        }
-        mDeviceStateMap.clear();
-
-        setAvrcpControllerService(null);
-        sBrowseTree = null;
-        if (mCoverArtManager != null) {
-            mCoverArtManager.cleanup();
-            mCoverArtManager = null;
-            setComponentAvailable(COVER_ART_PROVIDER, false);
-        }
-        setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+    public void stop() {
+        Log.d(TAG, "stop()");
         mNativeInterface.cleanup();
+
+        synchronized (this) {
+            setActiveDevice(null);
+            Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
+            stopService(stopIntent);
+            for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
+                stateMachine.quitNow();
+            }
+            mDeviceStateMap.clear();
+
+            setAvrcpControllerService(null);
+            setBrowseTree(null);
+            if (mCoverArtManager != null) {
+                mCoverArtManager.cleanup();
+                mCoverArtManager = null;
+                setComponentAvailable(COVER_ART_PROVIDER, false);
+            }
+            setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+        }
     }
 
     public static synchronized AvrcpControllerService getAvrcpControllerService() {
@@ -215,6 +219,11 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     public static synchronized void setAvrcpControllerService(AvrcpControllerService service) {
         sService = service;
+    }
+
+    @VisibleForTesting
+    static synchronized void setBrowseTree(BrowseTree browseTree) {
+        sBrowseTree = browseTree;
     }
 
     /** Get the current active device */
