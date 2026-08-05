@@ -186,15 +186,8 @@ public class AvrcpControllerService extends ProfileService {
         setActiveDevice(null);
     }
 
-    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
-    public void stop() {
-        Log.d(TAG, "stop");
-        mNativeInterface.stop();
-    }
-
-    // Called by JNI thread
-    public synchronized void onStop() {
+    public synchronized void stop() {
         setActiveDevice(null);
         Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
         stopService(stopIntent);
