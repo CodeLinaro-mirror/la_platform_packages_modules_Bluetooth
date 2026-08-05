@@ -29,12 +29,16 @@ import android.bluetooth.BluetoothUuid;
 import android.bluetooth.IBluetoothMapClient;
 import android.bluetooth.SdpMasRecord;
 import android.content.AttributionSource;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
 import android.os.Parcelable;
+import android.os.UserManager;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
@@ -51,6 +55,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MapClientService extends ProfileService {
@@ -79,6 +84,9 @@ public class MapClientService extends ProfileService {
         mSmLooper = looper;
         mMnsServer = mnsServer;
     }
+
+    MapBroadcastReceiver mMapReceiver;
+    private AtomicBoolean mClearAttempted = new AtomicBoolean(false);
 
     public static boolean isEnabled() {
         return BluetoothProperties.isProfileMapClientEnabled().orElse(false);
@@ -304,7 +312,22 @@ public class MapClientService extends ProfileService {
         }
 
         removeUncleanAccounts();
-        MapClientContent.clearAllContent(this);
+
+        mMapReceiver = new MapBroadcastReceiver();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_USER_UNLOCKED);
+        registerReceiver(mMapReceiver, filter);
+
+        UserManager um = getSystemService(UserManager.class);
+        boolean unlocked = um != null && um.isUserUnlocked();
+        if (unlocked) {
+            if (!mClearAttempted.compareAndSet(false, true)) {
+                return;
+            }
+            MapClientContent.clearAllContent(this);
+            unregisterReceiver(mMapReceiver);
+            mMapReceiver = null;
+        }
         setMapClientService(this);
     }
 
@@ -312,6 +335,10 @@ public class MapClientService extends ProfileService {
     public synchronized void stop() {
         Log.d(TAG, "stop()");
 
+        if (mMapReceiver != null) {
+            unregisterReceiver(mMapReceiver);
+            mMapReceiver = null;
+        }
         if (mMnsServer != null) {
             mMnsServer.stop();
         }
@@ -587,6 +614,31 @@ public class MapClientService extends ProfileService {
 
     public void aclDisconnected(BluetoothDevice device, int transport) {
         mHandler.post(() -> handleAclDisconnected(device, transport));
+    }
+
+    @VisibleForTesting
+    class MapBroadcastReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "onReceive: " + action);
+
+            if (action.equals(Intent.ACTION_USER_UNLOCKED)) {
+                if (!mClearAttempted.compareAndSet(false, true)) {
+                    return;
+                }
+                MapClientContent.clearAllContent(context);
+
+                try {
+                    unregisterReceiver(this);
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to unregister receiver", e);
+                }
+                mMapReceiver = null;
+
+                return;
+            }
+        }
     }
 
     private void handleAclDisconnected(BluetoothDevice device, int transport) {
