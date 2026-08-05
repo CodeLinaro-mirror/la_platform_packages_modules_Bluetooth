@@ -1898,12 +1898,16 @@ void bta_hh_gatt_close(tBTA_HH_DEV_CB* p_cb, const tBTA_HH_DATA* p_data) {
  ******************************************************************************/
 void bta_hh_gatt_cancel(tBTA_HH_DEV_CB* p_cb) {
   if (p_cb->link_spec.transport == BT_TRANSPORT_LE) {
-    log::debug("Cancel GATT connection: gatt_if={}, addr={}, conn_id={}",
-                bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, p_cb->conn_id);
+    log::debug("Cancel GATT connection: gatt_if={}, addr={}, conn_id={}, in_bg_conn={}",
+                bta_hh_cb.gatt_if, p_cb->link_spec.addrt.bda, p_cb->conn_id, p_cb->in_bg_conn);
     if (p_cb->conn_id == GATT_INVALID_CONN_ID) {
+      // No GATT connection was ever established for this device. Removing the
+      // background entry (if any) is sufficient; issuing an additional direct-connect
+      // cancel here has nothing to cancel and, before the guard added to
+      // gatt_cancel_open(), fed a synthesized GATT_CONN_TERMINATE_LOCAL_HOST back into
+      // this same path as an unbounded loop (CR 4611672). Keep the state teardown, drop
+      // the redundant cancel.
       bta_hh_le_remove_dev_bg_conn(p_cb);
-      BTA_GATTC_CancelOpen(bta_hh_cb.gatt_if,
-                       p_cb->link_spec.addrt.bda, true);
     } else {
       BtaGattQueue::Clean(p_cb->conn_id);
       BTA_GATTC_Close(p_cb->conn_id);
