@@ -92,6 +92,8 @@ using namespace bluetooth;
 
 extern tBTM_CB btm_cb;
 
+extern int GetAdapterIndex();
+
 #define BTM_SEC_MAX_COLLISION_DELAY (5000)
 #define BTM_SEC_START_AUTH_DELAY (200)
 
@@ -811,7 +813,7 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr, tBLE_ADDR_TYPE 
  *  Note: After 2.1 parameters are not used and preserved here not to change API
  ******************************************************************************/
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE /* device_type */) {
+                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {
   if (transport == BT_TRANSPORT_AUTO) {
     if (addr_type == BLE_ADDR_PUBLIC) {
       transport = get_btm_client_interface().ble.BTM_UseLeLink(bd_addr) ? BT_TRANSPORT_LE
@@ -821,9 +823,17 @@ tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
       transport = BT_TRANSPORT_LE;
     }
   }
-  tBT_DEVICE_TYPE dev_type;
 
-  BTM_ReadDevInfo(bd_addr, &dev_type, &addr_type);
+  tBT_DEVICE_TYPE dev_type;
+  if ((GetAdapterIndex() == 0) ||
+      device_type != BT_DEVICE_TYPE_BREDR ||
+      transport != BT_TRANSPORT_BR_EDR) {
+    BTM_ReadDevInfo(bd_addr, &dev_type, &addr_type);
+  } else {
+    dev_type = device_type;
+  }
+  log::info("device_type: {}", dev_type);
+
   /* LE device, do SMP pairing */
   if ((transport == BT_TRANSPORT_LE && (dev_type & BT_DEVICE_TYPE_BLE) == 0) ||
       (transport == BT_TRANSPORT_BR_EDR && (dev_type & BT_DEVICE_TYPE_BREDR) == 0)) {
