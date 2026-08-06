@@ -56,10 +56,6 @@ public class AvrcpControllerNativeInterface {
         cleanupNative();
     }
 
-    void stop() {
-        stopNative();
-    }
-
     boolean sendPassThroughCommand(byte[] address, int keyCode, int keyState) {
         return sendPassThroughCommandNative(address, keyCode, keyState);
     }
@@ -315,11 +311,6 @@ public class AvrcpControllerNativeInterface {
         mAvrcpController.handleSearchRsp(device, status, uid, items);
     }
 
-    void onStop() {
-        Log.d(TAG, "onStop");
-        mAvrcpController.onStop();
-    }
-
     // JNI Helper functions to convert native objects to java.
     // Called within android/app/jni/com_android_bluetooth_avrcp_controller.cpp
     AvrcpItem createFromNativeMediaItem(
@@ -423,8 +414,6 @@ public class AvrcpControllerNativeInterface {
     private native void initNative();
 
     private native void cleanupNative();
-
-    private native void stopNative();
 
     /**
      * Send button press commands to addressed device

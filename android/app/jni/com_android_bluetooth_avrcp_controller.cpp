@@ -32,7 +32,6 @@
 #include <cstring>
 #include <mutex>
 #include <shared_mutex>
-#include <thread>
 
 #include "com_android_bluetooth.h"
 #include "hardware/bluetooth.h"
@@ -60,7 +59,6 @@ static jmethodID method_handleSetAddressedPlayerRsp;
 static jmethodID method_handleAddressedPlayerChanged;
 static jmethodID method_handleNowPlayingContentChanged;
 static jmethodID method_onAvailablePlayerChanged;
-static jmethodID method_onStop;
 static jmethodID method_getRcPsm;
 static jmethodID method_handleSearchRsp;
 static jmethodID method_handleAddToNowPlayingRsp;
@@ -885,29 +883,6 @@ static void initNative(JNIEnv* env, jobject object) {
   sCallbacksObj = env->NewGlobalRef(object);
 }
 
-static void stopNative([[maybe_unused]]JNIEnv* env, jobject /* object */) {
-  std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex, std::defer_lock);
-  while (true) {
-    if (lock.try_lock()) {
-        break;
-    } else {
-        log::warn( "sCallbacks_mutex has been locked, wait for 3ms");
-        std::this_thread::sleep_for(std::chrono::milliseconds(3));
-    }
-  }
-
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid()) {
-    return;
-  }
-  if (!sCallbacksObj) {
-    log::error("sCallbacksObj is null");
-    return;
-  }
-
-  sCallbackEnv->CallVoidMethod(sCallbacksObj, method_onStop);
-}
-
 static void cleanupNative(JNIEnv* env, jobject /* object */) {
   // Disable all future callbacks immediately
   g_callbacks_enabled.store(false, std::memory_order_release);
@@ -1515,7 +1490,6 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"searchNative", "([BIILjava/lang/String;)V", (void*)searchNative},
           {"getSearchListNative", "([BII)V", (void*)getSearchListNative},
           {"getItemAttributesNative", "([BBJIB[I)V",(void *) getItemAttributesNative},
-          {"stopNative", "()V", (void*)stopNative},
           {"getFolderItemsNative", "([BBBBB[I)V", (void *) getFolderItemsNative},
           {"addToNowPlayingNative", "([BBJI)V",(void*)addToNowPlayingNative},
           {"requestContinuingResponseNative", "([BB)V",(void *) requestContinuingResponseNative},
@@ -1564,7 +1538,6 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
            "Lcom/android/bluetooth/avrcpcontroller/AvrcpPlayer;",
            &method_createFromNativePlayerItem},
           {"handleSearchRsp", "([BIII)V",&method_handleSearchRsp},
-          {"onStop", "()V", &method_onStop},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface",
                    javaMethods);

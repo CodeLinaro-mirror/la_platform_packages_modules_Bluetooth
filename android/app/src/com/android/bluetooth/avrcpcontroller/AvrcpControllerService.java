@@ -217,16 +217,9 @@ public class AvrcpControllerService extends ConnectableProfile {
         return BluetoothProperties.isProfileAvrcpControllerEnabled().orElse(false);
     }
 
-    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
-    public void cleanup() {
-        Log.d(TAG, "cleanup");
-        mNativeInterface.stop();
-    }
-
-    // Called by JNI thread
-    public synchronized void onStop() {
-        Log.i(TAG, "Cleanup AVRCP Controller Service");
+    public synchronized void cleanup() {
+        Log.i(TAG, "cleanup()");
 
         setActiveDevice(null);
         Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
