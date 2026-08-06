@@ -372,6 +372,9 @@ bool remove_unconditional(const RawAddress& address) {
 
 /** Marks the specified address as removed from the Accept List, enabling reconnection */
 void on_removed_from_accept_list(const RawAddress& address) {
+  /* Recursive mutex: callers may already hold it (on_connection_complete does not, but keeping the
+   * guard here matches every other accessor of |bgconn_dev| and is safe either way). */
+  std::lock_guard<std::recursive_mutex> lock(bgconn_dev_mutex);
   auto it = bgconn_dev.find(address);
   if (it == bgconn_dev.end()) {
     log::warn("address {} is not found", address);
@@ -498,6 +501,19 @@ static void remove_all_clients_with_pending_connections(const RawAddress& addres
 
 void on_connection_complete(const RawAddress& address) {
   log::info("Le connection completed to device:{}", address);
+
+  /* The lower layer drops its accept list entry once the connection is up (see
+   * le_impl::on_le_connection_complete), but it has no way to tell us: gd/ must not depend on
+   * stack/. Only disconnect_le() reports back via on_removed_from_accept_list(), so a connection
+   * that came up normally would leave |is_in_accept_list| stale at true. Every later
+   * background_connect_add() then short-circuits on that flag and never issues
+   * ACL_AcceptLeConnectionFrom, so the lower layer never re-adds the device and its initiator is
+   * never armed again -- background reconnect stalls forever.
+   *
+   * Clearing here is the safe direction of the two: if the lower layer did keep the entry, the
+   * next background_connect_add() simply re-asserts it and the lower layer no-ops on a duplicate,
+   * while still recording the background intent we need. */
+  on_removed_from_accept_list(address);
 
   remove_all_clients_with_pending_connections(address);
 }
