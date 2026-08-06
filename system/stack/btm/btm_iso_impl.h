@@ -1169,7 +1169,15 @@ struct iso_impl {
   }
 
   void on_read_supported_states_cmd_complete(uint8_t* stream, uint16_t len) {
-    log::assert_that(len >= 12, "Invalid read_supported_states response length: {}", len);
+    // Some controllers (e.g. those without broadcast ISO support) return a truncated,
+    // status-only Command Complete instead of the full payload. Treat this as
+    // "capability unavailable" rather than a fatal error — broadcast_states_ stays at
+    // its default (0), which callers already check before assuming the query succeeded.
+    if (len < 12) {
+      log::error("Invalid read_supported_states response length: {}", len);
+      read_states_pending_ = false;
+      return;
+    }
 
     uint8_t status, sub_opcode;
     STREAM_TO_UINT8(status, stream);
