@@ -45,12 +45,70 @@ using bluetooth::hci::iso_manager::big_terminate_sync_cmpl_evt;
 using namespace bluetooth::le_audio::broadcast_sink;
 using namespace bluetooth;
 
-/* Power optimization: while a BIG sync is active, the LE BIGInfo Advertising
- * Report and LE Periodic Advertising Report V2 events are redundant. The
- * mask is updated directly at BigCreateSync (CreateBigSync()) and restored
- * directly at each teardown path (OnBigSyncLost(), OnTexitDbigComplete()). */
-static uint64_t original_le_event_mask = 0;
-static bool original_le_event_mask_saved = false;
+/* Power optimization: while any BIG sync is active, the LE BIGInfo Advertising
+ * Report and LE Periodic Advertising Report V2 events are redundant, so they are
+ * masked off in the controller.
+ *
+ * The LE event mask is a single process-global controller resource but up to
+ * MAX_PA_SYNC_SOURCES sources can be BIG-synced at once, so the suppression is
+ * REFCOUNTED rather than saved/restored per source: the bits are cleared when the
+ * count goes 0->1 and put back only when it returns to 0. A save/restore pair
+ * would let the first teardown restore the bits while another source is still
+ * synced (silently defeating the optimization for it), and would leak the
+ * suppression for every later source if a teardown path missed the restore.
+ *
+ * base_le_event_mask is captured ONCE, before the first suppression, so the
+ * restore value can never be a mask we ourselves already modified. Re-reading it
+ * per source would be unreliable: Controller::LeSetEventMask() is asynchronous
+ * (it posts to the controller handler and only then updates the cached value),
+ * while GetLeEventMask() reads that cache directly, so a read shortly after a
+ * write can observe the pre-write value. */
+static uint64_t base_le_event_mask = 0;
+static bool base_le_event_mask_valid = false;
+static uint32_t le_event_mask_suppress_refcount = 0;
+
+static constexpr uint64_t kSuppressedLeEventBits =
+        HCI_LE_BIGINFO_ADVERTISING_REPORT_EVENT_BIT | HCI_LE_PERIODIC_ADVERTISING_REPORT_V2_EVENT_BIT;
+
+/* Take a suppression reference. Clears the report bits on the 0->1 transition. */
+static void LeEventMaskSuppressAcquire(uint32_t broadcast_id) {
+  if (!base_le_event_mask_valid) {
+    base_le_event_mask = BTM_BleGetLeEventMask();
+    base_le_event_mask_valid = true;
+  }
+
+  le_event_mask_suppress_refcount++;
+  if (le_event_mask_suppress_refcount > 1) {
+    log::info("broadcast_id=0x{:x}, LE event mask already suppressed, refcount={}", broadcast_id,
+              le_event_mask_suppress_refcount);
+    return;
+  }
+
+  uint64_t new_mask = base_le_event_mask & ~kSuppressedLeEventBits;
+  log::info("broadcast_id=0x{:x}, suppressing LE Event Mask 0x{:016x} -> 0x{:016x}, refcount={}",
+            broadcast_id, base_le_event_mask, new_mask, le_event_mask_suppress_refcount);
+  BTM_BleSetLeEventMask(new_mask);
+}
+
+/* Release a suppression reference. Restores the report bits on the 1->0
+ * transition. Safe to call when no reference is held (idempotent), so every
+ * teardown path — including the destructor — can call it unconditionally. */
+static void LeEventMaskSuppressRelease(uint32_t broadcast_id) {
+  if (le_event_mask_suppress_refcount == 0) {
+    return;
+  }
+
+  le_event_mask_suppress_refcount--;
+  if (le_event_mask_suppress_refcount > 0) {
+    log::info("broadcast_id=0x{:x}, LE event mask still suppressed by another source, refcount={}",
+              broadcast_id, le_event_mask_suppress_refcount);
+    return;
+  }
+
+  log::info("broadcast_id=0x{:x}, restoring LE Event Mask 0x{:016x}", broadcast_id,
+            base_le_event_mask);
+  BTM_BleSetLeEventMask(base_le_event_mask);
+}
 
 namespace {
 
@@ -77,11 +135,27 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
         tx_paths_removed_(false),
         rx_paths_removed_(false) {
     stats_ = BroadcastSinkStats();
+    // Cached once at construction — persist.vendor.qcom.bluetooth.enable_ba_duplex is a
+    // persistent property that does not change at runtime, matching the same cached pattern
+    // used by iso_impl::is_duplex_enabled_. The LE event-mask power optimization below is
+    // DUPLEX-only, so gate it on this rather than re-reading the property on every BIG sync.
+    is_duplex_enabled_ =
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
   }
 
   ~BroadcastSinkStateMachineImpl() {
     log::info("broadcast_id=0x{:x}, state={}, pa_sync_lost={}", GetBroadcastId(),
               SinkStateToString(GetState()), pa_sync_lost_);
+
+    /* Drop this source's LE event-mask suppression reference. Required here as the
+     * backstop for teardowns that never reach OnBigSyncLost()/OnTexitDbigComplete():
+     * DestroySource() erases the tracked source (destroying this object) before
+     * TExitDbig()'s asynchronous completion can be routed back to it, and TExitDbig()
+     * itself returns early without sending anything when big_sync_info_ was already
+     * cleared. Without this the report bits would stay masked off for every
+     * subsequent source until BT restarts — the next join then PA-syncs but never
+     * receives a periodic/BIGInfo report, so it never issues BIG_CREATE_SYNC. */
+    ReleaseLeEventMaskSuppression();
 
     if (GetState() == SinkState::BIG_SYNCED || GetState() == SinkState::BIG_SYNCING) {
       TExitDbig();
@@ -697,14 +771,9 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
        * (status!=0, e.g. 0x0E), nothing was actually torn down — the BIG is still
        * alive, so big_sync_info_ must be preserved for subsequent TX/RX suspend
        * teardown to find the real BIS handles. */
-          /* Power optimization: DBIG (enhanced BIG) sync is torn down — restore
-      * the LE event mask saved in OnBigSyncEstablished(). */
-      if (original_le_event_mask_saved) {
-        log::info("broadcast_id=0x{:x}, OnTexitDbigComplete: restoring LE Event Mask 0x{:016x}",
-          GetBroadcastId(), original_le_event_mask);
-          BTM_BleSetLeEventMask(original_le_event_mask);
-          original_le_event_mask_saved = false;
-      }
+          /* Power optimization: DBIG (enhanced BIG) sync is torn down — drop this
+      * source's LE event-mask suppression reference. */
+      ReleaseLeEventMaskSuppression();
       big_sync_info_ = std::nullopt;
     }
 
@@ -869,6 +938,29 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
    * rx_paths_removed_ are true.
    */
   bool rx_paths_removed_;
+
+  /**
+   * Set while this state machine holds a reference on the LE event-mask
+   * suppression (see LeEventMaskSuppressAcquire/Release). Tracked per instance so
+   * each source releases exactly the reference it took, no matter which teardown
+   * path runs — or if the object is simply destroyed.
+   */
+  bool le_event_mask_suppressed_ = false;
+
+  /* Cached once at construction — persist.vendor.qcom.bluetooth.enable_ba_duplex is a
+   * persistent property that does not change at runtime. Gates the LE event-mask power
+   * optimization (LeEventMaskSuppressAcquire/Release below), which is DUPLEX-only. */
+  bool is_duplex_enabled_ = false;
+
+  /* Release this source's LE event-mask suppression reference, if it holds one.
+   * Idempotent, so every teardown path can call it unconditionally. */
+  void ReleaseLeEventMaskSuppression() {
+    if (!le_event_mask_suppressed_) {
+      return;
+    }
+    le_event_mask_suppressed_ = false;
+    LeEventMaskSuppressRelease(GetBroadcastId());
+  }
 
   /** TExitDbig mode to use when sending TExitDbig. Defaults to EXIT (0x01).
    * Set by StopEnhancedBroadcastSink(mode) before triggering teardown. */
@@ -1299,18 +1391,12 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
 
     /* Power optimization: BIG sync is established — LE BIGInfo Advertising
      * Report and LE Periodic Advertising Report V2 events are now redundant
-     * for this source, so disable them until the BIG sync is torn down. */
-    if (!original_le_event_mask_saved) {
-      original_le_event_mask = BTM_BleGetLeEventMask();
-      original_le_event_mask_saved = true;
-
-      uint64_t new_mask = original_le_event_mask;
-      new_mask &= ~HCI_LE_BIGINFO_ADVERTISING_REPORT_EVENT_BIT;
-      new_mask &= ~HCI_LE_PERIODIC_ADVERTISING_REPORT_V2_EVENT_BIT;
-
-      log::info("broadcast_id=0x{:x}, OnBigSyncEstablished: LE Event Mask 0x{:016x} -> 0x{:016x}",
-                GetBroadcastId(), original_le_event_mask, new_mask);
-      BTM_BleSetLeEventMask(new_mask);
+     * for this source, so disable them until the BIG sync is torn down.
+     * Refcounted: the bits stay off until every synced source has released.
+     * DUPLEX-only: legacy (non-duplex) sinks don't drive this. */
+    if (is_duplex_enabled_ && !le_event_mask_suppressed_) {
+      le_event_mask_suppressed_ = true;
+      LeEventMaskSuppressAcquire(GetBroadcastId());
     }
 
     BigSyncInfo info;
@@ -1353,14 +1439,12 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     log::warn("broadcast_id=0x{:x}, big_handle={}, reason=0x{:02x}",
               GetBroadcastId(), evt->big_handle, evt->reason);
 
-    /* Power optimization: BIG sync is gone — restore the LE event mask
-     * saved in OnBigSyncEstablished(), regardless of whether this state
-     * machine still tracks the handle. */
-    if (original_le_event_mask_saved) {
-      log::info("broadcast_id=0x{:x}, OnBigSyncLost: restoring LE Event Mask 0x{:016x}",
-                GetBroadcastId(), original_le_event_mask);
-      BTM_BleSetLeEventMask(original_le_event_mask);
-      original_le_event_mask_saved = false;
+    /* Power optimization: BIG sync is gone — drop this source's suppression
+     * reference, regardless of whether this state machine still tracks the handle.
+     * DUPLEX-only, matching the acquire side in OnBigSyncEstablished(); ReleaseLeEventMaskSuppression()
+     * is already a no-op if this source never acquired a reference, but gate explicitly here too. */
+    if (is_duplex_enabled_) {
+      ReleaseLeEventMaskSuppression();
     }
 
     if (!big_sync_info_.has_value() || big_sync_info_->big_handle != evt->big_handle) return;

@@ -24,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <atomic>
 
 #include "btm_dev.h"
@@ -830,7 +831,35 @@ struct iso_impl {
       }
     }
 
-    log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
+    if (!is_known_handle) {
+      if (is_duplex_enabled_) {
+        /* A DUPLEX broadcaster holds both a standard BIG and a DBIG under the same
+         * handle, and the host only ever sends HCI_VS_LE_Texit_DBIG for it (never
+         * HCI_BLE_TERMINATE_BIG — see broadcaster state_machine TerminateBig()).
+         * on_texit_dbig_event() drains conn_hdl_to_bis_map_ for the handle on the
+         * TExit completion, after which the controller can still emit the standard
+         * LE Terminate BIG Complete for that same handle. That trailing event is
+         * expected and benign: the BIG is already gone and OnBigEvent() already
+         * fired on the real teardown, so drop it.
+         *
+         * Anything NOT torn down through that path is a genuine host/controller
+         * bookkeeping desync — keep it loud rather than silently dropping it. */
+        if (texit_terminated_bigs_.erase(evt.big_id) != 0) {
+          log::info("TERMINATE_BIG_COMPLETE for big: {} already torn down via TExitDbig — "
+                    "ignoring expected trailing event",
+                    evt.big_id);
+        } else {
+          log::error("TERMINATE_BIG_COMPLETE for unknown big: {} (not torn down via TExitDbig) — "
+                     "ignoring, but host/controller BIG state may be out of sync",
+                     evt.big_id);
+        }
+        return;
+      }
+      /* Non-DUPLEX: there is no legitimate trailing-teardown path for an unknown handle,
+       * so an unknown handle here is always a genuine host/controller bookkeeping desync —
+       * keep the original hard assert instead of silently downgrading it for legacy BIGs. */
+      log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
+    }
     // Use kIsoEventBigOnTerminateCmpl (0x01) so broadcaster.cc::OnBigEvent
     // routes this to HandleHciEvent(HCI_BLE_TERM_BIG_CPL_EVT) → state machine
     // transitions DISABLING→CONFIGURED → ConfirmSuspendRequest() (TX ACK).
@@ -848,6 +877,15 @@ struct iso_impl {
 
   void create_big(uint8_t big_id, struct big_create_params big_params) {
     log::assert_that(!IsBigKnown(big_id), "Invalid big - already exists: {}", big_id);
+
+    /* This handle is being reused, so any pending trailing-teardown entry from a
+     * previous DBIG TExit on it is stale — a Terminate BIG Complete arriving after
+     * this point belongs to the new BIG. Keeps the set bounded if the controller
+     * never emits the trailing event. DUPLEX-only: texit_terminated_bigs_ is only
+     * ever populated via the DBIG TExit path (on_texit_dbig_event()). */
+    if (is_duplex_enabled_) {
+      texit_terminated_bigs_.erase(big_id);
+    }
 
     if (stack_config_get_interface()->get_pts_unencrypt_broadcast()) {
       log::info("Force create broadcst without encryption for PTS test");
@@ -1320,6 +1358,11 @@ struct iso_impl {
                    dbig_handle);
       }
 
+      /* Remember that this handle was torn down here so the trailing standard
+       * LE Terminate BIG Complete the controller may still emit for it is treated
+       * as expected rather than as a host/controller desync. */
+      texit_terminated_bigs_.insert(dbig_handle);
+
       // Notify that ISO traffic is now inactive (symmetric to BIG_CREATE_SYNC success)
       const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
       for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
@@ -1482,7 +1525,16 @@ struct iso_impl {
   void on_dbig_update_event(uint8_t* stream, uint16_t len) {
     dbig_update_evt evt;
 
-    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    /* DBIG callbacks are released on TExitDbig completion (teardown) and during the
+     * PGO->PGP role handoff, and the controller can still emit a trailing DBIG UPDATE
+     * for the terminated DBIG afterwards. There is no handler to route it to, so drop
+     * it rather than aborting the whole stack on an expected async event. Logged at
+     * error level because the same condition also covers a genuine failure to register
+     * callbacks, which must not disappear silently. */
+    if (dbig_callbacks_ == nullptr) {
+      log::error("DBIG UPDATE event with no DBIG callbacks registered — ignoring");
+      return;
+    }
     log::assert_that(len >= 5, "Invalid DBIG packet length: {}", len);
 
     STREAM_TO_UINT8(evt.status, stream);
@@ -1537,7 +1589,15 @@ struct iso_impl {
   void on_dbig_status_event(uint8_t* stream, uint16_t len) {
     dbig_status_evt evt;
 
-    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    /* The controller can emit a trailing DBIG STATUS VSE after TExitDbig completion,
+     * by which point the PGO has already released its DBIG callbacks (teardown or
+     * PGO->PGP role handoff). The DBIG is gone and there is no handler to route this
+     * to, so drop it rather than aborting the stack. Logged at error level because the
+     * same condition also covers a genuine failure to register callbacks. */
+    if (dbig_callbacks_ == nullptr) {
+      log::error("DBIG STATUS event with no DBIG callbacks registered — ignoring");
+      return;
+    }
     /* Minimum: 1(handle) + 2(status) = 3 bytes. */
     log::assert_that(len >= 3, "Invalid DBIG status packet length: {}", len);
 
@@ -1788,6 +1848,16 @@ struct iso_impl {
    * for TERMINATE/EXIT modes; for REJECT_TERMINATE the BIG stays alive and the BIS ISO
    * connections are still in use, so on_texit_dbig_event() must not erase them. */
   uint8_t last_texit_mode_ = HCI_TEXIT_MODE_TERMINATE;
+
+  /* BIG handles torn down through the DBIG TExit path (on_texit_dbig_event), which
+   * drains conn_hdl_to_bis_map_ for the handle. The controller may still emit the
+   * standard LE Terminate BIG Complete for such a handle afterwards; that trailing
+   * event is expected and is dropped by process_terminate_big_cmpl_pkt(), which
+   * consumes the entry here. An unknown handle that is NOT in this set indicates a
+   * real host/controller desync and is logged as an error instead. Entries are
+   * removed on the trailing event, or on the next create_big() for the handle if
+   * the controller never sends one. */
+  std::set<uint8_t> texit_terminated_bigs_;
 
   std::atomic<uint16_t> broadcast_states_{0};
   /** True while a HCI_VS_LE_READ_SUPPORTED_STATES command is in-flight.
