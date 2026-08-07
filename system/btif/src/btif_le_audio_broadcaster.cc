@@ -245,7 +245,7 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
   }
 
   /**
-   * Synchronously retrieve the 12-byte DBIG parameter block from the BTA
+   * Synchronously retrieve the 13-byte DBIG parameter block from the BTA
    * broadcaster.  Called from the JNI thread after readSupportedStates()
    * has completed.
    */

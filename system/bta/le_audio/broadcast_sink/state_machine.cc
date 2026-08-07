@@ -415,8 +415,8 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
   }
 
   void SetDbigParams(const std::vector<uint8_t>& dbig_params) override {
-    if (dbig_params.size() < 12) {
-      log::error("broadcast_id=0x{:x}, SetDbigParams: invalid size {} (expected 12)",
+    if (dbig_params.size() < 13) {
+      log::error("broadcast_id=0x{:x}, SetDbigParams: invalid size {} (expected 13)",
                  GetBroadcastId(), dbig_params.size());
       return;
     }
@@ -1251,7 +1251,7 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     log::info("tx_power={}", tx_power_value);
 
     // Validate that DBIG params have been set via SetDbigParams()
-    if (sm_config_.dbig_params.size() < 12) {
+    if (sm_config_.dbig_params.size() < 13) {
       log::error("broadcast_id=0x{:x}, SendDbigSetupCommand: dbig_params not set or too short ({} bytes). "
                  "SetDbigParams() must be called with PA vendor LTV data before OnAudioStart().",
                  GetBroadcastId(), sm_config_.dbig_params.size());
@@ -1277,10 +1277,11 @@ class BroadcastSinkStateMachineImpl : public BroadcastSinkStateMachine {
     params.exit_timeout               = sm_config_.dbig_params[9];
     params.remove_timeout             = sm_config_.dbig_params[10];
     params.terminate_timeout          = sm_config_.dbig_params[11];
+    params.bis_timeout                = sm_config_.dbig_params[12];  // NEW parameter in v2.01
     params.tx_power                   = tx_power_value;
 
-    log::info("DBIG Params from advertising: bis_control_event_interval={}, join={}, exit={}, remove={}, terminate={}",
-              params.bis_control_event_interval, params.join_timeout, params.exit_timeout, params.remove_timeout, params.terminate_timeout);
+    log::info("DBIG Params from advertising: bis_control_event_interval={}, join={}, exit={}, remove={}, terminate={}, bis_timeout={}",
+              params.bis_control_event_interval, params.join_timeout, params.exit_timeout, params.remove_timeout, params.terminate_timeout, params.bis_timeout);
 
     IsoManager::GetInstance()->CreateDbig(params);
   }

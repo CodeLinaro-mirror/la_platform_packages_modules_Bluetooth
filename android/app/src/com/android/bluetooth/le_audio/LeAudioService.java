@@ -1684,23 +1684,20 @@ public class LeAudioService extends ProfileService {
             return null;
         }
         byte[] nativeParams = mLeAudioBroadcasterNativeInterface.get().getDbigParams();
-        if (nativeParams == null || nativeParams.length < 12) {
+        if (nativeParams == null || nativeParams.length < 13) {
             Log.e(TAG, "buildEnhancedPAVendorLTV: failed to get DBIG params from native"
                     + " (got " + (nativeParams == null ? "null" : nativeParams.length) + " bytes)");
             return null;
         }
         int pgoFeatures = mLeAudioBroadcasterNativeInterface.get().getEnhancedBroadcastCap();
-        byte[] ltv = new byte[18];
-        ltv[0] = 0x11;                              // Length (17 bytes follow)
+        byte[] ltv = new byte[19];  // 1 + 1 + 2 + 2 + 13 = 19 bytes total
+        ltv[0] = 0x12;                              // Length (18 bytes follow)
         ltv[1] = (byte) 0xFF;                       // Type = Vendor Specific
         ltv[2] = (byte) DBIG_VENDOR_COMPANY_ID_LO;  // Company_ID Lo (0x0A)
         ltv[3] = (byte) DBIG_VENDOR_COMPANY_ID_HI;  // Company_ID Hi (0x00)
         ltv[4] = (byte) (pgoFeatures & 0xFF);        // Broadcast_Features Lo
         ltv[5] = (byte) ((pgoFeatures >> 8) & 0xFF); // Broadcast_Features Hi
-        System.arraycopy(nativeParams, 0, ltv, 6, 12); // DBIG params (12 bytes)
-        Log.d(TAG, "buildEnhancedPAVendorLTV: pgoFeatures=0x" + Integer.toHexString(pgoFeatures)
-                + " bis_ctrl_interval=0x"
-                + String.format("%02X", nativeParams[3] & 0xFF));
+        System.arraycopy(nativeParams, 0, ltv, 6, 13); // DBIG params (13 bytes: v2.01 includes bis_timeout)
         return ltv;
     }
 

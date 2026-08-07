@@ -276,6 +276,7 @@ extern void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
                                    uint8_t exit_timeout,
                                    uint8_t remove_timeout,
                                    uint8_t terminate_timeout,
+                                   uint8_t bis_timeout,
                                    uint8_t tx_power,
                                    base::Callback<void(uint8_t*, uint16_t)> cb);
 

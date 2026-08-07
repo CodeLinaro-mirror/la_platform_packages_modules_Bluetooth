@@ -814,12 +814,13 @@ void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
                                 uint8_t exit_timeout,
                                 uint8_t remove_timeout,
                                 uint8_t terminate_timeout,
+                                uint8_t bis_timeout,
                                 uint8_t tx_power,
                                 base::Callback<void(uint8_t*, uint16_t)> cb) {
   // Full parameter set for HCI_VS_LE_SET_DBIG_PARAMETERS
-  // 1 (subopcode) + 14 parameters = 15 bytes
-  uint16_t param_len = 15;
-  uint8_t param[15];
+  // 1 (subopcode) + 15 parameters = 16 bytes
+  uint16_t param_len = 16;
+  uint8_t param[16];
   uint8_t* p = param;
 
   UINT8_TO_STREAM(p, 0x04); // Subopcode
@@ -836,6 +837,7 @@ void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
   UINT8_TO_STREAM(p, exit_timeout);
   UINT8_TO_STREAM(p, remove_timeout);
   UINT8_TO_STREAM(p, terminate_timeout);
+  UINT8_TO_STREAM(p, bis_timeout);
   UINT8_TO_STREAM(p, tx_power);
 
   btu_hcif_send_cmd_with_cb(HCI_VS_LE_SET_DBIG_PARAMETERS, param,

@@ -1152,7 +1152,7 @@ struct iso_impl {
   }
 
   std::vector<uint8_t> get_dbig_params() {
-    std::vector<uint8_t> params(12, 0);
+    std::vector<uint8_t> params(13, 0);
     params[0] = last_dbig_params_.dbig_feature_set;
     params[1] = last_dbig_params_.bis_detection_attempts;
     params[2] = last_dbig_params_.max_payload_dbig_control;
@@ -1165,6 +1165,7 @@ struct iso_impl {
     params[9] = last_dbig_params_.exit_timeout;
     params[10] = last_dbig_params_.remove_timeout;
     params[11] = last_dbig_params_.terminate_timeout;
+    params[12] = last_dbig_params_.bis_timeout;
     return params;
   }
 
@@ -1193,20 +1194,22 @@ struct iso_impl {
             dbig_params.pgp_timeout, dbig_params.pgo_timeout,
             dbig_params.sgo_timeout, dbig_params.join_timeout,
             dbig_params.exit_timeout, dbig_params.remove_timeout,
-            dbig_params.terminate_timeout, dbig_params.tx_power,
+            dbig_params.terminate_timeout, dbig_params.bis_timeout,
+            dbig_params.tx_power,
             base::BindRepeating(&iso_impl::on_set_dbig_parameters_cmd_complete,
                                 weak_factory_.GetWeakPtr()));
 
     log::info("DBIG Params set - dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
               "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, "
-              "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, tx_power:{}",
+              "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, bis_timeout:{}, tx_power:{}",
               dbig_params.dbig_handle, dbig_params.dbig_feature_set,
               dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
                                dbig_params.bis_control_event_interval, dbig_params.send_exit,
                                dbig_params.pgp_timeout, dbig_params.pgo_timeout,
                                dbig_params.sgo_timeout, dbig_params.join_timeout,
                                dbig_params.exit_timeout, dbig_params.remove_timeout,
-                               dbig_params.terminate_timeout, dbig_params.tx_power);
+                               dbig_params.terminate_timeout, dbig_params.bis_timeout,
+                               dbig_params.tx_power);
   }
 
   void on_join_control_event(uint8_t* stream, uint16_t len) {

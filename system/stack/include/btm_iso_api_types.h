@@ -184,6 +184,7 @@ struct dbig_create_params {
   uint8_t exit_timeout;
   uint8_t remove_timeout;
   uint8_t terminate_timeout;
+  uint8_t bis_timeout;
   uint8_t tx_power;
 };
 

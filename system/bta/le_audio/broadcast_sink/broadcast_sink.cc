@@ -600,7 +600,7 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
   }
 
   void SetEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) override {
-    if (dbig_params.size() < 12) {
+    if (dbig_params.size() < 13) {
       log::error("SetEnhancedDbigParams: short params ({} bytes)", dbig_params.size());
       return;
     }

@@ -248,11 +248,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private final Object mStateLock = new Object();
 
     // Vendor-specific LTV constants for enhanced PA BASE metadata (Section 6.12.6.9)
-    // LTV: [0x11][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+    // LTV: [0x12][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(13)]
     // Company ID 0x000A = Qualcomm Technologies Inc (Little Endian: 0x0A, 0x00)
     private static final int DBIG_VENDOR_COMPANY_ID_LO  = 0x0A;
     private static final int DBIG_VENDOR_COMPANY_ID_HI  = 0x00;
-    private static final int DBIG_VENDOR_DATA_LENGTH    = 14; // 2 Broadcast_Features + 12 DBIG params
+    private static final int DBIG_VENDOR_DATA_LENGTH    = 15; // 2 Broadcast_Features + 13 DBIG params
 
     /* PGO Broadcast_Features field received from the enhanced PA vendor LTV. */
     private int mBroadcastFeatures = 0;
@@ -970,14 +970,15 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     /*
      * Set the DBIG parameters received from the enhanced PA vendor LTV and push
      * them to the native layer.
-     * 12-byte array:
+     * 13-byte array (DBIG v2.01):
      *   [0]=dbig_feature_set  [1]=bis_detection_attempts
      *   [2]=max_payload_dbig_control  [3]=bis_control_event_interval
      *   [4]=send_exit  [5]=pgp_timeout  [6]=pgo_timeout  [7]=sgo_timeout
      *   [8]=join_timeout  [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     *   [12]=bis_timeout (NEW in v2.01)
      */
     public void setEnhancedDbigParams(byte[] dbigParams) {
-        if (dbigParams != null && dbigParams.length == 12) {
+        if (dbigParams != null && dbigParams.length == 13) {
             Log.d(TAG, "setEnhancedDbigParams: bis_ctrl_interval=" + (dbigParams[3] & 0xFF)
                     + " dbig_feature_set=0x" + String.format("%02X", dbigParams[0] & 0xFF));
             if (mNativeInterface != null) {
@@ -1313,7 +1314,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             if (vendorData != null) {
                                 int broadcastFeatures =
                                         ((vendorData[1] & 0xFF) << 8) | (vendorData[0] & 0xFF);
-                                byte[] dbigParams = Arrays.copyOfRange(vendorData, 2, 14);
+                                byte[] dbigParams = Arrays.copyOfRange(vendorData, 2, 15);  // 13 bytes: indices 2-14 inclusive
                                 Log.d(TAG, "Enhanced PA vendor LTV found: broadcastFeatures=0x"
                                         + String.format("%04X", broadcastFeatures));
                                 setPGOBroadcastFeatures(broadcastFeatures);
