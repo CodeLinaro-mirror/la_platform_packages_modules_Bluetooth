@@ -498,6 +498,48 @@ public:
     }
 
     auto& subgroup_configs = broadcasts_[broadcast_id]->GetCodecConfig();
+
+    /* The enhanced-PA vendor LTV (type 0xFF, carrying the DBIG parameters the AGP
+     * needs to set up its BIG sync) is appended to the subgroup metadata only at
+     * createEnhancedBroadcast time (Java buildMetadataArrayWithVendorLTV) and is
+     * never re-supplied by updateBroadcast(). Rebuilding the BASE purely from this
+     * update's (LTV-less) metadata would re-push the periodic advertising data with
+     * an empty subgroup metadata field, stripping the LTV on-air and breaking every
+     * AGP DBIG join. Carry the create-time vendor LTV forward for DUPLEX broadcasts.
+     *
+     * Only the vendor LTV is carried over — every other metadata field still comes
+     * from the update, so an app can add, change or REMOVE ordinary metadata as
+     * before. Merging the whole existing map would make a stale create-time entry
+     * impossible to clear. */
+    if (broadcasts_[broadcast_id]->GetBroadcastMode() ==
+            bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+      const auto& existing = broadcasts_[broadcast_id]->GetBroadcastAnnouncement();
+      for (size_t i = 0; i < subgroup_ltvs.size(); i++) {
+        if (subgroup_ltvs[i]
+                    .Find(bluetooth::le_audio::types::kLeAudioMetadataTypeVendorSpecific)
+                    .has_value()) {
+          /* The update already carries a vendor LTV — leave it as supplied. */
+          continue;
+        }
+        if (i >= existing.subgroup_configs.size()) {
+          continue;
+        }
+        const auto& existing_meta = existing.subgroup_configs[i].metadata;
+        auto it = existing_meta.find(bluetooth::le_audio::types::kLeAudioMetadataTypeVendorSpecific);
+        if (it != existing_meta.end()) {
+          log::info("Preserving enhanced-PA vendor LTV ({} bytes) for subgroup {} across "
+                    "metadata update, broadcast_id={}",
+                    it->second.size(), i, broadcast_id);
+          subgroup_ltvs[i].Add(bluetooth::le_audio::types::kLeAudioMetadataTypeVendorSpecific,
+                               it->second);
+        } else {
+          log::warn("No create-time vendor LTV found for subgroup {} on DUPLEX broadcast_id={} — "
+                    "AGP DBIG join may fail with 'dbig_params not set'",
+                    i, broadcast_id);
+        }
+      }
+    }
+
     BasicAudioAnnouncementData announcement =
             prepareBasicAnnouncement(subgroup_configs, subgroup_ltvs);
 
