@@ -13,18 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #define LOG_TAG "BluetoothAvrcpControllerJni"
 
 #include <string.h>
 
+#include <atomic>
 #include <shared_mutex>
-#include <thread>
 
 #include "com_android_bluetooth.h"
 #include "hardware/bt_rc.h"
@@ -49,7 +49,6 @@ static jmethodID method_handleSetAddressedPlayerRsp;
 static jmethodID method_handleAddressedPlayerChanged;
 static jmethodID method_handleNowPlayingContentChanged;
 static jmethodID method_onAvailablePlayerChanged;
-static jmethodID method_onStop;
 static jmethodID method_getRcPsm;
 static jmethodID method_handleSearchRsp;
 
@@ -60,6 +59,7 @@ static jclass class_AvrcpPlayer;
 static const btrc_ctrl_interface_t* sBluetoothAvrcpInterface = NULL;
 static jobject sCallbacksObj = NULL;
 static std::shared_timed_mutex sCallbacks_mutex;
+static std::atomic<bool> g_callbacks_enabled{true};
 
 static void btavrcp_passthrough_response_callback(const RawAddress& /* bd_addr */, int id,
                                                   int pressed) {
@@ -72,6 +72,11 @@ static void btavrcp_groupnavigation_response_callback(int id, int pressed) {
 
 static void btavrcp_connection_state_callback(bool rc_connect, bool br_connect,
                                               const RawAddress& bd_addr) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_connection_state_callback");
+    return;
+  }
+
   log::info("conn state: rc: {} br: {}", rc_connect, br_connect);
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -107,6 +112,11 @@ static void btavrcp_playerapplicationsetting_callback(const RawAddress& bd_addr,
                                                       btrc_player_app_attr_t* app_attrs,
                                                       uint8_t /* num_ext_attr */,
                                                       btrc_player_app_ext_attr_t* /* ext_attrs */) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_playerapplicationsetting_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -157,6 +167,11 @@ static void btavrcp_playerapplicationsetting_callback(const RawAddress& bd_addr,
 
 static void btavrcp_playerapplicationsetting_changed_callback(const RawAddress& bd_addr,
                                                               const btrc_player_settings_t& vals) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_playerapplicationsetting_changed_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -198,6 +213,11 @@ static void btavrcp_playerapplicationsetting_changed_callback(const RawAddress& 
 
 static void btavrcp_set_abs_vol_cmd_callback(const RawAddress& bd_addr, uint8_t abs_vol,
                                              uint8_t label) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_set_abs_vol_cmd_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -223,6 +243,11 @@ static void btavrcp_set_abs_vol_cmd_callback(const RawAddress& bd_addr, uint8_t 
 
 static void btavrcp_register_notification_absvol_callback(const RawAddress& bd_addr,
                                                           uint8_t label) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_register_notification_absvol_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -248,6 +273,11 @@ static void btavrcp_register_notification_absvol_callback(const RawAddress& bd_a
 
 static void btavrcp_track_changed_callback(const RawAddress& bd_addr, uint8_t num_attr,
                                            btrc_element_attr_val_t* p_attrs) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_track_changed_callback");
+    return;
+  }
+
   /*
    * byteArray will be formatted like this: id,len,string
    * Assuming text feild to be null terminated.
@@ -302,6 +332,11 @@ static void btavrcp_track_changed_callback(const RawAddress& bd_addr, uint8_t nu
 
 static void btavrcp_play_position_changed_callback(const RawAddress& bd_addr, uint32_t song_len,
                                                    uint32_t song_pos) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_play_position_changed_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -326,6 +361,11 @@ static void btavrcp_play_position_changed_callback(const RawAddress& bd_addr, ui
 
 static void btavrcp_play_status_changed_callback(const RawAddress& bd_addr,
                                                  btrc_play_status_t play_status) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_play_status_changed_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -351,6 +391,11 @@ static void btavrcp_play_status_changed_callback(const RawAddress& bd_addr,
 static void btavrcp_get_folder_items_callback(const RawAddress& bd_addr, btrc_status_t status,
                                               const btrc_folder_items_t* folder_items,
                                               uint8_t count) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_get_folder_items_callback");
+    return;
+  }
+
   /* Folder items are list of items that can be either BTRC_ITEM_PLAYER
    * BTRC_ITEM_MEDIA, BTRC_ITEM_FOLDER. Here we translate them to their java
    * counterparts by calling the java constructor for each of the items.
@@ -518,6 +563,11 @@ static void btavrcp_get_folder_items_callback(const RawAddress& bd_addr, btrc_st
 }
 
 static void btavrcp_change_path_callback(const RawAddress& bd_addr, uint32_t count) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_change_path_callback");
+    return;
+  }
+
   log::info("count {}", count);
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -543,6 +593,11 @@ static void btavrcp_change_path_callback(const RawAddress& bd_addr, uint32_t cou
 
 static void btavrcp_set_browsed_player_callback(const RawAddress& bd_addr, uint8_t num_items,
                                                 uint8_t depth) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_set_browsed_player_callback");
+    return;
+  }
+
   log::info("items {} depth {}", num_items, depth);
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -567,6 +622,11 @@ static void btavrcp_set_browsed_player_callback(const RawAddress& bd_addr, uint8
 }
 
 static void btavrcp_set_addressed_player_callback(const RawAddress& bd_addr, uint8_t status) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_set_addressed_player_callback");
+    return;
+  }
+
   log::info("status {}", status);
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -591,6 +651,11 @@ static void btavrcp_set_addressed_player_callback(const RawAddress& bd_addr, uin
 }
 
 static void btavrcp_addressed_player_changed_callback(const RawAddress& bd_addr, uint16_t id) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_addressed_player_changed_callback");
+    return;
+  }
+
   log::info("status {}", id);
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -615,6 +680,11 @@ static void btavrcp_addressed_player_changed_callback(const RawAddress& bd_addr,
 }
 
 static void btavrcp_now_playing_content_changed_callback(const RawAddress& bd_addr) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_now_playing_content_changed_callback");
+    return;
+  }
+
   log::info("");
 
   CallbackEnv sCallbackEnv(__func__);
@@ -634,6 +704,11 @@ static void btavrcp_now_playing_content_changed_callback(const RawAddress& bd_ad
 }
 
 static void btavrcp_available_player_changed_callback(const RawAddress& bd_addr) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_available_player_changed_callback");
+    return;
+  }
+
   log::info("");
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -657,6 +732,11 @@ static void btavrcp_available_player_changed_callback(const RawAddress& bd_addr)
 }
 
 static void btavrcp_get_rcpsm_callback(const RawAddress& bd_addr, uint16_t psm) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_get_rcpsm_callback");
+    return;
+  }
+
   log::error("-> psm received of {}", psm);
   std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
@@ -681,6 +761,11 @@ static void btavrcp_get_rcpsm_callback(const RawAddress& bd_addr, uint16_t psm) 
 
 static void btavrcp_search_response_callback(const RawAddress& bd_addr, uint8_t status,
                                                uint16_t uid_counter, uint32_t num_items) {
+  if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
+    log::verbose("callbacks disabled; dropping btavrcp_search_response_callback");
+    return;
+  }
+
   log::info("status: {}, uid_counter: {}, num_items: {}", status, uid_counter, num_items);
   CallbackEnv sCallbackEnv(__func__);
   if (!sCallbackEnv.valid()) return;
@@ -726,6 +811,8 @@ static btrc_ctrl_callbacks_t sBluetoothAvrcpCallbacks = {
 
 static void initNative(JNIEnv* env, jobject object) {
   std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
+
+  g_callbacks_enabled.store(true, std::memory_order_release);
 
   jclass tmpAvrcpItem = env->FindClass("com/android/bluetooth/avrcpcontroller/AvrcpItem");
   class_AvrcpItem = (jclass)env->NewGlobalRef(tmpAvrcpItem);
@@ -773,30 +860,10 @@ static void initNative(JNIEnv* env, jobject object) {
   sCallbacksObj = env->NewGlobalRef(object);
 }
 
-static void stopNative(JNIEnv* env, jobject /* object */) {
-  std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex, std::defer_lock);
-  while (true) {
-    if (lock.try_lock()) {
-        break;
-    } else {
-        log::warn( "sCallbacks_mutex has been locked, wait for 3ms");
-        std::this_thread::sleep_for(std::chrono::milliseconds(3));
-    }
-  }
-
-  CallbackEnv sCallbackEnv(__func__);
-  if (!sCallbackEnv.valid()) {
-    return;
-  }
-  if (!sCallbacksObj) {
-    log::error("sCallbacksObj is null");
-    return;
-  }
-
-  sCallbackEnv->CallVoidMethod(sCallbacksObj, method_onStop);
-}
-
 static void cleanupNative(JNIEnv* env, jobject /* object */) {
+  // Disable all future callbacks immediately
+  g_callbacks_enabled.store(false, std::memory_order_release);
+
   std::unique_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
 
   const bt_interface_t* btInf = getBluetoothInterface();
@@ -1252,7 +1319,6 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
           {"setAddressedPlayerNative", "([BI)V", (void*)setAddressedPlayerNative},
           {"searchNative", "([BIILjava/lang/String;)V", (void*)searchNative},
           {"getSearchListNative", "([BII)V", (void*)getSearchListNative},
-          {"stopNative", "()V", (void*)stopNative},
   };
   const int result = REGISTER_NATIVE_METHODS(
           env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface", methods);
@@ -1294,7 +1360,6 @@ int register_com_android_bluetooth_avrcp_controller(JNIEnv* env) {
            "Lcom/android/bluetooth/avrcpcontroller/AvrcpPlayer;",
            &method_createFromNativePlayerItem, true},
            {"handleSearchRsp", "([BIII)V",&method_handleSearchRsp},
-           {"onStop", "()V", &method_onStop},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/avrcpcontroller/AvrcpControllerNativeInterface",
                    javaMethods);

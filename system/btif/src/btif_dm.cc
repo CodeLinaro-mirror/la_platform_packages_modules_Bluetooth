@@ -115,6 +115,8 @@ bool btif_get_device_type(const RawAddress& bda, int* p_device_type);
 using bluetooth::Uuid;
 using namespace bluetooth;
 
+extern int GetAdapterIndex();
+
 namespace {
 constexpr char kBtmLogTag[] = "API";
 constexpr char kBtmLogTagCallback[] = "CBACK";
@@ -782,12 +784,19 @@ bool is_le_audio_capable_during_service_discovery(const RawAddress& bd_addr) {
 static void btif_dm_cb_create_bond(const RawAddress bd_addr, tBT_TRANSPORT transport) {
   bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_BOND_STATE_BONDING);
 
-  if (transport == BT_TRANSPORT_AUTO && is_device_le_audio_capable(bd_addr)) {
-    log::debug("LE Audio capable, forcing LE transport for Bonding");
-    transport = BT_TRANSPORT_LE;
+  int device_type = BT_DEVICE_TYPE_UNKNOWN;
+  if (transport == BT_TRANSPORT_AUTO) {
+    if (is_device_le_audio_capable(bd_addr)) {
+      log::debug("LE Audio capable, forcing LE transport for Bonding");
+      transport = BT_TRANSPORT_LE;
+    } else if ((GetAdapterIndex() != 0) && !check_cod_hid(bd_addr)) {
+      log::debug("Non HID device in non default adapter, "
+                 "forcing BR_EDR transport for Bonding");
+      transport = BT_TRANSPORT_BR_EDR;
+      device_type = BT_DEVICE_TYPE_BREDR;
+    }
   }
 
-  int device_type = 0;
   tBLE_ADDR_TYPE addr_type = BLE_ADDR_PUBLIC;
   std::string addrstr = bd_addr.ToString();
   const char* bdstr = addrstr.c_str();
@@ -806,9 +815,10 @@ static void btif_dm_cb_create_bond(const RawAddress bd_addr, tBT_TRANSPORT trans
       btif_storage_set_remote_addr_type(&bd_addr, addr_type);
     }
   }
-  if ((btif_config_get_int(bdstr, BTIF_STORAGE_KEY_DEV_TYPE, &device_type) &&
-       (btif_storage_get_remote_addr_type(&bd_addr, &addr_type) == BT_STATUS_SUCCESS) &&
-       (device_type & BT_DEVICE_TYPE_BLE) == BT_DEVICE_TYPE_BLE) ||
+  if ((((GetAdapterIndex() != 0) && (device_type == BT_DEVICE_TYPE_UNKNOWN)) &&
+      (btif_config_get_int(bdstr, BTIF_STORAGE_KEY_DEV_TYPE, &device_type) &&
+      (btif_storage_get_remote_addr_type(&bd_addr, &addr_type) == BT_STATUS_SUCCESS) &&
+      (device_type & BT_DEVICE_TYPE_BLE) == BT_DEVICE_TYPE_BLE)) ||
       (transport == BT_TRANSPORT_LE)) {
     BTA_DmAddBleDevice(bd_addr, addr_type, static_cast<tBT_DEVICE_TYPE>(device_type));
   }

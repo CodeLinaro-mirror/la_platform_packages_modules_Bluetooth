@@ -142,13 +142,25 @@ void bta_dm_bond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type, tBT_TRANSP
             sec_event.auth_cmpl.key_present = false;
             sec_event.auth_cmpl.success = false;
     */
-    sec_event.auth_cmpl.fail_reason = HCI_ERR_ILLEGAL_COMMAND;
     if (status == tBTM_STATUS::BTM_SUCCESS) {
       sec_event.auth_cmpl.success = true;
-    } else {
-      /* delete this device entry from Sec Dev DB */
-      bta_dm_remove_sec_dev_entry(bd_addr);
+      bta_dm_sec_cb.p_sec_cback(BTA_DM_AUTH_CMPL_EVT, &sec_event);
+      return;
     }
+
+    // Treat WRONG_MODE specially when the stack is actually busy with an true pairing exchange
+    // for the same device.
+    if (status == tBTM_STATUS::BTM_WRONG_MODE
+        && get_btm_client_interface().security.BTM_SecIsPairingBusyFor(bd_addr)) {
+      log::warn("Bond request while pairing in progress for {} -> not removing device", bd_addr);
+      sec_event.auth_cmpl.fail_reason = HCI_ERR_COMMAND_DISALLOWED;
+      bta_dm_sec_cb.p_sec_cback(BTA_DM_AUTH_CMPL_EVT, &sec_event);
+      return;
+    }
+
+    // Legacy behavior for all other error cases
+    sec_event.auth_cmpl.fail_reason = HCI_ERR_ILLEGAL_COMMAND;
+    bta_dm_remove_sec_dev_entry(bd_addr);
     bta_dm_sec_cb.p_sec_cback(BTA_DM_AUTH_CMPL_EVT, &sec_event);
   }
 }

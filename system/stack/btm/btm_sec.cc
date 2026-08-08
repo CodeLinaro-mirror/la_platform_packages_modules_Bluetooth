@@ -92,6 +92,8 @@ using namespace bluetooth;
 
 extern tBTM_CB btm_cb;
 
+extern int GetAdapterIndex();
+
 #define BTM_SEC_MAX_COLLISION_DELAY (5000)
 #define BTM_SEC_START_AUTH_DELAY (200)
 
@@ -811,7 +813,7 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr, tBLE_ADDR_TYPE 
  *  Note: After 2.1 parameters are not used and preserved here not to change API
  ******************************************************************************/
 tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
-                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE /* device_type */) {
+                        tBT_TRANSPORT transport, tBT_DEVICE_TYPE device_type) {
   if (transport == BT_TRANSPORT_AUTO) {
     if (addr_type == BLE_ADDR_PUBLIC) {
       transport = get_btm_client_interface().ble.BTM_UseLeLink(bd_addr) ? BT_TRANSPORT_LE
@@ -821,9 +823,17 @@ tBTM_STATUS BTM_SecBond(const RawAddress& bd_addr, tBLE_ADDR_TYPE addr_type,
       transport = BT_TRANSPORT_LE;
     }
   }
-  tBT_DEVICE_TYPE dev_type;
 
-  BTM_ReadDevInfo(bd_addr, &dev_type, &addr_type);
+  tBT_DEVICE_TYPE dev_type;
+  if ((GetAdapterIndex() == 0) ||
+      device_type != BT_DEVICE_TYPE_BREDR ||
+      transport != BT_TRANSPORT_BR_EDR) {
+    BTM_ReadDevInfo(bd_addr, &dev_type, &addr_type);
+  } else {
+    dev_type = device_type;
+  }
+  log::info("device_type: {}", dev_type);
+
   /* LE device, do SMP pairing */
   if ((transport == BT_TRANSPORT_LE && (dev_type & BT_DEVICE_TYPE_BLE) == 0) ||
       (transport == BT_TRANSPORT_BR_EDR && (dev_type & BT_DEVICE_TYPE_BREDR) == 0)) {
@@ -1401,6 +1411,40 @@ tBT_DEVICE_TYPE BTM_GetPeerDeviceTypeFromFeatures(const RawAddress& bd_addr) {
  *
  ******************************************************************************/
 uint8_t BTM_GetSecurityMode() { return btm_sec_cb.security_mode; }
+
+/**
+ * Return true for states where the device is actually engaged in a pairing
+ * exchange (either legacy PIN flow or SSP flow). These are the states during
+ * which clearing security flags would be harmful.
+ *
+ * Explicitly excludes:
+ * - BTM_PAIR_STATE_IDLE: nothing ongoing
+ * - BTM_PAIR_STATE_GET_REM_NAME: pre-check/read-remote-name phase (outgoing)
+ * - BTM_PAIR_STATE_WAIT_DISCONNECT: post-failure drain
+ */
+static inline bool is_true_pairing_exchange_state(tBTM_PAIRING_STATE s) {
+  switch (s) {
+    case BTM_PAIR_STATE_IDLE:
+    case BTM_PAIR_STATE_WAIT_DISCONNECT:
+    case BTM_PAIR_STATE_GET_REM_NAME:
+      return false;
+    default:
+      return true;
+  }
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_SecIsPairingBusyFor
+ *
+ * Description      Busy predicate: true if we are in a real pairing exchange
+ *                  ither incoming or outgoing) for the same device.
+ *
+ ******************************************************************************/
+bool BTM_SecIsPairingBusyFor(const RawAddress& bd_addr) {
+  return (btm_sec_cb.pairing_bda == bd_addr) &&
+         is_true_pairing_exchange_state(btm_sec_cb.pairing_state);
+}
 
 /************************************************************************
  *              I N T E R N A L     F U N C T I O N S

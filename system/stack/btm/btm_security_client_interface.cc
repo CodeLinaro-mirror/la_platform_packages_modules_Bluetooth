@@ -77,6 +77,7 @@ static SecurityClientInterface security = {
         .BTM_BlePasskeyReply = BTM_BlePasskeyReply,
 
         .BTM_GetSecurityMode = BTM_GetSecurityMode,
+        .BTM_SecIsPairingBusyFor = BTM_SecIsPairingBusyFor,
 
         .BTM_SecReadDevName = BTM_SecReadDevName,
         .BTM_SecReadDevClass = BTM_SecReadDevClass,

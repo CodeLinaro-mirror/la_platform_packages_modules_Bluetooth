@@ -10,6 +10,7 @@ import static android.Manifest.permission.BLUETOOTH_SCAN;
 import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
 
 import android.annotation.RequiresPermission;
+import android.app.ActivityManager;
 import android.bluetooth.annotations.RequiresBluetoothConnectPermission;
 
 import android.bluetooth.BluetoothAdapter;
@@ -20,6 +21,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.util.Log;
 
 import android.bluetooth.BluetoothStatusCodes;
@@ -35,6 +38,8 @@ public final class AdapterExt {
     private static Context sContext;
 
     private static int sNewAdapterState = BluetoothAdapter.STATE_OFF;
+
+    private static boolean sPendingDualAdapterInit = false;
 
     private static final BroadcastReceiver sReceiver = new BroadcastReceiver() {
         @Override
@@ -58,6 +63,22 @@ public final class AdapterExt {
                         BluetoothAdapter.ERROR);
 
                 sNewAdapterState = state;
+            } else if (Intent.ACTION_USER_UNLOCKED.equals(action)
+                || Intent.ACTION_USER_FOREGROUND.equals(action)) {
+
+                if (!sPendingDualAdapterInit) {
+                    return;
+                }
+
+                debugLog("User ready intent received: " + action
+                        + ", retry dual adapter init");
+
+                if (isUserReady()) {
+                    if (isOn(sNewAdapterState)) {
+                        handleDualAdapterMode();
+                    }
+                    sPendingDualAdapterInit = false;
+                }
             }
         }
     };
@@ -71,6 +92,8 @@ public final class AdapterExt {
         IntentFilter filter = new IntentFilter();
         filter.addAction(BluetoothAdapterExt.ACTION_STATE_CHANGED);
         filter.addAction(BluetoothAdapterExt.ACTION_BLE_STATE_CHANGED);
+        filter.addAction(Intent.ACTION_USER_UNLOCKED);
+        filter.addAction(Intent.ACTION_USER_FOREGROUND);
         sContext.registerReceiver(sReceiver, filter);
     }
 
@@ -83,11 +106,19 @@ public final class AdapterExt {
         if (adapterService != null) {
             if (isOn(state)) {
                 if (AdapterUtil.isDualAdapterMode()) {
-                    handleDualAdapterMode();
+                    if (isUserReady()) {
+                        debugLog("User ready, init dual adapter directly");
+                        handleDualAdapterMode();
+                        sPendingDualAdapterInit = false;
+                    } else {
+                        debugLog("User not ready, delay dual adapter init");
+                        sPendingDualAdapterInit = true;
+                    }
                 }
                 adapterService.notifyNewAdapterState(true);
             } else if (isOff(state)) {
                 adapterService.notifyNewAdapterState(false);
+                sPendingDualAdapterInit = false;
             }
         }
     }
@@ -135,6 +166,10 @@ public final class AdapterExt {
     @RequiresPermission(BLUETOOTH_CONNECT)
     private static boolean handleDualAdapterMode() {
         String name = getName();
+        if (name == null) {
+            Log.e(TAG, "handleDualAdapterMode: getName returned null, skip");
+            return false;
+        }
         String newName = name.endsWith("_NEW") ? name : name + "_NEW";
         debugLog("handleDualAdapterMode: setName " + newName);
         return setName(newName);
@@ -157,6 +192,22 @@ public final class AdapterExt {
                 || state == BluetoothAdapter.STATE_TURNING_ON
                 || state == BluetoothAdapter.STATE_BLE_TURNING_ON
                 || state == BluetoothAdapter.STATE_BLE_ON);
+    }
+
+    private static boolean isUserReady() {
+        if (sContext == null) {
+            Log.e(TAG, "sContext is null");
+            return false;
+        }
+
+        UserManager userManager = sContext.getSystemService(UserManager.class);
+        if (userManager == null) {
+            Log.e(TAG, "userManager is null");
+            return false;
+        }
+
+        int userId = ActivityManager.getCurrentUser();
+        return userManager.isUserUnlocked(UserHandle.of(userId));
     }
 
     private static void debugLog(String msg) {

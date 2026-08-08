@@ -164,12 +164,13 @@ class MapClientContent {
         }
         for (SubscriptionInfo info : subscriptions) {
             if (info.getSubscriptionType() == SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM) {
-                clearMessages(context, info.getSubscriptionId());
                 try {
+                    clearMessages(context, info.getSubscriptionId());
                     subscriptionManager.removeSubscriptionInfoRecord(
                             info.getIccId(), SubscriptionManager.SUBSCRIPTION_TYPE_REMOTE_SIM);
                 } catch (Exception e) {
                     Log.w(TAG, "[AllDevices] cleanUp failed: " + e.toString());
+                    return;
                 }
             }
         }

@@ -532,6 +532,9 @@ void PORT_PortNegInd(tRFC_MCB* p_mcb, uint8_t dlci, tPORT_STATE* p_pars, uint16_
       return;
     }
     p_mcb->port_handles[dlci] = p_port->handle;
+
+    /* Link port to p_mcb for cleanup on RFCOMM session end */
+    p_port->rfc.p_mcb = p_mcb;
   }
 
   /* Check if the flow control is acceptable on local side */

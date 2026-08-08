@@ -16,7 +16,7 @@
  * Changes from Qualcomm Technologies, Inc. are provided under the following license:
  *
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.avrcpcontroller;
@@ -27,6 +27,7 @@ import static java.util.Objects.requireNonNull;
 
 import android.annotation.RequiresPermission;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothAvrcpController;
 import android.bluetooth.BluetoothAvrcpPlayerSettings;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -176,7 +177,7 @@ public class AvrcpControllerService extends ProfileService {
             setComponentAvailable(COVER_ART_PROVIDER, true);
             mCoverArtManager = new AvrcpCoverArtManager(this, new ImageDownloadCallback());
         }
-        sBrowseTree = new BrowseTree(null);
+        setBrowseTree(new BrowseTree(null));
         setAvrcpControllerService(this);
 
         // Start the media browser service.
@@ -185,32 +186,29 @@ public class AvrcpControllerService extends ProfileService {
         setActiveDevice(null);
     }
 
-    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
     public void stop() {
-        Log.d(TAG, "stop");
-        mNativeInterface.stop();
-    }
-
-    // Called by JNI thread
-    public synchronized void onStop() {
-        setActiveDevice(null);
-        Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
-        stopService(stopIntent);
-        for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
-            stateMachine.quitNow();
-        }
-        mDeviceStateMap.clear();
-
-        setAvrcpControllerService(null);
-        sBrowseTree = null;
-        if (mCoverArtManager != null) {
-            mCoverArtManager.cleanup();
-            mCoverArtManager = null;
-            setComponentAvailable(COVER_ART_PROVIDER, false);
-        }
-        setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+        Log.d(TAG, "stop()");
         mNativeInterface.cleanup();
+
+        synchronized (this) {
+            setActiveDevice(null);
+            Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
+            stopService(stopIntent);
+            for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
+                stateMachine.quitNow();
+            }
+            mDeviceStateMap.clear();
+
+            setAvrcpControllerService(null);
+            setBrowseTree(null);
+            if (mCoverArtManager != null) {
+                mCoverArtManager.cleanup();
+                mCoverArtManager = null;
+                setComponentAvailable(COVER_ART_PROVIDER, false);
+            }
+            setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+        }
     }
 
     public static synchronized AvrcpControllerService getAvrcpControllerService() {
@@ -221,6 +219,11 @@ public class AvrcpControllerService extends ProfileService {
     @VisibleForTesting
     public static synchronized void setAvrcpControllerService(AvrcpControllerService service) {
         sService = service;
+    }
+
+    @VisibleForTesting
+    static synchronized void setBrowseTree(BrowseTree browseTree) {
+        sBrowseTree = browseTree;
     }
 
     /** Get the current active device */
@@ -466,6 +469,16 @@ public class AvrcpControllerService extends ProfileService {
         }
 
         @Override
+        public int getSupportedFeatures(BluetoothDevice device,
+                AttributionSource source) {
+            AvrcpControllerService service = getService(source);
+            if (service == null) {
+                return BluetoothAvrcpController.BTRC_FEAT_NONE;
+            }
+            return service.getSupportedFeatures(device);
+        }
+
+        @Override
         public BluetoothAvrcpPlayerSettings getPlayerSettings(
                 BluetoothDevice device, AttributionSource source) {
             getService(source);
@@ -495,6 +508,18 @@ public class AvrcpControllerService extends ProfileService {
             if (device.equals(getActiveDevice())) {
                 setActiveDevice(null);
             }
+        }
+    }
+
+    // Called by JNI to notify Avrcp of features supported by the Remote device.
+    @VisibleForTesting
+    void getRcFeatures(byte[] address, int features) {
+        BluetoothDevice device = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(address);
+        Log.d(TAG, "getRcFeatures(device=" + device + ", features=" + features + ")");
+        AvrcpControllerStateMachine stateMachine = getOrCreateStateMachine(device);
+        if (stateMachine != null) {
+            stateMachine.sendMessage(
+                    AvrcpControllerStateMachine.MESSAGE_PROCESS_RC_FEATURES, features);
         }
     }
 
@@ -843,6 +868,16 @@ public class AvrcpControllerService extends ProfileService {
         return (stateMachine == null)
                 ? BluetoothProfile.STATE_DISCONNECTED
                 : stateMachine.getState();
+    }
+
+    /*Java API*/
+    public synchronized int getSupportedFeatures(BluetoothDevice device) {
+        Log.d(TAG,"getSupportedFeatures device " + device);
+        AvrcpControllerStateMachine stateMachine = mDeviceStateMap.get(device);
+        if (stateMachine != null) {
+            return stateMachine.getRemoteFeatures();
+        }
+        return BluetoothAvrcpController.BTRC_FEAT_NONE;
     }
 
     @Override

@@ -82,13 +82,16 @@ void avct_ccb_dealloc(tAVCT_CCB* p_ccb, uint8_t event, uint16_t result, const Ra
 
   log::verbose("avct_ccb_dealloc {}", avct_ccb_to_idx(p_ccb));
 
-  if (p_ccb->p_bcb == NULL) {
-    memset(p_ccb, 0, sizeof(tAVCT_CCB));
-  } else {
+  if (p_ccb->p_bcb) {
     /* control channel is down, but the browsing channel is still connected 0
      * disconnect it now */
     avct_bcb_event(p_ccb->p_bcb, AVCT_LCB_UL_UNBIND_EVT, (tAVCT_LCB_EVT*)&p_ccb);
     p_ccb->p_lcb = NULL;
+  }
+
+  if (p_ccb->p_bcb == NULL) {
+    memset(p_ccb, 0, sizeof(tAVCT_CCB));
+    log::verbose("avct_ccb {} is cleared", avct_ccb_to_idx(p_ccb));
   }
 
   if (event != AVCT_NO_EVT) {

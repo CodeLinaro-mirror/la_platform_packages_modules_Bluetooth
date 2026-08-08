@@ -491,6 +491,19 @@ public class BluetoothMediaBrowserService extends MediaBrowserServiceCompat {
         return service.mSession.getController().getTransportControls();
     }
 
+    /**
+     * Send AVRCP Pause command
+     */
+    public static synchronized void pause() {
+        MediaControllerCompat.TransportControls controller =
+                BluetoothMediaBrowserService.getTransportControls();
+        if (controller != null) {
+            controller.pause();
+        } else {
+            Log.w(TAG, "pause Unavailable");
+        }
+    }
+
     /** Set Media session active whenever we have Focus of any kind */
     public static synchronized void setActive(boolean active) {
         BluetoothMediaBrowserService service = BluetoothMediaBrowserService.getInstance();

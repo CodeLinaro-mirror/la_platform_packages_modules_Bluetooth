@@ -880,7 +880,7 @@ static void le_test_mode_recv_callback(bt_status_t status, uint16_t packet_count
 static void energy_info_recv_callback(bt_activity_energy_info* p_energy_info,
                                       bt_uid_traffic_t* uid_data) {
   std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
-  if (!sJniAdapterServiceObj) {
+  if (!sJniCallbacksObj) {
     log::error("JNI obj is null. Failed to call JNI callback");
     return;
   }
@@ -929,6 +929,12 @@ static jstring create_link_key_string(JNIEnv* env, Link_Key link_key) {
 static void get_link_key_callback(RawAddress* bd_addr, bool key_found,
                                   Link_Key link_key, int key_type) {
     log::verbose("");
+    std::shared_lock<std::shared_timed_mutex> lock(jniObjMutex);
+    if (!sJniCallbacksObj) {
+      log::error("JNI obj is null. Failed to call JNI callback");
+      return;
+    }
+
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid()) return;
 

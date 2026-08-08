@@ -109,10 +109,24 @@ void btif_gatts_add_bonded_dev_from_nv(const RawAddress& bda);
  ******************************************************************************/
 
 static bool btif_has_ble_keys(const std::string& bdstr);
+static bool bonded_devices_contains(
+    const btif_bonded_devices_t* list,
+    const RawAddress& addr);
 
 /*******************************************************************************
  *  Static functions
  ******************************************************************************/
+
+static bool bonded_devices_contains(
+    const btif_bonded_devices_t* list,
+    const RawAddress& addr) {
+  for (uint32_t i = 0; i < list->num_devices; i++) {
+    if (list->devices[i] == addr) {
+      return true;
+    }
+  }
+  return false;
+}
 
 static int btif_storage_get_user_id() {
   if (false) {
@@ -479,10 +493,12 @@ static bt_status_t btif_in_fetch_bonded_devices(btif_bonded_devices_t* p_bonded_
           }
         }
         bt_linkkey_file_found = true;
-        if (p_bonded_devices->num_devices < BTM_SEC_MAX_DEVICE_RECORDS) {
-          p_bonded_devices->devices[p_bonded_devices->num_devices++] = bd_addr;
-        } else {
-          log::warn("Exceed the max number of bonded devices");
+        if (!bonded_devices_contains(p_bonded_devices, bd_addr)) {
+          if (p_bonded_devices->num_devices < BTM_SEC_MAX_DEVICE_RECORDS) {
+            p_bonded_devices->devices[p_bonded_devices->num_devices++] = bd_addr;
+          } else {
+            log::warn("Exceed the max number of bonded devices");
+          }
         }
       } else {
         bt_linkkey_file_found = false;
@@ -1215,10 +1231,12 @@ bt_status_t btif_in_fetch_bonded_ble_device(const std::string& remote_bd_addr, i
 
     // Fill in the bonded devices
     if (device_added) {
-      if (p_bonded_devices->num_devices < BTM_SEC_MAX_DEVICE_RECORDS) {
-        p_bonded_devices->devices[p_bonded_devices->num_devices++] = bd_addr;
-      } else {
-        log::warn("Exceed the max number of bonded devices");
+      if (!bonded_devices_contains(p_bonded_devices, bd_addr)) {
+        if (p_bonded_devices->num_devices < BTM_SEC_MAX_DEVICE_RECORDS) {
+          p_bonded_devices->devices[p_bonded_devices->num_devices++] = bd_addr;
+        } else {
+          log::warn("Exceed the max number of bonded devices");
+        }
       }
       btif_gatts_add_bonded_dev_from_nv(bd_addr);
     }
