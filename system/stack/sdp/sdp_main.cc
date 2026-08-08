@@ -300,20 +300,6 @@ tCONN_CB* sdp_conn_originate(const RawAddress& bd_addr) {
     return NULL;
   }
   p_ccb->connection_id = cid;
-
-  /* Start a connection setup timer to guard against the case where the L2CAP
-   * connection never completes (e.g., due to an IBS/UART sleep race condition
-   * where the UART clock is shut down before the connection confirm arrives).
-   * Without this timer the CCB would remain stuck in CONN_SETUP indefinitely,
-   * keeping avrc_cb.service_uuid set and preventing any AVRCP SDP retry.
-   * The timer is reset once the connection is established and the first SDP
-   * request is sent (see sdp_snd_service_search_req). */
-  if (p_ccb->con_state == tSDP_STATE::CONN_SETUP) {
-    log::verbose("SDP - Starting conn setup timer for peer {}", bd_addr);
-    alarm_set_on_mloop(p_ccb->sdp_conn_timer, SDP_INACT_TIMEOUT_MS, sdp_conn_timer_timeout,
-                       p_ccb);
-  }
-
   return p_ccb;
 }
 
