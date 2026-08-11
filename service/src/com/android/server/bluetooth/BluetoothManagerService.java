@@ -51,8 +51,10 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SuppressLint;
 import android.app.BroadcastOptions;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothAdapterCommon;
 import android.bluetooth.BluetoothAdapterExt;
+import android.bluetooth.BluetoothAdapterUtil;
 import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.IAdapter;
 import android.bluetooth.IAdapterExt;
@@ -2545,8 +2547,9 @@ class BluetoothManagerService {
     private boolean isToggleAllowed() {
         // If dual adapter mode is enabled, disallow Bluetooth application to toggle
         // new Bluetooth adapter, except Bluetooth process ("com.android.bluetooth").
+        // Note, dual-adapter mode is turned off when CTS is running.
         return isAdapterDefault() ||
-                !mDualAdapterMode ||
+                !(mDualAdapterMode && !BluetoothAdapterUtil.isCTSRunning(mContext)) ||
                 (UserHandle.getAppId(Binder.getCallingUid()) == Process.SYSTEM_UID);
     }
 
