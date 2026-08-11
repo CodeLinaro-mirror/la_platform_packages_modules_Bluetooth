@@ -1089,6 +1089,10 @@ private:
 
   static class BroadcastStateMachineCallbacks : public IBroadcastStateMachineCallbacks {
     void OnStateMachineCreateStatus(uint32_t broadcast_id, bool initialized) override {
+      if (!instance) {
+        return;
+      }
+
       auto pending_broadcast = std::find_if(
               instance->pending_broadcasts_.begin(), instance->pending_broadcasts_.end(),
               [broadcast_id](auto& sm) { return sm->GetBroadcastId() == broadcast_id; });
