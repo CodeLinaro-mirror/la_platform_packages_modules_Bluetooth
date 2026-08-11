@@ -528,15 +528,9 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       return;
     }
 
-    // Stop audio HAL session
-    if (le_audio_sink_hal_client_) {
-      log::info("Stopping audio HAL session for broadcast_id=0x{:08x}", broadcast_id);
-      le_audio_sink_hal_client_->Stop();
-      log::info("Stopped audio HAL session for broadcast_id=0x{:08x}", broadcast_id);
-    }
-
-    // Send STOP_SYNC message to state machine
-    log::info("Sending STOP_SYNC message to state machine for broadcast_id=0x{:08x}", broadcast_id);
+    // Send STOP_SYNC message to state machine to terminate PA sync
+    // HAL client cleanup is now handled in StopEnhancedBroadcastSink flow (OnBigSyncTerminated)
+    log::info("RemoveSource: sending STOP_SYNC message to state machine for broadcast_id=0x{:08x}", broadcast_id);
     state_machine->ProcessMessage(
         BroadcastSinkStateMachine::Message::STOP_SYNC, nullptr);
   }
@@ -561,18 +555,9 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     tracked_sources_.erase(broadcast_id);
     log::info("Destroyed broadcast source: broadcast_id=0x{:08x}", broadcast_id);
 
-    // When the last source is removed, stop and release both HAL clients.
+    // When the last source is removed, unregister DBIG callbacks and reset suspend flags.
+    // HAL client cleanup is now handled in StopEnhancedBroadcastSink flow (OnBigSyncTerminated).
     if (tracked_sources_.empty()) {
-      if (le_audio_sink_hal_client_) {
-        log::info("No more sources, stopping and releasing sink HAL client");
-        le_audio_sink_hal_client_->Stop();
-        le_audio_sink_hal_client_.reset();
-      }
-      if (le_audio_source_hal_client_) {
-        log::info("No more sources, stopping and releasing source HAL client");
-        le_audio_source_hal_client_->Stop();
-        le_audio_source_hal_client_.reset();
-      }
       /* Reset suspend flags so a fresh start finds them clean. */
       pending_source_suspend_  = false;
       pending_sink_suspend_    = false;
@@ -1551,12 +1536,15 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       log::info("PA sync lost: broadcast_id=0x{:08x}, sync_handle=0x{:04X}",
                 broadcast_id, pa_sync_handle);
 
-      /* PA sync is lost/terminated but BIG sync may still be active.
-       * Audio continues without PA sync.  We record pa_sync_lost_ in the
-       * state machine so that when BIG sync is subsequently lost, we know
-       * to transition to IDLE (no PA to return to) and fire OnSourceDestroyed
-       * to signal a full restart is needed.
-       * No Java notification here — BIG sync is still running. */
+      /* PA sync is lost - notify Java immediately so UI can update.
+       * The state machine will record pa_sync_lost_ internally.
+       * When BIG sync is subsequently lost, full cleanup will occur. */
+      if (instance->callbacks_) {
+        log::info("Notifying Java: OnSourceDestroyed for PA sync lost, broadcast_id=0x{:08x}",
+                  broadcast_id);
+        instance->callbacks_->OnSourceDestroyed(broadcast_id,
+                                                 kBroadcastSinkDestroyReasonPaSyncLost);
+      }
     }
 
     void OnBaseDataReceived(uint32_t broadcast_id,
@@ -1697,6 +1685,25 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
           log::info("OnBigSyncTerminated: notifying Java layer (PGP-initiated stop) "
                     "for broadcast_id=0x{:08x}", broadcast_id);
           instance->callbacks_->OnBigSyncTerminated(broadcast_id, big_handle, status);
+        }
+
+        /* StopEnhancedBroadcastSink flow (MSG_STOP from Java):
+         *   1. setParameters("achat_rx_enable=false") → Sink HAL OnAudioSuspend → OnRxIsoPathsRemoved
+         *   2. setParameters("achat_tx_enable=false") → Source HAL OnAudioSuspend → OnBigSyncTerminated (HERE)
+         * This callback (OnBigSyncTerminated) is the LAST point in the teardown sequence where all
+         * cleanup (RX ISO paths removed, TX ISO paths removed, BIG terminated) has completed.
+         * Release source and sink HAL clients here as required by StopEnhancedBroadcastSink. */
+        log::info("OnBigSyncTerminated: All cleanup complete (BIG removed, ISO paths cleared), "
+                  "releasing source and sink HAL clients for broadcast_id=0x{:08x}", broadcast_id);
+        if (instance->le_audio_source_hal_client_) {
+          log::info("OnBigSyncTerminated: stopping and releasing source HAL client");
+          instance->le_audio_source_hal_client_->Stop();
+          instance->le_audio_source_hal_client_.reset();
+        }
+        if (instance->le_audio_sink_hal_client_) {
+          log::info("OnBigSyncTerminated: stopping and releasing sink HAL client");
+          instance->le_audio_sink_hal_client_->Stop();
+          instance->le_audio_sink_hal_client_.reset();
         }
       } else {
         log::info("OnBigSyncTerminated: source HAL not pending (unsolicited Texit from PGO) "

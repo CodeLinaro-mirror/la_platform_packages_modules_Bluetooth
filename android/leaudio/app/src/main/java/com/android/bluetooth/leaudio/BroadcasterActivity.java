@@ -146,6 +146,10 @@ public class BroadcasterActivity extends AppCompatActivity {
      *  mStreamingBroadcastId is reset to -1 (broadcast stopped/removed, BT off) so a guard for
      *  a now-gone broadcast can never suppress a genuinely new request on a reused ID. */
     private int mRejectPendingBroadcastId = -1;
+    /** broadcastId for which termination is currently being processed (Accept was clicked).
+     *  Prevents duplicate dialogs while clearing info, removing ISO, and sending exit.
+     *  Set when Accept is clicked, cleared when the broadcast actually stops or is removed. */
+    private int mTerminateInProgressBroadcastId = -1;
 
     private final BroadcastReceiver mDbigStatusReceiver =
             new BroadcastReceiver() {
@@ -241,6 +245,12 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 // one already awaiting the user's Accept/Reject decision.
                                 Log.d(TAG, "Terminate request dialog already showing for "
                                         + "broadcastId=" + activeBroadcastId + " — ignoring re-assert");
+                            } else if (mTerminateInProgressBroadcastId == activeBroadcastId) {
+                                // Termination is already in progress (user clicked Accept and we're
+                                // clearing info, removing ISO, sending exit). Ignore duplicate bit10
+                                // assertions during this processing window to prevent another popup.
+                                Log.d(TAG, "Terminate already in progress for broadcastId="
+                                        + activeBroadcastId + " — ignoring duplicate bit10");
                             } else if (mRejectPendingBroadcastId == activeBroadcastId) {
                                 // PGP/FW keeps re-sending the same terminate request after PGO's
                                 // own reject completes, until bit10 is actually observed LOW for
@@ -254,13 +264,24 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 runOnUiThread(() -> showTerminateRequestDialog(activeBroadcastId));
                             }
                         }
-                    } else if (mRejectPendingBroadcastId >= 0) {
-                        // bit10 observed LOW: the outstanding request the user rejected is done.
-                        // Clear the guard so a future bit10 assertion for this (or any) broadcast
-                        // is treated as a genuinely new request and allowed to reopen the dialog.
-                        Log.d(TAG, "bit10 cleared — reject-pending guard released for broadcastId="
-                                + mRejectPendingBroadcastId);
-                        mRejectPendingBroadcastId = -1;
+                    } else {
+                        // bit10 observed LOW: clear all pending guards
+                        if (mRejectPendingBroadcastId >= 0) {
+                            // The outstanding request the user rejected is done.
+                            // Clear the guard so a future bit10 assertion for this (or any) broadcast
+                            // is treated as a genuinely new request and allowed to reopen the dialog.
+                            Log.d(TAG, "bit10 cleared — reject-pending guard released for broadcastId="
+                                    + mRejectPendingBroadcastId);
+                            mRejectPendingBroadcastId = -1;
+                        }
+                        if (mTerminateInProgressBroadcastId >= 0) {
+                            // bit10 cleared while termination was in progress — this is expected as
+                            // the termination completes. The guard will also be cleared when the
+                            // broadcast actually stops (getBroadcastPlaybackStoppedMutableLive callback).
+                            Log.d(TAG, "bit10 cleared — terminate-in-progress guard released for broadcastId="
+                                    + mTerminateInProgressBroadcastId);
+                            mTerminateInProgressBroadcastId = -1;
+                        }
                     }
                     // NOTE: bit10 clearing releases the reject-pending guard above, but must
                     // NOT dismiss mTerminateRequestDialog. FW re-asserts/clears bit10 rapidly
@@ -1027,6 +1048,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, false);
                             mStreamingBroadcastId = -1;  // no longer streaming
                             mRejectPendingBroadcastId = -1;
+                            mTerminateInProgressBroadcastId = -1;  // Clear terminate-in-progress flag
                         });
 
         mViewModel
@@ -1109,6 +1131,7 @@ public class BroadcasterActivity extends AppCompatActivity {
             mJoinControlAutoEnabledIds.clear();
             mStreamingBroadcastId = -1;
             mRejectPendingBroadcastId = -1;
+            mTerminateInProgressBroadcastId = -1;  // Clear terminate-in-progress flag
             // Dismiss any open broadcast-info dialog
             if (mCurrentInfoDialog != null && mCurrentInfoDialog.isShowing()) {
                 mCurrentInfoDialog.dismiss();
@@ -1146,27 +1169,9 @@ public class BroadcasterActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Stop all active enhanced broadcasts so BIG/DBIG are terminated when the app is killed.
-        // Without this, the broadcast stays alive on the controller even after the app dies,
-        // preventing a clean restart on the next session.
-        if (mViewModel != null) {
-            try {
-                java.util.List<android.bluetooth.BluetoothLeBroadcastMetadata> activeBroadcasts =
-                        mViewModel.getAllBroadcastMetadata();
-                if (activeBroadcasts != null && !activeBroadcasts.isEmpty()) {
-                    Log.i(TAG, "onDestroy: stopping " + activeBroadcasts.size()
-                            + " active broadcast(s)");
-                    for (android.bluetooth.BluetoothLeBroadcastMetadata meta : activeBroadcasts) {
-                        int broadcastId = meta.getBroadcastId();
-                        Log.d(TAG, "onDestroy: stopping broadcast broadcastId=" + broadcastId);
-                        mViewModel.stopEnhancedBroadcast(broadcastId,
-                                android.bluetooth.BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "onDestroy: error stopping broadcasts", e);
-            }
-        }
+        // Broadcast will continue running when user navigates away with back button.
+        // It will only stop when the app is cleared from recent apps (process killed).
+        Log.d(TAG, "onDestroy: Activity destroyed, broadcast continues");
     }
 
     @Override
@@ -1565,6 +1570,10 @@ public class BroadcasterActivity extends AppCompatActivity {
                 .setPositiveButton("Accept (Terminate)", (dialog, which) -> {
                     Log.i(TAG, "PGO accepted terminate request — sending TExitDbig(TERMINATE) for "
                             + broadcastId);
+                    // Set the in-progress flag BEFORE calling acceptTerminateDbig to prevent
+                    // duplicate bit10 assertions from showing another dialog while clearing
+                    // info, removing ISO, and sending exit.
+                    mTerminateInProgressBroadcastId = broadcastId;
                     mViewModel.acceptTerminateDbig(broadcastId);
                     Toast.makeText(this, "Terminating DBIG…", Toast.LENGTH_SHORT).show();
                     mTerminateRequestDialog = null;

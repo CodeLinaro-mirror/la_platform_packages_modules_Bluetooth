@@ -35,6 +35,11 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
     /** Reflects whether a free BIS slot is available (bit0=1 && bit1=0). */
     private boolean mBisAvailable = false;
     /**
+     * True while the local device is a member of the DBIG. DBIG status is delivered to every
+     * PA-synced app, so bit0/bit1 alone would enable Acquire on a device that never joined.
+     */
+    private boolean mLocalJoined = false;
+    /**
      * PGP (local) capability bit 0: supports Terminate DBIG procedure.
      * Button is only shown when both PGP and PGO support the feature and BIG is synced.
      */
@@ -47,24 +52,19 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
     }
 
     /**
-     * Called by the activity when DBIG status changes so the button label
-     * switches between "Acquire" and "Release" without recreating items.
-     */
-    public void setLocalOccupyingBis(boolean localOccupyingBis) {
-        mLocalOccupyingBis = localOccupyingBis;
-        notifyDataSetChanged();
-    }
-
-    /**
-     * Update both BIS occupancy and availability in a single pass to avoid
-     * two consecutive notifyDataSetChanged() calls.
+     * Update BIS occupancy, availability and DBIG membership in a single pass to avoid
+     * consecutive notifyDataSetChanged() calls.
      *
      * @param localOccupying true when bit1 is set (local device holds a BIS)
      * @param bisAvailable   true when bit0=1 && bit1=0 (a free BIS slot exists)
+     * @param localJoined    true when the local device has joined the DBIG; when false the
+     *                       Acquire/Release button stays visible but disabled
      */
-    public void updateBisState(boolean localOccupying, boolean bisAvailable) {
+    public void updateBisState(boolean localOccupying, boolean bisAvailable,
+            boolean localJoined) {
         mLocalOccupyingBis = localOccupying;
         mBisAvailable = bisAvailable;
+        mLocalJoined = localJoined;
         notifyDataSetChanged();
     }
 
@@ -188,9 +188,11 @@ public class BroadcastSinkAdapter extends RecyclerView.Adapter<BroadcastSinkAdap
                 // PA synced - "Join", "Stop Enhanced Sink", and "Remove" are available
                 mAddSourceButton.setEnabled(false);
                 mStartEnhancedBroadcastSinkButton.setEnabled(true);
-                // Enable Acquire/Release when local device occupies a BIS (can release)
-                // OR when a free BIS slot is available (can acquire)
-                mBisAcquireButton.setEnabled(mLocalOccupyingBis || mBisAvailable);
+                // Acquire/Release is a group-member action. Enable only when the local device
+                // has joined the DBIG AND it either holds a BIS (can release) or a free BIS
+                // slot exists (can acquire). Stays visible-but-disabled when not a member.
+                mBisAcquireButton.setEnabled(
+                        mLocalJoined && (mLocalOccupyingBis || mBisAvailable));
                 mStopEnhancedBroadcastSinkButton.setEnabled(true);
                 mRemoveSourceButton.setEnabled(true);
             }
