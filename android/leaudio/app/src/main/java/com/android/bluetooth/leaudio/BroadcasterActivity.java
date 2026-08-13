@@ -34,14 +34,11 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.NumberPicker;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.media.AudioManager;
@@ -217,12 +214,16 @@ public class BroadcasterActivity extends AppCompatActivity {
                                                 : BisAvailability.UNAVAILABLE;
                 mLocalOccupyingBis = localOccupying;
 
-                if((mBisAvailability == BisAvailability.AVAILABLE) ||
-                    localOccupying) {
-                    Toast.makeText(context, "BIS is available, user can speak now", Toast.LENGTH_SHORT).show();
-                } else if (!bisAvailable && !localOccupying) {
-                    Toast.makeText(context, "BIS is not available, please wait until BIS is available", Toast.LENGTH_SHORT).show();
+                // COMBINE status toasts into ONE comprehensive message
+                String bisStatus;
+                if((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                    bisStatus = "BIS Available";
+                } else {
+                    bisStatus = "BIS Not Available";
                 }
+
+                // Single combined toast with BIS status
+                Toast.makeText(context, bisStatus, Toast.LENGTH_SHORT).show();
 
                 Log.d(TAG, "DBIG status – availability: " + mBisAvailability
                         + ", local occupying: " + mLocalOccupyingBis);
@@ -397,7 +398,6 @@ public class BroadcasterActivity extends AppCompatActivity {
         final EditText broadcast_name = alertView.findViewById(R.id.broadcast_name_input);
         final CheckBox publicCheckbox = alertView.findViewById(R.id.is_public_checkbox);
         final EditText public_content = alertView.findViewById(R.id.broadcast_public_content_input);
-        final Spinner phyTypeSpinner = alertView.findViewById(R.id.phy_type_spinner);
         final EditText iso_interval_input = alertView.findViewById(R.id.iso_interval_input);
         // Populate the context‑type picker
         contextPicker.setMinValue(1);
@@ -405,31 +405,6 @@ public class BroadcasterActivity extends AppCompatActivity {
                 alertView.getResources().getStringArray(R.array.content_types).length - 1);
         contextPicker.setDisplayedValues(
                 alertView.getResources().getStringArray(R.array.content_types));
-
-        // Populate the PHY type spinner
-        ArrayAdapter<String> phyAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item,
-                new String[]{"LE 2M PHY", "Coded PHY"});
-        phyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        phyTypeSpinner.setAdapter(phyAdapter);
-
-        // Add listener to update ISO interval hint based on PHY selection
-        phyTypeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position == PHY_LE_2M) {
-                    iso_interval_input.setHint("7.5, 10, 20, or 30");
-                } else {
-                    iso_interval_input.setHint("7.5, 15, 25, or 35");
-                }
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-                // Default to LE 2M hint
-                iso_interval_input.setHint("7.5, 10, 20, or 30");
-            }
-        });
 
         alert.setView(alertView)
                 .setNegativeButton("Cancel", (dialog, which) -> {/* no‑op */ })
@@ -475,44 +450,24 @@ public class BroadcasterActivity extends AppCompatActivity {
                                             code_input_text.getText().length() == 0)
                             ? null : code_input_text.getText().toString().getBytes();
 
-                    // Get selected PHY type
-                    int selectedPhy = phyTypeSpinner.getSelectedItemPosition();
-
                     // Parse and validate ISO interval based on PHY type
                     float isoInterval = 0.0f; // Default value
                     String isoIntervalStr = iso_interval_input.getText().toString();
                     if (!isoIntervalStr.isEmpty()) {
                         try {
                             isoInterval = Float.parseFloat(isoIntervalStr);
-
-                            // Validate based on PHY type
-                            boolean isValidInterval = false;
-                            String validIntervalsMsg = "";
-
-                            if (selectedPhy == PHY_LE_2M) {
-                                // LE 2M PHY: 7.5, 10, 20, 30
-                                isValidInterval = (isoInterval == 7.5f || isoInterval == 10.0f ||
-                                                  isoInterval == 20.0f || isoInterval == 30.0f);
-                                validIntervalsMsg = "For LE 2M PHY, valid ISO intervals are: 7.5, 10, 20, 30";
-                            } else {
-                                // CODED PHY: 7.5, 15, 25, 35
-                                isValidInterval = (isoInterval == 7.5f || isoInterval == 15.0f ||
-                                                  isoInterval == 25.0f || isoInterval == 35.0f);
-                                validIntervalsMsg = "For CODED PHY, valid ISO intervals are: 7.5, 15, 25, 35";
-                            }
-
-                            if (!isValidInterval) {
-                                Toast.makeText(this, validIntervalsMsg, Toast.LENGTH_LONG).show();
-                                return; // Don't proceed with broadcast creation
+                            // Validate against allowed values
+                            if (isoInterval != 7.5f && isoInterval != 10.0f &&
+                                isoInterval != 20.0f && isoInterval != 30.0f) {
+                                Toast.makeText(this,
+                                    "Invalid ISO interval. Must be one of: 7.5, 10, 20, 30",
+                                    Toast.LENGTH_LONG).show();
+                                    return;
                             }
                         } catch (NumberFormatException e) {
                             Log.w(TAG, "Invalid ISO interval format: " + e.getMessage());
-                            String phyName = (selectedPhy == PHY_LE_2M) ? "LE 2M" : "CODED";
-                            String validValues = (selectedPhy == PHY_LE_2M) ?
-                                "7.5, 10, 20, 30" : "7.5, 15, 25, 35";
                             Toast.makeText(this,
-                                "Invalid ISO interval format. For " + phyName +
-                                " PHY, valid values are: " + validValues,
+                                "Invalid ISO interval format. Must be one of: 7.5, 10, 20, 30",
                                 Toast.LENGTH_LONG).show();
                             return; // Don't proceed with broadcast creation
                         }
@@ -708,8 +663,6 @@ public class BroadcasterActivity extends AppCompatActivity {
         alertView.findViewById(R.id.is_public_checkbox).setVisibility(View.GONE);
         alertView.findViewById(R.id.context_picker).setVisibility(View.GONE);
         // Hide PHY and ISO interval (not modifiable on existing broadcast)
-        alertView.findViewById(R.id.phy_type_spinner).setVisibility(View.GONE);
-        alertView.findViewById(R.id.textView_phy).setVisibility(View.GONE);
         alertView.findViewById(R.id.iso_interval_input).setVisibility(View.GONE);
         alertView.findViewById(R.id.textView23).setVisibility(View.GONE);
         // Build a container: inflated form + two instant Join Control buttons

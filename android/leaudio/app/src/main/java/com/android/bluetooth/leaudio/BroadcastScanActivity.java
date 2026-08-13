@@ -217,9 +217,7 @@ public class BroadcastScanActivity extends AppCompatActivity {
                     Log.i(TAG, "Device removed from DBIG: devId=0x"
                             + String.format("%04X", devId) + ", name=" + nameStr);
                     Toast.makeText(context,
-                            "Device exited DBIG: DevID"
-                                    +  devId
-                                    + ", Name=" + nameStr,
+                            "Device exited DBIG: DevID " + devId + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
                 }
                 boolean bisAvailable = (status & 0x0001) != 0;
@@ -231,19 +229,21 @@ public class BroadcastScanActivity extends AppCompatActivity {
                                                 ? BisAvailability.AVAILABLE
                                                 : BisAvailability.UNAVAILABLE;
                 mLocalOccupyingBis = localOccupying;
-                Toast.makeText(context, "DBIG status changed: " + status, Toast.LENGTH_SHORT).show();
-                if((mBisAvailability == BisAvailability.AVAILABLE) ||
-                    localOccupying) {
-                    Toast.makeText(context, "BIS is available, user can speak now", Toast.LENGTH_SHORT).show();
-                } else if (!bisAvailable && !localOccupying) {
-                    Toast.makeText(context, "BIS is not available, please wait until BIS is available", Toast.LENGTH_SHORT).show();
+
+                // COMBINE 4 status toasts into ONE comprehensive message
+                String bisStatus;
+                if((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                    bisStatus = "BIS Available";
+                } else {
+                    bisStatus = "BIS Not Available";
                 }
 
-                if(bis_is_out_of_range == 1) {
-                    Toast.makeText(context, "DBIG is out of range", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(context, "DBIG is in range", Toast.LENGTH_SHORT).show();
-                }
+                String rangeStatus = (bis_is_out_of_range == 1) ? "Out of range" : "In range";
+
+                // Single combined toast with all status info
+                Toast.makeText(context,
+                        "Status: 0x" + Integer.toHexString(status) + " | " + bisStatus + " | " + rangeStatus,
+                        Toast.LENGTH_SHORT).show();
                 // If a broadcast‑info dialog is currently on‑screen, rebuild it
                 refreshDialogIfVisible();
             }
