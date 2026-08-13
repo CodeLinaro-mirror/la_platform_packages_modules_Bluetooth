@@ -2660,7 +2660,8 @@ public:
       BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_ALLOW_LIST);
     } else {
       log::info("Adding {} to background connect", address);
-      BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
+      BTA_GATTC_Open(gatt_if_, address,
+                     bluetooth::le_audio::GetLeAudioDefaultBackgroundConnectType());
     }
   }
 
@@ -2812,13 +2813,12 @@ public:
 
     BtaGattQueue::Clean(conn_id);
 
-    /* Remove device from the background connect (it might be either Allow list
-     * or TA) and add it again with BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS.
-     * In case it is TA, we are sure that device will not be in the allow list
-     * for other applications which are using background connect.
+    /* Remove device from the background connect and add it again with the
+     * default background reconnection mode.
      */
     BTA_GATTC_CancelOpen(gatt_if_, address, false);
-    BTA_GATTC_Open(gatt_if_, address, BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS);
+    BTA_GATTC_Open(gatt_if_, address,
+                   bluetooth::le_audio::GetLeAudioDefaultBackgroundConnectType());
 
     if (bluetooth::shim::GetController()->SupportsBle2mPhy()) {
       log::info("{} set preferred PHY to 2M", address);
@@ -3048,7 +3048,7 @@ public:
 
     if (!group->IsAnyDeviceConnected()) {
       log::info("Group {} is not connected", group_id);
-      /* Make sure all devices are in the default BTM_BLE_BKG_CONNECT_TARGETED_ANNOUNCEMENTS */
+      /* Make sure all devices are in the default background reconnection mode. */
       group->ApplyReconnectionMode(gatt_if_);
       return;
     }
