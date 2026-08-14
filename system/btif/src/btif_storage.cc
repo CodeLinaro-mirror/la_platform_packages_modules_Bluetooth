@@ -981,11 +981,24 @@ void btif_storage_load_le_devices(void) {
         }
       }
       else{
+      uint32_t persisted_dev_type = BT_DEVICE_TYPE_UNKNOWN;
+      bt_property_t persisted_dev_type_prop;
+      BTIF_STORAGE_FILL_PROPERTY(&persisted_dev_type_prop, BT_PROPERTY_TYPE_OF_DEVICE,
+                                  sizeof(uint32_t), &persisted_dev_type);
+      bool has_bredr_support =
+          (btif_storage_get_remote_device_property(bonded_devices.devices[i].bda,
+                                                    &persisted_dev_type_prop) == BT_STATUS_SUCCESS) &&
+          (persisted_dev_type & BT_DEVICE_TYPE_BREDR);
+
       static thread_local std::unordered_set<RawAddress> s_logged_equal_addrs;
-      if (s_logged_equal_addrs.insert(bonded_devices.devices[i].bda).second)
-      {
-      log::info("loaded public devices");
-      consolidated_devices.emplace_back(bonded_devices.devices[i],identity_addr);
+      bool should_log = s_logged_equal_addrs.insert(bonded_devices.devices[i].bda).second;
+      if (has_bredr_support) {
+        if (should_log) {
+          log::info("loaded public devices");
+        }
+        consolidated_devices.emplace_back(bonded_devices.devices[i],identity_addr);
+      } else if (should_log) {
+        log::info("skipping consolidation for public-address device without BR/EDR support");
       }
       }
     }
