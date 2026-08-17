@@ -413,6 +413,26 @@ TEST_F(AclSchedulerTest, CancelQueuedConnectionCallback) {
   EXPECT_THAT(future, IsSet());
 }
 
+TEST_F(AclSchedulerTest, CancelUnknownIncomingConnectionClearsStaleEntry) {
+  auto promise = std::promise<void>{};
+  auto future = promise.get_future();
+
+  // an incoming connection arrives (its Accept Connection Request will fail)
+  acl_scheduler_->RegisterPendingIncomingConnection(address1);
+
+  // an unrelated RNR to a different peer is enqueued and blocked by address1's presence
+  acl_scheduler_->EnqueueRemoteNameRequest(address2, promiseCallback(std::move(promise)),
+                                           impossibleCallback());
+  EXPECT_THAT(future.wait_for(timeout), std::future_status::timeout);
+
+  // Accept Connection Request for address1 failed; CancelAclConnection is invoked for it.
+  // It is not an outgoing/queued connection, so the existing matcher finds nothing ...
+  acl_scheduler_->CancelAclConnection(address1, impossibleCallback(), impossibleCallback());
+
+  // ... but the fix must still clear the stale incoming registration and unblock the queue.
+  EXPECT_THAT(future, IsSet());
+}
+
 TEST_F(AclSchedulerTest, RemoteNameRequestImmediatelyExecuted) {
   auto promise = std::promise<void>{};
   auto future = promise.get_future();
