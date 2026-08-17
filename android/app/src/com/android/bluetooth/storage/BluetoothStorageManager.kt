@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.bluetooth.storage
@@ -37,6 +42,7 @@ import androidx.datastore.core.Serializer
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import com.android.bluetooth.BluetoothEventLogger
 import com.android.bluetooth.btservice.AdapterService
+import com.android.bluetooth.btservice.AdapterUtil
 import com.android.bluetooth.storage.ActiveAudioPolicy.Type as ActiveAudioPolicy
 import com.android.bluetooth.storage.MediaProfile.Type as MediaProfile
 import com.android.bluetooth.storage.VoiceProfile.Type as VoiceProfile
@@ -109,11 +115,16 @@ constructor(
     }
 
     // The DataStore instance that handles the UserStorage proto.
-    // Data is stored in a file named "user_storage" in the app's device protected storage.
+    // Each adapter process uses its own file so that pairing state on the default adapter
+    // and the secondary adapter never collide.  Both processes run inside the same APK
+    // (com.android.bluetooth) and therefore share the same package data directory; without
+    // per-adapter file names a storage write by one process would corrupt the other's view.
     private val dataStore by lazy {
+        val fileName =
+            if (AdapterUtil.isAdapterDefault()) "user_storage" else "user_storage_ext"
         DataStoreFactory.createInDeviceProtectedStorage(
             context = adapterService,
-            fileName = "user_storage",
+            fileName = fileName,
             serializer = UserStorageSerializer,
             corruptionHandler =
                 ReplaceFileCorruptionHandler {
