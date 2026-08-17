@@ -409,7 +409,6 @@ final class BondStateMachine extends StateMachine {
         return false;
     }
 
-    @RequiresPermission(BLUETOOTH_CONNECT)
     private boolean createBond(
             BluetoothDevice dev,
             int transport,
@@ -510,7 +509,6 @@ final class BondStateMachine extends StateMachine {
     }
 
     @VisibleForTesting
-    @RequiresPermission(BLUETOOTH_CONNECT)
     void sendIntent(
             BluetoothDevice device, int newState, int reason, boolean isTriggerFromDelayMessage) {
         DeviceProperties devProp = mRemoteDevices.getDeviceProperties(device);

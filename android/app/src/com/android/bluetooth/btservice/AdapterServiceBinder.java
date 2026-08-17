@@ -275,7 +275,7 @@ class AdapterServiceBinder extends IBluetooth.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    @RequiresPermission(BLUETOOTH_SCAN)
     public boolean startDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -285,12 +285,11 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         Log.i(TAG, "startDiscovery: from " + getUidPidString());
-        service.handleDualAdapterMode(AdapterService.START_DISCOVERY);
         return service.startDiscovery(source);
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    @RequiresPermission(BLUETOOTH_SCAN)
     public boolean cancelDiscovery(AttributionSource source) {
         AdapterService service = getService();
         if (service == null
@@ -300,7 +299,6 @@ class AdapterServiceBinder extends IBluetooth.Stub {
         }
 
         Log.i(TAG, "cancelDiscovery: from " + getUidPidString());
-        service.handleDualAdapterMode(AdapterService.CANCEL_DISCOVERY);
         return service.getNative().cancelDiscovery();
     }
 
