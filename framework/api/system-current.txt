@@ -1067,8 +1067,11 @@ package android.bluetooth {
     field public static final int QUALITY_REPORT_ID_A2DP_CHOPPY = 3; // 0x3
     field public static final int QUALITY_REPORT_ID_APPROACH_LSTO = 2; // 0x2
     field public static final int QUALITY_REPORT_ID_CONN_FAIL = 8; // 0x8
+    field public static final int QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT = 11; // 0xb
+    field public static final int QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR = 12; // 0xc
     field @FlaggedApi("com.android.bluetooth.flags.support_bluetooth_quality_report_v6") public static final int QUALITY_REPORT_ID_ENERGY_MONITOR = 6; // 0x6
     field public static final int QUALITY_REPORT_ID_MONITOR = 1; // 0x1
+    field public static final int QUALITY_REPORT_ID_RF_ADVANCED_STATS = 10; // 0xa
     field @FlaggedApi("com.android.bluetooth.flags.support_bluetooth_quality_report_v6") public static final int QUALITY_REPORT_ID_RF_STATS = 9; // 0x9
     field public static final int QUALITY_REPORT_ID_SCO_CHOPPY = 4; // 0x4
     field public static final int QUALITY_REPORT_ID_VENDOR_SPECIFIC = 16; // 0x10
@@ -1127,12 +1130,36 @@ package android.bluetooth {
     field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrConnectFail> CREATOR;
   }
 
+  public static final class BluetoothQualityReport.BqrControllerHealth implements android.os.Parcelable {
+    method public int describeContents();
+    method public int getCoexStatusMask();
+    method public long getCurrentTimestamp();
+    method public long getLastBtWakeTimestamp();
+    method public long getLastHostWakeTimestamp();
+    method public int getLastPacketLengthControllerToHost();
+    method public int getLastPacketLengthHostToController();
+    method public long getPacketCountControllerToHost();
+    method public long getPacketCountHostToController();
+    method public int getQualityReportId();
+    method public long getResetTimestamp();
+    method public long getTotalBtWakeCount();
+    method public long getTotalHostWakeCount();
+    method public int getTotalLinksBrEdrLeActive();
+    method public int getTotalLinksBrEdrSniff();
+    method public int getTotalLinksCis();
+    method public boolean isScoActive();
+    method public boolean isWatchdogTimerAboutToExpire();
+    method public void writeToParcel(@NonNull android.os.Parcel, int);
+    field @NonNull public static final android.os.Parcelable.Creator<android.bluetooth.BluetoothQualityReport.BqrControllerHealth> CREATOR;
+  }
+
   @FlaggedApi("com.android.bluetooth.flags.support_bluetooth_quality_report_v6") public static final class BluetoothQualityReport.BqrEnergyMonitor implements android.os.Parcelable {
     method public int describeContents();
     method public long getActiveStateEnterCount();
     method public long getActiveStateTotalTimeMillis();
     method public int getAverageCurrentConsumptionMicroamps();
     method public int getBredrAverageTxPowerLeveldBm();
+    method public long getBredrRxActiveScanTotalTimeMillis();
     method public long getBredrRxStateEnterCount();
     method public long getBredrRxTotalTimeMillis();
     method public long getBredrTxStateEnterCount();
@@ -1140,6 +1167,7 @@ package android.bluetooth {
     method public long getIdleStateEnterCount();
     method public long getIdleStateTotalTimeMillis();
     method public int getLeAverageTxPowerLeveldBm();
+    method public long getLeRxActiveScanTotalTimeMillis();
     method public long getLeRxStateEnterCount();
     method public long getLeRxTotalTimeMillis();
     method public long getLeTsTotalTimeMillis();
@@ -1157,6 +1185,11 @@ package android.bluetooth {
 
   @FlaggedApi("com.android.bluetooth.flags.support_bluetooth_quality_report_v6") public static final class BluetoothQualityReport.BqrRfStats implements android.os.Parcelable {
     method public int describeContents();
+    method public long getAntennaSwitchCount();
+    method public int getChannelCountBad();
+    method public int getChannelCountGood();
+    method public int getChannelCountOk();
+    method public int getChannelCountVeryBad();
     method public int getExtensionInfo();
     method public long getPacketsWithRssi50To55dBm();
     method public long getPacketsWithRssi55To60dBm();
@@ -1174,6 +1207,11 @@ package android.bluetooth {
     method public long getPacketsWithRssiDeltaAbove11dBm();
     method public long getPacketsWithRssiDeltaBelow2dBm();
     method public long getPerformanceDurationMillis();
+    method public long getRetxePaBf();
+    method public long getRetxePaDiv();
+    method public long getRetxiPaBf();
+    method public long getRetxiPaDiv();
+    method public long getTxBufferQueueCount();
     method public long getTxPowerExternalPaBeamformingCount();
     method public long getTxPowerExternalPaDiversityCount();
     method public long getTxPowerInternalPaBeamformingCount();

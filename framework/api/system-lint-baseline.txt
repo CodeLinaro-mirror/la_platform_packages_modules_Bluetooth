@@ -70,3 +70,45 @@ UnflaggedApi: android.bluetooth.le.ScanSettings.Builder#setRssiHighThreshold(int
     New API must be flagged with @FlaggedApi: method android.bluetooth.le.ScanSettings.Builder.setRssiHighThreshold(int)
 UnflaggedApi: android.bluetooth.le.ScanSettings.Builder#setRssiLowThreshold(int):
     New API must be flagged with @FlaggedApi: method android.bluetooth.le.ScanSettings.Builder.setRssiLowThreshold(int)
+
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#CREATOR:
+    New API must be flagged with @FlaggedApi: field android.bluetooth.BluetoothQualityReport.BqrControllerHealth.CREATOR
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#describeContents():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.describeContents()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getCoexStatusMask():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getCoexStatusMask()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getCurrentTimestamp():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getCurrentTimestamp()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getLastBtWakeTimestamp():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getLastBtWakeTimestamp()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getLastHostWakeTimestamp():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getLastHostWakeTimestamp()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getLastPacketLengthControllerToHost():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getLastPacketLengthControllerToHost()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getLastPacketLengthHostToController():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getLastPacketLengthHostToController()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getPacketCountControllerToHost():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getPacketCountControllerToHost()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getPacketCountHostToController():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getPacketCountHostToController()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getQualityReportId():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getQualityReportId()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getResetTimestamp():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getResetTimestamp()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getTotalBtWakeCount():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getTotalBtWakeCount()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getTotalHostWakeCount():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getTotalHostWakeCount()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getTotalLinksBrEdrLeActive():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getTotalLinksBrEdrLeActive()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getTotalLinksBrEdrSniff():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getTotalLinksBrEdrSniff()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#getTotalLinksCis():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.getTotalLinksCis()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#isScoActive():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.isScoActive()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#isWatchdogTimerAboutToExpire():
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.isWatchdogTimerAboutToExpire()
+UnflaggedApi: android.bluetooth.BluetoothQualityReport.BqrControllerHealth#writeToParcel(android.os.Parcel, int):
+    New API must be flagged with @FlaggedApi: method android.bluetooth.BluetoothQualityReport.BqrControllerHealth.writeToParcel(android.os.Parcel,int)
+
