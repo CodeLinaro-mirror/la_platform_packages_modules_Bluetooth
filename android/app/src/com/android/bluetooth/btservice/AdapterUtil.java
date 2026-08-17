@@ -69,12 +69,15 @@ public final class AdapterUtil {
         sProfiles.put(ADAPTER_DEFAULT, new ArrayList<>(Arrays.asList(
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.A2DP,
                 BluetoothProfile.A2DP_SINK,
+                BluetoothProfile.AVRCP,
                 BluetoothProfile.AVRCP_CONTROLLER,
                 BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
                 BluetoothProfile.BATTERY,
                 BluetoothProfile.CSIP_SET_COORDINATOR,
                 BluetoothProfile.HAP_CLIENT,
+                BluetoothProfile.HEADSET,
                 BluetoothProfile.HEADSET_CLIENT,
                 BluetoothProfile.HEARING_AID,
                 BluetoothProfile.HID_HOST,
@@ -165,7 +168,10 @@ public final class AdapterUtil {
 
     public static boolean isProfileSupported(int profileId) {
         if (sDualBluetooth == true && isAdapterDefault()) {
-            if (profileId == BluetoothProfile.LE_AUDIO_BROADCAST ||
+            if (profileId == BluetoothProfile.A2DP ||
+                profileId == BluetoothProfile.AVRCP ||
+                profileId == BluetoothProfile.HEADSET ||
+                profileId == BluetoothProfile.LE_AUDIO_BROADCAST ||
                 profileId == BluetoothProfile.CSIP_SET_COORDINATOR ||
                 profileId == BluetoothProfile.HAP_CLIENT ||
                 profileId == BluetoothProfile.LE_AUDIO ||

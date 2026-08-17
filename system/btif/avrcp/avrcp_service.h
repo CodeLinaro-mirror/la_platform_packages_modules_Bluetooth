@@ -127,8 +127,5 @@ private:
 }  // namespace bluetooth
 
 inline bool is_new_avrcp_enabled() {
-  // So far constrain the supporting of AVRCP(TG) only in new adapter
-  const std::string name = bluetooth::os::ParameterProvider::GetHciInstanceName();
-  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false) &&
-         (name != "default");
+  return osi_property_get_bool("bluetooth.profile.avrcp.target.enabled", false);
 }
