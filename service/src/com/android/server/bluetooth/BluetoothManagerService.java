@@ -1655,7 +1655,6 @@ class BluetoothManagerService {
                     }
 
                     mHandler.removeMessages(MESSAGE_BLUETOOTH_STATE_CHANGE);
-                    mHandler.removeMessages(MESSAGE_BLUETOOTH_SERVICE_CONNECTED);
                     mState.set(STATE_OFF);
                     break;
 
