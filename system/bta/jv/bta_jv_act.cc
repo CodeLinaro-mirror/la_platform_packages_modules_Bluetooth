@@ -1027,6 +1027,13 @@ static void bta_jv_l2cap_client_cback(uint16_t gap_handle, uint16_t event, tGAP_
                                                   : BTA_JV_L2CAP_REASON_EMPTY;
       p_cb->p_cback(BTA_JV_L2CAP_CLOSE_EVT, &evt_data, p_cb->l2cap_socket_id);
       p_cb->p_cback = NULL;
+#ifdef TARGET_QCOM_IOT_BT_EXT
+      bta_jv_free_set_pm_profile_cb((uint32_t)p_cb->handle);
+      p_cb->psm = 0;
+      p_cb->cong = false;
+      p_cb->handle = 0;
+      p_cb->l2cap_socket_id = 0;
+#endif
       break;
 
     case GAP_EVT_CONN_DATA_AVAIL:
@@ -1560,13 +1567,6 @@ void bta_jv_rfcomm_connect(tBTA_SEC sec_mask, uint8_t remote_scn, const RawAddre
                           .use_co = false,
                   },
   };
-
-  // Update security service record for RFCOMM client so that
-  // secure RFCOMM connection will be authenticated with MTIM protection
-  // while creating the L2CAP connection.
-  get_btm_client_interface().security.BTM_SetSecurityLevel(true, "RFC_MUX", BTM_SEC_SERVICE_RFC_MUX,
-                                                           sec_mask, BT_PSM_RFCOMM,
-                                                           BTM_SEC_PROTO_RFCOMM, 0);
 
   port_status = RFCOMM_CreateConnectionWithSecurity(UUID_SERVCLASS_SERIAL_PORT, remote_scn, false,
                                                     BTA_JV_DEF_RFC_MTU, peer_bd_addr, &handle,

@@ -31,6 +31,7 @@ import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERA
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_NONE;
 import static android.bluetooth.BluetoothAdapter.nameForState;
 import static android.bluetooth.BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
+import static android.bluetooth.BluetoothDevice.BOND_BONDED;
 import static android.bluetooth.BluetoothDevice.BOND_NONE;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
@@ -2866,7 +2867,9 @@ public class AdapterService extends Service {
 
         // Pairing is unreliable while scanning, so cancel discovery
         // Note, remove this when native stack improves
-        mNativeInterface.cancelDiscovery();
+        if (mAdapterProperties.isDiscovering()) {
+            mNativeInterface.cancelDiscovery();
+        }
 
         Message msg = mBondStateMachine.obtainMessage(BondStateMachine.CREATE_BOND);
         msg.obj = device;
@@ -3861,12 +3864,14 @@ public class AdapterService extends Service {
             mHeadsetClientService.disconnect(device);
         }
 
-        Log.d(TAG,"Call and Ringing Status are:"+mHeadsetService.isInCall() +" "
-             +mHeadsetService.isRinging());
+        if (mHeadsetService != null) {
+            Log.d(TAG,"Call and Ringing Status are:"+mHeadsetService.isInCall() +" "
+                 +mHeadsetService.isRinging());
+        }
         Log.d(TAG,"Checking in A2DP Disconnect delay BL");
 
         //Adding A2DP Disconnect delay for blacklisted devices
-        if (isDelayA2dpDiscDevice(device) &&
+        if (isDelayA2dpDiscDevice(device) && mHeadsetService != null &&
                   (mHeadsetService.isInCall() || mHeadsetService.isRinging())) {
            Log.e(TAG,"isDelayA2dpDiscDevice sleep 400ms");
               SystemClock.sleep(400);
@@ -4609,7 +4614,7 @@ public class AdapterService extends Service {
         }
         mDatabaseManager.handleBondStateChanged(device, fromState, toState);
 
-        if (toState == BOND_NONE) {
+        if (toState == BOND_NONE || fromState == BOND_BONDED) {
             // Remove the permissions for unbonded devices
             setMessageAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);
             setPhonebookAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);

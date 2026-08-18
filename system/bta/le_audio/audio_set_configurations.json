@@ -874,7 +874,7 @@
       "name": "VND_Two-OneChan-SnkAse-Aptx_LeX_V1_32_2-Two-OneChan-SrcAse-Aptx_LeX_V1_32_2_L_R",
       "codec_config_name": "VND_Two-OneChan-SnkAse-Aptx_LeX_V1_32_2-Two-OneChan-SrcAse-Aptx_LeX_V1_32_2_L_R",
       "qos_config_name": [
-        "VND_QoS_Config_R2_L6"
+        "VND_QoS_Config_R2_L8"
       ],
       "codec_metadata_name": [
         "VND_AptxLeX_V1_VS_Metadata"
@@ -10510,7 +10510,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_24_1-Two-OneChan-SrcAse-Lc3_24_1",
+      "name": "Two-OneChan-SnkAse-Lc3_24_1-Two-OneChan-SrcAse-Lc3_24_1",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -10613,7 +10613,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_24_2-Two-OneChan-SrcAse-Lc3_24_2",
+      "name": "Two-OneChan-SnkAse-Lc3_24_2-Two-OneChan-SrcAse-Lc3_24_2",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -10696,7 +10696,7 @@
               "type": 4,
               "compound_value": {
                 "value": [
-                  50,
+                  60,
                   0
                 ]
               }
@@ -10716,7 +10716,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_32_1-Two-OneChan-SrcAse-Lc3_32_1",
+      "name": "Two-OneChan-SnkAse-Lc3_32_1-Two-OneChan-SrcAse-Lc3_32_1",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -10819,7 +10819,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_32_1-Two-OneChan-SrcAse-Lc3_32_1_58octets",
+      "name": "Two-OneChan-SnkAse-Lc3_32_1-Two-OneChan-SrcAse-Lc3_32_1_58octets",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -10922,7 +10922,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_48_1-Two-OneChan-SrcAse-Lc3_48_1",
+      "name": "Two-OneChan-SnkAse-Lc3_48_1-Two-OneChan-SrcAse-Lc3_48_1",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -10987,7 +10987,7 @@
               "type": 1,
               "compound_value": {
                 "value": [
-                  6
+                  8
                 ]
               }
             },
@@ -11025,7 +11025,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_48_2-Two-OneChan-SrcAse-Lc3_48_2",
+      "name": "Two-OneChan-SnkAse-Lc3_48_2-Two-OneChan-SrcAse-Lc3_48_2",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -11090,7 +11090,7 @@
               "type": 1,
               "compound_value": {
                 "value": [
-                  6
+                  8
                 ]
               }
             },
@@ -11128,7 +11128,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_48_3-Two-OneChan-SrcAse-Lc3_48_3",
+      "name": "Two-OneChan-SnkAse-Lc3_48_3-Two-OneChan-SrcAse-Lc3_48_3",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -11231,7 +11231,7 @@
       ]
     },
         {
-      "name": " Two-OneChan-SnkAse-Lc3_48_4-Two-OneChan-SrcAse-Lc3_48_4",
+      "name": "Two-OneChan-SnkAse-Lc3_48_4-Two-OneChan-SrcAse-Lc3_48_4",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -11334,7 +11334,7 @@
       ]
     },
         {
-      "name": " Two-OneChan-SnkAse-Lc3_48_5-Two-OneChan-SrcAse-Lc3_48_5",
+      "name": "Two-OneChan-SnkAse-Lc3_48_5-Two-OneChan-SrcAse-Lc3_48_5",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -11437,7 +11437,7 @@
       ]
     },
     {
-      "name": " Two-OneChan-SnkAse-Lc3_48_6-Two-OneChan-SrcAse-Lc3_48_6",
+      "name": "Two-OneChan-SnkAse-Lc3_48_6-Two-OneChan-SrcAse-Lc3_48_6",
       "subconfigurations": [
         {
           "ase_cnt": 2,
@@ -11880,7 +11880,7 @@
               "type": 1,
               "compound_value": {
                 "value": [
-                  8
+                  5
                 ]
               }
             },
@@ -12153,9 +12153,19 @@
       "max_transport_latency": 75
     },
     {
+      "name": "QoS_Config_48_2_1",
+      "retransmission_number": 5,
+      "max_transport_latency": 20
+    },
+    {
       "name": "QoS_Config_48_2_2",
       "retransmission_number": 13,
       "max_transport_latency": 95
+    },
+    {
+      "name": "QoS_Config_48_3_1",
+      "retransmission_number": 5,
+      "max_transport_latency": 15
     },
     {
       "name": "QoS_Config_48_3_2",
@@ -12171,6 +12181,16 @@
       "name": "QoS_Config_48_4_2",
       "retransmission_number": 13,
       "max_transport_latency": 100
+    },
+    {
+      "name": "QoS_Config_48_5_1",
+      "retransmission_number": 5,
+      "max_transport_latency": 15
+    },
+    {
+      "name": "QoS_Config_48_6_1",
+      "retransmission_number": 5,
+      "max_transport_latency": 20
     },
     {
       "name": "VND_QoS_Config_R5_L12",
@@ -12264,9 +12284,9 @@
       "max_transport_latency": 10
     },
     {
-      "name": "VND_QoS_Config_R2_L6",
+      "name": "VND_QoS_Config_R2_L8",
       "retransmission_number": 2,
-      "max_transport_latency": 6
+      "max_transport_latency": 8
     }
   ],
   "codec_specific_metadata": [

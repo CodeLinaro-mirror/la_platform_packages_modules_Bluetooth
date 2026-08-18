@@ -615,8 +615,13 @@ tBTM_STATUS btm_sec_bond_by_transport(const RawAddress& bd_addr, tBLE_ADDR_TYPE 
 
   /* Other security process is in progress */
   if (btm_sec_cb.pairing_state != BTM_PAIR_STATE_IDLE) {
-    log::error("BTM_SecBond: already busy in state: {}",
-               tBTM_SEC_CB::btm_pair_state_descr(btm_sec_cb.pairing_state));
+    if (btm_sec_cb.pairing_bda == bd_addr) {
+      log::warn("Already pairing with {}", bd_addr);
+      return tBTM_STATUS::BTM_CMD_STARTED;
+    }
+    log::error("Already busy in state: {} pairing with {}",
+               tBTM_SEC_CB::btm_pair_state_descr(btm_sec_cb.pairing_state),
+               btm_sec_cb.pairing_bda);
     return tBTM_STATUS::BTM_WRONG_MODE;
   }
 
@@ -1371,8 +1376,8 @@ static bool btm_sec_is_upgrade_possible(tBTM_SEC_DEV_REC* p_dev_rec, bool is_ori
 
     /*if authentication is requirement & currently on temp bonding
      * trigger pairing */
-    if (com::android::bluetooth::flags::upgrade_temp_bonding_on_auth_req() &&
-        (p_dev_rec->sec_rec.security_required & BTM_SEC_OUT_AUTHENTICATE) &&
+    if ((p_dev_rec->sec_rec.security_required &
+         (is_originator ? BTM_SEC_OUT_AUTHENTICATE : BTM_SEC_IN_AUTHENTICATE)) &&
         p_dev_rec->sec_rec.is_bond_type_temporary()) {
       is_possible = true;
     }
@@ -3905,15 +3910,42 @@ void btm_sec_disconnected(uint16_t handle, tHCI_REASON reason, std::string comme
       btm_sec_cb.pairing_bda == p_dev_rec->bd_addr && pairing_transport_matches) {
     log::debug("Disconnected while pairing process active handle:0x{:04x}", handle);
     btm_sec_cb.change_pairing_state(BTM_PAIR_STATE_IDLE);
-    p_dev_rec->sec_rec.sec_flags &= ~BTM_SEC_LINK_KEY_KNOWN;
+
+    /* Do not clear the link key if the disconnection reason is LMP Response
+     * Timeout (0x22). An LMP Response Timeout is a transient radio/controller
+     * error and does NOT indicate that the stored link key is invalid.  If we
+     * erase BTM_SEC_LINK_KEY_KNOWN here, the next reconnection attempt will
+     * find no local link key, trigger a fresh pairing exchange, and fail with
+     * HCI_ERR_AUTH_FAILURE because the remote peer still holds the original
+     * key.  Preserving the flag lets the reconnection reuse the existing key
+     * and succeed.  See CR-4576850. */
+    if (reason != HCI_ERR_LMP_RESPONSE_TIMEOUT) {
+      p_dev_rec->sec_rec.sec_flags &= ~BTM_SEC_LINK_KEY_KNOWN;
+    } else {
+      log::warn(
+              "LMP Response Timeout during pairing/auth - preserving link key "
+              "for peer:{} to allow reconnection without re-pairing",
+              p_dev_rec->bd_addr);
+    }
 
     /* If the disconnection reason is REPEATED_ATTEMPTS,
        send this error message to complete callback function
        to display the error message of Repeated attempts.
-       All others, send HCI_ERR_AUTH_FAILURE. */
+       For LMP Response Timeout, propagate the actual reason so the upper
+       layer maps it to BT_STATUS_RMT_DEV_DOWN (transient / radio error)
+       rather than BT_STATUS_AUTH_FAILURE.  Reporting AUTH_FAILURE here
+       would cause btif_dm to call bond_state_changed(BOND_NONE) with an
+       auth-failure reason, which makes the Java layer remove the bond and
+       subsequently call BTM_SecDeleteDevice – undoing the link-key
+       preservation we performed above.  By reporting the real timeout
+       reason the Java layer treats the event as "device temporarily down"
+       and leaves the bond intact, allowing the next reconnection to reuse
+       the existing link key.  See CR-4576850. */
     tHCI_STATUS status = HCI_ERR_AUTH_FAILURE;
     if (reason == HCI_ERR_REPEATED_ATTEMPTS) {
       status = HCI_ERR_REPEATED_ATTEMPTS;
+    } else if (reason == HCI_ERR_LMP_RESPONSE_TIMEOUT) {
+      status = HCI_ERR_LMP_RESPONSE_TIMEOUT;
     } else if (old_pairing_flags & BTM_PAIR_FLAGS_WE_STARTED_DD) {
       status = HCI_ERR_HOST_REJECT_SECURITY;
     } else {
@@ -4271,7 +4303,7 @@ static void btm_sec_pairing_timeout(void* /* data */) {
 
   p_dev_rec = btm_find_dev(p_cb->pairing_bda);
 
-  log::verbose("State: {}   Flags: {}", tBTM_SEC_CB::btm_pair_state_descr(p_cb->pairing_state),
+  log::warn("State: {}   Flags: {}", tBTM_SEC_CB::btm_pair_state_descr(p_cb->pairing_state),
                p_cb->pairing_flags);
 
   switch (p_cb->pairing_state) {
@@ -4336,6 +4368,10 @@ static void btm_sec_pairing_timeout(void* /* data */) {
       break;
 
     case BTM_PAIR_STATE_WAIT_AUTH_COMPLETE:
+      if (btm_sec_cb.pairing_flags & BTM_PAIR_FLAGS_LE_ACTIVE) {
+        SMP_PairCancel(p_cb->pairing_bda);
+      }
+      FALLTHROUGH_INTENDED;
     case BTM_PAIR_STATE_GET_REM_NAME:
       /* We need to notify the UI that timeout has happened while waiting for
        * authentication*/

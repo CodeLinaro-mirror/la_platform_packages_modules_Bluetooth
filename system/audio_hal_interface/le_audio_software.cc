@@ -23,6 +23,7 @@
 #include <com_android_bluetooth_flags.h>
 
 #include <vector>
+#include <algorithm>
 
 #include "aidl/android/hardware/bluetooth/audio/AudioContext.h"
 #include "aidl/client_interface_aidl.h"
@@ -67,6 +68,46 @@ using ::bluetooth::le_audio::CodecManager;
 using ::bluetooth::le_audio::types::AudioSetConfiguration;
 using ::bluetooth::le_audio::types::CodecLocation;
 }  // namespace
+
+// Build a list of LeAudioCodecIds that MM (offload) actually supports.
+// In this branch codec_type carries the specific index (APTX_LE=3, APTX_LEX=4)
+// directly — translateCodecTypeToLeAudioCodecId() resolves each correctly.
+static std::vector<::bluetooth::le_audio::types::LeAudioCodecId>
+BuildMmSupportedCodecIds() {
+  using ::bluetooth::le_audio::utils::translateCodecTypeToLeAudioCodecId;
+  std::vector<::bluetooth::le_audio::types::LeAudioCodecId> supported;
+  auto* cm = ::bluetooth::le_audio::CodecManager::GetInstance();
+  for (const auto& cfg : cm->GetOffloadingPreference()) {
+    auto id = translateCodecTypeToLeAudioCodecId(cfg.codec_type);
+    if (std::find(supported.begin(), supported.end(), id) == supported.end()) {
+      supported.push_back(id);
+    }
+  }
+  return supported;
+}
+
+// Filter PAC records to only those whose codec_id is MM-supported.
+static std::optional<std::vector<::bluetooth::le_audio::types::acs_ac_record>>
+FilterPacsBySupportedCodecs(
+        const std::optional<std::vector<::bluetooth::le_audio::types::acs_ac_record>>& pacs,
+        const std::vector<::bluetooth::le_audio::types::LeAudioCodecId>& supported_codecs) {
+  if (!pacs.has_value()) return std::nullopt;
+  std::vector<::bluetooth::le_audio::types::acs_ac_record> filtered;
+  for (const auto& rec : pacs.value()) {
+    if (std::find(supported_codecs.begin(), supported_codecs.end(), rec.codec_id) !=
+        supported_codecs.end()) {
+      filtered.push_back(rec);
+    } else {
+      log::info("GetUnicastConfig: skipping PAC with unsupported codec "
+                "fmt=0x{:02x} company=0x{:04x} codec_id=0x{:04x}",
+                rec.codec_id.coding_format, rec.codec_id.vendor_company_id,
+                rec.codec_id.vendor_codec_id);
+    }
+  }
+  return filtered.empty() ? std::nullopt
+                           : std::optional<std::vector<::bluetooth::le_audio::types::acs_ac_record>>(
+                                     filtered);
+}
 
 OffloadCapabilities get_offload_capabilities() {
   if (HalVersionManager::GetHalTransport() == BluetoothAudioHalTransport::HIDL) {
@@ -461,9 +502,15 @@ LeAudioClientInterface::Sink::GetUnicastConfig(
   log::debug("Source Pac Records");
   PrintPacRecords(requirements.source_pacs);
 
-  auto aidl_sink_pacs = GetAidlLeAudioDeviceCapabilitiesFromStackFormat(requirements.sink_pacs);
+  const auto mm_supported_codecs = BuildMmSupportedCodecIds();
+  const auto filtered_sink_pacs =
+                 FilterPacsBySupportedCodecs(requirements.sink_pacs, mm_supported_codecs);
+  const auto filtered_source_pacs =
+                 FilterPacsBySupportedCodecs(requirements.source_pacs, mm_supported_codecs);
 
-  auto aidl_source_pacs = GetAidlLeAudioDeviceCapabilitiesFromStackFormat(requirements.source_pacs);
+  auto aidl_sink_pacs = GetAidlLeAudioDeviceCapabilitiesFromStackFormat(filtered_sink_pacs);
+
+  auto aidl_source_pacs = GetAidlLeAudioDeviceCapabilitiesFromStackFormat(filtered_source_pacs);
 
   std::vector<IBluetoothAudioProvider::LeAudioConfigurationRequirement> reqs;
   reqs.push_back(GetAidlLeAudioUnicastConfigurationRequirementsFromStackFormat(

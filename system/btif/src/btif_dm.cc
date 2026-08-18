@@ -1230,7 +1230,7 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
           (p_auth_cmpl->key_type == HCI_LKEY_TYPE_CHANGED_COMB) ||
           (p_auth_cmpl->key_type == HCI_LKEY_TYPE_AUTH_COMB_P_256) ||
           pairing_cb.bond_type == BOND_TYPE_PERSISTENT) {
-        ASSERTC(bd_addr.IsEmpty(), "bd_addr is empty", BT_STATUS_PARM_INVALID);
+        ASSERTC(!bd_addr.IsEmpty(), "bd_addr is empty", BT_STATUS_PARM_INVALID);
         log::debug("Storing link key. key_type=0x{:x}, bond_type={}", p_auth_cmpl->key_type,
                    pairing_cb.bond_type);
         bt_status_t ret = btif_storage_add_bonded_device(
@@ -2396,25 +2396,7 @@ void btif_dm_sec_evt(tBTA_DM_SEC_EVT event, tBTA_DM_SEC* p_data) {
  * Returns          void
  *
  ******************************************************************************/
-static const char* dump_dm_acl_event(tBTA_DM_ACL_EVT event) {
-  switch (event) {
-    case BTA_DM_LINK_UP_EVT:
-      return "BTA_DM_LINK_UP_EVT";
-    case BTA_DM_LINK_UP_FAILED_EVT:
-      return "BTA_DM_LINK_UP_FAILED_EVT";
-    case BTA_DM_LINK_DOWN_EVT:
-      return "BTA_DM_LINK_DOWN_EVT";
-    case BTA_DM_LE_FEATURES_READ:
-      return "BTA_DM_LE_FEATURES_READ";
-    case BTA_DM_LPP_OFFLOAD_FEATURES_READ:
-      return "BTA_DM_LPP_OFFLOAD_FEATURES_READ";
-    default:
-      return "UNKNOWN_BTA_DM_ACL_EVT";
-  }
-}
-
 void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
-  log::debug("ACL event: {}", dump_dm_acl_event(event));
   RawAddress bd_addr;
 
   switch (event) {
@@ -2435,22 +2417,35 @@ void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
           is_device_le_audio_capable(bd_addr)) {
         stack::l2cap::get_interface().L2CA_LockBleConnParamsForProfileConnection(bd_addr, true);
       }
-
-      // If ACL came up and we still have pending SDP scheduled for this bonded device, start it now.
-      if ((pairing_cb.state == BT_BOND_STATE_BONDED) &&
-          (bd_addr == pairing_cb.bd_addr || bd_addr == pairing_cb.static_bdaddr) &&
-          (pairing_cb.sdp_over_classic == btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED)) {
-        log::info("ACL up and SDP pending for {}, starting service discovery", bd_addr);
-        // Ensure inquiry is stopped before attempting service discovery
-        btif_dm_cancel_discovery();
-        if (pairing_cb.sdp_attempts == 0) {
-          pairing_cb.sdp_attempts = 1;
-        }
-        btif_dm_get_remote_services(bd_addr, BT_TRANSPORT_BR_EDR);
-      }
       break;
 
     case BTA_DM_LINK_UP_FAILED_EVT:
+      // Fix: If LE connection failed for the device that has gatt_over_le=SCHEDULED,
+      // clear pairing_cb to unblock native for new bond requests.
+      // Root cause: After CTKD, stack schedules GATT over LE. If the remote device
+      // does not respond to LE connection attempt (e.g. HCI LE Create Connection
+      // Complete never received), gatt_over_le stays SCHEDULED forever, causing
+      // btif_dm_pairing_is_busy() to return true indefinitely.
+      if (p_data->link_up_failed.transport_link_type == BT_TRANSPORT_LE &&
+          (p_data->link_up_failed.bd_addr == pairing_cb.bd_addr ||
+           p_data->link_up_failed.bd_addr == pairing_cb.static_bdaddr) &&
+          pairing_cb.gatt_over_le ==
+              btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED) {
+        log::warn(
+            "LE connection failed for {} (status={}) while gatt_over_le=SCHEDULED"
+            " - marking FINISHED to unblock native pairing",
+            p_data->link_up_failed.bd_addr, p_data->link_up_failed.status);
+        pairing_cb.gatt_over_le =
+            btif_dm_pairing_cb_t::ServiceDiscoveryState::FINISHED;
+        if (pairing_cb.sdp_over_classic !=
+                btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED &&
+            pairing_cb.sdp_attempts == 0) {
+          log::warn("SDP also not pending - clearing pairing_cb for {}",
+                    p_data->link_up_failed.bd_addr);
+          wipe_le_audio_metadata_cache_for_pairing_device();
+          pairing_cb = {};
+        }
+      }
       GetInterfaceToProfiles()->events->invoke_acl_state_changed_cb(
               hci_error_to_bt_status(p_data->link_up_failed.status), p_data->link_up_failed.bd_addr,
               BT_ACL_STATE_DISCONNECTED, p_data->link_up_failed.transport_link_type,
@@ -2462,9 +2457,37 @@ void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
 
     case BTA_DM_LINK_DOWN_EVT: {
       bd_addr = p_data->link_down.bd_addr;
+      // Fix: If ACL drops for the device that has gatt_over_le=SCHEDULED or
+      // sdp_over_classic=SCHEDULED, clear pairing_cb to unblock native for new
+      // bond requests.
+      // Root cause: After CTKD, stack schedules GATT over LE. If the Classic ACL
+      // drops before the LE connection attempt completes, gatt_over_le stays
+      // SCHEDULED forever. Additionally, if SDP was also pending when the ACL
+      // dropped, sdp_over_classic=SCHEDULED also keeps pairing_cb alive.
+      // Both conditions must be resolved to unblock btif_dm_pairing_is_busy().
+      if ((bd_addr == pairing_cb.bd_addr || bd_addr == pairing_cb.static_bdaddr) &&
+          (pairing_cb.gatt_over_le ==
+               btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED ||
+           pairing_cb.sdp_over_classic ==
+               btif_dm_pairing_cb_t::ServiceDiscoveryState::SCHEDULED)) {
+        log::warn(
+            "ACL dropped for {} (transport={}) while gatt_over_le={} "
+            "sdp_over_classic={} sdp_attempts={} - clearing pairing_cb to "
+            "unblock native pairing",
+            bd_addr, p_data->link_down.transport_link_type,
+            pairing_cb.gatt_over_le, pairing_cb.sdp_over_classic,
+            pairing_cb.sdp_attempts);
+        // Mark both as finished - ACL is gone so neither can complete
+        pairing_cb.gatt_over_le =
+            btif_dm_pairing_cb_t::ServiceDiscoveryState::FINISHED;
+        pairing_cb.sdp_over_classic =
+            btif_dm_pairing_cb_t::ServiceDiscoveryState::FINISHED;
+        pairing_cb.sdp_attempts = 0;
+        wipe_le_audio_metadata_cache_for_pairing_device();
+        pairing_cb = {};
+      }
       btm_set_bond_type_dev(p_data->link_down.bd_addr, BOND_TYPE_UNKNOWN);
       GetInterfaceToProfiles()->onLinkDown(bd_addr, p_data->link_down.transport_link_type);
-      bta_dm_disc_stop();
 
       bt_conn_direction_t direction;
       switch (btm_get_acl_disc_reason_code()) {
@@ -3493,6 +3516,9 @@ static void btif_dm_ble_passkey_notif_evt(tBTA_DM_SP_KEY_NOTIF* p_ssp_key_notif)
   if (com::android::bluetooth::flags::temporary_pairing_tracking()) {
     pairing_cb.bond_type = BOND_TYPE_PERSISTENT;
   }
+
+  pairing_cb.is_le_only = true;
+  pairing_cb.is_le_nc = false;
 
   BTM_LogHistory(kBtmLogTagCallback, bd_addr, "Ssp request",
                  std::format("passkey:{}", p_ssp_key_notif->passkey));

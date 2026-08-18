@@ -521,24 +521,31 @@ public class A2dpSinkService extends ProfileService {
             return;
         }
         A2dpSinkStateMachine stateMachine = getOrCreateStateMachine(device);
-
-        if (event.mState == BluetoothProfile.STATE_DISCONNECTED) {
-            synchronized (mStreamHandlerLock) {
-                if (sAudioIsEnabled == true) {
-                    mA2dpSinkStreamHandler
-                            .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
-                            .sendToTarget();
-                    sAudioIsEnabled = false;
-                }
-                if (mAudioManager != null) {
-                    Message msg =
-                            mA2dpSinkStreamHandler.obtainMessage(
-                                    A2dpSinkStreamHandler.REMOVE_ACTIVE);
-                    msg.obj = device;
-                    mA2dpSinkStreamHandler.sendMessage(msg);
+        synchronized (sStateLock) {
+            Log.d(TAG, "Device : " + device + "mStreamingDevice : "+mStreamingDevice);
+            if (event.mState == BluetoothProfile.STATE_DISCONNECTED
+                    && device.equals(mStreamingDevice)) {
+                synchronized (mStreamHandlerLock) {
+                    if (sAudioIsEnabled == true) {
+                        mA2dpSinkStreamHandler
+                                .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
+                                .sendToTarget();
+                        sAudioIsEnabled = false;
+                    }
+                    if (mAudioManager != null) {
+                        Message msg =
+                                mA2dpSinkStreamHandler.obtainMessage(
+                                        A2dpSinkStreamHandler.REMOVE_ACTIVE);
+                        msg.obj = device;
+                        mA2dpSinkStreamHandler.sendMessage(msg);
+                    }
                 }
             }
         }
+        // Dispatch before setActiveDevice() to avoid a >10s lock contention in
+        // BluetoothMediaBrowserService that would delay STATE_CONNECTED past the connect-timeout.
+        int previousConnectionState = getConnectionState(device);
+        stateMachine.onStackEvent(event);
         if (event.mState == BluetoothProfile.STATE_CONNECTED) {
             if (mAudioManager != null) {
                 synchronized (mStreamHandlerLock) {
@@ -558,14 +565,13 @@ public class A2dpSinkService extends ProfileService {
 
                     AvrcpControllerService avrcpService =
                             AvrcpControllerService.getAvrcpControllerService();
-                    if(getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
+                    if (previousConnectionState != BluetoothProfile.STATE_CONNECTED) {
                         Log.d(TAG, "Device was not connected previously so do set active");
                         avrcpService.setActiveDevice(device);
                     }
                 }
             }
         }
-        stateMachine.onStackEvent(event);
     }
 
     private void onAudioStateChanged(StackEvent event) {
