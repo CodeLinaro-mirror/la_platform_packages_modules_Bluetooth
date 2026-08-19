@@ -48,12 +48,12 @@ public class ReflectorFragment extends Fragment {
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        mBleConnectionViewModel = new ViewModelProvider(this).get(BleConnectionViewModel.class);
+        mBleConnectionViewModel = new ViewModelProvider(requireActivity()).get(BleConnectionViewModel.class);
         mBleConnectionViewModel.setShowTxPower(true);
         mBleConnectionViewModel
                 .getLogText()
                 .observe(
-                        getActivity(),
+                        getViewLifecycleOwner(),
                         log -> {
                             mLogText.setText(log);
                         });
