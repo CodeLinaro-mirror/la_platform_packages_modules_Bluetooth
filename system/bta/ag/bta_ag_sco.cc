@@ -1481,6 +1481,27 @@ bool bta_ag_sco_is_opening(tBTA_AG_SCB* p_scb) {
 bool bta_ag_sco_is_codec_negotiating(tBTA_AG_SCB* p_scb) {
   return (bta_ag_cb.sco.state == BTA_AG_SCO_CODEC_ST) && (bta_ag_cb.sco.p_curr_scb == p_scb);
 }
+
+/*******************************************************************************
+ *
+ * Function         bta_ag_sco_is_closing
+ *
+ * Description      Check if sco is in the process of closing, i.e. a
+ *                   BTA_AG_SCO_CLOSE_EVT is already in flight and will drain
+ *                   post_sco via bta_ag_post_sco_close() shortly.
+ *
+ *
+ * Returns          true if sco is in a closing state for this scb, false
+ *                  otherwise.
+ *
+ ******************************************************************************/
+bool bta_ag_sco_is_closing(tBTA_AG_SCB* p_scb) {
+  return (bta_ag_cb.sco.state == BTA_AG_SCO_CLOSING_ST ||
+          bta_ag_cb.sco.state == BTA_AG_SCO_CLOSE_OP_ST ||
+          bta_ag_cb.sco.state == BTA_AG_SCO_CLOSE_XFER_ST) &&
+         (bta_ag_cb.sco.p_curr_scb == p_scb);
+}
+
 /*******************************************************************************
  *
  * Function         bta_ag_sco_listen
