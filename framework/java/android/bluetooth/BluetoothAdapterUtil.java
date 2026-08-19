@@ -12,9 +12,11 @@ import android.annotation.Nullable;
 import android.annotation.RequiresPermission;
 import android.annotation.RequiresNoPermission;
 import android.annotation.SuppressLint;
+import android.app.ActivityManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothProfile;
 import android.compat.annotation.UnsupportedAppUsage;
+import android.content.Context;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -179,6 +181,23 @@ public final class BluetoothAdapterUtil {
 
     private static boolean isDefaultAdapter(int adapterIndex) {
         return BluetoothAdapterCommon.isAdapterDefault(adapterIndex);
+    }
+
+    /** @hide */
+    @SuppressLint("UnflaggedApi")
+    public static boolean isCTSRunning(@Nullable Context context) {
+        if (context == null) {
+            Log.w(TAG, "context is not initialized!");
+            return false;
+        }
+        ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningAppProcessInfo p : am.getRunningAppProcesses()) {
+            String name = p.processName;
+            if (name.contains("bluetooth.cts") || name.contains("tradefed")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SuppressLint("UnflaggedApi")

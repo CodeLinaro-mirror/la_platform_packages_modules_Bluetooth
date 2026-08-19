@@ -1144,6 +1144,11 @@ public class HeadsetClientStateMachine extends StateMachine {
                         broadcastConnectionState(device, STATE_DISCONNECTED, STATE_DISCONNECTED);
                     }
                     break;
+                case HeadsetClientHalConstants.CONNECTION_STATE_SLC_CONNECTED:
+                    info("Disconnected: stale SLC_CONNECTED for " + device
+                            + ", forcing native disconnect");
+                    mNativeInterface.disconnect(device);
+                    break;
                 case HeadsetClientHalConstants.CONNECTION_STATE_CONNECTING:
                 case HeadsetClientHalConstants.CONNECTION_STATE_DISCONNECTED:
                 case HeadsetClientHalConstants.CONNECTION_STATE_DISCONNECTING:

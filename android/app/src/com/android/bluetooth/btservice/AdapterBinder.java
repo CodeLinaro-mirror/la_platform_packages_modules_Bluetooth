@@ -95,7 +95,7 @@ class AdapterBinder extends IAdapter.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public void offToBleOn(boolean quietMode, String hciInstanceName) {
         Log.v(TAG, "offToBleOn(" + quietMode + ", " + hciInstanceName + " )");
         AdapterService service = getServiceAndEnforcePrivileged();
@@ -107,7 +107,7 @@ class AdapterBinder extends IAdapter.Stub {
     }
 
     @Override
-    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_SCAN, BLUETOOTH_PRIVILEGED})
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
     public void onToBleOn() {
         Log.v(TAG, "onToBleOn");
         AdapterService service = getServiceAndEnforcePrivileged();

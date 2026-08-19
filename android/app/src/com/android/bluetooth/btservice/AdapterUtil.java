@@ -59,7 +59,7 @@ public final class AdapterUtil {
         sAdapterIndex = Application.getProcessName().equals(sContext.getPackageName()) ?
                ADAPTER_DEFAULT : ADAPTER_1;
         sAdapter = getAdapter(sAdapterIndex);
-        sDualAdapterMode = SystemProperties.getBoolean("persist.bluetooth.dual_adapter_mode", false);
+        sDualAdapterMode = (!BluetoothAdapterUtil.isCTSRunning(sContext)) && SystemProperties.getBoolean("persist.bluetooth.dual_adapter_mode", false);
         sFilterDevice = getFilterDeviceConfig();
         if (isDualAdapterMode() && isAdapterDefault()) {
             // In dual adapter mode, default adapter needs to monitor
@@ -152,6 +152,9 @@ public final class AdapterUtil {
     }
 
     public static boolean isProfileSupported(int profileId) {
+        if (isCTSRunning()) {
+            return true;
+        }
         if (sDualBluetooth == true && isAdapterDefault()) {
             if (profileId == BluetoothProfile.LE_AUDIO_BROADCAST ||
                 profileId == BluetoothProfile.CSIP_SET_COORDINATOR ||
@@ -171,6 +174,9 @@ public final class AdapterUtil {
     }
 
     public static boolean isProfileSupported(long supportedProfiles, int profileId) {
+        if (isCTSRunning()) {
+            return true;
+        }
         return (supportedProfiles & (1 << profileId)) != 0;
     }
 
@@ -223,5 +229,9 @@ public final class AdapterUtil {
 
     public static int getDefaultBluetoothClass() {
         return DEFAULT_BLUETOOTH_CLASS;
+    }
+
+    public static boolean isCTSRunning() {
+        return BluetoothAdapterUtil.isCTSRunning(sContext);
     }
 }

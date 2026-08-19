@@ -217,31 +217,25 @@ public class AvrcpControllerService extends ConnectableProfile {
         return BluetoothProperties.isProfileAvrcpControllerEnabled().orElse(false);
     }
 
-    // Don't use synchronized to avoid deadlock with JNI thread
     @Override
     public void cleanup() {
-        Log.d(TAG, "cleanup");
-        mNativeInterface.stop();
-    }
-
-    // Called by JNI thread
-    public synchronized void onStop() {
-        Log.i(TAG, "Cleanup AVRCP Controller Service");
-
-        setActiveDevice(null);
-        Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
-        stopService(stopIntent);
-        for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
-            stateMachine.quitNow();
-        }
-        mDeviceStateMap.clear();
-
-        if (mCoverArtManager != null) {
-            mCoverArtManager.cleanup();
-            setComponentAvailable(COVER_ART_PROVIDER, false);
-        }
-        setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+        Log.i(TAG, "cleanup()");
         mNativeInterface.cleanup();
+        synchronized (this) {
+            setActiveDevice(null);
+            Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
+            stopService(stopIntent);
+            for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
+                stateMachine.quitNow();
+            }
+            mDeviceStateMap.clear();
+
+            if (mCoverArtManager != null) {
+                mCoverArtManager.cleanup();
+                setComponentAvailable(COVER_ART_PROVIDER, false);
+            }
+            setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, false);
+        }
     }
 
     BrowseTree getBrowseTree() {

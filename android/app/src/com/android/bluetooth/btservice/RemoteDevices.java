@@ -1508,6 +1508,35 @@ public class RemoteDevices {
             return;
         }
 
+        if (AdapterUtil.isDualBluetoothEnabled()) {
+            BluetoothClass btClass = new BluetoothClass(deviceProp.getBluetoothClass());
+            if (AdapterUtil.isAdapterDefault()) {
+                // Default adapter: suppress headset, A2DP-source, and HID devices so only the
+                // 2nd adapter presents those profiles to the upper layer.
+                if (btClass.doesClassMatch(BluetoothClass.PROFILE_HEADSET)
+                        || btClass.doesClassMatch(BluetoothClass.PROFILE_A2DP)
+                        || btClass.doesClassMatch(BluetoothClass.PROFILE_HID)) {
+                    Log.d(TAG, "discoveryResultHandler: skip " + device
+                            + " on default adapter, class=" + btClass);
+                    return;
+                }
+            } else {
+                // 2nd adapter: suppress A2DP-sink devices so only the default adapter
+                // presents those to the upper layer.
+                if (btClass.doesClassMatch(BluetoothClass.PROFILE_A2DP_SINK)) {
+                    Log.d(TAG, "discoveryResultHandler: skip " + device
+                            + " on ext adapter, class=" + btClass);
+                    return;
+                }
+            }
+            // Discard the device with DUMO type but being discovered in LE transport, so
+            // that LE-Audio supported headset/earbuds would not display twice in the list
+            if (deviceProp.getDeviceType() == BluetoothDevice.DEVICE_TYPE_DUAL
+                    && deviceProp.getDiscoveryResultType() == BluetoothDevice.DEVICE_TYPE_LE) {
+                return;
+            }
+        }
+
         Intent intent = new Intent(BluetoothDevice.ACTION_FOUND);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
         intent.putExtra(

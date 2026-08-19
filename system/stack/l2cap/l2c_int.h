@@ -573,6 +573,12 @@ public:
   uint16_t pending_lead_cid;
   tL2CAP_CONN pending_l2cap_result;
 
+  // Echo flood mitigation (per LCB)
+  uint64_t echo_window_start_ms;
+  uint32_t echo_count_in_window;
+  uint64_t echo_cooldown_until_ms;
+  uint32_t echo_burst_count;
+
   unsigned number_of_active_dynamic_channels() const {
     unsigned cnt = 0;
     const tL2C_CCB* cur = ccb_queue.p_first_ccb;

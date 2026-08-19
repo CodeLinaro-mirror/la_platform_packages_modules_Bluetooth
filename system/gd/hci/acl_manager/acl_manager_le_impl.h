@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -69,7 +74,7 @@ public:
   // compiling AclManagerLeImpl's destructor. Hence we need to forward declare the
   // destructor for AclManagerLeImpl to delay compiling AclManagerLeImpl's destructor until
   // it starts linking the .cc file.
-  virtual ~AclManagerLeImpl() { log::verbose("AclManagerLe module stopped !!"); }
+  virtual ~AclManagerLeImpl();
 
   void Dump(int fd) const override;
 
@@ -133,6 +138,7 @@ private:
   os::Handler* handler_ = nullptr;
   storage::StorageModule& storage_module_;
   acl_manager::RoundRobinScheduler& round_robin_scheduler_;
+  hci::HciInterface& hci_interface_;
 
   acl_manager::le_impl le_impl_;
 };
