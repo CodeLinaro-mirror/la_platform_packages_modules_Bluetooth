@@ -164,6 +164,13 @@ void IsoManager::HandleHciEvent(uint8_t sub_code, uint8_t* params, uint16_t leng
   pimpl_->HandleHciEvent(sub_code, params, length);
 }
 
+void IsoManager::HandleCreateBigCommandStatus(uint8_t big_handle, uint8_t status) {
+  if (!pimpl_) {
+    return;
+  }
+  pimpl_->HandleCreateBigCommandStatus(big_handle, status);
+}
+
 void IsoManager::Start() {
   // It is needed here as IsoManager which is a singleton creates it, but in
   // this mock we want to destroy and recreate the mock on each test case.
