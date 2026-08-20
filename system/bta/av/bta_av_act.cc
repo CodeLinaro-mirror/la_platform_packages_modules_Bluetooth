@@ -584,6 +584,15 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
   log::debug("local features {} peer features {}", p_cb->features,
              p_cb->rcb[rc_handle].peer_features);
 
+  p_lcb = bta_av_find_lcb(p_data->rc_conn_chg.peer_addr, BTA_AV_LCB_FIND);
+  if (p_scb == nullptr || p_lcb == nullptr) {
+    log::warn("Reject AVRCP connection for peer {} because AVDTP is not connected",
+              p_data->rc_conn_chg.peer_addr);
+    p_cb->rcb[rc_handle].shdl = shdl;
+    bta_av_del_rc(&p_cb->rcb[rc_handle]);
+    return;
+  }
+
   // Check whether target or sink have the browse feature bit.
   // If concurrent target and controller are enabled, the sink feature bits are used.
   bool browse_supported = (p_cb->features & BTA_AV_FEAT_BROWSE);
