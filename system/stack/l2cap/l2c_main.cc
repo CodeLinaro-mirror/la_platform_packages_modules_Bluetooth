@@ -352,6 +352,9 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
           alarm_cancel(p_lcb->info_resp_timer);
 
           p_lcb->w4_info_rsp = false;
+          /* The peer rejected the info request: it is pre-1.2 and genuinely has
+           * no extended features. Treat its (empty) feature mask as known. */
+          p_lcb->peer_ext_fea_known = true;
           tL2C_CONN_INFO ci = {
                   .bd_addr = p_lcb->remote_bd_addr,
                   .hci_status = HCI_SUCCESS,
@@ -789,6 +792,11 @@ static void process_l2cap_cmd(tL2C_LCB* p_lcb, uint8_t* p, uint16_t pkt_len) {
         }
         STREAM_TO_UINT16(info_type, p);
         STREAM_TO_UINT16(result, p);
+
+        if (info_type == L2CAP_EXTENDED_FEATURES_INFO_TYPE) {
+          /* The peer answered: whatever the result, its capabilities are known */
+          p_lcb->peer_ext_fea_known = true;
+        }
 
         if ((info_type == L2CAP_EXTENDED_FEATURES_INFO_TYPE) &&
             (result == L2CAP_INFO_RESP_RESULT_SUCCESS)) {

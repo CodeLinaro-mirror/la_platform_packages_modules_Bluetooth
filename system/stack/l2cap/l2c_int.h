@@ -480,6 +480,7 @@ public:
   }
 
   bool w4_info_rsp;         /* true when info request is active */
+  bool peer_ext_fea_known;  /* true once the peer answered our info request */
   uint32_t peer_ext_fea;    /* Peer's extended features mask */
   list_t* link_xmit_data_q; /* Link transmit data buffer queue */
 
