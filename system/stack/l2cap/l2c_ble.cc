@@ -1019,6 +1019,7 @@ void l2c_link_process_ble_num_bufs(uint16_t num_lm_ble_bufs) {
 
   l2cb.num_lm_ble_bufs = num_lm_ble_bufs;
   l2cb.controller_le_xmit_window = num_lm_ble_bufs;
+  l2cb.ble_xmit_fragment_debt = 0;
 }
 
 /*******************************************************************************
@@ -1048,6 +1049,7 @@ void l2c_ble_link_adjust_allocation(void) {
   /* If no links active, reset buffer quotas and controller buffers */
   if (l2cb.num_ble_links_active == 0) {
     l2cb.controller_le_xmit_window = l2cb.num_lm_ble_bufs;
+    l2cb.ble_xmit_fragment_debt = 0;
     l2cb.ble_round_robin_quota = l2cb.ble_round_robin_unacked = 0;
     return;
   }
