@@ -139,6 +139,12 @@ class ScannerMap(
             if (predicate(app)) {
                 app.cleanup()
                 iterator.remove()
+                
+                // Evict the appScanStatsMap entry if this was the last scanner for this UID
+                val uid = app.uid
+                if (uid != null && apps.none { it.uid == uid }) {
+                    appScanStatsMap.remove(uid)
+                }
                 break
             }
         }
@@ -147,6 +153,7 @@ class ScannerMap(
     fun clear() {
         apps.forEach(ScannerApp::cleanup)
         apps.clear()
+        appScanStatsMap.clear()
     }
 
     fun getAppScanStatsByUid(uid: Int): AppScanStats? = appScanStatsMap[uid]

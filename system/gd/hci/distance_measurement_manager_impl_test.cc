@@ -511,8 +511,9 @@ struct CsModule {
 
   void StartMeasurement(const StartMeasurementParameters& params) {
     dm_manager_->StartDistanceMeasurement(
-            /*app_uid=*/100, params.responder_addr, params.connection_handle, params.req_hci_role,
-            params.interval, params.method, params.sight_type, params.location_type);
+            /*app_uid=*/100, /*session_id=*/1, params.responder_addr, params.connection_handle,
+            params.req_hci_role, params.interval, params.method, params.sight_type,
+            params.location_type);
   }
 
   void ReceivedReadLocalCapabilitiesComplete() {
@@ -605,7 +606,7 @@ struct CsModule {
   void StartMeasurementTillProcedureEnableComplete(const StartMeasurementParameters& params) {
     StartMeasurementTillSetProcedureParameters(params);
     EXPECT_CALL(mock_dm_callbacks_,
-                OnDistanceMeasurementStarted(params.responder_addr,
+                OnDistanceMeasurementStarted(params.responder_addr, _,
                                              DistanceMeasurementMethod::METHOD_CS))
             .RetiresOnSaturation();
 
@@ -681,10 +682,11 @@ TEST_F(DistanceMeasurementManagerTest, fail_read_local_cs_capabilities) {
   StartMeasurementParameters params;
   auto dm_session_future = cs_requester_.GetDmSessionFuture();
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -708,10 +710,11 @@ TEST_F(DistanceMeasurementManagerTest, ras_remote_not_support) {
   auto dm_session_future = cs_requester_.GetDmSessionFuture();
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
               OnDistanceMeasurementStopped(
-                      params.responder_addr,
+                      params.responder_addr, _,
                       DistanceMeasurementErrorCode::REASON_FEATURE_NOT_SUPPORTED_REMOTE,
                       DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -736,10 +739,10 @@ TEST_F(DistanceMeasurementManagerTest, ras_client_disconnect_after_session_stopp
   EXPECT_CALL(*metrics_, LogMetricsChannelSoundingRequesterSessionReported(
                                  _, _, _, _, ChannelSoundingStopReason::REASON_LOCAL_APP_REQUEST, _,
                                  _, _, _, _, _));
-  cs_requester_.dm_manager_->StopDistanceMeasurement(params.responder_addr,
+  cs_requester_.dm_manager_->StopDistanceMeasurement(/*session_id=*/1, params.responder_addr,
                                                      params.connection_handle, METHOD_CS);
 
-  EXPECT_CALL(cs_requester_.mock_dm_callbacks_, OnDistanceMeasurementStopped(_, _, _)).Times(0);
+  EXPECT_CALL(cs_requester_.mock_dm_callbacks_, OnDistanceMeasurementStopped(_, _, _, _)).Times(0);
   EXPECT_CALL(*metrics_, LogMetricsChannelSoundingRequesterSessionReported(
                                  _, _, _, _, ChannelSoundingStopReason::REASON_LE_DISCONNECT, _, _,
                                  _, _, _, _))
@@ -756,10 +759,11 @@ TEST_F(DistanceMeasurementManagerTest, error_read_remote_cs_caps_command) {
   cs_requester_.StartMeasurementTillRasConnectedEvent(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -780,10 +784,11 @@ TEST_F(DistanceMeasurementManagerTest, fail_read_remote_cs_caps_complete_with_re
   cs_requester_.StartMeasurementTillRasConnectedEvent(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -813,10 +818,11 @@ TEST_F(DistanceMeasurementManagerTest, error_create_config_command) {
   cs_requester_.StartMeasurementTillReadRemoteCaps(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -836,10 +842,11 @@ TEST_F(DistanceMeasurementManagerTest, fail_create_config_complete) {
   cs_requester_.StartMeasurementTillReadRemoteCaps(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -881,10 +888,11 @@ TEST_F(DistanceMeasurementManagerTest, fail_set_procedure_parameters_with_retry)
   cs_requester_.StartMeasurementTillSecurityEnable(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -912,10 +920,11 @@ TEST_F(DistanceMeasurementManagerTest, fail_security_enable_complete) {
   cs_requester_.StartMeasurementTillCreateConfig(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -937,7 +946,7 @@ TEST_F(DistanceMeasurementManagerTest, unexpected_fail_security_enable_complete)
   StartMeasurementParameters params;
   cs_requester_.StartMeasurementTillProcedureEnableComplete(params);
 
-  EXPECT_CALL(cs_requester_.mock_dm_callbacks_, OnDistanceMeasurementStopped(_, _, _)).Times(0);
+  EXPECT_CALL(cs_requester_.mock_dm_callbacks_, OnDistanceMeasurementStopped(_, _, _, _)).Times(0);
 
   cs_requester_.test_hci_layer_->IncomingLeMetaEvent(LeCsSecurityEnableCompleteBuilder::Create(
           ErrorCode::LINK_LAYER_COLLISION, params.connection_handle));
@@ -951,10 +960,11 @@ TEST_F(DistanceMeasurementManagerTest, retry_fail_procedure_enable_command) {
   cs_requester_.StartMeasurementTillSetProcedureParameters(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -983,7 +993,8 @@ TEST_F(DistanceMeasurementManagerTest,
 
   cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
   cs_requester_.dm_manager_->StopDistanceMeasurement(
-          params.responder_addr, params.connection_handle, DistanceMeasurementMethod::METHOD_CS);
+          /*session_id=*/1, params.responder_addr, params.connection_handle,
+          DistanceMeasurementMethod::METHOD_CS);
   CommandView command_view =
           cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
   LeCsProcedureEnableView enable_view =
@@ -1011,10 +1022,11 @@ TEST_F(DistanceMeasurementManagerTest, retry_fail_procedure_enable_complete) {
   cs_requester_.StartMeasurementTillSetProcedureParameters(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementErrorCode /*error_code*/,
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementErrorCode /*error_code*/,
                            DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
@@ -1049,7 +1061,8 @@ TEST_F(DistanceMeasurementManagerTest,
           /*status=*/ErrorCode::SUCCESS,
           /*num_hci_command_packets=*/0xff));
   cs_requester_.dm_manager_->StopDistanceMeasurement(
-          params.responder_addr, params.connection_handle, DistanceMeasurementMethod::METHOD_CS);
+          /*session_id=*/1, params.responder_addr, params.connection_handle,
+          DistanceMeasurementMethod::METHOD_CS);
   CommandView command_view =
           cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
   LeCsProcedureEnableView enable_view =
@@ -1078,8 +1091,10 @@ TEST_F(DistanceMeasurementManagerTest, schedule_next_cs_procedures) {
   cs_requester_.StartMeasurementTillSetProcedureParameters(params);
   EXPECT_CALL(
           cs_requester_.mock_dm_callbacks_,
-          OnDistanceMeasurementStarted(params.responder_addr, DistanceMeasurementMethod::METHOD_CS))
-          .WillOnce([this](const Address& /*address*/, DistanceMeasurementMethod /*method*/) {
+          OnDistanceMeasurementStarted(params.responder_addr, _,
+                                       DistanceMeasurementMethod::METHOD_CS))
+          .WillOnce([this](const Address& /*address*/, uint32_t /*session_id*/,
+                           DistanceMeasurementMethod /*method*/) {
             ASSERT_NE(cs_requester_.dm_session_promise_, nullptr);
             cs_requester_.dm_session_promise_->set_value();
             cs_requester_.dm_session_promise_.reset();
@@ -1151,7 +1166,8 @@ TEST_F(DistanceMeasurementManagerTest, interval_updates_between_2_sessions) {
   // consume the procedure_enable command
   cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
   cs_requester_.dm_manager_->StopDistanceMeasurement(
-          params.responder_addr, params.connection_handle, DistanceMeasurementMethod::METHOD_CS);
+          /*session_id=*/1, params.responder_addr, params.connection_handle,
+          DistanceMeasurementMethod::METHOD_CS);
   // consume the disable command by stop request
   cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
 
@@ -1177,7 +1193,8 @@ TEST_F(DistanceMeasurementManagerTest, procedure_enabled_after_stop) {
           /*status=*/ErrorCode::SUCCESS,
           /*num_hci_command_packets=*/0xff));
   cs_requester_.dm_manager_->StopDistanceMeasurement(
-          params.responder_addr, params.connection_handle, DistanceMeasurementMethod::METHOD_CS);
+          /*session_id=*/1, params.responder_addr, params.connection_handle,
+          DistanceMeasurementMethod::METHOD_CS);
   // disable by stop request
   cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
 
@@ -1202,7 +1219,7 @@ TEST_F(DistanceMeasurementManagerTest, duplicated_requesting_session) {
   cs_requester_.test_hci_layer_->AssertNoQueuedCommand();
   // second request
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStarted(params.responder_addr, METHOD_CS))
+              OnDistanceMeasurementStarted(params.responder_addr, _, METHOD_CS))
           .RetiresOnSaturation();
   params.interval = 1000;
   cs_requester_.StartMeasurement(params);
@@ -1211,7 +1228,8 @@ TEST_F(DistanceMeasurementManagerTest, duplicated_requesting_session) {
   cs_requester_.test_hci_layer_->AssertNoQueuedCommand();
 
   cs_requester_.dm_manager_->StopDistanceMeasurement(
-          params.responder_addr, params.connection_handle, DistanceMeasurementMethod::METHOD_CS);
+          /*session_id=*/1, params.responder_addr, params.connection_handle,
+          DistanceMeasurementMethod::METHOD_CS);
   // disable by stop request
   CommandView command_view =
           cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_CS_PROCEDURE_ENABLE);
@@ -1254,7 +1272,7 @@ TEST_F(DistanceMeasurementManagerTest, b2b_conflict_before_requester_stop) {
 
   // local requester session is stopped by the responder as they share the same config_id
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_REMOTE_REQUEST,
                                            DistanceMeasurementMethod::METHOD_CS));
   // inject the responder event
@@ -1276,7 +1294,8 @@ TEST_F(DistanceMeasurementManagerTest, b2b_conflict_after_requester_stop) {
   StartMeasurementParameters params;
   cs_requester_.StartMeasurementTillSetProcedureParameters(params);
   cs_requester_.dm_manager_->StopDistanceMeasurement(
-          params.responder_addr, params.connection_handle, DistanceMeasurementMethod::METHOD_CS);
+          /*session_id=*/1, params.responder_addr, params.connection_handle,
+          DistanceMeasurementMethod::METHOD_CS);
 
   // inject the responder event
   cs_requester_.RespondTillProcedureEnableComplete(params);
@@ -1633,7 +1652,7 @@ TEST_P(DistanceMeasurementManagerInvalidRasTest, invalid_ras_segment_data) {
   // send responder data
   make_invalid_testing_segment(segment_data, GetParam().testing_item_);
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS));
   cs_requester_.dm_manager_->HandleRemoteData(params.responder_addr, params.connection_handle,
@@ -1788,7 +1807,7 @@ TEST_F(DistanceMeasurementManagerTest, get_rssi_result_success) {
           /*phy=*/1, transmit_power_level, /*transmit_power_level_flag=*/0, /*delta*/ 0));
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStarted(params.responder_addr,
+              OnDistanceMeasurementStarted(params.responder_addr, _,
                                            DistanceMeasurementMethod::METHOD_RSSI));
   cs_requester_.test_hci_layer_->GetCommand(OpCode::LE_SET_TRANSMIT_POWER_REPORTING_ENABLE);
   cs_requester_.test_hci_layer_->IncomingEvent(
@@ -1808,14 +1827,17 @@ TEST_F(DistanceMeasurementManagerTest, get_rssi_result_success) {
   double distance = pow(10.0, pow_value);
   if (com_android_bluetooth_flags_include_power_and_rssi_in_distance_measurement_result()) {
     EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-                OnDistanceMeasurementResult(params.responder_addr, distance * 100, distance * 100,
-                                            _, _, _, _, _, transmit_power_level, rssi, _, _, _, _,
-                                            DistanceMeasurementMethod::METHOD_RSSI));
+                OnDistanceMeasurementResultCallback(::testing::FieldsAre(
+                        params.responder_addr, _, distance * 100,
+                        static_cast<uint32_t>(distance * 100), _, _, _, _, _,
+                        transmit_power_level, rssi, _, _, _, _,
+                        DistanceMeasurementMethod::METHOD_RSSI)));
   } else {
     EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-                OnDistanceMeasurementResult(params.responder_addr, distance * 100, distance * 100,
-                                            _, _, _, _, _, _, _, _, _, _, _,
-                                            DistanceMeasurementMethod::METHOD_RSSI));
+                OnDistanceMeasurementResultCallback(::testing::FieldsAre(
+                        params.responder_addr, _, distance * 100,
+                        static_cast<uint32_t>(distance * 100), _, _, _, _, _, _, _, _, _, _, _,
+                        DistanceMeasurementMethod::METHOD_RSSI)));
   }
   cs_requester_.test_hci_layer_->IncomingEvent(ReadRssiCompleteBuilder::Create(
           /*num_hci_command_packets=*/128, ErrorCode::SUCCESS, params.connection_handle, rssi));
@@ -1872,7 +1894,7 @@ TEST_F(DistanceMeasurementManagerTest, ranging_hal_on_closed_before_started) {
   cs_requester_.StartMeasurementTillRasConnectedEvent(params);
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
           .Times(0);
@@ -1889,7 +1911,7 @@ TEST_F(DistanceMeasurementManagerTest, ranging_hal_on_closed_after_started) {
   cs_requester_.test_hci_layer_->AssertNoQueuedCommand();
 
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementStopped(params.responder_addr,
+              OnDistanceMeasurementStopped(params.responder_addr, _,
                                            DistanceMeasurementErrorCode::REASON_INTERNAL_ERROR,
                                            DistanceMeasurementMethod::METHOD_CS))
           .Times(1);
@@ -1931,8 +1953,8 @@ TEST_F(DistanceMeasurementManagerTest, ranging_hal_on_result_v2) {
   // - The exact timestamp from the V2 HAL result
   // TODO(b/462311235): Add call path for check_cs_procedure_complete so that rssi can be tested.
   EXPECT_CALL(cs_requester_.mock_dm_callbacks_,
-              OnDistanceMeasurementResult(
-                      params.responder_addr,
+              OnDistanceMeasurementResultCallback(::testing::FieldsAre(
+                      params.responder_addr, _,
                       static_cast<uint32_t>(ranging_result.result_meters_ * 100),  // 1050
                       static_cast<uint32_t>(ranging_result.error_meters_ * 100),   // 50
                       kInvalidAzimuthAngleDegree, kInvalidAzimuthAngleDegree,
@@ -1944,7 +1966,7 @@ TEST_F(DistanceMeasurementManagerTest, ranging_hal_on_result_v2) {
                       static_cast<DistanceMeasurementDetectedAttackLevel>(
                               ranging_result.detected_attack_level_),  // NADM_ATTACK_UNLIKELY
                       ranging_result.velocity_meters_per_second_,      // 0.1
-                      DistanceMeasurementMethod::METHOD_CS))
+                      DistanceMeasurementMethod::METHOD_CS)))
           .Times(1);
 
   // 4. Trigger the OnResult callback

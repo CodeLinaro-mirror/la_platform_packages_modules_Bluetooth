@@ -631,33 +631,9 @@ provider::get_a2dp_configuration(
     default:
       break;
   }
-  switch (user_preferences.sample_rate) {
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_44100:
-      codecParameters.samplingFrequencyHz = 44100;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_48000:
-      codecParameters.samplingFrequencyHz = 48000;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_88200:
-      codecParameters.samplingFrequencyHz = 88200;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_96000:
-      codecParameters.samplingFrequencyHz = 96000;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_176400:
-      codecParameters.samplingFrequencyHz = 176400;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_192000:
-      codecParameters.samplingFrequencyHz = 192000;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_16000:
-      codecParameters.samplingFrequencyHz = 16000;
-      break;
-    case BTAV_A2DP_CODEC_SAMPLE_RATE_24000:
-      codecParameters.samplingFrequencyHz = 24000;
-      break;
-    default:
-      break;
+  int hz = user_preferences.SampleRateHz();
+  if (hz > 0) {
+    codecParameters.samplingFrequencyHz = hz;
   }
   switch (user_preferences.bits_per_sample) {
     case BTAV_A2DP_CODEC_BITS_PER_SAMPLE_16:
@@ -688,38 +664,17 @@ provider::get_a2dp_configuration(
                          ? convertCodecId(user_preferred_codec_id.value())
                          : std::nullopt;
 
-  // Dev UI Bit Rate change for LDAC
-  if (hint.codecId.has_value() && hint.codecId->getTag() == CodecId::vendor) {
-    int vendor_id = hint.codecId->get<CodecId::vendor>().id;
-    int codec_id = hint.codecId->get<CodecId::vendor>().codecId;
-    int samplerate = codecParameters.samplingFrequencyHz;
-    if (vendor_id == A2DP_LDAC_VENDOR_ID && codec_id == A2DP_LDAC_CODEC_ID) {
-      switch (user_preferences.codec_specific_1) {
-        case 1000:
-          if (samplerate == 44100 || samplerate == 88200)
-            codecParameters.maxBitrate = 909000;
-          else
-            codecParameters.maxBitrate = 990000;
-          break;
-        case 1001:
-          if (samplerate == 44100 || samplerate == 88200)
-            codecParameters.maxBitrate = 606000;
-          else
-            codecParameters.maxBitrate = 660000;
-          break;
-        case 1002:
-          if (samplerate == 44100 || samplerate == 88200)
-            codecParameters.maxBitrate = 303000;
-          else
-            codecParameters.maxBitrate = 330000;
-          break;
-        case 1003:
-        default:
-          codecParameters.maxBitrate = 0; // LDAC ABR
-          break;
-      }
-    }
+  // Apply the codec bitrate hints computed by the stack (e.g. the LDAC
+  // Developer-Options bit rate). The stack owns the codec-specific conversion
+  // so this module does not need to depend on stack codec constants.
+  if (user_preferences.min_bitrate > 0) {
+    codecParameters.minBitrate = user_preferences.min_bitrate;
   }
+  if (user_preferences.max_bitrate > 0) {
+    codecParameters.maxBitrate = user_preferences.max_bitrate;
+  }
+  log::debug("bitrate hint to HAL: minBitrate={}bps, maxBitrate={}bps", codecParameters.minBitrate,
+             codecParameters.maxBitrate);
 
   log::info("local: {}, remote capabilities:", is_source ? "source" : "sink");
 
@@ -743,6 +698,8 @@ provider::get_a2dp_configuration(
   }
 
   log::info("provider selected {}", result->toString());
+  log::debug("final bitrate from HAL: minBitrate={}bps, maxBitrate={}bps",
+             result->parameters.minBitrate, result->parameters.maxBitrate);
   auto a2dp_configuration = convertA2dpConfiguration(result.value());
   a2dp_configuration.codec_parameters.codec_type =
           is_source ? provider_info->SourceCodecIndex(result->id).value()

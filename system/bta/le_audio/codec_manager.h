@@ -177,6 +177,7 @@ public:
   std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetRemoteAudioCodecCapa(
           const bluetooth::le_audio::types::PublishedAudioCapabilities& pac) const;
 
+  std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetOffloadingPreference() const;
   virtual void ConfigureDataPath(hci_data_direction_t direction, uint8_t dataPathId,
                                  std::vector<uint8_t> dataPathConfig) const;
 

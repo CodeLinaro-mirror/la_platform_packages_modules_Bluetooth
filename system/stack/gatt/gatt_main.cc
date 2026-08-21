@@ -570,8 +570,17 @@ void gatt_data_process(tGATT_TCB& tcb, uint16_t cid, BT_HDR* p_buf) {
   pseudo_op_code = op_code & (~GATT_WRITE_CMD_MASK);
 
   if (pseudo_op_code >= GATT_OP_CODE_MAX) {
-    /* Note: PTS: GATT/SR/UNS/BI-01-C mandates error on unsupported ATT request.
-     */
+    /* Unsupported opcode. Core Vol 3, Part F, Section 3.3: an unsupported
+     * request (Command Flag == 0) must be answered with ATT_ERROR_RSP
+     * (Request Not Supported), but an unsupported command (Command Flag == 1)
+     * must be silently ignored.
+     * Note: PTS GATT/SR/UNS/BI-01-C mandates the error for the request case;
+     * GATT/SR/UNS/BI-02-C and BI-03-C mandate silent ignore for the command
+     * case. GATT_CMD_MASK is bit 6 of the raw opcode. */
+    if (op_code & GATT_CMD_MASK) {
+      log::error("ATT - Rcvd L2CAP data, ignoring unsupported cmd: 0x{:x}", op_code);
+      return;
+    }
     log::error("ATT - Rcvd L2CAP data, unknown cmd: 0x{:x}", op_code);
     gatt_send_error_rsp(tcb, cid, GATT_REQ_NOT_SUPPORTED, op_code, 0, false);
     return;

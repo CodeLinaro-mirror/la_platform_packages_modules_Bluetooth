@@ -696,7 +696,7 @@ protected:
                     evt.ft_p_to_c = 0;
                     evt.max_pdu_c_to_p = 0;
                     evt.max_pdu_p_to_c = 0;
-                    evt.iso_itv = 0;
+                    evt.iso_interval = 0;
 
                     InjectHciNotifyCisEstablished(group.get(), dev_it->get(), evt);
 
@@ -2549,7 +2549,7 @@ TEST_F(StateMachineTest, testConfigureCodecSingleFb2) {
           group->GetActiveConfiguration()->confs.sink.at(0).codec.GetChannelCountPerIsoStream();
   auto frame_octets = group->GetActiveConfiguration()->confs.sink.at(0).codec.GetOctetsPerFrame();
   ASSERT_NE(last_cig_params_.cis_cfgs.size(), 0lu);
-  ASSERT_EQ(last_cig_params_.sdu_itv_c_to_p, data_interval);
+  ASSERT_EQ(last_cig_params_.sdu_interval_c_to_p, data_interval);
   ASSERT_EQ(last_cig_params_.cis_cfgs.at(0).max_sdu_size_c_to_p,
             codec_frame_blocks_per_sdu_ * channel_count * frame_octets);
 }
@@ -12180,7 +12180,7 @@ TEST_F(StateMachineTest, testStreamMultipleDsa) {
   ASSERT_TRUE(group_config->hasDsaBackChannel());
 
   // Verify that the CIG has proper parameters for the back channel
-  ASSERT_NE(last_cig_params_.sdu_itv_p_to_c, 0lu);
+  ASSERT_NE(last_cig_params_.sdu_interval_p_to_c, 0lu);
   ASSERT_NE(last_cig_params_.max_trans_lat_p_to_c, 0lu);
   for (auto const& cfg : last_cig_params_.cis_cfgs) {
     ASSERT_NE(cfg.max_sdu_size_p_to_c, 0lu);

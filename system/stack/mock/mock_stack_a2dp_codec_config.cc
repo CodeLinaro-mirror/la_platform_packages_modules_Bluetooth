@@ -25,6 +25,7 @@
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_constants.h"
 #include "stack/include/a2dp_ext.h"
+#include "stack/include/a2dp_vendor.h"
 #include "stack/include/bt_hdr.h"
 #include "test/common/mock_functions.h"
 
@@ -344,6 +345,12 @@ void A2dpCodecConfigExt::setCodecConfig(
         uint8_t const /*codec_config*/[AVDT_CODEC_SIZE],
         std::vector<uint8_t> const& /*vendor_specific_parameters*/) {
   inc_func_call_count(__func__);
+}
+std::optional<A2dpBitrateRange> A2DP_VendorGetBitRateRange(bluetooth::a2dp::CodecId /* codec_id */,
+                                                          int64_t /* codec_specific_1 */,
+                                                          int /* sample_rate */) {
+  inc_func_call_count(__func__);
+  return std::nullopt;
 }
 
 namespace bluetooth::a2dp {

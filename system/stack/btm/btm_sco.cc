@@ -1127,7 +1127,7 @@ void btm_sco_connection_failed(tHCI_STATUS hci_status, const RawAddress& bda, ui
       } else {
         log::debug("SCO terminating connection failed handle:0x{:04x} reason:{}", hci_handle,
                    hci_error_code_text(hci_status));
-        if (link.state == SCO_ST_CONNECTING) {
+        if (link.state == SCO_ST_CONNECTING || link.state == SCO_ST_W4_CONN_RSP) {
           link.state = SCO_ST_UNUSED;
           (*link.p_disc_cb)(sco_index, INTERNAL_ERROR);
         } else {

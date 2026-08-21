@@ -40,12 +40,13 @@ public:
   DistanceMeasurementManagerImpl& operator=(const DistanceMeasurementManagerImpl&) = delete;
 
   void RegisterDistanceMeasurementCallbacks(DistanceMeasurementCallbacks* callbacks) override;
-  void StartDistanceMeasurement(int32_t app_uid, const Address&, uint16_t connection_handle,
-                                hci::Role local_hci_role, uint16_t interval,
-                                DistanceMeasurementMethod method,
+  void StartDistanceMeasurement(int32_t app_uid, uint32_t session_id, const Address&,
+                                uint16_t connection_handle, hci::Role local_hci_role,
+                                uint16_t interval, DistanceMeasurementMethod method,
                                 DistanceMeasurementSightType sight_type,
                                 DistanceMeasurementLocationType location_type) override;
-  void StopDistanceMeasurement(const Address& address, uint16_t connection_handle,
+  void StopDistanceMeasurement(uint32_t session_id, const Address& address,
+                               uint16_t connection_handle,
                                DistanceMeasurementMethod method) override;
   void HandleRasClientConnectedEvent(
           const Address& address, uint16_t connection_handle, uint16_t att_handle,

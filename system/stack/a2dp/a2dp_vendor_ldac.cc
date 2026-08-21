@@ -285,33 +285,47 @@ bool A2DP_VendorCodecEqualsLdac(const uint8_t* p_codec_info_a, const uint8_t* p_
 
 int A2dpCodecConfigLdacBase::getTrackBitRate() const {
   int samplerate = A2DP_GetTrackSampleRate(ota_codec_config_.data());
-  switch (codec_config_.codec_specific_1) {
-    case 1000:
-      if (samplerate == 44100 || samplerate == 88200) {
-        return 909000;
-      }
-      else {
-        return 990000;
-      }
-    case 1001:
-      if (samplerate == 44100 || samplerate == 88200) {
-        return 606000;
-      }
-      else {
-        return 660000;
-      }
-    case 1002:
-      if (samplerate == 44100 || samplerate == 88200) {
-        return 303000;
-      }
-      else {
-        return 330000;
-      }
-    case 1003:
-    default:
-      return 0;
+  return A2DP_VendorGetBitRateRangeLdac(codec_config_.codec_specific_1, samplerate).max_bitrate;
+}
+
+A2dpBitrateRange A2DP_VendorGetBitRateRangeLdac(int64_t codec_specific_1, int sample_rate_hz) {
+  // codec_specific_1 == 0 means the quality mode is unset ("don't care"); the
+  // encoder falls back to a system-property default in that case (see
+  // a2dp_vendor_ldac_encoder.cc). Mirror that here by returning the undefined
+  // {0, 0} range so the audio HAL is not given a bitrate hint, matching the
+  // behaviour before the conversion was moved into the stack.
+  if (codec_specific_1 == 0) {
+    log::debug("LDAC quality mode unset, no bitrate hint (sample_rate={}Hz)", sample_rate_hz);
+    return {0, 0};
   }
-  return 0;
+
+  bool low_sample_rate = (sample_rate_hz == 44100 || sample_rate_hz == 88200);
+  int32_t high = low_sample_rate ? 909000 : 990000;  // HIGH quality (mode 1000/0)
+  int32_t mid = low_sample_rate ? 606000 : 660000;   // MID quality  (mode 1001/1)
+  int32_t low = low_sample_rate ? 303000 : 330000;   // LOW quality  (mode 1002/2)
+  // The quality mode is encoded either directly (0..3) or offset by 1000
+  // (1000..1003); both the Dev-UI and the encoder use the low decimal digit.
+  A2dpBitrateRange range;
+  switch (codec_specific_1 % 10) {
+    case 0:
+      range = {high, high};
+      break;
+    case 1:
+      range = {mid, mid};
+      break;
+    case 2:
+      range = {low, low};
+      break;
+    case 3:
+    default:
+      // ABR: the stream bitrate varies between the LOW and HIGH bounds
+      // according to link quality (0 < min <= max, per CodecParameters.aidl).
+      range = {low, high};
+      break;
+  }
+  log::debug("LDAC quality mode={}, sample_rate={}Hz -> min={}bps, max={}bps", codec_specific_1,
+             sample_rate_hz, range.min_bitrate, range.max_bitrate);
+  return range;
 }
 
 int A2DP_VendorGetTrackSampleRateLdac(const uint8_t* p_codec_info) {

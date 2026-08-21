@@ -214,7 +214,8 @@ public:
   }
 
   void start(const std::vector<btle_audio_codec_config_t>& offloading_preference) {
-    dual_bidirection_swb_supported_ =
+  offloading_preference_ = offloading_preference;
+  dual_bidirection_swb_supported_ =
             osi_property_get_bool("bluetooth.leaudio.dual_bidirection_swb.supported", false);
     bluetooth::le_audio::AudioSetConfigurationProvider::Initialize(GetCodecLocation());
     if (!com_android_bluetooth_flags_leaudio_codec_id_support()) {
@@ -283,6 +284,10 @@ public:
       log::debug("{}\n", a.ToString());
     }
     return codec_input_capa;
+  }
+
+  std::vector<bluetooth::le_audio::btle_audio_codec_config_t> GetOffloadingPreference() const {
+    return offloading_preference_;
   }
 
   static bool IsKnownCodec(const types::LeAudioCodecId& codec_id) {
@@ -1652,6 +1657,7 @@ private:
 
   std::optional<ProviderInfo> codec_provider_info_;
 
+  std::vector<btle_audio_codec_config_t> offloading_preference_;
   std::vector<btle_audio_codec_config_t> codec_input_capa = {};
   std::vector<btle_audio_codec_config_t> codec_output_capa = {};
   int broadcast_target_config = -1;
@@ -1769,6 +1775,14 @@ std::optional<ProviderInfo> CodecManager::GetCodecConfigProviderInfo(void) const
   }
 
   return pimpl_->codec_manager_impl_->GetCodecConfigProviderInfo();
+}
+
+std::vector<bluetooth::le_audio::btle_audio_codec_config_t>
+CodecManager::GetOffloadingPreference() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->codec_manager_impl_->GetOffloadingPreference();
+  }
+  return {};
 }
 
 bool CodecManager::IsDualBiDirSwbSupported(void) const {

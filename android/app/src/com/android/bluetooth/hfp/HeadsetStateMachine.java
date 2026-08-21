@@ -2242,6 +2242,25 @@ class HeadsetStateMachine extends StateMachine {
             boolean showVolume = android.os.SystemProperties.getBoolean(HFP_VOLUME_CONTROL_ENABLED, true);
             int flag = showVolume && (mCurrentState == mAudioOn) ? AudioManager.FLAG_SHOW_UI : 0;
             flag |= FLAG_ABSOLUTE_VOLUME;
+
+            AudioManager am = mSystemInterface.getAudioManager();
+            if (am.getMode() == AudioManager.MODE_ASSISTANT_CONVERSATION) {
+                int assistantMax = am.getStreamMaxVolume(AudioManager.STREAM_ASSISTANT);
+                int assistantMin = am.getStreamMinVolume(AudioManager.STREAM_ASSISTANT);
+                int assistantVolume;
+                if (volume <= 0) {
+                    assistantVolume = assistantMin;
+                } else {
+                    assistantVolume = Math.round((volume / 15.0f) * assistantMax);
+                    assistantVolume = Math.max(assistantVolume, 1);
+                }
+                if (assistantVolume != am.getStreamVolume(AudioManager.STREAM_ASSISTANT)) {
+                    log("Setting assistant stream volume " + assistantVolume + " from HFP " + volume);
+                    am.setStreamVolume(AudioManager.STREAM_ASSISTANT, assistantVolume, flag);
+                }
+                return;
+            }
+
             int volStream =
                     android.media.audio.Flags.deprecateStreamBtSco()
                             ? AudioManager.STREAM_VOICE_CALL

@@ -255,7 +255,7 @@ static uint8_t btif_a2dp_source_dynamic_audio_buffer_size = MAX_OUTPUT_A2DP_FRAM
 static void btif_a2dp_source_init_delayed(void);
 static bool btif_a2dp_source_startup(void);
 static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_address,
-                                                   std::promise<void> start_session_promise);
+                                                   std::promise<bool> start_session_promise);
 static void btif_a2dp_source_audio_tx_start_event(void);
 static void btif_a2dp_source_audio_tx_stop_event(void);
 static void btif_a2dp_source_audio_tx_flush_event(void);
@@ -453,7 +453,7 @@ static bool btif_a2dp_source_startup(void) {
 }
 
 bool btif_a2dp_source_start_session(const RawAddress& peer_address,
-                                    std::promise<void> peer_ready_promise) {
+                                    std::promise<bool> peer_ready_promise) {
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
 
   btif_a2dp_source_audio_tx_flush_req();
@@ -513,21 +513,21 @@ static bool get_rate_control_enabled(A2dpCodecConfig* a2dp_codec_config) {
 }
 
 static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_address,
-                                                   std::promise<void> peer_ready_promise) {
+                                                   std::promise<bool> peer_ready_promise) {
   log::info("peer_address={} state={}", peer_address, btif_a2dp_source_cb.StateStr());
 
   tA2DP_ENCODER_INIT_PEER_PARAMS peer_params;
   bta_av_co_get_peer_params(peer_address, &peer_params);
   if (!bta_av_co_set_active_source_peer(peer_address)) {
     log::error("Cannot stream audio: cannot set active peer to {}", peer_address);
-    peer_ready_promise.set_value();
+    peer_ready_promise.set_value(false);
     return;
   }
 
   const tA2DP_ENCODER_INTERFACE* encoder_interface = bta_av_co_get_encoder_interface(peer_address);
   if (encoder_interface == nullptr) {
     log::error("Cannot stream audio: no source encoder interface");
-    peer_ready_promise.set_value();
+    peer_ready_promise.set_value(false);
     return;
   }
 
@@ -538,7 +538,7 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
     codec_config = a2dp_codec_config->getCodecConfig();
   } else {
     log::error("Cannot stream audio: current codec is not set");
-    peer_ready_promise.set_value();
+    peer_ready_promise.set_value(false);
     return;
   }
 
@@ -609,14 +609,14 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
 
     if (!bluetooth::audio::a2dp::setup_codec(config)) {
       log::error("Setup codec error");
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(false);
       return;
     }
   }
 
   if (btif_a2dp_source_cb.State() != BtifA2dpSource::kStateRunning) {
     log::error("A2DP Source media task is not running");
-    peer_ready_promise.set_value();
+    peer_ready_promise.set_value(false);
     return;
   }
 
@@ -626,12 +626,12 @@ static void btif_a2dp_source_start_session_delayed(const RawAddress& peer_addres
   }
 
   bta_av_co_report_codec_config_changed(peer_address);
-  peer_ready_promise.set_value();
+  peer_ready_promise.set_value(true);
 }
 
 bool btif_a2dp_source_restart_session(const RawAddress& old_peer_address,
                                       const RawAddress& new_peer_address,
-                                      std::promise<void> peer_ready_promise) {
+                                      std::promise<bool> peer_ready_promise) {
   log::info("old_peer_address={} new_peer_address={} state={}", old_peer_address, new_peer_address,
             btif_a2dp_source_cb.StateStr());
 
@@ -788,7 +788,9 @@ static void btif_a2dp_source_encoder_user_config_update_event(
   if (!peer_address.IsEmpty() && peer_address == btif_av_source_active_peer()) {
     // No more actions needed with remote, and if succeed, user had changed the
     // config like the bits per sample only. Let's resume the session now.
-    btif_a2dp_source_start_session(peer_address, std::move(peer_ready_promise));
+    std::promise<bool> bool_promise;
+    btif_a2dp_source_start_session(peer_address, std::move(bool_promise));
+    peer_ready_promise.set_value();
   } else {
     // Unlock for non-active peer
     peer_ready_promise.set_value();

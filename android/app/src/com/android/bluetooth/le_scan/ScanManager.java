@@ -1407,12 +1407,15 @@ public class ScanManager {
             // cannot be queried from the controller for MSFT enabled devices
             maxFiltersSupported = MIN_NUM_MSFT_MONITOR_SLOTS;
         }
-        // Start from index 4 as:
+        // Start from index 5 as:
         // index 0 is reserved for ALL_PASS filter in Settings app.
         // index 1 is reserved for ALL_PASS filter for regular scan apps.
         // index 2 is reserved for ALL_PASS filter for batch scan apps.
         // index 3 is reserved for BAP/CAP Announcements
-        for (int i = 4; i < maxFiltersSupported; ++i) {
+        // index 4 is reserved for the CSIS RSI AD_TYPE filter (set_ad_type_rsi_filter).
+        //         It must not overlap index 0, which LE inquiry/discovery reuses as its
+        //         transient ALLOW_ALL slot and would otherwise clobber the RSI filter.
+        for (int i = 5; i < maxFiltersSupported; ++i) {
             mFilterIndexStack.add(i);
         }
     }

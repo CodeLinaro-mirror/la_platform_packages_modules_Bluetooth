@@ -108,7 +108,7 @@ pub mod inner_ffi {
             big_handle: u8,
             advertising_handle: u8,
             num_bis: u8,
-            sdu_itv: u32,
+            sdu_interval: u32,
             max_sdu_size: u16,
             max_transport_latency: u16,
             rtn: u8,

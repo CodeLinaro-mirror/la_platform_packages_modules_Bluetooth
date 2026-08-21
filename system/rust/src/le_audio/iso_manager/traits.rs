@@ -113,7 +113,7 @@ pub struct CreateBigParameters {
     /// Number of BIS.
     pub num_bis: u8,
     /// SDU interval.
-    pub sdu_itv: u32,
+    pub sdu_interval: u32,
     /// Maximum SDU size.
     pub max_sdu_size: u16,
     /// Maximum transport latency.

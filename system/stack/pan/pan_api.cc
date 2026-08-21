@@ -328,8 +328,10 @@ tPAN_RESULT PAN_Connect(const RawAddress& rem_bda, tPAN_ROLE src_role, tPAN_ROLE
   }
 
   log::verbose("for BD Addr: {}", rem_bda);
+  bool num_conns_incremented = false;
   if (pcb->con_state == PAN_STATE_IDLE) {
     pan_cb.num_conns++;
+    num_conns_incremented = true;
   } else if (pcb->con_state == PAN_STATE_CONNECTED) {
     pcb->con_flags |= PAN_FLAGS_CONN_COMPLETED;
   } else {
@@ -347,6 +349,9 @@ tPAN_RESULT PAN_Connect(const RawAddress& rem_bda, tPAN_ROLE src_role, tPAN_ROLE
   tBNEP_RESULT ret = BNEP_Connect(rem_bda, Uuid::From16Bit(src_uuid), Uuid::From16Bit(dst_uuid),
                                   &(pcb->handle), mx_chan_id);
   if (ret != BNEP_SUCCESS) {
+    if (num_conns_incremented) {
+      pan_cb.num_conns--;
+    }
     pan_release_pcb(pcb);
     return (tPAN_RESULT)ret;
   }

@@ -229,9 +229,7 @@ class HeadsetServiceBinder extends IBluetoothHeadset.Stub implements IProfileSer
             Log.d(TAG, "isAudioConnected(): Adv Audio enabled");
             CallAudio mCallAudio = CallAudio.get();
             if (mCallAudio != null) {
-                return device != null
-                        && device.equals(mCallAudio.getActiveDevice())
-                        && mCallAudio.isAudioOn();
+                return mCallAudio.isAudioConnected(device);
             }
         } else {
             HeadsetService service = getService(source);

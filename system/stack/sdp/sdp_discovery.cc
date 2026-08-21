@@ -326,11 +326,15 @@ static uint8_t* add_attr(uint8_t* p, uint8_t* p_end, tSDP_DISCOVERY_DB* p_db, tS
 
   type = *p++;
   p = sdpu_get_len_from_type(p, p_end, type, &attr_len);
-  if (p == NULL || (p + attr_len) > p_end) {
+  if (p == NULL) {
     log::warn("bad length in attr_rsp");
     return NULL;
   }
   attr_len &= SDP_DISC_ATTR_LEN_MASK;
+  if ((p + attr_len) > p_end) {
+    log::warn("bad length in attr_rsp");
+    return NULL;
+  }
   attr_type = (type >> 3) & 0x0f;
 
   /* See if there is enough space in the database */

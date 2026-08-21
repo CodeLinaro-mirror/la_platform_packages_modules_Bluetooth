@@ -23,6 +23,7 @@
 
 #include "btm_iso_api.h"
 #include "btm_iso_api_types.h"
+#include "btif_status.h"
 #include "hci/controller_mock.h"
 #include "hci/hci_packets.h"
 #include "hci/include/hci_layer.h"
@@ -33,6 +34,7 @@
 #include "stack/include/btm_log_history.h"
 #include "stack/include/hci_error_code.h"
 #include "stack/include/hcidefs.h"
+#include "stack/include/main_thread.h"
 #include "stack/mock/mock_stack_hcic_layer.h"
 #include "test/mock/mock_main_shim_entry.h"
 #include "test/mock/mock_main_shim_hci_layer.h"
@@ -56,6 +58,16 @@ const BtmDevice* btm_find_dev_by_handle(uint16_t handle) {
 }
 void BTM_LogHistory(const std::string& /* tag */, const RawAddress& /* bd_addr */,
                     const std::string& /* msg */, const std::string& /* extra */) {}
+
+// This test links btm_iso.cc directly, without the real BT main-thread event
+// loop. IsoManager::Dump() guards on is_main_thread(), so returning true keeps
+// the dump on the calling (test) thread; do_in_main_thread() runs the closure
+// inline for completeness. The test itself is single-threaded.
+bool is_main_thread() { return true; }
+BtStatus do_in_main_thread(base::OnceClosure task) {
+  std::move(task).Run();
+  return BtifStatus();
+}
 
 namespace bluetooth::shim {
 class IsoInterface {
@@ -393,7 +405,7 @@ const bluetooth::hci::iso_manager::iso_data_path_params IsoManagerTest::kDefault
 const bluetooth::hci::iso_manager::big_create_params IsoManagerTest::kDefaultBigParams = {
         .adv_handle = 0x00,
         .num_bis = 2,
-        .sdu_itv = 0x002710,
+        .sdu_interval = 0x002710,
         .max_sdu_size = 108,
         .max_transport_latency = 0x3c,
         .rtn = 3,
@@ -405,8 +417,8 @@ const bluetooth::hci::iso_manager::big_create_params IsoManagerTest::kDefaultBig
 };
 
 const bluetooth::hci::iso_manager::cig_create_params IsoManagerTest::kDefaultCigParams = {
-        .sdu_itv_c_to_p = 0x00002710,
-        .sdu_itv_p_to_c = 0x00002711,
+        .sdu_interval_c_to_p = 0x00002710,
+        .sdu_interval_p_to_c = 0x00002711,
         .sca = bluetooth::hci::iso_manager::kIsoSca0To20Ppm,
         .packing = 0x00,
         .framing = 0x01,
@@ -438,8 +450,8 @@ const bluetooth::hci::iso_manager::cig_create_params IsoManagerTest::kDefaultCig
 };
 
 const bluetooth::hci::iso_manager::cig_create_params IsoManagerTest::kDefaultCigParams2 = {
-        .sdu_itv_c_to_p = 0x00002709,
-        .sdu_itv_p_to_c = 0x00002700,
+        .sdu_interval_c_to_p = 0x00002709,
+        .sdu_interval_p_to_c = 0x00002700,
         .sca = bluetooth::hci::iso_manager::kIsoSca0To20Ppm,
         .packing = 0x01,
         .framing = 0x00,
@@ -487,8 +499,9 @@ static bool operator==(const EXT_CIS_CFG& x, const EXT_CIS_CFG& y) {
 
 static bool operator==(const struct bluetooth::hci::iso_manager::cig_create_params& x,
                        const struct bluetooth::hci::iso_manager::cig_create_params& y) {
-  return (x.sdu_itv_c_to_p == y.sdu_itv_c_to_p) && (x.sdu_itv_p_to_c == y.sdu_itv_p_to_c) &&
-         (x.sca == y.sca) && (x.packing == y.packing) && (x.framing == y.framing) &&
+  return (x.sdu_interval_c_to_p == y.sdu_interval_c_to_p) &&
+         (x.sdu_interval_p_to_c == y.sdu_interval_p_to_c) && (x.sca == y.sca) &&
+         (x.packing == y.packing) && (x.framing == y.framing) &&
          (x.max_trans_lat_p_to_c == y.max_trans_lat_p_to_c) &&
          (x.max_trans_lat_c_to_p == y.max_trans_lat_c_to_p) &&
          std::is_permutation(x.cis_cfgs.begin(), x.cis_cfgs.end(), y.cis_cfgs.begin());
@@ -496,8 +509,8 @@ static bool operator==(const struct bluetooth::hci::iso_manager::cig_create_para
 
 static bool operator==(const struct bluetooth::hci::iso_manager::big_create_params& x,
                        const struct bluetooth::hci::iso_manager::big_create_params& y) {
-  return (x.adv_handle == y.adv_handle) && (x.num_bis == y.num_bis) && (x.sdu_itv == y.sdu_itv) &&
-         (x.max_sdu_size == y.max_sdu_size) &&
+  return (x.adv_handle == y.adv_handle) && (x.num_bis == y.num_bis) &&
+         (x.sdu_interval == y.sdu_interval) && (x.max_sdu_size == y.max_sdu_size) &&
          (x.max_transport_latency == y.max_transport_latency) && (x.rtn == y.rtn) &&
          (x.phy == y.phy) && (x.packing == y.packing) && (x.framing == y.framing) &&
          (x.enc == y.enc) && (x.enc_code == y.enc_code);

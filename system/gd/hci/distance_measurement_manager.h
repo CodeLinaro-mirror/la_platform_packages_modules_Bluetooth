@@ -12,12 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
-/*
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. 
  * SPDX-License-Identifier: BSD-3-Clause-Clear
- */
+ **********************************************************************************/
 
 #pragma once
 
@@ -78,14 +77,16 @@ enum DistanceMeasurementDetectedAttackLevel {
 class DistanceMeasurementCallbacks {
 public:
   virtual ~DistanceMeasurementCallbacks() = default;
-  virtual void OnDistanceMeasurementStarted(Address address, DistanceMeasurementMethod method) = 0;
-  virtual void OnDistanceMeasurementStopped(Address address, DistanceMeasurementErrorCode reason,
+  virtual void OnDistanceMeasurementStarted(Address address, uint32_t session_id,
+                                            DistanceMeasurementMethod method) = 0;
+  virtual void OnDistanceMeasurementStopped(Address address, uint32_t session_id,
+                                            DistanceMeasurementErrorCode reason,
                                             DistanceMeasurementMethod method) = 0;
   virtual void OnDistanceMeasurementResult(
-          Address address, double meter, uint32_t error_centimeter, int azimuth_angle,
-          int error_azimuth_angle, int altitude_angle, int error_altitude_angle,
-          uint64_t elapsed_realtime_nanos, int remote_tx_power, int rssi, int8_t confidence_level,
-          double delayed_spread_meters,
+          Address address, uint32_t session_id, double meter, uint32_t error_centimeter,
+          int azimuth_angle, int error_azimuth_angle, int altitude_angle,
+          int error_altitude_angle, uint64_t elapsed_realtime_nanos, int remote_tx_power,
+          int rssi, int8_t confidence_level, double delayed_spread_meters,
           DistanceMeasurementDetectedAttackLevel detected_attack_level,
           double velocity_meters_per_second, DistanceMeasurementMethod method) = 0;
   virtual void OnRasFragmentReady(Address address, uint16_t procedure_counter, bool is_last,
@@ -104,12 +105,13 @@ public:
   virtual ~DistanceMeasurementManager() = default;
 
   virtual void RegisterDistanceMeasurementCallbacks(DistanceMeasurementCallbacks* callbacks) = 0;
-  virtual void StartDistanceMeasurement(int32_t app_uid, const Address&, uint16_t connection_handle,
-                                        hci::Role local_hci_role, uint16_t interval,
-                                        DistanceMeasurementMethod method,
+  virtual void StartDistanceMeasurement(int32_t app_uid, uint32_t session_id, const Address&,
+                                        uint16_t connection_handle, hci::Role local_hci_role,
+                                        uint16_t interval, DistanceMeasurementMethod method,
                                         DistanceMeasurementSightType sight_type,
                                         DistanceMeasurementLocationType location_type) = 0;
-  virtual void StopDistanceMeasurement(const Address& address, uint16_t connection_handle,
+  virtual void StopDistanceMeasurement(uint32_t session_id, const Address& address,
+                                       uint16_t connection_handle,
                                        DistanceMeasurementMethod method) = 0;
   virtual void HandleRasClientConnectedEvent(
           const Address& address, uint16_t connection_handle, uint16_t att_handle,

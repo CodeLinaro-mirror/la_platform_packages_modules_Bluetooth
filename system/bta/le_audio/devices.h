@@ -99,7 +99,7 @@ public:
   RawAddress address_;
 
   DeviceConnectState connection_state_;
-  bool known_service_handles_;
+  bool known_service_handles_and_capa_;
   bool notify_connected_after_read_;
   bool closing_stream_for_disconnection_;
   bool autoconnect_flag_;
@@ -140,7 +140,7 @@ public:
                 int group_id = bluetooth::groups::kGroupUnknown)
       : address_(address),
         connection_state_(state),
-        known_service_handles_(false),
+        known_service_handles_and_capa_(false),
         notify_connected_after_read_(false),
         closing_stream_for_disconnection_(false),
         autoconnect_flag_(false),

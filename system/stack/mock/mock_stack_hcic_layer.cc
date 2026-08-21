@@ -21,14 +21,15 @@ static hcic::MockHcicInterface* hcic_interface = nullptr;
 
 void hcic::SetMockHcicInterface(hcic::MockHcicInterface* interface) { hcic_interface = interface; }
 
-void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint32_t sdu_itv_p_to_c,
-                                   uint8_t sca, uint8_t packing, uint8_t framing,
-                                   uint16_t max_trans_lat_c_to_p, uint16_t max_trans_lat_p_to_c,
-                                   uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,
+void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_interval_c_to_p,
+                                   uint32_t sdu_interval_p_to_c, uint8_t sca, uint8_t packing,
+                                   uint8_t framing, uint16_t max_trans_lat_c_to_p,
+                                   uint16_t max_trans_lat_p_to_c, uint8_t cis_cnt,
+                                   const EXT_CIS_CFG* cis_cfg,
                                    base::OnceCallback<void(uint8_t*, uint16_t)> cb) {
   struct bluetooth::hci::iso_manager::cig_create_params cig_params = {
-          .sdu_itv_c_to_p = sdu_itv_c_to_p,
-          .sdu_itv_p_to_c = sdu_itv_p_to_c,
+          .sdu_interval_c_to_p = sdu_interval_c_to_p,
+          .sdu_interval_p_to_c = sdu_interval_p_to_c,
           .sca = sca,
           .packing = packing,
           .framing = framing,
@@ -45,8 +46,8 @@ void btsnd_hcic_set_cig_params_v2(uint8_t cig_id, uint32_t sdu_itv_mtos, uint32_
                                   uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,
                                   base::OnceCallback<void(uint8_t*, uint16_t)> cb) {
   struct bluetooth::hci::iso_manager::cig_create_params cig_params = {
-          .sdu_itv_c_to_p = sdu_itv_mtos,
-          .sdu_itv_p_to_c = sdu_itv_stom,
+          .sdu_interval_c_to_p = sdu_itv_mtos,
+          .sdu_interval_p_to_c = sdu_itv_stom,
           .sca = sca,
           .packing = packing,
           .framing = framing,
@@ -87,13 +88,14 @@ void btsnd_hcic_ble_read_iso_link_quality(uint16_t iso_handle,
 }
 
 void btsnd_hcic_ble_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
-                               uint32_t sdu_itv, uint16_t max_sdu_size, uint16_t transport_latency,
-                               uint8_t rtn, uint8_t phy, uint8_t packing, uint8_t framing,
-                               uint8_t enc, std::array<uint8_t, 16> bcst_code) {
+                               uint32_t sdu_interval, uint16_t max_sdu_size,
+                               uint16_t transport_latency, uint8_t rtn, uint8_t phy,
+                               uint8_t packing, uint8_t framing, uint8_t enc,
+                               std::array<uint8_t, 16> bcst_code) {
   struct bluetooth::hci::iso_manager::big_create_params big_params = {
           .adv_handle = adv_handle,
           .num_bis = num_bis,
-          .sdu_itv = sdu_itv,
+          .sdu_interval = sdu_interval,
           .max_sdu_size = max_sdu_size,
           .max_transport_latency = transport_latency,
           .rtn = rtn,

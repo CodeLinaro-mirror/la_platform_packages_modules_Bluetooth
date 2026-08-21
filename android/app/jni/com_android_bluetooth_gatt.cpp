@@ -13,41 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. 
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following
- * disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- * contributors may be used to endorse or promote products derived
- * from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
- *
- */
+ **************************************************************************************/
 
 #define LOG_TAG "BtGatt.JNI"
 
@@ -70,6 +40,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -205,6 +176,9 @@ static const btgatt_interface_t* sGattIf = NULL;
 // Whilst sGattIf is initialized (with the callbacks we use below), sPrivateGattServerManager *must*
 // be initialised because the callbacks make use of sPrivateGattServerManager.
 static bluetooth::gatt::PrivateGattServerManager* sPrivateGattServerManager = NULL;
+
+/** Map from BT address string to session_id for active distance measurement sessions. */
+static std::unordered_map<std::string, uint32_t> sDistanceMeasurementSessionIds;
 
 /** Pointer to the LE scanner interface methods.*/
 static jobject mCallbacksObj = NULL;
@@ -938,7 +912,8 @@ public:
     return instance;
   }
 
-  void OnDistanceMeasurementStarted(RawAddress address, uint8_t method) {
+  void OnDistanceMeasurementStarted(RawAddress address, uint32_t session_id,
+                                    uint8_t method) override {
     std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
@@ -949,7 +924,8 @@ public:
                                  method_onDistanceMeasurementStarted, addr.get(), method);
   }
 
-  void OnDistanceMeasurementStopped(RawAddress address, uint8_t reason, uint8_t method) {
+  void OnDistanceMeasurementStopped(RawAddress address, uint32_t session_id, uint8_t reason,
+                                    uint8_t method) override {
     std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
@@ -960,13 +936,13 @@ public:
                                  method_onDistanceMeasurementStopped, addr.get(), reason, method);
   }
 
-  void OnDistanceMeasurementResult(RawAddress address, double meter,
+  void OnDistanceMeasurementResult(RawAddress address, uint32_t session_id, double meter,
                                    uint32_t error_centimeter, int azimuth_angle,
                                    int error_azimuth_angle, int altitude_angle,
                                    int error_altitude_angle, uint64_t elapsed_realtime_nanos,
                                    int remote_tx_power, int rssi, int8_t confidence_level,
                                    double delay_spread_meters, uint8_t detected_attack_level,
-                                   double velocity_meters_per_second, uint8_t method) {
+                                   double velocity_meters_per_second, uint8_t method) override {
     std::shared_lock<std::shared_mutex> lock(callbacks_mutex);
     CallbackEnv sCallbackEnv(__func__);
     if (!sCallbackEnv.valid() || !mDistanceMeasurementCallbacksObj) {
@@ -975,9 +951,10 @@ public:
     ScopedLocalRef<jstring> addr = addressToJString(sCallbackEnv, address);
     sCallbackEnv->CallVoidMethod(
             mDistanceMeasurementCallbacksObj, method_onDistanceMeasurementResult, addr.get(),
-            meter, error_centimeter, azimuth_angle, error_azimuth_angle, altitude_angle,
-            error_altitude_angle, elapsed_realtime_nanos, remote_tx_power, rssi, confidence_level,
-            delay_spread_meters, detected_attack_level, velocity_meters_per_second, method);
+            meter, error_centimeter, azimuth_angle, error_azimuth_angle,
+            altitude_angle, error_altitude_angle, elapsed_realtime_nanos, remote_tx_power, rssi,
+            confidence_level, delay_spread_meters, detected_attack_level,
+            velocity_meters_per_second, method);
   }
 };
 
@@ -2056,8 +2033,16 @@ static void startDistanceMeasurementNative(JNIEnv* env, jobject /* object */, ji
   if (!sGattIf) {
     return;
   }
+  RawAddress bd_addr = str2addr(env, address);
+  // Store the session_id (appUid) keyed by address string so stop can retrieve it.
+  const char* c_addr = env->GetStringUTFChars(address, NULL);
+  if (c_addr) {
+    sDistanceMeasurementSessionIds[std::string(c_addr)] = static_cast<uint32_t>(appUid);
+    env->ReleaseStringUTFChars(address, c_addr);
+  }
   sGattIf->distance_measurement_manager->StartDistanceMeasurement(
-          appUid, str2addr(env, address), interval, method, sight_type, location_type);
+          appUid, static_cast<uint32_t>(appUid), bd_addr, interval, method, sight_type,
+          location_type);
 }
 
 static void stopDistanceMeasurementNative(JNIEnv* env, jobject /* object */, jstring address,
@@ -2065,7 +2050,21 @@ static void stopDistanceMeasurementNative(JNIEnv* env, jobject /* object */, jst
   if (!sGattIf) {
     return;
   }
-  sGattIf->distance_measurement_manager->StopDistanceMeasurement(str2addr(env, address), method);
+  // Look up the session_id that was stored when measurement was started.
+  uint32_t session_id = 0;
+  const char* c_addr = env->GetStringUTFChars(address, NULL);
+  if (c_addr) {
+    auto it = sDistanceMeasurementSessionIds.find(std::string(c_addr));
+    if (it != sDistanceMeasurementSessionIds.end()) {
+      session_id = it->second;
+      sDistanceMeasurementSessionIds.erase(it);
+    } else {
+      log::warn("stopDistanceMeasurementNative: no session_id found for address {}", c_addr);
+    }
+    env->ReleaseStringUTFChars(address, c_addr);
+  }
+  sGattIf->distance_measurement_manager->StopDistanceMeasurement(session_id,
+                                                                  str2addr(env, address), method);
 }
 
 // JNI functions defined in AdvertiseManagerNativeInterface

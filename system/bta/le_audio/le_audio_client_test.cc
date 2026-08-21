@@ -810,7 +810,8 @@ protected:
             .WillByDefault(Invoke([&](uint16_t conn_id, uint16_t handle, GATT_READ_OP_CB cb,
                                       void* cb_data) {
               do_in_main_thread(base::BindOnce(
-                      [](std::map<uint16_t, std::unique_ptr<NiceMock<MockDeviceWrapper>>>*
+                      [](bool test_remote_does_not_send_read_response,
+                         std::map<uint16_t, std::unique_ptr<NiceMock<MockDeviceWrapper>>>*
                                  peer_devices,
                          uint16_t conn_id, uint16_t handle, GATT_READ_OP_CB cb,
                          void* cb_data) -> void {
@@ -822,6 +823,11 @@ protected:
                                                            (handle <= svc.end_handle);
                                                   });
                           if (svc == device->services.end()) {
+                            return;
+                          }
+
+                          if (test_remote_does_not_send_read_response) {
+                            log::debug("GATT Response is blocked for test purposes");
                             return;
                           }
 
@@ -849,7 +855,8 @@ protected:
                           cb(conn_id, status, handle, value.size(), value.data(), cb_data);
                         }
                       },
-                      &peer_devices, conn_id, handle, cb, cb_data));
+                      test_remote_does_not_send_read_response_, &peer_devices, conn_id, handle, cb,
+                      cb_data));
             }));
 
     // default multiple Characteristic read handler dispatches requests to service mocks
@@ -857,13 +864,20 @@ protected:
             .WillByDefault(Invoke([&](uint16_t conn_id, tBTA_GATTC_MULTI& handles,
                                       GATT_READ_MULTI_OP_CB cb, void* cb_data) {
               do_in_main_thread(base::BindOnce(
-                      [](std::map<uint16_t, std::unique_ptr<NiceMock<MockDeviceWrapper>>>*
+                      [](bool test_remote_does_not_send_read_response,
+                         std::map<uint16_t, std::unique_ptr<NiceMock<MockDeviceWrapper>>>*
                                  peer_devices,
                          uint16_t conn_id, tBTA_GATTC_MULTI handles, GATT_READ_MULTI_OP_CB cb,
                          void* cb_data) -> void {
                         if (!peer_devices->count(conn_id)) {
                           return;
                         }
+
+                        if (test_remote_does_not_send_read_response) {
+                          log::debug("GATT Response is blocked for test purposes");
+                          return;
+                        }
+
                         auto& device = peer_devices->at(conn_id);
 
                         auto get_char_value_helper = [&](NiceMock<MockDeviceWrapper>& device,
@@ -916,7 +930,8 @@ protected:
                         }
                         cb(conn_id, GATT_SUCCESS, handles, value_end, value.data(), cb_data);
                       },
-                      &peer_devices, conn_id, handles, cb, cb_data));
+                      test_remote_does_not_send_read_response_, &peer_devices, conn_id, handles, cb,
+                      cb_data));
             }));
   }
 
@@ -1785,6 +1800,8 @@ protected:
     empty_sink_pack_ = false;
 
     inject_enable_streaming_direction_failed_ = false;
+    test_ascs_ctp_ccc_val_ = 0;
+    test_remote_does_not_send_read_response_ = false;
 
     bluetooth::le_audio::AudioSetConfigurationProvider::Initialize(codec_location);
     ASSERT_FALSE(LeAudioClient::IsLeAudioClientRunning());
@@ -2962,7 +2979,11 @@ protected:
 
                 if (gatt_status == GATT_SUCCESS) {
                   if (handle == ascs->ctp_ccc) {
-                    value = UINT16_TO_VEC_UINT8(ascs->ctp_ccc_val);
+                    if (test_ascs_ctp_ccc_val_ != 0) {
+                      value = UINT16_TO_VEC_UINT8(test_ascs_ctp_ccc_val_);
+                    } else {
+                      value = UINT16_TO_VEC_UINT8(ascs->ctp_ccc_val);
+                    }
                   } else {
                     for (idx = 0; idx < ascs->ase_count; idx++) {
                       if (handle == ascs->sink_ase_ccc[idx] + 1) {
@@ -3185,6 +3206,8 @@ protected:
   bool no_source_ases_ = false;
 
   bool inject_enable_streaming_direction_failed_ = false;
+  bool test_remote_does_not_send_read_response_ = false;
+  uint16_t test_ascs_ctp_ccc_val_ = 0;
 
   NiceMock<bluetooth::storage::MockBtifStorageInterface> mock_btif_storage_;
   NiceMock<bluetooth::testing::stack::l2cap::Mock> mock_stack_l2cap_interface_;
@@ -3888,6 +3911,38 @@ TEST_F(UnicastTest, ConnectOneEarbudNoCsis) {
               OnConnectionState(ConnectionState::CONNECTED, test_address0))
           .Times(1);
   ConnectLeAudio(test_address0);
+}
+
+TEST_F(UnicastTest, ConnectReadHandlesStartReadingCapabilitiesThenDisconnectAndReconnect) {
+  const RawAddress test_address0 = GetTestAddress(0);
+  SetSampleDatabaseEarbudsValid(1, test_address0, codec_spec_conf::kLeAudioLocationStereo,
+                                codec_spec_conf::kLeAudioLocationStereo, default_channel_cnt,
+                                default_channel_cnt, 0x0004,
+                                /* source sample freq 16khz */ false, /*add_csis*/
+                                true,                                 /*add_cas*/
+                                true,                                 /*add_pacs*/
+                                default_ase_cnt /*add_ascs*/);
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnConnectionState(ConnectionState::CONNECTED, test_address0))
+          .Times(0);
+
+  EXPECT_CALL(mock_gatt_interface_, ServiceSearchRequest(1)).Times(1);
+  test_remote_does_not_send_read_response_ = true;
+  ConnectLeAudio(test_address0);
+  SyncOnMainLoop();
+  InjectDisconnectedEvent(1, GATT_CONN_TERMINATE_PEER_USER);
+  SyncOnMainLoop();
+
+  EXPECT_CALL(mock_gatt_interface_, ServiceSearchRequest(1)).Times(1);
+  test_remote_does_not_send_read_response_ = false;
+  test_ascs_ctp_ccc_val_ = 0x0001;
+  EXPECT_CALL(mock_audio_hal_client_callbacks_,
+              OnConnectionState(ConnectionState::CONNECTED, test_address0))
+          .Times(1);
+  InjectConnectedEvent(test_address0, 1);
+  SyncOnMainLoop();
+  Mock::VerifyAndClearExpectations(&mock_gatt_interface_);
+  Mock::VerifyAndClearExpectations(&mock_audio_hal_client_callbacks_);
 }
 
 TEST_F(UnicastTestCsis, ConnectOneEarbudWithInvalidCsis) {
@@ -6170,7 +6225,8 @@ TEST_F(UnicastTest, HandleDeviceReconfiguredToSinkOnlyAseRemoved) {
   int group_id = 1;
   default_channel_cnt = 1;
 
-  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address0, true)).Times(1);
+  // Should be called second time after service changed.
+  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address0, true)).Times(2);
 
   uint8_t expected_direction = bluetooth::le_audio::types::kLeAudioDirectionBoth;
   EXPECT_CALL(mock_audio_hal_client_callbacks_, OnAudioConf(expected_direction, _, _, _, _));
@@ -14056,6 +14112,7 @@ TEST_F(UnicastTestCsis, DisconnectAclBeforeGettingReadResponses) {
   /* Due to imitated problems with GATT read operations (status != GATT_SUCCESS)
    * a CONNECTED state should not be propagated together with audio location
    */
+  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address0, _)).Times(0);
   EXPECT_CALL(mock_audio_hal_client_callbacks_,
               OnConnectionState(ConnectionState::CONNECTED, test_address0))
           .Times(0);
@@ -14104,6 +14161,7 @@ TEST_F(UnicastTestCsis, DisconnectAclBeforeGettingReadResponses) {
           .Times(1);
 
   EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address1, true)).Times(1);
+  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address0, _)).Times(0);
   ConnectCsisDevice(test_address1, 2 /*conn_id*/, codec_spec_conf::kLeAudioLocationFrontRight,
                     codec_spec_conf::kLeAudioLocationFrontRight, group_id_1_size_, group_id_1_,
                     2 /* rank*/, true /*connect_through_csis*/);
@@ -14113,7 +14171,8 @@ TEST_F(UnicastTestCsis, DisconnectAclBeforeGettingReadResponses) {
   /* for Target announcements AutoConnect is always there, until
    * device is removed
    */
-  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(_, _)).Times(0);
+  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address1, _)).Times(0);
+  EXPECT_CALL(mock_btif_storage_, AddLeaudioAutoconnect(test_address0, true)).Times(1);
 
   // Verify grouping information
   std::vector<RawAddress> devs = LeAudioClient::Get()->GetGroupDevices(group_id_1_);

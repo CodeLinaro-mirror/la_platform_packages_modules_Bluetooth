@@ -24,6 +24,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "hardware/bt_av.h"
@@ -83,6 +84,19 @@ bool A2DP_IsVendorSourceCodecValid(const uint8_t* p_codec_info) {
   // Add checks based on <vendor_id, codec_id>
 
   return false;
+}
+
+std::optional<A2dpBitrateRange> A2DP_VendorGetBitRateRange(bluetooth::a2dp::CodecId codec_id,
+                                                          int64_t codec_specific_1,
+                                                          int sample_rate) {
+  // Check for LDAC
+  if (codec_id == bluetooth::a2dp::CodecId::LDAC) {
+    return A2DP_VendorGetBitRateRangeLdac(codec_specific_1, sample_rate);
+  }
+
+  // Other vendor codecs do not need a Developer-Options bit-rate hint.
+
+  return std::nullopt;
 }
 
 bool A2DP_IsVendorPeerSourceCodecValid(const uint8_t* p_codec_info) {

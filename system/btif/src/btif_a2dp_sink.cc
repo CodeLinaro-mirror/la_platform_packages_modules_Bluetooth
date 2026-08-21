@@ -125,7 +125,7 @@ static std::atomic<int> btif_a2dp_sink_state{BTIF_A2DP_SINK_STATE_OFF};
 static void btif_a2dp_sink_init_delayed();
 static void btif_a2dp_sink_startup_delayed();
 static void btif_a2dp_sink_start_session_delayed(const RawAddress& peer_address,
-                                                 std::promise<void> peer_ready_promise);
+                                                 std::promise<bool> peer_ready_promise);
 static void btif_a2dp_sink_end_session_delayed();
 static void btif_a2dp_sink_shutdown_delayed();
 static void btif_a2dp_sink_cleanup_delayed();
@@ -295,7 +295,7 @@ static bool btif_a2dp_sink_initialize_a2dp_control_block(const RawAddress& peer_
 }
 
 bool btif_a2dp_sink_start_session(const RawAddress& peer_address,
-                                  std::promise<void> peer_ready_promise) {
+                                  std::promise<bool> peer_ready_promise) {
   log::info("peer_address={}", peer_address);
   if (btif_a2dp_sink_cb.worker_thread.DoInThread(base::BindOnce(
               btif_a2dp_sink_start_session_delayed, peer_address, std::move(peer_ready_promise)))) {
@@ -308,15 +308,15 @@ bool btif_a2dp_sink_start_session(const RawAddress& peer_address,
 }
 
 static void btif_a2dp_sink_start_session_delayed(const RawAddress& peer_address,
-                                                 std::promise<void> peer_ready_promise) {
+                                                 std::promise<bool> peer_ready_promise) {
   log::info("");
   btif_a2dp_sink_initialize_a2dp_control_block(peer_address);
-  peer_ready_promise.set_value();
+  peer_ready_promise.set_value(true);
 }
 
 bool btif_a2dp_sink_restart_session(const RawAddress& old_peer_address,
                                     const RawAddress& new_peer_address,
-                                    std::promise<void> peer_ready_promise) {
+                                    std::promise<bool> peer_ready_promise) {
   log::info("old_peer_address={} new_peer_address={}", old_peer_address, new_peer_address);
 
   log::assert_that(!new_peer_address.IsEmpty(), "assert failed: !new_peer_address.IsEmpty()");
@@ -327,7 +327,7 @@ bool btif_a2dp_sink_restart_session(const RawAddress& old_peer_address,
 
   if (!bta_av_co_set_active_sink_peer(new_peer_address)) {
     log::error("Cannot stream audio: cannot set active peer to {}", new_peer_address);
-    peer_ready_promise.set_value();
+    peer_ready_promise.set_value(false);
     return false;
   }
 

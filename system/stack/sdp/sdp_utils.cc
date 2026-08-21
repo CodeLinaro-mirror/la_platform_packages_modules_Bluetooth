@@ -1104,7 +1104,7 @@ uint8_t* sdpu_get_len_from_type(uint8_t* p, uint8_t* p_end, uint8_t type, uint32
       }
       uint32_t u32;
       BE_STREAM_TO_UINT32(u32, p);
-      *p_len = (uint16_t)u32;
+      *p_len = u32;
       break;
   }
 

@@ -76,6 +76,7 @@ inline std::string gatt_security_action_text(const tGATT_SEC_ACTION& action) {
 
 #define GATT_WRITE_CMD_MASK 0xc0 /*0x1100-0000*/
 #define GATT_AUTH_SIGN_MASK 0x80 /*0x1000-0000*/
+#define GATT_CMD_MASK 0x40       /*0x0100-0000 (Command Flag, bit 6)*/
 #define GATT_AUTH_SIGN_LEN 12
 
 #define GATT_HDR_SIZE 3 /* 1B opcode + 2B handle */

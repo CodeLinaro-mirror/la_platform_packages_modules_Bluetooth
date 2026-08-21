@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. 
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -31,125 +31,174 @@ import com.android.bluetooth.channelsoundingtestapp.DistanceMeasurementInitiator
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import android.util.Log;
 
 /** ViewModel for the Initiator. */
 public class InitiatorViewModel extends AndroidViewModel {
     private static final String TAG = "AndroidViewModel";
-    public int distance_count = 0;
-    private final MutableLiveData<String> mLogText = new MutableLiveData<>();
-    private final MutableLiveData<Boolean> mCsStarted = new MutableLiveData<>(false);
 
-    private final MutableLiveData<Double> mDistanceResult = new MutableLiveData<>();
-    // Cross-activity static singleton LiveData for live data sharing
+    // A map to hold the state for each device session.
+    private final Map<String, DeviceSession> mDeviceSessions = new ConcurrentHashMap<>();
+
+    // Global LiveData to report all distance results for the main screen.
+    private final MutableLiveData<Map<String, Double>> mAllDistances = new MutableLiveData<>();
+    // Cross-activity static singleton LiveData for live data sharing, needed by SeeMoreActivity.
     private static final MutableLiveData<Double> liveDistanceSingleton = new MutableLiveData<>(-1.0);
     public static MutableLiveData<Double> getLiveDistanceSingleton() { return liveDistanceSingleton; }
 
-    private final DistanceMeasurementInitiator
-            mDistanceMeasurementInitiator; // mDistanceMeasurementInitiator;
 
     public InitiatorViewModel(@NonNull Application application) {
         super(application);
-
-        mDistanceMeasurementInitiator =
-                new DistanceMeasurementInitiator(
-                        application,
-                        mBtDistanceMeasurementCallback,
-                        log -> {
-                            mLogText.postValue("BT LOG: " + log);
-                        });
     }
 
-    void setTargetDevice(BluetoothDevice targetDevice) {
-        mDistanceMeasurementInitiator.setTargetDevice(targetDevice);
+    @Override
+    protected void onCleared() {
+        super.onCleared();
+        // Stop all ongoing measurements when the ViewModel is cleared.
+        for (DeviceSession session : mDeviceSessions.values()) {
+            session.initiator.stopDistanceMeasurement();
+        }
+        mDeviceSessions.clear();
     }
 
-    LiveData<String> getLogText() {
-        return mLogText;
+    /**
+     * Gets or creates a session for a given device.
+     * This is the key to isolating device states.
+     */
+    private DeviceSession getOrCreateSession(BluetoothDevice device) {
+        String address = device.getAddress();
+        return mDeviceSessions.computeIfAbsent(address, k -> new DeviceSession(getApplication(), device));
     }
 
-    LiveData<Boolean> getCsStarted() {
-        return mCsStarted;
+    // Public methods now operate on a specific device session.
+
+    public LiveData<String> getLogText(BluetoothDevice device) {
+        return getOrCreateSession(device).logText;
     }
 
-    LiveData<Double> getDistanceResult() {
-        return mDistanceResult;
+    public LiveData<Boolean> getCsStarted(BluetoothDevice device) {
+        return getOrCreateSession(device).csStarted;
     }
 
-    List<String> getSupportedDmMethods() {
-        return mDistanceMeasurementInitiator.getDistanceMeasurementMethods();
+    public LiveData<Double> getDistanceResult(BluetoothDevice device) {
+        return getOrCreateSession(device).distanceResult;
     }
 
-    public class FileAppender {
+    /**
+     * Provides a LiveData stream of all device distances for the InitiatorFragment.
+     */
+    public LiveData<Map<String, Double>> getAllDistances() {
+        return mAllDistances;
+    }
+
+
+    // The following methods are wrappers that delegate to a specific session's initiator.
+    // Note: It's assumed these are called after a session is established.
+    public List<String> getSupportedDmMethods(BluetoothDevice device) {
+        return getOrCreateSession(device).initiator.getDistanceMeasurementMethods();
+    }
+
+    public List<String> getMeasurementFreqs(BluetoothDevice device) {
+        return getOrCreateSession(device).initiator.getMeasurementFreqs();
+    }
+
+    public List<String> getMeasurementDurations(BluetoothDevice device) {
+        return getOrCreateSession(device).initiator.getMeasureDurationsInSeconds();
+    }
+
+    public void logMarker(BluetoothDevice device) {
+        getOrCreateSession(device).logMarker();
+    }
+
+    public void actualDistance(BluetoothDevice device, String distance) {
+        getOrCreateSession(device).actualDistance(distance);
+    }
+
+    public void toggleCsStartStop(BluetoothDevice device, String methodName, String freq, String secMode, String freq2, int duration) {
+        getOrCreateSession(device).toggleCsStartStop(methodName, freq, secMode, freq2, duration);
+    }
+
+    /**
+     * Represents the state and measurement initiator for a single Bluetooth device.
+     */
+    private class DeviceSession {
+        final BluetoothDevice device;
+        final DistanceMeasurementInitiator initiator;
+        final MutableLiveData<String> logText = new MutableLiveData<>();
+        final MutableLiveData<Boolean> csStarted = new MutableLiveData<>(false);
+        final MutableLiveData<Double> distanceResult = new MutableLiveData<>();
+        int distance_count = 0;
+
+        DeviceSession(Context context, BluetoothDevice device) {
+            this.device = device;
+            this.initiator = new DistanceMeasurementInitiator(context,
+                    new BtDistanceMeasurementCallback() {
+                        @Override
+                        public void onStartSuccess() {
+                            csStarted.postValue(true);
+                            logText.postValue("CS started for " + device.getAddress());
+                        }
+
+                        @Override
+                        public void onStartFail() {
+                            logText.postValue("CS start failed for " + device.getAddress());
+                        }
+
+                        @Override
+                        public void onStop() {
+                            csStarted.postValue(false);
+                            logText.postValue("CS stopped for " + device.getAddress());
+                        }
+
+                        @Override
+                        public void onDistanceResult(double distanceMeters) {
+                            distanceResult.postValue(distanceMeters);
+                            // Also update the legacy singleton for SeeMoreActivity
+                            liveDistanceSingleton.postValue(distanceMeters);
+
+                            // Update the global map of distances
+                            Map<String, Double> currentDistances = mAllDistances.getValue();
+                            if (currentDistances == null) {
+                                currentDistances = new ConcurrentHashMap<>();
+                            }
+                            currentDistances.put(device.getAddress(), distanceMeters);
+                            mAllDistances.postValue(currentDistances);
+                        }
+                    },
+                    log -> logText.postValue("BT LOG: " + log)
+            );
+            // Set the target device on the newly created initiator instance.
+            this.initiator.setTargetDevice(device);
+        }
+
+        void logMarker() {
+            Log.d(TAG, "BCS LOG MARKER for " + device.getAddress() + " Count : " + distance_count);
+            distance_count++;
+        }
+
+        void actualDistance(String distance) {
+            Log.d(TAG, "BCS Actual distance for " + device.getAddress() + " : " + distance);
+        }
+
+        void toggleCsStartStop(String methodName, String freq, String secMode, String freq2, int duration) {
+            Boolean started = csStarted.getValue();
+            if (started == null || !started) {
+                initiator.startDistanceMeasurement(methodName, freq, secMode, freq2, duration);
+            } else {
+                distance_count = 0;
+                initiator.stopDistanceMeasurement();
+            }
+        }
+    }
+    public static class FileAppender {
       public static void appendToFile(Context context, String filename, String data) {
-        FileOutputStream fos = null;
-        try {
-          if (fos != null) {
-            fos = context.openFileOutput(filename, Context.MODE_APPEND);
+        try (FileOutputStream fos = context.openFileOutput(filename, Context.MODE_APPEND)) {
             fos.write(data.getBytes());
-            fos.close();
-          }
         } catch (IOException e) {
           e.printStackTrace();
-        } finally {
-          if (fos != null) {
-            try {
-              fos.close();
-            } catch (IOException e) {
-              e.printStackTrace();
-            }
-          }
         }
       }
     }
-
-    List<String> getMeasurementFreqs() {
-        return mDistanceMeasurementInitiator.getMeasurementFreqs();
-    }
-
-    List<String> getMeasurementDurations() {
-        return mDistanceMeasurementInitiator.getMeasureDurationsInSeconds();
-    }
-
-    // TODO freq2 parameter now unused
-    void logMarker() {
-         Log.d(TAG, "BCS LOG MARKER Count : " + distance_count);
-         distance_count++;
-    }
-    void actualDistance(String distance) {
-         Log.d(TAG, "BCS Actual distance : " + distance);
-    }
-
-    void toggleCsStartStop(
-        String distanceMeasurementMethodName, String freq, String security_mode, String freq2, int duration) {
-      if (!mCsStarted.getValue()) {
-        mDistanceMeasurementInitiator.startDistanceMeasurement(
-            distanceMeasurementMethodName, freq, security_mode, freq2, duration);
-      } else {
-        distance_count = 0;
-        mDistanceMeasurementInitiator.stopDistanceMeasurement();
-      }
-    }
-
-    private BtDistanceMeasurementCallback mBtDistanceMeasurementCallback =
-            new BtDistanceMeasurementCallback() {
-                @Override
-                public void onStartSuccess() {
-                    mCsStarted.postValue(true);
-                }
-
-                @Override
-                public void onStartFail() {}
-
-                @Override
-                public void onStop() {
-                    mCsStarted.postValue(false);
-                }
-
-                @Override
-                public void onDistanceResult(double distanceMeters) {
-                    mDistanceResult.postValue(distanceMeters);
-                    liveDistanceSingleton.postValue(distanceMeters);
-                }
-            };
 }

@@ -12,13 +12,12 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
-
-/*
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * ​​​​​Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. 
  * SPDX-License-Identifier: BSD-3-Clause-Clear
- */
+ *
+ ****************************************************************************************/
 
 #ifndef ANDROID_INCLUDE_DISTANCE_MEASUREMENT_INTERFACE_H
 #define ANDROID_INCLUDE_DISTANCE_MEASUREMENT_INTERFACE_H
@@ -33,26 +32,29 @@
 class DistanceMeasurementCallbacks {
 public:
   virtual ~DistanceMeasurementCallbacks() = default;
-  virtual void OnDistanceMeasurementStarted(RawAddress address, uint8_t method) = 0;
-  virtual void OnDistanceMeasurementStopped(RawAddress address, uint8_t reason, uint8_t method) = 0;
-  virtual void OnDistanceMeasurementResult(RawAddress address, double meter,
+  virtual void OnDistanceMeasurementStarted(RawAddress address, uint32_t session_id,
+                                            uint8_t method) = 0;
+  virtual void OnDistanceMeasurementStopped(RawAddress address, uint32_t session_id, uint8_t reason,
+                                            uint8_t method) = 0;
+  virtual void OnDistanceMeasurementResult(RawAddress address, uint32_t session_id, double meter,
                                            uint32_t error_centimeter, int azimuth_angle,
                                            int error_azimuth_angle, int altitude_angle,
                                            int error_altitude_angle, uint64_t elapsedRealtimeNanos,
                                            int remote_tx_power, int rssi, int8_t confidence_level,
-                                           double delayedSpreadCentimeters,
+                                           double delayedSpreadMeters,
                                            uint8_t detectedAttackLevel,
-                                           double velocityCentimetersPerSecond, uint8_t method) = 0;
+                                           double velocityMetersPerSecond, uint8_t method) = 0;
 };
 
 class DistanceMeasurementInterface {
 public:
   virtual ~DistanceMeasurementInterface() = default;
   virtual void RegisterDistanceMeasurementCallbacks(DistanceMeasurementCallbacks* callbacks) = 0;
-  virtual void StartDistanceMeasurement(int32_t app_uid, RawAddress raw_address, uint16_t interval,
-                                        uint8_t method, uint8_t sight_type,
-                                        uint8_t locationType) = 0;
-  virtual void StopDistanceMeasurement(RawAddress raw_address, uint8_t method) = 0;
+  virtual void StartDistanceMeasurement(int32_t app_uid, uint32_t session_id,
+                                        RawAddress raw_address, uint16_t interval, uint8_t method,
+                                        uint8_t sight_type, uint8_t locationType) = 0;
+  virtual void StopDistanceMeasurement(uint32_t session_id, RawAddress raw_address,
+                                       uint8_t method) = 0;
   virtual void SetCsParams(RawAddress raw_address, int mSightType, int mLocationType, int mCsSecurityLevel, int mFrequency, int mDuration) = 0;
 };
 

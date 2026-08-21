@@ -1535,6 +1535,10 @@ void LeAudioDevice::DeactivateAllAses(void) {
     ase.reconfigure = 0;
     ase.cis_id = bluetooth::le_audio::kInvalidCisId;
     ase.cis_conn_hdl = bluetooth::le_audio::kInvalidCisConnHandle;
+    // Peer's preferred Phy is per-CIS; clear it so it doesn't leak into
+    // whatever new cis_id gets assigned next.
+    log::verbose("Reset QoS Pref phy as deactivate Ases");
+    ase.qos_preferences.preferred_phy = 0;
   }
 }
 

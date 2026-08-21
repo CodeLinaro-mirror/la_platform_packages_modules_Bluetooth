@@ -8,6 +8,13 @@ enum Enable : 8 {
   ENABLED = 0x01,
 }
 
+enum Framing : 8 {
+  UNFRAMED = 0x00,
+  FRAMED_SEGMENTABLE = 0x01,
+  FRAMED_UNSEGMENTED = 0x02,
+}
+
+
 // https://www.bluetooth.com/specifications/assigned-numbers/generic-access-profile
 enum GapDataType : 8 {
   INVALID = 0x00,
@@ -4683,7 +4690,7 @@ packet LeSetCigParameters : LeIsoCommand (op_code = LE_SET_CIG_PARAMETERS) {
   sdu_interval_s_to_m : 24,
   worst_case_sca : ClockAccuracy,
   packing : Packing,
-  framing : Enable,
+  framing : Framing,
   max_transport_latency_m_to_s : 16,
   max_transport_latency_s_to_m : 16,
   _count_(cis_config) : 8,
@@ -4719,7 +4726,7 @@ packet LeSetCigParametersTest : LeIsoCommand (op_code = LE_SET_CIG_PARAMETERS_TE
   iso_interval : 16,
   worst_case_sca : ClockAccuracy,
   packing : Packing,
-  framing : Enable,
+  framing : Framing,
   _count_(cis_config) : 8,
   cis_config : LeCisParametersTestConfig[],
 }
@@ -4786,7 +4793,7 @@ packet LeCreateBig : LeIsoCommand (op_code = LE_CREATE_BIG) {
   _reserved_ : 4,
   phy : SecondaryPhyType,
   packing : Packing,
-  framing : Enable,
+  framing : Framing,
   encryption : Enable,
   broadcast_code: 8[16],
 }
@@ -6918,7 +6925,7 @@ packet LeBigInfoAdvertisingReport : LeMetaEvent (subevent_code = BIG_INFO_ADVERT
   sdu_interval : 24,
   max_sdu : 16,
   phy : SecondaryPhyType,
-  framing : Enable,
+  framing : Framing,
   encryption : Enable,
 }
 

@@ -423,7 +423,7 @@ private:
     struct bluetooth::hci::iso_manager::big_create_params big_params = {
             .adv_handle = GetAdvertisingSid(),
             .num_bis = sm_config_.config.GetNumBisTotal(),
-            .sdu_itv = sm_config_.config.GetSduIntervalUs(),
+            .sdu_interval = sm_config_.config.GetSduIntervalUs(),
             .max_sdu_size = sm_config_.config.GetMaxSduOctets(),
             .max_transport_latency = sm_config_.config.qos.getMaxTransportLatency(),
             .rtn = sm_config_.config.qos.getRetransmissionNumber(),
@@ -608,6 +608,8 @@ private:
         } else {
           log::error("State={} Event={}. Unable to create big, big_handle={}, status={}",
                      ToString(GetState()), event, evt->big_handle, evt->status);
+          SetState(State::CONFIGURED);
+          callbacks_->OnBigCreationFailed(GetBroadcastId(), evt->status);
         }
       } break;
       case HCI_BLE_TERM_BIG_CPL_EVT: {
@@ -625,9 +627,14 @@ private:
         active_config_ = std::nullopt;
         bool disabling = GetState() == BroadcastStateMachine::State::DISABLING;
 
-        /* Go back to configured if BIG is inactive (we are still announcing) and state is not
-         * stopping*/
-        if (GetState() != BroadcastStateMachine::State::STOPPING) {
+        /* Unexpected remote BIG termination (not host-initiated) while active: move to
+         * STOPPING so a following stale START is a no-op, avoiding a spurious CreateBig(). */
+        if ((GetState() == BroadcastStateMachine::State::STREAMING ||
+             GetState() == BroadcastStateMachine::State::ENABLING) &&
+            evt->reason != HCI_ERR_CONN_CAUSE_LOCAL_HOST) {
+          SetState(State::STOPPING);
+        } else if (GetState() != BroadcastStateMachine::State::STOPPING) {
+          /* Go back to configured if BIG is inactive (we are still announcing). */
           SetState(State::CONFIGURED);
         }
 

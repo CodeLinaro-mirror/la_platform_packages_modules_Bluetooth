@@ -51,6 +51,7 @@ static void avdt_l2c_connect_ind_cback(const RawAddress& bd_addr, uint16_t lcid,
 static void avdt_l2c_connect_cfm_cback(uint16_t lcid, tL2CAP_CONN result);
 static void avdt_l2c_config_cfm_cback(uint16_t lcid, uint16_t result, tL2CAP_CFG_INFO* p_cfg);
 static void avdt_l2c_config_ind_cback(uint16_t lcid, tL2CAP_CFG_INFO* p_cfg);
+static void avdt_l2c_disconnect_cfm_cback(uint16_t lcid, uint16_t result);
 static void avdt_l2c_disconnect_ind_cback(uint16_t lcid, bool ack_needed);
 static void avdt_l2c_congestion_ind_cback(uint16_t lcid, bool is_congested);
 static void avdt_l2c_data_ind_cback(uint16_t lcid, BT_HDR* p_buf);
@@ -63,7 +64,7 @@ const tL2CAP_APPL_INFO avdt_l2c_appl = {avdt_l2c_connect_ind_cback,
                                         avdt_l2c_config_ind_cback,
                                         avdt_l2c_config_cfm_cback,
                                         avdt_l2c_disconnect_ind_cback,
-                                        NULL,
+                                        avdt_l2c_disconnect_cfm_cback,
                                         avdt_l2c_data_ind_cback,
                                         avdt_l2c_congestion_ind_cback,
                                         NULL,
@@ -346,6 +347,31 @@ static void avdt_l2c_config_ind_cback(uint16_t lcid, tL2CAP_CFG_INFO* p_cfg) {
     p_tbl->peer_mtu = L2CAP_DEFAULT_MTU;
   }
   log::verbose("lcid: 0x{:04x}, peer_mtu: {}", lcid, p_tbl->peer_mtu);
+}
+
+/*******************************************************************************
+ *
+ * Function         avdt_l2c_disconnect_cfm_cback
+ *
+ * Description      This is the L2CAP disconnect confirmation callback function.
+ *
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+static void avdt_l2c_disconnect_cfm_cback(uint16_t lcid, uint16_t result) {
+  log::verbose("");
+  AvdtpTransportChannel* p_tbl;
+
+  /* look up info for this channel */
+  p_tbl = avdt_ad_tc_tbl_by_lcid(lcid);
+  if (p_tbl == NULL) {
+    log::warn("Adaptation layer transport channel table is NULL");
+    return;
+  }
+  log::verbose("type: {} lcid: 0x{:04x} result: 0x{:04x} ",
+                tc_type_text(tc_tcid_to_type(p_tbl->tcid)), lcid, result);
+  avdt_ad_tc_close_ind(p_tbl);
 }
 
 /*******************************************************************************

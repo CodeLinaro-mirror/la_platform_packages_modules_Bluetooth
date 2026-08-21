@@ -523,13 +523,13 @@ public:
    * reset the active peer
    * @return true on success, otherwise false
    */
-  bool SetActivePeer(const RawAddress& peer_address, std::promise<void> peer_ready_promise) {
+  bool SetActivePeer(const RawAddress& peer_address, std::promise<bool> peer_ready_promise) {
     log::info("peer={} active_peer={}", peer_address, active_peer_);
 
     BtifAvPeer* peer = FindPeer(peer_address);
     BtifAvPeer* active_peer = FindPeer(active_peer_);
     if (active_peer_ == peer_address) {
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(true);
       return true;  // Nothing has changed
     }
 
@@ -538,6 +538,7 @@ public:
         active_peer->CheckFlags(BtifAvPeer::kFlagPendingStart)) {
       log::error("Pending Start Response on {}, Return Fail",
                  peer_address.ToRedactedStringForLogging());
+      peer_ready_promise.set_value(false);
       return false;
     }
     if (peer_address.IsEmpty()) {
@@ -555,13 +556,13 @@ public:
         log::error("Timed out waiting for A2DP source shutdown to complete.");
       }
       active_peer_ = peer_address;
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(true);
       return true;
     }
 
     if (peer == nullptr || !peer->IsConnected()) {
       log::error("Error setting {} as active Source peer", peer_address);
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(false);
       return false;
     }
 
@@ -779,11 +780,11 @@ public:
    * reset the active peer
    * @return true on success, otherwise false
    */
-  bool SetActivePeer(const RawAddress& peer_address, std::promise<void> peer_ready_promise) {
+  bool SetActivePeer(const RawAddress& peer_address, std::promise<bool> peer_ready_promise) {
     log::info("peer={} active_peer={}", peer_address, active_peer_);
 
     if (active_peer_ == peer_address) {
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(true);
       return true;  // Nothing has changed
     }
     if (peer_address.IsEmpty()) {
@@ -795,14 +796,14 @@ public:
       btif_a2dp_sink_end_session(active_peer_);
       btif_a2dp_sink_shutdown();
       active_peer_ = peer_address;
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(true);
       return true;
     }
 
     BtifAvPeer* peer = FindPeer(peer_address);
     if (peer == nullptr || !peer->IsConnected()) {
       log::error("Error setting {} as active Sink peer", peer_address);
-      peer_ready_promise.set_value();
+      peer_ready_promise.set_value(false);
       return false;
     }
 
@@ -1308,7 +1309,7 @@ void BtifAvSource::Cleanup() {
 
   btif_queue_cleanup(UUID_SERVCLASS_AUDIO_SOURCE);
 
-  std::promise<void> peer_ready_promise;
+  std::promise<bool> peer_ready_promise;
   btif_av_source.SetActivePeer(RawAddress::kEmpty, std::move(peer_ready_promise));
   btif_a2dp_source_cleanup();
 
@@ -1587,7 +1588,7 @@ void BtifAvSink::Cleanup() {
 
   btif_queue_cleanup(UUID_SERVCLASS_AUDIO_SINK);
 
-  std::promise<void> peer_ready_promise;
+  std::promise<bool> peer_ready_promise;
   btif_av_sink.SetActivePeer(RawAddress::kEmpty, std::move(peer_ready_promise));
   btif_a2dp_sink_cleanup();
 
@@ -1821,7 +1822,7 @@ void BtifAvStateMachine::StateIdle::OnEnter() {
   // the Idle state was reentered
   log::info("peer_.CanBeDeleted()={}", peer_.CanBeDeleted());
   if (peer_.IsActivePeer() && peer_.CanBeDeleted()) {
-    std::promise<void> peer_ready_promise;
+    std::promise<bool> peer_ready_promise;
     if (peer_.IsSink()) {
       btif_av_source.SetActivePeer(RawAddress::kEmpty, std::move(peer_ready_promise));
     } else if (peer_.IsSource()) {
@@ -2376,7 +2377,7 @@ void BtifAvStateMachine::StateOpened::OnEnter() {
   // For A2DP Source, the setting of the Active device is done by the
   // ActiveDeviceManager in Java.
   if (peer_.IsSource() && btif_av_sink.ActivePeer().IsEmpty()) {
-    std::promise<void> peer_ready_promise;
+    std::promise<bool> peer_ready_promise;
     if (!btif_av_sink.SetActivePeer(peer_.PeerAddress(), std::move(peer_ready_promise))) {
       log::error("Error setting {} as active Source peer", peer_.PeerAddress());
     }
@@ -2556,8 +2557,7 @@ bool BtifAvStateMachine::StateOpened::ProcessEvent(uint32_t event, void* p_data)
       if (peer_.IsActivePeer()) {
         log::info("Peer {} : Reconfig done - calling startSession() to audio HAL",
                   peer_.PeerAddress());
-        std::promise<void> peer_ready_promise;
-        std::future<void> peer_ready_future = peer_ready_promise.get_future();
+        std::promise<bool> peer_ready_promise;
 
         // The stream may not be restarted without an explicit request from the
         // Bluetooth Audio HAL. Any start request that was pending before the
@@ -3752,7 +3752,7 @@ static void set_source_silence_peer_int(const RawAddress& peer_address, bool sil
 
 // Set the active peer
 static void set_active_peer_int(uint8_t peer_sep, const RawAddress& peer_address,
-                                std::promise<void> peer_ready_promise) {
+                                std::promise<bool> peer_ready_promise) {
   log::info("peer_sep={} peer={}", peer_sep == AVDT_TSEP_SRC ? "Source" : "Sink", peer_address);
 
   BtifAvPeer* peer = nullptr;
@@ -3763,6 +3763,8 @@ static void set_active_peer_int(uint8_t peer_sep, const RawAddress& peer_address
       if (!btif_av_source.SetActivePeer(peer_address, std::move(peer_ready_promise))) {
         log::error("Error setting {} as active Sink peer", peer_address);
       }
+    } else {
+      peer_ready_promise.set_value(true);
     }
     return;
   }
@@ -3773,6 +3775,8 @@ static void set_active_peer_int(uint8_t peer_sep, const RawAddress& peer_address
       if (!btif_av_sink.SetActivePeer(peer_address, std::move(peer_ready_promise))) {
         log::error("Error setting {} as active Source peer", peer_address);
       }
+    } else {
+      peer_ready_promise.set_value(true);
     }
     return;
   }
@@ -3780,7 +3784,7 @@ static void set_active_peer_int(uint8_t peer_sep, const RawAddress& peer_address
   log::error("Cannot set active {} peer to {}: peer not {}",
              (peer_sep == AVDT_TSEP_SRC) ? "Source" : "Sink", peer_address,
              (peer == nullptr) ? "found" : "connected");
-  peer_ready_promise.set_value();
+  peer_ready_promise.set_value(false);
 }
 
 BtStatus btif_av_source_connect(const RawAddress& peer_address) {
@@ -3841,13 +3845,18 @@ BtStatus btif_av_sink_set_active_device(const RawAddress& peer_address) {
     return BtifStatus(NOT_READY);
   }
 
-  std::promise<void> peer_ready_promise;
-  std::future<void> peer_ready_future = peer_ready_promise.get_future();
+  std::promise<bool> peer_ready_promise;
+  std::future<bool> peer_ready_future = peer_ready_promise.get_future();
   BtStatus status =
           do_in_main_thread(base::BindOnce(&set_active_peer_int, AVDT_TSEP_SRC,  // peer_sep
                                            peer_address, std::move(peer_ready_promise)));
   if (status) {
-    peer_ready_future.wait();
+    if (!peer_ready_future.get()) {
+      log::warn("BTIF AV Sink fails to set active peer {}", peer_address);
+      return BtifStatus(FAIL);
+    } else {
+      log::info("BTIF AV Sink successfully set active peer {}", peer_address);
+    }
   } else {
     log::warn("BTIF AV Sink fails to change peer");
   }
@@ -3873,13 +3882,18 @@ BtStatus btif_av_source_set_active_device(const RawAddress& peer_address) {
     return BtifStatus(NOT_READY);
   }
 
-  std::promise<void> peer_ready_promise;
-  std::future<void> peer_ready_future = peer_ready_promise.get_future();
+  std::promise<bool> peer_ready_promise;
+  std::future<bool> peer_ready_future = peer_ready_promise.get_future();
   BtStatus status =
           do_in_main_thread(base::BindOnce(&set_active_peer_int, AVDT_TSEP_SNK,  // peer_sep
                                            peer_address, std::move(peer_ready_promise)));
   if (status) {
-    peer_ready_future.wait();
+    if (!peer_ready_future.get()) {
+      log::warn("BTIF AV Source fails to set active peer {}", peer_address);
+      return BtifStatus(FAIL);
+    } else {
+      log::warn("BTIF AV Source successfully set active peer {}", peer_address);
+    }
     if (!peer_address.IsEmpty() &&
          bluetooth::avrcp::AvrcpService::Get() != nullptr) {
         log::info("check pending play cmd");

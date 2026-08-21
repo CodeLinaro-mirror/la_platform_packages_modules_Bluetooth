@@ -340,7 +340,7 @@ public:
           additional_local_contexts_based_on_states.source.set(LeAudioContextType::GAME);
         }
 
-        if (copy_local_decoding_ctxs.any()) {
+        if (copy_local_decoding_ctxs.any() && !copy_local_decoding_ctxs.test(LeAudioContextType::LIVE)) {
           log::info("Adding game Mode to remote Source");
           copy_local_decoding_ctxs.set(LeAudioContextType::GAME);
           additional_local_contexts_based_on_states.sink.set(LeAudioContextType::GAME);

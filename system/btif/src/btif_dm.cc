@@ -374,8 +374,8 @@ void btif_dm_sdp_delay_timer(const RawAddress* bl_bdaddr) {
     log::info("%s: unable to allocate sdp_delay_timer", __func__);
     return;
   }
-  alarm_set(bl_device.sdp_delay_timer, BTIF_DM_SDP_DELAY_TIMER_MS, btif_dm_sdp_delay_timer_cback,
-            &bl_device.bd_addr);
+  alarm_set_on_mloop(bl_device.sdp_delay_timer, BTIF_DM_SDP_DELAY_TIMER_MS,
+                     btif_dm_sdp_delay_timer_cback, &bl_device.bd_addr);
   log::info("%s: sdp delay timer started", __func__);
 }
 

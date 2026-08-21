@@ -358,6 +358,10 @@ int BluetoothAudioClientInterface::StartSession() {
     if (aidl_retval.getExceptionCode() == EX_ILLEGAL_ARGUMENT) {
       log::error("BluetoothAudioHal Error: {}, audioConfig={}", aidl_retval.getDescription(),
                  transport_->GetAudioConfiguration().toString());
+    } else if (aidl_retval.getExceptionCode() == EX_TRANSACTION_FAILED) {
+      /* HAL binder died — transient, RenewAudioProviderAndSession will reconnect. */
+      log::error("BluetoothAudioHal StartSession failed (binder died): {}",
+                 aidl_retval.getDescription());
     } else {
       log::fatal("BluetoothAudioHal failure: {}", aidl_retval.getDescription());
     }

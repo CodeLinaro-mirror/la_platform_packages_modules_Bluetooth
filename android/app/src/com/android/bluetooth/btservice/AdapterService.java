@@ -387,7 +387,6 @@ public class AdapterService extends Service {
 
     private GattService mGattService;
     private ScanController mScanController;
-    private CallAudio mCallAudio;
 
     private volatile boolean mTestModeEnabled = false;
 
@@ -1105,7 +1104,6 @@ public class AdapterService extends Service {
 
         mActiveDeviceManager = new ActiveDeviceManager(this, mStorage);
         mActiveDeviceManager.start();
-        mCallAudio = CallAudio.get();
 
         mCompanionManager = new CompanionManager(this);
 
@@ -2423,7 +2421,8 @@ public class AdapterService extends Service {
      * @return a Bundle containing the preferred audio profiles for the device
      */
     public Bundle getPreferredAudioProfiles(BluetoothDevice device) {
-        if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
+        final CallAudio callAudio = CallAudio.get();
+        if (callAudio != null && callAudio.isVoipLeaWarEnabled()) {
             final var leAudioWar = getLeAudioService();
             if (!isDualModeAudioEnabled()
                     && leAudioWar.isPresent()
@@ -3735,8 +3734,9 @@ public class AdapterService extends Service {
                     break;
                 }
                 BluetoothDevice device;
-                if (mCallAudio != null && mCallAudio.isVoipLeaWarEnabled()) {
-                    device = mCallAudio.getActiveDevice();
+                final CallAudio callAudio = CallAudio.get();
+                if (callAudio != null && callAudio.isVoipLeaWarEnabled()) {
+                    device = callAudio.getActiveDevice();
                     Log.i(TAG, "getActiveDevices: CallAudio device: " + device);
                 } else {
                     device = headset.get().getActiveDevice();

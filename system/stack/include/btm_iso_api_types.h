@@ -97,8 +97,8 @@ enum class BigSinkEvent : uint8_t {
 };
 
 struct cig_create_params {
-  uint32_t sdu_itv_c_to_p;
-  uint32_t sdu_itv_p_to_c;
+  uint32_t sdu_interval_c_to_p;
+  uint32_t sdu_interval_p_to_c;
   uint8_t sca;
   uint8_t packing;
   uint8_t framing;
@@ -148,7 +148,7 @@ struct cis_establish_cmpl_evt {
   uint8_t ft_p_to_c;
   uint16_t max_pdu_c_to_p;
   uint16_t max_pdu_p_to_c;
-  uint16_t iso_itv;
+  uint16_t iso_interval;
   uint16_t sub_itv;
   uint16_t max_sdu_c_to_p;
   uint16_t max_sdu_p_to_c;
@@ -184,7 +184,7 @@ struct cis_disconnected_evt {
 struct big_create_params {
   uint8_t adv_handle;
   uint8_t num_bis;
-  uint32_t sdu_itv;
+  uint32_t sdu_interval;
   uint16_t max_sdu_size;
   uint16_t max_transport_latency;
   uint8_t rtn;

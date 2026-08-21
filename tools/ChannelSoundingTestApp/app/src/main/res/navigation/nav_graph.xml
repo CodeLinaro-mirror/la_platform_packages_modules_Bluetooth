@@ -27,6 +27,18 @@
     <action
         android:id="@+id/action_InitiatorFragment_to_RoleSelectionFragment"
         app:destination="@id/role_selection_fragment" />
+    <action
+        android:id="@+id/action_InitiatorFragment_to_DeviceControlFragment"
+        app:destination="@id/device_control_fragment" />
+  </fragment>
+  <fragment
+      android:id="@+id/device_control_fragment"
+      android:name="com.android.bluetooth.channelsoundingtestapp.DeviceControlFragment"
+      android:label="Device Control"
+      tools:layout="@layout/activity_device_control">
+      <argument
+          android:name="device_address"
+          app:argType="string" />
   </fragment>
     <fragment
         android:id="@+id/reflector_fragment"
@@ -37,6 +49,9 @@
         <action
             android:id="@+id/action_ReflectorFragment_to_RoleSelectionFragment"
             app:destination="@id/role_selection_fragment" />
+        <action
+            android:id="@+id/action_ReflectorFragment_to_DeviceControlFragment"
+            app:destination="@id/device_control_fragment" />
     </fragment>
 
 </navigation>

@@ -246,6 +246,16 @@ public:
    */
   virtual void HandleHciEvent(uint8_t sub_code, uint8_t* params, uint16_t length);
 
+  /**
+   * Handle LE_CREATE_BIG command status failure.  Called when the controller
+   * rejects the LE_CREATE_BIG HCI command at the Command Status stage (before
+   * a BIG Create Complete event is generated).
+   *
+   * @param big_handle BIG handle from the original LE_CREATE_BIG command
+   * @param status     HCI error status (e.g. HCI_ERR_MEMORY_FULL)
+   */
+  virtual void HandleCreateBigCommandStatus(uint8_t big_handle, uint8_t status);
+
   virtual void HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
                                            uint64_t bdAddr);
 

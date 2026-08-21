@@ -614,8 +614,8 @@ public class A2dpService extends ConnectableProfile {
                                     + device
                                     + "): Cannot set as active in native "
                                     + "layer");
-                    // Remove active device and stop playing audio.
-                    removeActiveDevice(true);
+                    // Restore previous active device since setting active failed
+                    mActiveDevice = previousActiveDevice;
                     return false;
                 }
                 // Send an intent with the active device codec config

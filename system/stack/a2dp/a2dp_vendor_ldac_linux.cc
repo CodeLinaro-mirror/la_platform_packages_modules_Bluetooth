@@ -37,6 +37,10 @@ bool A2DP_VendorCodecEqualsLdac(const uint8_t* p_codec_info_a,
 
 int A2DP_VendorGetTrackSampleRateLdac(const uint8_t* p_codec_info) { return -1; }
 
+A2dpBitrateRange A2DP_VendorGetBitRateRangeLdac(int64_t codec_specific_1, int sample_rate_hz) {
+  return {-1, -1};
+}
+
 int A2DP_VendorGetTrackBitsPerSampleLdac(const uint8_t* p_codec_info) { return -1; }
 
 int A2DP_VendorGetTrackChannelCountLdac(const uint8_t* p_codec_info) { return -1; }

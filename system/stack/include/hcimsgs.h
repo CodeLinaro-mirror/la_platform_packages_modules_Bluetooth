@@ -159,7 +159,7 @@ void btsnd_hcic_delete_stored_key(const RawAddress& bd_addr, bool delete_all_fla
 #define HCIC_PARAM_SIZE_WRITE_PARAM3 3
 
 // TODO : Remove when the flag local_pin_key_type is shipped
-void btsnd_hcic_write_pin_type(uint8_t type);      /* Write PIN Type */
+void btsnd_hcic_write_pin_type(uint8_t type); /* Write PIN Type */
 
 void btsnd_hcic_write_page_tout(uint16_t timeout); /* Write Page Timeout */
 void btsnd_hcic_write_scan_enable(uint8_t flag);   /* Write Scan Enable */
@@ -172,7 +172,7 @@ void btsnd_hcic_write_inqscan_cfg(uint16_t interval, uint16_t window);
 /* Write Inquiry Scan Activity */
 
 // TODO (b/460502961): Remove once the flag security_mode_3_pairing is shipped.
-void btsnd_hcic_write_auth_enable(uint8_t flag);      /* Write Authentication Enable */
+void btsnd_hcic_write_auth_enable(uint8_t flag); /* Write Authentication Enable */
 
 void btsnd_hcic_write_dev_class(DEV_CLASS dev);       /* Write Class of Device */
 void btsnd_hcic_write_voice_settings(uint16_t flags); /* Write Voice Settings */
@@ -316,10 +316,11 @@ struct EXT_CIS_CFG {
   uint8_t hdt_packet_format;
 };
 
-void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint32_t sdu_itv_p_to_c,
-                                   uint8_t sca, uint8_t packing, uint8_t framing,
-                                   uint16_t max_trans_lat_c_to_p, uint16_t max_trans_lat_p_to_c,
-                                   uint8_t cis_cnt, const EXT_CIS_CFG* cis_cfg,
+void btsnd_hcic_ble_set_cig_params(uint8_t cig_id, uint32_t sdu_interval_c_to_p,
+                                   uint32_t sdu_interval_p_to_c, uint8_t sca, uint8_t packing,
+                                   uint8_t framing, uint16_t max_trans_lat_c_to_p,
+                                   uint16_t max_trans_lat_p_to_c, uint8_t cis_cnt,
+                                   const EXT_CIS_CFG* cis_cfg,
                                    base::OnceCallback<void(uint8_t*, uint16_t)> cb);
 
 void btsnd_hcic_set_cig_params_v2(uint8_t cig_id, uint32_t sdu_itv_c_to_p, uint32_t sdu_itv_p_to_c,
@@ -354,7 +355,7 @@ void btsnd_hcic_ble_remove_cig(uint8_t cig_id, base::OnceCallback<void(uint8_t*,
 void btsnd_hcic_ble_req_peer_sca(uint16_t conn_handle);
 
 void btsnd_hcic_ble_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
-                               uint32_t sdu_itv, uint16_t max_sdu_size, uint16_t max_trans_lat,
+                               uint32_t sdu_interval, uint16_t max_sdu_size, uint16_t max_trans_lat,
                                uint8_t rtn, uint8_t phy, uint8_t packing, uint8_t framing,
                                uint8_t enc, std::array<uint8_t, 16> bcst_code);
 

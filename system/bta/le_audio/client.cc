@@ -2672,6 +2672,18 @@ public:
         return;
       }
 
+      if (current_connect_state == DeviceConnectState::CONNECTED_AUTOCONNECT_GETTING_READY) {
+        log::info("{} already connected, getting profile ready", leAudioDevice->address_);
+        leAudioDevice->SetConnectionState(DeviceConnectState::CONNECTED_BY_USER_GETTING_READY);
+        return;
+      }
+
+      if (current_connect_state == DeviceConnectState::CONNECTED_BY_USER_GETTING_READY) {
+        log::info("{} already connected by the user, silent ignore, stay tuned",
+                  leAudioDevice->address_);
+        return;
+      }
+
       if (leAudioDevice->group_id_ != bluetooth::groups::kGroupUnknown) {
         auto group = GetGroupIfEnabled(leAudioDevice->group_id_);
         if (!group) {
@@ -2767,19 +2779,19 @@ public:
 
     if (!DeserializeSinkPacs(leAudioDevice, sink_pacs)) {
       /* If PACs are invalid, just say whole cache is invalid */
-      leAudioDevice->known_service_handles_ = false;
+      leAudioDevice->known_service_handles_and_capa_ = false;
       log::warn("Could not load sink pacs");
     }
 
     if (!DeserializeSourcePacs(leAudioDevice, source_pacs)) {
       /* If PACs are invalid, just say whole cache is invalid */
-      leAudioDevice->known_service_handles_ = false;
+      leAudioDevice->known_service_handles_and_capa_ = false;
       log::warn("Could not load source pacs");
     }
 
     if (!DeserializeAses(leAudioDevice, ases)) {
       /* If ASEs are invalid, just say whole cache is invalid */
-      leAudioDevice->known_service_handles_ = false;
+      leAudioDevice->known_service_handles_and_capa_ = false;
       log::warn("Could not load ases");
     }
 
@@ -2804,7 +2816,7 @@ public:
     }
 
     //For BT reboot cases, remotes need PACS discover.
-    leAudioDevice->known_service_handles_ = false;
+    leAudioDevice->known_service_handles_and_capa_ = false;
     btif_storage_leaudio_clear_service_data(address);
 
     leAudioDevice->autoconnect_flag_ = autoconnect;
@@ -3617,7 +3629,7 @@ public:
     leAudioDevice->encrypted_ = true;
 
     /* If we know services, register for notifications */
-    if (leAudioDevice->known_service_handles_) {
+    if (leAudioDevice->known_service_handles_and_capa_) {
       /* This registration will do subscribtion in local GATT as we
        * assume remote device keeps bonded CCC values.
        */
@@ -3627,7 +3639,8 @@ public:
 
     /* If we know services and read is not ongoing, this is reconnection and
      * just notify connected  */
-    if (leAudioDevice->known_service_handles_ && !leAudioDevice->notify_connected_after_read_) {
+    if (leAudioDevice->known_service_handles_and_capa_ &&
+        !leAudioDevice->notify_connected_after_read_) {
       log::info("Wait for CCC registration and MTU change request");
       return;
     }
@@ -3781,7 +3794,7 @@ public:
     leAudioDevice->acl_phy_update_done_ = false;
 
     log::info("Remove service data, addr: {}", address);
-    leAudioDevice->known_service_handles_ = false;
+    leAudioDevice->known_service_handles_and_capa_ = false;
     btif_storage_leaudio_clear_service_data(address);
 
     auto connection_state = leAudioDevice->GetConnectionState();
@@ -3935,12 +3948,12 @@ public:
       }
     }
 
-    if (leAudioDevice->known_service_handles_ == false) {
+    if (leAudioDevice->known_service_handles_and_capa_ == false) {
       log::debug("Database already invalidated");
       return;
     }
 
-    leAudioDevice->known_service_handles_ = false;
+    leAudioDevice->known_service_handles_and_capa_ = false;
     BtaGattQueue::Clean(leAudioDevice->conn_id_);
     DeregisterNotifications(leAudioDevice);
 
@@ -3970,7 +3983,7 @@ public:
 
     /* If device is not connected, just clear the handle information and this
      * will trigger service search onGattConnected */
-    leAudioDevice->known_service_handles_ = false;
+    leAudioDevice->known_service_handles_and_capa_ = false;
     btif_storage_leaudio_clear_service_data(address);
   }
 
@@ -4047,7 +4060,7 @@ public:
       return;
     }
 
-    if (!leAudioDevice->known_service_handles_) {
+    if (!leAudioDevice->known_service_handles_and_capa_) {
       BTA_GATTC_ServiceSearchRequest(leAudioDevice->conn_id_);
     }
   }
@@ -4404,7 +4417,6 @@ public:
       btif_storage_leaudio_update_gmap_bin(leAudioDevice->address_);
     }
 
-    leAudioDevice->known_service_handles_ = true;
     leAudioDevice->notify_connected_after_read_ = true;
     if (leAudioHealthStatus_) {
       leAudioHealthStatus_->AddStatisticForDevice(leAudioDevice,
@@ -4465,7 +4477,8 @@ public:
       log::info("Successfully registered on ccc: 0x{:04x}, device: {}", hdl,
                 leAudioDevice->address_);
 
-      if (leAudioDevice->ctp_hdls_.ccc_hdl == hdl && leAudioDevice->known_service_handles_ &&
+      if (leAudioDevice->ctp_hdls_.ccc_hdl == hdl &&
+          leAudioDevice->known_service_handles_and_capa_ &&
           !leAudioDevice->notify_connected_after_read_) {
         /* Reconnection case. Control point is the last CCC LeAudio is
          * registering for on reconnection */
@@ -4673,11 +4686,30 @@ public:
     log::debug("{},  {}", leAudioDevice->address_,
                bluetooth::common::ToString(leAudioDevice->GetConnectionState()));
 
-    if (leAudioDevice->GetConnectionState() ==
-                DeviceConnectState::CONNECTED_BY_USER_GETTING_READY &&
-        (leAudioDevice->autoconnect_flag_ == false)) {
-      btif_storage_set_leaudio_autoconnect(leAudioDevice->address_, true);
+    auto connection_state = leAudioDevice->GetConnectionState();
+
+    CHECK(connection_state == DeviceConnectState::CONNECTED_BY_USER_GETTING_READY ||
+          connection_state == DeviceConnectState::CONNECTED_AUTOCONNECT_GETTING_READY);
+
+    /* In this point if either autoconnect_flag_ is false or known_service_handles_and_capa_ is
+     * false, it means there is a need to update a storage and move those two flags to true. This is
+     * because whenever this function is called it means profile is connected and autoconnect shall
+     * apply. Note that autoconnect is disabled when profile is disabled.
+     */
+    bool update_storage = false;
+
+    if (!leAudioDevice->known_service_handles_and_capa_) {
+      update_storage = true;
+      leAudioDevice->known_service_handles_and_capa_ = true;
+    }
+
+    if (leAudioDevice->autoconnect_flag_ == false) {
+      update_storage = true;
       leAudioDevice->autoconnect_flag_ = true;
+    }
+
+    if (update_storage) {
+      btif_storage_set_leaudio_autoconnect(leAudioDevice->address_, true);
     }
 
     verifyPossibleMonoLocations(leAudioDevice);

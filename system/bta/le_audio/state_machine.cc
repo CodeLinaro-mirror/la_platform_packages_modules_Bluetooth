@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -393,6 +394,115 @@ namespace {
 using namespace bluetooth;
 
 constexpr int kNumberOfCisRetries = 2;
+
+template <typename T>
+static std::vector<T> BuildCisConfigs(LeAudioDeviceGroup* group,
+                                      const bluetooth::le_audio::types::CigQosConfig& qos_config) {
+  std::vector<T> cis_cfgs;
+  for (const auto& cis : group->cig.GetCises()) {
+    T cis_cfg = {};
+    cis_cfg.cis_id = cis.id;
+
+    cis_cfg.phy_c_to_p = qos_config.phy_c_to_p;
+    cis_cfg.phy_p_to_c = qos_config.phy_p_to_c;
+    bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
+    auto device = group->GetFirstActiveDevice();
+    auto controller = bluetooth::shim::GetController();
+    if(hdt_enabled &&
+         le_audio::utils::isContextForHDT(group->GetConfigurationContextType()) &&
+         (cis_cfg.phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
+         (controller && controller->SupportsBleHDTPhy())) {
+      log::info("Fill HDT parameters in CIS");
+      cis_cfg.coded_rates_c_to_p = 0x03;
+      cis_cfg.coded_rates_p_to_c = 0x03;
+      // HDT rate bitmap property (persist.vendor.qcom.bluetooth.hdt_rate):
+      //   Per spec, Rates_C_To_P / Rates_P_To_C must be a CONTIGUOUS bitmask
+      //   (no zero between the lowest and highest set bit).
+      //   Bit mapping (matches HDT_RATE_* constants):
+      //     bit 0 → 2   Mbps  (HDT_RATE_2)
+      //     bit 1 → 3   Mbps  (HDT_RATE_3)
+      //     bit 2 → 4   Mbps  (HDT_RATE_4)
+      //     bit 3 → 6   Mbps  (HDT_RATE_6)
+      //     bit 4 → 7.5 Mbps  (HDT_RATE_7_5)
+      //   Examples:
+      //     0x00 (default) → all rates (0x1F)
+      //     0x01           → 2 Mbps only
+      //     0x07           → 2, 3, 4 Mbps   (contiguous range)
+      //     0x18           → 6, 7.5 Mbps    (contiguous range)
+      //     0x05           → rejected (gap at bit 1), fallback to all
+      static const uint16_t kHdtAllRatesBitmask =
+          (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 | HDT_RATE_6 | HDT_RATE_7_5);
+
+      int32_t hdt_rates_raw_prop = osi_property_get_int32(
+          "persist.vendor.qcom.bluetooth.hdt_rate", 0);
+
+      uint16_t hdt_allowed_rates = kHdtAllRatesBitmask;
+      if (hdt_rates_raw_prop == 0) {
+        // 0 → advertise support for all HDT rates (default/unconfigured).
+        log::info("HDT rate property unset; advertising all rates "
+                  "(bitmask=0x{:02x})", kHdtAllRatesBitmask);
+      } else if (hdt_rates_raw_prop < 0) {
+        // Negative values are invalid; property is defined as a bitmask.
+        log::warn("HDT rate property {} is negative/invalid; "
+                  "falling back to all rates (bitmask=0x{:02x})",
+                  hdt_rates_raw_prop, kHdtAllRatesBitmask);
+      } else if ((static_cast<uint32_t>(hdt_rates_raw_prop) &
+                  ~static_cast<uint32_t>(kHdtAllRatesBitmask)) != 0) {
+        // Property contains bits outside the valid 5-bit HDT rate range.
+        log::warn("HDT rate property 0x{:02x} contains bits outside valid "
+                  "HDT rate range (valid mask=0x{:02x}); "
+                  "falling back to all rates",
+                  hdt_rates_raw_prop, kHdtAllRatesBitmask);
+      } else {
+        // Validate contiguity: a bitmask M is contiguous iff adding the
+        // lowest set bit carries cleanly past all set bits leaving none behind.
+        //   lowest_set_bit = M & (~M + 1)  — unsigned negation, no signed UB.
+        //   Contiguous iff (M + lowest_set_bit) & M == 0.
+        // All arithmetic done in uint32_t to avoid uint16_t promotion issues.
+        uint32_t hdt_rates_candidate = static_cast<uint32_t>(hdt_rates_raw_prop);
+        uint32_t lowest_rate_bit =
+            hdt_rates_candidate & (~hdt_rates_candidate + 1u);
+        bool is_contiguous_range =
+            ((hdt_rates_candidate + lowest_rate_bit) & hdt_rates_candidate) == 0;
+        if (is_contiguous_range) {
+          hdt_allowed_rates = static_cast<uint16_t>(hdt_rates_candidate);
+          log::info("HDT rate property 0x{:02x} is a valid contiguous rate "
+                    "bitmask; using configured rates",
+                    hdt_allowed_rates);
+        } else {
+          log::warn("HDT rate property 0x{:02x} is non-contiguous (spec "
+                    "requires no gap between lowest and highest set rate bit); "
+                    "falling back to all rates (bitmask=0x{:02x})",
+                    hdt_rates_raw_prop, kHdtAllRatesBitmask);
+        }
+      }
+      log::info("Final HDT allowed rates bitmask: 0x{:02x}", hdt_allowed_rates);
+      cis_cfg.hdt_rates_c_to_p = hdt_allowed_rates;
+      cis_cfg.hdt_rates_p_to_c = hdt_allowed_rates;
+      cis_cfg.hdt_mic_length = HDT_MIC_LENGTH_128_BITS; //0x02
+      cis_cfg.hdt_packet_format = HDT_PACKET_FORMAT_ANY_SUPPORTED; //0x00
+    }
+
+    if (cis.type == bluetooth::le_audio::types::CisType::CIS_TYPE_BIDIRECTIONAL) {
+      cis_cfg.max_sdu_size_c_to_p = qos_config.max_sdu_size_c_to_p;
+      cis_cfg.rtn_c_to_p = qos_config.rtn_c_to_p;
+      cis_cfg.max_sdu_size_p_to_c = qos_config.max_sdu_size_p_to_c;
+      cis_cfg.rtn_p_to_c = qos_config.rtn_p_to_c;
+    } else if (cis.type == bluetooth::le_audio::types::CisType::CIS_TYPE_UNIDIRECTIONAL_SINK) {
+      cis_cfg.max_sdu_size_c_to_p = qos_config.max_sdu_size_c_to_p;
+      cis_cfg.rtn_c_to_p = qos_config.rtn_c_to_p;
+      cis_cfg.max_sdu_size_p_to_c = 0;
+      cis_cfg.rtn_p_to_c = 0;
+    } else {
+      cis_cfg.max_sdu_size_c_to_p = 0;
+      cis_cfg.rtn_c_to_p = 0;
+      cis_cfg.max_sdu_size_p_to_c = qos_config.max_sdu_size_p_to_c;
+      cis_cfg.rtn_p_to_c = qos_config.rtn_p_to_c;
+    }
+    cis_cfgs.push_back(std::move(cis_cfg));
+  }
+  return cis_cfgs;
+}
 
 class LeAudioGroupStateMachineImpl;
 LeAudioGroupStateMachineImpl* instance;
@@ -1405,6 +1515,10 @@ public:
       for (auto& ase : leAudioDevice->ases_) {
         ase.cis_id = bluetooth::le_audio::kInvalidCisId;
         ase.cis_conn_hdl = bluetooth::le_audio::kInvalidCisConnHandle;
+        // Peer's preferred Phy is per-CIS; clear it so it doesn't leak into
+        // whatever new cis_id gets assigned next.
+        ase.qos_preferences.preferred_phy = 0;
+        log::verbose("Reset QoS Pref phy as CIS release");
         if (com_android_bluetooth_flags_leaudio_fix_clear_cises_in_the_cig()) {
           ase.cis_state = CisState::IDLE;
           ase.data_path_state = DataPathState::IDLE;
@@ -2193,19 +2307,10 @@ private:
     state_machine_callbacks_->OnUpdatedCisConfiguration(group->group_id_, ase->direction);
   }
 
-  static bool isIntervalAndLatencyProperlySet(uint32_t sdu_interval_us, uint16_t max_latency_ms) {
-    log::verbose("sdu_interval_us: {}, max_latency_ms: {}", sdu_interval_us, max_latency_ms);
-
-    if (sdu_interval_us == 0) {
-      return max_latency_ms == bluetooth::le_audio::types::kMaxTransportLatencyMin;
-    }
-    return true;// skipping this as this is spec violation(1000 * max_latency_ms) >= sdu_interval_us;
-  }
-
   void ApplyDsaParams(LeAudioDeviceGroup* group,
                       bluetooth::hci::iso_manager::cig_create_params& param) {
     /* Ignore bidirectional streaming */
-    if (param.sdu_itv_p_to_c != 0) {
+    if (param.sdu_interval_p_to_c != 0) {
       log::debug("Bidirection streaming, ignore DSA mode {}", group->dsa_.mode);
       return;
     }
@@ -2239,19 +2344,20 @@ private:
           if (config->hasDsaBackChannel()) {
             auto const& cfg = config->confs.source.at(0);
 
-            param.sdu_itv_p_to_c = cfg.qos.sduIntervalUs;
+            param.sdu_interval_p_to_c = cfg.qos.sduIntervalUs;
             param.max_trans_lat_p_to_c = cfg.qos.max_transport_latency;
             it->max_sdu_size_p_to_c = cfg.qos.maxSdu;
             it->rtn_p_to_c = cfg.qos.retransmission_number;
 
             log::debug(
-                    "Applying DSA Cig parameters: sdu_itv_p_to_c:{}, max_trans_lat_p_to_c: {}, "
+                    "Applying DSA Cig parameters: sdu_interval_p_to_c:{}, max_trans_lat_p_to_c: "
+                    "{}, "
                     "max_sdu_size_p_to_c: {}, rtn_p_to_c: {}",
-                    param.sdu_itv_p_to_c, param.max_trans_lat_p_to_c, it->max_sdu_size_p_to_c,
+                    param.sdu_interval_p_to_c, param.max_trans_lat_p_to_c, it->max_sdu_size_p_to_c,
                     it->rtn_p_to_c);
           } else {
             log::warn("Fallback to static DSA configuration for group: {}", group->group_id_);
-            param.sdu_itv_p_to_c = bluetooth::le_audio::types::kLeAudioHeadtrackerSduItv;
+            param.sdu_interval_p_to_c = bluetooth::le_audio::types::kLeAudioHeadtrackerSduInterval;
             param.max_trans_lat_p_to_c = bluetooth::le_audio::types::kLeAudioHeadtrackerMaxTransLat;
             it->max_sdu_size_p_to_c = bluetooth::le_audio::types::kLeAudioHeadtrackerMaxSduSize;
 
@@ -2279,11 +2385,6 @@ private:
   }
 
   bool CigCreate(LeAudioDeviceGroup* group) {
-    uint32_t sdu_interval_c_to_p, sdu_interval_p_to_c;
-    uint16_t max_trans_lat_c_to_p, max_trans_lat_p_to_c;
-    uint8_t packing, framing, sca;
-    std::vector<EXT_CIS_CFG> cis_cfgs;
-
     log::debug("Group: {}, id: {} cig state: {}", std::format_ptr(group), group->group_id_,
                ToString(group->cig.GetState()));
 
@@ -2293,230 +2394,20 @@ private:
       return false;
     }
 
-    sdu_interval_c_to_p = group->GetSduInterval(bluetooth::le_audio::types::kLeAudioDirectionSink);
-    sdu_interval_p_to_c =
-            group->GetSduInterval(bluetooth::le_audio::types::kLeAudioDirectionSource);
-    sca = group->GetSCA();
-    packing = group->GetPacking();
-    framing = group->GetFraming();
-    max_trans_lat_c_to_p = group->GetMaxTransportLatencyCToP();
-    max_trans_lat_p_to_c = group->GetMaxTransportLatencyPToC();
-
-    uint16_t max_sdu_size_c_to_p = 0;
-    uint16_t max_sdu_size_p_to_c = 0;
-    uint8_t phy_c_to_p = group->GetPhyBitmask(bluetooth::le_audio::types::kLeAudioDirectionSink);
-    uint8_t phy_p_to_c = group->GetPhyBitmask(bluetooth::le_audio::types::kLeAudioDirectionSource);
-
-    if (!isIntervalAndLatencyProperlySet(sdu_interval_c_to_p, max_trans_lat_c_to_p) ||
-        !isIntervalAndLatencyProperlySet(sdu_interval_p_to_c, max_trans_lat_p_to_c)) {
-      log::error("Latency and interval not properly set");
-      group->PrintDebugState();
-      return false;
-    }
-
-    // Check if HDT PHY is selected in either direction and ensure symmetric PHY
-    log::info(" phy_c_to_p: {}", phy_c_to_p);
-    if ((phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
-          le_audio::utils::isContextForHDT(group->GetConfigurationContextType())) {
-      // If mtos has HDT, copy mtos PHY to stom for symmetric configuration
-      phy_p_to_c = phy_c_to_p;
-      log::info("HDT PHY selected in mtos, using symmetric PHY: mtos=0x{:02x}, stom=0x{:02x}",
-                phy_c_to_p, phy_p_to_c);
-    } else {
-      // Use 1M Phy for the ACK packet from remote device to phone for better
-      // sensitivity
-      if (group->asymmetric_phy_for_unidirectional_cis_supported && sdu_interval_p_to_c == 0 &&
-          (phy_p_to_c & bluetooth::hci::kIsoCigPhy1M) != 0) {
-        log::info("Use asymmetric PHY for unidirectional CIS");
-        phy_p_to_c = bluetooth::hci::kIsoCigPhy1M;
-      }
-    }
-
-    log::verbose(" phy_c_to_p: 0x{:02x}, phy_p_to_c: 0x{:02x}",
-                    static_cast<int>(phy_c_to_p),  static_cast<int>(phy_p_to_c));
-    uint8_t rtn_c_to_p = 0;
-    uint8_t rtn_p_to_c = 0;
-
-    /* Currently assumed Sink/Source configuration is same across cis types.
-     * If a cis in cises_ is currently associated with active device/ASE(s),
-     * use the Sink/Source configuration for the same.
-     * If a cis in cises_ is not currently associated with active device/ASE(s),
-     * use the Sink/Source configuration for the cis in cises_
-     * associated with a active device/ASE(s). When the same cis is associated
-     * later, with active device/ASE(s), check if current configuration is
-     * supported or not, if not, reconfigure CIG.
-     */
-    auto& cises = group->cig.GetCises();
-    for (const struct bluetooth::le_audio::types::cis& cis : cises) {
-      uint16_t max_sdu_size_c_to_p_temp =
-              group->GetMaxSduSize(bluetooth::le_audio::types::kLeAudioDirectionSink, cis.id);
-      uint16_t max_sdu_size_p_to_c_temp =
-              group->GetMaxSduSize(bluetooth::le_audio::types::kLeAudioDirectionSource, cis.id);
-      uint8_t rtn_c_to_p_temp =
-              group->GetRtn(bluetooth::le_audio::types::kLeAudioDirectionSink, cis.id);
-      uint8_t rtn_p_to_c_temp =
-              group->GetRtn(bluetooth::le_audio::types::kLeAudioDirectionSource, cis.id);
-
-      max_sdu_size_c_to_p =
-              max_sdu_size_c_to_p_temp ? max_sdu_size_c_to_p_temp : max_sdu_size_c_to_p;
-      max_sdu_size_p_to_c =
-              max_sdu_size_p_to_c_temp ? max_sdu_size_p_to_c_temp : max_sdu_size_p_to_c;
-      rtn_c_to_p = rtn_c_to_p_temp ? rtn_c_to_p_temp : rtn_c_to_p;
-      rtn_p_to_c = rtn_p_to_c_temp ? rtn_p_to_c_temp : rtn_p_to_c;
-    }
-
-    for (const struct bluetooth::le_audio::types::cis& cis : cises) {
-      EXT_CIS_CFG cis_cfg = {};
-
-      cis_cfg.cis_id = cis.id;
-      cis_cfg.phy_c_to_p = phy_c_to_p;
-      cis_cfg.phy_p_to_c = phy_p_to_c;
-      bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
-      auto device = group->GetFirstActiveDevice();
-      auto controller = bluetooth::shim::GetController();
-      if(hdt_enabled &&
-           le_audio::utils::isContextForHDT(group->GetConfigurationContextType()) &&
-           (cis_cfg.phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
-           (controller && controller->SupportsBleHDTPhy())) {
-        log::info("Fill HDT parameters in CIS");
-        cis_cfg.coded_rates_c_to_p = 0x03;
-        cis_cfg.coded_rates_p_to_c = 0x03;
-        // HDT rate bitmap property (persist.vendor.qcom.bluetooth.hdt_rate):
-        //   Per spec, Rates_C_To_P / Rates_P_To_C must be a CONTIGUOUS bitmask
-        //   (no zero between the lowest and highest set bit).
-        //   Bit mapping (matches HDT_RATE_* constants):
-        //     bit 0 → 2   Mbps  (HDT_RATE_2)
-        //     bit 1 → 3   Mbps  (HDT_RATE_3)
-        //     bit 2 → 4   Mbps  (HDT_RATE_4)
-        //     bit 3 → 6   Mbps  (HDT_RATE_6)
-        //     bit 4 → 7.5 Mbps  (HDT_RATE_7_5)
-        //   Examples:
-        //     0x00 (default) → all rates (0x1F)
-        //     0x01           → 2 Mbps only
-        //     0x07           → 2, 3, 4 Mbps   (contiguous range)
-        //     0x18           → 6, 7.5 Mbps    (contiguous range)
-        //     0x05           → rejected (gap at bit 1), fallback to all
-        static const uint16_t kHdtAllRatesBitmask =
-            (HDT_RATE_2 | HDT_RATE_3 | HDT_RATE_4 | HDT_RATE_6 | HDT_RATE_7_5);
-
-        int32_t hdt_rates_raw_prop = osi_property_get_int32(
-            "persist.vendor.qcom.bluetooth.hdt_rate", 0);
-
-        uint16_t hdt_allowed_rates = kHdtAllRatesBitmask;
-        if (hdt_rates_raw_prop == 0) {
-          // 0 → advertise support for all HDT rates (default/unconfigured).
-          log::info("HDT rate property unset; advertising all rates "
-                    "(bitmask=0x{:02x})", kHdtAllRatesBitmask);
-        } else if (hdt_rates_raw_prop < 0) {
-          // Negative values are invalid; property is defined as a bitmask.
-          log::warn("HDT rate property {} is negative/invalid; "
-                    "falling back to all rates (bitmask=0x{:02x})",
-                    hdt_rates_raw_prop, kHdtAllRatesBitmask);
-        } else if ((static_cast<uint32_t>(hdt_rates_raw_prop) &
-                    ~static_cast<uint32_t>(kHdtAllRatesBitmask)) != 0) {
-          // Property contains bits outside the valid 5-bit HDT rate range.
-          log::warn("HDT rate property 0x{:02x} contains bits outside valid "
-                    "HDT rate range (valid mask=0x{:02x}); "
-                    "falling back to all rates",
-                    hdt_rates_raw_prop, kHdtAllRatesBitmask);
-        } else {
-          // Validate contiguity: a bitmask M is contiguous iff adding the
-          // lowest set bit carries cleanly past all set bits leaving none behind.
-          //   lowest_set_bit = M & (~M + 1)  — unsigned negation, no signed UB.
-          //   Contiguous iff (M + lowest_set_bit) & M == 0.
-          // All arithmetic done in uint32_t to avoid uint16_t promotion issues.
-          uint32_t hdt_rates_candidate = static_cast<uint32_t>(hdt_rates_raw_prop);
-          uint32_t lowest_rate_bit =
-              hdt_rates_candidate & (~hdt_rates_candidate + 1u);
-          bool is_contiguous_range =
-              ((hdt_rates_candidate + lowest_rate_bit) & hdt_rates_candidate) == 0;
-          if (is_contiguous_range) {
-            hdt_allowed_rates = static_cast<uint16_t>(hdt_rates_candidate);
-            log::info("HDT rate property 0x{:02x} is a valid contiguous rate "
-                      "bitmask; using configured rates",
-                      hdt_allowed_rates);
-          } else {
-            log::warn("HDT rate property 0x{:02x} is non-contiguous (spec "
-                      "requires no gap between lowest and highest set rate bit); "
-                      "falling back to all rates (bitmask=0x{:02x})",
-                      hdt_rates_raw_prop, kHdtAllRatesBitmask);
-          }
-        }
-        log::info("Final HDT allowed rates bitmask: 0x{:02x}", hdt_allowed_rates);
-        cis_cfg.hdt_rates_c_to_p = hdt_allowed_rates;
-        cis_cfg.hdt_rates_p_to_c = hdt_allowed_rates;
-        cis_cfg.hdt_mic_length = HDT_MIC_LENGTH_128_BITS; //0x02
-        cis_cfg.hdt_packet_format = HDT_PACKET_FORMAT_ANY_SUPPORTED; //0x00
-      }
-      if (cis.type == bluetooth::le_audio::types::CisType::CIS_TYPE_BIDIRECTIONAL) {
-        cis_cfg.max_sdu_size_c_to_p = max_sdu_size_c_to_p;
-        cis_cfg.rtn_c_to_p = rtn_c_to_p;
-        cis_cfg.max_sdu_size_p_to_c = max_sdu_size_p_to_c;
-        cis_cfg.rtn_p_to_c = rtn_p_to_c;
-        cis_cfgs.push_back(cis_cfg);
-      } else if (cis.type == bluetooth::le_audio::types::CisType::CIS_TYPE_UNIDIRECTIONAL_SINK) {
-        cis_cfg.max_sdu_size_c_to_p = max_sdu_size_c_to_p;
-        cis_cfg.rtn_c_to_p = rtn_c_to_p;
-        cis_cfg.max_sdu_size_p_to_c = 0;
-        cis_cfg.rtn_p_to_c = 0;
-        cis_cfgs.push_back(cis_cfg);
-      } else {
-        cis_cfg.max_sdu_size_c_to_p = 0;
-        cis_cfg.rtn_c_to_p = 0;
-        cis_cfg.max_sdu_size_p_to_c = max_sdu_size_p_to_c;
-        cis_cfg.rtn_p_to_c = rtn_p_to_c;
-        cis_cfgs.push_back(cis_cfg);
-      }
-      log::verbose("cis.id: {}, phy_c_to_p: {}, phy_p_to_c: {}, cis.type: {}, max_sdu_size_c_to_p: {},"
-                   " max_sdu_size_p_to_c: {}, rtn_c_to_p: {}, rtn_p_to_c: {}", cis.id, phy_c_to_p, phy_p_to_c,
-                   cis.type, max_sdu_size_c_to_p, max_sdu_size_p_to_c, rtn_c_to_p, rtn_p_to_c);
-    }
-
-    log::verbose("sdu_interval_c_to_p: {}, sdu_interval_p_to_c: {}, max_trans_lat_c_to_p: {},"
-                 " max_trans_lat_p_to_c: {}, max_sdu_size_c_to_p: {}, max_sdu_size_p_to_c: {}",
-                 sdu_interval_c_to_p, sdu_interval_p_to_c, max_trans_lat_c_to_p, max_trans_lat_p_to_c,
-                 max_sdu_size_c_to_p, max_sdu_size_p_to_c);
-
-    /* Make sure, the parameters makes sense and CIG which is about to be created is useful in any
-     * sense. e.g. Any direction is enabled, there is no logical mistakes in the parameters.
-     */
-    bool no_direction_enabled_due_to_sdu_interval =
-            (sdu_interval_c_to_p == 0 && sdu_interval_p_to_c == 0);
-    bool no_direction_enabled_due_max_latencies_setting =
-            (max_trans_lat_c_to_p == bluetooth::le_audio::types::kMaxTransportLatencyMin &&
-             max_trans_lat_p_to_c == bluetooth::le_audio::types::kMaxTransportLatencyMin);
-    bool no_direction_enabled_due_max_sdu_sizes_zero =
-            (max_sdu_size_c_to_p == 0 && max_sdu_size_p_to_c == 0);
-
-    /* The mismatch where one of the sdu size or sdu interval is 0 while the other parameter is 0 is
-     * a non-sense configuration. We should catch that and avoid creating such a CIG.
-     */
-    bool is_sdu_config_mismatch_fix_enabled =
-            com_android_bluetooth_flags_leaudio_fix_clear_cises_in_the_cig();
-    bool is_c_to_p_sdu_config_mismatched =
-            ((max_sdu_size_c_to_p == 0) != (sdu_interval_c_to_p == 0));
-    bool is_p_to_c_sdu_config_mismatched =
-            ((max_sdu_size_p_to_c == 0) != (sdu_interval_p_to_c == 0));
-
-    if (no_direction_enabled_due_to_sdu_interval ||
-        no_direction_enabled_due_max_latencies_setting ||
-        no_direction_enabled_due_max_sdu_sizes_zero ||
-        (is_sdu_config_mismatch_fix_enabled &&
-         (is_c_to_p_sdu_config_mismatched || is_p_to_c_sdu_config_mismatched))) {
-      log::error("Trying to create invalid group");
-      group->PrintDebugState();
+    auto qos_config = group->GetActiveCigQosConfig();
+    if (!qos_config) {
       return false;
     }
 
     bluetooth::hci::iso_manager::cig_create_params param = {
-            .sdu_itv_c_to_p = sdu_interval_c_to_p,
-            .sdu_itv_p_to_c = sdu_interval_p_to_c,
-            .sca = sca,
-            .packing = packing,
-            .framing = framing,
-            .max_trans_lat_c_to_p = max_trans_lat_c_to_p,
-            .max_trans_lat_p_to_c = max_trans_lat_p_to_c,
-            .cis_cfgs = std::move(cis_cfgs),
+            .sdu_interval_c_to_p = qos_config->sdu_interval_c_to_p,
+            .sdu_interval_p_to_c = qos_config->sdu_interval_p_to_c,
+            .sca = qos_config->sca,
+            .packing = qos_config->packing,
+            .framing = qos_config->framing,
+            .max_trans_lat_c_to_p = qos_config->max_trans_lat_c_to_p,
+            .max_trans_lat_p_to_c = qos_config->max_trans_lat_p_to_c,
+            .cis_cfgs = BuildCisConfigs<EXT_CIS_CFG>(group, *qos_config),
     };
 
     ApplyDsaParams(group, param);

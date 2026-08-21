@@ -7,6 +7,13 @@ enum Enable : 8 {
   ENABLED = 0x01,
 }
 
+enum Framing : 8 {
+  UNFRAMED = 0x00,
+  FRAMED_SEGMENTABLE = 0x01,
+  FRAMED_UNSEGMENTED = 0x02,
+}
+
+
 // HCI ACL Packets
 
 enum PacketBoundaryFlag : 2 {
@@ -4527,7 +4534,7 @@ packet LeSetCigParameters : Command (op_code = LE_SET_CIG_PARAMETERS) {
   sdu_interval_p_to_c : 24,
   worst_case_sca: ClockAccuracy,
   packing : Packing,
-  framing : Enable,
+  framing : Framing,
   max_transport_latency_c_to_p : 16,
   max_transport_latency_p_to_c : 16,
   _count_(cis_config) : 8,
@@ -4563,7 +4570,7 @@ packet LeSetCigParametersTest : Command (op_code = LE_SET_CIG_PARAMETERS_TEST) {
   iso_interval : 16,
   worst_case_sca: ClockAccuracy,
   packing : Packing,
-  framing : Enable,
+  framing : Framing,
   _count_(cis_config) : 8,
   cis_config : LeCisParametersTestConfig[],
 }
@@ -4630,7 +4637,7 @@ packet LeCreateBig : Command (op_code = LE_CREATE_BIG) {
   _reserved_ : 4,
   phy : SecondaryPhyType,
   packing : Packing,
-  framing : Enable,
+  framing : Framing,
   encryption : Enable,
   broadcast_code: 8[16],
 }
@@ -6273,7 +6280,7 @@ packet LeBigInfoAdvertisingReport : LeMetaEvent (subevent_code = LE_BIG_INFO_ADV
   sdu_interval : 24,
   max_sdu : 16,
   phy : SecondaryPhyType,
-  framing : Enable,
+  framing : Framing,
   encryption : Enable,
 }
 

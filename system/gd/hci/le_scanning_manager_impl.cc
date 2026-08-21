@@ -739,8 +739,9 @@ struct LeScanningManagerImpl::impl : public LeAddressManagerCallback {
     // Set timer for discovery
     if (duration != 0) {
       uint64_t duration_ms = duration * kMsPerDiscoveryUnit;
-      discovery_timer_->Schedule(common::BindOnce(&impl::stop_discovery, base::Unretained(this)),
-                                 std::chrono::milliseconds(duration_ms));
+      discovery_timer_->Schedule(
+              common::BindOnce(&impl::stop_discovery_on_timeout, base::Unretained(this)),
+              std::chrono::milliseconds(duration_ms));
     }
   }
 
@@ -758,6 +759,14 @@ struct LeScanningManagerImpl::impl : public LeAddressManagerCallback {
 
     // Stop discovery
     scan(false, ScanCallerType::DISCOVERY);
+  }
+
+  // Called when the discovery timer fires (duration expired naturally).
+  // Stops discovery and notifies the BTM layer via OnTimeout() so that
+  // btm_process_inq_complete() can clear inqparms and unblock BTA state machine.
+  void stop_discovery_on_timeout() {
+    stop_discovery();
+    scanning_callbacks_->OnTimeout();
   }
 
   void scan(bool start, ScanCallerType callerType) {

@@ -56,7 +56,7 @@ bool btif_a2dp_sink_startup(void);
 // This function should be called by the BTIF state machine after
 // btif_a2dp_sink_startup() to start the streaming session for |peer_address|.
 bool btif_a2dp_sink_start_session(const RawAddress& peer_address,
-                                  std::promise<void> peer_ready_promise);
+                                  std::promise<bool> peer_ready_promise);
 
 // Restart the A2DP Sink session.
 // This function should be called by the BTIF state machine after
@@ -67,7 +67,7 @@ bool btif_a2dp_sink_start_session(const RawAddress& peer_address,
 // cannot be empty.
 bool btif_a2dp_sink_restart_session(const RawAddress& old_peer_address,
                                     const RawAddress& new_peer_address,
-                                    std::promise<void> peer_ready_promise);
+                                    std::promise<bool> peer_ready_promise);
 
 // End the A2DP Sink session.
 // This function should be called by the BTIF state machine to end the

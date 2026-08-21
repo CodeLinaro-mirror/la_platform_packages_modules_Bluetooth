@@ -887,7 +887,7 @@ TEST_F(PeriodicSyncManagerTest, handleLeBigInfoAdvertisingReport_callWithoutPeri
   // Get LeBigInfoAdvertisingReport
   auto builder = LeBigInfoAdvertisingReportBuilder::Create(
           sync_handle, 2, 9, 24, 3, 1, 2, 100, 10000, 100, static_cast<SecondaryPhyType>(2),
-          static_cast<Enable>(0), static_cast<Enable>(1));
+          Framing::UNFRAMED, static_cast<Enable>(1));
 
   auto event_view = LeBigInfoAdvertisingReportView::Create(
           LeMetaEventView::Create(EventView::Create(GetPacketView(std::move(builder)))));
@@ -1055,7 +1055,7 @@ TEST_F(PeriodicSyncManagerTest, handle_biginfo_advertising_report_test) {
   // Get LeBigInfoAdvertisingReport
   auto builder2 = LeBigInfoAdvertisingReportBuilder::Create(
           sync_handle, 2, 9, 24, 3, 1, 2, 100, 10000, 100, static_cast<SecondaryPhyType>(2),
-          static_cast<Enable>(0), static_cast<Enable>(1));
+          Framing::UNFRAMED, static_cast<Enable>(1));
 
   auto event_view2 = LeBigInfoAdvertisingReportView::Create(
           LeMetaEventView::Create(EventView::Create(GetPacketView(std::move(builder2)))));

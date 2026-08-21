@@ -47,6 +47,7 @@
 #include "stack/btm/internal/btm_api.h"
 #include "stack/include/advertise_data_parser.h"
 #include "stack/include/ble_hci_link_interface.h"
+#include "stack/include/inq_hci_link_interface.h"
 #include "stack/include/bt_dev_class.h"
 #include "stack/include/btm_ble_addr.h"
 #include "stack/include/btm_log_history.h"
@@ -721,7 +722,19 @@ void BleScannerInterfaceImpl::OnBigInfoReport(uint16_t sync_handle, bool encrypt
                                   base::Unretained(scanning_callbacks_), sync_handle, encrypted));
 }
 
-void BleScannerInterfaceImpl::OnTimeout() {}
+void BleScannerInterfaceImpl::OnTimeout() {
+  // When the migrate_btm_scan_to_gd flag is enabled, the GD scanning manager
+  // handles the discovery timer internally and calls OnTimeout() when the
+  // discovery duration expires. We must propagate this to btm_process_inq_complete()
+  // so that inqparms.mode is cleared (BTM_BLE_GENERAL_INQUIRY bit) and the BTA
+  // search state machine can transition from BTA_DM_SEARCH_ACTIVE back to IDLE.
+  // Without this, the inquiry completion callback is suppressed and subsequent
+  // discovery requests are rejected as unexpected events.
+  if (com_android_bluetooth_flags_migrate_btm_scan_to_gd()) {
+    do_in_main_thread(base::BindOnce(
+            []() { btm_process_inq_complete(HCI_SUCCESS, BTM_BLE_GENERAL_INQUIRY); }));
+  }
+}
 void BleScannerInterfaceImpl::OnFilterEnable(bluetooth::hci::Enable /* enable */,
                                              uint8_t /* status */) {}
 void BleScannerInterfaceImpl::OnFilterParamSetup(uint8_t /* available_spaces */,
@@ -858,24 +871,31 @@ bool bluetooth::shim::is_ad_type_filter_supported() {
 }
 
 void bluetooth::shim::set_ad_type_rsi_filter(bool enable) {
+  // Index 0 is the transient "allow-all" slot shared by LE inquiry/discovery
+  // (btm_ble_start_inquiry, set_empty_filter, GD start_discovery). Using it for
+  // the CSIS RSI filter causes both features to fight over the same APCF index:
+  // starting an inquiry deletes/overwrites index 0 and silently wipes the RSI
+  // filter. Use a dedicated reserved index instead. Must match the reservation
+  // in ScanManager.initFilterIndexStack() (Java dynamic pool starts after it).
+  constexpr uint8_t kAdTypeRsiFilterIndex = 0x04;
   bluetooth::hci::AdvertisingFilterParameter advertising_filter_parameter;
-  bluetooth::shim::GetScanning()->ScanFilterParameterSetup(bluetooth::hci::ApcfAction::DELETE, 0x00,
-                                                           advertising_filter_parameter);
+  bluetooth::shim::GetScanning()->ScanFilterParameterSetup(
+          bluetooth::hci::ApcfAction::DELETE, kAdTypeRsiFilterIndex, advertising_filter_parameter);
   if (enable) {
     std::vector<bluetooth::hci::AdvertisingPacketContentFilterCommand> filters = {};
     bluetooth::hci::AdvertisingPacketContentFilterCommand filter{};
     filter.filter_type = bluetooth::hci::ApcfFilterType::AD_TYPE;
     filter.ad_type = BTM_BLE_AD_TYPE_RSI;
     filters.push_back(filter);
-    bluetooth::shim::GetScanning()->ScanFilterAdd(0x00, filters);
+    bluetooth::shim::GetScanning()->ScanFilterAdd(kAdTypeRsiFilterIndex, filters);
 
     advertising_filter_parameter.delivery_mode = bluetooth::hci::DeliveryMode::IMMEDIATE;
     advertising_filter_parameter.feature_selection = kAllowADTypeFilter;
     advertising_filter_parameter.list_logic_type = kAllowADTypeFilter;
     advertising_filter_parameter.filter_logic_type = kFilterLogicOr;
     advertising_filter_parameter.rssi_high_thresh = kLowestRssiValue;
-    bluetooth::shim::GetScanning()->ScanFilterParameterSetup(bluetooth::hci::ApcfAction::ADD, 0x00,
-                                                             advertising_filter_parameter);
+    bluetooth::shim::GetScanning()->ScanFilterParameterSetup(
+            bluetooth::hci::ApcfAction::ADD, kAdTypeRsiFilterIndex, advertising_filter_parameter);
   }
 }
 

@@ -82,6 +82,7 @@ public:
   MOCK_METHOD((void), OnOwnAddressResponse,
               (uint32_t broadcast_id, uint8_t addr_type, RawAddress addr), (override));
   MOCK_METHOD((void), OnBigCreated, (const std::vector<uint16_t>& conn_handle), (override));
+  MOCK_METHOD((void), OnBigCreationFailed, (uint32_t broadcast_id, uint8_t status), (override));
   MOCK_METHOD((void), OnAnnouncementUpdated, (uint32_t broadcast_id), (override));
 };
 

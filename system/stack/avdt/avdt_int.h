@@ -315,6 +315,28 @@ enum {
 /* 2 channels(1 media, 1 report) for each SEP and one for signalling */
 #define AVDT_NUM_RT_TBL (AVDT_NUM_SEPS * AVDT_CHAN_NUM_TYPES + 1)
 
+/*******************************************************************************
+ *
+ * Function         tc_tcid_to_type
+ *
+ * Description      Derives the channel type from the TCID.
+ *
+ *
+ * Returns          Channel type value.
+ *
+ ******************************************************************************/
+inline uint8_t tc_tcid_to_type(uint8_t tcid) {
+  if (tcid == 0) {
+    return AVDT_CHAN_SIG;
+  }
+  /* tcid translates to type based on number of channels, as follows:
+  ** only media channel   :  tcid=1,2,3,4,5,6...  type=1,1,1,1,1,1...
+  ** media and report     :  tcid=1,2,3,4,5,6...  type=1,2,1,2,1,2...
+  ** media, report, recov :  tcid=1,2,3,4,5,6...  type=1,2,3,1,2,3...
+  */
+  return ((tcid + AVDT_CHAN_NUM_TYPES - 2) % (AVDT_CHAN_NUM_TYPES - 1)) + 1;
+}
+
 /* "states" used in transport channel table */
 enum tTRANSPORT_CHANNEL_STATE : uint8_t {
   AVDT_AD_ST_UNUSED = 0, /* Unused - unallocated */

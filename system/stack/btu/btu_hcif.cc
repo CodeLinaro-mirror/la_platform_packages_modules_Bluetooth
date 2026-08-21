@@ -1194,6 +1194,19 @@ static void btu_hcif_hdl_command_status(uint16_t opcode, uint8_t status, const u
       }
       break;
 
+    case HCI_LE_CREATE_BIG:
+      // A success command status only acknowledges that the controller
+      // accepted the command; the BIG Create Complete event will follow and
+      // is handled separately. Only a command-status *failure* means no
+      // Create Complete event will be generated, so it must be propagated
+      // here to unblock the broadcaster.
+      if (status != HCI_SUCCESS) {
+        uint8_t big_handle;
+        STREAM_TO_UINT8(big_handle, p_cmd);
+        IsoManager::GetInstance()->HandleCreateBigCommandStatus(big_handle, status);
+      }
+      break;
+
     default:
       log::error(
               "Command status for opcode:0x{:02x} should not be handled here "

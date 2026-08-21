@@ -1243,12 +1243,15 @@ void log_remote_device_information(const Address& address,
   sdp_di_vendor_id_source
           << "N:SDP::DIP::"
           << common::ToHexString(device.GetSdpDiVendorIdSource().value_or(0)).c_str();
+  std::string manufacturer_hex = common::ToHexString(device.GetSdpDiManufacturer().value_or(0));
+  std::string model_hex = common::ToHexString(device.GetSdpDiModel().value_or(0));
+  std::string hw_version_hex = common::ToHexString(device.GetSdpDiHardwareVersion().value_or(0));
   metrics::LogMetricManufacturerInfo(
           address, address_type, android::bluetooth::DeviceInfoSrcEnum::DEVICE_INFO_INTERNAL,
           sdp_di_vendor_id_source.str(),
-          common::ToHexString(device.GetSdpDiManufacturer().value_or(0)).c_str(),
-          common::ToHexString(device.GetSdpDiModel().value_or(0)).c_str(),
-          common::ToHexString(device.GetSdpDiHardwareVersion().value_or(0)).c_str(), "");
+          manufacturer_hex.c_str(),
+          model_hex.c_str(),
+          hw_version_hex.c_str(), "");
 
   // log RemoteVersionInfo
   metrics::LogMetricRemoteVersionInfo(

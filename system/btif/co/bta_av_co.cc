@@ -57,6 +57,7 @@
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_constants.h"
 #include "stack/include/a2dp_ext.h"
+#include "stack/include/a2dp_vendor.h"
 #include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_uuid16.h"
@@ -217,6 +218,9 @@ static bool bta_av_co_should_select_hardware_codec(
         const A2dpCodecConfig& software_config,
         const ::bluetooth::audio::a2dp::provider::a2dp_configuration& hardware_config,
         const btav_a2dp_codec_config_t& user_codec_config);
+static void bta_av_co_codec_bitrate_hint(
+        const std::optional<::bluetooth::a2dp::CodecId>& codec_id,
+        btav_a2dp_codec_config_t& config);
 
 tA2DP_STATUS BtaAvCo::ProcessSourceGetConfig(tBTA_AV_HNDL bta_av_handle,
                                              const RawAddress& peer_address, uint8_t* p_codec_info,
@@ -1171,6 +1175,13 @@ BtaAvCo::GetProviderCodecConfiguration(BtaAvCoPeer* p_peer) {
     user_preferred_codec_id = a2dp_codec_config->codecId();
   }
 
+  // Compute the codec bitrate hint in the stack (e.g. LDAC Developer-Options
+  // bit rate) so it can be forwarded to the audio HAL without codec-specific
+  // logic in the HAL. Only when a preferred codec id is selected, mirroring
+  // the previous behaviour where the hint was keyed off the codec id sent to
+  // the HAL.
+  bta_av_co_codec_bitrate_hint(user_preferred_codec_id, a2dp_codec_user_config);
+
   // Pass all gathered codec capabilities to the provider
   return ::bluetooth::audio::a2dp::provider::get_a2dp_configuration(
           p_peer->addr, a2dp_remote_caps, a2dp_codec_user_config, user_preferred_codec_id,
@@ -1638,6 +1649,23 @@ static bool bta_av_co_should_select_hardware_codec(
   }
   log::error("select unknown software codec: {}", A2DP_CodecIndexStr(software_codec_index));
   return false;
+}
+
+static void bta_av_co_codec_bitrate_hint(
+        const std::optional<::bluetooth::a2dp::CodecId>& codec_id,
+        btav_a2dp_codec_config_t& config) {
+
+  std::optional<A2dpBitrateRange> bitrate_range =
+          codec_id.has_value()
+                  ? A2DP_VendorGetBitRateRange(codec_id.value(), config.codec_specific_1,
+                                               config.SampleRateHz())
+                  : std::nullopt;
+  if (bitrate_range.has_value()) {
+    config.min_bitrate = bitrate_range->min_bitrate;
+    config.max_bitrate = bitrate_range->max_bitrate;
+    log::debug("applied codec bitrate hint min_bitrate={} max_bitrate={}", config.min_bitrate,
+               config.max_bitrate);
+  }
 }
 
 tA2DP_STATUS bta_av_co_audio_getconfig(tBTA_AV_HNDL bta_av_handle, const RawAddress& peer_address,

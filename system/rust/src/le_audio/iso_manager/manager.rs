@@ -1045,7 +1045,7 @@ impl IsoManagerImpl {
             big_handle.into(),
             big_params.advertising_handle.into(),
             big_params.num_bis,
-            big_params.sdu_itv,
+            big_params.sdu_interval,
             big_params.max_sdu_size,
             big_params.max_transport_latency,
             big_params.rtn,
@@ -2400,7 +2400,7 @@ mod test {
             manager.create_big(CreateBigParameters {
                 advertising_handle: AdvertisingHandle::from_masked(0),
                 num_bis: 1,
-                sdu_itv: 10000,
+                sdu_interval: 10000,
                 max_sdu_size: 100,
                 max_transport_latency: 10,
                 rtn: 2,

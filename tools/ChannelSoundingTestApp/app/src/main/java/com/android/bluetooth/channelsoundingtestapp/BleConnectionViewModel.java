@@ -54,7 +54,9 @@ import androidx.lifecycle.MutableLiveData;
 import com.android.bluetooth.channelsoundingtestapp.Constants.GattState;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** The ViewModel for the BLE GATT connection. */
@@ -64,7 +66,7 @@ public class BleConnectionViewModel extends AndroidViewModel {
     private boolean is_advertising = false;
     private final BluetoothAdapter mBluetoothAdapter;
     private final BluetoothManager mBluetoothManager;
-    @Nullable private BluetoothGatt mBluetoothGatt = null;
+    private Map<String, BluetoothGatt> mBluetoothGattMap = new HashMap<>();
     private MutableLiveData<Boolean> mIsAdvertising = new MutableLiveData<>(false);
     private MutableLiveData<String> mLogText = new MutableLiveData<>();
     private MutableLiveData<BluetoothDevice> mTargetDevice = new MutableLiveData<>();
@@ -76,8 +78,10 @@ public class BleConnectionViewModel extends AndroidViewModel {
     private int mTxPowerLevel = AdvertisingSetParameters.TX_POWER_HIGH;
     private int mPendingTxPowerLevel = -1; // -1 means no pending change
     private MutableLiveData<Boolean> mShowTxPower = new MutableLiveData<>(false);
+    private MutableLiveData<List<BluetoothDevice>> mConnectedDevices = new MutableLiveData<>(new ArrayList<>());
 
     private GattState mExpectedGattState = GattState.DISCONNECTED;
+    private Map<String, GattState> mDeviceGattStateMap = new HashMap<>();
 
     private final BroadcastReceiver mBluetoothStateReceiver =
             new BroadcastReceiver() {
@@ -95,14 +99,16 @@ public class BleConnectionViewModel extends AndroidViewModel {
                             || state == BluetoothAdapter.STATE_TURNING_ON) {
                         mExpectedGattState = GattState.DISCONNECTED;
                         mGattState.postValue(mExpectedGattState);
-                        if (mBluetoothGatt != null) {
-                            try {
-                                mBluetoothGatt.close();
-                            } catch (RuntimeException e) {
-                                // Ignore stale binder during BT reset.
+                        for (BluetoothGatt bluetoothGatt : mBluetoothGattMap.values()) {
+                            if (bluetoothGatt != null) {
+                                try {
+                                    bluetoothGatt.close();
+                                } catch (RuntimeException e) {
+                                    // Ignore stale binder during BT reset.
+                                }
                             }
-                            mBluetoothGatt = null;
                         }
+                        mBluetoothGattMap.clear();
                         mTargetDevice.postValue(null);
                     }
                 }
@@ -135,6 +141,10 @@ public class BleConnectionViewModel extends AndroidViewModel {
 
     LiveData<BluetoothDevice> getTargetDevice() {
         return mTargetDevice;
+    }
+
+    LiveData<List<BluetoothDevice>> getConnectedDevices() {
+        return mConnectedDevices;
     }
 
     LiveData<Boolean> getShowTxPower() {
@@ -180,19 +190,31 @@ public class BleConnectionViewModel extends AndroidViewModel {
       }
     };
     public void updateconnectioninterval(String conn_priority) {
-      if(mBluetoothGatt == null) {
+      // Use the currently selected target address
+      if (TextUtils.isEmpty(mTargetBtAddress)) return;
+      BluetoothGatt gatt = mBluetoothGattMap.get(mTargetBtAddress);
+      updateConnectionInterval(gatt, conn_priority);
+    }
+
+    public void updateConnectionInterval(BluetoothDevice device, String conn_priority) {
+         if (device == null) return;
+         updateConnectionInterval(mBluetoothGattMap.get(device.getAddress()), conn_priority);
+    }
+
+    public void updateConnectionInterval(BluetoothGatt gatt, String conn_priority) {
+      if(gatt == null) {
         printLog("Bluetooth Gatt is null");
         return;
       }
       switch (conn_priority) {
         case "Balanced":
-          mBluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED);
+          gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED);
           break;
         case "High Priority":
-          mBluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+          gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
           break;
         case "Low Power":
-          mBluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER);
+          gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER);
           break;
       }
     }
@@ -281,6 +303,16 @@ public class BleConnectionViewModel extends AndroidViewModel {
     void setCsTargetAddress(String btAddress) {
         printLog("set target address: " + btAddress);
         mTargetBtAddress = btAddress;
+        GattState state = mDeviceGattStateMap.getOrDefault(btAddress, GattState.DISCONNECTED);
+        mGattState.setValue(state);
+        mExpectedGattState = state; 
+        // Update mTargetDevice based on connection status? 
+        // Or just let it be null if not connected, and the device object if connected?
+        if (mBluetoothGattMap.containsKey(btAddress)) {
+             mTargetDevice.setValue(mBluetoothGattMap.get(btAddress).getDevice());
+        } else {
+             mTargetDevice.setValue(null);
+        }
     }
 
     void setTxPowerLevel(int levelIndex) {
@@ -323,58 +355,81 @@ public class BleConnectionViewModel extends AndroidViewModel {
     }
 
     void toggleGattConnection() {
-        if (mGattState.getValue() == GattState.DISCONNECTED) {
+        // Use the current target address state
+        GattState currentState = mDeviceGattStateMap.getOrDefault(mTargetBtAddress, GattState.DISCONNECTED);
+        
+        if (currentState == GattState.DISCONNECTED) {
             if (TextUtils.isEmpty(mTargetBtAddress)) {
                 printLog("Pair and select a target device first!");
                 return;
             }
             connectGatt();
-        } else if (mGattState.getValue() == GattState.CONNECTED_DIRECT) {
+        } else if (currentState == GattState.CONNECTED_DIRECT) {
             disconnectGatt();
         }
     }
 
     public boolean isconnected() {
-        if(mGattState.getValue() == GattState.DISCONNECTED)
-            return false;
-        else
-            return true;
+        // Check if current target is connected
+        GattState currentState = mDeviceGattStateMap.getOrDefault(mTargetBtAddress, GattState.DISCONNECTED);
+        return currentState != GattState.DISCONNECTED;
     }
 
     private BluetoothGattCallback mGattCallback =
             new BluetoothGattCallback() {
                 @Override
                 public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-                    printLog("onConnectionStateChange status:" + status + ", newState:" + newState);
+                    String address = gatt.getDevice().getAddress();
+                    printLog("onConnectionStateChange " + address + " status:" + status + ", newState:" + newState);
+                    
                     if (newState == STATE_CONNECTED) {
                         printLog(gatt.getDevice().getName() + " is connected");
                         gatt.requestMtu(GATT_MTU_SIZE);
-                        mBluetoothGatt = gatt;
-                        mGattState.postValue(mExpectedGattState);
-                        mTargetDevice.postValue(gatt.getDevice());
+                        mBluetoothGattMap.put(address, gatt);
+                        mDeviceGattStateMap.put(address, GattState.CONNECTED_DIRECT);
+                        updateConnectedDevicesList();
+                        
+                        // Only update UI if this is the currently selected device
+                        if (address.equals(mTargetBtAddress)) {
+                             mGattState.postValue(GattState.CONNECTED_DIRECT);
+                             mTargetDevice.postValue(gatt.getDevice());
+                        }
                     } else if (newState == STATE_DISCONNECTED) {
                         printLog("disconnected from " + gatt.getDevice().getName());
-                        mExpectedGattState = GattState.DISCONNECTED;
-                        mGattState.postValue(mExpectedGattState);
-                        mBluetoothGatt.close();
-                        mBluetoothGatt = null;
-                        mTargetDevice.postValue(null);
+                        mDeviceGattStateMap.put(address, GattState.DISCONNECTED);
+                        mBluetoothGattMap.remove(address);
+                        gatt.close();
+                        updateConnectedDevicesList();
+
+                        if (address.equals(mTargetBtAddress)) {
+                            mGattState.postValue(GattState.DISCONNECTED);
+                            mTargetDevice.postValue(null);
+                        }
                     }
                 }
 
                 public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        printLog("MTU changed to: " + mtu);
+                        printLog("MTU changed to: " + mtu + " for " + gatt.getDevice().getName());
                     } else {
                         printLog("MTU change failed: " + status);
                     }
                 }
             };
 
+    private void updateConnectedDevicesList() {
+        List<BluetoothDevice> devices = new ArrayList<>();
+        for (BluetoothGatt gatt : mBluetoothGattMap.values()) {
+            devices.add(gatt.getDevice());
+        }
+        mConnectedDevices.postValue(devices);
+    }
+
     private void connectGatt() {
         BluetoothDevice btDevice = mBluetoothAdapter.getRemoteDevice(mTargetBtAddress);
         printLog("Connect gatt to " + btDevice.getName());
-        mExpectedGattState = GattState.CONNECTED_DIRECT;
+        // We don't set mExpectedGattState globally anymore, but per device logic relies on callback
+        // mDeviceGattStateMap.put(mTargetBtAddress, GattState.CONNECTING); // Optional: add connecting state
         btDevice.connectGatt(
                 getApplication().getApplicationContext(),
                 false,
@@ -383,9 +438,10 @@ public class BleConnectionViewModel extends AndroidViewModel {
     }
 
     private void disconnectGatt() {
-        if (mBluetoothGatt != null) {
-            printLog("disconnect from " + mBluetoothGatt.getDevice().getName());
-            mBluetoothGatt.disconnect();
+        BluetoothGatt gatt = mBluetoothGattMap.get(mTargetBtAddress);
+        if (gatt != null) {
+            printLog("disconnect from " + gatt.getDevice().getName());
+            gatt.disconnect();
         }
     }
 
@@ -413,12 +469,11 @@ public class BleConnectionViewModel extends AndroidViewModel {
                                 stopScanning();
                                 printLog("connect GATT to: " + btDevice.getName());
                                 // Connect to the GATT server
-                                mBluetoothGatt =
-                                        btDevice.connectGatt(
-                                                getApplication().getApplicationContext(),
-                                                false,
-                                                mGattCallback,
-                                                BluetoothDevice.TRANSPORT_LE);
+                                btDevice.connectGatt(
+                                        getApplication().getApplicationContext(),
+                                        false,
+                                        mGattCallback,
+                                        BluetoothDevice.TRANSPORT_LE);
                             }
                         }
                     }
@@ -472,6 +527,10 @@ public class BleConnectionViewModel extends AndroidViewModel {
     protected void onCleared() {
         getApplication().unregisterReceiver(mBluetoothStateReceiver);
         super.onCleared();
+    }
+    // Add method to retrieve Gatt for specific device (used by InitiatorViewModel/Fragment)
+    public BluetoothGatt getGattForDevice(String address) {
+        return mBluetoothGattMap.get(address);
     }
 
     private void printLog(@NonNull String logMsg) {

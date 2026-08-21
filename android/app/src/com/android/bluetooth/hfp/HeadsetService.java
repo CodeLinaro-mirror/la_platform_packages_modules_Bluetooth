@@ -1096,7 +1096,7 @@ public class HeadsetService extends ConnectableProfile {
         return mSystemInterface.isInCall() || mSystemInterface.isRinging() || isAudioOn();
     }
 
-    boolean isAudioConnected(BluetoothDevice device) {
+    public boolean isAudioConnected(BluetoothDevice device) {
         synchronized (mStateMachines) {
             final HeadsetStateMachine stateMachine = mStateMachines.get(device);
             if (stateMachine == null) {
@@ -3227,6 +3227,10 @@ public class HeadsetService extends ConnectableProfile {
                                 + device
                                 + " as it does not match active device "
                                 + mActiveDevice);
+                return;
+            }
+            if (isVirtualCallStarted()) {
+                Log.i(TAG, "processAtBcc: virtual call in progress, SCO already up for " + device);
                 return;
             }
             if (!device.equals(mExposedActiveDevice)) {

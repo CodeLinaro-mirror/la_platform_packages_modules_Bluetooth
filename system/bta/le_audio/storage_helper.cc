@@ -447,7 +447,7 @@ bool DeserializeHandles(LeAudioDevice* leAudioDevice, const std::vector<uint8_t>
   STREAM_TO_UINT16(leAudioDevice->tmap_role_hdl_, ptr);
   log::verbose("tmap_role_hdl_: 0x{:04x}", leAudioDevice->tmap_role_hdl_);
 
-  leAudioDevice->known_service_handles_ = true;
+  leAudioDevice->known_service_handles_and_capa_ = true;
   return true;
 }
 

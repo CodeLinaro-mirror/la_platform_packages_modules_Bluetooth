@@ -1582,7 +1582,10 @@ public class ActiveDeviceManager implements AdapterService.BluetoothStateCallbac
                     }
                     case AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> {
                         CallAudio mCallAudio = CallAudio.get();
-                        if (mCallAudio != null && isVoipLeaWarEnabled()) {
+                        // Only clear the HFP active device in the isScoManagedByAudio
+                        // regime, matching HeadsetService.handleAudioDeviceRemoved() below.
+                        if (mCallAudio != null && isVoipLeaWarEnabled()
+                                && mAudioManager.isScoManagedByAudio()) {
                             mCallAudio.updateActiveDevice(null, mCallAudio.HFP);
                         }
                         mAdapterService

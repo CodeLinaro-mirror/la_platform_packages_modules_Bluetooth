@@ -40,6 +40,8 @@ import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.BluetoothProfileConnectionInfo;
 import android.os.Handler;
@@ -80,8 +82,18 @@ public class CallAudio {
 
     public static final int MESSAGE_VOIP_CALL_STARTED = 1;
     public static final int MESSAGE_ACTIVE_HFP_DEVICE_CHANGE = 2;
+    public static final int MESSAGE_REASSERT_LEA_ACTIVE = 3;
 
     private static final int MAX_DEVICES = 200;
+
+    // Placeholder address of the faked HFP active device reported to AudioManager by the VOIP LEA
+    // WAR (see handleBluetoothActiveDeviceChangedForVoipWar). When this surfaces to Telecom via
+    // onAudioDevicesAdded it overwrites the real LEA active device, so we re-assert LEA afterwards.
+    private static final String DUMMY_ADDRESS = "00:00:00:00:00:00";
+
+    // Delay before re-asserting the LEA active device, so Telecom fully ingests the faked HFP
+    // dummy first and our re-assert lands last (mirrors MESSAGE_ACTIVE_HFP_DEVICE_CHANGE timing).
+    private static final int REASSERT_LEA_ACTIVE_DELAY_MS = 100;
 
     private static CallAudio sCallAudio;
 
@@ -98,6 +110,7 @@ public class CallAudio {
     private int mAudioMode = AudioManager.MODE_NORMAL;
     private boolean mDelayHfpActiveDeviceChange = false;
     private BluetoothDevice mBroadcastedActiveDevice = null;
+    private CallAudioAudioDeviceCallback mAudioDeviceCallback;
 
     private final class CallAudioMessageHandler extends Handler {
         private CallAudioMessageHandler(Looper looper) {
@@ -136,6 +149,10 @@ public class CallAudio {
                         }
                     }
                 }
+                case MESSAGE_REASSERT_LEA_ACTIVE -> {
+                    Log.d(TAG, "MESSAGE_REASSERT_LEA_ACTIVE");
+                    reassertLeAudioActiveDevice();
+                }
                 default -> {
                 }
             }
@@ -161,6 +178,11 @@ public class CallAudio {
             mBluetoothOnModeChangedListener = new BluetoothOnModeChangedListener();
                     mAudioManager.addOnModeChangedListener(
                     Executors.newSingleThreadExecutor(), mBluetoothOnModeChangedListener);
+
+            // Observe the faked HFP dummy device surfacing from AudioManager so we can re-assert
+            // the LEA active device to Telecom afterwards (see onAudioDevicesAdded).
+            mAudioDeviceCallback = new CallAudioAudioDeviceCallback();
+            mAudioManager.registerAudioDeviceCallback(mAudioDeviceCallback, mHandler);
         }
     }
 
@@ -184,6 +206,13 @@ public class CallAudio {
             mAudioManager.removeOnModeChangedListener(mBluetoothOnModeChangedListener);
         }
         mBluetoothOnModeChangedListener = null;
+        if (mAudioDeviceCallback != null) {
+            mAudioManager.unregisterAudioDeviceCallback(mAudioDeviceCallback);
+            mAudioDeviceCallback = null;
+        }
+        if (mHandler != null) {
+            mHandler.removeMessages(MESSAGE_REASSERT_LEA_ACTIVE);
+        }
     }
 
     class BluetoothOnModeChangedListener implements AudioManager.OnModeChangedListener {
@@ -200,6 +229,64 @@ public class CallAudio {
             }
             mAudioMode = mode;
         }
+    }
+
+    /**
+     * Observes audio device changes from AudioManager. When the VOIP LEA WAR reports the faked HFP
+     * active device (address {@link #DUMMY_ADDRESS}) to AudioManager, that device surfaces here as a
+     * BT SCO {@link AudioDeviceInfo}. Telecom's CallAudioRouteController ingests it as the active BT
+     * device, which no real route matches - overwriting the real LEA active device and causing a
+     * later CS call to route to the wrong (last-connected) device. To correct the ordering, we
+     * re-assert the LEA active device shortly after the dummy surfaces so it becomes the last
+     * active-device event Telecom records.
+     */
+    private class CallAudioAudioDeviceCallback extends AudioDeviceCallback {
+        @Override
+        public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+            if (addedDevices == null) {
+                return;
+            }
+            for (AudioDeviceInfo deviceInfo : addedDevices) {
+                // The faked HFP dummy surfaces twice (sink + source). Only act on the sink to
+                // avoid scheduling the re-assert twice, mirroring Telecom's non-sink filtering.
+                if (!deviceInfo.isSink()) {
+                    continue;
+                }
+                if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                        && DUMMY_ADDRESS.equals(deviceInfo.getAddress())
+                        && mActiveProfile == LE_AUDIO_VOICE
+                        && mActiveDevice != null) {
+                    Log.d(TAG, "onAudioDevicesAdded: faked HFP dummy surfaced while LEA active,"
+                            + " scheduling LEA active re-assert for " + mActiveDevice);
+                    if (mHandler != null) {
+                        mHandler.removeMessages(MESSAGE_REASSERT_LEA_ACTIVE);
+                        Message msg = mHandler.obtainMessage(MESSAGE_REASSERT_LEA_ACTIVE);
+                        mHandler.sendMessageDelayed(msg, REASSERT_LEA_ACTIVE_DELAY_MS);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Re-broadcast the LE Audio active-device intent for the current active device so Telecom
+     * records the real LEA device as the active BT device after the faked HFP dummy overwrote it.
+     * Re-checks the guard because the active profile/device may have changed during the delay.
+     */
+    private void reassertLeAudioActiveDevice() {
+        if (mActiveProfile != LE_AUDIO_VOICE || mActiveDevice == null) {
+            Log.d(TAG, "reassertLeAudioActiveDevice: skip, no LEA active device (profile="
+                    + mActiveProfile + ", device=" + mActiveDevice + ")");
+            return;
+        }
+        LeAudioService leAudioService = mAdapterService.getLeAudioService().orElse(null);
+        if (leAudioService == null) {
+            Log.w(TAG, "reassertLeAudioActiveDevice: LeAudioService unavailable");
+            return;
+        }
+        Log.d(TAG, "reassertLeAudioActiveDevice: re-asserting LEA active device " + mActiveDevice);
+        leAudioService.sendActiveDeviceChangeIntent(mActiveDevice);
     }
 
     public boolean isVirtualCallStarted() {
@@ -540,6 +627,27 @@ public class CallAudio {
         int numConnectedAudioDevices = getNonIdleAudioDevices().size();
         Log.d(TAG, " isAudioOn: The number of audio connected devices " + numConnectedAudioDevices);
         return numConnectedAudioDevices > 0;
+    }
+
+    public boolean isAudioConnected(BluetoothDevice device) {
+        if (device == null) {
+            return false;
+        }
+        // broadcastScoStatus is only maintained for VOIP calls while faking HFP for LEA. For a
+        // real (non-VoIP) HFP call, CallAudio never records the SCO audio state, so combine the
+        // real HeadsetService SCO state; otherwise the LEA-VoIP-WAR isAudioConnected() path
+        // reports SCO off during a real call and BT_SCO=on is suppressed. (CR 4606060)
+        CallDevice callDevice = mCallDevicesMap.get(device.getAddress());
+        if (callDevice != null
+                && callDevice.broadcastScoStatus != BluetoothHeadset.STATE_AUDIO_DISCONNECTED) {
+            return true;
+        }
+        final var headsetService = mAdapterService.getHeadsetService();
+        if (headsetService.isPresent() && headsetService.get().isAudioConnected(device)) {
+            Log.d(TAG, " isAudioConnected: real HFP SCO connected for " + device);
+            return true;
+        }
+        return false;
     }
 
     public BluetoothDevice getActiveDevice() {

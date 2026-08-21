@@ -1416,6 +1416,18 @@ static bool btm_ble_complete_evt_ignore(const BtmDevice* p_device, const tBTM_LE
       l2cu_start_post_bond_timer(p_device->ble_hci_handle);
       return true;
     } else if (!p_device->role_central) {
+      // A CTKD (SMP over BR/EDR) failure is the terminal event for an in-progress LE bond
+      // derivation. Swallowing it here would strand the framework BondStateMachine in the
+      // bonding state (no BTM_LE_COMPLT_EVT is ever delivered). Only ignore genuine LE
+      // encryption-request cross-over failures; let CTKD failures fall through so the
+      // upper layer can transition the bond out of bonding.
+      if (p_data->complt.smp_over_br) {
+        log::warn(
+                "CTKD (SMP over BR/EDR) failed for {} with reason {}; delivering completion so the "
+                "bond state machine can recover",
+                p_device->bd_addr, smp_status_text(p_data->complt.reason));
+        return false;
+      }
       log::warn("Peripheral encryption request failed for the bonded device {} with reason {}",
                 p_device->bd_addr, smp_status_text(p_data->complt.reason));
       btm_sec_disconnect(p_device->ble_hci_handle, HCI_ERR_AUTH_FAILURE,

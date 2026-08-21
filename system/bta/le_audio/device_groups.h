@@ -219,6 +219,7 @@ public:
                  const types::BidirectionalPair<types::AudioContexts>& metadata_context_types,
                  types::BidirectionalPair<std::vector<uint8_t>> ccid_lists = {.sink = {},
                                                                               .source = {}});
+  std::optional<types::CigQosConfig> GetActiveCigQosConfig(void);
   uint32_t GetSduInterval(uint8_t direction) const;
   uint8_t GetSCA(void) const;
   uint8_t GetPacking(void) const;
