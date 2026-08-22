@@ -56,6 +56,7 @@
 #include "stack/include/a2dp_codec_api.h"
 #include "stack/include/a2dp_constants.h"
 #include "stack/include/a2dp_ext.h"
+#include "stack/include/a2dp_vendor.h"
 #include "stack/include/avdt_api.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_uuid16.h"
@@ -1131,8 +1132,19 @@ BtaAvCo::GetProviderCodecConfiguration(BtaAvCoPeer* p_peer) {
   }
 
   // Get the configuration of the preferred codec as codec hint.
-  btav_a2dp_codec_config_t codec_config =
-          p_peer->GetCodecs()->orderedSourceCodecs().front()->getCodecUserConfig();
+  auto a2dp_codec_config = p_peer->GetCodecs()->orderedSourceCodecs().front();
+  btav_a2dp_codec_config_t codec_config = a2dp_codec_config->getCodecUserConfig();
+
+  // Compute the codec bitrate hint in the stack (e.g. LDAC Developer-Options
+  // bit rate) so it can be forwarded to the audio HAL without codec-specific
+  // logic in the HAL.
+  auto bitrate_range = A2DP_VendorGetBitRateRange(a2dp_codec_config->codecId(),
+                                                  codec_config.codec_specific_1,
+                                                  codec_config.SampleRateHz());
+  if (bitrate_range.has_value()) {
+    codec_config.min_bitrate = bitrate_range->min_bitrate;
+    codec_config.max_bitrate = bitrate_range->max_bitrate;
+  }
 
   // Pass all gathered codec capabilities to the provider
   return ::bluetooth::audio::a2dp::provider::get_a2dp_configuration(p_peer->addr, a2dp_remote_caps,
