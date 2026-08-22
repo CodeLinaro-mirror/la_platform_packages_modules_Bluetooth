@@ -34,6 +34,13 @@ constexpr std::chrono::milliseconds kUnregisterSyncTimeoutInMs = std::chrono::mi
 class LeAddressManagerCallback {
 public:
   virtual ~LeAddressManagerCallback() = default;
+  // If address_policy_ is still POLICY_NOT_SET when this client registers, OnPause() is called
+  // synchronously from register_client(). AckPause() (or ack_pause()) does not have to be called
+  // synchronously from within OnPause() -- e.g. le_impl::OnPause() only acks immediately when
+  // already ConnectabilityState::DISARMED, and otherwise defers the ack behind an async HCI
+  // round trip (disarm_connectability()). SetPrivacyPolicyForInitiatorAddress() accounts for this:
+  // if any pre-registered client hasn't reached ClientState::PAUSED yet, it defers applying the
+  // policy until ack_pause() observes every client has, rather than asserting.
   virtual void OnPause() = 0;
   virtual void OnResume() = 0;
   virtual void NotifyOnIRKChange() {}
@@ -149,6 +156,19 @@ private:
     std::variant<RotateRandomAddressCommand, UpdateIRKCommand, HCICommand> contents;
   };
 
+  // Deferred SetPrivacyPolicyForInitiatorAddress() args, held in pending_privacy_policy_ when a
+  // pre-registered client hasn't reached ClientState::PAUSED yet (see
+  // LeAddressManagerCallback::OnPause() comment) -- applied once ack_pause() observes every
+  // registered client has actually reached PAUSED.
+  struct SetPrivacyPolicyCommand {
+    AddressPolicy address_policy;
+    AddressWithType fixed_address;
+    Octet16 rotation_irk;
+    bool supports_ble_privacy;
+    std::chrono::milliseconds minimum_rotation_time;
+    std::chrono::milliseconds maximum_rotation_time;
+  };
+
   void pause_registered_clients();
   void push_command(Command command);
   void ack_pause(LeAddressManagerCallback* callback);
@@ -162,6 +182,7 @@ private:
   void set_random_address();
   void prepare_to_update_irk(UpdateIRKCommand command);
   void update_irk(UpdateIRKCommand command);
+  void apply_privacy_policy_for_initiator_address(SetPrivacyPolicyCommand command);
   hci::Address generate_rpa();
   hci::Address generate_nrpa();
   void handle_next_command();
@@ -183,6 +204,9 @@ private:
   uint8_t resolving_list_size_;
   std::queue<Command> cached_commands_;
   bool supports_ble_privacy_{false};
+
+  // See SetPrivacyPolicyCommand comment above.
+  std::optional<SetPrivacyPolicyCommand> pending_privacy_policy_;
 
   // Only used for logging error in address rotation time.
   std::optional<std::chrono::time_point<std::chrono::system_clock>> address_rotation_interval_min;

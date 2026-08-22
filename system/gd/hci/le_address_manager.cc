@@ -109,15 +109,45 @@ void LeAddressManager::SetPrivacyPolicyForInitiatorAddress(
                    "assert failed: address_policy_ == AddressPolicy::POLICY_NOT_SET");
   log::assert_that(address_policy != AddressPolicy::POLICY_NOT_SET,
                    "assert failed: address_policy != AddressPolicy::POLICY_NOT_SET");
-  log::assert_that(registered_clients_.empty(),
-                   "Policy must be set before clients are registered.");
-  address_policy_ = address_policy;
-  supports_ble_privacy_ = supports_ble_privacy;
-  log::info("New policy: {}", AddressPolicyText(address_policy));
+  SetPrivacyPolicyCommand command{address_policy,        fixed_address,
+                                  rotation_irk,          supports_ble_privacy,
+                                  minimum_rotation_time, maximum_rotation_time};
+  // A client may already be registered before policy is set (register_client() pauses it in
+  // that case). Its OnPause() ack can itself be deferred behind an async round trip (see
+  // LeAddressManagerCallback::OnPause() comment) -- if any client hasn't reached PAUSED yet,
+  // defer applying the policy until ack_pause() observes every client has. Only a client that
+  // is still genuinely active/resumed (never even started pausing) is a real invariant
+  // violation, since register_client() unconditionally pauses every registered client while
+  // address_policy_ is POLICY_NOT_SET.
+  bool any_client_still_pausing = false;
+  for (auto& entry : registered_clients_) {
+    switch (entry.second) {
+      case ClientState::PAUSED:
+        break;
+      case ClientState::WAITING_FOR_PAUSE:
+        any_client_still_pausing = true;
+        break;
+      case ClientState::WAITING_FOR_RESUME:
+      case ClientState::RESUMED:
+        log::fatal("Policy must be set before any client is active/resumed.");
+    }
+  }
+  if (any_client_still_pausing) {
+    log::info("Deferring policy until all pre-registered clients finish pausing");
+    pending_privacy_policy_ = std::move(command);
+    return;
+  }
+  apply_privacy_policy_for_initiator_address(std::move(command));
+}
+
+void LeAddressManager::apply_privacy_policy_for_initiator_address(SetPrivacyPolicyCommand command) {
+  address_policy_ = command.address_policy;
+  supports_ble_privacy_ = command.supports_ble_privacy;
+  log::info("New policy: {}", AddressPolicyText(address_policy_));
 
   if (com::android::bluetooth::flags::nrpa_non_connectable_adv()) {
-    minimum_rotation_time_ = minimum_rotation_time;
-    maximum_rotation_time_ = maximum_rotation_time;
+    minimum_rotation_time_ = command.minimum_rotation_time;
+    maximum_rotation_time_ = command.maximum_rotation_time;
     log::info("minimum_rotation_time_={}ms, maximum_rotation_time_={}ms",
               minimum_rotation_time_.count(), maximum_rotation_time_.count());
   }
@@ -128,7 +158,7 @@ void LeAddressManager::SetPrivacyPolicyForInitiatorAddress(
       handler_->BindOnceOn(this, &LeAddressManager::resume_registered_clients)();
       break;
     case AddressPolicy::USE_STATIC_ADDRESS: {
-      auto addr = fixed_address.GetAddress();
+      auto addr = command.fixed_address.GetAddress();
       auto address = addr.address;
       // The two most significant bits of the static address shall be equal to 1
       log::assert_that((address[5] & BLE_ADDR_MASK) == BLE_ADDR_MASK,
@@ -140,17 +170,17 @@ void LeAddressManager::SetPrivacyPolicyForInitiatorAddress(
            address[4] == 0xFF && address[5] == 0xFF)) {
         log::fatal("Bits of the random part of the address shall not be all 1 or all 0");
       }
-      le_address_ = fixed_address;
+      le_address_ = command.fixed_address;
       auto packet = hci::LeSetRandomAddressBuilder::Create(le_address_.GetAddress());
       handler_->Post(common::BindOnce(enqueue_command_, std::move(packet)));
     } break;
     case AddressPolicy::USE_NON_RESOLVABLE_ADDRESS:
     case AddressPolicy::USE_RESOLVABLE_ADDRESS:
-      le_address_ = fixed_address;
-      rotation_irk_ = rotation_irk;
+      le_address_ = command.fixed_address;
+      rotation_irk_ = command.rotation_irk;
       if (!com::android::bluetooth::flags::nrpa_non_connectable_adv()) {
-        minimum_rotation_time_ = minimum_rotation_time;
-        maximum_rotation_time_ = maximum_rotation_time;
+        minimum_rotation_time_ = command.minimum_rotation_time;
+        maximum_rotation_time_ = command.maximum_rotation_time;
         log::info("minimum_rotation_time_={}ms, maximum_rotation_time_={}ms",
                   minimum_rotation_time_.count(), maximum_rotation_time_.count());
       }
@@ -377,6 +407,16 @@ void LeAddressManager::ack_pause(LeAddressManagerCallback* callback) {
     }
   }
 
+  if (pending_privacy_policy_.has_value()) {
+    auto command = std::move(*pending_privacy_policy_);
+    pending_privacy_policy_.reset();
+    // apply_privacy_policy_for_initiator_address()'s own policy-specific handling already takes
+    // care of resuming clients (USE_PUBLIC_ADDRESS) or will once the resulting HCI command
+    // completes (USE_STATIC_ADDRESS / USE_RESOLVABLE_ADDRESS / USE_NON_RESOLVABLE_ADDRESS) --
+    // no need to also fall through to check_cached_commands() below.
+    apply_privacy_policy_for_initiator_address(std::move(command));
+    return;
+  }
   if (address_policy_ != AddressPolicy::POLICY_NOT_SET) {
     check_cached_commands();
   }
@@ -778,12 +818,31 @@ void LeAddressManager::OnCommandComplete(bluetooth::hci::CommandCompleteView vie
 
   switch (op_code) {
     case OpCode::LE_SET_RANDOM_ADDRESS: {
-      // The command was sent before any client registered, we can make sure all the clients paused
-      // when command complete.
+      // le_address_ is already set synchronously in apply_privacy_policy_for_initiator_address()
+      // for USE_STATIC_ADDRESS (unlike USE_RESOLVABLE_ADDRESS/USE_NON_RESOLVABLE_ADDRESS, which
+      // only confirm le_address_ from cached_address_ here on success) -- so there's nothing to
+      // update below. Normally we can also return early: this command is sent before any client
+      // registers, so there's nothing to resume. But if a client raced registration ahead of
+      // policy setup (see register_client()'s POLICY_NOT_SET handling), it can already be
+      // PAUSED here -- fall through to check_cached_commands() in that case only, so it actually
+      // gets resumed instead of staying paused forever. Do NOT do this unconditionally: falling
+      // through when no client is genuinely stuck paused calls resume_registered_clients() on
+      // whatever client registers next regardless of why it's registering, racing with that
+      // client's own in-flight state machine (see le_impl::OnResume()/arm_connectability()).
       if (address_policy_ == AddressPolicy::USE_STATIC_ADDRESS) {
         log::info(
                 "Received LE_SET_RANDOM_ADDRESS complete and Address policy is USE_STATIC_ADDRESS, "
                 "return");
+        bool any_client_paused = false;
+        for (auto& entry : registered_clients_) {
+          if (entry.second == ClientState::PAUSED) {
+            any_client_paused = true;
+            break;
+          }
+        }
+        if (any_client_paused) {
+          break;
+        }
         return;
       }
       auto complete_view = LeSetRandomAddressCompleteView::Create(view);

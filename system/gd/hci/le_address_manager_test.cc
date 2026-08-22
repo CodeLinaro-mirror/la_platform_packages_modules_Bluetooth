@@ -103,6 +103,55 @@ public:
   std::unique_ptr<std::promise<void>> resume_promise_;
 };
 
+// A client that never acks OnPause(), used to verify SetPrivacyPolicyForInitiatorAddress()
+// defers indefinitely -- rather than crashing -- when a registered client never finishes
+// pausing (the same "wait forever" behavior every other pause-gated LeAddressManager operation,
+// e.g. AddDeviceToFilterAcceptList(), already has for a stuck client).
+class NonAckingClient : public LeAddressManagerCallback {
+public:
+  explicit NonAckingClient(LeAddressManager* le_address_manager)
+      : le_address_manager_(le_address_manager) {}
+
+  void OnPause() {}  // Deliberately does not call AckPause().
+
+  void OnResume() { le_address_manager_->AckResume(this); }
+
+  LeAddressManager* le_address_manager_;
+};
+
+// A client whose OnPause() does not ack synchronously, simulating le_impl::OnPause() deferring
+// AckPause() behind an async HCI round trip (see LeAddressManagerCallback::OnPause() comment --
+// e.g. disarm_connectability() sending LeCreateConnectionCancel and only acking from
+// on_create_connection_cancel_complete()). Call AckNow() to simulate that round trip completing.
+class DeferredAckClient : public LeAddressManagerCallback {
+public:
+  explicit DeferredAckClient(LeAddressManager* le_address_manager)
+      : le_address_manager_(le_address_manager) {}
+
+  void OnPause() {}  // Does not call AckPause() here -- call AckNow() when ready.
+
+  void OnResume() {
+    le_address_manager_->AckResume(this);
+    if (resume_promise_ != nullptr) {
+      std::promise<void>* prom = resume_promise_.release();
+      prom->set_value();
+      delete prom;
+    }
+  }
+
+  void AckNow() { le_address_manager_->AckPause(this); }
+
+  void WaitForResume() {
+    resume_promise_ = std::make_unique<std::promise<void>>();
+    auto resume_future = resume_promise_->get_future();
+    auto result = resume_future.wait_for(std::chrono::milliseconds(1000));
+    EXPECT_NE(std::future_status::timeout, result);
+  }
+
+  LeAddressManager* le_address_manager_;
+  std::unique_ptr<std::promise<void>> resume_promise_;
+};
+
 class LeAddressManagerTest : public ::testing::Test {
 public:
   void SetUp() override {
@@ -196,6 +245,132 @@ TEST_F(LeAddressManagerTest, rotator_non_resolvable_address_for_single_client) {
   sync_handler(handler_);
   hci_layer_->GetCommand(OpCode::LE_SET_RANDOM_ADDRESS);
   hci_layer_->IncomingEvent(LeSetRandomAddressCompleteBuilder::Create(0x01, ErrorCode::SUCCESS));
+  clients[0].get()->WaitForResume();
+  le_address_manager_->Unregister(clients[0].get());
+  sync_handler(handler_);
+}
+
+// Regression test for the startup-ordering race (CR 4599074): a client registers with
+// LeAddressManager while address_policy_ is still POLICY_NOT_SET. register_client() must
+// pause the client rather than leave it active, and SetPrivacyPolicyForInitiatorAddress()
+// must accept that paused client instead of asserting registered_clients_.empty().
+TEST_F(LeAddressManagerTest, register_before_policy_is_set) {
+  le_address_manager_->Register(clients[0].get());
+  sync_handler(handler_);
+  EXPECT_TRUE(clients[0].get()->paused);
+  // RotatorClient::OnPause() calls AckPause(), which posts ack_pause() as a separate handler
+  // task rather than running it inline. The sync_handler() above only guarantees register_client()
+  // has run, not the ack_pause() it transitively enqueued. A second sync_handler() drains that
+  // task too, so registered_clients_ has actually reached ClientState::PAUSED before the
+  // SetPrivacyPolicyForInitiatorAddress() call below reads it directly on this thread.
+  sync_handler(handler_);
+
+  Octet16 irk = {0xec, 0x02, 0x34, 0xa3, 0x57, 0xc8, 0xad, 0x05,
+                 0x34, 0x10, 0x10, 0xa6, 0x0a, 0x39, 0x7d, 0x9b};
+  auto minimum_rotation_time = std::chrono::milliseconds(1000);
+  auto maximum_rotation_time = std::chrono::milliseconds(3000);
+  AddressWithType remote_address(Address::kEmpty, AddressType::RANDOM_DEVICE_ADDRESS);
+  le_address_manager_->SetPrivacyPolicyForInitiatorAddress(
+          LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS, remote_address, irk, false,
+          minimum_rotation_time, maximum_rotation_time);
+  sync_handler(handler_);
+
+  hci_layer_->GetCommand(OpCode::LE_SET_RANDOM_ADDRESS);
+  hci_layer_->IncomingEvent(LeSetRandomAddressCompleteBuilder::Create(0x01, ErrorCode::SUCCESS));
+  clients[0].get()->WaitForResume();
+  le_address_manager_->Unregister(clients[0].get());
+  sync_handler(handler_);
+}
+
+// Regression test: a client that never acks OnPause() must not crash the process. ack_pause()
+// never observes every client as PAUSED, so the policy is deferred forever rather than applied
+// -- but it must not abort, matching how a stuck client already silently blocks every other
+// pause-gated LeAddressManager operation (see NonAckingClient comment above).
+TEST_F(LeAddressManagerTest, non_acking_client_defers_policy_indefinitely) {
+  NonAckingClient non_acking_client(le_address_manager_);
+  le_address_manager_->Register(&non_acking_client);
+  sync_handler(handler_);
+
+  Octet16 irk = {};
+  auto minimum_rotation_time = std::chrono::milliseconds(1000);
+  auto maximum_rotation_time = std::chrono::milliseconds(3000);
+  AddressWithType remote_address(Address::kEmpty, AddressType::RANDOM_DEVICE_ADDRESS);
+  le_address_manager_->SetPrivacyPolicyForInitiatorAddress(
+          LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS, remote_address, irk, false,
+          minimum_rotation_time, maximum_rotation_time);
+  sync_handler(handler_);
+
+  // Deferred, not applied -- and critically, this must not have aborted the process.
+  ASSERT_EQ(le_address_manager_->GetAddressPolicy(),
+            LeAddressManager::AddressPolicy::POLICY_NOT_SET);
+}
+
+// Regression test for the gap in CR 4599074's original fix: real implementations of
+// LeAddressManagerCallback (e.g. le_impl::OnPause(), which only acks synchronously when already
+// ConnectabilityState::DISARMED and otherwise defers AckPause() behind an async HCI round trip
+// via disarm_connectability()) do not always ack OnPause() before returning.
+// SetPrivacyPolicyForInitiatorAddress() must defer applying the policy until that deferred ack
+// actually arrives, instead of asserting on the still-WAITING_FOR_PAUSE state.
+TEST_F(LeAddressManagerTest, register_before_policy_is_set_with_deferred_ack) {
+  DeferredAckClient deferred_client(le_address_manager_);
+  le_address_manager_->Register(&deferred_client);
+  sync_handler(handler_);
+
+  Octet16 irk = {0xec, 0x02, 0x34, 0xa3, 0x57, 0xc8, 0xad, 0x05,
+                 0x34, 0x10, 0x10, 0xa6, 0x0a, 0x39, 0x7d, 0x9b};
+  auto minimum_rotation_time = std::chrono::milliseconds(1000);
+  auto maximum_rotation_time = std::chrono::milliseconds(3000);
+  AddressWithType remote_address(Address::kEmpty, AddressType::RANDOM_DEVICE_ADDRESS);
+  le_address_manager_->SetPrivacyPolicyForInitiatorAddress(
+          LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS, remote_address, irk, false,
+          minimum_rotation_time, maximum_rotation_time);
+  sync_handler(handler_);
+
+  // Client hasn't acked yet -- policy must be deferred, not applied, and must not have aborted.
+  ASSERT_EQ(le_address_manager_->GetAddressPolicy(),
+            LeAddressManager::AddressPolicy::POLICY_NOT_SET);
+
+  // Simulate the deferred ack finally arriving, e.g. le_impl's
+  // on_create_connection_cancel_complete().
+  deferred_client.AckNow();
+  sync_handler(handler_);
+
+  // Now the deferred policy must have been applied.
+  ASSERT_EQ(le_address_manager_->GetAddressPolicy(),
+            LeAddressManager::AddressPolicy::USE_RESOLVABLE_ADDRESS);
+  hci_layer_->GetCommand(OpCode::LE_SET_RANDOM_ADDRESS);
+  hci_layer_->IncomingEvent(LeSetRandomAddressCompleteBuilder::Create(0x01, ErrorCode::SUCCESS));
+  deferred_client.WaitForResume();
+
+  le_address_manager_->Unregister(&deferred_client);
+  sync_handler(handler_);
+}
+
+// Regression test for the second gap raised alongside CR 4599074: previously a client could
+// never be registered-and-paused when USE_STATIC_ADDRESS was chosen (the old strict assert
+// would have aborted first), so OnCommandComplete()'s early return for USE_STATIC_ADDRESS never
+// mattered. Now that a raced client can legitimately be PAUSED when USE_STATIC_ADDRESS is set,
+// that early return must still eventually resume it instead of leaving it paused forever.
+TEST_F(LeAddressManagerTest, register_before_policy_is_set_static_address_resumes_client) {
+  le_address_manager_->Register(clients[0].get());
+  sync_handler(handler_);
+  sync_handler(handler_);  // Also drain the transitively-enqueued ack_pause() (see comment above).
+  EXPECT_TRUE(clients[0].get()->paused);
+
+  hci::Address address = Address::FromString("D0:05:04:03:02:01").value();
+  hci::AddressWithType fixed_address(address, hci::AddressType::RANDOM_DEVICE_ADDRESS);
+  Octet16 irk = {};
+  auto minimum_rotation_time = std::chrono::milliseconds(1000);
+  auto maximum_rotation_time = std::chrono::milliseconds(3000);
+  le_address_manager_->SetPrivacyPolicyForInitiatorAddress(
+          LeAddressManager::AddressPolicy::USE_STATIC_ADDRESS, fixed_address, irk, false,
+          minimum_rotation_time, maximum_rotation_time);
+  sync_handler(handler_);
+
+  hci_layer_->GetCommand(OpCode::LE_SET_RANDOM_ADDRESS);
+  hci_layer_->IncomingEvent(LeSetRandomAddressCompleteBuilder::Create(0x01, ErrorCode::SUCCESS));
+
+  // The raced client must actually be resumed once the static address is set, not left paused.
   clients[0].get()->WaitForResume();
   le_address_manager_->Unregister(clients[0].get());
   sync_handler(handler_);
