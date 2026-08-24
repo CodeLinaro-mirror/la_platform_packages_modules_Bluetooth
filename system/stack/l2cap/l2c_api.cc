@@ -353,6 +353,14 @@ uint16_t L2CA_ConnectReq(uint16_t psm, const RawAddress& p_bd_addr) {
     p_lcb->p_pending_ccb = p_ccb;
   }
 
+  /* l2c_csm_execute() above runs synchronously and may already have torn the
+   * channel down, e.g. when no channel mode is compatible with the peer. The
+   * CCB is back on the free list then, and its local_cid is stale. */
+  if (!p_ccb->in_use) {
+    log::warn("L2CAP - channel torn down during connect request psm:0x{:04x}", psm);
+    return 0;
+  }
+
   log::verbose("L2CAP - L2CA_conn_req(psm: 0x{:04x}) returned CID: 0x{:04x}", psm,
                p_ccb->local_cid);
 

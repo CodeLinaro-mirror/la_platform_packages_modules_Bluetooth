@@ -259,9 +259,18 @@ public class AvrcpBipClient {
         mHandler.obtainMessage(CONNECT).sendToTarget();
     }
 
-    /** Connects to the remote device's BIP Image Pull server */
+    /**
+     * Connects to the remote device's BIP Image Pull server.
+     *
+     * <p>Deliberately not {@code synchronized}: this blocks on socket and OBEX I/O, and holding the
+     * client's monitor across that blocks any caller of {@link #getState()}, which in turn can
+     * stall unrelated threads. Only ever invoked from this client's handler thread, which also owns
+     * {@link #disconnect()}, {@link #refreshObexSession()} and {@link #executeRequest}, so mSocket,
+     * mTransport and mSession need no extra locking. mState remains guarded by the monitor in
+     * {@link #setConnectionState}.
+     */
     @SuppressLint("AndroidFrameworkRequiresPermission") // socket are handled in framework space
-    private synchronized void connect() {
+    private void connect() {
         debug("Connect using psm: " + mPsm);
         if (isConnected()) {
             warn("Already connected");
@@ -295,8 +304,13 @@ public class AvrcpBipClient {
         }
     }
 
-    /** Disconnect and reconnect the OBEX session. */
-    private synchronized void refreshObexSession() {
+    /**
+     * Disconnect and reconnect the OBEX session.
+     *
+     * <p>Not {@code synchronized} for the same reason as {@link #connect()}: it blocks on OBEX I/O
+     * and runs only on this client's handler thread.
+     */
+    private void refreshObexSession() {
         if (mSession == null) return;
 
         try {
@@ -338,8 +352,11 @@ public class AvrcpBipClient {
     /**
      * Permanently disconnects this client from the remote device's BIP server and notifies of the
      * new connection status.
+     *
+     * <p>Not {@code synchronized} for the same reason as {@link #connect()}: it blocks on OBEX I/O
+     * and runs only on this client's handler thread.
      */
-    private synchronized void disconnect() {
+    private void disconnect() {
         if (mSession != null) {
             setConnectionState(STATE_DISCONNECTING);
 
