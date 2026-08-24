@@ -69,12 +69,15 @@ public final class AdapterUtil {
         sProfiles.put(ADAPTER_DEFAULT, new ArrayList<>(Arrays.asList(
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.A2DP,
                 BluetoothProfile.A2DP_SINK,
+                BluetoothProfile.AVRCP,
                 BluetoothProfile.AVRCP_CONTROLLER,
                 BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
                 BluetoothProfile.BATTERY,
                 BluetoothProfile.CSIP_SET_COORDINATOR,
                 BluetoothProfile.HAP_CLIENT,
+                BluetoothProfile.HEADSET,
                 BluetoothProfile.HEADSET_CLIENT,
                 BluetoothProfile.HEARING_AID,
                 BluetoothProfile.HID_HOST,
@@ -94,8 +97,16 @@ public final class AdapterUtil {
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
-                BluetoothProfile.HID_HOST)));
-        // To add profiles for adapters 2 and 3, insert additional sProfiles.put() calls here.
+                BluetoothProfile.HID_HOST,
+                BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
+                BluetoothProfile.CSIP_SET_COORDINATOR,
+                BluetoothProfile.HAP_CLIENT,
+                BluetoothProfile.HEARING_AID,
+                BluetoothProfile.LE_CALL_CONTROL,
+                BluetoothProfile.MCP_SERVER,
+                BluetoothProfile.VOLUME_CONTROL,
+                BluetoothProfile.LE_AUDIO,
+                BluetoothProfile.LE_AUDIO_BROADCAST)));
     }
 
     private static boolean getFilterDeviceConfig() {
@@ -156,7 +167,25 @@ public final class AdapterUtil {
     }
 
     public static boolean isProfileSupported(int profileId) {
-        return sProfiles.get(sAdapterIndex).contains(profileId);
+        if (sDualBluetooth == true && isAdapterDefault()) {
+            if (profileId == BluetoothProfile.A2DP ||
+                profileId == BluetoothProfile.AVRCP ||
+                profileId == BluetoothProfile.HEADSET ||
+                profileId == BluetoothProfile.LE_AUDIO_BROADCAST ||
+                profileId == BluetoothProfile.CSIP_SET_COORDINATOR ||
+                profileId == BluetoothProfile.HAP_CLIENT ||
+                profileId == BluetoothProfile.LE_AUDIO ||
+                profileId == BluetoothProfile.LE_CALL_CONTROL ||
+                profileId == BluetoothProfile.MCP_SERVER ||
+                profileId == BluetoothProfile.VOLUME_CONTROL ||
+                profileId == BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT) {
+                return false;
+            } else {
+                return sProfiles.get(sAdapterIndex).contains(profileId);
+            }
+        } else {
+            return sProfiles.get(sAdapterIndex).contains(profileId);
+        }
     }
 
     public static boolean isProfileSupported(long supportedProfiles, int profileId) {

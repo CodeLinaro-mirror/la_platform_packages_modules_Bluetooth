@@ -45,12 +45,15 @@ public final class BluetoothAdapterUtil {
         sProfiles.put(ADAPTER_DEFAULT, new ArrayList<>(Arrays.asList(
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
+                BluetoothProfile.A2DP,
                 BluetoothProfile.A2DP_SINK,
+                BluetoothProfile.AVRCP,
                 BluetoothProfile.AVRCP_CONTROLLER,
                 BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
                 BluetoothProfile.BATTERY,
                 BluetoothProfile.CSIP_SET_COORDINATOR,
                 BluetoothProfile.HAP_CLIENT,
+                BluetoothProfile.HEADSET,
                 BluetoothProfile.HEADSET_CLIENT,
                 BluetoothProfile.HEARING_AID,
                 BluetoothProfile.HID_HOST,
@@ -70,8 +73,16 @@ public final class BluetoothAdapterUtil {
                 BluetoothProfile.AVRCP,
                 BluetoothProfile.GATT,
                 BluetoothProfile.GATT_SERVER,
-                BluetoothProfile.HID_HOST)));
-        // To add profiles for adapters 2 and 3, insert additional sProfiles.put() calls here.
+                BluetoothProfile.HID_HOST,
+                BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
+                BluetoothProfile.CSIP_SET_COORDINATOR,
+                BluetoothProfile.HAP_CLIENT,
+                BluetoothProfile.HEARING_AID,
+                BluetoothProfile.LE_CALL_CONTROL,
+                BluetoothProfile.MCP_SERVER,
+                BluetoothProfile.VOLUME_CONTROL,
+                BluetoothProfile.LE_AUDIO,
+                BluetoothProfile.LE_AUDIO_BROADCAST)));
     }
 
     // Fully-static utility classes must not have constructor

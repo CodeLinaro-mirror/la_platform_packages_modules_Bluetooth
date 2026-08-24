@@ -868,6 +868,8 @@ public class HeadsetClientService extends ConnectableProfile {
                 mCarAudioManager.registerCarVolumeCallback(mVolumeChangeCallback);
             } catch (CarNotConnectedException e) {
                 Log.e(TAG, "Car is not connected!", e);
+            } catch (NullPointerException e) {
+                Log.e(TAG, "mCarAudioManager is NULL!", e);
             }
         }
 

@@ -2269,14 +2269,15 @@ public:
         BackgroundConnectIfNeeded(leAudioDevice);
         return;
       case DeviceConnectState::CONNECTED: {
-        /* User is disconnecting the device, we shall remove the autoconnect
-         * flag for this device and all others if not TA is used
+        /* User is disconnecting the device. Remove the autoconnect flag so
+         * that the device does not get picked up by the background reconnect
+         * logic in OnGattDisconnected() right after this disconnection.
          */
-
-        /* Make sure ACL is disconnected to avoid reconnecting immediately
-         * when autoconnect with TA reconnection mechanism is used.
-         */
-        bool force_acl_disconnect = leAudioDevice->autoconnect_flag_;
+        if (leAudioDevice->autoconnect_flag_) {
+          log::info("Removing autoconnect flag for {} due to user disconnect", address);
+          btif_storage_set_leaudio_autoconnect(address, false);
+          leAudioDevice->autoconnect_flag_ = false;
+        }
 
         auto group = aseGroups_.FindById(leAudioDevice->group_id_);
         if (group) {
@@ -2298,11 +2299,9 @@ public:
             leAudioDevice->closing_stream_for_disconnection_ = true;
             return;
           }
-
-          force_acl_disconnect &= group->IsEnabled();
         }
 
-        DisconnectDevice(leAudioDevice, force_acl_disconnect);
+        DisconnectDevice(leAudioDevice);
       }
         return;
       case DeviceConnectState::CONNECTED_BY_USER_GETTING_READY:
