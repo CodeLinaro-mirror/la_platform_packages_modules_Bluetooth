@@ -189,6 +189,14 @@ public class A2dpSinkService extends ProfileService {
     /** Set the device that should be allowed to actively stream */
     public boolean setActiveDevice(BluetoothDevice device) {
         Log.i(TAG, "setActiveDevice(device=" + device + ")");
+        if (device != null) {
+            int state = getConnectionState(device);
+            if (state != BluetoothProfile.STATE_CONNECTED
+                    && state != BluetoothProfile.STATE_CONNECTING) {
+                Log.w(TAG, "setActiveDevice: device is not connected or connecting, ignoring");
+                return false;
+            }
+        }
         synchronized (mActiveDeviceLock) {
             if (mNativeInterface.setActiveDevice(device)) {
                 mActiveDevice = device;
@@ -523,14 +531,25 @@ public class A2dpSinkService extends ProfileService {
         A2dpSinkStateMachine stateMachine = getOrCreateStateMachine(device);
         synchronized (sStateLock) {
             Log.d(TAG, "Device : " + device + "mStreamingDevice : "+mStreamingDevice);
-            if (event.mState == BluetoothProfile.STATE_DISCONNECTED
-                    && device.equals(mStreamingDevice)) {
+            if (event.mState == BluetoothProfile.STATE_DISCONNECTED) {
+                boolean wasStreamingDevice = device.equals(mStreamingDevice);
+                if (wasStreamingDevice) {
+                    Log.d(TAG, "Clearing stale streaming device on disconnect: " + device);
+                    mStreamingDevice = null;
+                }
+                if (device.equals(mHandOffPendingDevice)) {
+                    Log.d(TAG, "Clearing pending hand-off device on disconnect: " + device);
+                    sIsHandOffPending = false;
+                    mHandOffPendingDevice = null;
+                }
                 synchronized (mStreamHandlerLock) {
-                    if (sAudioIsEnabled == true) {
-                        mA2dpSinkStreamHandler
-                                .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
-                                .sendToTarget();
-                        sAudioIsEnabled = false;
+                    if (wasStreamingDevice) {
+                        if (sAudioIsEnabled == true) {
+                            mA2dpSinkStreamHandler
+                                    .obtainMessage(A2dpSinkStreamHandler.STOP_SINK)
+                                    .sendToTarget();
+                            sAudioIsEnabled = false;
+                        }
                     }
                     if (mAudioManager != null) {
                         Message msg =
@@ -660,7 +679,8 @@ public class A2dpSinkService extends ProfileService {
                     return;
                 }
             }
-
+            Log.d(TAG, "mExposedActiveDevice :"+mExposedActiveDevice +" hasSetActive :"
+                    +mA2dpSinkStreamHandler.hasMessages(A2dpSinkStreamHandler.SET_ACTIVE));
             if (sAudioIsEnabled == false) {
                 if(mExposedActiveDevice == null ||
                                      mA2dpSinkStreamHandler.hasMessages(
@@ -727,7 +747,6 @@ public class A2dpSinkService extends ProfileService {
                         Log.d(TAG, " onAudioDevicesAdded: " + device + " is already exposed");
                         return;
                     }
-
                     mExposedActiveDevice = device;
                     break;
                 }
@@ -762,7 +781,31 @@ public class A2dpSinkService extends ProfileService {
                         continue;
                     }
 
-                    mExposedActiveDevice = null;
+                    byte[] addressBytes = Utils.getBytesFromAddress(address);
+                    BluetoothDevice removedDevice = mAdapterService.getDeviceFromByte(addressBytes);
+
+                    if (!removedDevice.equals(mExposedActiveDevice)) {
+                        Log.d(TAG, " onAudioDevicesRemoved: " + removedDevice
+                                + " is not the currently exposed device ("
+                                + mExposedActiveDevice + "), ignoring");
+                        continue;
+                    }
+
+                    BluetoothDevice remainingDevice = null;
+                    for (BluetoothDevice connectedDevice : getConnectedDevices()) {
+                        if (!connectedDevice.equals(removedDevice)) {
+                            remainingDevice = connectedDevice;
+                            break;
+                        }
+                    }
+                    if (remainingDevice != null) {
+                        Log.d(TAG, " onAudioDevicesRemoved: " + removedDevice
+                                + " removed, carrying over exposure to still-connected device "
+                                + remainingDevice);
+                        mExposedActiveDevice = remainingDevice;
+                    } else {
+                        mExposedActiveDevice = null;
+                    }
                     Log.d(
                             TAG,
                             " onAudioDevicesRemoved: "

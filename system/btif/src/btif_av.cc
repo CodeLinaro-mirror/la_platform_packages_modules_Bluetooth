@@ -2536,10 +2536,7 @@ void BtifAvStateMachine::StateOpened::OnEnter() {
 
   if (peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
       log::warn("HAL Restart Recovery");
-      sleep(20); /* Wait for Audio HAL Server to restart */
-      btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_CONNECTED,
-                                   bt_status_t::BT_STATUS_SUCCESS, BTA_AV_SUCCESS,
-                                   peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
+      sleep(2); /* Wait for Audio HAL Server to restart */
       do_in_jni_thread(base::BindOnce(
              bt_vendor_av_sink_callbacks->start_ind_cb, &peer_.PeerAddress()));
       peer_.ClearFlags(BtifAvPeer::kFlagHalRestartRecovery);
