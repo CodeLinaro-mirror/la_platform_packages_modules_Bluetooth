@@ -236,6 +236,30 @@ public final class BluetoothStatusCodes {
     public static final int FEATURE_NOT_CONFIGURED = 30;
 
     /**
+     * HCI error code: Connection Timeout.
+     * Indicates that BIG sync was lost due to supervision timeout.
+     * @hide
+     */
+    @SystemApi
+    public static final int HCI_CONNECTION_TIMEOUT = 0x08;
+
+    /**
+     * HCI error code: Connection Terminated by Remote User.
+     * Indicates that the remote device terminated the connection.
+     * @hide
+     */
+    @SystemApi
+    public static final int HCI_REMOTE_USER_TERMINATED_CONNECTION = 0x13;
+
+    /**
+     * HCI error code: Connection Terminated by Local Host.
+     * Indicates that the local host issued HCI_LE_BIG_Terminate_Sync.
+     * @hide
+     */
+    @SystemApi
+    public static final int HCI_LOCAL_HOST_TERMINATED_CONNECTION = 0x16;
+
+    /**
      * A GATT writeCharacteristic request is not permitted on the remote device.
      */
     public static final int ERROR_GATT_WRITE_NOT_ALLOWED = 200;
