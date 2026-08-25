@@ -1456,6 +1456,9 @@ void GATT_Deregister(tGATT_IF gatt_if) {
     }
 
     if (gatt_get_ch_state(p_tcb) != GATT_CH_CLOSE) {
+      if (com::android::bluetooth::flags::gatt_offload_api()) {
+        gatt_offload_clear_sessions_by_conn_id(gatt_create_conn_id(p_tcb->tcb_idx, gatt_if));
+      }
       gatt_update_app_use_link_flag(gatt_if, p_tcb, false, true);
     }
 
