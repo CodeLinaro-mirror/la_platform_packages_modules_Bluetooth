@@ -926,6 +926,19 @@ public:
             .broadcast_code = std::move(broadcast_code),
             .broadcast_mode = bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX,
             .streaming_direction = bluetooth::le_audio::broadcaster::kStreamingDirectionNone};
+
+    /* The static BroadcastConfiguration templates always carry num_bis=4 (LE2M)
+     * on their subgroup, so prepareBasicAnnouncement() above always pushed 4
+     * bis_configs regardless of PHY. For Coded PHY only 3 BIS are ever created
+     * over HCI (see state_machine.cc::GetNumBisForDuplex()), so trim the BASE
+     * announcement metadata to match — otherwise it would advertise 4 BIS on
+     * air while only 3 are actually created. */
+    uint8_t target_bis_count = GetTargetBisCountForDuplex();
+    for (auto& subgroup : msg.announcement.subgroup_configs) {
+      if (subgroup.bis_configs.size() > target_bis_count) {
+        subgroup.bis_configs.resize(target_bis_count);
+      }
+    }
     /* Prepare Broadcast audio session */
     if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
       const auto& broadcast_config = msg.config;

@@ -263,8 +263,12 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
         @Override
         public void onSinkStopped(int broadcastId, int reason) {
-            Log.d(TAG, "onSinkStopped: broadcastId=" + broadcastId + ", reason=" + reason);
-            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST
+            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_LOCAL_TERMINATED) {
+                // User-initiated stop (PGP stopped broadcast) — no retry dialog needed.
+                // Just show status message.
+                mStatusMessage.postValue("Stopped broadcast ID: " + broadcastId
+                        + " (Local host terminated)");
+            } else if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST
                     || reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED
                     || reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT) {
                 // BIG sync lost unexpectedly — post LiveData so the Activity can show
@@ -903,6 +907,8 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         switch (reason) {
             case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED:
                 return "PGO terminated the BIG";
+            case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_LOCAL_TERMINATED:
+                return "Local host terminated";
             case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT:
                 return "Out of range / connection timeout";
             default:

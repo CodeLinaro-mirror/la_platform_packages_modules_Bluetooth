@@ -929,14 +929,13 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
         mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
 
-        // Step 4: Post MSG_NOTIFY_SINK_STOPPED last so the app is notified only after
-        // full cleanup (setParameters + active device removed). EVENT_TYPE_BIG_SYNC_TERMINATED
-        // arriving from C++ will skip its own notification because this is already queued.
-        android.os.Message stopNotify = mHandler.obtainMessage(
-                MSG_NOTIFY_SINK_STOPPED, broadcastId,
-                BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
-        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_NOTIFY_SINK_STOPPED after MSG_REMOVE_ACTIVE_DEVICE");
-        mHandler.sendMessage(stopNotify);
+        // Step 4: Set flag so the T-EXIT complete handler (EVENT_TYPE_TEXIT_DBIG_COMPLETE)
+        // knows this stop was locally-initiated and computes the real SDK reason from the
+        // HCI disconnect reason once it arrives, instead of us guessing
+        // REASON_LOCAL_STACK_REQUEST here before the actual reason is even known.
+        mPgpRequestedTerminate = true;
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: set mPgpRequestedTerminate=true,"
+                + " deferring MSG_NOTIFY_SINK_STOPPED to T-EXIT complete with real hciReason");
     }
 
     /**
@@ -1743,6 +1742,13 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                     MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
                                     hciReasonToSdkReason(hciReason));
                             mHandler.sendMessage(pgpTermNotify);
+                            // Queue Texit complete notification last — fires after full cleanup,
+                            // and dismisses any UI removal-progress dialog waiting on it
+                            // (see BroadcastSinkActivity's TExitDbig-complete observer).
+                            android.os.Message pgpTexitNotify = mHandler.obtainMessage(
+                                    MSG_NOTIFY_TEXIT_COMPLETE, event.broadcastId,
+                                    event.valueInt1, Integer.valueOf(status));
+                            mHandler.sendMessage(pgpTexitNotify);
                         } else {
                             // PGO rejected the request — no cleanup needed, just notify the app.
                             Log.i(TAG, "PGP-requested termination rejected by PGO (status=0x"
@@ -1884,11 +1890,14 @@ public class LeAudioBroadcastSinkService extends ProfileService {
      *
      *   HCI 0x13 (Remote User Terminated) → PGO sent HCI_LE_Terminate_BIG
      *   HCI 0x08 (Connection Timeout)     → PGO out of range / link lost
+     *   HCI 0x16 (Local Host Terminated)  → PGP terminated the sync
      *   anything else                      → generic REASON_BIG_SYNC_LOST
      */
-    private static int hciReasonToSdkReason(int hciReason) {        switch (hciReason) {
+    private static int hciReasonToSdkReason(int hciReason) {
+        switch (hciReason) {
             case 0x13: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED;
             case 0x08: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT;
+            case 0x16: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_LOCAL_TERMINATED;
             default:   return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST;
         }
     }

@@ -1616,8 +1616,15 @@ struct iso_impl {
      * [3-7]   : big_event_counter (5 bytes, skipped)
      * [8-9]   : dev_id (2 bytes, 12-bit value)
      * [10-19] : name (10 bytes)
-     * [20-..] : BIS[n]_DevID (2*n bytes, n up to kDbigMaxBisCount)
+     * [20-..] : BIS[n]_DevID (2*n bytes)
      * [last]  : broadcast_features (2 bytes)
+     *
+     * n is NOT carried in this event. DBIG status is only used by the
+     * duplex broadcast (Aura Chat) path, so n is derived from the same
+     * Coded PHY property that decided the BIS count at DBIG/BIG creation
+     * time (3 for Coded PHY, 4 for LE 2M PHY) rather than from the
+     * remaining packet length, which the controller keeps fixed-size
+     * regardless of the actual configured BIS count.
      */
     uint16_t offset = 3;  /* 1(handle) + 2(status) */
     if (len >= offset + 5) {
@@ -1636,16 +1643,15 @@ struct iso_impl {
       STREAM_TO_ARRAY(evt.name.data(), stream, 10);
       offset += 10;
     }
-    /* Parse BIS[n]_DevID: n is determined by available bytes.
-     * The last 2 bytes are broadcast_features, so stop before them. */
-    evt.num_bis = 0;
-    while (len >= offset + 2 && evt.num_bis < kDbigMaxBisCount) {
-      if (len == offset + 2) break;  /* Last 2 bytes are broadcast_features */
+    bool is_coded_phy_enabled =
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+    evt.num_bis = is_coded_phy_enabled ? 3 : 4;
+    for (int i = 0; i < evt.num_bis && i < kDbigMaxBisCount; i++) {
+      if (len < offset + 2) break;
       uint16_t bis_dev_id = 0;
       STREAM_TO_UINT16(bis_dev_id, stream);
       evt.bis_dev_ids.push_back(bis_dev_id & 0x0FFF);
       offset += 2;
-      evt.num_bis++;
     }
     if (len >= offset + 2) {
       STREAM_TO_UINT16(evt.broadcast_features, stream);

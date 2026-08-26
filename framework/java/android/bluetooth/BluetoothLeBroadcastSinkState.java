@@ -94,6 +94,7 @@ public final class BluetoothLeBroadcastSinkState implements Parcelable {
         REASON_BIG_SYNC_LOST,
         REASON_BIG_SYNC_LOST_REMOTE_TERMINATED,
         REASON_BIG_SYNC_LOST_TIMEOUT,
+        REASON_BIG_SYNC_LOST_LOCAL_TERMINATED,
         REASON_DUPLICATE_ADD_REQUEST,
         REASON_DUPLICATE_JOIN_REQUEST,
         REASON_MAX_PA_SYNC_REACHED,
@@ -188,6 +189,12 @@ public final class BluetoothLeBroadcastSinkState implements Parcelable {
      * HCI disconnect reason: 0x08 (Connection Timeout).
      */
     public static final int REASON_BIG_SYNC_LOST_TIMEOUT = 113;
+
+    /**
+     * BIG sync was lost because the local host (PGP) terminated the sync.
+     * HCI disconnect reason: 0x16 (Connection Terminated by Local Host).
+     */
+    public static final int REASON_BIG_SYNC_LOST_LOCAL_TERMINATED = 114;
 
     private final int mBroadcastId;
     private final @SinkState int mSinkState;
