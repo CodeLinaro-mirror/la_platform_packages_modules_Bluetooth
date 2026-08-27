@@ -798,7 +798,10 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
                                          ChannelSoundingStopReason::REASON_LOCAL_APP_REQUEST);
         }
         it->second.state = CsTrackerState::HOLD;
-        it->second.used_config_id = kInvalidConfigId;
+        // Only clear config_id if procedure disable is not in progress (no pending retry)
+        if (!it->second.procedure_disable_in_progress) {
+          it->second.used_config_id = kInvalidConfigId;
+        }
 	  /*
 	  if (ranging_hal_->IsBound())
 	    ranging_hal_->close(connection_handle);
@@ -1527,6 +1530,12 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         log::info("no procedure disable command needed for state {}.", (int)it->second.state);
         return;
       }
+      // Check if config_id is valid before sending disable command
+      if (it->second.used_config_id == kInvalidConfigId) {
+        log::warn("config_id is invalid, skip procedure disable for connection {}", connection_handle);
+        it->second.procedure_disable_in_progress = false;
+        return;
+      }
       it->second.procedure_disable_in_progress = true;
     }
     
@@ -2213,6 +2222,10 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         }
         live_tracker->procedure_disable_in_progress = false;
         reset_tracker_on_stopped(*live_tracker);
+        // Clear config_id if tracker is in HOLD state after successful disable
+        if (live_tracker->state == CsTrackerState::HOLD) {
+          live_tracker->used_config_id = kInvalidConfigId;
+        }
       } else {
         auto req_it = cs_requester_trackers_.find(connection_handle);
         if (req_it != cs_requester_trackers_.end() &&
