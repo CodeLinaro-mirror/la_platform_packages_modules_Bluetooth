@@ -41,6 +41,8 @@ struct AdvertiseParameters {
   uint8_t secondary_advertising_phy;
   uint8_t scan_request_notification_enable;
   int8_t own_address_type;
+  bool include_adi;
+  bool vsc_allowed;  // FR: framework-set; this set may trigger the dual-connection VSC
 };
 
 struct CreateBIGParameters {
