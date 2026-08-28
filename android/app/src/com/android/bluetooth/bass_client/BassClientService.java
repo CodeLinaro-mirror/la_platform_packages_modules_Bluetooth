@@ -4334,6 +4334,31 @@ public class BassClientService extends ConnectableProfile {
                 continue;
             }
 
+            // Suspend active non-collocated sources before adding new source
+            // to avoid remote unsync PA being misread as OOR, causing unnecessary
+            // BIG monitoring and do automatically resume.
+            List<BluetoothLeBroadcastReceiveState> activeReceivers =
+                    getAllSources(device).stream()
+                            .filter(
+                                    rs ->
+                                            !isLocalBroadcast(rs)
+                                                    && isReceiverActive(rs))
+                            .collect(Collectors.toList());
+            if (!activeReceivers.isEmpty()) {
+                Log.d(TAG, "addsource: suspend ActiveSyncedSources");
+                for (BluetoothLeBroadcastReceiveState rs : activeReceivers) {
+                    stopBroadcastMonitoring(rs.getBroadcastId(), /* hostInitiated= */ true);
+                    sendModifySource(
+                            stateMachine,
+                            device,
+                            rs.getSourceId(),
+                            BassConstants.FLAG_SYNC_BIS_CHANNEL_PREFERENCE,
+                            getMetadataWithChannelUnselected(
+                                    stateMachine.getCurrentBroadcastMetadata(rs.getSourceId())),
+                            ModifyCallReason.SUSPEND);
+                }
+            }
+
             if (!Flags.leaudioBroadcastTreatEmptyRsExplicitly()) {
                 // Even if there is a room for broadcast, it could happen that all broadcasts were
                 // suspended via removing source. In that case, we have to found such broadcast and
@@ -5545,7 +5570,6 @@ public class BassClientService extends ConnectableProfile {
             stopActiveSync(broadcastId);
             // Clear paused broadcast sink if autonomously resumed by remote
             if (Flags.leaudioBroadcastStopBigMonitoringBasedOnBisSync()
-                    && !isAnyChannelSelected(getMetadataFromSinkWithBroadcastId(sink, broadcastId))
                     && isReceiveStateSyncedToBis(receiveState)
                     && (!Flags.leaudioBroadcastCheckSyncAdvancementOnRemoteResume()
                             || broadcastSyncIsAdvancing)) {
