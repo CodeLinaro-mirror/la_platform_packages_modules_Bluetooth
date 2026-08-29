@@ -29,12 +29,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioManager;
+import android.os.SystemProperties;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothPrefs;
-import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.a2dpsink.A2dpSinkService;
 import com.android.bluetooth.avrcpcontroller.BluetoothMediaBrowserService.BrowseResult;
@@ -97,6 +97,9 @@ public class AvrcpControllerService extends ProfileService {
     public static final int DEVICE_STATE_INACTIVE = 0;
     public static final int DEVICE_STATE_ACTIVE = 1;
 
+    private static final String COVERT_ART_ENABLED_PROPERTY =
+            "bluetooth.avrcp.controller.coverart.enabled";
+
     private static AvrcpControllerService sService;
 
     private final Object mActiveDeviceLock = new Object();
@@ -150,7 +153,7 @@ public class AvrcpControllerService extends ProfileService {
         mNativeInterface.init(this);
 
         setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, true);
-        mCoverArtEnabled = getResources().getBoolean(R.bool.avrcp_controller_enable_cover_art);
+        mCoverArtEnabled = SystemProperties.getBoolean(COVERT_ART_ENABLED_PROPERTY, true);
         if (mCoverArtEnabled) {
             setComponentAvailable(COVER_ART_PROVIDER, true);
             mCoverArtManager = new AvrcpCoverArtManager(this, new ImageDownloadCallback());

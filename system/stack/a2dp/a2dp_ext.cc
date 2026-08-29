@@ -23,10 +23,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #include "a2dp_codec_api.h"
 #include "a2dp_constants.h"
+#include "a2dp_vendor.h"
 #include "audio_hal_interface/a2dp_encoding.h"
 #include "hardware/bt_av.h"
 
@@ -66,9 +68,20 @@ tA2DP_STATUS A2dpCodecConfigExt::setCodecConfig(const uint8_t* p_peer_codec_info
           .capabilities = p_peer_codec_info,
   };
 
+  // Compute the codec bitrate hint in the stack (e.g. LDAC Developer-Options
+  // bit rate) so it can be forwarded to the audio HAL without codec-specific
+  // logic in the HAL.
+  auto user_preferences = codec_user_config_;
+  auto bitrate_range = A2DP_VendorGetBitRateRange(codec_id_, user_preferences.codec_specific_1,
+                                                  user_preferences.SampleRateHz());
+  if (bitrate_range.has_value()) {
+    user_preferences.min_bitrate = bitrate_range->min_bitrate;
+    user_preferences.max_bitrate = bitrate_range->max_bitrate;
+  }
+
   auto result = provider::get_a2dp_configuration(
           RawAddress::kEmpty, std::vector<provider::a2dp_remote_capabilities>{capabilities},
-          codec_user_config_);
+          user_preferences);
   if (!result.has_value()) {
     log::error("Failed to set a configuration for {}", name_);
     return AVDTP_UNSUPPORTED_CONFIGURATION;

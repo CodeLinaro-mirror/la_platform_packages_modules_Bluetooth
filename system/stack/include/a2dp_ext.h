@@ -16,9 +16,11 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include "a2dp_codec_api.h"
+#include "a2dp_vendor.h"
 #include "audio_hal_interface/a2dp_encoding.h"
 
 /// Codec configuration for codecs that are supported by a2dp hardware offload
