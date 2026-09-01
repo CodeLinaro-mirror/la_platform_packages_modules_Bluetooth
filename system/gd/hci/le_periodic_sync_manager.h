@@ -30,6 +30,7 @@
 #include "hci/le_scanning_reassembler.h"
 #include "os/alarm.h"
 #include "osi/include/properties.h"
+#include "hci/controller.h"
 
 namespace bluetooth {
 namespace hci {
@@ -594,6 +595,12 @@ private:
                     PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_ONE_US_SLOTS) |
             static_cast<uint8_t>(
                     PeriodicSyncCteType::AVOID_AOD_CONSTANT_TONE_EXTENSION_WITH_TWO_US_SLOTS);
+
+    if (!(bluetooth::hci::Controller().SupportsBleConnectionlessCteReceiver())) {
+        sync_cte_type = 0;
+        log::info("Controller doesn't support connectionless cte receiver,setting cte_type to 0!!");
+    }
+
     AdvertisingAddressType advertisingAddressType =
             static_cast<AdvertisingAddressType>(address_with_type.GetAddressType());
     le_scanning_interface_->EnqueueCommand(
