@@ -1444,6 +1444,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     cs_tracker.state = CsTrackerState::STOPPED;
     cs_tracker.disable_due_to_ras_packets_delayed = false;
     cs_tracker.procedure_data_list.clear();
+    cs_tracker.proc_start_timestampMs = 0;  // Reset for fresh start on next session
   }
 
   void handle_cs_setup_failure(
@@ -2178,9 +2179,13 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
           ranging_hal_->UpdateProcedureEnableConfig(connection_handle, event_view);
         }
       }
-      struct timeval tv;
-      gettimeofday(&tv, NULL);
-      live_tracker->proc_start_timestampMs = tv.tv_sec*1e6*1ll + tv.tv_usec*1ll;
+      // Only initialize timestamp once per session for BCSALGO continuity
+      if (live_tracker->proc_start_timestampMs == 0) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        live_tracker->proc_start_timestampMs = tv.tv_sec*1e6*1ll + tv.tv_usec*1ll;
+        log::debug("Connection 0x{:04x}: proc_start_timestampMs initialized", connection_handle);
+      }
     } else if (event_view.GetState() == Enable::DISABLED) {
       if (event_view.GetStatus() == ErrorCode::SUCCESS) {
         // local or remote host requested it.
