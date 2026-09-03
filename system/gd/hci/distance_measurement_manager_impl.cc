@@ -524,6 +524,17 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
        if (get_cs_procedure_settings(mFrequency, &cs_proc_setting) &&
            get_cs_config_settings(mCsSecurityLevel, &cs_config_setting) &&
 	   (set_cs_params_.find(connection_handle) == set_cs_params_.end())) {
+
+         if (cs_requester_trackers_.find(connection_handle) != cs_requester_trackers_.end()) {
+           auto& tracker = cs_requester_trackers_[connection_handle];
+           if (tracker.used_config_id != kInvalidConfigId) {
+             log::info("Current used_config_id={}, new config_id from security level={}",
+                      tracker.used_config_id, cs_config_setting.config_id);
+             tracker.used_config_id = kInvalidConfigId;
+             log::info("Security level changed, invalidated config to force recreation");
+           }
+         }
+
          set_cs_params_[connection_handle].address = cs_remote_address;
 	 set_cs_params_[connection_handle].cs_conf_settings.push_back(cs_config_setting);
 	 set_cs_params_[connection_handle].cs_proc_settings.push_back(cs_proc_setting);
@@ -1482,13 +1493,18 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         return;
       }
 
+      if (it->second.used_config_id == kInvalidConfigId) {
+        log::warn("config_id is invalid, skip procedure enable for connection {}", connection_handle);
+        return;
+      }
+
       auto now = std::chrono::steady_clock::now();
       auto time_since_last_enable = std::chrono::duration_cast<std::chrono::milliseconds>(
           now - it->second.last_enable_sent_time).count();
-      
+
       bool procedures_completed = (it->second.n_procedure_count > 1 &&
                                    it->second.procedure_counting_after_enable == it->second.n_procedure_count);
-      
+
       uint32_t min_interval;
       if (procedures_completed) {
         min_interval = 200;
@@ -1518,7 +1534,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
 
       it->second.last_enable_sent_time = now;
       it->second.state = CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED;
-    } else {  // Enable::DISABLE
+    } else {
       if (it->second.procedure_disable_in_progress) {
         log::info("procedure disable already in progress for state {}.", (int)it->second.state);
         return;
@@ -1530,7 +1546,6 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         log::info("no procedure disable command needed for state {}.", (int)it->second.state);
         return;
       }
-      // Check if config_id is valid before sending disable command
       if (it->second.used_config_id == kInvalidConfigId) {
         log::warn("config_id is invalid, skip procedure disable for connection {}", connection_handle);
         it->second.procedure_disable_in_progress = false;
@@ -1538,7 +1553,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       }
       it->second.procedure_disable_in_progress = true;
     }
-    
+
     hci_layer_->EnqueueCommand(
             LeCsProcedureEnableBuilder::Create(connection_handle, it->second.used_config_id,
                                                enable),
