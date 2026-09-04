@@ -6402,8 +6402,20 @@ packet LeAdvertisingReport : LeMetaEvent (subevent_code = ADVERTISING_REPORT) {
   responses : LeAdvertisingResponse[],
 }
 
+// Narrowed copy of AdvertisingEventType used in LeAdvertisingResponseRaw, where the
+// upper two bits of the Event_Type octet are repurposed by some controllers to report
+// the advertising channel index (see channel_index below).
+enum AdvertisingEventTypeRaw : 6 {
+  ADV_IND = 0x00,
+  ADV_DIRECT_IND = 0x01,
+  ADV_SCAN_IND = 0x02,
+  ADV_NONCONN_IND = 0x03,
+  SCAN_RESPONSE = 0x04,
+}
+
 struct LeAdvertisingResponseRaw {
-  event_type : AdvertisingEventType,
+  event_type : AdvertisingEventTypeRaw,
+  channel_index : 2,
   address_type : AddressType,
   address : Address,
   _size_(advertising_data) : 8,
@@ -6557,7 +6569,9 @@ struct LeExtendedAdvertisingResponseRaw {
   scan_response : 1,
   legacy : 1,
   data_status : DataStatus,
-  _reserved_ : 9,
+  _reserved_ : 1,
+  channel_index : 6,
+  _reserved_ : 2,
   address_type : DirectAdvertisingAddressType,
   address : Address,
   primary_phy : PrimaryPhyType,

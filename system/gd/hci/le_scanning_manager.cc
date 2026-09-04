@@ -65,6 +65,8 @@ constexpr uint8_t kLegacyBit = 4;
 constexpr uint8_t kDataStatusBits = 5;
 constexpr bool kEncryptedAdvertisingDataSupported = true;
 
+constexpr uint8_t kChannelIndexNotPresent = 0xFF;
+constexpr uint8_t kLegacyChannelIndexMap[] = {kChannelIndexNotPresent, 37, 38, 39};
 constexpr uint8_t k1mPhyMask = 1;
 constexpr uint8_t kCodedPhyMask = 1 << 2;
 
@@ -350,22 +352,22 @@ struct LeScanningManager::impl : public LeAddressManagerCallback {
     for (LeAdvertisingResponseRaw report : reports) {
       uint16_t extended_event_type = 0;
       switch (report.event_type_) {
-        case AdvertisingEventType::ADV_IND:
+        case AdvertisingEventTypeRaw::ADV_IND:
           extended_event_type = transform_to_extended_event_type(
                   {.connectable = true, .scannable = true, .legacy = true});
           break;
-        case AdvertisingEventType::ADV_DIRECT_IND:
+        case AdvertisingEventTypeRaw::ADV_DIRECT_IND:
           extended_event_type = transform_to_extended_event_type(
                   {.connectable = true, .directed = true, .legacy = true});
           break;
-        case AdvertisingEventType::ADV_SCAN_IND:
+        case AdvertisingEventTypeRaw::ADV_SCAN_IND:
           extended_event_type =
                   transform_to_extended_event_type({.scannable = true, .legacy = true});
           break;
-        case AdvertisingEventType::ADV_NONCONN_IND:
+        case AdvertisingEventTypeRaw::ADV_NONCONN_IND:
           extended_event_type = transform_to_extended_event_type({.legacy = true});
           break;
-        case AdvertisingEventType::SCAN_RESPONSE:
+        case AdvertisingEventTypeRaw::SCAN_RESPONSE:
           // We don't know if the initial advertising report was connectable or not.
           // LeScanningReassembler fixes the connectable field.
           extended_event_type = transform_to_extended_event_type(
@@ -376,11 +378,12 @@ struct LeScanningManager::impl : public LeAddressManagerCallback {
           return;
       }
 
+      uint8_t channel_index = kLegacyChannelIndexMap[report.channel_index_];
       process_advertising_package_content(
               extended_event_type, (uint8_t)report.address_type_, report.address_,
               (uint8_t)PrimaryPhyType::LE_1M, (uint8_t)SecondaryPhyType::NO_PACKETS,
               kAdvertisingDataInfoNotPresent, kTxPowerInformationNotPresent, report.rssi_,
-              kNotPeriodicAdvertisement, report.advertising_data_);
+              kNotPeriodicAdvertisement, channel_index, report.advertising_data_);
     }
   }
 
@@ -409,7 +412,7 @@ struct LeScanningManager::impl : public LeAddressManagerCallback {
               event_type, (uint8_t)report.address_type_, report.address_,
               (uint8_t)report.primary_phy_, (uint8_t)report.secondary_phy_, report.advertising_sid_,
               report.tx_power_, report.rssi_, report.periodic_advertising_interval_,
-              report.advertising_data_);
+              report.channel_index_, report.advertising_data_);
     }
   }
 
@@ -418,6 +421,7 @@ struct LeScanningManager::impl : public LeAddressManagerCallback {
                                            uint8_t secondary_phy, uint8_t advertising_sid,
                                            int8_t tx_power, int8_t rssi,
                                            uint16_t periodic_advertising_interval,
+                                           uint8_t channel_index,
                                            const std::vector<uint8_t>& advertising_data) {
     // When using the vendor command Le Set Extended Params to
     // configure a filter accept list based e.g. on the service UUIDs
@@ -432,7 +436,8 @@ struct LeScanningManager::impl : public LeAddressManagerCallback {
 
     std::optional<LeScanningReassembler::CompleteAdvertisingData> processed_report =
             scanning_reassembler_.ProcessAdvertisingReport(event_type, address_type, address,
-                                                           advertising_sid, advertising_data);
+                                                           advertising_sid, advertising_data,
+                                                           channel_index);
 
     if (kEncryptedAdvertisingDataSupported) {
       if (processed_report.has_value() &&
