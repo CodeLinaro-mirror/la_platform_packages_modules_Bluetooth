@@ -116,6 +116,11 @@ struct btm_client_interface_t btm_client_interface = {
                         [](const RawAddress& /* remote_bda */, tBT_TRANSPORT /* transport */) {
                           return false;
                         },
+                .BTM_IsHdtPacketFormat1Supported =
+                        [](const RawAddress& remote_bda, tBT_TRANSPORT transport) {
+                          return btm_client_interface_mock->BTM_IsHdtPacketFormat1Supported(
+                                  remote_bda, transport);
+                        },
         },
         .link_policy = {
                 .BTM_GetRole =

@@ -64,6 +64,8 @@ struct btm_client_interface_t {
                                                tBT_TRANSPORT transport);
     [[nodiscard]] bool (*BTM_IsPhyHDTSupported)(const RawAddress& remote_bda,
                                                 tBT_TRANSPORT transport);
+    [[nodiscard]] bool (*BTM_IsHdtPacketFormat1Supported)(const RawAddress& remote_bda,
+                                                          tBT_TRANSPORT transport);
     [[nodiscard]] uint16_t (*BTM_GetHCIConnHandle)(const RawAddress& bd_addr,
                                                    tBT_TRANSPORT transport);
     [[nodiscard]] bool (*BTM_IsAclConnectionUpAndHandleValid)(const RawAddress& remote_bda,

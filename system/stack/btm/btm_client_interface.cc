@@ -50,6 +50,7 @@ static struct btm_client_interface_t btm_client_interface = {
                         .BTM_GetPeerSCA = ::BTM_GetPeerSCA,
                         .BTM_IsPhy2mSupported = ::BTM_IsPhy2mSupported,
                         .BTM_IsPhyHDTSupported = ::BTM_IsPhyHDTSupported,
+                        .BTM_IsHdtPacketFormat1Supported = ::BTM_IsHdtPacketFormat1Supported,
                         .BTM_GetHCIConnHandle = ::BTM_GetHCIConnHandle,
                         .BTM_IsAclConnectionUpAndHandleValid =
                                 ::BTM_IsAclConnectionUpAndHandleValid,
