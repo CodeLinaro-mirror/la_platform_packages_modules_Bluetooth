@@ -271,6 +271,7 @@ public:
   virtual void OnOwnAddressResponse(uint32_t broadcast_id, uint8_t addr_type,
                                     RawAddress address) = 0;
   virtual void OnBigCreated(const std::vector<uint16_t>& conn_handle) = 0;
+  virtual void OnBigCreationFailed(uint32_t broadcast_id, uint8_t status) = 0;
   virtual void OnAnnouncementUpdated(uint32_t broadcast_id) = 0;
   // Fired when HCI VS DBIG_SYNC_ONLY(enable=1) completes — ISO paths removed,
   // controller idle, safe to send AT+BCC for SCO setup.

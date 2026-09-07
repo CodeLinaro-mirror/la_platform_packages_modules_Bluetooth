@@ -923,6 +923,8 @@ private:
         } else {
           log::error("State={} Event={}. Unable to create big, big_id={}, status={}",
                      ToString(GetState()), event, evt->big_id, evt->status);
+          SetState(State::CONFIGURED);
+          callbacks_->OnBigCreationFailed(GetBroadcastId(), evt->status);
         }
       } break;
       case HCI_VS_LE_DBIG_CREATE_CPL_EVT: {

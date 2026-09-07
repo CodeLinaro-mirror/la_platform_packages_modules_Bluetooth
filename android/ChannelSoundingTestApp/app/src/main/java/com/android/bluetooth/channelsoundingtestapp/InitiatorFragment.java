@@ -157,6 +157,7 @@ public class InitiatorFragment extends Fragment {
 
         mInitiatorViewModel = new ViewModelProvider(requireActivity()).get(InitiatorViewModel.class);
         mBleConnectionViewModel = new ViewModelProvider(requireActivity()).get(BleConnectionViewModel.class);
+        mBleConnectionViewModel.setShowTxPower(false);
         mBleConnectionViewModel
                 .getLogText()
                 .observe(
