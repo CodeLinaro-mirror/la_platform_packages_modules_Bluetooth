@@ -164,4 +164,12 @@ public class LeAudioViewModel extends AndroidViewModel {
         BluetoothLeBroadcastMetadata metadata = null;
         return bluetoothProxy.modifyBroadcastSource(sink, sourceId, metadata);
     }
+
+    public boolean setAttributesForSink(int devId, byte[] name) {
+        return bluetoothProxy.setAttributesForSink(devId, name);
+    }
+
+    public boolean setAttributesForSource(int devId, byte[] name) {
+        return bluetoothProxy.setAttributes(devId, name);
+    }
 }

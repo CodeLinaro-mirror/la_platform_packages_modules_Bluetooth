@@ -540,6 +540,7 @@ struct PublicBroadcastAnnouncementData {
 
 struct BroadcastMetadata {
   bool is_public;
+  bool is_encrypted;
   uint16_t pa_interval;
   RawAddress addr;
   uint8_t addr_type;
@@ -569,6 +570,37 @@ public:
                                           const BroadcastMetadata& broadcast_metadata) = 0;
   /* Callback for broadcast audio session create event. */
   virtual void OnBroadcastAudioSessionCreated(bool success) = 0;
+  /* Callback for DBIG status event. */
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                                    uint16_t dev_id, std::vector<uint8_t> name,
+                                    uint8_t num_bis,
+                                    std::vector<uint16_t> bis_dev_ids,
+                                    uint16_t broadcast_features) = 0;
+  /* Callback for DBIG Remove Device complete event. */
+  virtual void OnRemoveDeviceDbigComplete(uint8_t dbig_handle,
+                                          uint16_t dev_id,
+                                          uint8_t status) = 0;
+
+  /**
+   * Callback for HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+   * Fired after PGO sends TExitDbig(TERMINATE or REJECT_TERMINATE) in response to
+   * a PGP terminate request (DBIG status bit 10 = 0x0400).
+   * status=0x00 = PGO accepted and DBIG terminated; 0x0E = rejected.
+   *
+   * @param broadcast_id  broadcast_id matching the DBIG handle (may be kBroadcastIdInvalid)
+   * @param dbig_handle   DBIG handle
+   * @param status        HCI status code
+   */
+  virtual void OnTexitDbigComplete(uint32_t broadcast_id,
+                                   uint8_t dbig_handle,
+                                   uint8_t status) = 0;
+
+  /**
+   * Callback fired when HCI VS DBIG_SYNC_ONLY(enable=1) completes successfully.
+   * At this point ISO data paths are removed and the controller is idle — safe
+   * to send AT+BCC and establish SCO.
+   */
+  virtual void OnSyncOnlyModeActive(uint32_t broadcast_id) = 0;
 };
 
 class LeAudioBroadcasterInterface {
@@ -586,6 +618,12 @@ public:
                                std::vector<uint8_t> public_metadata,
                                std::vector<uint8_t> subgroup_quality,
                                std::vector<std::vector<uint8_t>> subgroup_metadata) = 0;
+  /* Create Enhanced Broadcast instance */
+  virtual void CreateEnhancedBroadcast(std::string broadcast_name,
+                                       std::optional<BroadcastCode> broadcast_code,
+                                       std::vector<uint8_t> subgroup_quality,
+                                       std::vector<std::vector<uint8_t>> subgroup_metadata,
+                                       float iso_interval) = 0;
   /* Update the ongoing Broadcast metadata */
   virtual void UpdateMetadata(uint32_t broadcast_id, std::string broadcast_name,
                               std::vector<uint8_t> public_metadata,
@@ -597,10 +635,91 @@ public:
   virtual void PauseBroadcast(uint32_t broadcast_id) = 0;
   /* Stop the Broadcast (no stream, no periodic advertisements */
   virtual void StopBroadcast(uint32_t broadcast_id) = 0;
+  /* Stop the enhanced broadcast (DUPLEX/DBIG) with a specific TExitDbig mode.
+   * mode: HCI_TEXIT_MODE_EXIT (0x01) or HCI_TEXIT_MODE_TERMINATE (0x02) */
+  virtual void stopEnhancedBroadcast(uint32_t broadcast_id, uint8_t mode) = 0;
   /* Destroy the existing Broadcast instance */
   virtual void DestroyBroadcast(uint32_t broadcast_id) = 0;
   /* Get Broadcast Metadata */
   virtual void GetBroadcastMetadata(uint32_t broadcast_id) = 0;
+  /* Set attributes (DevID and Name) */
+  virtual void SetAttributes(std::vector<uint8_t> dev_id,
+                              std::vector<uint8_t> name) = 0;
+  /* Set Join Control mode */
+  virtual void SetJoinControl(bool enable) = 0;
+
+  /**
+   * Read the controller's supported LE states for enhanced broadcast.
+   * Blocks until the HCI command completes (with a timeout) and returns the
+   * capability bitmask directly: bit0=Terminate, bit1=Remove Device.
+   * The result is also stored internally for getEnhancedBroadcastCap().
+   * Called once at broadcaster init when duplex mode is enabled.
+   * @return capability bitmask from controller, or 0 on timeout/error.
+   */
+  virtual uint32_t readSupportedStates(void) = 0;
+
+  /**
+   * Get the 12-byte DBIG parameter block that was populated after
+   * readSupportedStates() completed.
+   *
+   * Layout (all little-endian):
+   *   [0]  = DBIG_Handle
+   *   [1]  = DBIG_Feature_Set
+   *   [2]  = BIS_Detection_Attempts
+   *   [3]  = BIS_Control_Event_Interval
+   *   [4]  = Max_Payload_DBIG_Control
+   *   [5]  = Send_Exit
+   *   [6]  = PGP_Timeout
+   *   [7]  = PGO_Timeout
+   *   [8]  = SGO_Timeout
+   *   [9]  = TX_Power
+   *   [10..11] = reserved
+   *
+   * @return 12-byte vector, or empty vector if not yet available.
+   */
+  virtual std::vector<uint8_t> getDbigParams(void) = 0;
+
+  /**
+   * Get the enhanced broadcast capability bitmask returned by the controller.
+   * @return capability bitmask, or 0 if not yet available.
+   */
+  virtual uint32_t getEnhancedBroadcastCap(void) = 0;
+
+  /**
+   * Request the controller to remove a specific device from the DBIG.
+   * Sends HCI_VS_LE_Remove_Device_DBIG (0xFD90 / 0x09).
+   * Completion is delivered via OnRemoveDeviceDbigComplete() callback.
+   *
+   * @param dev_id  12-bit device identifier of the device to remove
+   * @param name    10-byte shortened local name of the device (may be shorter, zero-padded)
+   * @param reason  HCI reason code (e.g. 0x13 = Remote User Terminated)
+   */
+  virtual void removeDeviceDbig(uint16_t dev_id,
+                                const std::vector<uint8_t>& name,
+                                uint8_t reason) = 0;
+
+  /**
+   * Accept the PGP terminate request (spec §5.3 PGP Terminates — PGO accepts).
+   * Sends HCI_VS_LE_Texit_DBIG(TERMINATE) so the PGO BT FW tears down the DBIG.
+   * Completion delivered via OnTexitDbigComplete() callback.
+   *
+   * @param broadcast_id  Broadcast ID of the DUPLEX source
+   */
+  virtual void acceptTerminateDbig(uint32_t broadcast_id) = 0;
+
+  /**
+   * Reject the PGP terminate request (spec §5.3 PGP Terminates — PGO rejects).
+   * Sends HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE) so the PGO BT FW signals the PGP.
+   * Completion delivered via OnTexitDbigComplete() callback.
+   *
+   * @param broadcast_id  Broadcast ID of the DUPLEX source
+   */
+  virtual void rejectTerminateDbig(uint32_t broadcast_id) = 0;
+
+  // Arm/disarm sync-only mode on the given broadcast for HFP concurrency.
+  // Must be called before disabling achat audio paths on call-start (isCallActive=true),
+  // and before re-enabling them on call-end (isCallActive=false).
+  virtual void notifyCallState(uint32_t broadcast_id, bool isCallActive) = 0;
 };
 
 } /* namespace le_audio */

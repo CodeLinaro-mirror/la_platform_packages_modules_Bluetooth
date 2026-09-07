@@ -811,6 +811,15 @@ static bt_status_t send_android_at(const RawAddress* bd_addr, const char* arg) {
   return BT_STATUS_SUCCESS;
 }
 
+/* Notifies the BTA HFP layer about duplex broadcast active/inactive state.
+ * Called from the Java layer (HeadsetClientStateMachine) when broadcast streams start or stop.
+ * state: 0 = INACTIVE, 1 = ACTIVE */
+bt_status_t btif_hf_bap_broadcast_state_changed(uint8_t state) {
+  log::info("{}: broadcast state={}", __func__, state);
+  BTA_HfClientDupBroadcastStateChanged(state);
+  return BT_STATUS_SUCCESS;
+}
+
 static const bthf_client_interface_t bthfClientInterface = {
         .size = sizeof(bthf_client_interface_t),
         .init = init,
@@ -949,6 +958,9 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
 
       HAL_CBACK(bt_hf_client_callbacks, connection_state_cb, &cb->peer_bda, cb->state,
                 cb->peer_feat, cb->chld_feat);
+
+      /* Default to INACTIVE on SLC reconnect; Java layer sends ACTIVE if broadcast is running */
+      btif_hf_bap_broadcast_state_changed(0 /* INACTIVE */);
 
       mHfpClientDeviceConnected = true;
       /* Inform the application about in-band ringtone */

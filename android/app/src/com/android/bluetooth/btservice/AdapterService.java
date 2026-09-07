@@ -31,6 +31,7 @@ import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERA
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_NONE;
 import static android.bluetooth.BluetoothAdapter.nameForState;
 import static android.bluetooth.BluetoothDevice.BATTERY_LEVEL_UNKNOWN;
+import static android.bluetooth.BluetoothDevice.BOND_BONDED;
 import static android.bluetooth.BluetoothDevice.BOND_NONE;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_ALLOWED;
 import static android.bluetooth.BluetoothProfile.CONNECTION_POLICY_FORBIDDEN;
@@ -150,6 +151,7 @@ import com.android.bluetooth.hfpclient.HeadsetClientService;
 import com.android.bluetooth.hid.HidDeviceService;
 import com.android.bluetooth.hid.HidHostService;
 import com.android.bluetooth.le_audio.LeAudioService;
+import com.android.bluetooth.le_audio.LeAudioBroadcastSinkService;
 import com.android.bluetooth.le_scan.ScanController;
 import com.android.bluetooth.le_audio.CallAudio;
 import com.android.bluetooth.le_scan.ScanManager;
@@ -1557,6 +1559,9 @@ public class AdapterService extends Service {
                             Map.entry(BluetoothProfile.HID_HOST, HidHostService::new),
                             Map.entry(BluetoothProfile.GATT, GattService::new),
                             Map.entry(BluetoothProfile.LE_AUDIO, LeAudioService::new),
+                            Map.entry(
+                                    BluetoothProfile.LE_AUDIO_BROADCAST_SINK,
+                                    LeAudioBroadcastSinkService::new),
                             Map.entry(BluetoothProfile.LE_CALL_CONTROL, TbsService::new),
                             Map.entry(BluetoothProfile.MAP, BluetoothMapService::new),
                             Map.entry(BluetoothProfile.MAP_CLIENT, MapClientService::new),
@@ -3586,12 +3591,14 @@ public class AdapterService extends Service {
             mHeadsetClientService.disconnect(device);
         }
 
-        Log.d(TAG,"Call and Ringing Status are:"+mHeadsetService.isInCall() +" "
-             +mHeadsetService.isRinging());
+        if (mHeadsetService != null) {
+            Log.d(TAG,"Call and Ringing Status are:"+mHeadsetService.isInCall() +" "
+                 +mHeadsetService.isRinging());
+        }
         Log.d(TAG,"Checking in A2DP Disconnect delay BL");
 
         //Adding A2DP Disconnect delay for blacklisted devices
-        if (isDelayA2dpDiscDevice(device) &&
+        if (isDelayA2dpDiscDevice(device) && mHeadsetService != null &&
                   (mHeadsetService.isInCall() || mHeadsetService.isRinging())) {
            Log.e(TAG,"isDelayA2dpDiscDevice sleep 400ms");
               SystemClock.sleep(400);
@@ -4334,7 +4341,7 @@ public class AdapterService extends Service {
         }
         mDatabaseManager.handleBondStateChanged(device, fromState, toState);
 
-        if (toState == BOND_NONE) {
+        if (toState == BOND_NONE || fromState == BOND_BONDED) {
             // Remove the permissions for unbonded devices
             setMessageAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);
             setPhonebookAccessPermission(device, BluetoothDevice.ACCESS_UNKNOWN);

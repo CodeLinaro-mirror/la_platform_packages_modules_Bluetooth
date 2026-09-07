@@ -438,7 +438,21 @@ private:
         config.tx_power = params.tx_power;
     }
     log::warn("config tx power set to : {}", config.tx_power);
-    config.use_le_coded_phy = params.primary_advertising_phy == 0x03;
+
+    // Check if DUPLEX broadcast mode with coded PHY is enabled
+    bool isDuplexMode = osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+    bool isCodedPhyEnabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+
+    if (isDuplexMode && isCodedPhyEnabled) {
+      log::info("DUPLEX mode with coded PHY enabled, using PHY value 0x04");
+      config.use_le_coded_phy = params.primary_advertising_phy == 0x04;
+      config.primary_advertising_phy = 0x04;  // Force Coded S2 for DUPLEX
+    } else {
+      log::info("Normal broadcast mode, using standard PHY values");
+      config.use_le_coded_phy = params.primary_advertising_phy == 0x03;
+      config.primary_advertising_phy = params.primary_advertising_phy;  // Use caller's value
+    }
+
     config.secondary_advertising_phy =
             static_cast<bluetooth::hci::SecondaryPhyType>(params.secondary_advertising_phy);
     config.enable_scan_request_notifications =

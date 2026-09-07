@@ -209,6 +209,13 @@ void BTA_HfClientSendAT(uint16_t handle, tBTA_HF_CLIENT_AT_CMD_TYPE at, uint32_t
  ******************************************************************************/
 void BTA_HfClientDumpStatistics(int fd) { bta_hf_client_dump_statistics(fd); }
 
+void BTA_HfClientDupBroadcastStateChanged(uint8_t state) {
+  tBTA_HF_CLIENT_DATA data;
+  memset(&data, 0, sizeof(data));
+  data.hdr.layer_specific = state;
+  bta_hf_client_dup_broadcast_state_changed(&data);
+}
+
 /*******************************************************************************
  *
  * function         get_default_hf_client_features

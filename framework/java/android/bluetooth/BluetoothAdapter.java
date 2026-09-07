@@ -859,7 +859,10 @@ public final class BluetoothAdapter {
                                     BluetoothProfile.LE_CALL_CONTROL, BluetoothLeCallControl::new),
                             Map.entry(
                                     BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT,
-                                    BluetoothLeBroadcastAssistant::new));
+                                    BluetoothLeBroadcastAssistant::new),
+                            Map.entry(
+                                    BluetoothProfile.LE_AUDIO_BROADCAST_SINK,
+                                    BluetoothLeBroadcastSink::new));
 
     private static final int ADDRESS_LENGTH = 17;
 

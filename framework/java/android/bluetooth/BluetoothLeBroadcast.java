@@ -43,6 +43,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 /**
@@ -60,6 +61,22 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
 
     private static final boolean DBG = true;
     private static final boolean VDBG = false;
+
+    /**
+     * TExitDbig mode: graceful exit — this PGO leaves without affecting other DBIG members.
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int DBIG_TEXIT_MODE_EXIT = 1;
+
+    /**
+     * TExitDbig mode: terminate — request the entire DBIG to be terminated for all members.
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int DBIG_TEXIT_MODE_TERMINATE = 2;
 
     private final CloseGuard mCloseGuard;
 
@@ -163,6 +180,29 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
                         Executor executor = callbackExecutorEntry.getValue();
                         executor.execute(
                                 () -> callback.onBroadcastMetadataChanged(broadcastId, metadata));
+                    }
+                }
+
+                @Override
+                public void onRemoveDeviceDbigComplete(int status, int devId) {
+                    for (Map.Entry<BluetoothLeBroadcast.Callback, Executor> callbackExecutorEntry :
+                            mCallbackExecutorMap.entrySet()) {
+                        BluetoothLeBroadcast.Callback callback = callbackExecutorEntry.getKey();
+                        Executor executor = callbackExecutorEntry.getValue();
+                        executor.execute(
+                                () -> callback.onRemoveDeviceDbigComplete(status, devId));
+                    }
+                }
+
+                @Override
+                public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+                    for (Map.Entry<BluetoothLeBroadcast.Callback, Executor> callbackExecutorEntry :
+                            mCallbackExecutorMap.entrySet()) {
+                        BluetoothLeBroadcast.Callback callback = callbackExecutorEntry.getKey();
+                        Executor executor = callbackExecutorEntry.getValue();
+                        executor.execute(
+                                () -> callback.onTexitDbigComplete(broadcastId, dbigHandle,
+                                        status));
                     }
                 }
             };
@@ -283,6 +323,31 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
         @SystemApi
         void onBroadcastMetadataChanged(
                 int broadcastId, @NonNull BluetoothLeBroadcastMetadata metadata);
+
+        /**
+         * Callback invoked when the Remove Device DBIG operation completes.
+         *
+         * @param status 0 on success, non-zero HCI error code on failure
+         * @param devId  device ID of the removed PGP (12-bit value from the completion event)
+         * @hide
+         */
+        @SystemApi
+        @SuppressLint("UnflaggedApi")
+        default void onRemoveDeviceDbigComplete(int status, int devId) {}
+
+        /**
+         * Callback delivered when {@code HCI_VS_LE_Texit_DBIG_Complete} is received on PGO.
+         * Fired after PGO sends {@code TExitDbig(TERMINATE)} or {@code TExitDbig(REJECT_TERMINATE)}
+         * in response to a PGP terminate request (spec §4.9).
+         *
+         * @param broadcastId broadcast ID of the enhanced broadcast
+         * @param dbigHandle  DBIG handle
+         * @param status      0x00=DBIG terminated (accepted); other=error/still active
+         * @hide
+         */
+        @SystemApi
+        @SuppressLint("UnflaggedApi")
+        default void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {}
     }
 
     /**
@@ -534,6 +599,49 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Start broadcasting to nearby devices using {@link BluetoothLeBroadcastSettings} with
+     * specified ISO interval.
+     *
+     * @param broadcastSettings broadcast settings for this broadcast group
+     * @param isoInterval ISO interval in milliseconds (valid values: 7.5, 10, 20, 30)
+     * @throws IllegalStateException if callback was not registered
+     * @throws NullPointerException if <var>broadcastSettings</var> is null
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void startEnhancedBroadcast(@NonNull BluetoothLeBroadcastSettings broadcastSettings,
+            float isoInterval) {
+        requireNonNull(broadcastSettings);
+        if (mCallbackExecutorMap.isEmpty()) {
+            throw new IllegalStateException("No callback was ever registered");
+        }
+
+        // Validate ISO interval - must be one of the allowed values (including 7.5ms)
+        if (isoInterval != 7.5f && isoInterval != 10.0f &&
+            isoInterval != 20.0f && isoInterval != 30.0f) {
+            throw new IllegalArgumentException(
+                "Invalid ISO interval: " + isoInterval +
+                ". Must be one of: 7.5, 10, 20, or 30 milliseconds");
+        }
+
+        if (DBG) log("startEnhancedBroadcast with ISO interval: " + isoInterval);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.startEnhancedBroadcast(broadcastSettings, isoInterval, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+    }
+
+    /**
      * Update the broadcast with <var>broadcastId</var> with new <var>contentMetadata</var>
      *
      * <p>On success, {@link Callback#onBroadcastUpdated(int, int)} will be invoked with reason code
@@ -637,6 +745,44 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
         } else if (isEnabled()) {
             try {
                 service.stopBroadcast(broadcastId, mAttributionSource);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
+            }
+        }
+    }
+
+    /**
+     * Stop enhanced broadcasting.
+     *
+     * <p>This method provides the same functionality as {@link #stopBroadcast(int)} but is named
+     * for consistency with {@link #startEnhancedBroadcast(BluetoothLeBroadcastSettings, float)}.
+     * The stop operation is identical regardless of whether the broadcast was started as regular
+     * or enhanced.
+     *
+     * <p>On success, {@link Callback#onBroadcastStopped(int, int)} will be invoked with reason code
+     * {@link BluetoothStatusCodes#REASON_LOCAL_APP_REQUEST} and the <var>broadcastId</var> On
+     * failure, {@link Callback#onBroadcastStopFailed(int)} will be invoked with reason code
+     *
+     * @param broadcastId as defined by the Basic Audio Profile
+     * @throws IllegalStateException if callback was not registered
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void stopEnhancedBroadcast(int broadcastId, int mode) {
+        if (mCallbackExecutorMap.isEmpty()) {
+            throw new IllegalStateException("No callback was ever registered");
+        }
+        if (DBG) log("stopEnhancedBroadcast broadcastId=" + broadcastId + " mode=" + mode);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.stopEnhancedBroadcast(broadcastId, mode, mAttributionSource);
             } catch (RemoteException e) {
                 Log.e(TAG, e.toString() + "\n" + Log.getStackTraceString(new Throwable()));
             }
@@ -767,6 +913,33 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
     }
 
     /**
+     * Returns the Broadcast_States field from HCI_VS_LE_Read_Supported_States (0xFD90/0x0B).
+     * Bit 1: Terminate supported, Bit 2: Remove supported.
+     *
+     * @return capability bitmask, or -1 if service unavailable
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public int getEnhancedBroadcastCap() {
+        if (DBG) Log.d(TAG, "getEnhancedBroadcastCap");
+        final IBluetoothLeAudio service = getService();
+        final int defaultValue = -1;
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+        } else if (isEnabled()) {
+            try {
+                return service.getEnhancedBroadcastCap(mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+        return defaultValue;
+    }
+
+    /**
      * {@inheritDoc}
      *
      * @hide
@@ -840,7 +1013,185 @@ public final class BluetoothLeBroadcast implements AutoCloseable, BluetoothProfi
         return mAdapter;
     }
 
+    /**
+     * Set Achat-specific attributes for the broadcast source.
+     *
+     * @param devId Device ID (12-bit value, 0-4095)
+     * @param name Device name (up to 10 octets, UTF-8 encoded)
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void setAttributes(int devId, @NonNull byte[] name) {
+        if (devId < 0 || devId > 4095) {
+            Log.e(TAG, "setAttributes: invalid devId=" + devId + " (must be 0-4095)");
+            throw new IllegalArgumentException(
+                    "Invalid devId: " + devId + ". Must be 0-4095 (12-bit)");
+        }
+        Objects.requireNonNull(name, "name cannot be null");
+        if (name.length == 0) {
+            Log.e(TAG, "setAttributes: name is empty, ignoring request");
+            return;
+        }
+        if (name.length > 10) {
+            Log.e(TAG, "setAttributes: name length=" + name.length
+                    + " exceeds 10 octets, ignoring request");
+            return;
+        }
+        // Find the actual length (stop at first null byte)
+        int actualLength = name.length;
+        for (int i = 0; i < name.length; i++) {
+            if (name[i] == 0) {
+                actualLength = i;
+                break;
+            }
+        }
+        String nameStr = new String(name, 0, actualLength, java.nio.charset.StandardCharsets.UTF_8);
+        if (nameStr.trim().isEmpty()) {
+            Log.e(TAG, "setAttributes: name consists entirely of spaces, ignoring request");
+            return;
+        }
+        if (nameStr.contains(" ")) {
+            Log.e(TAG, "setAttributes: name contains space character(s): \""
+                    + nameStr + "\", ignoring request");
+            return;
+        }
+        if (DBG) log("setAttributes: devId=" + devId
+                + ", name=\"" + nameStr + "\", nameLen=" + name.length);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.setAttributes(devId, name, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /**
+     * Set DBIG Join Control mode for the broadcast source.
+     *
+     * @param mode true to enable DBIG join control, false to disable
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void setJoinControl(boolean mode) {
+        if (DBG) log("setJoinControl: mode=" + mode);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.setJoinControl(mode, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /**
+     * Request the controller to remove a specific device from the DBIG.
+     * <p>The result is delivered asynchronously via
+     * {@link Callback#onRemoveDeviceDbigComplete(int, int)}.
+     *
+     * @param devId  12-bit device identifier (0–4095), as reported in
+     *               {@link android.bluetooth.action#ACTION_DBIG_STATUS_CHANGED} extras
+     * @param name   shortened local name of the device (1–10 UTF-8 bytes, no spaces)
+     * @param reason HCI reason code for the removal (e.g. 0x13 = Remote User Terminated)
+     * @throws IllegalArgumentException if devId is out of range or name is invalid
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void removeDeviceFromDbig(int devId, @NonNull byte[] name, int reason) {
+        if (devId < 0 || devId > 4095) {
+            throw new IllegalArgumentException("Invalid devId: " + devId + ". Must be 0-4095");
+        }
+        Objects.requireNonNull(name, "name cannot be null");
+        if (name.length == 0 || name.length > 10) {
+            throw new IllegalArgumentException(
+                    "name length must be 1-10 bytes, got " + name.length);
+        }
+        if (DBG) log("removeDeviceFromDbig: devId=0x" + Integer.toHexString(devId)
+                + ", reason=0x" + Integer.toHexString(reason));
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+            if (DBG) log(Log.getStackTraceString(new Throwable()));
+        } else if (isEnabled()) {
+            try {
+                service.removeDeviceFromDbig(devId, name, reason, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
     private static void log(String msg) {
         Log.d(TAG, msg);
+    }
+
+    /**
+     * Accept a PGP terminate request (spec §4.9 PGO Remote Host Terminate procedure).
+     * Sends {@code HCI_VS_LE_Texit_DBIG(TERMINATE)} to terminate the DBIG.
+     * Called after PGO user accepts the terminate dialog (shown by DBIG status bit 10 = 0x0400).
+     * Result delivered via {@link Callback#onTexitDbigComplete}.
+     *
+     * @param broadcastId broadcast ID of the active enhanced broadcast
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void acceptTerminateDbig(int broadcastId) {
+        if (DBG) log("acceptTerminateDbig: broadcastId=" + broadcastId);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+        } else if (isEnabled()) {
+            try {
+                service.acceptTerminateDbig(broadcastId, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /**
+     * Reject a PGP terminate request.
+     * Sends {@code HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE)} to keep the DBIG active.
+     * Result delivered via {@link Callback#onTexitDbigComplete} (status will be non-zero on PGP).
+     *
+     * @param broadcastId broadcast ID of the active enhanced broadcast
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    @RequiresBluetoothConnectPermission
+    @RequiresPermission(allOf = {BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED})
+    public void rejectTerminateDbig(int broadcastId) {
+        if (DBG) log("rejectTerminateDbig: broadcastId=" + broadcastId);
+        final IBluetoothLeAudio service = getService();
+        if (service == null) {
+            Log.w(TAG, "Proxy not attached to service");
+        } else if (isEnabled()) {
+            try {
+                service.rejectTerminateDbig(broadcastId, mAttributionSource);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
     }
 }

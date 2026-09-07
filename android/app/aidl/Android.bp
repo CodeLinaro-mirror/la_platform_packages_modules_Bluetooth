@@ -41,6 +41,8 @@ filegroup {
         "android/bluetooth/IBluetoothLeBroadcastAssistant.aidl",
         "android/bluetooth/IBluetoothLeBroadcastAssistantCallback.aidl",
         "android/bluetooth/IBluetoothLeBroadcastCallback.aidl",
+        "android/bluetooth/IBluetoothLeBroadcastSink.aidl",
+        "android/bluetooth/IBluetoothLeBroadcastSinkCallback.aidl",
         "android/bluetooth/IBluetoothLeCallControl.aidl",
         "android/bluetooth/IBluetoothLeCallControlCallback.aidl",
         "android/bluetooth/IBluetoothMap.aidl",

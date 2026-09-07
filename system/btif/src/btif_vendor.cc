@@ -82,6 +82,7 @@
 #include <base/bind.h>
 #include <base/callback.h>
 #include <base/location.h>
+#include <base/strings/string_number_conversions.h>
 #include <bluetooth/log.h>
 #include <cutils/properties.h>
 
@@ -92,6 +93,7 @@
 #include "osi/include/osi.h"
 #include "stack/btm/internal/btm_api.h"
 #include "stack/include/btm_client_interface.h"
+#include "btif/include/btif_bqr.h"
 #if TEST_APP_INTERFACE == TRUE
 #include <bt_testapp.h>
 #endif
@@ -106,6 +108,7 @@ extern const btgap_interface_t* btif_gap_get_interface(void);
 #endif
 
 btvendor_callbacks_t* bt_vendor_callbacks = NULL;
+static bool is_qc_bqr5_supported = false;
 
 /*******************************************************************************
 ** VENDOR INTERFACE FUNCTIONS
@@ -138,6 +141,10 @@ void btif_vendor_update_add_on_features_to_jni() {
           get_btm_client_interface().vendor.BTM_GetHostAddOnFeatures(&host_add_on_features_len);
 
   if (soc_add_on_features && soc_add_on_features_len > 0) {
+    is_qc_bqr5_supported = HCI_VENDOR_BQR5_SUPPORTED(soc_add_on_features->as_array);
+    log::info("soc_add_on_features[{}]={}, bqr5_supported={}", soc_add_on_features_len,
+              base::HexEncode(soc_add_on_features->as_array, soc_add_on_features_len),
+              is_qc_bqr5_supported);
     vnd_prop.len = soc_add_on_features_len;
     vnd_prop.type = BT_VENDOR_PROPERTY_SOC_ADD_ON_FEATURES;
     vnd_prop.val = (void*)s_buf;
@@ -156,6 +163,20 @@ void btif_vendor_update_add_on_features_to_jni() {
 }
 void btif_vendor_update_add_on_features() {
   do_in_jni_thread(base::BindOnce(btif_vendor_update_add_on_features_to_jni));
+}
+
+bool btif_vendor_is_qc_bqr5_supported() {
+  // Computed synchronously from the SoC add-on-features cache instead of the
+  // is_qc_bqr5_supported flag above, which is only set later on the JNI
+  // thread by btif_vendor_update_add_on_features_to_jni() and can race
+  // callers (e.g. BQR enable) that run before that task completes.
+  uint8_t soc_add_on_features_len = 0;
+  const bt_device_soc_add_on_features_t* soc_add_on_features =
+          get_btm_client_interface().vendor.BTM_GetSocAddOnFeatures(&soc_add_on_features_len);
+  if (soc_add_on_features && soc_add_on_features_len > 0) {
+    return HCI_VENDOR_BQR5_SUPPORTED(soc_add_on_features->as_array);
+  }
+  return false;
 }
 
 void btif_vendor_update_ssr_event_to_jni() {

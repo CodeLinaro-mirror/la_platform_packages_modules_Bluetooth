@@ -61,5 +61,5 @@ interface IBluetoothLeBroadcastAssistant {
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
     int getMaximumSourceCapacity(in BluetoothDevice sink, in AttributionSource source);
     @JavaPassthrough(annotation="@android.annotation.RequiresPermission(allOf={android.Manifest.permission.BLUETOOTH_CONNECT,android.Manifest.permission.BLUETOOTH_PRIVILEGED})")
-    BluetoothLeBroadcastMetadata getSourceMetadata(in BluetoothDevice sink, in int sourceId, in AttributionSource source);
+    BluetoothLeBroadcastMetadata getSourceMetadata(in BluetoothDevice sink, int sourceId, in AttributionSource source);
 }

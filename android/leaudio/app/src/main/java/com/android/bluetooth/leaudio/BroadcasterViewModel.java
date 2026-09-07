@@ -44,8 +44,24 @@ public class BroadcasterViewModel extends AndroidViewModel {
         return mBluetooth.startBroadcast(settings);
     }
 
+    public boolean startEnhancedBroadcast(BluetoothLeBroadcastSettings settings, float isoInterval) {
+        return mBluetooth.startEnhancedBroadcast(settings, isoInterval);
+    }
+
+    public boolean setAttributes(int devId, byte[] name) {
+        return mBluetooth.setAttributes(devId, name);
+    }
+
+    public boolean setJoinControl(boolean mode) {
+        return mBluetooth.setJoinControl(mode);
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         return mBluetooth.stopBroadcast(broadcastId);
+    }
+
+    public boolean stopEnhancedBroadcast(int broadcastId, int mode) {
+        return mBluetooth.stopEnhancedBroadcast(broadcastId, mode);
     }
 
     public boolean updateBroadcast(int broadcastId, BluetoothLeBroadcastSettings settings) {
@@ -89,6 +105,37 @@ public class BroadcasterViewModel extends AndroidViewModel {
 
     public LiveData<String> getBroadcastStatusMutableLive() {
         return mBluetooth.getBroadcastStatusMutableLive();
+    }
+
+    public int getEnhancedBroadcastCap() {
+        return mBluetooth.getEnhancedBroadcastCap();
+    }
+
+    public void removeDeviceFromDbig(int devId, byte[] name, int reason) {
+        mBluetooth.removeDeviceFromDbig(devId, name, reason);
+    }
+
+    public LiveData<Pair<Integer, Integer>> getRemoveDeviceDbigResultMutableLive() {
+        return mBluetooth.getRemoveDeviceDbigResultMutableLive();
+    }
+
+    /** Accept PGP terminate request (spec §4.9): PGO sends TExitDbig(TERMINATE). */
+    public void acceptTerminateDbig(int broadcastId) {
+        mBluetooth.acceptTerminateDbig(broadcastId);
+    }
+
+    /** Reject PGP terminate request: PGO sends TExitDbig(REJECT_TERMINATE). */
+    public void rejectTerminateDbig(int broadcastId) {
+        mBluetooth.rejectTerminateDbig(broadcastId);
+    }
+
+    public LiveData<Pair<Integer, Integer>> getTexitDbigResultMutableLive() {
+        return mBluetooth.getTexitDbigResultMutableLive();
+    }
+
+    /** LiveData that fires true when Bluetooth turns OFF — observe to reset AuraChat UI. */
+    public LiveData<Boolean> getBluetoothOffEventLive() {
+        return mBluetooth.getBluetoothOffEventLive();
     }
 
     @Override

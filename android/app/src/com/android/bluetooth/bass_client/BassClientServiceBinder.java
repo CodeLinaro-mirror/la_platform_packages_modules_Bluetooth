@@ -265,4 +265,5 @@ class BassClientServiceBinder extends IBluetoothLeBroadcastAssistant.Stub
         }
         return service.getSourceMetadata(sink, sourceId);
     }
+
 }

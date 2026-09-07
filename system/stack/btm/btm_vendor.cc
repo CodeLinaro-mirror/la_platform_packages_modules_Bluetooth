@@ -12,6 +12,8 @@
  *
  ******************************************************************************/
 
+#include <base/functional/bind.h>
+#include <base/functional/callback.h>
 #include <base/logging.h>
 #include <bluetooth/log.h>
 #include <include/hardware/bt_av.h>
@@ -30,6 +32,8 @@
 #include "stack/include/btm_iso_api.h"
 #include "stack/include/btm_vendor_api.h"
 #include "stack/include/btm_vendor_types.h"
+#include "stack/include/hcidefs.h"
+#include "stack/include/hcimsgs.h"
 
 #define QHS_TRANSPORT_BREDR 0
 #define QHS_TRANSPORT_LE 1
@@ -747,8 +751,44 @@ void btm_vendor_vse_cback(uint8_t vse_subcode, uint8_t evt_len, uint8_t* p) {
           break;
         case MSG_QBCE_QLE_CIG_LATENCY_CHANGED:
           break;
+        case MSG_QBCE_DBIG_UPDATE:
+          bluetooth::hci::IsoManager::GetInstance()->HandleDbigUpdateEvent(pp, evt_len - 1);
+          break;
         default:
           log::info(":: unknown msg type: {}", vse_msg_type);
+          break;
+      }
+      return;
+    } else if (HCI_VSE_SUBCODE_VS_META == vse_subcode) {
+      /* HCI_VS_META (0xC1) covers DBIG status, TExitDBIG complete, and
+       * JoinControl complete sub-events. Dispatch on the first payload byte. */
+      uint8_t vs_meta_subopcode;
+
+      if (evt_len < 1) {
+        log::warn(":: VS Meta VSE event too short, evt_len={}", evt_len);
+        return;
+      }
+      STREAM_TO_UINT8(vs_meta_subopcode, pp);
+      log::info(":: VS Meta VSE event received, subopcode = 0x{:02x}", vs_meta_subopcode);
+      switch (vs_meta_subopcode) {
+        case HCI_VS_LE_DBIG_STATUS:
+          log::info(":: VS Meta DBIG STATUS received, payload_len = {}", evt_len - 1);
+          bluetooth::hci::IsoManager::GetInstance()->HandleDbigStatusEvent(pp, evt_len - 1);
+          break;
+        case HCI_VS_LE_TEXIT_DBIG_COMPLETE_EVT:
+          log::info(":: VS Meta TExitDBIG complete received, payload_len = {}", evt_len - 1);
+          bluetooth::hci::IsoManager::GetInstance()->HandleTExitDbigEvent(pp, evt_len - 1);
+          break;
+        case HCI_VS_LE_REMOVE_DEVICE_DBIG_COMPLETE_EVT:
+          log::info(":: VS Meta RemoveDeviceDBIG complete received, payload_len = {}", evt_len - 1);
+          bluetooth::hci::IsoManager::GetInstance()->HandleRemoveDeviceDbigEvent(pp, evt_len - 1);
+          break;
+        case HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT:
+          log::info(":: VS Meta JoinControl complete received, payload_len = {}", evt_len - 1);
+          bluetooth::hci::IsoManager::GetInstance()->HandleJoinControlEvent(pp, evt_len - 1);
+          break;
+        default:
+          log::info(":: unknown VS Meta subopcode: 0x{:02x}", vs_meta_subopcode);
           break;
       }
       return;
@@ -1187,4 +1227,86 @@ static void btm_vendor_set_tech_based_max_power(bool status) {
 
   BTM_VendorSpecificCommand(HCI_VS_LINK_POWER_CTRL_REQ_OPCODE, HCI_VS_LINK_POWER_CTRL_PARAM_SIZE,
                             param, btm_vendor_link_power_ctrl_callback);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_SetAttributes
+ *
+ * Description      Set Achat-specific device ID and name attributes.
+ *                  Sends HCI_VS_LE_SET_DEVID vendor command to the controller.
+ *
+ * Parameters       dev_id - 2-octet device ID (12-bit value, 4-bit padding)
+ *                  name   - 10-octet device name (UTF-8, zero-padded)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_SetAttributes(const std::vector<uint8_t>& dev_id,
+                        const std::vector<uint8_t>& name) {
+  log::info("BTM_SetAttributes: dev_id size={}, name size={}", dev_id.size(), name.size());
+
+  if (dev_id.size() < 2) {
+    log::error("BTM_SetAttributes: dev_id too short ({})", dev_id.size());
+    return;
+  }
+  if (name.size() < 10) {
+    log::error("BTM_SetAttributes: name too short ({})", name.size());
+    return;
+  }
+
+  // Reconstruct the 12-bit dev_id from the 2-byte packed representation
+  uint16_t device_id = static_cast<uint16_t>(dev_id[0]) |
+                       (static_cast<uint16_t>(dev_id[1] & 0x0F) << 8);
+
+  log::info("BTM_SetAttributes: device_id=0x{:03x}", device_id);
+
+  bluetooth::hci::iso_manager::dbig_set_devid_params params;
+  params.dev_id = device_id;
+  std::copy(name.begin(), name.begin() + 10, params.name);
+  params.p_cb = nullptr;
+
+  bluetooth::hci::IsoManager::GetInstance()->SetDevId(params);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_SetJoinControl
+ *
+ * Description      Set DBIG Join Control mode.
+ *                  Sends HCI_VS_LE_JOIN_CONTROL vendor command to the
+ *                  controller with dbig_handle=0 (global setting).
+ *
+ * Parameters       enable - true to enable DBIG join control, false to disable
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_SetJoinControl(bool enable) {
+  log::info("BTM_SetJoinControl: enable={}", enable);
+
+  bluetooth::hci::iso_manager::dbig_join_control_params params;
+  params.dbig_handle = 0;
+  params.mode = enable ? 0x02 : 0x03;
+  params.p_cb = nullptr;
+
+  bluetooth::hci::IsoManager::GetInstance()->JoinControl(params);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_BleDbigSyncOnly
+ *
+ * Description      Send the HCI VS LE DBIG Sync-Only command.
+ *                  enable=1 → enter sync-only mode (BIG alive, no audio data)
+ *                  enable=0 → exit sync-only mode (resume audio data)
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_BleDbigSyncOnly(uint8_t dbig_handle, uint8_t enable,
+                         bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* p_cb) {
+  log::info("BTM_BleDbigSyncOnly: dbig_handle=0x{:02x}, enable={}", dbig_handle, enable);
+  bluetooth::hci::iso_manager::dbig_sync_only_params params = {dbig_handle, enable, p_cb};
+  bluetooth::hci::IsoManager::GetInstance()->SetSyncOnly(params);
 }

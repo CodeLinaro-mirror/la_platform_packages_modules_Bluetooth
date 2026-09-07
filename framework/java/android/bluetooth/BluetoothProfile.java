@@ -16,6 +16,7 @@
 
 package android.bluetooth;
 
+import android.annotation.FlaggedApi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.RequiresNoPermission;
@@ -24,6 +25,8 @@ import android.annotation.SystemApi;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.os.Build;
 import android.os.IBinder;
+
+import com.android.bluetooth.flags.Flags;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -281,6 +284,13 @@ public interface BluetoothProfile {
      */
     public static final int CC_SERVER = 37;
 
+    /**
+     * LE Audio Broadcast Sink
+     *
+     * @hide
+     */
+    @FlaggedApi(Flags.FLAG_LEAUDIO_BROADCAST_SINK_API)
+    @SystemApi int LE_AUDIO_BROADCAST_SINK = 38;
 
     /**
      * Gaming Audio Profile
@@ -295,7 +305,7 @@ public interface BluetoothProfile {
      *
      * @hide
      */
-    int MAX_PROFILE_ID = 37;
+    int MAX_PROFILE_ID = 38;
 
     /**
      * Default priority for devices that we try to auto-connect to and allow incoming connections
@@ -531,6 +541,8 @@ public interface BluetoothProfile {
                 return "HAP_CLIENT";
             case LE_AUDIO_BROADCAST_ASSISTANT:
                 return "LE_AUDIO_BROADCAST_ASSISTANT";
+            case LE_AUDIO_BROADCAST_SINK:
+                return "LE_AUDIO_BROADCAST_SINK";
             case BATTERY:
                 return "BATTERY";
             case BROADCAST:

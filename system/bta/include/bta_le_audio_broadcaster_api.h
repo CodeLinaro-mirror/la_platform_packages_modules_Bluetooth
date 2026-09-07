@@ -43,11 +43,21 @@ public:
           const std::optional<bluetooth::le_audio::BroadcastCode>& broadcast_code,
           const std::vector<uint8_t>& public_metadata, const std::vector<uint8_t>& subgroup_quality,
           const std::vector<std::vector<uint8_t>>& subgroup_metadata) = 0;
+  virtual void CreateEnhancedAudioBroadcast(
+          const std::string& broadcast_name,
+          const std::optional<bluetooth::le_audio::BroadcastCode>& broadcast_code,
+          const std::vector<uint8_t>& subgroup_quality,
+          const std::vector<std::vector<uint8_t>>& subgroup_metadata,
+          float iso_interval) = 0;
   virtual void SuspendAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void StartAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void StopAudioBroadcast(uint32_t broadcast_id) = 0;
+  virtual void StopEnhancedAudioBroadcast(uint32_t broadcast_id, uint8_t mode) = 0;
   virtual void DestroyAudioBroadcast(uint32_t broadcast_id) = 0;
   virtual void GetBroadcastMetadata(uint32_t broadcast_id) = 0;
+  virtual void SetAttributes(std::vector<uint8_t> dev_id,
+                              std::vector<uint8_t> name) = 0;
+  virtual void SetJoinControl(bool enable) = 0;
   virtual void GetAllBroadcastStates(void) = 0;
   virtual void UpdateMetadata(uint32_t broadcast_id, const std::string& broadcast_name,
                               const std::vector<uint8_t>& public_metadata,
@@ -62,4 +72,48 @@ public:
 
   virtual void SetStreamingPhy(uint8_t phy) = 0;
   virtual uint8_t GetStreamingPhy(void) const = 0;
+
+  /**
+   * Read the controller's supported LE states for enhanced broadcast.
+   * Issues a VS HCI command and returns the capability bitmask. The result is
+   * also stored internally for GetEnhancedBroadcastCap().
+   * Called once at broadcaster init when duplex mode is enabled.
+   * @return capability bitmask: bit0=Terminate, bit1=Remove Device. 0 if not ready.
+   */
+  virtual uint32_t ReadSupportedStates(void) = 0;
+
+  /**
+   * Get the 12-byte DBIG parameter block populated after ReadSupportedStates().
+   * @return 12-byte vector, or empty vector if not yet available.
+   */
+  virtual std::vector<uint8_t> GetDbigParams(void) = 0;
+
+  /**
+   * Get the enhanced broadcast capability bitmask from the controller.
+   * @return capability bitmask, or 0 if not yet available.
+   */
+  virtual uint32_t GetEnhancedBroadcastCap(void) = 0;
+
+  /**
+   * Request the controller to remove a specific device from the DBIG.
+   * Sends HCI_VS_LE_Remove_Device_DBIG (0xFD90 / 0x09).
+   * Completion is delivered via OnRemoveDeviceDbigComplete() callback.
+   *
+   * @param dev_id  12-bit device identifier of the device to remove
+   * @param name    10-byte shortened local name of the device
+   * @param reason  HCI reason code (e.g. 0x13 = Remote User Terminated)
+   */
+  virtual void RemoveDeviceDbig(uint16_t dev_id,
+                                const std::vector<uint8_t>& name,
+                                uint8_t reason) = 0;
+
+  // Accept PGP terminate request — PGO sends TExitDbig(TERMINATE).
+  virtual void AcceptTerminateDbig(uint32_t broadcast_id) = 0;
+
+  // Reject PGP terminate request — PGO sends TExitDbig(REJECT_TERMINATE).
+  virtual void RejectTerminateDbig(uint32_t broadcast_id) = 0;
+
+  // Sets the suspended-by-call / resuming-after-call flag on the active
+  // broadcast state machine to gate BIG teardown during HFP concurrency.
+  virtual void NotifyCallState(uint32_t broadcast_id, bool isCallActive) = 0;
 };

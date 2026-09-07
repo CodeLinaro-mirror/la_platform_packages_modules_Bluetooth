@@ -47,6 +47,12 @@
 #include "stack/include/btm_client_interface.h"
 #include "types/raw_address.h"
 
+// Safe default for builds that don't link the vendor implementation.
+// btif_vendor.cc overrides this with the real SoC add-on feature check.
+__attribute__((weak)) bool btif_vendor_is_qc_bqr5_supported() {
+  return false;
+}
+
 namespace bluetooth {
 namespace bqr {
 
@@ -520,20 +526,33 @@ void ConfigureBqr(const BqrConfiguration& bqr_config) {
     }
   }
 
-  log::info("Action: 0x{:x}, Mask: 0x{:x}, Interval: {} Multiple: {}",
+  log::info("Action: 0x{:x}, Mask: 0x{:x}, Interval: {} Multiple: {} is_qc_bqr5_supported: {}",
             static_cast<uint8_t>(bqr_config.report_action), bqr_config.quality_event_mask,
-            bqr_config.minimum_report_interval_ms, bqr_config.report_interval_multiple);
+            bqr_config.minimum_report_interval_ms, bqr_config.report_interval_multiple,
+            btif_vendor_is_qc_bqr5_supported());
 
   auto payload = std::make_unique<packet::RawBuilder>();
   payload->AddOctets1(bqr_config.report_action);
   payload->AddOctets4(bqr_config.quality_event_mask);
   payload->AddOctets2(bqr_config.minimum_report_interval_ms);
-  if (vendor_cap_supported_version >= kBqrVndLogVersion) {
-    payload->AddOctets4(bqr_config.vnd_quality_mask);
-    payload->AddOctets4(bqr_config.vnd_trace_mask);
-  }
-  if (vendor_cap_supported_version >= kBqrVersion6_0) {
-    payload->AddOctets4(bqr_config.report_interval_multiple);
+
+  if (btif_vendor_is_qc_bqr5_supported()) {
+    uint32_t effective_vnd_quality_mask =
+            (bqr_config.quality_event_mask & kQualityEventMaskVendorSpecificQuality)
+                    ? bqr_config.vnd_quality_mask
+                    : 0x00000000;
+    log::info("QC BQR5 path: vnd_quality_mask: 0x{:x}, vnd_trace_mask: 0x0",
+              effective_vnd_quality_mask);
+    payload->AddOctets4(effective_vnd_quality_mask);
+    payload->AddOctets4(0x00000000);  // vnd_trace_mask always 0 for QC BQR5 path
+  } else {
+    if (vendor_cap_supported_version >= kBqrVndLogVersion) {
+      payload->AddOctets4(bqr_config.vnd_quality_mask);
+      payload->AddOctets4(bqr_config.vnd_trace_mask);
+    }
+    if (vendor_cap_supported_version >= kBqrVersion6_0) {
+      payload->AddOctets4(bqr_config.report_interval_multiple);
+    }
   }
 
   shim::GetHciLayer()->EnqueueCommand(
@@ -589,12 +608,17 @@ static void BqrVscCompleteCallback(hci::CommandCompleteView complete) {
     }
   }
 
-  if (vendor_cap_supported_version >= kBqrVndLogVersion) {
+  if (btif_vendor_is_qc_bqr5_supported()) {
+    // QC BQR5 path: we always sent a 15-byte command, so the controller
+    // always returns a 13-byte response (status + mask + vnd_quality + vnd_trace).
     command_complete_param_len = 13;
-  }
-
-  if (vendor_cap_supported_version >= kBqrVersion6_0) {
-    command_complete_param_len = 17;
+  } else {
+    if (vendor_cap_supported_version >= kBqrVndLogVersion) {
+      command_complete_param_len = 13;
+    }
+    if (vendor_cap_supported_version >= kBqrVersion6_0) {
+      command_complete_param_len = 17;
+    }
   }
 
   if (p_vsc_cmpl_params->param_len != command_complete_param_len) {
@@ -687,6 +711,7 @@ static void ConfigureBqrCmpl(uint32_t current_evt_mask) {
 
 static void AddLinkQualityEventToQueue(uint8_t length, const uint8_t* p_link_quality_event);
 static void AddEnergyMonitorEventToQueue(uint8_t length, const uint8_t* p_link_quality_event);
+static void AddVendorSpecificEventToQueue(uint8_t length, const uint8_t* p_vendor_event);
 static void AddRFStatsEventToQueue(uint8_t length, const uint8_t* p_link_quality_event);
 static void AddLinkQualityEventToQueue(uint8_t length, const uint8_t* p_link_quality_event);
 // Categorize the incoming Bluetooth Quality Report.
@@ -723,6 +748,17 @@ static void CategorizeBqrEvent(uint8_t length, const uint8_t* p_bqr_event) {
     // The Root Inflammation and Log Dump related event should be handled and
     // intercepted already.
     case QUALITY_REPORT_ID_VENDOR_SPECIFIC_QUALITY:
+      if (btif_vendor_is_qc_bqr5_supported()) {
+        // Need at least 2 bytes: report_id (1) + vendor_sub_id (1).
+        if (length < 2) {
+          log::warn("Vendor-specific BQR event too short: {}", length);
+          break;
+        }
+        AddVendorSpecificEventToQueue(length, p_bqr_event);
+      } else {
+        log::warn("Unexpected ID: 0x{:x}", quality_report_id);
+      }
+      break;
     case QUALITY_REPORT_ID_ROOT_INFLAMMATION:
     case QUALITY_REPORT_ID_LMP_LL_MESSAGE_TRACE:
     case QUALITY_REPORT_ID_BT_SCHEDULING_TRACE:
@@ -864,6 +900,18 @@ static void AddEnergyMonitorEventToQueue(uint8_t length, const uint8_t* p_energy
   }
 
   bqrItf->bqr_delivery_event(RawAddress::kAny, p_energy_monitor_event, length);
+}
+
+// Deliver a QC vendor-specific BQR event (id=0x10) directly to the Java layer.
+// These events are not link-quality events and must not go through
+// ParseBqrLinkQualityEvt. The raw bytes are forwarded as-is.
+static void AddVendorSpecificEventToQueue(uint8_t length, const uint8_t* p_vendor_event) {
+  BluetoothQualityReportInterface* bqrItf = getBluetoothQualityReportInterface();
+  if (bqrItf == nullptr) {
+    log::warn("failed to deliver vendor BQR, bqrItf is NULL");
+    return;
+  }
+  bqrItf->bqr_delivery_event(RawAddress::kAny, p_vendor_event, length);
 }
 
 static void AddRFStatsEventToQueue(uint8_t length, const uint8_t* p_rf_stats_event) {
@@ -1035,12 +1083,9 @@ class BluetoothQualityReportInterfaceImpl : public bluetooth::bqr::BluetoothQual
     raw_data.insert(raw_data.begin(), bqr_raw_data, bqr_raw_data + bqr_raw_data_len);
 
     if (vendor_cap_supported_version < kBqrVersion5_0 &&
+        bqr_raw_data_len >= kLinkQualityParamTotalLen &&
         bqr_raw_data_len < kLinkQualityParamTotalLen + kVersion5_0ParamsTotalLen) {
       std::vector<uint8_t>::iterator it = raw_data.begin() + kLinkQualityParamTotalLen;
-      /**
-       * Insert zeros as remote address and calibration count
-       * for BQR 5.0 incompatible devices
-       */
       raw_data.insert(it, kVersion5_0ParamsTotalLen, 0);
     }
 
@@ -1057,7 +1102,8 @@ class BluetoothQualityReportInterfaceImpl : public bluetooth::bqr::BluetoothQual
     do_in_jni_thread(
             base::BindOnce(&bluetooth::bqr::BluetoothQualityReportCallbacks::bqr_delivery_callback,
                            base::Unretained(callbacks), bd_addr, info.version, info.sub_ver,
-                           info.manufacturer, std::move(raw_data)));
+                           info.manufacturer, std::move(raw_data),
+                           btif_vendor_is_qc_bqr5_supported()));
   }
 
 private:

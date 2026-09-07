@@ -32,4 +32,10 @@ oneway interface IBluetoothLeBroadcastCallback {
     void onBroadcastUpdated(in int reason, in int broadcastId);
     void onBroadcastUpdateFailed(in int reason, in int broadcastId);
     void onBroadcastMetadataChanged(in int broadcastId, in BluetoothLeBroadcastMetadata metadata);
+    void onRemoveDeviceDbigComplete(in int status, in int devId);
+    /**
+     * HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+     * status=0x00 DBIG terminated; other = error or rejected by PGO itself.
+     */
+    void onTexitDbigComplete(in int broadcastId, in int dbigHandle, in int status);
 }

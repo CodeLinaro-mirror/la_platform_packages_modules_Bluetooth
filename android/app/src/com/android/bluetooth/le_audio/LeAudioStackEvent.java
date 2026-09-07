@@ -52,6 +52,20 @@ public class LeAudioStackEvent {
     public static final int EVENT_TYPE_BROADCAST_STATE = EVENT_TYPE_UNICAST_MAX + 3;
     public static final int EVENT_TYPE_BROADCAST_METADATA_CHANGED = EVENT_TYPE_UNICAST_MAX + 4;
     public static final int EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED = EVENT_TYPE_UNICAST_MAX + 5;
+    public static final int EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED = EVENT_TYPE_UNICAST_MAX + 6;
+    public static final int EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE = EVENT_TYPE_UNICAST_MAX + 7;
+    /** HCI_VS_LE_Texit_DBIG_Complete on PGO side. valueInt1=broadcastId, valueInt2=dbigHandle, valueInt3=status */
+    public static final int EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE = EVENT_TYPE_UNICAST_MAX + 8;
+    /** HCI VS DBIG_SYNC_ONLY(enable=1) complete. ISO paths removed, controller idle, safe to send AT+BCC.
+     *  valueInt1=broadcastId */
+    public static final int EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE = EVENT_TYPE_UNICAST_MAX + 9;
+
+    // DBIG status extended fields (shared by broadcaster and sink paths)
+    public int dbigDevId = 0;
+    public byte[] dbigName;
+    public int dbigNumBis = 0;
+    public char[] dbigBisDevIds;
+    public int dbigBroadcastFeatures = 0;
 
     // Do not modify without updating the HAL bt_le_audio.h files.
     // Match up with GroupStatus enum of bt_le_audio.h
@@ -181,6 +195,12 @@ public class LeAudioStackEvent {
                 return "EVENT_TYPE_BROADCAST_METADATA_CHANGED";
             case EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED:
                 return "EVENT_TYPE_BROADCAST_AUDIO_SESSION_CREATED";
+            case EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED:
+                return "EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED";
+            case EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE:
+                return "EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE";
+            case EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE:
+                return "EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE";
             case EVENT_TYPE_AUDIO_LOCAL_CODEC_CONFIG_CAPA_CHANGED:
                 return "EVENT_TYPE_AUDIO_LOCAL_CODEC_CONFIG_CAPA_CHANGED";
             case EVENT_TYPE_AUDIO_GROUP_CURRENT_CODEC_CONFIG_CHANGED:
@@ -239,6 +259,8 @@ public class LeAudioStackEvent {
                 // same as EVENT_TYPE_BROADCAST_STATE
             case EVENT_TYPE_BROADCAST_STATE:
                 return "{broadcastId:" + value + "}";
+            case EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED:
+                return "{dbigHandle:" + value + "}";
             case EVENT_TYPE_HEALTH_BASED_GROUP_RECOMMENDATION:
                 return "{group_id: " + value + "}";
             case EVENT_TYPE_HEALTH_BASED_DEV_RECOMMENDATION:
@@ -294,6 +316,8 @@ public class LeAudioStackEvent {
                 return "{group_id:" + Integer.toString(value) + "}";
             case EVENT_TYPE_BROADCAST_STATE:
                 return "{state:" + broadcastStateToString(value) + "}";
+            case EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED:
+                return "{dbigStatus:" + value + "}";
             case EVENT_TYPE_HEALTH_BASED_GROUP_RECOMMENDATION:
                 switch (value) {
                     case HEALTH_RECOMMENDATION_ACTION_DISABLE:

@@ -88,6 +88,8 @@ tBT_TRANSPORT to_bt_transport(jint val) {
 
 namespace android {
 
+// Forward declarations for JNI registration functions
+
 #define BLE_ADDR_PUBLIC 0x00
 #define BLE_ADDR_RANDOM 0x01
 

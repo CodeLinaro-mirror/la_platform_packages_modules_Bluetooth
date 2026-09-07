@@ -61,6 +61,7 @@ public class BluetoothProxy {
     private BluetoothLeAudio bluetoothLeAudio = null;
     private BluetoothLeBroadcast mBluetoothLeBroadcast = null;
     private BluetoothLeBroadcastAssistant mBluetoothLeBroadcastAssistant = null;
+    private BluetoothLeBroadcastSink mBluetoothLeBroadcastSink = null;
     private Set<BluetoothDevice> mBroadcastScanDelegatorDevices = new HashSet<>();
     private BluetoothCsipSetCoordinator bluetoothCsis = null;
     private BluetoothVolumeControl bluetoothVolumeControl = null;
@@ -186,6 +187,9 @@ public class BluetoothProxy {
                             enabledBluetoothMutable.postValue(true);
                         } else if (toState == BluetoothAdapter.STATE_OFF) {
                             enabledBluetoothMutable.postValue(false);
+                            // BT turned off — reset all enhanced broadcast LiveData so the
+                            // Activities clear their UI state and start fresh on next BT-on.
+                            onBluetoothOff();
                         }
                     }
                 }
@@ -350,6 +354,13 @@ public class BluetoothProxy {
     private final MutableLiveData<Pair<Integer /* reason */, Integer /* broadcastId */>>
             mBroadcastRemovedMutableLive;
     private final MutableLiveData<String> mBroadcastStatusMutableLive;
+    private final MutableLiveData<Pair<Integer /* status */, Integer /* reason */>>
+            mRemoveDeviceDbigResultMutableLive;
+    /** Fires true when BT turns OFF so Activities can reset all enhanced broadcast UI state. */
+    private final MutableLiveData<Boolean> mBluetoothOffEventMutable = new MutableLiveData<>();
+    /** Fires (broadcastId, status) when PGO receives HCI_VS_LE_Texit_DBIG_Complete. */
+    private final MutableLiveData<Pair<Integer, Integer>> mTexitDbigResultMutableLive =
+            new MutableLiveData<>();
     private final BluetoothLeBroadcast.Callback mBroadcasterCallback =
             new BluetoothLeBroadcast.Callback() {
                 @Override
@@ -427,6 +438,23 @@ public class BluetoothProxy {
                     if (mLocalBroadcastEventListener != null) {
                         mLocalBroadcastEventListener.onBroadcastMetadataChanged(
                                 broadcastId, metadata);
+                    }
+                }
+
+                @Override
+                public void onRemoveDeviceDbigComplete(int status, int devId) {
+                    mRemoveDeviceDbigResultMutableLive.postValue(new Pair<>(status, devId));
+                    if (mLocalBroadcastEventListener != null) {
+                        mLocalBroadcastEventListener.onRemoveDeviceDbigComplete(status, devId);
+                    }
+                }
+
+                @Override
+                public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+                    mTexitDbigResultMutableLive.postValue(new Pair<>(broadcastId, status));
+                    if (mLocalBroadcastEventListener != null) {
+                        mLocalBroadcastEventListener.onTexitDbigComplete(broadcastId, dbigHandle,
+                                status);
                     }
                 }
             };
@@ -586,6 +614,7 @@ public class BluetoothProxy {
         mBroadcastPlaybackStoppedMutableLive = new MutableLiveData<>();
         mBroadcastAddedMutableLive = new MutableLiveData();
         mBroadcastRemovedMutableLive = new MutableLiveData<>();
+        mRemoveDeviceDbigResultMutableLive = new MutableLiveData<>();
 
         MutableLiveData<String> mBroadcastStatusMutableLive;
 
@@ -826,6 +855,13 @@ public class BluetoothProxy {
                                     Log.e("BASS", "Application callback already registered.");
                                 }
                                 break;
+                            case BluetoothProfile.LE_AUDIO_BROADCAST_SINK:
+                                Log.d(
+                                        "BluetoothProxy",
+                                        "LE_AUDIO_BROADCAST_SINK Service connected");
+                                mBluetoothLeBroadcastSink =
+                                        (BluetoothLeBroadcastSink) bluetoothProfile;
+                                break;
                         }
                         queryLeAudioDevices();
                     }
@@ -840,6 +876,7 @@ public class BluetoothProxy {
         initHapProxy();
         initLeAudioBroadcastProxy();
         initBassProxy();
+        initBroadcastSinkProxy();
     }
 
     public void cleanupProfiles() {
@@ -851,6 +888,7 @@ public class BluetoothProxy {
         cleanupHapProxy();
         cleanupLeAudioBroadcastProxy();
         cleanupBassProxy();
+        cleanupBroadcastSinkProxy();
 
         profileListener = null;
     }
@@ -947,6 +985,21 @@ public class BluetoothProxy {
             mBluetoothLeBroadcastAssistant.unregisterCallback(mBroadcastAssistantCallback);
             bluetoothAdapter.closeProfileProxy(
                     BluetoothProfile.LE_AUDIO_BROADCAST_ASSISTANT, mBluetoothLeBroadcastAssistant);
+        }
+    }
+
+    private void initBroadcastSinkProxy() {
+        if (mBluetoothLeBroadcastSink == null) {
+            bluetoothAdapter.getProfileProxy(
+                    this.application, profileListener, BluetoothProfile.LE_AUDIO_BROADCAST_SINK);
+        }
+    }
+
+    private void cleanupBroadcastSinkProxy() {
+        if (mBluetoothLeBroadcastSink != null) {
+            bluetoothAdapter.closeProfileProxy(
+                    BluetoothProfile.LE_AUDIO_BROADCAST_SINK, mBluetoothLeBroadcastSink);
+            mBluetoothLeBroadcastSink = null;
         }
     }
 
@@ -1621,9 +1674,40 @@ public class BluetoothProxy {
         return true;
     }
 
+    public boolean startEnhancedBroadcast(BluetoothLeBroadcastSettings settings, float isoInterval) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.startEnhancedBroadcast(settings, isoInterval);
+        return true;
+    }
+
+    public boolean setAttributes(int devId, byte[] name) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.setAttributes(devId, name);
+        return true;
+    }
+
+    public boolean setAttributesForSink(int devId, byte[] name) {
+        if (mBluetoothLeBroadcastSink == null) return false;
+        if (name == null) return false;
+        mBluetoothLeBroadcastSink.setAttributes(devId, name);
+        return true;
+    }
+
+    public boolean setJoinControl(boolean mode) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.setJoinControl(mode);
+        return true;
+    }
+
     public boolean stopBroadcast(int broadcastId) {
         if (mBluetoothLeBroadcast == null) return false;
         mBluetoothLeBroadcast.stopBroadcast(broadcastId);
+        return true;
+    }
+
+    public boolean stopEnhancedBroadcast(int broadcastId, int mode) {
+        if (mBluetoothLeBroadcast == null) return false;
+        mBluetoothLeBroadcast.stopEnhancedBroadcast(broadcastId, mode);
         return true;
     }
 
@@ -1645,6 +1729,53 @@ public class BluetoothProxy {
             return 0;
         }
         return mBluetoothLeBroadcast.getMaximumNumberOfBroadcasts();
+    }
+
+    public int getEnhancedBroadcastCap() {
+        if (mBluetoothLeBroadcast == null) return -1;
+        return mBluetoothLeBroadcast.getEnhancedBroadcastCap();
+    }
+
+    public void removeDeviceFromDbig(int devId, byte[] name, int reason) {
+        if (mBluetoothLeBroadcast == null) return;
+        mBluetoothLeBroadcast.removeDeviceFromDbig(devId, name, reason);
+    }
+
+    /**
+     * Returns LiveData that fires {@code true} exactly once each time Bluetooth turns OFF.
+     * Activities observe this to reset all enhanced broadcast (AuraChat) UI state so that
+     * the next BT-on cycle starts cleanly in both PGO and PGP roles.
+     */
+    public LiveData<Boolean> getBluetoothOffEventLive() {
+        return mBluetoothOffEventMutable;
+    }
+
+    /** Called when BT turns OFF — signals Activities to reset their enhanced broadcast UI state. */
+    private void onBluetoothOff() {
+        // Fire the BT-off event so BroadcasterActivity and BroadcastSinkActivity
+        // reset their own UI state (PGP tracking, BIS state, metadata, dialogs etc.)
+        // Do NOT null-post other LiveData fields — observers dereference values without null checks.
+        mBluetoothOffEventMutable.postValue(true);
+    }
+
+    public LiveData<Pair<Integer, Integer>> getRemoveDeviceDbigResultMutableLive() {
+        return mRemoveDeviceDbigResultMutableLive;
+    }
+
+    /** Accept PGP terminate request (spec §4.9): PGO sends TExitDbig(TERMINATE). */
+    public void acceptTerminateDbig(int broadcastId) {
+        if (mBluetoothLeBroadcast == null) return;
+        mBluetoothLeBroadcast.acceptTerminateDbig(broadcastId);
+    }
+
+    /** Reject PGP terminate request: PGO sends TExitDbig(REJECT_TERMINATE). */
+    public void rejectTerminateDbig(int broadcastId) {
+        if (mBluetoothLeBroadcast == null) return;
+        mBluetoothLeBroadcast.rejectTerminateDbig(broadcastId);
+    }
+
+    public LiveData<Pair<Integer, Integer>> getTexitDbigResultMutableLive() {
+        return mTexitDbigResultMutableLive;
     }
 
     public boolean isPlaying(int broadcastId) {
@@ -1703,5 +1834,10 @@ public class BluetoothProxy {
         void onBroadcastUpdated(int broadcastId);
 
         void onBroadcastMetadataChanged(int broadcastId, BluetoothLeBroadcastMetadata metadata);
+
+        default void onRemoveDeviceDbigComplete(int status, int devId) {}
+
+        /** HCI_VS_LE_Texit_DBIG_Complete on PGO side. status=0 accepted; other = error/rejected. */
+        default void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {}
     }
 }

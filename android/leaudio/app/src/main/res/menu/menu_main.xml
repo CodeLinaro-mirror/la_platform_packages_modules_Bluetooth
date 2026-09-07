@@ -6,4 +6,13 @@
     <item
         android:id="@+id/action_broadcast"
         android:title="@string/action_broadcast"/>
+    <item
+        android:id="@+id/action_broadcast_sink"
+        android:title="@string/action_broadcast_sink"/>
+    <item
+        android:id="@+id/action_set_attributes_sink"
+        android:title="Set Attributes (Sink)"/>
+    <item
+        android:id="@+id/action_set_attributes_source"
+        android:title="Set Attributes (PGO)"/>
 </menu>

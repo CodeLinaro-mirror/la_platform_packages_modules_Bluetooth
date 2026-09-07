@@ -38,6 +38,8 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "bta/hf_client/bta_hf_client_int.h"
+#include "bta/include/bta_hf_client_api.h"
 #include "bta/le_audio/broadcaster/broadcaster_types.h"
 #include "bta/le_audio/le_audio_types.h"
 #include "btm_api_types.h"
@@ -48,11 +50,14 @@
 #include "hci/le_advertising_manager.h"
 #include "hcidefs.h"
 #include "main/shim/le_advertising_manager.h"
+#include "osi/include/properties.h"
 #include "stack/include/btm_iso_api.h"
+#include "stack/include/btm_vendor_api.h"
 #include "types/raw_address.h"
 
 using bluetooth::common::ToString;
 using bluetooth::hci::IsoManager;
+using bluetooth::hci::iso_manager::dbig_create_cmpl_evt;
 using bluetooth::hci::iso_manager::big_create_cmpl_evt;
 using bluetooth::hci::iso_manager::big_terminate_cmpl_evt;
 
@@ -147,7 +152,36 @@ public:
           const override {
     return sm_config_.public_announcement;
   }
+  void SetStreamingDirection(uint8_t direction) override {
+    if (GetBroadcastMode() != BroadcastMode::DUPLEX) {
+      log::error("SetStreamingDirection called on non-DUPLEX broadcast (mode={}). This is unexpected operation!",
+                 static_cast<uint8_t>(sm_config_.broadcast_mode));
+      return;
+    }
+    log::info("Setting streaming direction to 0x{:02X} for broadcast_id={}",
+              direction, sm_config_.broadcast_id);
+    sm_config_.streaming_direction = direction;
+    streaming_direction_ = direction;
+  }
+  uint8_t GetStreamingDirection() const override {
+    if (GetBroadcastMode() != BroadcastMode::DUPLEX) {
+      log::warn("GetStreamingDirection called on non-DUPLEX broadcast (mode={}). This is unexpected operation! Returning NONE.",
+                static_cast<uint8_t>(sm_config_.broadcast_mode));
+      return kStreamingDirectionNone;
+    }
+    return streaming_direction_;
+  }
+  BroadcastMode GetBroadcastMode() const override {
+    return sm_config_.broadcast_mode;
+  }
 
+  uint8_t GetPaInterval() const override {
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      return GetPaIntervalForDuplex();
+    } else {
+      return BroadcastStateMachine::kPaIntervalMax;
+    }
+  }
   void OnCreateAnnouncement(uint8_t advertising_sid, int8_t tx_power, uint8_t status) {
     log::info("advertising_sid={} tx_power={} status={}", advertising_sid, tx_power, status);
 
@@ -251,6 +285,10 @@ public:
 private:
   std::optional<BigConfig> active_config_;
   BroadcastStateMachineConfig sm_config_;
+  /* TExitDbig mode for the current user-initiated stop. Defaults to TERMINATE.
+   * Set from ProcessMessage(STOP, &mode) data so the mode from stopEnhancedBroadcast()
+   * reaches TerminateBig() after the async ISO teardown completes. */
+  uint8_t pending_stop_mode_ = HCI_TEXIT_MODE_TERMINATE;
 
   /* Message handlers for each possible state */
   typedef std::function<void(const void*)> msg_handler_t;
@@ -265,8 +303,34 @@ private:
           [](const void*) { /* Do nothing */ },
           /* in CONFIGURED state */
           [this](const void*) {
+            if (IsResumingAfterCall()) {
+              // BIG is still alive in sync-only mode — do not recreate it.
+              // Send HCI VS DBIG_SYNC_ONLY(0) to re-enable audio data.
+              // The completion callback re-setups ISO data paths.
+              log::info("Resuming after call for broadcast_id={}, disabling sync-only",
+                        GetBroadcastId());
+              using CbFn = void(BroadcastStateMachineImpl*, uint8_t, uint8_t, uint8_t);
+              static CbFn* const kCb = &BroadcastStateMachineImpl::OnSyncOnlyDisableCmpl;
+              // Build a plain C function pointer compatible with dbig_sync_only_cmpl_cb
+              // by binding 'this' via a file-scope trampoline stored as thread_local.
+              // Simpler: use a lambda that captures nothing (convertible to fn ptr) with
+              // a side-channel through a static pointer — matching A14's pattern.
+              static BroadcastStateMachineImpl* s_pending = nullptr;
+              s_pending = this;
+              static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kTrampoline =
+                  [](uint8_t st, uint8_t sub, uint8_t hdl) {
+                    if (s_pending) kCb(s_pending, st, sub, hdl);
+                  };
+              BTM_BleDbigSyncOnly(GetAdvertisingSid(), 0 /* disable */, kTrampoline);
+              return;
+            }
             SetState(State::ENABLING);
-            CreateBig();
+            if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+              CreateDbig();
+            }
+            else{
+              CreateBig();
+            }
           },
           /* in ENABLING state */
           [](const void*) { /* Do nothing */ },
@@ -275,8 +339,15 @@ private:
           /* in STOPPING state */
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
-          [](const void*) { /* Do nothing */ }};
-
+          [this](const void*) {
+             if(GetBroadcastMode() == BroadcastMode::DUPLEX && 
+                IsTxStreaming(GetStreamingDirection()) && 
+                !IsRxStreaming(GetStreamingDirection())){
+                if(active_config_ != std::nullopt){
+                  TriggerIsoDatapathSetup(active_config_->connection_handles[0]);
+                }
+             }
+           }};
   const std::array<msg_handler_t, BroadcastStateMachine::STATE_COUNT> stop_msg_handlers{
           /* in STOPPED state */
           [](const void*) { /* Already stopped */ },
@@ -301,7 +372,8 @@ private:
           /* in STOPPING state */
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
-          [this](const void*) {
+          [this](const void* data) {
+            if (data) pending_stop_mode_ = *static_cast<const uint8_t*>(data);
             SetState(State::STOPPING);
             callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState());
             TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
@@ -324,28 +396,79 @@ private:
           [](const void*) { /* Do nothing */ },
           /* in STREAMING state */
           [this](const void*) {
-            SetState(State::DISABLING);
-            TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+            // During call preemption, do NOT change state — stays STREAMING
+            // until OnSyncOnlyEnableCmpl transitions to CONFIGURED after the
+            // HCI VS command completes. Both the Rx and Tx SUSPEND_STREAM_REQs
+            // come through here; TriggerIsoDatapathTeardown selects the correct
+            // direction (OUTPUT for Rx, INPUT for Tx) based on IsRxStreaming().
+            if (IsSuspendedByCall()) {
+              TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+              return;
+            }
+            if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
+              //Only remove RX ISO_Datapath state will remain streaming.
+              TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+            }
+            else{
+              SetState(State::DISABLING);
+              TriggerIsoDatapathTeardown(active_config_->connection_handles[0]);
+            }
           }};
 
-  const std::array<msg_handler_t, BroadcastStateMachine::STATE_COUNT> resume_msg_handlers{
-          /* in STOPPED state */
-          [](const void*) { /* Do nothing */ },
-          /* in CONFIGURING state */
-          [](const void*) { /* Do nothing */ },
-          /* in CONFIGURED state */
-          [this](const void*) {
-            SetState(State::ENABLING);
-            CreateBig();
-          },
-          /* in ENABLING state */
-          [](const void*) { /* Do nothing */ },
-          /* in DISABLING state */
-          [](const void*) { /* Do nothing */ },
-          /* in STOPPING state */
-          [](const void*) { /* Do nothing */ },
-          /* in STREAMING state */
-          [](const void*) { /* Already streaming */ }};
+  // Static callback invoked when HCI VS DBIG_SYNC_ONLY(enable=1) completes
+  // during call preemption. Only now do we transition to CONFIGURED — the
+  // state machine stays in STREAMING until this fires (matching A14 behaviour).
+  static void OnSyncOnlyEnableCmpl(BroadcastStateMachineImpl* self,
+                                   uint8_t status, uint8_t /*sub_opcode*/,
+                                   uint8_t /*dbig_handle*/) {
+    if (status != 0) {
+      log::error("DBIG_SYNC_ONLY enable failed, status=0x{:02x}. Terminating BIG.", status);
+      self->SetSuspendedByCall(false);
+      self->TerminateBig();
+      return;
+    }
+    log::info("DBIG_SYNC_ONLY enabled for broadcast_id={}, moving to CONFIGURED",
+              self->GetBroadcastId());
+    self->SetSuspendedByCall(false);
+    // ISO paths (TX and RX) were just torn down for sync-only. Reset the streaming
+    // direction so the resume's ISO re-setup starts from NONE and correctly walks
+    // NONE -> TX -> Bidirectional in OnSetupIsoDataPath (mirroring the fresh-start
+    // sequence), instead of reading a stale Bidirectional value left over from
+    // before the call and wrongly concluding RX is already set up — which acks
+    // the wrong HAL client (sink instead of source) for the resumed TX start.
+    if (self->GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      self->SetStreamingDirection(kStreamingDirectionNone);
+    }
+    // Equivalent to A14's SYNC_ONLY_MODE_ON_EVT handler:
+    // notify HF client stack that broadcast is now in sync-only (INACTIVE)
+    // so any parked SCO (VR usecase) is accepted and processed.
+    BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_INACTIVE);
+    self->SetState(State::CONFIGURED);
+    self->callbacks_->OnStateMachineEvent(self->GetBroadcastId(), self->GetState(), nullptr);
+    // Notify upper layer that sync-only mode is now fully active.
+    // ISO paths are removed and the controller is idle — safe to send AT+BCC.
+    self->callbacks_->OnSyncOnlyModeActive(self->GetBroadcastId());
+  }
+
+  // Static callback invoked when HCI VS DBIG_SYNC_ONLY(enable=0) completes
+  // after a call ends. Re-setups ISO data paths on the existing BIG.
+  static void OnSyncOnlyDisableCmpl(BroadcastStateMachineImpl* self,
+                                    uint8_t status, uint8_t /*sub_opcode*/,
+                                    uint8_t /*dbig_handle*/) {
+    if (status != 0) {
+      log::error("DBIG_SYNC_ONLY disable failed, status=0x{:02x}. Falling back to full restart.",
+                 status);
+      self->SetResumingAfterCall(false);
+      self->SetState(State::ENABLING);
+      self->CreateBig();
+      return;
+    }
+    log::info("DBIG_SYNC_ONLY disabled for broadcast_id={}, re-setting up ISO data paths",
+              self->GetBroadcastId());
+    self->SetResumingAfterCall(false);
+    self->SetState(State::ENABLING);
+    self->TriggerIsoDatapathSetup(self->active_config_->connection_handles[0]);
+  }
 
   void OnAddressResponse(uint8_t addr_type, RawAddress addr) {
     log::info("own address={}, type={}", addr, addr_type);
@@ -354,6 +477,11 @@ private:
 
     /* Ext. advertisings are already on */
     SetState(State::CONFIGURED);
+
+    // Normal BIG create complete → arm SCO guard (not during preemption resume).
+    if (!IsSuspendedByCall() && !IsResumingAfterCall()) {
+      BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE);
+    }
 
     callbacks_->OnStateMachineCreateStatus(GetBroadcastId(), true);
     callbacks_->OnStateMachineEvent(GetBroadcastId(), State::CONFIGURED);
@@ -381,15 +509,40 @@ private:
       adv_params.max_interval = 0x0140; /* 320 * 0,625 = 200ms */
       adv_params.advertising_event_properties = 0;
       adv_params.channel_map = kAdvertisingChannelAll;
-      adv_params.tx_power = 8;
-      adv_params.primary_advertising_phy = PHY_LE_1M;
-      adv_params.secondary_advertising_phy = streaming_phy;
+
+      // Read tx_power from system property, defaulting to 8
+      char value[PROPERTY_VALUE_MAX] = {'\0'};
+      osi_property_get("persist.vendor.service.bt.txpower", value, "8");
+      log::info("tx_power={}", adv_params.tx_power);
+      adv_params.tx_power = atoi(value);
+
+      bool mBroadCastMode = (sm_config_.broadcast_mode == BroadcastMode::DUPLEX);
+      bool mBroadCastCodedPhy = IsCodedPhyEnabled();
+      if (mBroadCastMode && mBroadCastCodedPhy) {
+        log::info("Setting coded phy for DUPLEX broadcast");
+        adv_params.primary_advertising_phy = PHY_LE_CODED;
+        adv_params.secondary_advertising_phy = PHY_LE_CODED;
+      } else {
+        adv_params.primary_advertising_phy = PHY_LE_1M;
+        adv_params.secondary_advertising_phy = streaming_phy;
+      }
+      log::info("Advertising PHYs: primary={}, secondary={}",
+                adv_params.primary_advertising_phy, adv_params.secondary_advertising_phy);
+
       adv_params.scan_request_notification_enable = 0;
       adv_params.own_address_type = kBroadcastAdvertisingType;
 
-      periodic_params.max_interval = BroadcastStateMachine::kPaIntervalMax;
-      periodic_params.min_interval = BroadcastStateMachine::kPaIntervalMin;
-      periodic_params.periodic_advertising_properties = 0;
+      if (sm_config_.broadcast_mode == BroadcastMode::DUPLEX) {
+        uint16_t pa_interval = GetPaIntervalForDuplex();
+        periodic_params.max_interval = pa_interval;
+        periodic_params.min_interval = pa_interval;
+        periodic_params.periodic_advertising_properties = 0x40;  // Bit 6: Include TxPower
+        log::info("Duplex mode: PA interval={} ({}ms)", pa_interval, (pa_interval * 1.25));
+      } else {
+        periodic_params.max_interval = BroadcastStateMachine::kPaIntervalMax;
+        periodic_params.min_interval = BroadcastStateMachine::kPaIntervalMin;
+        periodic_params.periodic_advertising_properties = 0;
+      }
       periodic_params.enable = true;
 
       /* Status and timeout callbacks are handled by OnAdvertisingSetStarted()
@@ -414,6 +567,74 @@ private:
                            base::DoNothing());
   }
 
+  // Helper function to determine if Coded PHY is enabled for duplex broadcast
+  bool IsCodedPhyEnabled() const {
+    if (GetBroadcastMode() != BroadcastMode::DUPLEX) {
+      return false;
+    }
+    return osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+  }
+
+  // Helper function to get transport latency from property or config
+  // For DUPLEX mode: reads property persist.vendor.btstack.transport_latency
+  // For Auracast: uses config value only
+  uint16_t GetTransportLatency() const {
+    uint16_t mtl;
+
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      // DUPLEX mode: Read from property (overrides config value)
+      mtl = (uint16_t)osi_property_get_int32("persist.vendor.btstack.transport_latency", 0);
+
+      // If property is 0, use value from config as fallback
+      if (mtl == 0) {
+        mtl = sm_config_.config.qos.getMaxTransportLatency();
+      }
+    } else {
+      // Auracast: Always use config value
+      mtl = sm_config_.config.qos.getMaxTransportLatency();
+    }
+
+    return mtl;
+  }
+
+  // Helper function to calculate PA interval based on transport latency and PHY type
+  // PA Interval format: value * 1.25ms (e.g., 72 * 1.25ms = 90ms)
+  // Reads property persist.vendor.btstack.transport_latency
+  uint16_t GetPaIntervalForDuplex() const {
+    uint16_t mtl = GetTransportLatency();
+    bool coded_phy = IsCodedPhyEnabled();
+
+    log::info("transport_latency={} ms, coded_phy={}", mtl, coded_phy);
+
+    if (coded_phy) {
+      // Coded PHY: transport_latency = 15ms / 25ms / 35ms
+      if (mtl == 15) {
+        return 72;  // 72 * 1.25ms = 90ms
+      } else if (mtl == 25 || mtl == 35) {
+        return 96;  // 96 * 1.25ms = 120ms
+      }
+    } else {
+      // LE2M PHY: transport_latency = 10ms / 20ms / 30ms
+      if (mtl == 10) {
+        return 72;  // 72 * 1.25ms = 90ms
+      } else if (mtl == 20 || mtl == 30) {
+        return 96;  // 96 * 1.25ms = 120ms
+      }
+    }
+
+    // Default fallback
+    log::warn("Unmatched transport_latency/PHY combination (mtl={}, coded={}), using default PA interval 90ms", mtl, coded_phy);
+    return BroadcastStateMachine::kPaIntervalDuplex;
+  }
+
+  // Helper function to get number of BIS based on PHY type for duplex mode
+  uint8_t GetNumBisForDuplex() const {
+    bool coded_phy = IsCodedPhyEnabled();
+    uint8_t num_bis = coded_phy ? 3 : 4;  // 3 BIS for Coded PHY, 4 for LE2M
+    log::info("Number of BIS for duplex mode: {}, coded_phy={}", num_bis, coded_phy);
+    return num_bis;
+  }
+
   void CreateBig(void) {
     log::info("broadcast_id={}", GetBroadcastId());
     /* TODO: Figure out how to decide on the currently hard-codded params. */
@@ -422,7 +643,7 @@ private:
             .num_bis = sm_config_.config.GetNumBisTotal(),
             .sdu_itv = sm_config_.config.GetSduIntervalUs(),
             .max_sdu_size = sm_config_.config.GetMaxSduOctets(),
-            .max_transport_latency = sm_config_.config.qos.getMaxTransportLatency(),
+            .max_transport_latency = GetTransportLatency(),  // Read from property
             .rtn = sm_config_.config.qos.getRetransmissionNumber(),
             .phy = sm_config_.streaming_phy,
             .packing = 0x01, /* Interleaved */
@@ -431,20 +652,66 @@ private:
             .enc_code = sm_config_.broadcast_code ? *sm_config_.broadcast_code
                                                   : std::array<uint8_t, 16>({0}),
     };
+    if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+      big_params.packing = 0x00;  // Sequential packing for duplex
+      big_params.num_bis = GetNumBisForDuplex();  // 3 for Coded PHY, 4 for LE2M
 
+      // Configure PHY and RTN based on Coded PHY property
+      if (IsCodedPhyEnabled()) {
+        big_params.phy = PHY_LE_CODED;  // PHY = 4 (Coded S2)
+        big_params.rtn = 0;  // RTN = 0 for Coded PHY
+        log::info("Duplex mode: Using Coded PHY (S2), PHY=4, RTN=0");
+      } else {
+        big_params.phy = PHY_LE_2M;  // PHY = 2 (LE2M)
+        big_params.rtn = 1;  // RTN = 1 for LE2M
+        log::info("Duplex mode: Using LE2M PHY, PHY=2, RTN=1");
+      }
+    }
+    log::info("Number of BISES={}, PHY={}, RTN={}, max_transport_latency={}",
+              big_params.num_bis, big_params.phy, big_params.rtn, big_params.max_transport_latency);
     IsoManager::GetInstance()->CreateBig(GetAdvertisingSid(), std::move(big_params));
   }
-
+  void CreateDbig(void) {
+    log::info("broadcast_id={}, creating DBIG for duplex mode", GetBroadcastId());
+    // All params were pre-seeded in ReadSupportedStates() with calculated bis_control_event_interval.
+    // The handle is updated dynamically here.
+    auto params = IsoManager::GetInstance()->GetStoredDbigParams();
+    params.dbig_handle = GetAdvertisingSid();
+    log::info("DBIG params: handle={}, bis_control_event_interval={}",
+              params.dbig_handle, params.bis_control_event_interval);
+    IsoManager::GetInstance()->CreateDbig(std::move(params));
+  }
   void DisableAnnouncement(void) {
     log::info("broadcast_id={}", GetBroadcastId());
     // Callback is handled by OnAdvertisingEnabled() which returns the status
     advertiser_if_->Enable(GetAdvertisingSid(), false, base::DoNothing(), 0, 0, base::DoNothing());
   }
 
-  void TerminateBig() {
-    log::info("disabling={}", GetState() == BroadcastStateMachine::State::DISABLING);
-    /* Terminate with reason: Remote User Terminated Connection */
-    IsoManager::GetInstance()->TerminateBig(GetAdvertisingSid(), 0x13);
+  void TerminateBig(uint8_t mode = HCI_TEXIT_MODE_TERMINATE) {
+    log::info("mode=0x{:02x}, disabling={}", mode,
+              GetState() == BroadcastStateMachine::State::DISABLING);
+    if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+      /* For DUPLEX, send HCI_VS_LE_Texit_DBIG with the supplied mode.
+       * Mode meanings for PGO role:
+       *   TERMINATE (0x02) — PGO terminates the entire DBIG group for all members
+       *   EXIT      (0x01) — PGO gracefully exits without affecting other members (future)
+       * Note: removing a specific PGP from the DBIG is a separate operation via
+       *   HCI_VS_LE_Remove_Device_DBIG, handled by RemoveDeviceDbig() — not this path.
+       * The mode is propagated from stopEnhancedBroadcast(mode) via pending_stop_mode_.
+       * Error/cleanup paths pass HCI_TEXIT_MODE_TERMINATE explicitly. */
+      bluetooth::hci::iso_manager::dbig_texit_params params{
+        .dbig_handle = static_cast<uint8_t>(GetAdvertisingSid()),
+        .texit_mode  = mode,
+        .reason      = 0x13,
+        .p_cb        = nullptr
+      };
+      log::info("TerminateBig: DUPLEX — TExitDbig dbig_handle={}, texit_mode=0x{:02x}",
+                params.dbig_handle, params.texit_mode);
+      IsoManager::GetInstance()->TExitDbig(params);
+    } else {
+      /* Standard broadcast: unchanged — HCI_BLE_TERMINATE_BIG */
+      IsoManager::GetInstance()->TerminateBig(GetAdvertisingSid(), 0x13);
+    }
   }
 
   void OnSetupIsoDataPath(uint8_t status, uint16_t conn_hdl) override {
@@ -477,6 +744,18 @@ private:
       }
       /* It was the last BIS to set up - change state to streaming */
       SetState(State::STREAMING);
+      // Broadcast is now live — arm the SCO guard so any SCO arriving while
+      // streaming is rejected until the broadcast properly suspends.
+      BTA_HfClientDupBroadcastStateChanged(BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE);
+      if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+        uint8_t current_direction = GetStreamingDirection();
+        if(current_direction == kStreamingDirectionNone){
+          SetStreamingDirection(kStreamingDirectionTx);
+        }
+        else if(current_direction == kStreamingDirectionTx){
+          SetStreamingDirection(kStreamingDirectionBidirectional);
+        }
+      }
       callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), nullptr);
     } else {
       /* Note: We would feed a watchdog here if we had one */
@@ -506,7 +785,33 @@ private:
 
     if (handle_it == active_config_->connection_handles.end()) {
       /* It was the last one to set up - start tearing down the BIG */
-      TerminateBig();
+      if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
+        log::info("RX teardown complete for broadcast_id={}, sending ACK", GetBroadcastId());
+        // Remove RX streaming direction (only TX remains active)
+        SetStreamingDirection(GetStreamingDirection() & ~kStreamingDirectionRx);
+        callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), this);
+        return;
+      }
+      // If this ISO teardown was triggered by call preemption, do NOT terminate
+      // the BIG. Send HCI VS DBIG_SYNC_ONLY(enable=1) and wait for the command
+      // complete before transitioning — state stays STREAMING until then,
+      // matching A14 behaviour (BTIF_BAP_BROADCAST_SYNC_ONLY_MODE_ON_EVT).
+      if (IsSuspendedByCall()) {
+        log::info("Call preemption: ISO paths removed for broadcast_id={}, "
+                  "sending DBIG_SYNC_ONLY(1), waiting for cmd cmpl",
+                  GetBroadcastId());
+        static BroadcastStateMachineImpl* s_enable_pending = nullptr;
+        s_enable_pending = this;
+        static bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* kEnableTrampoline =
+            [](uint8_t st, uint8_t sub, uint8_t hdl) {
+              if (s_enable_pending)
+                OnSyncOnlyEnableCmpl(s_enable_pending, st, sub, hdl);
+            };
+        BTM_BleDbigSyncOnly(GetAdvertisingSid(), 1 /* enable */, kEnableTrampoline);
+        // Do NOT change state here — wait for OnSyncOnlyEnableCmpl.
+        return;
+      }
+      TerminateBig(pending_stop_mode_);
     } else {
       /* Note: We would feed a watchdog here if we had one */
       /* There are more BISes to tear down data path for */
@@ -541,6 +846,9 @@ private:
             .controller_delay = iso_datapath_config.controllerDelayUs,
             .codec_conf = iso_datapath_config.configuration,
     };
+    if(GetBroadcastMode() == BroadcastMode::DUPLEX && GetState() == BroadcastStateMachine::State::STREAMING){
+      param.data_path_dir = bluetooth::hci::iso_manager::kIsoDataPathDirectionOut;
+    }
     IsoManager::GetInstance()->SetupIsoDataPath(conn_handle, std::move(param));
   }
 
@@ -550,8 +858,30 @@ private:
                      "assert failed: active_config_ != std::nullopt");
 
     SetMuted(true);
+    if(GetBroadcastMode() == BroadcastMode::DUPLEX && IsRxStreaming(GetStreamingDirection())){
+          IsoManager::GetInstance()->RemoveIsoDataPath(
+            conn_handle, bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionOutput);
+            return;
+      }
     IsoManager::GetInstance()->RemoveIsoDataPath(
             conn_handle, bluetooth::hci::iso_manager::kRemoveIsoDataPathDirectionInput);
+  }
+
+  void HandleTexitDbigCmpl() override {
+    log::info("HandleTexitDbigCmpl: state={}", ToString(GetState()));
+    if (GetState() == BroadcastStateMachine::State::STOPPING ||
+        GetState() == BroadcastStateMachine::State::DISABLING) {
+      /* TExitDbig was sent by StopEnhancedAudioBroadcast — proceed with
+       * announcement teardown exactly as HCI_BLE_TERM_BIG_CPL_EVT does.
+       * Handles both STOPPING (explicit user stop) and DISABLING (the
+       * 0ms big_terminate_timer_ fired SuspendAudioBroadcasts() which put
+       * the state into DISABLING before the STOP message arrived). */
+      active_config_ = std::nullopt;
+      if (GetBroadcastMode() == BroadcastMode::DUPLEX) {
+        SetStreamingDirection(kStreamingDirectionNone);
+      }
+      DisableAnnouncement();
+    }
   }
 
   void HandleHciEvent(uint16_t event, void* data) override {
@@ -585,7 +915,7 @@ private:
           if (GetState() == BroadcastStateMachine::State::DISABLING ||
               GetState() == BroadcastStateMachine::State::STOPPING) {
             log::info("Terminating BIG in state={}, big_id={}", ToString(GetState()), evt->big_id);
-            TerminateBig();
+            TerminateBig(pending_stop_mode_);
           } else {
             callbacks_->OnBigCreated(evt->conn_handles);
             TriggerIsoDatapathSetup(evt->conn_handles[0]);
@@ -594,6 +924,23 @@ private:
           log::error("State={} Event={}. Unable to create big, big_id={}, status={}",
                      ToString(GetState()), event, evt->big_id, evt->status);
         }
+      } break;
+      case HCI_VS_LE_DBIG_CREATE_CPL_EVT: {
+          auto* evt = static_cast<dbig_create_cmpl_evt*>(data);
+          if (evt->dbig_handle != GetAdvertisingSid()) {
+            log::error("State={}, Event={}, Unknown dbig, dbig_handle={}", ToString(GetState()), event,
+                      evt->dbig_handle);
+            break;
+          }
+          if (evt->status == 0x00) {
+            log::info("DBIG create complete, big_id={}", evt->dbig_handle);
+            CreateBig();
+          } else {
+            log::error("State={} Event={}. Unable to create dbig, big_id={}, status={}",
+                      ToString(GetState()), event, evt->dbig_handle, evt->status);
+            // Handle DBIG creation failure
+            //callbacks_->OnStateMachineEvent(GetBroadcastId(), GetState(), evt);
+          }
       } break;
       case HCI_BLE_TERM_BIG_CPL_EVT: {
         auto* evt = static_cast<big_terminate_cmpl_evt*>(data);
@@ -609,7 +956,9 @@ private:
 
         active_config_ = std::nullopt;
         bool disabling = GetState() == BroadcastStateMachine::State::DISABLING;
-
+        if(GetBroadcastMode() == BroadcastMode::DUPLEX){
+          SetStreamingDirection(kStreamingDirectionNone);
+        }
         /* Go back to configured if BIG is inactive (we are still announcing) and state is not
          * stopping*/
         if (GetState() != BroadcastStateMachine::State::STOPPING) {

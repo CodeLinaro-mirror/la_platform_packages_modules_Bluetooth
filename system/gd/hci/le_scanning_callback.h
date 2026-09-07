@@ -84,6 +84,16 @@ public:
   virtual void OnPeriodicSyncLost(uint16_t sync_handle) = 0;
   virtual void OnPeriodicSyncTransferred(int pa_source, uint8_t status, Address address) = 0;
   virtual void OnBigInfoReport(uint16_t sync_handle, bool encrypted) = 0;
+
+  /**
+   * Extended BIG info report — passes the full controller parameters.
+   * Default implementation is empty so existing subclasses are not broken.
+   */
+  virtual void OnBigInfoReportFull(uint16_t /* sync_handle */,
+                                   uint16_t /* iso_interval */,
+                                   uint8_t  /* phy */,
+                                   uint8_t  /* num_bis */,
+                                   bool     /* encrypted */) {}
   virtual bool OnFetchPseudoAddressFromIdentityAddress(Address address, uint8_t address_type,
                                                        Address* pseudo_address) = 0;
 };

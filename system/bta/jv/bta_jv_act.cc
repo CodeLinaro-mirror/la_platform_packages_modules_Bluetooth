@@ -1561,13 +1561,6 @@ void bta_jv_rfcomm_connect(tBTA_SEC sec_mask, uint8_t remote_scn, const RawAddre
                   },
   };
 
-  // Update security service record for RFCOMM client so that
-  // secure RFCOMM connection will be authenticated with MTIM protection
-  // while creating the L2CAP connection.
-  get_btm_client_interface().security.BTM_SetSecurityLevel(true, "RFC_MUX", BTM_SEC_SERVICE_RFC_MUX,
-                                                           sec_mask, BT_PSM_RFCOMM,
-                                                           BTM_SEC_PROTO_RFCOMM, 0);
-
   port_status = RFCOMM_CreateConnectionWithSecurity(UUID_SERVCLASS_SERIAL_PORT, remote_scn, false,
                                                     BTA_JV_DEF_RFC_MTU, peer_bd_addr, &handle,
                                                     bta_jv_port_mgmt_cl_cback, sec_mask, cfg);
@@ -2086,17 +2079,9 @@ static void bta_jv_pm_conn_congested(tBTA_JV_PM_CB* p_cb) {
  ******************************************************************************/
 static void bta_jv_pm_conn_busy(tBTA_JV_PM_CB* p_cb) {
   if ((NULL != p_cb) && (BTA_JV_PM_IDLE_ST == p_cb->state)) {
-    tBTM_PM_MODE mode = BTM_PM_MD_ACTIVE;
-    if (BTM_ReadPowerMode(p_cb->peer_bd_addr, &mode)) {
-      if (mode == BTM_PM_MD_SNIFF) {
-        bta_jv_pm_state_change(p_cb, BTA_JV_CONN_BUSY);
-      } else {
-        p_cb->state = BTA_JV_PM_BUSY_ST;
-        log::verbose("bta_jv_pm_conn_busy:power mode: {}", mode);
-      }
-    } else {
-      bta_jv_pm_state_change(p_cb, BTA_JV_CONN_BUSY);
-    }
+    log::verbose("bta_jv_pm_conn_busy() cancel jv idle timer, send conn busy state to DM");
+    alarm_cancel(p_cb->idle_timer);
+    bta_jv_pm_state_change(p_cb, BTA_JV_CONN_BUSY);
   }
 }
 

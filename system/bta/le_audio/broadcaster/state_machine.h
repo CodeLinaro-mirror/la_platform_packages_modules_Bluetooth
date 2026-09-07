@@ -102,6 +102,33 @@ struct BigConfig {
   std::vector<uint16_t> connection_handles;
 };
 
+enum class BroadcastMode : uint8_t {
+  STANDARD = 0,
+  DUPLEX = 1,
+};
+
+// Streaming direction bit flags for duplex broadcast
+static constexpr uint8_t kStreamingDirectionNone = 0x00;  // No streaming
+static constexpr uint8_t kStreamingDirectionTx = 0x01;    // TX streaming (bit 0)
+static constexpr uint8_t kStreamingDirectionRx = 0x02;    // RX streaming (bit 1)
+static constexpr uint8_t kStreamingDirectionBidirectional = 0x03;  // Both TX and RX streaming (bits 0 and 1)
+
+inline bool IsTxStreaming(uint8_t direction) {
+  return (direction & kStreamingDirectionTx) != 0;
+}
+
+inline bool IsRxStreaming(uint8_t direction) {
+  return (direction & kStreamingDirectionRx) != 0;
+}
+
+inline bool IsBidirectionalStreaming(uint8_t direction) {
+  return direction == kStreamingDirectionBidirectional;
+}
+
+inline bool IsValidStreamingDirection(uint8_t direction) {
+  return direction <= kStreamingDirectionBidirectional;
+}
+
 struct BroadcastStateMachineConfig {
   bool is_public;
   bluetooth::le_audio::BroadcastId broadcast_id;
@@ -111,6 +138,8 @@ struct BroadcastStateMachineConfig {
   bluetooth::le_audio::PublicBroadcastAnnouncementData public_announcement;
   bluetooth::le_audio::BasicAudioAnnouncementData announcement;
   std::optional<bluetooth::le_audio::BroadcastCode> broadcast_code;
+  BroadcastMode broadcast_mode = BroadcastMode::STANDARD;
+  uint8_t streaming_direction = kStreamingDirectionNone;
 };
 
 class BroadcastStateMachine : public StateMachine<7> {
@@ -118,6 +147,7 @@ public:
   static constexpr uint8_t kAdvSidUndefined = 0xFF;
   static constexpr uint8_t kPaIntervalMax = 0xA0; /* 160 * 0.625 = 100ms */
   static constexpr uint8_t kPaIntervalMin = 0x50; /* 80 * 0.625 = 50ms */
+  static constexpr uint8_t kPaIntervalDuplex = 0x48; /* 72 * 1.25ms = 90ms - AuraChat */
   // LEA broadcast assigned register id, use positive number 0x1
   // this should not matter since
   // le_advertising_manager will maintain the reg_id together with client_id
@@ -153,7 +183,7 @@ public:
   inline State GetState(void) const { return static_cast<State>(StateMachine::GetState()); }
 
   virtual uint8_t GetAdvertisingSid() const { return advertising_sid_; }
-  virtual uint8_t GetPaInterval() const { return kPaIntervalMax; }
+  virtual uint8_t GetPaInterval() const = 0;  // Override in implementation to return actual PA interval
 
   virtual bool Initialize() = 0;
   virtual const std::vector<BroadcastSubgroupCodecConfig>& GetCodecConfig() const = 0;
@@ -184,9 +214,31 @@ public:
   void SetMuted(bool muted) { is_muted_ = muted; }
   bool IsMuted() const { return is_muted_; }
 
+  // Call-preemption state for sync-only mode.
+  // SetSuspendedByCall(true)  — set BEFORE achat_rx/tx_enable=false so that
+  //   OnRemoveIsoDataPath skips TerminateBig and sends HCI VS DBIG_SYNC_ONLY(1).
+  // SetSuspendedByCall(false) — set on call-end so that the CONFIGURED resume
+  //   path sends HCI VS DBIG_SYNC_ONLY(0) + re-setups ISOs instead of CreateBig.
+  void SetSuspendedByCall(bool suspended) {
+    suspended_by_call_ = suspended;
+    resuming_after_call_ = false;
+  }
+  bool IsSuspendedByCall() const { return suspended_by_call_; }
+  void SetResumingAfterCall(bool resuming) {
+    resuming_after_call_ = resuming;
+    suspended_by_call_ = false;
+  }
+  bool IsResumingAfterCall() const { return resuming_after_call_; }
+
+  virtual void SetStreamingDirection(uint8_t direction) = 0;
+  virtual uint8_t GetStreamingDirection() const = 0;
+  virtual BroadcastMode GetBroadcastMode() const = 0;
+
   virtual void HandleHciEvent(uint16_t event, void* data) = 0;
   virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
   virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle) = 0;
+  /* Called by broadcaster when TExitDbig_Complete is received in STOPPING or DISABLING state. */
+  virtual void HandleTexitDbigCmpl() = 0;
 
   virtual void ProcessMessage(Message event, const void* data = nullptr) = 0;
   virtual ~BroadcastStateMachine() {}
@@ -200,6 +252,9 @@ protected:
 
   uint8_t advertising_sid_ = kAdvSidUndefined;
   bool is_muted_ = false;
+  uint8_t streaming_direction_ = kStreamingDirectionNone;
+  bool suspended_by_call_ = false;
+  bool resuming_after_call_ = false;
 
   RawAddress addr_ = RawAddress::kEmpty;
   uint8_t addr_type_ = 0;
@@ -217,6 +272,9 @@ public:
                                     RawAddress address) = 0;
   virtual void OnBigCreated(const std::vector<uint16_t>& conn_handle) = 0;
   virtual void OnAnnouncementUpdated(uint32_t broadcast_id) = 0;
+  // Fired when HCI VS DBIG_SYNC_ONLY(enable=1) completes — ISO paths removed,
+  // controller idle, safe to send AT+BCC for SCO setup.
+  virtual void OnSyncOnlyModeActive(uint32_t broadcast_id) = 0;
 };
 
 std::ostream& operator<<(

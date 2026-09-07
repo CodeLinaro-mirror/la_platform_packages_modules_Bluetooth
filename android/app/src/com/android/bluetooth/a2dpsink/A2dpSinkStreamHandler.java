@@ -89,6 +89,7 @@ public class A2dpSinkStreamHandler extends Handler {
     private final Context mContext;
     private final A2dpSinkNativeInterface mNativeInterface;
     private final AudioManager mAudioManager;
+    private BluetoothDevice mMMActiveDevice = null;
 
     // Keep track if the remote device is providing audio
     private boolean mStreamAvailable = false;
@@ -200,24 +201,34 @@ public class A2dpSinkStreamHandler extends Handler {
 
             case SET_ACTIVE:
                 if (mAudioManager != null) {
+                    mMMActiveDevice = (BluetoothDevice) message.obj;
                     mAudioManager.handleBluetoothActiveDeviceChanged(
-                            (BluetoothDevice) message.obj,
+                            mMMActiveDevice,
                             null,
                             BluetoothProfileConnectionInfo.createA2dpSinkInfo(-1));
                 }
                 break;
 
             case REMOVE_ACTIVE:
-                if (mAudioManager != null) {
+                BluetoothDevice removedDevice = (BluetoothDevice) message.obj;
+                if (mAudioManager != null
+                        && mMMActiveDevice != null
+                        && mMMActiveDevice.equals(removedDevice)) {
                     mAudioManager.handleBluetoothActiveDeviceChanged(
                             null,
-                            (BluetoothDevice) message.obj,
+                            removedDevice,
                             BluetoothProfileConnectionInfo.createA2dpSinkInfo(-1));
+                    mMMActiveDevice = null;
+                } else {
+                    Log.d(TAG, "REMOVE_ACTIVE: " + removedDevice
+                            + " is not the current active device (" + mMMActiveDevice
+                            + "), skipping");
                 }
                 break;
 
             case DISCONNECT:
                 // Remote device has disconnected, restore everything to default state.
+                mMMActiveDevice = null;
                 mStreamAvailable = false;
                 break;
 

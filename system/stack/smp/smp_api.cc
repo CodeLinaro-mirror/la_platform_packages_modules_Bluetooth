@@ -170,7 +170,15 @@ bool SMP_PairCancel(const RawAddress& bd_addr) {
   tSMP_CB* p_cb = &smp_cb;
 
   log::verbose("state={} flag=0x{:x}", p_cb->state, p_cb->flags);
-  if (p_cb->state != SMP_STATE_IDLE && p_cb->pairing_bda == bd_addr) {
+
+  // An outgoing bond was initiated (WE_STARTED_DD set) but the LE link is not up
+  // yet, so SMP state is still IDLE. Honor the cancel here too, otherwise the
+  // fixed channel leaks and BTM stays stuck in WAIT_AUTH_COMPLETE until timeout.
+  bool started_but_not_connected =
+          (p_cb->state == SMP_STATE_IDLE) && (p_cb->flags & SMP_PAIR_FLAGS_WE_STARTED_DD);
+
+  if (((p_cb->state != SMP_STATE_IDLE) || started_but_not_connected) &&
+      p_cb->pairing_bda == bd_addr) {
     p_cb->is_pair_cancel = true;
     log::verbose("set fail reason Unknown");
     tSMP_INT_DATA smp_int_data;
@@ -182,7 +190,7 @@ bool SMP_PairCancel(const RawAddress& bd_addr) {
   return false;
 }
 /*******************************************************************************
- *
+*
  * Function         SMP_SecurityGrant
  *
  * Description      This function is called to grant security process.
@@ -196,7 +204,32 @@ bool SMP_PairCancel(const RawAddress& bd_addr) {
  *
  ******************************************************************************/
 void SMP_SecurityGrant(const RawAddress& bd_addr, tSMP_STATUS res) {
-  log::verbose("addr:{}", bd_addr);
+  log::verbose("bd_addr:{} res:{} br_state:{} cb_evt:{} pairing_bda:{} assoc_model:{}", bd_addr,
+               res, smp_cb.br_state, smp_cb.cb_evt, smp_cb.pairing_bda,
+               smp_cb.selected_association_model);
+
+  if (smp_cb.pairing_bda == bd_addr &&
+      (smp_cb.selected_association_model == SMP_MODEL_SEC_CONN_PASSKEY_DISP ||
+       smp_cb.selected_association_model == SMP_MODEL_KEY_NOTIF)) {
+    if (res == SMP_SUCCESS) {
+      // Passkey/Entry pairing approved
+      smp_cb.passkey_display_state.approved = true;
+      if (smp_cb.passkey_display_state.confirmed) {
+        log::verbose("Passkey/Display pairing approved {}", smp_cb.pairing_bda);
+        tSMP_INT_DATA smp_int_data;
+        smp_int_data.key = {.key_type = SMP_KEY_TYPE_TK, .p_data = smp_cb.tk.data()};
+        smp_sm_event(&smp_cb, SMP_KEY_READY_EVT, &smp_int_data);
+      } else {
+        log::verbose("Waiting for {} to enter passkey", smp_cb.pairing_bda);
+      }
+    } else {
+      // Passkey/Entry pairing rejected
+      tSMP_INT_DATA smp_int_data;
+      smp_int_data.status = SMP_PAIR_AUTH_FAIL;
+      smp_sm_event(&smp_cb, SMP_AUTH_CMPL_EVT, &smp_int_data);
+    }
+    return;
+  }
 
   // If just showing consent dialog, send response
   if (smp_cb.cb_evt == SMP_CONSENT_REQ_EVT) {

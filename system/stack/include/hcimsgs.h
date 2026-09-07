@@ -252,10 +252,67 @@ void btsnd_hcic_vendor_spec_cmd(uint16_t opcode, uint8_t len, uint8_t* p_data,
 #define HCIC_BLE_CHNL_MAP_SIZE 5
 #define HCIC_PARAM_SIZE_BLE_READ_PHY 2
 #define HCIC_PARAM_SIZE_BLE_SET_PHY 7
+#define HCI_PARAM_SIZE_CREATE_DBIG 15
+#define HCI_PARAM_SIZE_CREATE_BIG_SYNC 24
+#define HCI_PARAM_SIZE_TERMINATE_BIG_SYNC 1
+#define HCI_PARAM_SIZE_SET_DEVID 13
+#define HCI_PARAM_SIZE_TEXIT_DBIG 4
+#define HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG 15
 
 extern void btsnd_hcic_flow_spec(uint16_t handle, uint8_t unused, uint8_t direction,
                                  uint8_t service_type, uint32_t token_rate, uint32_t token_size,
                                  uint32_t peak, uint32_t latency);
+                                 
+extern void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
+                                   uint8_t dbig_feature_set,
+                                   uint8_t bis_detection_attempts,
+                                   uint8_t max_payload_dbig_control,
+                                   uint8_t bis_control_event_interval,
+                                   uint8_t send_exit,
+                                   uint8_t pgp_timeout,
+                                   uint8_t pgo_timeout,
+                                   uint8_t sgo_timeout,
+                                   uint8_t join_timeout,
+                                   uint8_t exit_timeout,
+                                   uint8_t remove_timeout,
+                                   uint8_t terminate_timeout,
+                                   uint8_t tx_power,
+                                   base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_join_control(uint8_t dbig_handle,
+                                        uint8_t mode,
+                                        base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_set_devid(uint16_t dev_id,
+                                     uint8_t* name,
+                                     base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_texit_dbig(uint8_t dbig_handle,
+                                      uint8_t texit_mode,
+                                      uint8_t reason,
+                                      base::Callback<void(uint8_t*, uint16_t)> cb);
+extern void btsnd_hcic_ble_dbig_sync_only(uint8_t dbig_handle,
+                                          uint8_t enable,
+                                          base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_remove_device_dbig(uint8_t dbig_handle,
+                                              uint16_t dev_id,
+                                              uint8_t* name,
+                                              uint8_t reason,
+                                              base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,
+                                    uint16_t sync_handle,
+                                    uint8_t encryption,
+                                    uint8_t* broadcast_code,
+                                    uint8_t mse,
+                                    uint16_t bis_sync_timeout,
+                                    uint8_t num_bis,
+                                    uint8_t* bis,
+                                   base::Callback<void(uint8_t*, uint16_t)> cb);
+
+extern void btsnd_hcic_ble_terminate_big_sync(uint8_t big_handle,
+                                     base::Callback<void(uint8_t*, uint16_t)> cb);
 
 #define HCIC_PARAM_SIZE_FLOW_SPECIFICATION 21
 /* flow specification */
@@ -293,6 +350,7 @@ void btsnd_hcic_ble_ltk_req_reply(uint16_t handle, const Octet16& ltk);
 void btsnd_hcic_ble_ltk_req_neg_reply(uint16_t handle);
 
 void btsnd_hcic_ble_read_supported_states(void);
+void btsnd_hcic_dbig_read_supported_states(base::Callback<void(uint8_t*, uint16_t)> cb);
 
 void btsnd_hcic_ble_receiver_test(uint8_t rx_freq);
 
@@ -381,6 +439,13 @@ void btsnd_hcic_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_b
 
 void btsnd_hcic_term_big(uint8_t big_handle, uint8_t reason);
 
+void btsnd_hcic_big_create_sync(uint8_t big_handle, uint16_t sync_handle, uint8_t encryption,
+                                std::array<uint8_t, 16> broadcast_code, uint8_t mse,
+                                uint16_t big_sync_timeout, std::vector<uint8_t> bis);
+
+void btsnd_hcic_big_terminate_sync(uint8_t big_handle,
+                                   base::OnceCallback<void(uint8_t*, uint16_t)> cb);
+
 void btsnd_hcic_setup_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir,
                                     uint8_t data_path_id, uint8_t codec_id_format,
                                     uint16_t codec_id_company, uint16_t codec_id_vendor,
@@ -432,6 +497,7 @@ void btsnd_hcic_ble_set_periodic_advertising_sync_transfer_params(
 void btsnd_hcic_ble_set_default_periodic_advertising_sync_transfer_params(
         uint16_t conn_handle, uint8_t mode, uint16_t skip, uint16_t sync_timeout, uint8_t cte_type,
         base::OnceCallback<void(uint8_t*, uint16_t)> cb);
+
 
 void btsnd_hcic_configure_data_path(hci_data_direction_t data_path_direction, uint8_t data_path_id,
                                     std::vector<uint8_t> vendor_config);

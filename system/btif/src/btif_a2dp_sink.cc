@@ -50,6 +50,7 @@
 #include "osi/include/alarm.h"
 #include "osi/include/allocator.h"
 #include "osi/include/fixed_queue.h"
+#include "osi/include/properties.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/main_thread.h"
 #include "types/raw_address.h"
@@ -228,11 +229,17 @@ class A2dpSinkCallbacks : public bluetooth::audio::a2dp::StreamCallbacks {
       return Status::FAILURE;
     }
 
-    // Check if LE Audio is currently active.
-    if (hci::IsoManager::GetInstance()->GetNumberOfActiveIso() > 0) {
-      log::error("unable to start stream: LEA is active");
-      return Status::FAILURE;
+    // Check if AuraChat (duplex broadcast) is enabled
+    bool aurachat_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+
+    if (!aurachat_enabled) {
+      // AuraChat disabled: Check all LE Audio (original behavior)
+      if (hci::IsoManager::GetInstance()->GetNumberOfActiveIso() > 0) {
+        log::error("unable to start stream: LE Audio is active");
+        return Status::FAILURE;
+      }
     }
+    // If AuraChat enabled: Allow A2DP to start (no ISO check)
 
     // Post start event. The start request is pending, completion will be
     // notified to bluetooth::audio::a2dp::ack_stream_started.

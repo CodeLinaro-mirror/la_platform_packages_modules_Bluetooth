@@ -398,6 +398,7 @@
 #define HCI_LE_TERM_BIG (0x006A | HCI_GRP_BLE_CMDS)
 #define HCI_LE_BIG_CREATE_SYNC (0x006B | HCI_GRP_BLE_CMDS)
 #define HCI_LE_BIG_TERM_SYNC (0x006C | HCI_GRP_BLE_CMDS)
+#define HCI_LE_TERMINATE_BIG_SYNC (0x006C | HCI_GRP_BLE_CMDS)
 #define HCI_LE_REQ_PEER_SCA (0x006D | HCI_GRP_BLE_CMDS)
 #define HCI_LE_SETUP_ISO_DATA_PATH (0x006E | HCI_GRP_BLE_CMDS)
 #define HCI_LE_REMOVE_ISO_DATA_PATH (0x006F | HCI_GRP_BLE_CMDS)
@@ -424,6 +425,56 @@
 #define HCI_CONTROLLER_A2DP (0x015D | HCI_GRP_VENDOR_SPECIFIC)
 
 #define HCI_QTI_CONTROLLER_A2DP_OPCODE (0x000A | HCI_GRP_VENDOR_SPECIFIC)
+
+/* DBIG parameters opcode (shared VS opcode, differentiated by sub-opcode) */
+#define HCI_VS_LE_SET_DBIG_PARAMETERS (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+
+/* Vendor-specific opcodes for DBIG commands (all share the same opcode 0xFD90) */
+#define HCI_VS_LE_JOIN_CONTROL (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+#define HCI_VS_LE_SET_DEVID (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+#define HCI_VS_LE_TEXIT_DBIG (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+#define HCI_VS_LE_DBIG_SYNC_ONLY (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+
+#define HCI_VS_LE_SET_DBIG_PARAMETERS_SUB_OPCODE 0x04
+#define HCI_VS_LE_EXIT_DBIG_SUB_OPCODE 0x0E
+#define HCI_VS_LE_ASSOCIATE_PA_DBIG_SUB_OPCODE 0x06
+#define HCI_VS_LE_DBIG_SYNC_ONLY_SUB_OPCODE 0x07
+#define HCI_VS_LE_JOIN_CONTROL_SUB_OPCODE 0x08
+#define HCI_VS_LE_REMOVE_DEVICE_DBIG_SUB_OPCODE 0x09
+#define HCI_VS_LE_SET_DEVID_SUB_OPCODE 0x0A
+#define HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE 0x05
+
+/* Parameter size for SET_DevID command: 1 byte sub-opcode + 2 bytes dev_id + 10 bytes name */
+#define HCI_PARAM_SIZE_SET_DEVID 13
+/* Parameter size for TEXIT_DBIG command: 1 sub-opcode + 1 dbig_handle + 1 texit_mode + 1 reason */
+#define HCI_PARAM_SIZE_TEXIT_DBIG 4
+/* Parameter size for REMOVE_DEVICE_DBIG: 1 sub-opcode + 1 dbig_handle + 2 dev_id + 10 name + 1 reason */
+#define HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG 15
+
+/* Texit Mode definitions */
+#define HCI_TEXIT_MODE_EXIT 0x01
+#define HCI_TEXIT_MODE_TERMINATE 0x02
+#define HCI_TEXIT_MODE_REJECT_TERMINATE 0x03
+/* VS LE Read Supported States (same opcode as SET_DBIG_PARAMETERS, sub-opcode 0x0B) */
+#define HCI_VS_LE_READ_SUPPORTED_STATES (0xFD90 | HCI_GRP_VENDOR_SPECIFIC)
+#define HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE 0x0B
+/* Parameter size: 1 byte (sub-opcode only) */
+#define HCI_PARAM_SIZE_READ_SUPPORTED_STATES 1
+
+/*
+ * Host-defined (non-controller) event IDs used only for internal delivery into
+ * higher modules (e.g. broadcaster state machine). These are NOT real HCI event
+ * codes from the controller.
+ */
+#define HCI_VS_LE_DBIG_CREATE_CPL_EVT 0xFD01
+#define HCI_VS_LE_DBIG_UPDATE_EVT 0xFD02
+
+/* VS Meta sub-event codes for DBIG events */
+#define HCI_VS_LE_DBIG_STATUS_EVT 0x00
+#define HCI_VS_LE_EXIT_DBIG_COMPLETE_EVT 0x04
+#define HCI_VS_LE_TEXIT_DBIG_COMPLETE_EVT 0x01
+#define HCI_VS_LE_REMOVE_DEVICE_DBIG_COMPLETE_EVT 0x02
+#define HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT 0x03
 
 /* Bluetooth Quality Report opcode */
 #define HCI_CONTROLLER_BQR (0x015E | HCI_GRP_VENDOR_SPECIFIC)
@@ -464,6 +515,8 @@
 
 /* Bluetooth Quality Report sub event */
 #define HCI_VSE_SUBCODE_BQR_SUB_EVT 0x58
+
+#define HCI_VS_META 0x0C1
 
 #define HCI_VSE_SUBCODE_QBCE 0x51
 
@@ -594,12 +647,19 @@ constexpr uint8_t HCI_LE_STATES_INIT_CENTRAL_PERIPHERAL_BIT = 41;
 #define HCI_BLE_TERM_BIG_CPL_EVT 0x1c
 #define HCI_BLE_BIG_SYNC_EST_EVT 0x1d
 #define HCI_BLE_BIG_SYNC_LOST_EVT 0x1e
+#define HCI_LE_BIG_SYNC_ESTABLISHED_EVT 0x1D
+#define HCI_LE_BIG_SYNC_LOST 0x1E
 #define HCI_BLE_REQ_PEER_SCA_CPL_EVT 0x1f
 #define HCI_VSE_SUBCODE_PARAMS_REPORT 0x12
 
 #define HCI_LE_PERIODIC_ADV_SYNC_TRANSFERE_RECEIVED_EVT 0x18
 #define HCI_LE_BIGINFO_ADVERTISING_REPORT_EVT 0x22
 #define HCI_LE_SUBRATE_CHANGE_EVT 0x23
+
+/* LE BIGInfo Advertising Report Event bit */
+#define HCI_LE_BIGINFO_ADVERTISING_REPORT_EVENT_BIT   (1ULL << 14)
+/* LE Periodic Advertising Report V2 Event bit */
+#define HCI_LE_PERIODIC_ADVERTISING_REPORT_V2_EVENT_BIT (1ULL << 33)
 
 #define HCI_VENDOR_SPECIFIC_EVT 0xFF /* Vendor specific events */
 
@@ -1299,5 +1359,9 @@ typedef struct {
 #define HCI_LE_SET_HOST_FEATURE_SUPPORTED(x) ((x)[44] & 0x02)
 
 #define HCI_CONFIGURE_DATA_PATH_SUPPORTED(x) ((x)[45] & 0x20)
+
+// QC SoC add-on feature: vendor BQR5 support.
+// Applied to bt_device_soc_add_on_features_t::as_array, not standard LMP features.
+#define HCI_VENDOR_BQR5_SUPPORTED(x) ((x)[5] & 0x01)
 
 #endif

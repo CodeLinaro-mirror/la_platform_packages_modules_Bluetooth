@@ -16,6 +16,7 @@
 
 #include "broadcast_configuration_provider.h"
 
+#include <bluetooth/log.h>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -24,12 +25,27 @@
 #include "internal_include/stack_config.h"
 #include "le_audio/broadcaster/broadcaster_types.h"
 #include "le_audio/le_audio_types.h"
+#include "osi/include/properties.h"
 
 namespace bluetooth::le_audio {
 namespace broadcaster {
 /* Software codec configuration provider */
 BroadcastConfiguration GetBroadcastConfig(
         const std::vector<std::pair<types::LeAudioContextType, uint8_t>>& subgroup_quality) {
+  // Check if AuraChat DBIG duplex mode is enabled
+  bool aurachat_enabled =
+          osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+  log::info("AuraChat duplex mode enabled={}", aurachat_enabled);
+  if (aurachat_enabled) {
+    // Check MTL to select configuration: MTL=5ms uses ISO 7.5ms, others use ISO 10ms
+    uint16_t mtl = (uint16_t)osi_property_get_int32("persist.vendor.btstack.transport_latency", 0);
+    if (mtl == 5) {
+      log::info("Using ISO 7.5ms duplex configuration (MTL=5ms)");
+      return aurachat_duplex_7p5ms;
+    }
+    return aurachat_duplex_2m;
+  }
+
   // Select the SW codec parameters based on the first subgroup audio context
   // Note that the HW offloader may support more quality subgroups.
   // TODO: Unify the quality selection logic with GetBroadcastOffloadConfig()

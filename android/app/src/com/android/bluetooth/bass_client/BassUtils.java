@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Bass Utility functions */
-class BassUtils {
+public class BassUtils {
     private static final String TAG = BassUtils.class.getSimpleName();
 
     static boolean containUuid(List<ScanFilter> filters, ParcelUuid uuid) {
@@ -89,7 +89,7 @@ class BassUtils {
         return BassConstants.INVALID_BROADCAST_ID;
     }
 
-    static PublicBroadcastData getPublicBroadcastData(ScanRecord scanRecord) {
+    public static PublicBroadcastData getPublicBroadcastData(ScanRecord scanRecord) {
         if (scanRecord == null) {
             Log.e(TAG, "Null scan record");
             return null;
@@ -111,7 +111,7 @@ class BassUtils {
         return null;
     }
 
-    static String getBroadcastName(ScanRecord scanRecord) {
+    public static String getBroadcastName(ScanRecord scanRecord) {
         if (scanRecord == null) {
             Log.e(TAG, "Null scan record");
             return null;

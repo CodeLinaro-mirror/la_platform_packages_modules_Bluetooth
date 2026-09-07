@@ -1141,14 +1141,16 @@ struct LeAdvertisingManager::impl : public bluetooth::hci::LeAddressManagerCallb
           extended_properties.anonymous_ = config.anonymous;
           extended_properties.tx_power_ = config.include_tx_power;
 
+          // Use the primary PHY value set in shim layer
+          PrimaryPhyType primary_phy = static_cast<PrimaryPhyType>(config.primary_advertising_phy);
+
           le_advertising_interface_->EnqueueCommand(
                   hci::LeSetExtendedAdvertisingParametersBuilder::Create(
                           advertiser_id, extended_properties, config.interval_min,
                           config.interval_max, config.channel_map, own_address_type,
                           config.peer_address_type, config.peer_address, config.filter_policy,
                           config.tx_power,
-                          (config.use_le_coded_phy ? PrimaryPhyType::LE_CODED
-                                                   : PrimaryPhyType::LE_1M),
+                          primary_phy,
                           config.secondary_max_skip, config.secondary_advertising_phy, config.sid,
                           config.enable_scan_request_notifications),
                   module_handler_->BindOnceOn(

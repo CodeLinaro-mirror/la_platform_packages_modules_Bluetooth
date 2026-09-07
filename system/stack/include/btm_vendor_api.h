@@ -7,6 +7,10 @@
 
 #pragma once
 
+#include <vector>
+
+#include "stack/include/bt_types.h"
+#include "stack/include/btm_iso_api_types.h"
 #include "stack/include/btm_vendor_types.h"
 
 /*******************************************************************************
@@ -103,3 +107,8 @@ uint8_t* BTM_GetScramblingSupportedFreqs(uint8_t* number_of_freqs);
  *
  ******************************************************************************/
 extern void BTM_SetPowerBackOffState(bool status);
+extern void BTM_SetAttributes(const std::vector<uint8_t>& dev_id,
+                              const std::vector<uint8_t>& name);
+extern void BTM_SetJoinControl(bool enable);
+extern void BTM_BleDbigSyncOnly(uint8_t dbig_handle, uint8_t enable,
+                                bluetooth::hci::iso_manager::dbig_sync_only_cmpl_cb* p_cb = nullptr);

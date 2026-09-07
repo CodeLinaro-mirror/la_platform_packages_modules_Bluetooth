@@ -23,6 +23,7 @@
  */
 #pragma once
 
+#include <map>
 #include <queue>
 #include <set>
 #include <vector>
@@ -82,11 +83,11 @@ public:
   void BatchscanDisable(Callback cb) override;
   void BatchscanReadReports(int client_if, int scan_mode) override;
   void StartSync(uint8_t sid, RawAddress address, uint16_t skip, uint16_t timeout,
-                 int reg_id) override;
+                 int reg_id, uint8_t client_id = kScannerClientIdJni) override;
   void StartSync(uint8_t sid, RawAddress address, uint16_t skip, uint16_t timeout,
                  StartSyncCb start_cb, SyncReportCb report_cb, SyncLostCb lost_cb,
                  BigInfoReportCb biginfo_report_cb) override;
-  void StopSync(uint16_t handle) override;
+  void StopSync(uint16_t handle, uint8_t client_id = kScannerClientIdJni) override;
   void CancelCreateSync(uint8_t sid, RawAddress address) override;
   void TransferSync(RawAddress address, uint16_t service_data, uint16_t sync_handle,
                     int pa_source) override;
@@ -104,6 +105,8 @@ public:
 
   // bluetooth::hci::ScanningCallback
   void RegisterCallbacks(ScanningCallbacks* callbacks);
+  void RegisterCallbacksNative(ScanningCallbacks* callbacks,
+                               uint8_t client_id) override;
   void OnScannerRegistered(const bluetooth::hci::Uuid app_uuid,
                            bluetooth::hci::ScannerId scanner_id, ScanningStatus status) override;
   void OnSetScannerParameterComplete(bluetooth::hci::ScannerId scanner_id,
@@ -133,8 +136,11 @@ public:
   void OnPeriodicSyncTransferred(int pa_source, uint8_t status,
                                  bluetooth::hci::Address address) override;
   void OnBigInfoReport(uint16_t sync_handle, bool encrypted) override;
+  void OnBigInfoReportFull(uint16_t sync_handle, uint16_t iso_interval,
+                           uint8_t phy, uint8_t num_bis, bool encrypted) override;
 
   ::ScanningCallbacks* scanning_callbacks_ = default_scanning_callback;
+  std::map<uint8_t, ScanningCallbacks*> native_scanning_callbacks_map_;
   bool OnFetchPseudoAddressFromIdentityAddress(bluetooth::hci::Address address,
                                                uint8_t address_type,
                                                bluetooth::hci::Address* pseudo_address);
@@ -144,6 +150,18 @@ public:
   MsftCallbacks msft_callbacks_;
 
 private:
+  // Sync info for sharing
+  struct SyncInfo {
+    uint8_t sid;
+    RawAddress address;  // Pseudo/random address
+    std::map<uint8_t, std::set<int>> client_reg_ids;  // reg_ids per client_id
+  };
+
+  std::map<uint8_t, std::set<int>> native_sync_reg_id_map;  // For periodic sync reg_ids
+  std::map<uint16_t, SyncInfo> active_syncs_;  // Track active syncs by sync_handle
+
+  uint8_t is_native_sync_client(int reg_id);  // Check if sync reg_id belongs to native client
+  int16_t find_sync_handle(uint8_t sid, RawAddress address);  // Find sync_handle by sid and address, returns -1 if not found
   bool parse_filter_command(bluetooth::hci::AdvertisingPacketContentFilterCommand&
                                     advertising_packet_content_filter_command,
                             ApcfCommand apcf_command);

@@ -181,6 +181,16 @@ enum {
   BTA_HF_CLIENT_SCO_SHUTTING_ST  /* sco shutting down */
 };
 
+/* DUP_BROADCAST state for HFP SCO preemption */
+#define BTA_HF_CLIENT_DUP_BROADCAST_STATE_INACTIVE 0
+#define BTA_HF_CLIENT_DUP_BROADCAST_STATE_ACTIVE   1
+
+/* Structure to hold a parked SCO request while broadcast is winding down */
+typedef struct {
+  tBTM_ESCO_CONN_REQ_EVT_DATA conn_evt;
+  uint8_t cb_handle;
+} tBTA_HF_CLIENT_ESCO_DATA;
+
 /* type for HF control block */
 typedef struct {
   // Fields useful for particular control block.
@@ -207,6 +217,9 @@ typedef struct {
   alarm_t* collision_timer;                   /* Collision timer */
   std::unordered_set<int> peer_hf_indicators; /* peer supported hf indicator indices (HFP1.7) */
   std::unordered_set<int> enabled_hf_indicators; /* enabled hf indicator indices (HFP1.7) */
+  bool     is_vr_active;                      /* true when AG voice recognition is active */
+  tBTA_HF_CLIENT_ESCO_DATA* pending_vr_sco_data; /* parked SCO request during broadcast teardown */
+  uint8_t  dup_broadcast_state;               /* duplex broadcast state for SCO preemption */
 } tBTA_HF_CLIENT_CB;
 
 typedef struct {
@@ -340,4 +353,7 @@ bool bta_is_hf_client_device_connected();
 bool bta_is_hf_client_device_sco_connected();
 void update_remote_codecs(uint16_t peer_codecs);
 uint16_t fetch_client_negotiated_codec();
+void bta_hf_client_process_pending_sco_for_cb(tBTA_HF_CLIENT_CB* client_cb);
+void bta_hf_client_dup_broadcast_state_changed(tBTA_HF_CLIENT_DATA* p_data);
+extern int bta_hf_client_get_max_devices(void);
 

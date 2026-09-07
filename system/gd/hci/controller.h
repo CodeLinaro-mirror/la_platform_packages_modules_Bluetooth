@@ -166,6 +166,8 @@ public:
   // LE controller commands
   virtual void LeSetEventMask(uint64_t le_event_mask) override;
 
+  virtual uint64_t GetLeEventMask() const override;
+
   virtual LeBufferSize GetLeBufferSize() const override;
 
   virtual uint64_t GetLeSupportedStates() const override;
@@ -205,7 +207,7 @@ public:
 
   static constexpr uint64_t kDefaultEventMask = 0x3dbfffffffffffff;
   static constexpr uint64_t kDefaultEventMaskPage2 = 0x2000000;
-  static constexpr uint64_t kDefaultLeEventMask = 0x000000074d02fe7f;
+  static constexpr uint64_t kDefaultLeEventMask = 0x000000077d02fe7f;
   static constexpr uint64_t kLeCSEventMask = 0x0007f80000000000;
 
   static constexpr uint64_t kLeEventMask53 = 0x00000007ffffffff;

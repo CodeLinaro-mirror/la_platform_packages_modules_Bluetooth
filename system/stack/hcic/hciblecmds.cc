@@ -48,6 +48,8 @@
 #define HCIC_BLE_RAND_DI_SIZE 8
 #define HCIC_BLE_IRK_SIZE 16
 
+#define MAX_BIS_COUNT 4
+
 #define HCIC_PARAM_SIZE_SET_USED_FEAT_CMD 8
 #define HCIC_PARAM_SIZE_WRITE_RANDOM_ADDR_CMD 6
 #define HCIC_PARAM_SIZE_BLE_WRITE_ADV_PARAMS 15
@@ -559,6 +561,45 @@ void btsnd_hcic_term_big(uint8_t big_handle, uint8_t reason) {
   btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
 }
 
+void btsnd_hcic_big_create_sync(uint8_t big_handle, uint16_t sync_handle, uint8_t encryption,
+                                std::array<uint8_t, 16> broadcast_code, uint8_t mse,
+                                uint16_t big_sync_timeout, std::vector<uint8_t> bis) {
+  BT_HDR* p = (BT_HDR*)osi_malloc(HCI_CMD_BUF_SIZE);
+  uint8_t* pp = (uint8_t*)(p + 1);
+
+  const int param_len = 24 + bis.size();
+  p->len = HCIC_PREAMBLE_SIZE + param_len;
+  p->offset = 0;
+
+  UINT16_TO_STREAM(pp, HCI_LE_BIG_CREATE_SYNC);
+  UINT8_TO_STREAM(pp, param_len);
+
+  UINT8_TO_STREAM(pp, big_handle);
+  UINT16_TO_STREAM(pp, sync_handle);
+  UINT8_TO_STREAM(pp, encryption);
+
+  uint8_t* buf_ptr = broadcast_code.data();
+  ARRAY_TO_STREAM(pp, buf_ptr, 16);
+
+  UINT8_TO_STREAM(pp, mse);
+  UINT16_TO_STREAM(pp, big_sync_timeout);
+  UINT8_TO_STREAM(pp, bis.size());
+  ARRAY_TO_STREAM(pp, bis.data(), static_cast<int>(bis.size()));
+
+  btu_hcif_send_cmd(LOCAL_BR_EDR_CONTROLLER_ID, p);
+}
+
+void btsnd_hcic_big_terminate_sync(uint8_t big_handle,
+                                   base::OnceCallback<void(uint8_t*, uint16_t)> cb) {
+  const int params_len = 1;
+  uint8_t param[params_len];
+  uint8_t* pp = param;
+
+  UINT8_TO_STREAM(pp, big_handle);
+
+  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_TERM_SYNC, param, params_len, std::move(cb));
+}
+
 void btsnd_hcic_setup_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir,
                                     uint8_t data_path_id, uint8_t codec_id_format,
                                     uint16_t codec_id_company, uint16_t codec_id_vendor,
@@ -750,4 +791,187 @@ void btsnd_hcic_ble_set_default_periodic_advertising_sync_transfer_params(
   btu_hcif_send_cmd_with_cb(HCI_LE_SET_DEFAULT_PERIODIC_ADVERTISING_SYNC_TRANSFER_PARAM, param,
                             HCIC_PARAM_SIZE_SET_DEFAULT_PERIODIC_ADVERTISING_SYNC_TRANSFER_PARAMS,
                             std::move(cb));
+}
+
+void btsnd_hcic_dbig_read_supported_states(base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint8_t param[HCI_PARAM_SIZE_READ_SUPPORTED_STATES];
+  uint8_t* p = param;
+  UINT8_TO_STREAM(p, HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE);
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_READ_SUPPORTED_STATES, param,
+                            HCI_PARAM_SIZE_READ_SUPPORTED_STATES, std::move(cb));
+}
+
+void btsnd_hcic_ble_create_dbig(uint8_t dbig_handle,
+                                uint8_t dbig_feature_set,
+                                uint8_t bis_detection_attempts,
+                                uint8_t max_payload_dbig_control,
+                                uint8_t bis_control_event_interval,
+                                uint8_t send_exit,
+                                uint8_t pgp_timeout,
+                                uint8_t pgo_timeout,
+                                uint8_t sgo_timeout,
+                                uint8_t join_timeout,
+                                uint8_t exit_timeout,
+                                uint8_t remove_timeout,
+                                uint8_t terminate_timeout,
+                                uint8_t tx_power,
+                                base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // Full parameter set for HCI_VS_LE_SET_DBIG_PARAMETERS
+  // 1 (subopcode) + 14 parameters = 15 bytes
+  uint16_t param_len = 15;
+  uint8_t param[15];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, 0x04); // Subopcode
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, dbig_feature_set);
+  UINT8_TO_STREAM(p, bis_detection_attempts);
+  UINT8_TO_STREAM(p, max_payload_dbig_control);
+  UINT8_TO_STREAM(p, bis_control_event_interval);
+  UINT8_TO_STREAM(p, send_exit);
+  UINT8_TO_STREAM(p, pgp_timeout);
+  UINT8_TO_STREAM(p, pgo_timeout);
+  UINT8_TO_STREAM(p, sgo_timeout);
+  UINT8_TO_STREAM(p, join_timeout);
+  UINT8_TO_STREAM(p, exit_timeout);
+  UINT8_TO_STREAM(p, remove_timeout);
+  UINT8_TO_STREAM(p, terminate_timeout);
+  UINT8_TO_STREAM(p, tx_power);
+
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_SET_DBIG_PARAMETERS, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_join_control(uint8_t dbig_handle,
+                                 uint8_t mode,
+                                 base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // sub_opcode (1) + dbig_handle (1) + mode (1) = 3 bytes
+  const uint16_t param_len = 3;
+  uint8_t param[3];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_JOIN_CONTROL_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, mode);
+
+  // HCI_VS_LE_JOIN_CONTROL (opcode 0xfd90, sub-opcode 0x08) returns a
+  // CommandStatus event (not CommandComplete). Use the status variant so the
+  // GD HCI layer registers a CommandStatusView callback and does not abort
+  // with "Unknown OpCode was not expecting status event".
+  // The actual join-control completion is delivered via the VSE META event
+  // HCI_VS_LE_JOIN_CONTROL_COMPLETE_EVT → btm_ble_join_control_event_handler,
+  // matching the same pattern used by HandleDbigUpdateEvent / SetDbigParameters.
+  btu_hcif_send_cmd_status_with_cb(HCI_VS_LE_JOIN_CONTROL, param,
+                                   param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_set_devid(uint16_t dev_id,
+                               uint8_t* name,
+                               base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_SET_DEVID;
+  uint8_t param[HCI_PARAM_SIZE_SET_DEVID];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_SET_DEVID_SUB_OPCODE);  // Subopcode 0x0A
+  UINT16_TO_STREAM(p, dev_id);
+  ARRAY_TO_STREAM(p, name, 10);
+
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_SET_DEVID, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_texit_dbig(uint8_t dbig_handle,
+                               uint8_t texit_mode,
+                               uint8_t reason,
+                               base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_TEXIT_DBIG;
+  uint8_t param[HCI_PARAM_SIZE_TEXIT_DBIG];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, texit_mode);
+  UINT8_TO_STREAM(p, reason);
+
+  // HCI_VS_LE_TEXIT_DBIG (opcode 0xfd90, sub-opcode 0x05) returns CommandStatus,
+  // not CommandComplete. Use btu_hcif_send_cmd_status_with_cb to prevent GD HCI
+  // layer crash "Unknown OpCode was not expecting status event".
+  // Actual completion arrives via VS meta event HCI_VS_LE_TEXIT_DBIG_COMPLETE_EVT.
+  btu_hcif_send_cmd_status_with_cb(HCI_VS_LE_TEXIT_DBIG, param,
+                                    param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_remove_device_dbig(uint8_t dbig_handle,
+                                       uint16_t dev_id,
+                                       uint8_t* name,
+                                       uint8_t reason,
+                                       base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG;
+  uint8_t param[HCI_PARAM_SIZE_REMOVE_DEVICE_DBIG];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_REMOVE_DEVICE_DBIG_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT16_TO_STREAM(p, dev_id);
+  ARRAY_TO_STREAM(p, name, 10);
+  UINT8_TO_STREAM(p, reason);
+
+  // HCI_VS_LE_Remove_Device_DBIG (opcode 0xfd90, sub-opcode 0x09) returns CommandStatus.
+  // Actual completion arrives via VS meta event HCI_VS_LE_REMOVE_DEVICE_DBIG_COMPLETE_EVT (0x02).
+  btu_hcif_send_cmd_status_with_cb(HCI_VS_LE_SET_DBIG_PARAMETERS, param,
+                                   param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_dbig_sync_only(uint8_t dbig_handle,
+                                   uint8_t enable,
+                                   base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // sub_opcode (1) + dbig_handle (1) + enable (1) = 3 bytes
+  const uint16_t param_len = 3;
+  uint8_t param[3];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, HCI_VS_LE_DBIG_SYNC_ONLY_SUB_OPCODE);
+  UINT8_TO_STREAM(p, dbig_handle);
+  UINT8_TO_STREAM(p, enable);
+
+  btu_hcif_send_cmd_with_cb(HCI_VS_LE_DBIG_SYNC_ONLY, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_create_big_sync(uint8_t big_handle,
+                                    uint16_t sync_handle,
+                                    uint8_t encryption,
+                                    uint8_t* broadcast_code,
+                                    uint8_t mse,
+                                    uint16_t bis_sync_timeout,
+                                    uint8_t num_bis,
+                                    uint8_t* bis,
+                                   base::Callback<void(uint8_t*, uint16_t)> cb) {
+  // Fixed part is 24, plus num_bis bytes of BIS indices.
+  uint16_t param_len = HCI_PARAM_SIZE_CREATE_BIG_SYNC + (num_bis * sizeof(uint8_t));
+  uint8_t param[HCI_PARAM_SIZE_CREATE_BIG_SYNC + MAX_BIS_COUNT];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, big_handle);
+  UINT16_TO_STREAM(p, sync_handle);
+  UINT8_TO_STREAM(p, encryption);
+  ARRAY_TO_STREAM(p, broadcast_code, 16);
+  UINT8_TO_STREAM(p, mse);
+  UINT16_TO_STREAM(p, bis_sync_timeout);
+  UINT8_TO_STREAM(p, num_bis);
+  ARRAY_TO_STREAM(p, bis, num_bis);
+
+  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_CREATE_SYNC, param,
+                            param_len, std::move(cb));
+}
+
+void btsnd_hcic_ble_terminate_big_sync(uint8_t big_handle,
+                                  base::Callback<void(uint8_t*, uint16_t)> cb) {
+  uint16_t param_len = HCI_PARAM_SIZE_TERMINATE_BIG_SYNC;
+  uint8_t param[HCI_PARAM_SIZE_TERMINATE_BIG_SYNC];
+  uint8_t* p = param;
+
+  UINT8_TO_STREAM(p, big_handle);
+  btu_hcif_send_cmd_with_cb(HCI_LE_BIG_TERM_SYNC, param,
+                            param_len, std::move(cb));
 }

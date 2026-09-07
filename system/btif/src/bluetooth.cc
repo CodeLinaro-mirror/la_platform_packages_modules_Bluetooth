@@ -95,6 +95,7 @@
 #include "hardware/bt_has.h"
 #include "hardware/bt_hearing_aid.h"
 #include "hardware/bt_le_audio.h"
+#include "hardware/bt_le_audio_broadcast_sink.h"
 #include "hardware/bt_rc.h"
 #include "hardware/bt_sdp.h"
 #include "hardware/bt_sock.h"
@@ -141,6 +142,7 @@ using bluetooth::csis::CsisClientInterface;
 using bluetooth::has::HasClientInterface;
 using bluetooth::le_audio::LeAudioBroadcasterInterface;
 using bluetooth::le_audio::LeAudioClientInterface;
+using bluetooth::le_audio::broadcast_sink::BroadcastSinkInterface;
 using bluetooth::vc::VolumeControlInterface;
 using namespace bluetooth;
 
@@ -193,6 +195,8 @@ extern HasClientInterface* btif_has_client_get_interface();
 extern LeAudioClientInterface* btif_le_audio_get_interface();
 /* LeAudio Broadcaster */
 extern LeAudioBroadcasterInterface* btif_le_audio_broadcaster_get_interface();
+/* LeAudio Broadcast Sink */
+extern BroadcastSinkInterface* btif_le_audio_broadcast_sink_get_interface();
 /* Coordinated Set Service Client */
 extern CsisClientInterface* btif_csis_client_get_interface();
 /* Volume Control client */
@@ -1015,6 +1019,10 @@ static const void* get_profile_interface(const char* profile_id) {
 
   if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_BROADCASTER_ID)) {
     return btif_le_audio_broadcaster_get_interface();
+  }
+
+  if (is_profile(profile_id, BT_PROFILE_LE_AUDIO_BROADCAST_SINK_ID)) {
+    return btif_le_audio_broadcast_sink_get_interface();
   }
 
   if (is_profile(profile_id, BT_PROFILE_VC_ID)) {

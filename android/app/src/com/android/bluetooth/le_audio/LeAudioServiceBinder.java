@@ -417,6 +417,20 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
     }
 
     @Override
+    public void startEnhancedBroadcast(
+            BluetoothLeBroadcastSettings broadcastSettings,
+            float isoInterval,
+            AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) {
+            return;
+        }
+
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.createEnhancedBroadcast(broadcastSettings, isoInterval);
+    }
+
+    @Override
     public void stopBroadcast(int broadcastId, AttributionSource source) {
         LeAudioService service = getServiceAndEnforceConnect(source);
         if (service == null) {
@@ -425,6 +439,17 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
 
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         service.stopBroadcast(broadcastId);
+    }
+
+    @Override
+    public void stopEnhancedBroadcast(int broadcastId, int mode, AttributionSource source) {
+       LeAudioService service = getServiceAndEnforceConnect(source);
+       if (service == null) {
+           return;
+       }
+
+       service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+       service.stopEnhancedBroadcast(broadcastId, mode);
     }
 
     @Override
@@ -545,13 +570,57 @@ class LeAudioServiceBinder extends IBluetoothLeAudio.Stub implements IProfileSer
     }
 
     @Override
+    public void setAttributes(int devId, byte[] name, AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.setAttributes(devId, name);
+    }
+
+    @Override
+    public void setJoinControl(boolean mode, AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.setJoinControl(mode);
+    }
+
+    @Override
     public boolean isBroadcastActive(AttributionSource source) {
         LeAudioService service = getServiceAndEnforceConnect(source);
-        if (service == null) {
-            return false;
-        }
-
         service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
         return service.isBroadcastActive();
+    }
+
+    @Override
+    public int getEnhancedBroadcastCap(AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        return service.getEnhancedBroadcastCap();
+    }
+
+    @Override
+    public void removeDeviceFromDbig(int devId, byte[] name, int reason,
+                                     AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.removeDeviceFromDbig(devId, name, reason);
+    }
+
+    @Override
+    public void acceptTerminateDbig(int broadcastId, AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.acceptTerminateDbig(broadcastId);
+    }
+
+    @Override
+    public void rejectTerminateDbig(int broadcastId, AttributionSource source) {
+        LeAudioService service = getServiceAndEnforceConnect(source);
+        if (service == null) return;
+        service.enforceCallingOrSelfPermission(BLUETOOTH_PRIVILEGED, null);
+        service.rejectTerminateDbig(broadcastId);
     }
 }

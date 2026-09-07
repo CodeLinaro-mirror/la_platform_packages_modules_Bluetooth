@@ -48,6 +48,15 @@ struct BigCallbacks {
   virtual void OnBigEvent(uint8_t event, void* data) = 0;
 };
 
+struct BigSyncCallbacks {
+  virtual ~BigSyncCallbacks() = default;
+  virtual void OnSetupIsoDataPath(uint8_t status, uint16_t conn_handle, uint8_t big_handle) = 0;
+  virtual void OnRemoveIsoDataPath(uint8_t status, uint16_t conn_handle, uint8_t big_handle) = 0;
+
+  virtual void OnBigSyncEvent(uint8_t event, void* data) = 0;
+  virtual void OnBisEvent(uint8_t event, void* data) = 0;
+};
+
 struct VscCallback {
   virtual ~VscCallback() = default;
   virtual void OnVscEvent(uint16_t delay, uint8_t mode,
@@ -77,6 +86,15 @@ public:
   virtual void RegisterVscCallback(iso_manager::VscCallback* callback) const;
 
   /**
+   * Set DBIG related callbacks
+   *
+   * <p> Shall be set by the DBIG implementation
+   *
+   * @param callbacks DbigCallbacks implementation
+   */
+  virtual void RegisterDbigCallbacks(iso_manager::DbigCallbacks* callbacks) const;
+
+  /**
    * Set BIG related callbacks
    *
    * <p> Shall be set by the Le Audio Broadcaster implementation
@@ -84,6 +102,15 @@ public:
    * @param callbacks BigCallbacks implementation
    */
   virtual void RegisterBigCallbacks(iso_manager::BigCallbacks* callbacks) const;
+
+  /**
+   * Set BIG Sync related callbacks
+   *
+   * <p> Shall be set by the Le Audio Broadcast Sink implementation
+   *
+   * @param callbacks BigSyncCallbacks implementation
+   */
+  virtual void RegisterBigSyncCallbacks(iso_manager::BigSyncCallbacks* callbacks) const;
 
   /**
    * Set true when CIG or BIG is active, false when CIG or BIG is closed
@@ -183,6 +210,22 @@ public:
    */
   virtual void TerminateBig(uint8_t big_id, uint8_t reason);
 
+  /**
+   * Synchronizes to a Broadcast Isochronous Group
+   *
+   * @param big_handle host assigned BIG handle
+   * @param sync_params BIG sync parameters including sync handle from PA sync
+   */
+  virtual void BigCreateSync(uint8_t big_handle,
+                             struct iso_manager::big_sync_params sync_params);
+
+  /**
+   * Terminates synchronization to a Broadcast Isochronous Group
+   *
+   * @param big_handle host assigned BIG handle
+   */
+  virtual void BigTerminateSync(uint8_t big_handle);
+
   /* Below are defined handlers called by the legacy code in btu_hcif.cc */
 
   /**
@@ -224,6 +267,105 @@ public:
 
   virtual void HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
                                            uint64_t bdAddr);
+
+  /**
+   * Handle DBIG update event
+   *
+   * @param params raw packet buffer for the event. The ownership of params is
+   * not being transferred
+   * @param length event packet buffer length
+   */
+  virtual void HandleDbigUpdateEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Handle DBIG status event
+   *
+   * @param params raw packet buffer for the event. The ownership of params is
+   * not being transferred
+   * @param length event packet buffer length
+   */
+  virtual void HandleDbigStatusEvent(uint8_t* params, uint16_t length);
+  
+  /* Handle DBIG TExitDbIg complete event
+   *
+   * @param params raw packet buffer for the event
+   * @param length event packet buffer length
+   */
+  virtual void HandleTExitDbigEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Handle DBIG Remove Device complete event
+   *
+   * @param params raw packet buffer for the event
+   * @param length event packet buffer length
+   */
+  virtual void HandleRemoveDeviceDbigEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Handle DBIG Join Control complete event
+   *
+   * @param params raw packet buffer for the event
+   * @param length event packet buffer length
+   */
+  virtual void HandleJoinControlEvent(uint8_t* params, uint16_t length);
+
+  /**
+   * Set DBIG parameters
+   *
+   * @param dbig_params DBIG parameters
+   */
+  virtual void SetDbigParameters(struct iso_manager::dbig_create_params dbig_params) const;
+
+  /**
+   * Send HCI_VS_LE_JOIN_CONTROL command to enable/disable join control for a DBIG
+   *
+   * @param params join control parameters including dbig_handle, mode, and callback
+   */
+  virtual void JoinControl(struct iso_manager::dbig_join_control_params params);
+
+  /**
+   * Send HCI VS LE DBIG Sync-Only command.
+   * When enable=1 the DBIG enters sync-only mode (BIG stays alive, no audio data).
+   * When enable=0 normal audio data transfer resumes.
+   * Used to preempt duplex broadcast during an HFP call/VR session.
+   *
+   * @param dbig_handle DBIG handle (use 0 for the currently active DBIG)
+   * @param enable      1 = enter sync-only mode, 0 = exit sync-only mode
+   */
+  virtual void SetSyncOnly(struct iso_manager::dbig_sync_only_params params);
+
+  /**
+   * Send HCI_VS_LE_Texit_DBIG command to perform a timed exit from a DBIG
+   *
+   * @param params texit parameters including dbig_handle, texit_mode, reason, and callback
+   */
+  virtual void TExitDbig(struct iso_manager::dbig_texit_params params);
+
+  /**
+   * Send HCI_VS_LE_Remove_Device_DBIG command to remove a specific device from a DBIG
+   *
+   * @param params remove device parameters including dbig_handle, dev_id, name, reason, callback
+   */
+  virtual void RemoveDeviceDbig(struct iso_manager::dbig_remove_device_params params);
+
+  /**
+   * Send HCI_VS_LE_SET_DevID command to set the device ID for a DBIG
+   *
+   * @param params set devid parameters including dev_id, name, and callback
+   */
+  virtual void SetDevId(struct iso_manager::dbig_set_devid_params params);
+
+  /**
+   * Creates the Duplex Broadcast Isochronous Group
+   *
+   * @param dbig_params DBIG parameters
+   */
+  virtual void CreateDbig(struct iso_manager::dbig_create_params dbig_params);
+  virtual void StoreDbigParams(struct iso_manager::dbig_create_params params) const;
+  virtual iso_manager::dbig_create_params GetStoredDbigParams() const;
+  virtual void ReadSupportedStates();
+  virtual std::vector<uint8_t> GetDbigParams() const;
+  virtual uint16_t GetBroadcastStates() const;
 
   /**
    * Return the current number of ISO channels

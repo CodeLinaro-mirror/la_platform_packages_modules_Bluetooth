@@ -105,6 +105,17 @@ static constexpr uint32_t kQualityEventMaskAll =
         kQualityEventMaskVendorSpecificQuality | kQualityEventMaskLmpMessageTrace |
         kQualityEventMaskBtSchedulingTrace | kQualityEventMaskControllerDbgInfo |
         kQualityEventMaskVendorSpecificTrace;
+
+// Vendor-specific quality event sub-masks (vnd_quality_mask field).
+// These are sent in the BQR configuration command when
+// kQualityEventMaskVendorSpecificQuality is set and QC BQR5 is supported.
+static constexpr uint32_t kVendorQualityEventMaskDiscMonitorMode  = 0x00000001;
+static constexpr uint32_t kVendorQualityEventMaskMiscMonitorMode  = 0x00000002;
+static constexpr uint32_t kVendorQualityEventMaskPowerLevelChange = 0x00000004;
+static constexpr uint32_t kVendorQualityEventMaskDbigReport       = 0x00000100;
+static constexpr uint32_t kVendorQualityEventMaskAll =
+        kVendorQualityEventMaskDiscMonitorMode | kVendorQualityEventMaskMiscMonitorMode |
+        kVendorQualityEventMaskPowerLevelChange | kVendorQualityEventMaskDbigReport;
 // Define the minimum time interval (in ms) of quality event reporting for the
 // selected quality event(s). Controller Firmware should not report the next
 // event within the defined Minimum Report Interval * Report Interval
@@ -529,6 +540,11 @@ void SetLmpLlMessageTraceLogFd(int fd);
 
 }  // namespace bqr
 }  // namespace bluetooth
+
+// Implemented in btif_vendor.cc; returns true if the QC BQR5 bit is set in
+// SoC add-on features. A weak default (returns false) is provided in btif_bqr.cc
+// so AOSP builds link without the vendor implementation.
+bool btif_vendor_is_qc_bqr5_supported();
 
 namespace std {
 template <>

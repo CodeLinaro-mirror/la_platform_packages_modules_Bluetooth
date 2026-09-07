@@ -177,7 +177,11 @@ public class AvrcpControllerService extends ProfileService {
         setActiveDevice(null);
         Intent stopIntent = new Intent(this, BluetoothMediaBrowserService.class);
         stopService(stopIntent);
-        unregisterReceiver(mBroadcastReceiver);
+        try {
+            unregisterReceiver(mBroadcastReceiver);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "mBroadcastReceiver was not registered");
+        }
         for (AvrcpControllerStateMachine stateMachine : mDeviceStateMap.values()) {
             stateMachine.quitNow();
         }
@@ -250,9 +254,26 @@ public class AvrcpControllerService extends ProfileService {
             return true;
         }
 
+        // Skip A2DP active-device clear when only AVRCP disconnects; A2DP Sink session must stay intact.
+        if (device == null && currentActiveDevice != null
+                && a2dpSinkService.getConnectionState(currentActiveDevice) == STATE_CONNECTED) {
+            Log.d(TAG, "setActiveDevice(null): A2DP Sink still connected to "
+                    + currentActiveDevice + ", skipping A2DP active device clear");
+            synchronized (mActiveDeviceLock) {
+                mActiveDevice = null;
+                AvrcpControllerStateMachine oldStateMachine = getStateMachine(currentActiveDevice);
+                if (oldStateMachine != null) {
+                    oldStateMachine.setDeviceState(DEVICE_STATE_INACTIVE);
+                }
+                BluetoothMediaBrowserService.reset();
+            }
+            return true;
+        }
+
         // Try and update the active device
         synchronized (mActiveDeviceLock) {
             if (device == null) {
+              mActiveDevice = null;
               Log.d(TAG, "Ignore A2dpSink setActiveDevice as device : "+device);
               return true;
             }

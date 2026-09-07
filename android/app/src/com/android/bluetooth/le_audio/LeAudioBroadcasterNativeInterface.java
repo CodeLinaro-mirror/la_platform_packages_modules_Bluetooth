@@ -143,6 +143,48 @@ public class LeAudioBroadcasterNativeInterface {
         sendMessageToService(event);
     }
 
+    @VisibleForTesting
+    public void onDbigStatusChanged(int dbigHandle, int status, int devId, byte[] name,
+                                     int numBis, char[] bisDevIds, int broadcastFeatures) {
+        Log.d(TAG, "onDbigStatusChanged: dbigHandle=" + dbigHandle + " status=0x"
+                + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", numBis=" + numBis
+                + ", broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_DBIG_STATUS_CHANGED);
+        event.valueInt1 = dbigHandle;
+        event.valueInt2 = status;
+        event.dbigDevId = devId;
+        event.dbigName = name;
+        event.dbigNumBis = numBis;
+        event.dbigBisDevIds = bisDevIds;
+        event.dbigBroadcastFeatures = broadcastFeatures;
+        sendMessageToService(event);
+    }
+
+    @VisibleForTesting
+    public void onRemoveDeviceDbigComplete(int dbigHandle, int devId, int status) {
+        Log.d(TAG, "onRemoveDeviceDbigComplete: dbigHandle=" + dbigHandle
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_REMOVE_DEVICE_DBIG_COMPLETE);
+        event.valueInt1 = dbigHandle;
+        event.valueInt2 = devId;
+        event.valueInt3 = status;
+        sendMessageToService(event);
+    }
+
+    @VisibleForTesting
+    public void onSyncOnlyModeActive(int broadcastId) {
+        Log.d(TAG, "onSyncOnlyModeActive: broadcastId=" + broadcastId);
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE);
+        event.valueInt1 = broadcastId;
+        sendMessageToService(event);
+    }
+
     /**
      * Initializes the native interface.
      *
@@ -193,6 +235,28 @@ public class LeAudioBroadcasterNativeInterface {
                 metadataArray);
     }
 
+        /**
+     * Creates LeAudio enhanced Broadcast instance.
+     *
+     * @param broadcastName BIG broadcast name
+     * @param broadcastCode BIG broadcast code
+     * @param isoInterval Isointerval for broadcast.
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void createEnhancedBroadcast(
+            String broadcastName,
+            byte[] broadcastCode,
+            int[] qualityArray,
+            byte[][] metadataArray,
+            float isoInterval) {
+        createEnhancedBroadcastNative(
+                broadcastName,
+                broadcastCode,
+                qualityArray,
+                metadataArray,
+                isoInterval);
+    }
+
     /**
      * Update LeAudio Broadcast instance metadata.
      *
@@ -228,6 +292,18 @@ public class LeAudioBroadcasterNativeInterface {
     }
 
     /**
+     * Stop an enhanced (DUPLEX/DBIG) broadcast with a specific TExitDbig mode.
+     *
+     * @param broadcastId broadcast instance identifier
+     * @param mode HCI TExitDbig mode: EXIT (1) or TERMINATE (2)
+     */
+    public void stopEnhancedBroadcast(int broadcastId, int mode) {
+        Log.d(TAG, "stopEnhancedBroadcast: broadcastId=" + broadcastId
+                + ", mode=0x" + Integer.toHexString(mode));
+        stopEnhancedBroadcastNative(broadcastId, mode);
+    }
+
+    /**
      * Pause LeAudio Broadcast instance.
      *
      * @param broadcastId broadcast instance identifier
@@ -253,6 +329,69 @@ public class LeAudioBroadcasterNativeInterface {
         getBroadcastMetadataNative(broadcastId);
     }
 
+    /**
+     * Set attributes (DevID and Name) for the broadcast source.
+     *
+     * @param devId Device ID packed into 2 octets (12-bit value with 4-bit padding)
+     * @param name  Device name packed into 10 octets (UTF-8 encoded, zero-padded)
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void setAttributes(byte[] devId, byte[] name) {
+        setAttributesNative(devId, name);
+    }
+
+    /**
+     * Set Join Control mode for the broadcast source.
+     *
+     * @param enable true to enable join control, false to disable
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void setJoinControl(boolean enable) {
+        setJoinControlNative(enable);
+    }
+
+    /**
+     * Request the controller to remove a specific device from the DBIG.
+     *
+     * @param devId   12-bit device identifier (0-4095)
+     * @param name    up to 10-byte name (zero-padded to 10 bytes in native layer)
+     * @param reason  HCI reason code (e.g. 0x13 = Remote User Terminated)
+     */
+    @VisibleForTesting(visibility = VisibleForTesting.Visibility.PACKAGE)
+    public void removeDeviceDbig(int devId, byte[] name, int reason) {
+        Log.d(TAG, "removeDeviceDbig: devId=0x" + Integer.toHexString(devId)
+                + ", reason=0x" + Integer.toHexString(reason));
+        removeDeviceDbigNative(devId, name, reason);
+    }
+
+    /** Accept PGP terminate request (sends TExitDbig TERMINATE as PGO). */
+    public void acceptTerminateDbig(int broadcastId) {
+        Log.d(TAG, "acceptTerminateDbig: broadcastId=" + broadcastId);
+        acceptTerminateDbigNative(broadcastId);
+    }
+
+    /** Reject PGP terminate request (sends TExitDbig REJECT_TERMINATE as PGO). */
+    public void rejectTerminateDbig(int broadcastId) {
+        Log.d(TAG, "rejectTerminateDbig: broadcastId=" + broadcastId);
+        rejectTerminateDbigNative(broadcastId);
+    }
+
+    /**
+     * Callback: HCI_VS_LE_Texit_DBIG_Complete on PGO side.
+     * status=0x00 success (DBIG terminated); other = error.
+     */
+    public void onTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+        Log.d(TAG, "onTexitDbigComplete (PGO): broadcastId=" + broadcastId
+                + ", dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        LeAudioStackEvent event = new LeAudioStackEvent(
+                LeAudioStackEvent.EVENT_TYPE_BROADCAST_TEXIT_DBIG_COMPLETE);
+        event.valueInt1 = broadcastId;
+        event.valueInt2 = dbigHandle;
+        event.valueInt3 = status;
+        sendMessageToService(event);
+    }
+
     // Native methods that call into the JNI interface
     private native void initNative();
 
@@ -268,6 +407,13 @@ public class LeAudioBroadcasterNativeInterface {
             int[] qualityArray,
             byte[][] metadataArray);
 
+    private native void createEnhancedBroadcastNative(
+            String broadcastName,
+            byte[] broadcastCode,
+            int[] qualityArray,
+            byte[][] metadataArray,
+            float  isoInterval);
+
     private native void updateMetadataNative(
             int broadcastId, String broadcastName, byte[] publicMetadata, byte[][] metadataArray);
 
@@ -275,9 +421,80 @@ public class LeAudioBroadcasterNativeInterface {
 
     private native void stopBroadcastNative(int broadcastId);
 
+    private native void stopEnhancedBroadcastNative(int broadcastId, int mode);
+
     private native void pauseBroadcastNative(int broadcastId);
 
     private native void destroyBroadcastNative(int broadcastId);
 
+    // -------------------------------------------------------------------------
+    // Enhanced DBIG / Supported-States APIs (duplex broadcast source)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Read LE Supported States for duplex broadcast source flow.
+     * Blocks until the HCI command completes (up to 1 s) and returns the
+     * PGO FW capability bitmask: bit0=Terminate, bit1=Remove Device.
+     * @return broadcast_states bitmask, or 0 if not available / timed out
+     */
+    public int readSupportedStates() {
+        Log.d(TAG, "readSupportedStates");
+        return readSupportedStatesNative();
+    }
+
+    /**
+     * Get DBIG parameters from the native stack for use in the PA vendor-specific LTV.
+     * Returns 12 bytes in order:
+     *   [0]=dbig_feature_set  [1]=bis_detection_attempts  [2]=max_payload_dbig_control
+     *   [3]=bis_control_event_interval  [4]=send_exit  [5]=pgp_timeout
+     *   [6]=pgo_timeout  [7]=sgo_timeout  [8]=join_timeout
+     *   [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     *
+     * @return 12-byte DBIG parameter array, or null if not available
+     */
+    public byte[] getDbigParams() {
+        return getDbigParamsNative();
+    }
+
+    /**
+     * Returns Broadcast_States from HCI_VS_LE_Read_Supported_States.
+     * Populated after {@link #readSupportedStates()} completes.
+     *
+     * @return broadcast_states bitmask, or -1 if not yet available
+     */
+    public int getEnhancedBroadcastCap() {
+        return getEnhancedBroadcastCapNative();
+    }
+
+    private native int  readSupportedStatesNative();
+    private native byte[] getDbigParamsNative();
+    private native int getEnhancedBroadcastCapNative();
+
     private native void getBroadcastMetadataNative(int broadcastId);
+
+    private native void setAttributesNative(byte[] devId, byte[] name);
+
+    private native void setJoinControlNative(boolean enable);
+    private native void removeDeviceDbigNative(int devId, byte[] name, int reason);
+    private native void acceptTerminateDbigNative(int broadcastId);
+    private native void rejectTerminateDbigNative(int broadcastId);
+    private native void setDbigSyncOnlyNative(int dbigHandle, boolean enable);
+    private native void notifyCallStateNative(int broadcastId, boolean isCallActive);
+
+    /**
+     * Send HCI VS LE DBIG Sync-Only command.
+     * Enable=true puts the DBIG in sync-only mode (BIG stays alive, no audio data).
+     * Enable=false resumes normal audio data transfer.
+     * Called from services when an HFP call or VR session preempts the duplex broadcast.
+     *
+     * @param dbigHandle DBIG handle (0 for the currently active DBIG)
+     * @param enable     true to enter sync-only, false to exit
+     */
+    public void setDbigSyncOnly(int dbigHandle, boolean enable) {
+        setDbigSyncOnlyNative(dbigHandle, enable);
+    }
+
+    public void notifyCallState(int broadcastId, boolean isCallActive) {
+        notifyCallStateNative(broadcastId, isCallActive);
+    }
 }

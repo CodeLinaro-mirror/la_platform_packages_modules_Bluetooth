@@ -327,3 +327,11 @@ flag {
         purpose: PURPOSE_BUGFIX
     }
 }
+
+flag {
+    name: "leaudio_broadcast_sink_api"
+    is_exported: true
+    namespace: "bluetooth"
+    description: "API for LE Audio broadcast sink functionality"
+    bug: "000000000"
+}

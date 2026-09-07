@@ -24,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <atomic>
 
 #include "btm_dev.h"
 #include "btm_iso_api.h"
@@ -34,6 +35,7 @@
 #include "main/shim/entry.h"
 #include "main/shim/hci_layer.h"
 #include "osi/include/allocator.h"
+#include "osi/include/properties.h"
 #include "stack/include/bt_hdr.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_log_history.h"
@@ -50,9 +52,11 @@ static constexpr uint8_t kIsoHeaderWithoutTsLen = 8;
 static constexpr uint8_t kStateFlagsNone = 0x00;
 static constexpr uint8_t kStateFlagIsConnecting = 0x01;
 static constexpr uint8_t kStateFlagIsConnected = 0x02;
-static constexpr uint8_t kStateFlagHasDataPathSet = 0x04;
+static constexpr uint8_t kStateFlagHasDataPathSet       = 0x04;  // INPUT data path set
+static constexpr uint8_t kStateFlagHasOutputDataPathSet = 0x08;  // OUTPUT data path set (duplex RX)
 static constexpr uint8_t kStateFlagIsBroadcast = 0x10;
 static constexpr uint8_t kStateFlagIsCancelled = 0x20;
+static constexpr uint8_t kStateFlagIsBroadcastSync = 0x40;
 
 constexpr char kBtmLogTag[] = "ISO";
 
@@ -95,8 +99,13 @@ struct iso_impl {
   iso_impl() {
     iso_credits_ = shim::GetController()->GetControllerIsoBufferSize().total_num_le_packets_;
     iso_buffer_size_ = shim::GetController()->GetControllerIsoBufferSize().le_data_packet_length_;
-    log::info("{} created, iso credits: {}, buffer size: {}.", std::format_ptr(this),
-              iso_credits_.load(), iso_buffer_size_);
+    // Cache the duplex property once at init — it is a persistent property that
+    // does not change at runtime, so reading it on every ISO data path operation
+    // would be wasteful.
+    is_duplex_enabled_ =
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+    log::info("{} created, iso credits: {}, buffer size: {}, duplex: {}.", std::format_ptr(this),
+              iso_credits_.load(), iso_buffer_size_, is_duplex_enabled_);
   }
 
   ~iso_impl() { log::info("{} removed.", std::format_ptr(this)); }
@@ -109,6 +118,16 @@ struct iso_impl {
   void handle_register_big_callbacks(BigCallbacks* callbacks) {
     log::assert_that(callbacks != nullptr, "Invalid BIG callbacks");
     big_callbacks_ = callbacks;
+  }
+
+  void handle_register_dbig_callbacks(DbigCallbacks* callbacks) {
+    /* callbacks == nullptr is valid — it unregisters the current handler. */
+    dbig_callbacks_ = callbacks;
+  }
+
+  void handle_register_big_sync_callbacks(BigSyncCallbacks* callbacks) {
+    log::assert_that(callbacks != nullptr, "Invalid BIG Sync callbacks");
+    big_sync_callbacks_ = callbacks;
   }
 
   void handle_register_vsc_callback(VscCallback* callback) {
@@ -342,7 +361,7 @@ struct iso_impl {
     return num_iso;
   }
 
-  void on_setup_iso_data_path(uint8_t* stream, uint16_t /* len */) {
+  void on_setup_iso_data_path(uint8_t data_path_dir, uint8_t* stream, uint16_t /* len */) {
     uint8_t status;
     uint16_t conn_handle;
 
@@ -365,9 +384,22 @@ struct iso_impl {
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
     if (status == HCI_SUCCESS) {
-      iso->state_flags |= kStateFlagHasDataPathSet;
+      // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
+      // kStateFlagIsBroadcastSync), track INPUT and OUTPUT data paths with
+      // separate flags so removing one does not clear the other.
+      // For unicast CIS, use the single kStateFlagHasDataPathSet as original.
+      if (is_duplex_enabled_ &&
+          (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync)) &&
+          data_path_dir == kIsoDataPathDirectionOut) {
+        iso->state_flags |= kStateFlagHasOutputDataPathSet;
+      } else {
+        iso->state_flags |= kStateFlagHasDataPathSet;
+      }
     }
-    if (iso->state_flags & kStateFlagIsBroadcast) {
+    if (iso->state_flags & kStateFlagIsBroadcastSync) {
+      log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+      big_sync_callbacks_->OnSetupIsoDataPath(status, conn_handle, iso->big_handle);
+    } else if (iso->state_flags & kStateFlagIsBroadcast) {
       log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
       big_callbacks_->OnSetupIsoDataPath(status, conn_handle, iso->big_handle);
     } else {
@@ -381,7 +413,9 @@ struct iso_impl {
     iso_base* iso = GetIsoIfKnown(conn_handle);
     log::assert_that(iso != nullptr, "No such iso connection: {}", conn_handle);
 
-    if (!(iso->state_flags & kStateFlagIsBroadcast)) {
+    // For CIS connections, ensure they are established
+    // For BIS connections (broadcast or broadcast sync), no connection establishment check needed
+    if (!(iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
       log::assert_that(iso->state_flags & kStateFlagIsConnected, "CIS not established");
     }
 
@@ -389,14 +423,16 @@ struct iso_impl {
             conn_handle, path_params.data_path_dir, path_params.data_path_id,
             path_params.codec_id_format, path_params.codec_id_company, path_params.codec_id_vendor,
             path_params.controller_delay, std::move(path_params.codec_conf),
-            base::BindOnce(&iso_impl::on_setup_iso_data_path, weak_factory_.GetWeakPtr()));
+            base::BindOnce(&iso_impl::on_setup_iso_data_path, weak_factory_.GetWeakPtr(),
+                           path_params.data_path_dir));
     BTM_LogHistory(kBtmLogTag, cis_hdl_to_addr[conn_handle], "Setup data path",
                    std::format("handle:0x{:04x}, dir:0x{:02x}, path_id:0x{:02x}, codec_id:0x{:02x}",
                                conn_handle, path_params.data_path_dir, path_params.data_path_id,
                                path_params.codec_id_format));
   }
 
-  void on_remove_iso_data_path(uint8_t* stream, uint16_t len) {
+  // data_path_dir is bound at call site so we know which flag to clear.
+  void on_remove_iso_data_path(uint8_t data_path_dir, uint8_t* stream, uint16_t len) {
     uint8_t status;
     uint16_t conn_handle;
 
@@ -422,10 +458,22 @@ struct iso_impl {
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
     if (status == HCI_SUCCESS) {
-      iso->state_flags &= ~kStateFlagHasDataPathSet;
+      // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
+      // kStateFlagIsBroadcastSync), clear only the direction-specific flag.
+      // For unicast CIS, clear kStateFlagHasDataPathSet as original.
+      if (is_duplex_enabled_ &&
+          (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync)) &&
+          data_path_dir == kIsoDataPathDirectionOut) {
+        iso->state_flags &= ~kStateFlagHasOutputDataPathSet;
+      } else {
+        iso->state_flags &= ~kStateFlagHasDataPathSet;
+      }
     }
 
-    if (iso->state_flags & kStateFlagIsBroadcast) {
+    if (iso->state_flags & kStateFlagIsBroadcastSync) {
+      log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+      big_sync_callbacks_->OnRemoveIsoDataPath(status, conn_handle, iso->big_handle);
+    } else if (iso->state_flags & kStateFlagIsBroadcast) {
       log::assert_that(big_callbacks_ != nullptr, "Invalid BIG callbacks");
       big_callbacks_->OnRemoveIsoDataPath(status, conn_handle, iso->big_handle);
     } else {
@@ -437,12 +485,23 @@ struct iso_impl {
   void remove_iso_data_path(uint16_t iso_handle, uint8_t data_path_dir) {
     iso_base* iso = GetIsoIfKnown(iso_handle);
     log::assert_that(iso != nullptr, "No such iso connection: 0x{:x}", iso_handle);
-    log::assert_that((iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet,
-                     "Data path not set");
+    // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
+    // kStateFlagIsBroadcastSync), either INPUT or OUTPUT flag may be set independently.
+    // For unicast CIS, only kStateFlagHasDataPathSet is used (original behavior).
+    if (is_duplex_enabled_ &&
+        (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
+      log::assert_that(
+              (iso->state_flags & (kStateFlagHasDataPathSet | kStateFlagHasOutputDataPathSet)) != 0,
+              "Data path not set");
+    } else {
+      log::assert_that((iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet,
+                       "Data path not set");
+    }
 
     btsnd_hcic_remove_iso_data_path(
             iso_handle, data_path_dir,
-            base::BindOnce(&iso_impl::on_remove_iso_data_path, weak_factory_.GetWeakPtr()));
+            base::BindOnce(&iso_impl::on_remove_iso_data_path, weak_factory_.GetWeakPtr(),
+                           data_path_dir));
 
     BTM_LogHistory(kBtmLogTag, cis_hdl_to_addr[iso_handle], "Remove data path",
                    std::format("handle:0x{:04x}, dir:0x{:02x}", iso_handle, data_path_dir));
@@ -737,7 +796,11 @@ struct iso_impl {
       }
     }
 
-    big_callbacks_->OnBigEvent(kIsoEventBigOnCreateCmpl, &evt);
+    if (evt.status == HCI_SUCCESS) {
+      big_callbacks_->OnBigEvent(kIsoEventBigOnCreateCmpl, &evt);
+    } else {
+      big_callbacks_->OnBigEvent(kIsoEventBigOnCreateFail, &evt);
+    }
 
     {
       const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
@@ -768,6 +831,11 @@ struct iso_impl {
     }
 
     log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
+    // Use kIsoEventBigOnTerminateCmpl (0x01) so broadcaster.cc::OnBigEvent
+    // routes this to HandleHciEvent(HCI_BLE_TERM_BIG_CPL_EVT) → state machine
+    // transitions DISABLING→CONFIGURED → ConfirmSuspendRequest() (TX ACK).
+    // kIsoEventBigTerminated (0x06) was not handled by broadcaster.cc and
+    // caused the TX suspend ACK to never be sent.
     big_callbacks_->OnBigEvent(kIsoEventBigOnTerminateCmpl, &evt);
 
     {
@@ -787,17 +855,193 @@ struct iso_impl {
       big_params.enc_code = {0};
     }
 
+    // Apply default values from tBAP_BA_BIG_PARAMS if not set
+    if (big_params.sdu_itv == 0) {
+      big_params.sdu_itv = 10000;  // Default SDU interval
+    }
+    if (big_params.max_sdu_size == 0) {
+      big_params.max_sdu_size = 100;  // Default max SDU size
+    }
+    if (big_params.max_transport_latency == 0) {
+      big_params.max_transport_latency = 10;  // Default max transport latency
+    }
+    // Apply default RTN=2 only if RTN=0 AND PHY is not Coded (0x04)
+    // For Coded PHY duplex mode, RTN=0 is valid
+    if (big_params.rtn == 0 && big_params.phy != 0x04) {
+      big_params.rtn = 2;  // Default RTN for non-Coded PHY
+    }
+    if (big_params.phy == 0) {
+      big_params.phy = 2;  // Default PHY (LE 2M)
+    }
+    if (big_params.packing == 0xFF) {  // Use 0xFF as uninitialized value
+      big_params.packing = 1;  // Default packing (Interleaved)
+    }
+    if (big_params.framing == 0xFF) {  // Use 0xFF as uninitialized value
+      big_params.framing = 0;  // Default framing (Unframed)
+    }
+
     last_big_create_req_sdu_itv_ = big_params.sdu_itv;
     btsnd_hcic_create_big(big_id, big_params.adv_handle, big_params.num_bis, big_params.sdu_itv,
                           big_params.max_sdu_size, big_params.max_transport_latency, big_params.rtn,
                           big_params.phy, big_params.packing, big_params.framing, big_params.enc,
                           big_params.enc_code);
+    
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "BIG Create",
+                   std::format("big_id:0x{:02x}, sdu_itv:{}, max_sdu:{}, latency:{}, rtn:{}, phy:{}, packing:{}, framing:{}",
+                               big_id, big_params.sdu_itv, big_params.max_sdu_size, 
+                               big_params.max_transport_latency, big_params.rtn, big_params.phy,
+                               big_params.packing, big_params.framing));
   }
 
   void terminate_big(uint8_t big_id, uint8_t reason) {
     log::assert_that(IsBigKnown(big_id), "No such big: {}", big_id);
 
     btsnd_hcic_term_big(big_id, reason);
+  }
+
+  void big_create_sync(uint8_t big_handle, struct big_sync_params big_params) {
+    log::assert_that(!IsBigKnown(big_handle), "Invalid big - already exists: {}", big_handle);
+
+    btsnd_hcic_big_create_sync(big_handle, big_params.sync_handle, big_params.encryption,
+                                big_params.broadcast_code, big_params.mse,
+                                big_params.big_sync_timeout, big_params.bis);
+  }
+
+  void big_terminate_sync(uint8_t big_handle) {
+    log::assert_that(IsBigKnown(big_handle), "No such big: {}", big_handle);
+
+    btsnd_hcic_big_terminate_sync(
+            big_handle, base::BindOnce(&iso_impl::on_big_terminate_sync_cmpl,
+                                       weak_factory_.GetWeakPtr(), big_handle));
+  }
+
+  void on_big_terminate_sync_cmpl(uint8_t big_handle, uint8_t* stream, uint16_t len) {
+    uint8_t status;
+    big_terminate_sync_cmpl_evt evt;
+
+    log::assert_that(len == 2, "Invalid packet length: {}", len);
+    log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(big_handle, stream);
+
+    evt.status = status;
+    evt.big_handle = big_handle;
+
+    if (status == HCI_SUCCESS) {
+      // BIS will be removed when BIG Sync Lost event is received
+      log::info("BIG terminate sync command successful for big_handle: {}", big_handle);
+      bool is_known_handle = false;
+      auto bis_it = conn_hdl_to_bis_map_.cbegin();
+      while (bis_it != conn_hdl_to_bis_map_.cend()) {
+        if (bis_it->second->big_handle == evt.big_handle) {
+          log::info("Removing BIS handle {} for BIG Sync {}", bis_it->first, big_handle);
+          bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+          is_known_handle = true;
+        } else {
+          ++bis_it;
+        }
+        log::assert_that(is_known_handle, "No such big sync handle: {}", big_handle);
+      }
+    } else {
+      log::error("BIG terminate sync command failed, status: {}, big_handle: {}", status,
+                 big_handle);
+    }
+
+    big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnTerminateSyncCmpl, &evt);
+  }
+
+  void process_big_sync_established_pkt(uint8_t len, uint8_t* data) {
+    struct big_sync_established_evt evt;
+
+    log::assert_that(len >= 16, "Invalid packet length: {}", len);
+    log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+
+    STREAM_TO_UINT8(evt.status, data);
+    STREAM_TO_UINT8(evt.big_handle, data);
+    STREAM_TO_UINT24(evt.transport_latency_big, data);
+    STREAM_TO_UINT8(evt.nse, data);
+    STREAM_TO_UINT8(evt.bn, data);
+    STREAM_TO_UINT8(evt.pto, data);
+    STREAM_TO_UINT8(evt.irc, data);
+    STREAM_TO_UINT16(evt.max_pdu, data);
+    STREAM_TO_UINT16(evt.iso_interval, data);
+
+    uint8_t num_bis;
+    STREAM_TO_UINT8(num_bis, data);
+
+    log::assert_that(num_bis != 0, "Bis count is 0");
+    log::assert_that(len == (14 + num_bis * sizeof(uint16_t)),
+                     "Invalid packet length: {}. Number of bis: {}", len, num_bis);
+
+    if (evt.status == HCI_SUCCESS) {
+      for (auto i = 0; i < num_bis; ++i) {
+        uint16_t conn_handle;
+        STREAM_TO_UINT16(conn_handle, data);
+        evt.conn_handles.push_back(conn_handle);
+        log::info("Synced to BIS conn_hdl {}", conn_handle);
+
+        auto bis = std::unique_ptr<iso_bis>(new iso_bis());
+        bis->big_handle = evt.big_handle;
+        bis->sdu_itv = 0;  // Will be updated from BASE if needed
+        bis->sync_info = {.tx_seq_nb = 0, .rx_seq_nb = 0};
+        bis->used_credits = 0;
+        bis->state_flags = kStateFlagIsBroadcastSync;
+
+        log::verbose("BIG_HANDLE {}, bis_handle: {:#x}, flags: {:#x}, status {}", evt.big_handle,
+                     conn_handle, bis->state_flags,
+                     hci_status_code_text((tHCI_STATUS)(evt.status)));
+
+        conn_hdl_to_bis_map_[conn_handle] = std::move(bis);
+      }
+    }
+
+    big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnSyncEstablished, &evt);
+
+    if (evt.status == HCI_SUCCESS) {
+      const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
+      for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
+        callbacks(true);
+      }
+    }
+  }
+
+  void process_big_sync_lost_pkt(uint8_t len, uint8_t* data) {
+    struct big_sync_lost_evt evt;
+
+    log::assert_that(len == 2, "Invalid packet length: {}", len);
+    log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+
+    STREAM_TO_UINT8(evt.big_handle, data);
+    STREAM_TO_UINT8(evt.reason, data);
+
+    // Clean up BIS entries for this BIG
+    log::info("BIG_SYNC_LOST event received for big_handle: {}, cleaning up BIS entries", evt.big_handle);
+    bool is_known_handle = false;
+    auto bis_it = conn_hdl_to_bis_map_.cbegin();
+    while (bis_it != conn_hdl_to_bis_map_.cend()) {
+      if (bis_it->second->big_handle == evt.big_handle) {
+        log::info("Removing BIS handle {} for BIG {}", bis_it->first, evt.big_handle);
+        bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+        is_known_handle = true;
+      } else {
+        ++bis_it;
+      }
+    }
+
+    if (!is_known_handle) {
+      log::warn("BIG_SYNC_LOST event received but no BIS entries found for big_handle: ",
+                 evt.big_handle);
+    }
+
+    big_sync_callbacks_->OnBigSyncEvent(kIsoEventBigOnSyncLost, &evt);
+
+    {
+      const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
+      for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
+        callbacks(false);
+      }
+    }
   }
 
   void on_iso_event(uint8_t code, uint8_t* packet, uint16_t packet_len) {
@@ -815,10 +1059,10 @@ struct iso_impl {
         /* Not supported */
         break;
       case HCI_BLE_BIG_SYNC_EST_EVT:
-        /* Not supported */
+        process_big_sync_established_pkt(packet_len, packet);
         break;
       case HCI_BLE_BIG_SYNC_LOST_EVT:
-        /* Not supported */
+        process_big_sync_lost_pkt(packet_len, packet);
         break;
       default:
         log::error("Unhandled event code {}", code);
@@ -831,9 +1075,494 @@ struct iso_impl {
     vsc_callback_->OnVscEvent(delay, mode, bdAddr);
   }
 
+  void on_set_dbig_parameters_cmd_complete(uint8_t* stream, uint16_t len) {
+    // Some implementations return (status, sub_opcode, dbig_handle). Keep it flexible.
+    log::assert_that(len >= 2, "Invalid DBIG cmd complete length: {}", len);
+
+    uint8_t status = 0xFF;
+    uint8_t sub_opcode = 0xFF;
+    uint8_t dbig_handle = 0xFF;
+
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(sub_opcode, stream);
+    if (len >= 3) {
+      STREAM_TO_UINT8(dbig_handle, stream);
+    }
+
+    BTM_LogHistory(
+            kBtmLogTag, RawAddress::kEmpty, "DBIG Params complete",
+            std::format("status:{}, sub_opcode:0x{:02x}, dbig_handle:0x{:02x}",
+                        hci_status_code_text((tHCI_STATUS)(status)), sub_opcode, dbig_handle));
+
+    // Forward cmd-complete as an ISO Manager DBIG event (similar in spirit to BIG create cmpl)
+    if (dbig_callbacks_ != nullptr) {
+      dbig_create_cmpl_evt evt = {
+              .status = status,
+              .sub_opcode = sub_opcode,
+              .dbig_handle = dbig_handle,
+      };
+      dbig_callbacks_->OnDbigEvent(kIsoEventDbigCreateCmpl, &evt);
+    }
+  }
+
+  void on_read_supported_states_cmd_complete(uint8_t* stream, uint16_t len) {
+    log::assert_that(len >= 12, "Invalid read_supported_states response length: {}", len);
+
+    uint8_t status, sub_opcode;
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(sub_opcode, stream);
+    stream += 8; // skip le_states[8]
+    STREAM_TO_UINT16(broadcast_states_, stream);
+    read_states_pending_ = false;
+
+    log::info("ReadSupportedStates complete - status:{}, sub_opcode:0x{:02x}, broadcast_states:0x{:04x}",
+              hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
+              broadcast_states_);
+  }
+
+  void read_supported_states() {
+    // If broadcast_states_ is already populated (e.g., the other profile — source or
+    // sink — already sent this command and received the response), skip re-sending.
+    // If a command is already in-flight, skip sending a duplicate.
+    // Both profiles share the same controller capability value.
+    if (broadcast_states_ != 0) {
+      log::info("ReadSupportedStates skipped — broadcast_states_ already 0x{:04x}",
+                static_cast<uint16_t>(broadcast_states_));
+      return;
+    }
+    if (read_states_pending_.exchange(true)) {
+      log::info("ReadSupportedStates skipped — command already in-flight");
+      return;
+    }
+    btsnd_hcic_dbig_read_supported_states(
+            base::BindRepeating(&iso_impl::on_read_supported_states_cmd_complete,
+                                weak_factory_.GetWeakPtr()));
+
+    log::info("ReadSupportedStates - opcode:0x{:04x}, sub_opcode:0x{:02x}",
+              HCI_VS_LE_READ_SUPPORTED_STATES,
+              HCI_VS_LE_READ_SUPPORTED_STATES_SUB_OPCODE);
+  }
+
+  void store_dbig_params(struct dbig_create_params params) {
+    last_dbig_params_ = params;
+  }
+
+  dbig_create_params get_stored_dbig_params() const {
+    return last_dbig_params_;
+  }
+
+  std::vector<uint8_t> get_dbig_params() {
+    std::vector<uint8_t> params(12, 0);
+    params[0] = last_dbig_params_.dbig_feature_set;
+    params[1] = last_dbig_params_.bis_detection_attempts;
+    params[2] = last_dbig_params_.max_payload_dbig_control;
+    params[3] = last_dbig_params_.bis_control_event_interval;
+    params[4] = last_dbig_params_.send_exit;
+    params[5] = last_dbig_params_.pgp_timeout;
+    params[6] = last_dbig_params_.pgo_timeout;
+    params[7] = last_dbig_params_.sgo_timeout;
+    params[8] = last_dbig_params_.join_timeout;
+    params[9] = last_dbig_params_.exit_timeout;
+    params[10] = last_dbig_params_.remove_timeout;
+    params[11] = last_dbig_params_.terminate_timeout;
+    return params;
+  }
+
+  uint16_t get_broadcast_states() {
+    return broadcast_states_;
+  }
+
+  void set_dbig_parameters(struct dbig_create_params dbig_params) {
+    last_dbig_params_ = dbig_params;
+    // Gate DBIG HCI command based on duplex property.
+    // If duplex is disabled, we treat it as "DBIG configured" and immediately continue.
+    const bool is_duplex =
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+    if (!is_duplex) {
+      log::info("DBIG duplex disabled; skipping SetDbigParameters. dbig_handle=0x{:02x}",
+                dbig_params.dbig_handle);
+      return;
+    }
+
+    // HCI VS cmd: HCI_VS_LE_SET_DBIG_PARAMETERS
+    // NOTE: btsnd_hcic_ble_create_dbig takes a Repeating Callback signature.
+    btsnd_hcic_ble_create_dbig(
+            dbig_params.dbig_handle, dbig_params.dbig_feature_set,
+            dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
+            dbig_params.bis_control_event_interval, dbig_params.send_exit,
+            dbig_params.pgp_timeout, dbig_params.pgo_timeout,
+            dbig_params.sgo_timeout, dbig_params.join_timeout,
+            dbig_params.exit_timeout, dbig_params.remove_timeout,
+            dbig_params.terminate_timeout, dbig_params.tx_power,
+            base::BindRepeating(&iso_impl::on_set_dbig_parameters_cmd_complete,
+                                weak_factory_.GetWeakPtr()));
+
+    log::info("DBIG Params set - dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
+              "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, "
+              "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, tx_power:{}",
+              dbig_params.dbig_handle, dbig_params.dbig_feature_set,
+              dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
+                               dbig_params.bis_control_event_interval, dbig_params.send_exit,
+                               dbig_params.pgp_timeout, dbig_params.pgo_timeout,
+                               dbig_params.sgo_timeout, dbig_params.join_timeout,
+                               dbig_params.exit_timeout, dbig_params.remove_timeout,
+                               dbig_params.terminate_timeout, dbig_params.tx_power);
+  }
+
+  void on_join_control_event(uint8_t* stream, uint16_t len) {
+    uint8_t dbig_handle = 0;
+    uint8_t status = 0;
+
+    log::info("DBIG Join Control event, len={}", len);
+    if (len < 2) {
+      log::warn("Insufficient event parameters for Join Control event.");
+      return;
+    }
+
+    STREAM_TO_UINT8(dbig_handle, stream);
+    STREAM_TO_UINT8(status, stream);
+
+    log::info("DBIG Join Control: dbig_handle=0x{:02x}, status=0x{:02x}", dbig_handle, status);
+
+    if (join_control_complete_cb_ != nullptr) {
+      (*join_control_complete_cb_)(status, dbig_handle);
+      join_control_complete_cb_ = nullptr;
+    }
+  }
+
+  void join_control(struct dbig_join_control_params params) {
+    log::info("DBIG Join Control: dbig_handle=0x{:02x}, mode=0x{:02x}",
+              params.dbig_handle, params.mode);
+
+    join_control_complete_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_join_control(params.dbig_handle, params.mode,
+                                base::BindRepeating([](uint8_t*, uint16_t) {}));
+  }
+
+  void on_texit_dbig_event(uint8_t* stream, uint16_t len) {
+    uint8_t dbig_handle = 0;
+    uint8_t reason = 0;
+    uint8_t status = 0;
+
+    log::info("DBIG TExitDbIg event, len={}", len);
+    if (len < 3) {
+      log::warn("Insufficient event parameters for TExitDbIg event.");
+      return;
+    }
+
+    STREAM_TO_UINT8(dbig_handle, stream);
+    STREAM_TO_UINT8(reason, stream);
+    STREAM_TO_UINT8(status, stream);
+
+    log::info("DBIG TExitDbIg: dbig_handle=0x{:02x}, reason=0x{:02x}, status=0x{:02x}",
+              dbig_handle, reason, status);
+
+    if (texit_dbig_cmpl_cb_ != nullptr) {
+      (*texit_dbig_cmpl_cb_)(status, HCI_VS_LE_TEXIT_DBIG_SUB_OPCODE);
+      texit_dbig_cmpl_cb_ = nullptr;
+    }
+
+    /* status==HCI_SUCCESS only means the HCI_VS_LE_Texit_DBIG command itself was
+     * accepted by the controller — it does NOT mean the DBIG/BIG was torn down.
+     * That is only true when the mode we actually sent was TERMINATE or EXIT.
+     * For REJECT_TERMINATE the BIG/BIS stay alive on the air, so erasing the BIS
+     * map here would desync host bookkeeping from the still-live ISO connections
+     * and crash (log::assert_that) the next time a real teardown looks them up. */
+    bool big_actually_terminated = (status == HCI_SUCCESS) &&
+            (last_texit_mode_ == HCI_TEXIT_MODE_TERMINATE ||
+             last_texit_mode_ == HCI_TEXIT_MODE_EXIT);
+
+    if (big_actually_terminated) {
+      // Clean up BIS entries for this DBIG - similar to process_big_sync_lost_pkt
+      log::info("DBIG TExitDbig successful for dbig_handle: {}, cleaning up BIS entries", dbig_handle);
+      bool is_known_handle = false;
+      auto bis_it = conn_hdl_to_bis_map_.cbegin();
+      while (bis_it != conn_hdl_to_bis_map_.cend()) {
+        if (bis_it->second->big_handle == dbig_handle) {
+          log::info("Removing BIS handle {} for DBIG {}", bis_it->first, dbig_handle);
+          bis_it = conn_hdl_to_bis_map_.erase(bis_it);
+          is_known_handle = true;
+        } else {
+          ++bis_it;
+        }
+      }
+      if (!is_known_handle) {
+        log::warn("DBIG TExitDbig complete but no BIS entries found for dbig_handle: ",
+                   dbig_handle);
+      }
+
+      // Notify that ISO traffic is now inactive (symmetric to BIG_CREATE_SYNC success)
+      const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
+      for (auto callbacks : on_iso_traffic_active_callbacks_list_) {
+        callbacks(false);  // Notify broadcaster.cc that ISO traffic stopped
+      }
+    } else if (status == HCI_SUCCESS) {
+      log::info("DBIG TExitDbig command succeeded but mode=0x{:02x} did not terminate the "
+                "BIG (e.g. REJECT_TERMINATE) — BIS entries for dbig_handle: {} left intact",
+                last_texit_mode_, dbig_handle);
+    } else {
+      log::error("DBIG TExitDbig failed, status: {}, dbig_handle: {}", status, dbig_handle);
+    }
+
+    /* Fire DBIG-specific TExitDbig completion event */
+    if (dbig_callbacks_ != nullptr) {
+      dbig_texit_cmpl_evt evt = {
+        .status = status,
+        .dbig_handle = dbig_handle,
+        .reason = reason
+      };
+      log::info("Firing kIsoEventDbigTexitCmpl for TExitDbig completion");
+      dbig_callbacks_->OnDbigEvent(kIsoEventDbigTexitCmpl, &evt);
+    }
+  }
+
+  void texit_dbig(struct dbig_texit_params params) {
+    log::info("DBIG TExitDbIg: dbig_handle=0x{:02x}, texit_mode=0x{:02x}, reason=0x{:02x}",
+              params.dbig_handle, params.texit_mode, params.reason);
+
+    texit_dbig_cmpl_cb_ = params.p_cb;
+    last_texit_mode_ = params.texit_mode;
+
+    btsnd_hcic_ble_texit_dbig(params.dbig_handle, params.texit_mode, params.reason,
+                               base::BindRepeating([](uint8_t*, uint16_t) {}));
+  }
+
+  void on_remove_device_dbig_event(uint8_t* stream, uint16_t len) {
+    uint8_t  dbig_handle = 0;
+    uint16_t dev_id      = 0;
+    uint8_t  status      = 0;
+
+    log::info("DBIG RemoveDevice complete event, len={}", len);
+    if (len < 4) {
+      log::warn("Insufficient event parameters for RemoveDevice event.");
+      return;
+    }
+
+    STREAM_TO_UINT8(dbig_handle, stream);
+    STREAM_TO_UINT16(dev_id, stream);
+    STREAM_TO_UINT8(status, stream);
+
+    log::info("DBIG RemoveDevice: dbig_handle=0x{:02x}, dev_id=0x{:04x}, status=0x{:02x}",
+              dbig_handle, dev_id, status);
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG RemoveDevice complete",
+                   std::format("dbig_handle:0x{:02x}, dev_id:0x{:04x}, status:{}",
+                               dbig_handle, dev_id,
+                               hci_status_code_text((tHCI_STATUS)(status))));
+
+    if (remove_device_dbig_cmpl_cb_ != nullptr) {
+      (*remove_device_dbig_cmpl_cb_)(status, dbig_handle, dev_id);
+      remove_device_dbig_cmpl_cb_ = nullptr;
+    }
+
+    if (dbig_callbacks_ != nullptr) {
+      dbig_remove_device_cmpl_evt evt = {
+        .status      = status,
+        .dbig_handle = dbig_handle,
+        .dev_id      = dev_id
+      };
+      log::info("Firing kIsoEventDbigRemoveDeviceCmpl for RemoveDevice completion");
+      dbig_callbacks_->OnDbigEvent(kIsoEventDbigRemoveDeviceCmpl, &evt);
+    }
+  }
+
+  void remove_device_dbig(struct dbig_remove_device_params params) {
+    log::info("DBIG RemoveDevice: dbig_handle=0x{:02x}, dev_id=0x{:04x}, reason=0x{:02x}",
+              params.dbig_handle, params.dev_id, params.reason);
+
+    remove_device_dbig_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_remove_device_dbig(params.dbig_handle, params.dev_id, params.name,
+                                      params.reason,
+                                      base::BindRepeating([](uint8_t*, uint16_t) {}));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG RemoveDevice",
+                   std::format("dbig_handle:0x{:02x}, dev_id:0x{:04x}, reason:0x{:02x}",
+                               params.dbig_handle, params.dev_id, params.reason));
+  }
+
+  void on_sync_only_cmd_cmpl(uint8_t* stream, uint16_t len) {
+    uint8_t status = 0xFF;
+    uint8_t sub_opcode = HCI_VS_LE_DBIG_SYNC_ONLY_SUB_OPCODE;
+    uint8_t dbig_handle = 0xFF;
+
+    if (len < 3) {
+      log::warn("Insufficient return parameters for DBIG sync-only cmd complete, len={}", len);
+      status = HCI_ERR_UNSPECIFIED;
+    } else {
+      STREAM_TO_UINT8(status, stream);
+      STREAM_TO_UINT8(sub_opcode, stream);
+      STREAM_TO_UINT8(dbig_handle, stream);
+    }
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SyncOnly complete",
+                   std::format("status:{}, sub_opcode:0x{:02x}, dbig_handle:0x{:02x}",
+                               hci_status_code_text((tHCI_STATUS)(status)), sub_opcode,
+                               dbig_handle));
+
+    if (sync_only_cmpl_cb_ != nullptr) {
+      (*sync_only_cmpl_cb_)(status, sub_opcode, dbig_handle);
+      sync_only_cmpl_cb_ = nullptr;
+    }
+  }
+
+  void sync_only(struct iso_manager::dbig_sync_only_params params) {
+    log::info("DBIG SyncOnly: dbig_handle=0x{:02x}, enable={}", params.dbig_handle, params.enable);
+
+    sync_only_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_dbig_sync_only(
+        params.dbig_handle, params.enable,
+        base::BindRepeating(&iso_impl::on_sync_only_cmd_cmpl,
+                            weak_factory_.GetWeakPtr()));
+
+    BTM_LogHistory(kBtmLogTag, RawAddress::kEmpty, "DBIG SyncOnly",
+                   std::format("dbig_handle:0x{:02x}, enable:{}", params.dbig_handle, params.enable));
+  }
+
+  void on_set_devid_cmd_cmpl(uint8_t* stream, uint16_t len) {
+    uint8_t status = 0;
+    uint8_t sub_opcode = 0;
+
+    log::info("DBIG SetDevId cmd complete, len={}", len);
+    if (len < 2) {
+      log::warn("Insufficient return parameters for SetDevId cmd complete.");
+      return;
+    }
+
+    STREAM_TO_UINT8(status, stream);
+    STREAM_TO_UINT8(sub_opcode, stream);
+
+    log::info("DBIG SetDevId: status=0x{:02x}, sub_opcode=0x{:02x}", status, sub_opcode);
+
+    if (set_devid_cmpl_cb_ != nullptr) {
+      (*set_devid_cmpl_cb_)(status, sub_opcode, 0);
+    }
+  }
+
+  void set_devid(struct dbig_set_devid_params params) {
+    log::info("DBIG SetDevId: dev_id=0x{:04x}", params.dev_id);
+
+    set_devid_cmpl_cb_ = params.p_cb;
+
+    btsnd_hcic_ble_set_devid(params.dev_id, params.name,
+                              base::BindRepeating(&iso_impl::on_set_devid_cmd_cmpl,
+                                                  weak_factory_.GetWeakPtr()));
+  }
+
+  void on_dbig_update_event(uint8_t* stream, uint16_t len) {
+    dbig_update_evt evt;
+
+    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    log::assert_that(len >= 5, "Invalid DBIG packet length: {}", len);
+
+    STREAM_TO_UINT8(evt.status, stream);
+    STREAM_TO_UINT8(evt.big_handle, stream);
+    STREAM_TO_UINT8(evt.bis_state, stream);
+    STREAM_TO_UINT8(evt.timing_source, stream);
+    STREAM_TO_UINT8(evt.local_bis_id, stream);
+
+    /* Parse extended fields:
+     * [5-6]   : dev_id (12-bit, little-endian)
+     * [7-16]  : name (10 bytes)
+     * [17]    : num_bis
+     * [18-..] : BIS[n]_DevID (num_bis * 2 bytes, 12-bit each)
+     * [last]  : broadcast_features (2 bytes)
+     */
+    uint16_t offset = 5;
+    if (len >= offset + 2) {
+      uint16_t raw_dev_id = 0;
+      STREAM_TO_UINT16(raw_dev_id, stream);
+      evt.dev_id = raw_dev_id & 0x0FFF;
+      offset += 2;
+    }
+    if (len >= offset + 10) {
+      evt.name.resize(10);
+      STREAM_TO_ARRAY(evt.name.data(), stream, 10);
+      offset += 10;
+    }
+    if (len >= offset + 1) {
+      STREAM_TO_UINT8(evt.num_bis, stream);
+      offset += 1;
+      for (int i = 0; i < evt.num_bis && i < kDbigMaxBisCount; i++) {
+        if (len >= offset + 2) {
+          uint16_t bis_dev_id = 0;
+          STREAM_TO_UINT16(bis_dev_id, stream);
+          evt.bis_dev_ids.push_back(bis_dev_id & 0x0FFF);
+          offset += 2;
+        }
+      }
+    }
+    if (len >= offset + 2) {
+      STREAM_TO_UINT16(evt.broadcast_features, stream);
+    }
+
+    log::info("DBIG Update event - big_handle:0x{:02x}, status:{}, bis_state:{}, timing_source:{}, "
+              "local_bis_id:{}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+              evt.big_handle, evt.status, evt.bis_state, evt.timing_source,
+              evt.local_bis_id, evt.dev_id, evt.num_bis, evt.broadcast_features);
+
+    dbig_callbacks_->OnDbigEvent(kIsoEventDbigUpdate, &evt);
+  }
+
+  void on_dbig_status_event(uint8_t* stream, uint16_t len) {
+    dbig_status_evt evt;
+
+    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    /* Minimum: 1(handle) + 2(status) = 3 bytes. */
+    log::assert_that(len >= 3, "Invalid DBIG status packet length: {}", len);
+
+    STREAM_TO_UINT8(evt.dbig_handle, stream);
+    STREAM_TO_UINT16(evt.dbig_status, stream);
+
+    /* Parse extended fields if present:
+     * [3-7]   : big_event_counter (5 bytes, skipped)
+     * [8-9]   : dev_id (2 bytes, 12-bit value)
+     * [10-19] : name (10 bytes)
+     * [20-..] : BIS[n]_DevID (2*n bytes, n up to kDbigMaxBisCount)
+     * [last]  : broadcast_features (2 bytes)
+     */
+    uint16_t offset = 3;  /* 1(handle) + 2(status) */
+    if (len >= offset + 5) {
+      /* Skip big_event_counter (5 bytes) */
+      stream += 5;
+      offset += 5;
+    }
+    if (len >= offset + 2) {
+      uint16_t raw_dev_id = 0;
+      STREAM_TO_UINT16(raw_dev_id, stream);
+      evt.dev_id = raw_dev_id & 0x0FFF;
+      offset += 2;
+    }
+    if (len >= offset + 10) {
+      evt.name.resize(10);
+      STREAM_TO_ARRAY(evt.name.data(), stream, 10);
+      offset += 10;
+    }
+    /* Parse BIS[n]_DevID: n is determined by available bytes.
+     * The last 2 bytes are broadcast_features, so stop before them. */
+    evt.num_bis = 0;
+    while (len >= offset + 2 && evt.num_bis < kDbigMaxBisCount) {
+      if (len == offset + 2) break;  /* Last 2 bytes are broadcast_features */
+      uint16_t bis_dev_id = 0;
+      STREAM_TO_UINT16(bis_dev_id, stream);
+      evt.bis_dev_ids.push_back(bis_dev_id & 0x0FFF);
+      offset += 2;
+      evt.num_bis++;
+    }
+    if (len >= offset + 2) {
+      STREAM_TO_UINT16(evt.broadcast_features, stream);
+    }
+
+    log::info("DBIG Status event - dbig_handle:0x{:02x}, dbig_status:0x{:04x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+              evt.dbig_handle, evt.dbig_status, evt.dev_id, evt.num_bis, evt.broadcast_features);
+
+    dbig_callbacks_->OnDbigEvent(kIsoEventDbigStatus, &evt);
+  }
+
   void handle_iso_data(BT_HDR* p_msg) {
     const uint8_t* stream = p_msg->data;
-    cis_data_evt evt;
     uint16_t handle, seq_nb;
 
     if (p_msg->len <= ((p_msg->layer_specific & BT_ISO_HDR_CONTAINS_TS) ? kIsoHeaderWithTsLen
@@ -841,16 +1570,57 @@ struct iso_impl {
       return;
     }
 
-    log::assert_that(cig_callbacks_ != nullptr, "Invalid CIG callbacks");
-
     STREAM_TO_UINT16(handle, stream);
-    evt.cis_conn_hdl = HCID_GET_HANDLE(handle);
+    uint16_t iso_handle = HCID_GET_HANDLE(handle);
 
-    iso_base* iso = GetCisIfKnown(evt.cis_conn_hdl);
+    iso_base* iso = GetIsoIfKnown(iso_handle);
     if (iso == nullptr) {
-      log::error(", received data for the non-registered CIS!");
+      log::error("Received data for non-registered ISO handle: 0x{:04x}", iso_handle);
       return;
     }
+
+    // Check if this is BIS or CIS
+    if (iso->state_flags & kStateFlagIsBroadcastSync) {
+      // Handle BIS data for sink (synced BIG)
+      bis_data_evt evt;
+      evt.bis_conn_hdl = iso_handle;
+      evt.big_handle = iso->big_handle;
+
+      STREAM_SKIP_UINT16(stream);
+      if (p_msg->layer_specific & BT_ISO_HDR_CONTAINS_TS) {
+        STREAM_TO_UINT32(evt.ts, stream);
+      } else {
+        evt.ts = 0;
+      }
+
+      STREAM_TO_UINT16(seq_nb, stream);
+
+      uint16_t expected_seq_nb = iso->sync_info.rx_seq_nb;
+      iso->sync_info.rx_seq_nb = (seq_nb + 1) & 0xffff;
+
+      evt.evt_lost = ((1 << 16) + seq_nb - expected_seq_nb) & 0xffff;
+      if (evt.evt_lost > 0) {
+        iso->evt_stats.evt_lost_count += evt.evt_lost;
+        iso->evt_stats.evt_last_lost_us = bluetooth::common::time_get_os_boottime_us();
+
+        log::warn("{} BIS packets lost.", evt.evt_lost);
+        iso->evt_stats.seq_nb_mismatch_count++;
+      }
+
+      evt.p_msg = p_msg;
+      evt.seq_nb = seq_nb;
+
+      // BIS data is only received for sink (synced BIG), not for source (created BIG)
+      log::assert_that(big_sync_callbacks_ != nullptr, "Invalid BIG Sync callbacks");
+      big_sync_callbacks_->OnBisEvent(kIsoEventBisDataAvailable, &evt);
+      return;
+    }
+
+    // Handle CIS data
+    log::assert_that(cig_callbacks_ != nullptr, "Invalid CIG callbacks");
+
+    cis_data_evt evt;
+    evt.cis_conn_hdl = iso_handle;
 
     STREAM_SKIP_UINT16(stream);
     if (p_msg->layer_specific & BT_ISO_HDR_CONTAINS_TS) {
@@ -973,8 +1743,35 @@ struct iso_impl {
   CigCallbacks* cig_callbacks_ = nullptr;
   VscCallback* vsc_callback_ = nullptr;
   BigCallbacks* big_callbacks_ = nullptr;
+  DbigCallbacks* dbig_callbacks_ = nullptr;
+
+  BigSyncCallbacks* big_sync_callbacks_ = nullptr;
+
+  /* Callback pointers for DBIG commands */
+  dbig_join_control_complete_cb* join_control_complete_cb_ = nullptr;
+  dbig_texit_cmpl_cb* texit_dbig_cmpl_cb_ = nullptr;
+  dbig_sync_only_cmpl_cb* sync_only_cmpl_cb_ = nullptr;
+  dbig_set_devid_cmpl_cb* set_devid_cmpl_cb_ = nullptr;
+  dbig_remove_device_cmpl_cb* remove_device_dbig_cmpl_cb_ = nullptr;
+  dbig_create_params last_dbig_params_ = {};
+  /* texit_mode from the most recently sent HCI_VS_LE_Texit_DBIG command. HCI_SUCCESS on
+   * the TExitDbig complete event only means the command itself was accepted by the
+   * controller — it does NOT mean the DBIG/BIG was actually torn down. That is only true
+   * for TERMINATE/EXIT modes; for REJECT_TERMINATE the BIG stays alive and the BIS ISO
+   * connections are still in use, so on_texit_dbig_event() must not erase them. */
+  uint8_t last_texit_mode_ = HCI_TEXIT_MODE_TERMINATE;
+
+  std::atomic<uint16_t> broadcast_states_{0};
+  /** True while a HCI_VS_LE_READ_SUPPORTED_STATES command is in-flight.
+   *  Guards against a second command being sent before the first completes,
+   *  which happens when both broadcast source and sink call ReadSupportedStates
+   *  concurrently during BT turn-on. */
+  std::atomic<bool> read_states_pending_{false};
   std::mutex on_iso_traffic_active_callbacks_list_mutex_;
   std::list<void (*)(bool)> on_iso_traffic_active_callbacks_list_;
+  /* Cached once at construction — persist.vendor.qcom.bluetooth.enable_ba_duplex
+   * is a persistent property that does not change at runtime. */
+  bool is_duplex_enabled_ = false;
   base::WeakPtrFactory<iso_impl> weak_factory_{this};
 };
 

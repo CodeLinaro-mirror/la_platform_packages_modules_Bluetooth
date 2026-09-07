@@ -78,7 +78,12 @@ public class BluetoothQualityReportNativeInterface {
 
     /** Callback from the native stack back into the Java framework. */
     private void bqrDeliver(
-            byte[] remoteAddr, int lmpVer, int lmpSubVer, int manufacturerId, byte[] bqrRawData) {
+            byte[] remoteAddr,
+            int lmpVer,
+            int lmpSubVer,
+            int manufacturerId,
+            byte[] bqrRawData,
+            boolean isQcBqr5Supported) {
         String remoteAddress = Utils.getAddressStringFromByte(remoteAddr);
 
         if (remoteAddress == null) {
@@ -96,7 +101,7 @@ public class BluetoothQualityReportNativeInterface {
         BluetoothClass remoteClass = new BluetoothClass(mAdapterService.getRemoteClass(device));
         BluetoothQualityReport bqr;
         try {
-            bqr =
+            BluetoothQualityReport.Builder builder =
                     new BluetoothQualityReport.Builder(bqrRawData)
                             .setRemoteAddress(remoteAddress)
                             .setLmpVersion(lmpVer)
@@ -104,8 +109,11 @@ public class BluetoothQualityReportNativeInterface {
                             .setManufacturerId(manufacturerId)
                             .setRemoteName(mAdapterService.getRemoteName(device))
                             .setBluetoothClass(remoteClass)
-                            .setVersionSupported(versionSupported)
-                            .build();
+                            .setVersionSupported(versionSupported);
+            if (isQcBqr5Supported) {
+                builder.setVendorBqr5(true);
+            }
+            bqr = builder.build();
             Log.i(TAG, bqr.toString());
         } catch (Exception e) {
             Log.e(TAG, "bqrDeliver failed: failed to create BluetoothQualityReport", e);

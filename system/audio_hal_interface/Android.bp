@@ -70,6 +70,7 @@ cc_library_static {
                 "qti_hidl/a2dp_encoding.cc",
                 "qti_hidl/client_interface.cc",
                 "qti_hidl/hearing_aid_software_encoding.cc",
+                "qti_hidl/le_audio_broadcast_encoding.cc",
                 "le_audio_software.cc",
             ],
         },

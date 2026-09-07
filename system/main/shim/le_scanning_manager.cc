@@ -388,15 +388,57 @@ bool btm_identity_addr_to_random_pseudo(RawAddress* bd_addr, tBLE_ADDR_TYPE* p_a
 extern tACL_CONN* btm_acl_for_bda(const RawAddress& bd_addr, tBT_TRANSPORT transport);
 
 void BleScannerInterfaceImpl::StartSync(uint8_t sid, RawAddress address, uint16_t skip,
-                                        uint16_t timeout, int reg_id) {
-  log::info("in shim layer");
+                                        uint16_t timeout, int reg_id, uint8_t client_id) {
+  log::info("in shim layer, sid={}, address={}, reg_id={}, client_id={}",
+            sid, address.ToString(), reg_id, client_id);
+
   tBLE_ADDR_TYPE address_type = BLE_ADDR_RANDOM;
   tINQ_DB_ENT* p_i = btm_inq_db_find(address);
   if (p_i) {
     address_type = p_i->inq_info.results.ble_addr_type;  // Random
   }
+
+  // Register this reg_id for the client (similar to advertising manager)
+  if (client_id != kScannerClientIdJni) {
+    native_sync_reg_id_map[client_id].insert(reg_id);
+  }
+
+  // Check if we already have an active sync to this broadcast source
+  int16_t existing_sync_handle = find_sync_handle(sid, address);
+
+  if (existing_sync_handle != -1) {
+    // Sync already exists - share it
+    log::info("Sharing existing sync: sync_handle={}, sid={}, address={}, client_id={}",
+              existing_sync_handle, sid, address.ToString(), client_id);
+
+    // Add this reg_id to the sync info
+    active_syncs_[existing_sync_handle].client_reg_ids[client_id].insert(reg_id);
+
+    // Immediately notify the client with OnPeriodicSyncStarted using existing sync_handle
+    if (client_id != kScannerClientIdJni) {
+      // Route to native client callback on main thread
+      do_in_main_thread(base::Bind(&ScanningCallbacks::OnPeriodicSyncStarted,
+                                   base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                   reg_id, 0 /* status=success */, existing_sync_handle, sid,
+                                   static_cast<int>(address_type), address,
+                                   1 /* phy */, 0 /* interval */));
+    } else {
+      // Route to JNI callback on JNI thread
+      do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnPeriodicSyncStarted,
+                                      base::Unretained(scanning_callbacks_), reg_id,
+                                      0 /* status=success */, existing_sync_handle, sid,
+                                      static_cast<int>(address_type), address,
+                                      1 /* phy */, 0 /* interval */));
+    }
+    return;
+  }
+
+  // No existing sync - create a new one
   btm_random_pseudo_to_identity_addr(&address, &address_type);
   address_type &= ~BLE_ADDR_TYPE_ID_BIT;
+
+  log::info("Creating new sync: sid={}, address={}, reg_id={}, client_id={}",
+            sid, address.ToString(), reg_id, client_id);
   bluetooth::shim::GetScanning()->StartSync(sid, ToAddressWithType(address, address_type), skip,
                                             timeout, reg_id);
 }
@@ -408,9 +450,44 @@ void BleScannerInterfaceImpl::StartSync(uint8_t sid, RawAddress address, uint16_
   LOG(INFO) << __func__ << " in shim layer";
 }
 
-void BleScannerInterfaceImpl::StopSync(uint16_t handle) {
-  log::info("in shim layer");
-  bluetooth::shim::GetScanning()->StopSync(handle);
+void BleScannerInterfaceImpl::StopSync(uint16_t handle, uint8_t client_id) {
+  log::info("StopSync: sync_handle={}, client_id={}", handle, client_id);
+
+  // Find the sync info for this sync_handle
+  auto sync_it = active_syncs_.find(handle);
+  if (sync_it == active_syncs_.end()) {
+    log::warn("StopSync: Unknown sync_handle={}", handle);
+    return;
+  }
+
+  // Remove this client's reg_ids from the sync
+  auto client_it = sync_it->second.client_reg_ids.find(client_id);
+  if (client_it != sync_it->second.client_reg_ids.end()) {
+    if (client_id != kScannerClientIdJni) {
+      // Remove all reg_ids for this native client from native_sync_reg_id_map
+      for (int reg_id : client_it->second) {
+        native_sync_reg_id_map[client_id].erase(reg_id);
+        log::info("StopSync: Removed reg_id={} from native_sync_reg_id_map for client_id={}",
+                  reg_id, client_id);
+      }
+    }
+
+    // Remove this client from the sync
+    sync_it->second.client_reg_ids.erase(client_it);
+    log::info("StopSync: Removed client_id={} from sync_handle={}", client_id, handle);
+  }
+
+  // Check if there are any clients left
+  if (sync_it->second.client_reg_ids.empty()) {
+    // No more clients - stop the sync at lower layer and clean up
+    log::info("StopSync: No more clients, stopping sync at lower layer: sync_handle={}, sid={}, address={}",
+              handle, sync_it->second.sid, sync_it->second.address.ToString());
+    active_syncs_.erase(sync_it);
+    bluetooth::shim::GetScanning()->StopSync(handle);
+  } else {
+    log::info("StopSync: {} client(s) still using sync_handle={}, not stopping at lower layer",
+              sync_it->second.client_reg_ids.size(), handle);
+  }
 }
 
 void BleScannerInterfaceImpl::CancelCreateSync(uint8_t sid, RawAddress address) {
@@ -474,6 +551,32 @@ void BleScannerInterfaceImpl::SyncTxParameters(RawAddress addr, uint8_t mode, ui
 void BleScannerInterfaceImpl::RegisterCallbacks(ScanningCallbacks* callbacks) {
   log::info("in shim layer");
   scanning_callbacks_ = callbacks;
+}
+
+void BleScannerInterfaceImpl::RegisterCallbacksNative(ScanningCallbacks* callbacks,
+                                                      uint8_t client_id) {
+  log::info("in shim layer, client_id={}", client_id);
+  native_scanning_callbacks_map_[client_id] = callbacks;
+}
+
+uint8_t BleScannerInterfaceImpl::is_native_sync_client(int reg_id) {
+  // Return client id if it's native sync client, otherwise return jni id as default
+  for (auto const& entry : native_scanning_callbacks_map_) {
+    if (native_sync_reg_id_map[entry.first].count(reg_id)) {
+      return entry.first;
+    }
+  }
+  return kScannerClientIdJni;
+}
+
+int16_t BleScannerInterfaceImpl::find_sync_handle(uint8_t sid, RawAddress address) {
+  // Search through active_syncs_ to find matching sid and address
+  for (const auto& [sync_handle, sync_info] : active_syncs_) {
+    if (sync_info.sid == sid && sync_info.address == address) {
+      return sync_handle;
+    }
+  }
+  return -1;  // -1 indicates not found
 }
 
 void BleScannerInterfaceImpl::OnScannerRegistered(const bluetooth::hci::Uuid app_uuid,
@@ -604,6 +707,30 @@ void BleScannerInterfaceImpl::OnPeriodicSyncStarted(
     btm_identity_addr_to_random_pseudo(&raw_address, &ble_addr_type, true);
   }
 
+  // Check if this is a native sync client
+  uint8_t client_id = is_native_sync_client(reg_id);
+
+  // Track this new sync in active_syncs_ for sharing
+  if (status == 0) {  // Success
+    SyncInfo& sync_info = active_syncs_[sync_handle];
+    sync_info.sid = advertising_sid;
+    sync_info.address = raw_address;
+    sync_info.client_reg_ids[client_id].insert(reg_id);
+
+    log::info("Sync created: sync_handle={}, sid={}, address={}, reg_id={}, client_id={}",
+              sync_handle, advertising_sid, raw_address.ToString(), reg_id, client_id);
+  }
+
+  if (client_id != kScannerClientIdJni) {
+    // Route to native client callback on main thread
+    do_in_main_thread(base::Bind(&ScanningCallbacks::OnPeriodicSyncStarted,
+                                 base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                 reg_id, status, sync_handle, advertising_sid,
+                                 static_cast<int>(ble_addr_type), raw_address, phy, interval));
+    return;
+  }
+
+  // Route to JNI callback on JNI thread
   do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnPeriodicSyncStarted,
                                   base::Unretained(scanning_callbacks_), reg_id, status,
                                   sync_handle, advertising_sid, static_cast<int>(ble_addr_type),
@@ -627,14 +754,68 @@ bool BleScannerInterfaceImpl::OnFetchPseudoAddressFromIdentityAddress(
 void BleScannerInterfaceImpl::OnPeriodicSyncReport(uint16_t sync_handle, int8_t tx_power,
                                                    int8_t rssi, uint8_t status,
                                                    std::vector<uint8_t> data) {
-  do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnPeriodicSyncReport,
-                                  base::Unretained(scanning_callbacks_), sync_handle, tx_power,
-                                  rssi, status, std::move(data)));
+  // Find the sync info for this sync_handle
+  auto sync_it = active_syncs_.find(sync_handle);
+  if (sync_it == active_syncs_.end()) {
+    log::warn("OnPeriodicSyncReport: Unknown sync_handle={}", sync_handle);
+    return;
+  }
+
+  // Broadcast to all clients sharing this sync
+  for (const auto& client_entry : sync_it->second.client_reg_ids) {
+    uint8_t client_id = client_entry.first;
+
+    if (client_id != kScannerClientIdJni) {
+      // Route to native client callback on main thread
+      do_in_main_thread(base::Bind(&ScanningCallbacks::OnPeriodicSyncReport,
+                                   base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                   sync_handle, tx_power, rssi, status, data));
+    } else {
+      // Route to JNI callback on JNI thread
+      do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnPeriodicSyncReport,
+                                      base::Unretained(scanning_callbacks_), sync_handle, tx_power,
+                                      rssi, status, data));
+    }
+  }
 }
 
 void BleScannerInterfaceImpl::OnPeriodicSyncLost(uint16_t sync_handle) {
-  do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnPeriodicSyncLost,
-                                  base::Unretained(scanning_callbacks_), sync_handle));
+  log::info("OnPeriodicSyncLost: sync_handle={}", sync_handle);
+
+  // Find the sync info for this sync_handle
+  auto sync_it = active_syncs_.find(sync_handle);
+  if (sync_it == active_syncs_.end()) {
+    log::warn("OnPeriodicSyncLost: Unknown sync_handle={}", sync_handle);
+    return;
+  }
+
+  // Broadcast to all clients sharing this sync
+  for (const auto& client_entry : sync_it->second.client_reg_ids) {
+    uint8_t client_id = client_entry.first;
+
+    if (client_id != kScannerClientIdJni) {
+      // Route to native client callback on main thread
+      do_in_main_thread(base::Bind(&ScanningCallbacks::OnPeriodicSyncLost,
+                                   base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                   sync_handle));
+
+      // Remove all reg_ids for this native client from native_sync_reg_id_map
+      for (int reg_id : client_entry.second) {
+        native_sync_reg_id_map[client_id].erase(reg_id);
+        log::info("Removed reg_id={} from native_sync_reg_id_map for client_id={}",
+                  reg_id, client_id);
+      }
+    } else {
+      // Route to JNI callback on JNI thread
+      do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnPeriodicSyncLost,
+                                      base::Unretained(scanning_callbacks_), sync_handle));
+    }
+  }
+
+  // Clean up all tracking for this sync
+  log::info("Cleaning up sync: sync_handle={}, sid={}, address={}",
+            sync_handle, sync_it->second.sid, sync_it->second.address.ToString());
+  active_syncs_.erase(sync_it);
 }
 
 void BleScannerInterfaceImpl::OnPeriodicSyncTransferred(int pa_source, uint8_t status,
@@ -645,8 +826,50 @@ void BleScannerInterfaceImpl::OnPeriodicSyncTransferred(int pa_source, uint8_t s
 }
 
 void BleScannerInterfaceImpl::OnBigInfoReport(uint16_t sync_handle, bool encrypted) {
-  do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnBigInfoReport,
-                                  base::Unretained(scanning_callbacks_), sync_handle, encrypted));
+  // Find the sync info for this sync_handle
+  auto sync_it = active_syncs_.find(sync_handle);
+  if (sync_it == active_syncs_.end()) {
+    log::warn("OnBigInfoReport: Unknown sync_handle={}", sync_handle);
+    return;
+  }
+
+  // Broadcast to all clients sharing this sync
+  for (const auto& client_entry : sync_it->second.client_reg_ids) {
+    uint8_t client_id = client_entry.first;
+
+    if (client_id != kScannerClientIdJni) {
+      // Route to native client callback on main thread
+      do_in_main_thread(base::Bind(&ScanningCallbacks::OnBigInfoReport,
+                                   base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                   sync_handle, encrypted));
+    } else {
+      // Route to JNI callback on JNI thread
+      do_in_jni_thread(base::BindOnce(&ScanningCallbacks::OnBigInfoReport,
+                                      base::Unretained(scanning_callbacks_), sync_handle, encrypted));
+    }
+  }
+}
+
+void BleScannerInterfaceImpl::OnBigInfoReportFull(uint16_t sync_handle,
+                                                  uint16_t iso_interval,
+                                                  uint8_t  phy,
+                                                  uint8_t  num_bis,
+                                                  bool     encrypted) {
+  // Find the sync info for this sync_handle
+  auto sync_it = active_syncs_.find(sync_handle);
+  if (sync_it == active_syncs_.end()) {
+    return;
+  }
+
+  // Forward full BIG info to native clients only (broadcast sink uses native path)
+  for (const auto& client_entry : sync_it->second.client_reg_ids) {
+    uint8_t client_id = client_entry.first;
+    if (client_id != kScannerClientIdJni) {
+      do_in_main_thread(base::Bind(&ScanningCallbacks::OnBigInfoReportFull,
+                                   base::Unretained(native_scanning_callbacks_map_[client_id]),
+                                   sync_handle, iso_interval, phy, num_bis, encrypted));
+    }
+  }
 }
 
 void BleScannerInterfaceImpl::OnTimeout() {}

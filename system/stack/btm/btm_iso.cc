@@ -22,7 +22,9 @@
 #include "stack/include/bt_hdr.h"
 
 using bluetooth::hci::iso_manager::BigCallbacks;
+using bluetooth::hci::iso_manager::BigSyncCallbacks;
 using bluetooth::hci::iso_manager::CigCallbacks;
+using bluetooth::hci::iso_manager::DbigCallbacks;
 using bluetooth::hci::iso_manager::iso_impl;
 using bluetooth::hci::iso_manager::VscCallback;
 
@@ -68,8 +70,22 @@ void IsoManager::RegisterBigCallbacks(BigCallbacks* callbacks) const {
   }
 }
 
+void IsoManager::RegisterBigSyncCallbacks(BigSyncCallbacks* callbacks) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->handle_register_big_sync_callbacks(callbacks);
+  }
+}
+
 void IsoManager::RegisterVscCallback(VscCallback* callback) const {
   pimpl_->iso_impl_->handle_register_vsc_callback(callback);
+}
+
+void IsoManager::RegisterDbigCallbacks(iso_manager::DbigCallbacks* callbacks) const {
+  log::info("Register DBIG callbacks, is_running={}, callbacks={}", pimpl_->IsRunning(),
+            std::format_ptr(callbacks));
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->handle_register_dbig_callbacks(callbacks);
+  }
 }
 
 void IsoManager::RegisterOnIsoTrafficActiveCallback(void callback(bool)) const {
@@ -152,6 +168,38 @@ void IsoManager::TerminateBig(uint8_t big_id, uint8_t reason) {
   }
 }
 
+void IsoManager::CreateDbig(struct iso_manager::dbig_create_params dbig_params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->set_dbig_parameters(dbig_params);
+  }
+}
+
+void IsoManager::StoreDbigParams(struct iso_manager::dbig_create_params params) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->store_dbig_params(params);
+  }
+}
+
+iso_manager::dbig_create_params IsoManager::GetStoredDbigParams() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->iso_impl_->get_stored_dbig_params();
+  }
+  return {};
+}
+
+void IsoManager::BigCreateSync(uint8_t big_handle,
+                               struct iso_manager::big_sync_params sync_params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->big_create_sync(big_handle, std::move(sync_params));
+  }
+}
+
+void IsoManager::BigTerminateSync(uint8_t big_handle) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->big_terminate_sync(big_handle);
+  }
+}
+
 void IsoManager::HandleIsoData(void* p_msg) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->handle_iso_data(static_cast<BT_HDR*>(p_msg));
@@ -177,10 +225,97 @@ void IsoManager::HandleHciEvent(uint8_t sub_code, uint8_t* params, uint16_t leng
 }
 
 void IsoManager::HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
-                                            uint64_t bdAddr) {
+                                           uint64_t bdAddr) {
   if (pimpl_->IsRunning()) {
     pimpl_->iso_impl_->on_vs_codec_settings_event(mode, delay, bdAddr);
   }
+}
+
+void IsoManager::HandleDbigUpdateEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_dbig_update_event(params, length);
+  }
+}
+
+void IsoManager::HandleDbigStatusEvent(uint8_t* params, uint16_t length) {
+  log::info("Handle DBIG status event, is_running={}, params={}, length={}", pimpl_->IsRunning(),
+            std::format_ptr(params), length);
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_dbig_status_event(params, length);
+  }
+}
+void IsoManager::HandleTExitDbigEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_texit_dbig_event(params, length);
+  }
+}
+
+void IsoManager::HandleRemoveDeviceDbigEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_remove_device_dbig_event(params, length);
+  }
+}
+
+void IsoManager::HandleJoinControlEvent(uint8_t* params, uint16_t length) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->on_join_control_event(params, length);
+  }
+}
+
+void IsoManager::JoinControl(struct iso_manager::dbig_join_control_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->join_control(params);
+  }
+}
+
+void IsoManager::SetSyncOnly(struct iso_manager::dbig_sync_only_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->sync_only(params);
+  }
+}
+
+void IsoManager::TExitDbig(struct iso_manager::dbig_texit_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->texit_dbig(params);
+  }
+}
+
+void IsoManager::RemoveDeviceDbig(struct iso_manager::dbig_remove_device_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->remove_device_dbig(params);
+  }
+}
+
+void IsoManager::SetDevId(struct iso_manager::dbig_set_devid_params params) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->set_devid(params);
+  }
+}
+
+void IsoManager::SetDbigParameters(struct iso_manager::dbig_create_params dbig_params) const {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->set_dbig_parameters(dbig_params);
+  }
+}
+
+void IsoManager::ReadSupportedStates() {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->read_supported_states();
+  }
+}
+
+std::vector<uint8_t> IsoManager::GetDbigParams() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->iso_impl_->get_dbig_params();
+  }
+  return {};
+}
+
+uint16_t IsoManager::GetBroadcastStates() const {
+  if (pimpl_->IsRunning()) {
+    return pimpl_->iso_impl_->get_broadcast_states();
+  }
+  return 0;
 }
 
 void IsoManager::Start() {

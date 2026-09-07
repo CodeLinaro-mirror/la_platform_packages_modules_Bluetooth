@@ -123,6 +123,10 @@ public class Config {
                 new ProfileConfig(LeAudioService.isEnabled(), BluetoothProfile.LE_AUDIO),
                 new ProfileConfig(
                         LeAudioService.isBroadcastEnabled(), BluetoothProfile.LE_AUDIO_BROADCAST),
+                new ProfileConfig(
+                        SystemProperties.getBoolean(
+                                "persist.vendor.qcom.bluetooth.enable_ba_duplex", false),
+                        BluetoothProfile.LE_AUDIO_BROADCAST_SINK),
             };
 
     /**

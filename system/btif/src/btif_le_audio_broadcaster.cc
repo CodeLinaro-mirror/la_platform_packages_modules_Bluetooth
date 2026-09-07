@@ -16,12 +16,15 @@
  */
 
 #include <base/functional/bind.h>
+#include <bluetooth/log.h>
 #include <hardware/bt_le_audio.h>
 
 #include <cstdint>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -63,6 +66,17 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                            std::move(subgroup_metadata)));
   }
 
+  void CreateEnhancedBroadcast(std::string broadcast_name,
+                       std::optional<bluetooth::le_audio::BroadcastCode> broadcast_code,
+                       std::vector<uint8_t> subgroup_quality,
+                       std::vector<std::vector<uint8_t>> subgroup_metadata,
+                       float iso_interval) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::CreateEnhancedAudioBroadcast,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_name,
+                           broadcast_code, std::move(subgroup_quality),
+                           std::move(subgroup_metadata), iso_interval));
+  }
+
   void UpdateMetadata(uint32_t broadcast_id, std::string broadcast_name,
                       std::vector<uint8_t> public_metadata,
                       std::vector<std::vector<uint8_t>> subgroup_metadata) override {
@@ -81,6 +95,11 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
   }
 
+  void stopEnhancedBroadcast(uint32_t broadcast_id, uint8_t mode) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::StopEnhancedAudioBroadcast,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_id, mode));
+  }
+
   void PauseBroadcast(uint32_t broadcast_id) override {
     do_in_main_thread(Bind(&LeAudioBroadcaster::SuspendAudioBroadcast,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
@@ -89,6 +108,17 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
   void DestroyBroadcast(uint32_t broadcast_id) override {
     do_in_main_thread(Bind(&LeAudioBroadcaster::DestroyAudioBroadcast,
                            Unretained(LeAudioBroadcaster::Get()), broadcast_id));
+  }
+
+  void SetAttributes(std::vector<uint8_t> dev_id, std::vector<uint8_t> name) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::SetAttributes,
+                           Unretained(LeAudioBroadcaster::Get()), std::move(dev_id),
+                           std::move(name)));
+  }
+
+  void SetJoinControl(bool enable) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::SetJoinControl,
+                           Unretained(LeAudioBroadcaster::Get()), enable));
   }
 
   void GetBroadcastMetadata(uint32_t broadcast_id) override {
@@ -123,9 +153,113 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                           Unretained(callbacks_), success));
   }
 
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+                            uint16_t dev_id, std::vector<uint8_t> name,
+                            uint8_t num_bis, std::vector<uint16_t> bis_dev_ids,
+                            uint16_t broadcast_features) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnDbigStatusChanged,
+                          Unretained(callbacks_), dbig_handle, status,
+                          dev_id, name, num_bis, bis_dev_ids, broadcast_features));
+  }
+
+  void OnRemoveDeviceDbigComplete(uint8_t dbig_handle, uint16_t dev_id,
+                                  uint8_t status) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnRemoveDeviceDbigComplete,
+                          Unretained(callbacks_), dbig_handle, dev_id, status));
+  }
+
+  void OnTexitDbigComplete(uint32_t broadcast_id, uint8_t dbig_handle,
+                            uint8_t status) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnTexitDbigComplete,
+                          Unretained(callbacks_), broadcast_id, dbig_handle, status));
+  }
+
+  void OnSyncOnlyModeActive(uint32_t broadcast_id) override {
+    do_in_jni_thread(Bind(&LeAudioBroadcasterCallbacks::OnSyncOnlyModeActive,
+                          Unretained(callbacks_), broadcast_id));
+  }
+
+  /**
+   * Accept a PGP terminate request by sending HCI_VS_LE_Texit_DBIG(TERMINATE).
+   * Called when PGO user accepts the terminate dialog.
+   */
+  void acceptTerminateDbig(uint32_t broadcast_id) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::AcceptTerminateDbig,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_id));
+  }
+
+  /**
+   * Reject a PGP terminate request by sending HCI_VS_LE_Texit_DBIG(REJECT_TERMINATE).
+   * Called when PGO user rejects the terminate dialog.
+   */
+  void rejectTerminateDbig(uint32_t broadcast_id) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::RejectTerminateDbig,
+                           Unretained(LeAudioBroadcaster::Get()), broadcast_id));
+  }
+
+  void removeDeviceDbig(uint16_t dev_id,
+                        const std::vector<uint8_t>& name,
+                        uint8_t reason) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::RemoveDeviceDbig,
+                           Unretained(LeAudioBroadcaster::Get()),
+                           dev_id, name, reason));
+  }
+
+  void notifyCallState(uint32_t broadcast_id, bool isCallActive) override {
+    do_in_main_thread(Bind(&LeAudioBroadcaster::NotifyCallState,
+                           Unretained(LeAudioBroadcaster::Get()),
+                           broadcast_id, isCallActive));
+  }
+
   void Stop(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Stop)); }
 
   void Cleanup(void) override { do_in_main_thread(Bind(&LeAudioBroadcaster::Cleanup)); }
+
+  /**
+   * Post HCI command to BT main thread, poll GetEnhancedBroadcastCap() until
+   * the controller responds (≤1 s), and return the capability bitmask.
+   * bit0=Terminate, bit1=Remove Device.
+   */
+  uint32_t readSupportedStates(void) override {
+    do_in_main_thread(base::BindOnce([]() {
+      if (!LeAudioBroadcaster::IsLeAudioBroadcasterRunning()) {
+        bluetooth::log::warn("Broadcaster not yet initialized, skipping ReadSupportedStates");
+        return;
+      }
+      LeAudioBroadcaster::Get()->ReadSupportedStates();
+    }));
+    constexpr int kPollIntervalMs = 10;
+    constexpr int kTimeoutMs = 1000;
+    for (int waited = 0; waited < kTimeoutMs; waited += kPollIntervalMs) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+      if (!LeAudioBroadcaster::IsLeAudioBroadcasterRunning()) break;
+      uint32_t cap = LeAudioBroadcaster::Get()->GetEnhancedBroadcastCap();
+      if (cap != 0) {
+        bluetooth::log::info("readSupportedStates: cap=0x{:04x} after {}ms", cap,
+                             waited + kPollIntervalMs);
+        return cap;
+      }
+    }
+    bluetooth::log::warn("readSupportedStates: timed out or not available");
+    return 0;
+  }
+
+  /**
+   * Synchronously retrieve the 12-byte DBIG parameter block from the BTA
+   * broadcaster.  Called from the JNI thread after readSupportedStates()
+   * has completed.
+   */
+  std::vector<uint8_t> getDbigParams(void) override {
+    return LeAudioBroadcaster::Get()->GetDbigParams();
+  }
+
+  /**
+   * Synchronously retrieve the enhanced broadcast capability bitmask from
+   * the BTA broadcaster.
+   */
+  uint32_t getEnhancedBroadcastCap(void) override {
+    return LeAudioBroadcaster::Get()->GetEnhancedBroadcastCap();
+  }
 
 private:
   LeAudioBroadcasterCallbacks* callbacks_;

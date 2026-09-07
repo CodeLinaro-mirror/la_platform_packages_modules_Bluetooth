@@ -47,7 +47,8 @@ public:
   ~BluetoothQualityReportCallbacksImpl() = default;
 
   void bqr_delivery_callback(const RawAddress bd_addr, uint8_t lmp_ver, uint16_t lmp_subver,
-                             uint16_t manufacturer_id, std::vector<uint8_t> bqr_raw_data) override {
+                             uint16_t manufacturer_id, std::vector<uint8_t> bqr_raw_data,
+                             bool is_qc_bqr5_supported) override {
     log::info("");
     std::shared_lock<std::shared_timed_mutex> lock(callbacks_mutex);
 
@@ -81,7 +82,8 @@ public:
                                      (jbyte*)bqr_raw_data.data());
 
     sCallbackEnv->CallVoidMethod(mCallbacksObj, method_bqrDeliver, addr.get(), (jint)lmp_ver,
-                                 (jint)lmp_subver, (jint)manufacturer_id, raw_data.get());
+                                 (jint)lmp_subver, (jint)manufacturer_id, raw_data.get(),
+                                 (jboolean)is_qc_bqr5_supported);
   }
 };
 
@@ -155,7 +157,7 @@ int register_com_android_bluetooth_btservice_BluetoothQualityReport(JNIEnv* env)
   }
 
   const JNIJavaMethod javaMethods[] = {
-          {"bqrDeliver", "([BIII[B)V", &method_bqrDeliver},
+          {"bqrDeliver", "([BIII[BZ)V", &method_bqrDeliver},
   };
   GET_JAVA_METHODS(env, "com/android/bluetooth/btservice/BluetoothQualityReportNativeInterface",
                    javaMethods);

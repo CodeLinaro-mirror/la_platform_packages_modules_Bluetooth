@@ -1,0 +1,2305 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+package com.android.bluetooth.le_audio;
+
+import static android.Manifest.permission.BLUETOOTH_CONNECT;
+import static android.Manifest.permission.BLUETOOTH_PRIVILEGED;
+import static android.Manifest.permission.BLUETOOTH_SCAN;
+
+import android.annotation.RequiresPermission;
+import android.annotation.SuppressLint;
+import android.bluetooth.BluetoothA2dp;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothLeBroadcastChannel;
+import android.bluetooth.BluetoothLeBroadcastMetadata;
+import android.bluetooth.BluetoothLeBroadcastSinkState;
+import android.bluetooth.BluetoothLeBroadcastSubgroup;
+import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothStatusCodes;
+import android.bluetooth.IBluetoothLeBroadcastSink;
+import android.bluetooth.IBluetoothLeBroadcastSinkCallback;
+import android.bluetooth.le.IScannerCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanRecord;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
+import android.content.AttributionSource;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
+import android.media.BluetoothProfileConnectionInfo;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Parcel;
+import android.os.ParcelUuid;
+import android.os.RemoteCallbackList;
+import android.os.RemoteException;
+import android.os.UserHandle;
+import android.sysprop.BluetoothProperties;
+import android.util.Log;
+
+import com.android.bluetooth.BluetoothMethodProxy;
+import com.android.bluetooth.Utils;
+import com.android.bluetooth.btservice.AdapterService;
+import com.android.bluetooth.btservice.ProfileService;
+import com.android.bluetooth.btservice.storage.DatabaseManager;
+import com.android.bluetooth.hfpclient.HeadsetClientService;
+import com.android.bluetooth.hfpclient.HfpClientCall;
+import com.android.bluetooth.le_scan.ScanController;
+import com.android.internal.annotations.GuardedBy;
+import com.android.internal.annotations.VisibleForTesting;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Service for LE Audio Broadcast Sink functionality
+ */
+public class LeAudioBroadcastSinkService extends ProfileService {
+    private static final String TAG = "LeAudioBroadcastSinkService";
+    private static final boolean DBG = true;
+
+    // Maximum number of PA sync sources (sources that can be added)
+    private static final int MAX_PA_SYNC_SOURCES = 5;
+
+    // Maximum number of BIG sync sources (sources that can be joined/receiving audio)
+    private static final int MAX_BIG_SYNC_SOURCES = 1;
+
+    private static final int DEFAULT_VOLUME_LEVEL = 15;
+
+    /*
+     * Fixed placeholder address used for ALL interactions with the audio framework
+     * (AudioManager.handleBluetoothActiveDeviceChanged / ACTION_ACTIVE_DEVICE_CHANGED)
+     * for the enhanced broadcast active device, instead of the real broadcast source
+     * address.  AudioService's AudioDeviceInventory tracks BT active devices by address
+     * in system_server, which does not restart when the BT process crashes/restarts.
+     * Using one fixed address means a fresh LeAudioBroadcastSinkService instance can
+     * always force-clear any stale entry left behind by an unclean shutdown (crash,
+     * kill -9) by issuing a "remove" for this same address — no need to persist the
+     * real source device's address across process death to do so.
+     */
+    private static final String DUMMY_AUDIO_DEVICE_ADDRESS = "FA:CE:FA:CE:FA:CE";
+
+    // Aurachat volume mapping constants (AM STREAM_VOICE_CALL → HFP SCO range)
+    private final int mMaxAmVcVol;
+    private final int mMinAmVcVol;
+    private static final int MAX_HFP_SCO_VOICE_CALL_VOLUME = 15;
+    private static final int MIN_HFP_SCO_VOICE_CALL_VOLUME = 1;
+
+    // Handler message codes
+    private static final int MSG_START              = 1;
+    private static final int MSG_STOP               = 2;
+    /* Posted after MSG_STOP to clear the active broadcast device once teardown completes. */
+    private static final int MSG_REMOVE_ACTIVE_DEVICE = 3;
+    /* Posted during init (duplex mode) to trigger HCI_VS_LE_Read_Supported_States. */
+    private static final int MSG_READ_SUPPORTED_STATES = 4;
+    /*
+     * Posted after MSG_REMOVE_ACTIVE_DEVICE to notify the app that the sink has stopped.
+     * Deferred until full cleanup (setParameters + active-device removal) is complete so
+     * the app cannot start a new BIG sync before MM audio and BT state are fully reset.
+     * msg.arg1 = broadcastId, msg.arg2 = sdkReason.
+     */
+    private static final int MSG_NOTIFY_SINK_STOPPED = 5;
+    /*
+     * Posted after MSG_NOTIFY_SINK_STOPPED in the PGO-unsolicited-Texit path so that
+     * notifyTexitDbigComplete fires only after full MM audio cleanup and active-device
+     * removal are complete. Ensures the Activity does not call removeSource() (PA sync
+     * teardown) while achat_tx/rx datapaths are still active.
+     * msg.arg1 = broadcastId, msg.arg2 = dbigHandle, msg.obj = Integer(status).
+     */
+    private static final int MSG_NOTIFY_TEXIT_COMPLETE = 6;
+
+    // Service instance
+    private static LeAudioBroadcastSinkService sLeAudioBroadcastSinkService;
+
+    // Native interface
+    private LeAudioBroadcastSinkNativeInterface mNativeInterface;
+
+    // Cache of found broadcast sources to avoid duplicates
+    // Key: broadcast ID, Value: ScanResult
+    private final Map<Integer, ScanResult> mFoundSources = new HashMap<>();
+
+    // AdapterService reference
+    private final AdapterService mAdapterService;
+
+    // AudioManager reference
+    private final AudioManager mAudioManager;
+
+    // Dedicated background thread that owns the handler looper.
+    // Keeps all MSG_START / MSG_STOP setParameters() calls off the main service thread.
+    private final android.os.HandlerThread mHandlerThread;
+
+    // Handler for processing stack events
+    private final Handler mHandler;
+
+    // AudioManager callback for monitoring broadcast input audio device changes
+    private final AudioManagerAudioDeviceCallback mAudioManagerAudioDeviceCallback =
+            new AudioManagerAudioDeviceCallback();
+
+    // BroadcastReceiver for STREAM_VOICE_CALL volume changes (Aurachat duplex volume tracking)
+    private final BroadcastReceiver mVolumeChangedReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context context, Intent intent) {
+            if (AudioManager.ACTION_VOLUME_CHANGED.equals(intent.getAction())) {
+                int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (streamType == AudioManager.STREAM_VOICE_CALL) {
+                    int currentVolumeIndex = intent.getIntExtra(
+                            AudioManager.EXTRA_VOLUME_STREAM_VALUE, -1);
+                    setDuplexBroadcastSpeakerVolume(currentVolumeIndex);
+                }
+            }
+        }
+    };
+
+    private void setDuplexBroadcastSpeakerVolume(int currentVolumeIndex) {
+        int volume = amToHfVol(currentVolumeIndex);
+        Log.d(TAG, "setAchatRxVolume currentVolumeIndex=" + currentVolumeIndex
+                + " volume=" + volume);
+        String keyValPairs = "achat_rx_volume=" + volume;
+        Log.d(TAG, "keyValPairs=" + keyValPairs);
+        mAudioManager.setParameters(keyValPairs);
+    }
+
+    private int amToHfVol(int amVol) {
+        int amRange = (mMaxAmVcVol > mMinAmVcVol) ? (mMaxAmVcVol - mMinAmVcVol) : 1;
+        int hfRange = MAX_HFP_SCO_VOICE_CALL_VOLUME - MIN_HFP_SCO_VOICE_CALL_VOLUME;
+        int hfOffset = (hfRange * (amVol - mMinAmVcVol)) / amRange;
+        int hfVol = MIN_HFP_SCO_VOICE_CALL_VOLUME + hfOffset;
+        Log.d(TAG, "AM -> HF " + amVol + " " + hfVol);
+        return hfVol;
+    }
+
+    // AudioServer state callback for crash/recovery handling
+    private final AudioManager.AudioServerStateCallback mAudioServerStateCallback =
+            new AudioManager.AudioServerStateCallback() {
+                @Override
+                public void onAudioServerDown() {
+                    Log.w(TAG, "AudioServer down — AChat parameters will be re-applied on recovery");
+                }
+
+                @Override
+                public void onAudioServerUp() {
+                    Log.i(TAG, "AudioServer up — re-applying AChat parameters if streaming");
+                    if (mIsEnhancedStreaming) {
+                        Log.i(TAG, "AudioServer recovered: re-sending MSG_START for enhanced stream");
+                        mHandler.sendEmptyMessage(MSG_START);
+                    }
+                }
+            };
+
+    // Active broadcast input device
+    private volatile BluetoothDevice mActiveBroadcastInDevice;
+
+    // True while an enhanced (enhanced broadcast) broadcast session is actively streaming.
+    // Used to re-send MSG_START after an AudioServer restart.
+    private volatile boolean mIsEnhancedStreaming = false;
+
+    // True when the broadcast was suspended by an HFP call; reset to false when call ends.
+    private volatile boolean mPreemptedByCall = false;
+
+    // Saves mActiveBroadcastInDevice before it is nulled at PA_SYNCED (preemption) so it
+    // can be restored to AudioManager when the call ends and BIG_SYNCED fires on resume.
+    private BluetoothDevice mBroadcastInDeviceBeforeCall = null;
+
+    /*
+     * Set to true when EVENT_TYPE_BIG_SYNC_LOST is received and we have already sent
+     * notifyOnSinkStopped(REASON_BIG_SYNC_LOST).  Cleared when EVENT_TYPE_BIG_SYNC_TERMINATED
+     * fires (from the source-HAL ack path in REMOVE_TX_PATHS) so we do not send a second
+     * onSinkStopped for the same loss event.
+     */
+    private volatile boolean mBigSyncLostPending = false;
+
+    /*
+     * Set to true when PGP calls terminateDbig() — PGP has an outstanding termination request to
+     * PGO.  When EVENT_TYPE_TEXIT_DBIG_COMPLETE fires with status=SUCCESS and this flag is set,
+     * treat it like a BIG sync loss (MSG_STOP + notifyOnSinkStopped) instead of the normal Texit
+     * complete notification path.  Cleared after the Texit complete event is handled.
+     */
+    private volatile boolean mPgpRequestedTerminate = false;
+
+    /*
+     * Source device pending active-device notification for enhanced broadcast sink.
+     * Set in startEnhancedBroadcastSink() and consumed in EVENT_TYPE_AUDIO_SESSION_CREATED
+     * so that MM audio is notified only after both HAL sessions are confirmed started
+     * (mirroring the broadcast source pattern).
+     */
+    private volatile BluetoothDevice mPendingEnhancedSourceDevice = null;
+
+    // Callback management
+    private final RemoteCallbackList<IBluetoothLeBroadcastSinkCallback> mCallbacks =
+            new RemoteCallbackList<>();
+
+    // State management
+    @GuardedBy("mStateLock")
+    private boolean mSearchInProgress = false;
+    private final Object mStateLock = new Object();
+
+    // Vendor-specific LTV constants for enhanced PA BASE metadata (Section 6.12.6.9)
+    // LTV: [0x11][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+    // Company ID 0x000A = Qualcomm Technologies Inc (Little Endian: 0x0A, 0x00)
+    private static final int DBIG_VENDOR_COMPANY_ID_LO  = 0x0A;
+    private static final int DBIG_VENDOR_COMPANY_ID_HI  = 0x00;
+    private static final int DBIG_VENDOR_DATA_LENGTH    = 14; // 2 Broadcast_Features + 12 DBIG params
+
+    /* PGO Broadcast_Features field received from the enhanced PA vendor LTV. */
+    private int mBroadcastFeatures = 0;
+
+    // enhanced broadcast default parameters are now managed entirely in the JNI C++ layer.
+
+    /*
+     * Internal descriptor class for maintaining broadcast sink state and metadata.
+     * Extended with enhanced broadcast fields for enhanced broadcast support.
+     */
+    private static class LeAudioBroadcastSinkDescriptor {
+        LeAudioBroadcastSinkDescriptor() {
+            mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_IDLE;
+            mMetadata = null;
+            mIsSourceAddedNotified = false;
+            mIsEnhanced = false;
+            mPendingMetadataUpdate = null;
+            mBisIndices = new ArrayList<>();
+        }
+
+        public Integer mSinkState;
+        public BluetoothLeBroadcastMetadata mMetadata;
+        public boolean mIsSourceAddedNotified;
+        /** True when BASE data parsing revealed >= 3 BISes in at least one subgroup. */
+        public boolean mIsEnhanced;
+        public BluetoothLeBroadcastMetadata mPendingMetadataUpdate;
+        public final List<Integer> mBisIndices;
+        /** Raw HCI reason code from the last BIG_SYNC_LOST event (0x08, 0x13, 0x16, etc.) */
+        public int mBigSyncLostHciReason = 0;
+    }
+
+    // Broadcast sink descriptors - maintains internal state and metadata for each broadcast
+    private final Map<Integer, LeAudioBroadcastSinkDescriptor> mBroadcastSinkDescriptors =
+            new ConcurrentHashMap<>();
+
+    // Scan callback wrapper for internal scanning
+    private final BroadcastSinkScanCallbackWrapper mScanCallback = new BroadcastSinkScanCallbackWrapper();
+
+    public LeAudioBroadcastSinkService(AdapterService adapterService) {
+        super(adapterService);
+        mAdapterService = adapterService;
+        mNativeInterface = LeAudioBroadcastSinkNativeInterface.getInstance();
+        mAudioManager = getSystemService(AudioManager.class);
+
+        // Initialize a dedicated background thread for the handler so that
+        // AudioManager.setParameters() calls never block the main service thread.
+        mHandlerThread = new android.os.HandlerThread("LeAudioBroadcastSinkHandler");
+        mHandlerThread.start();
+
+        // Initialize handler for processing stack events
+        mHandler = new Handler(mHandlerThread.getLooper()) {
+            @Override
+            public void handleMessage(android.os.Message msg) {
+                switch (msg.what) {
+                    case MSG_START:
+                        if (DBG) Log.d(TAG, "MSG_START: enabling AChat TX+RX");
+                        if (mAudioManager != null) {
+                            if (DBG) Log.d(TAG, "MSG_START: >>> setParameters(achat_tx_enable=true)");
+                            mAudioManager.setParameters("achat_tx_enable=true");
+                            if (DBG) Log.d(TAG, "MSG_START: <<< setParameters(achat_tx_enable=true) returned");
+                            if (DBG) Log.d(TAG, "MSG_START: >>> setParameters(achat_rx_enable=true)");
+                            mAudioManager.setParameters("achat_rx_enable=true");
+                            if (DBG) Log.d(TAG, "MSG_START: <<< setParameters(achat_rx_enable=true) returned");
+                            int currentVolumeIndex = mAudioManager.getStreamVolume(
+                                    AudioManager.STREAM_VOICE_CALL);
+                            Log.d(TAG, "MSG_START: setting STREAM_VOICE_CALL volume to "
+                                    + currentVolumeIndex);
+                            setDuplexBroadcastSpeakerVolume(currentVolumeIndex);
+                        }
+                        break;
+
+                    case MSG_STOP:
+                        if (DBG) Log.d(TAG, "MSG_STOP: disabling AChat RX then TX");
+                        if (mAudioManager != null) {
+                            if (DBG) Log.d(TAG, "MSG_STOP: >>> setParameters(achat_rx_enable=false) [BLOCKS until sink HAL acked]");
+                            mAudioManager.setParameters("achat_rx_enable=false");
+                            if (DBG) Log.d(TAG, "MSG_STOP: <<< setParameters(achat_rx_enable=false) returned");
+                            if (DBG) Log.d(TAG, "MSG_STOP: >>> setParameters(achat_tx_enable=false) [BLOCKS until source HAL acked]");
+                            mAudioManager.setParameters("achat_tx_enable=false");
+                            if (DBG) Log.d(TAG, "MSG_STOP: <<< setParameters(achat_tx_enable=false) returned");
+                        }
+                        // BIG sync is now fully terminated (RX paths removed, TX paths removed,
+                        // BIG sync terminated). The onSinkStopped notification is sent from
+                        // EVENT_TYPE_BIG_SYNC_TERMINATED which is posted by the C++ layer
+                        // via OnBigSyncTerminated() → JNI → onBigSyncTerminated().
+                        break;
+                    case MSG_REMOVE_ACTIVE_DEVICE:
+                        // Runs after MSG_STOP has fully completed (handler is FIFO).
+                        // At this point all HAL teardown is done; safe to clear the active device.
+                        if (DBG) Log.d(TAG, "MSG_REMOVE_ACTIVE_DEVICE: clearing active broadcast device: "
+                                + mActiveBroadcastInDevice);
+                        if (mActiveBroadcastInDevice != null) {
+                            updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
+                        }
+                        break;
+                    case MSG_NOTIFY_SINK_STOPPED: {
+                        // All cleanup complete (setParameters + active device cleared).
+                        // Now safe to notify the app — it can trigger a new start without
+                        // racing against in-progress teardown.
+                        int broadcastId = msg.arg1;
+                        int sdkReason   = msg.arg2;
+                        if (DBG) Log.d(TAG, "MSG_NOTIFY_SINK_STOPPED: broadcastId=" + broadcastId
+                                + ", sdkReason=" + sdkReason);
+                        notifyOnSinkStopped(broadcastId, sdkReason);
+                        break;
+                    }
+                    case MSG_NOTIFY_TEXIT_COMPLETE: {
+                        // Fires after MSG_NOTIFY_SINK_STOPPED — all MM audio cleanup and
+                        // active-device removal are complete before the Activity receives
+                        // onTexitDbigComplete. This prevents removeSource() (called from
+                        // the removal dialog path) from racing with in-progress teardown.
+                        int broadcastId  = msg.arg1;
+                        int dbigHandle   = msg.arg2;
+                        int status       = (Integer) msg.obj;
+                        if (DBG) Log.d(TAG, "MSG_NOTIFY_TEXIT_COMPLETE: broadcastId=" + broadcastId
+                                + ", dbigHandle=" + dbigHandle
+                                + ", status=0x" + Integer.toHexString(status));
+                        notifyTexitDbigComplete(broadcastId, dbigHandle, status);
+                        break;
+                    }
+                    case MSG_READ_SUPPORTED_STATES:
+                        if (DBG) Log.d(TAG, "MSG_READ_SUPPORTED_STATES: reading LE supported states (sink)");
+                        if (mNativeInterface != null) {
+                            int pgpSinkCap = mNativeInterface.readSupportedStatesForSink();
+                            Log.i(TAG, "PGP FW capability: 0x" + Integer.toHexString(pgpSinkCap)
+                                    + " [Terminate=" + ((pgpSinkCap & 0x01) != 0 ? "supported" : "not_supported")
+                                    + ", Remove=" + ((pgpSinkCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+                        }
+                        break;
+                    default:
+                        super.handleMessage(msg);
+                        break;
+                }
+            }
+        };
+
+        // Initialize native interface with max source capacity before posting
+        // any messages that trigger native calls, so LeAudioBroadcastSink::Initialize
+        // is always queued on the BT main thread first.
+        mNativeInterface.init(MAX_PA_SYNC_SOURCES);
+
+        // In duplex broadcast mode, read LE Supported States from the controller
+        // so the native layer knows which DBIG operations are supported.
+        boolean isDuplexMode = android.os.SystemProperties.getBoolean(
+                "persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+        if (isDuplexMode) {
+            // Crash recovery: if BT process was killed while a duplex broadcast was
+            // streaming, AHAL retains achat_tx/rx_enable=true and doesn't know BT died.
+            // Send MSG_STOP unconditionally on every restart so AHAL is always brought
+            // to a known-clean state before the next startEnhancedBroadcast.
+            Log.d(TAG, "Duplex broadcast mode: sending MSG_STOP for AHAL crash recovery");
+            mHandler.sendEmptyMessage(MSG_STOP);
+            // Reset all enhanced broadcast state that may be stale from before BT turned off.
+            // This ensures startEnhancedBroadcastSink() starts from a clean state.
+            mIsEnhancedStreaming = false;
+            mBigSyncLostPending = false;
+            mPreemptedByCall = false;
+            mBroadcastInDeviceBeforeCall = null;
+            mPendingEnhancedSourceDevice = null;
+            mActiveBroadcastInDevice = null;
+            mBroadcastSinkDescriptors.clear();
+            mFoundSources.clear();
+            // Force-clear any stale AudioDeviceInventory entry left behind by an unclean
+            // shutdown (BT process crash/kill).  Since every enhanced broadcast active
+            // device always uses the same fixed placeholder address (see
+            // DUMMY_AUDIO_DEVICE_ADDRESS), this fresh service instance can issue the
+            // "remove" unconditionally — no need to have persisted the real source
+            // device's address across process death.  Harmless no-op if AudioService's
+            // inventory has no matching entry.
+            //
+            // Must run AFTER MSG_STOP's achat_rx/tx_enable=false have actually executed on
+            // mHandlerThread — not just after they've been posted.  MSG_STOP is asynchronous
+            // (sendEmptyMessage returns immediately), so this is posted as a follow-up message
+            // on the same handler to get the FIFO ordering guarantee, mirroring the
+            // MSG_STOP -> MSG_REMOVE_ACTIVE_DEVICE pattern used everywhere else in this file.
+            // Clearing the audio device first would risk AudioPolicyManager tearing down the
+            // device/stream context that BTAurachat's RX/TX-stop path may still need.
+            Log.d(TAG, "Duplex broadcast mode: posting stale audio device clear after MSG_STOP");
+            mHandler.post(() -> {
+                Log.d(TAG, "Duplex broadcast mode: clearing stale audio active device entry");
+                updateBroadcastActiveInDevice(null, getDummyAudioDevice(), true);
+            });
+            Log.d(TAG, "Duplex broadcast mode: enhanced broadcast state reset complete");
+            Log.d(TAG, "Duplex broadcast mode: posting MSG_READ_SUPPORTED_STATES with 1s delay");
+            mHandler.sendEmptyMessageDelayed(MSG_READ_SUPPORTED_STATES, 1000);
+        }
+
+        // Register audio device callback
+        mAudioManager.registerAudioDeviceCallback(mAudioManagerAudioDeviceCallback, mHandler);
+
+        // Register audio server state callback for crash/recovery
+        mAudioManager.setAudioServerStateCallback(mHandler::post, mAudioServerStateCallback);
+
+        // Initialize AM voice-call volume range once so amToHfVol() can map correctly.
+        mMaxAmVcVol = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
+        mMinAmVcVol = mAudioManager.getStreamMinVolume(AudioManager.STREAM_VOICE_CALL);
+        Log.d(TAG, "volume from audio manager :: min:" + mMinAmVcVol + " max:" + mMaxAmVcVol);
+
+        // Register for STREAM_VOICE_CALL volume changes to keep achat_rx_volume in sync.
+        IntentFilter volumeFilter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+        registerReceiver(mVolumeChangedReceiver, volumeFilter);
+
+        // Set service instance
+        setLeAudioBroadcastSinkService(this);
+    }
+
+    @Override
+    protected IProfileServiceBinder initBinder() {
+        return new LeAudioBroadcastSinkServiceBinder(this);
+    }
+
+    @Override
+    public void cleanup() {
+        if (DBG) Log.d(TAG, "cleanup()");
+
+        // Clear service instance
+        setLeAudioBroadcastSinkService(null);
+
+        // Notify AudioManager the broadcast device is going inactive so its
+        // AudioDeviceInventory drops the stale entry.  Without this, the synthetic
+        // A2DP address used for the enhanced broadcast stays marked "available" across
+        // a BT toggle (AudioService/system_server never restarts), so the next
+        // handleBluetoothActiveDeviceChanged() for the same address after BT comes back
+        // on is a no-op — AudioManager never fires onAudioDevicesAdded, MSG_START never
+        // runs, and the sink is stuck in BIG_SYNCING forever on the next join.
+        if (mActiveBroadcastInDevice != null) {
+            if (DBG) Log.d(TAG, "cleanup: clearing stale active broadcast device: "
+                    + mActiveBroadcastInDevice);
+            updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
+        }
+
+        // Stop any ongoing search
+        synchronized (mStateLock) {
+            if (mSearchInProgress) {
+                // Stop scan callback wrapper
+                mScanCallback.stopScanAndUnregister();
+                mSearchInProgress = false;
+            }
+        }
+
+        // Clear descriptors
+        mBroadcastSinkDescriptors.clear();
+
+        // Cleanup native interface
+        if (mNativeInterface != null) {
+            mNativeInterface.cleanup();
+            mNativeInterface = null;
+        }
+
+        // Unregister audio device callback
+        mAudioManager.unregisterAudioDeviceCallback(mAudioManagerAudioDeviceCallback);
+
+        // Unregister audio server state callback
+        mAudioManager.clearAudioServerStateCallback();
+
+        // Unregister STREAM_VOICE_CALL volume change receiver
+        try {
+            unregisterReceiver(mVolumeChangedReceiver);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "cleanup: mVolumeChangedReceiver was not registered: " + e);
+        }
+
+        // Shut down the handler thread gracefully
+        mHandlerThread.quitSafely();
+
+        // Clear callbacks
+        mCallbacks.kill();
+
+        mPreemptedByCall = false;
+        mBroadcastInDeviceBeforeCall = null;
+    }
+
+    /*
+     * Get the LeAudioBroadcastSinkService instance
+     * @return LeAudioBroadcastSinkService instance
+     */
+    public static synchronized LeAudioBroadcastSinkService getLeAudioBroadcastSinkService() {
+        if (sLeAudioBroadcastSinkService == null) {
+            Log.w(TAG, "getLeAudioBroadcastSinkService(): service is null");
+            return null;
+        }
+        if (!sLeAudioBroadcastSinkService.isAvailable()) {
+            Log.w(TAG, "getLeAudioBroadcastSinkService(): service is not available");
+            return null;
+        }
+        return sLeAudioBroadcastSinkService;
+    }
+
+    private static synchronized void setLeAudioBroadcastSinkService(LeAudioBroadcastSinkService instance) {
+        if (DBG) Log.d(TAG, "setLeAudioBroadcastSinkService(): set to: " + instance);
+        sLeAudioBroadcastSinkService = instance;
+    }
+
+    /*
+     * Register callback for broadcast sink events
+     */
+    public void registerCallback(IBluetoothLeBroadcastSinkCallback callback) {
+        if (DBG) Log.d(TAG, "registerCallback()");
+        mCallbacks.register(callback);
+    }
+
+    /*
+     * Unregister callback for broadcast sink events
+     */
+    public void unregisterCallback(IBluetoothLeBroadcastSinkCallback callback) {
+        if (DBG) Log.d(TAG, "unregisterCallback()");
+        mCallbacks.unregister(callback);
+    }
+
+    /*
+     * Start scanning for broadcast sources with specified filters and settings
+     */
+    public void startScanningForSources(List<ScanFilter> filters, ScanSettings settings) {
+        if (DBG) Log.d(TAG, "startScanningForSources() with settings: " + settings);
+
+        synchronized (mStateLock) {
+            if (mSearchInProgress) {
+                Log.w(TAG, "Search already in progress");
+                notifyOnSearchStartFailed(BluetoothLeBroadcastSinkState.REASON_UNKNOWN);
+                return;
+            }
+            mSearchInProgress = true;
+        }
+
+        // Clear found sources when starting a new search
+        mFoundSources.clear();
+        if (DBG) Log.d(TAG, "Cleared found sources for new search");
+
+        // Start scanning using the scan callback wrapper with settings
+        mScanCallback.registerAndStartScan(filters, settings);
+
+    }
+
+    /*
+     * Stop scanning for broadcast sources
+     */
+    public void stopScanningForSources() {
+        if (DBG) Log.d(TAG, "stopScanningForSources()");
+
+        synchronized (mStateLock) {
+            if (!mSearchInProgress) {
+                Log.w(TAG, "No search in progress");
+                mSearchInProgress = false;
+                notifyOnSearchStopped(BluetoothLeBroadcastSinkState.REASON_LOCAL_APP_REQUEST);
+                return;
+            }
+        }
+
+        // Stop scanning using the scan callback wrapper
+        mScanCallback.stopScanAndUnregister();
+
+        synchronized (mStateLock) {
+            mSearchInProgress = false;
+        }
+        notifyOnSearchStopped(BluetoothLeBroadcastSinkState.REASON_LOCAL_APP_REQUEST);
+    }
+
+    /*
+     * Add a broadcast source (PA sync only)
+     */
+    public void addSource(int broadcastId) {
+        if (DBG) Log.d(TAG, "addSource(): broadcastId=" + broadcastId);
+
+        // Check if source can be added
+        int canAddResult = canSourceBeAdded(broadcastId);
+        if (canAddResult != BluetoothStatusCodes.SUCCESS) {
+            notifyOnSourceAddFailed(broadcastId, canAddResult);
+            return;
+        }
+
+        // Get the ScanResult from found sources
+        ScanResult result = mFoundSources.get(broadcastId);
+        if (result == null) {
+            Log.e(TAG, "addSource(): No scan result found for broadcastId=" + broadcastId);
+            notifyOnSourceAddFailed(broadcastId, BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS);
+            return;
+        }
+
+        if (mNativeInterface != null) {
+            // Extract parameters from ScanResult
+            String address = result.getDevice().getAddress();
+            int addressType = result.getDevice().getAddressType();
+            int advSid = result.getAdvertisingSid();
+            int rssi = result.getRssi();
+
+            // Enhanced broadcast sources are not public sources.
+            // No public broadcast metadata handling needed.
+            if (DBG) Log.d(TAG, "addSource(): address=" + address + ", advSid=" + advSid);
+
+            mNativeInterface.addSource(address, addressType, advSid, broadcastId, rssi,
+                                      null /* broadcastName */, false /* isPublic */,
+                                      null /* publicMetadata */, 0 /* publicFeatures */);
+        }
+    }
+
+    /*
+     * Join an enhanced (enhanced broadcast) broadcast source.
+     *
+     * <p>The entire enhanced broadcast setup → BIG_CREATE_SYNC → serial ISO data path setup
+     * sequence is handled autonomously by the JNI C++ layer for <em>all</em>
+     * BISes in the BIG (no BIS selection filtering is applied).  Java receives
+     * {@link LeAudioBroadcastSinkStackEvent#EVENT_TYPE_STATE_CHANGED} with state
+     * {@link LeAudioBroadcastSinkStackEvent#SINK_STATE_BIG_SYNCED} only after
+     * every ISO data path has been configured.
+     *
+     * @param metadata {@link BluetoothLeBroadcastMetadata} of the enhanced broadcast source
+     */
+    public void startEnhancedBroadcastSink(BluetoothLeBroadcastMetadata metadata) {
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink(): " + metadata);
+
+        if (metadata == null) {
+            Log.e(TAG, "startEnhancedBroadcastSink(): metadata is null");
+            notifyOnSinkStartFailed(-1, BluetoothLeBroadcastSinkState.REASON_BAD_PARAMETERS);
+            return;
+        }
+
+        int broadcastId = metadata.getBroadcastId();
+
+                        // Validate capacity and encryption
+        int canJoinResult = canSourceBeJoined(broadcastId, metadata);
+        if (canJoinResult != BluetoothStatusCodes.SUCCESS) {
+            notifyOnSinkStartFailed(broadcastId, canJoinResult);
+            return;
+        }
+
+        // Create or update descriptor
+        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
+        if (descriptor == null) {
+            descriptor = new LeAudioBroadcastSinkDescriptor();
+            mBroadcastSinkDescriptors.put(broadcastId, descriptor);
+        }
+        descriptor.mMetadata = metadata;
+
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink(): broadcastId=" + broadcastId
+                + " — delegating full enhanced broadcast/ISO sequence to JNI C++ layer");
+
+        // Hand off to C++: enhanced broadcast setup → BIG_CREATE_SYNC → ISO data paths for ALL BISes.
+        // Pass null bisIndices so the native layer syncs to all BISes in the BIG.
+        if (mNativeInterface != null) {
+            mNativeInterface.startEnhancedBroadcastSink(broadcastId, metadata.getBroadcastCode());
+        }
+
+        // Store the source device so EVENT_TYPE_AUDIO_SESSION_CREATED can notify
+        // MM audio after both HAL sessions are confirmed started.
+        BluetoothDevice sourceDevice = metadata.getSourceDevice();
+        mPendingEnhancedSourceDevice = sourceDevice;
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink: stored pending source device: " + sourceDevice
+                + " — active device will be set after audio session created");
+
+        // Mark streaming state.
+        // MSG_START (achat_tx/rx_enable) is sent from onAudioDevicesAdded() when the
+        // AudioManager fires the A2DP device-added callback after updateBroadcastActiveInDevice().
+        mIsEnhancedStreaming = true;
+        if (DBG) Log.d(TAG, "startEnhancedBroadcastSink: mIsEnhancedStreaming=true");
+    }
+    /*
+     * Leave a broadcast source (stop BIG sync but keep PA synced).
+     *
+     * <p>{@link AudioManager#setParameters} is a <b>blocking</b> call.
+     * The teardown sequence for enhanced (enhanced broadcast) sources is:
+     * <ol>
+     *   <li>Call native {@code stopEnhancedBroadcastSink()} <em>directly</em> (before posting
+     *       {@code MSG_STOP}) so the state machine is still in {@code BIG_SYNCED}
+     *       when it validates the state and clears flags.  Native
+     *       {@code stopEnhancedBroadcastSink()} does <em>not</em> stop the HAL clients —
+     *       {@code MSG_STOP} does that.</li>
+     *   <li>Send {@code MSG_STOP} to {@code mHandler}.  The handler calls
+     *       {@code setParameters("achat_rx_enable=false")} which <b>blocks</b>
+     *       until the sink HAL {@code OnAudioSuspend} is fully acknowledged
+     *       (all RX ISO paths removed, {@code ConfirmSuspendRequest} called on
+     *       sink HAL).  Only after that returns does
+     *       {@code setParameters("achat_tx_enable=false")} execute, which
+     *       <b>blocks</b> until the source HAL {@code OnAudioSuspend} is fully
+     *       acknowledged (all TX ISO paths removed, BIG sync terminated,
+     *       {@code ConfirmSuspendRequest} called on source HAL).</li>
+     * </ol>
+     */
+    public void stopEnhancedBroadcastSink(int broadcastId, int mode) {
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink(): broadcastId=" + broadcastId
+                + ", mode=0x" + Integer.toHexString(mode));
+
+        // Step 1: Call native stopEnhancedBroadcastSink DIRECTLY (not via handler) so the
+        // state machine is still in BIG_SYNCED when it validates state and
+        // clears flags.  Native stopEnhancedBroadcastSink does NOT stop the HAL clients.
+        if (mNativeInterface != null) {
+            if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: calling native for broadcastId=" + broadcastId);
+            mNativeInterface.stopEnhancedBroadcastSink(mode);
+        }
+
+        // Step 2: Post MSG_STOP to mHandler.
+        // setParameters("achat_rx_enable=false") blocks until sink HAL acked.
+        // setParameters("achat_tx_enable=false") blocks until source HAL acked.
+        mIsEnhancedStreaming = false;
+        if (DBG) Log.d(TAG, "leaveSource: sending MSG_STOP for broadcastId=" + broadcastId);
+        mHandler.sendEmptyMessage(MSG_STOP);
+
+        // Step 3: Post MSG_REMOVE_ACTIVE_DEVICE AFTER MSG_STOP (FIFO order).
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
+        mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
+
+        // Step 4: Post MSG_NOTIFY_SINK_STOPPED last so the app is notified only after
+        // full cleanup (setParameters + active device removed). EVENT_TYPE_BIG_SYNC_TERMINATED
+        // arriving from C++ will skip its own notification because this is already queued.
+        android.os.Message stopNotify = mHandler.obtainMessage(
+                MSG_NOTIFY_SINK_STOPPED, broadcastId,
+                BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_NOTIFY_SINK_STOPPED after MSG_REMOVE_ACTIVE_DEVICE");
+        mHandler.sendMessage(stopNotify);
+    }
+
+    /**
+     * Called by HFP HeadsetClientStateMachine when a call or VR session starts/ends.
+     * Uses sync-only mode: only the audio HAL paths (achat_tx/rx) are toggled; the BIG
+     * remains alive (sync maintained) so audio can resume quickly when the call ends.
+     * The HCI DBIG Sync-Only command is sent separately by LeAudioService.
+     *
+     * @param isCallActive {@code true} if call is starting, {@code false} if call ended.
+     */
+    public void onCallStateChanged(boolean isCallActive) {
+        Log.d(TAG, "onCallStateChanged: isCallActive=" + isCallActive
+                + ", mIsEnhancedStreaming=" + mIsEnhancedStreaming
+                + ", mPreemptedByCall=" + mPreemptedByCall);
+
+        if (isCallActive && mIsEnhancedStreaming && !mPreemptedByCall) {
+            // Find the BIG_SYNCED enhanced broadcast to preempt.
+            Optional<Integer> activeSinkId = mBroadcastSinkDescriptors.entrySet().stream()
+                    .filter(e -> e.getValue().mSinkState
+                            == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED)
+                    .map(Map.Entry::getKey)
+                    .findFirst();
+
+            mPreemptedByCall = true;
+            // 1. Atomically arm the preemption flag in the native state machine AND
+            //    clear stale suspend flags — all on the BTA main thread, in the same
+            //    do_in_main_thread call — so that when MSG_STOP triggers
+            //    achat_rx/tx_enable=false, the REMOVE_RX_PATHS / REMOVE_TX_PATHS
+            //    handlers already see IsSuspendedByCall()==true and enter sync-only
+            //    mode instead of terminating the BIG.
+            if (activeSinkId.isPresent()) {
+                if (mNativeInterface != null) {
+                    mNativeInterface.stopEnhancedBroadcastSinkPreempt(activeSinkId.get());
+                }
+            }
+            // 2. Disable audio HAL paths — MM Audio sends REMOVE_TX/RX_PATHS.
+            Log.d(TAG, "onCallStateChanged: suspending audio HAL for call (sync-only)");
+            mHandler.sendEmptyMessage(MSG_STOP);
+            // NOTE: resumeScoIfRequired is called from SINK_STATE_PA_SYNCED handler
+            // (after OnSyncOnlyEnableCmpl), not here — same timing fix as PGO side.
+        } else if (!isCallActive && mPreemptedByCall) {
+            // Find the PA_SYNCED sink to resume (moved to PA_SYNCED by sync-only enable cmpl).
+            Optional<Integer> activeSinkId = mBroadcastSinkDescriptors.entrySet().stream()
+                    .filter(e -> e.getValue().mSinkState
+                            == LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED)
+                    .map(Map.Entry::getKey)
+                    .findFirst();
+
+            mPreemptedByCall = false;
+            if (activeSinkId.isPresent()) {
+                if (mNativeInterface != null) {
+                    mNativeInterface.notifyCallState(activeSinkId.get(), false);
+                }
+            }
+            // Re-activate the A2DP device in AudioManager, then WAIT for the real
+            // onAudioDevicesAdded() callback to send MSG_START — do not send it directly
+            // here. MSG_START's setParameters("achat_tx_enable=true") BLOCKS until the
+            // vendor AHAL acks, and that ack needs an active A2DP device/audio patch to
+            // route through. Rather than assuming the device is active in time (which
+            // caused ack timeouts), wait for AudioManager's own confirmation that the
+            // device is active — the same mechanism the normal join path already uses
+            // (see startEnhancedBroadcastSink()/onAudioDevicesAdded() below).
+            if (mBroadcastInDeviceBeforeCall != null) {
+                Log.d(TAG, "onCallStateChanged: re-activating broadcast device in "
+                        + "AudioManager, will resume once onAudioDevicesAdded fires: "
+                        + mBroadcastInDeviceBeforeCall);
+                updateBroadcastActiveInDevice(
+                        mBroadcastInDeviceBeforeCall, mActiveBroadcastInDevice, true);
+                mBroadcastInDeviceBeforeCall = null;
+            } else {
+                // No device was saved before the call (e.g. it was already inactive) —
+                // there is no device-added transition to wait for, so send MSG_START
+                // directly, same as before.
+                Log.d(TAG, "onCallStateChanged: no device to re-activate, "
+                        + "resuming audio HAL directly after call end");
+                mHandler.sendEmptyMessage(MSG_START);
+            }
+        }
+    }
+
+    private static void resumeScoIfRequired(HeadsetClientService hfpService) {
+        for (BluetoothDevice device : hfpService.getConnectedDevices()) {
+            List<HfpClientCall> calls = hfpService.getCurrentCalls(device);
+            if (calls == null || calls.isEmpty()) continue;
+            for (HfpClientCall call : calls) {
+                int state = call.getState();
+                if (state == HfpClientCall.CALL_STATE_TERMINATED) continue;
+                if (state == HfpClientCall.CALL_STATE_INCOMING && !call.isInBandRing()) continue;
+                Log.d(TAG, "resumeScoIfRequired: connecting SCO for device=" + device
+                        + " callState=" + state);
+                hfpService.connectAudio(device);
+                return;
+            }
+        }
+        Log.d(TAG, "resumeScoIfRequired: no eligible call found for SCO");
+    }
+
+    /*
+     * Remove a broadcast source (stop PA sync and BIG sync if active)
+     */
+    public void removeSource(int broadcastId) {
+        if (DBG) Log.d(TAG, "removeSource(): broadcastId=" + broadcastId);
+
+        if (mNativeInterface != null) {
+            mNativeInterface.removeSource(broadcastId);
+        }
+    }
+
+    /*
+     * Destroy a broadcast source (cleanup all resources)
+     * This is typically called automatically when a source is removed,
+     * but can also be called explicitly to force cleanup.
+     */
+    public void destroySource(int broadcastId) {
+        if (DBG) Log.d(TAG, "destroySource(): broadcastId=" + broadcastId);
+
+        // Call native interface to cleanup native resources
+        if (mNativeInterface != null) {
+            mNativeInterface.destroySource(broadcastId);
+        }
+    }
+    /*
+     * Get all synced broadcast sink states
+     */
+    public List<BluetoothLeBroadcastSinkState> getAllSyncedSinkState() {
+        if (DBG) Log.d(TAG, "getAllSyncedSinkState()");
+
+        List<BluetoothLeBroadcastSinkState> states = new ArrayList<>();
+        for (Integer broadcastId : mBroadcastSinkDescriptors.keySet()) {
+            BluetoothLeBroadcastSinkState state = generateBroadcastSinkState(broadcastId);
+            if (state != null) {
+                states.add(state);
+            }
+        }
+        return states;
+    }
+    /*
+     * Helper function to generate BluetoothLeBroadcastSinkState from internal descriptor
+     *
+     * @param broadcastId the broadcast ID
+     * @return BluetoothLeBroadcastSinkState or null if descriptor not found
+     */
+    private BluetoothLeBroadcastSinkState generateBroadcastSinkState(int broadcastId) {
+        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
+        if (descriptor == null) {
+            Log.w(TAG, "generateBroadcastSinkState: No descriptor found for broadcastId=" + broadcastId);
+            return null;
+        }
+
+        BluetoothLeBroadcastMetadata metadata = descriptor.mMetadata;
+        if (metadata == null) {
+            Log.w(TAG, "generateBroadcastSinkState: No metadata found for broadcastId=" + broadcastId);
+            return null;
+        }
+
+        // Extract subgroup information from metadata
+        List<BluetoothLeBroadcastSubgroup> subgroups = metadata.getSubgroups();
+        int numSubgroups = subgroups.size();
+
+        // Build BIS sync state and subgroup metadata lists
+        BluetoothLeBroadcastSinkState.Builder builder = new BluetoothLeBroadcastSinkState.Builder();
+        builder.setBroadcastId(broadcastId);
+        builder.setSinkState(descriptor.mSinkState);
+        builder.setNumSubgroups(numSubgroups);
+
+        boolean isBigSynced = (descriptor.mSinkState == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED);
+
+        // For each subgroup, extract BIS sync state and metadata
+        for (BluetoothLeBroadcastSubgroup subgroup : subgroups) {
+            // Calculate BIS sync state bitmask from stored bisIndices if BIG is synced
+            long bisSyncState = 0;
+            if (isBigSynced && descriptor.mBisIndices != null && !descriptor.mBisIndices.isEmpty()) {
+                for (int bisIndex : descriptor.mBisIndices) {
+                    bisSyncState |= (1L << (bisIndex - 1));
+                }
+            }
+            builder.addBisSyncState(bisSyncState);
+
+            // Add subgroup metadata
+            builder.addSubgroupMetadata(subgroup.getContentMetadata());
+        }
+
+        return builder.build();
+    }
+
+    // -------------------------------------------------------------------------
+    // Enhanced DBIG / Supported-States APIs (duplex broadcast)
+    // -------------------------------------------------------------------------
+
+    /*
+     * Set the PGO Broadcast_Features field received from the enhanced PA vendor LTV.
+     * @param broadcastFeatures 2-octet Broadcast_Features value (little-endian)
+     */
+    public void setPGOBroadcastFeatures(int broadcastFeatures) {
+        Log.d(TAG, "setPGOBroadcastFeatures: 0x" + String.format("%04X", broadcastFeatures));
+        mBroadcastFeatures = broadcastFeatures;
+    }
+
+    /*
+     * Get the PGO Broadcast_Features field.
+     * @return 2-octet Broadcast_Features value
+     */
+    public int getPGOBroadcastFeatures() {
+        return mBroadcastFeatures;
+    }
+
+    /*
+     * Set the DBIG parameters received from the enhanced PA vendor LTV and push
+     * them to the native layer.
+     * 12-byte array:
+     *   [0]=dbig_feature_set  [1]=bis_detection_attempts
+     *   [2]=max_payload_dbig_control  [3]=bis_control_event_interval
+     *   [4]=send_exit  [5]=pgp_timeout  [6]=pgo_timeout  [7]=sgo_timeout
+     *   [8]=join_timeout  [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     */
+    public void setEnhancedDbigParams(byte[] dbigParams) {
+        if (dbigParams != null && dbigParams.length == 12) {
+            Log.d(TAG, "setEnhancedDbigParams: bis_ctrl_interval=" + (dbigParams[3] & 0xFF)
+                    + " dbig_feature_set=0x" + String.format("%02X", dbigParams[0] & 0xFF));
+            if (mNativeInterface != null) {
+                mNativeInterface.setEnhancedDbigParams(dbigParams);
+            }
+        } else {
+            Log.e(TAG, "setEnhancedDbigParams: invalid params - "
+                    + (dbigParams == null ? "null" : "length=" + dbigParams.length));
+        }
+    }
+
+    /*
+     * Returns Broadcast_States from HCI_VS_LE_Read_Supported_States.
+     * @return broadcast_states bitmask, or -1 if not yet available
+     */
+    public int getEnhancedBroadcastSinkCap() {
+        if (mNativeInterface != null) {
+            return mNativeInterface.getEnhancedBroadcastSinkCap();
+        }
+        return -1;
+    }
+
+    public int getEnhancedBroadcastSourceCap() {
+        return getPGOBroadcastFeatures();
+    }
+
+    /*
+     * Set Achat-specific attributes for the Broadcast Sink.
+     * @param devId Device ID (12-bit value, 0-4095)
+     * @param name Device name (up to 10 octets, UTF-8 encoded)
+     */
+    public void setAttributes(int devId, byte[] name) {
+        Log.d(TAG, "setAttributes: devId=" + devId);
+        if (name == null) {
+            Log.d(TAG, "setAttributes: name is null, ignoring request");
+            return;
+        }
+        LeAudioBroadcasterNativeInterface nativeInterface =
+                LeAudioBroadcasterNativeInterface.getInstance();
+        if (nativeInterface == null) {
+            Log.w(TAG, "setAttributes: Native interface not available.");
+            return;
+        }
+        // Pack devId into 2 octets (12-bit value with 4-bit padding)
+        byte[] devIdBytes = new byte[2];
+        devIdBytes[0] = (byte) (devId & 0xFF);
+        devIdBytes[1] = (byte) ((devId >> 8) & 0x0F);
+
+        // Ensure name is exactly 10 octets
+        byte[] nameBytes = new byte[10];
+        System.arraycopy(name, 0, nameBytes, 0, Math.min(name.length, 10));
+        nativeInterface.setAttributes(devIdBytes, nameBytes);
+    }
+
+    /*
+     * Terminate the DBIG (spec §5.3 PGP Terminates procedure).
+     * Sends HCI_VS_LE_Texit_DBIG with texit_mode=TERMINATE.
+     * Result delivered via notifyTexitDbigComplete().
+     */
+    public void terminateDbig() {
+        if (DBG) Log.d(TAG, "terminateDbig");
+        if (mNativeInterface == null) {
+            Log.w(TAG, "terminateDbig: Native interface not available.");
+            return;
+        }
+        mPgpRequestedTerminate = true;
+        mNativeInterface.terminateDbig();
+    }
+
+    /*
+     * Scans the subgroup metadata of a {@link BluetoothLeBroadcastMetadata} object
+     * for the enhanced PA vendor LTV (Type=0xFF, Company ID=0x000A).
+     *
+     * LTV format embedded in BASE subgroup metadata:
+     *   [Length=0x11][Type=0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+     *
+     * @param metadata parsed BluetoothLeBroadcastMetadata
+     * @return 14-byte vendor data: [Broadcast_Features(2)][DBIG_params(12)],
+     *         or null if the LTV is not present
+     */
+    private static byte[] extractEnhancedPAVendorLTVFromMetadata(BluetoothLeBroadcastMetadata metadata) {
+        if (metadata == null) return null;
+
+        for (android.bluetooth.BluetoothLeBroadcastSubgroup subgroup : metadata.getSubgroups()) {
+            byte[] rawMeta = subgroup.getContentMetadata().getRawMetadata();
+            if (rawMeta == null) continue;
+
+            int pos = 0;
+            while (pos < rawMeta.length) {
+                int length = rawMeta[pos] & 0xFF;
+                if (length == 0) break;
+                pos++;
+                if (pos >= rawMeta.length) break;
+
+                int type    = rawMeta[pos] & 0xFF;
+                int dataLen = length - 1; // value bytes = length - 1 (type byte)
+                pos++;
+
+                if (pos + dataLen > rawMeta.length) break;
+
+                // Type 0xFF = Vendor Specific; need ≥ 2 (Company ID) + 14 (vendor data)
+                if (type == 0xFF && dataLen >= (2 + DBIG_VENDOR_DATA_LENGTH)) {
+                    int cidLo = rawMeta[pos]     & 0xFF;
+                    int cidHi = rawMeta[pos + 1] & 0xFF;
+                    if (cidLo == DBIG_VENDOR_COMPANY_ID_LO && cidHi == DBIG_VENDOR_COMPANY_ID_HI) {
+                        // Found — extract the 14 bytes after Company ID
+                        byte[] vendorData = new byte[DBIG_VENDOR_DATA_LENGTH];
+                        System.arraycopy(rawMeta, pos + 2, vendorData, 0, DBIG_VENDOR_DATA_LENGTH);
+                        Log.d(TAG, "extractEnhancedPAVendorLTVFromMetadata: found vendor LTV");
+                        return vendorData;
+                    }
+                }
+                pos += dataLen;
+            }
+        }
+        return null;
+    }
+
+    /*
+     * Get maximum source capacity (max PA syncs)
+     */
+    public int getMaximumSourceCapacity() {
+        if (DBG) Log.d(TAG, "getMaximumSourceCapacity: " + MAX_PA_SYNC_SOURCES);
+        return MAX_PA_SYNC_SOURCES;
+    }
+
+    /*
+     * Helper function to check if a source is currently in BIG sync state
+     * (either syncing or already synced to BIG)
+     *
+     * @param broadcastId the broadcast ID to check
+     * @return true if source is in BIG_SYNCING or BIG_SYNCED state, false otherwise
+     */
+    private boolean isSourceInBigSyncState(int broadcastId) {
+        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
+        if (descriptor == null) {
+            return false;
+        }
+        int state = descriptor.mSinkState;
+        return (state == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCING ||
+                state == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED);
+    }
+
+    /*
+     * Helper function to count how many sources are currently in BIG sync state
+     * (either syncing or already synced to BIG)
+     *
+     * @return the number of sources currently in BIG_SYNCING or BIG_SYNCED state
+     */
+    private int getActiveBigSyncSourcesCount() {
+        int count = 0;
+        for (LeAudioBroadcastSinkDescriptor descriptor : mBroadcastSinkDescriptors.values()) {
+            int state = descriptor.mSinkState;
+            if (state == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCING ||
+                state == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /*
+     * Helper function to check if a source can be added (PA sync)
+     * Similar to canBroadcastBeCreated pattern in LeAudioService
+     *
+     * @param broadcastId the broadcast ID to check
+     * @return BluetoothStatusCodes.SUCCESS if source can be added, or appropriate error reason code
+     */
+    private int canSourceBeAdded(int broadcastId) {
+        // Check for duplicate add request
+        LeAudioBroadcastSinkDescriptor existingDescriptor = mBroadcastSinkDescriptors.get(broadcastId);
+        if (existingDescriptor != null) {
+            Log.w(TAG, "canSourceBeAdded(): Duplicate add request for broadcastId=" + broadcastId);
+            return BluetoothLeBroadcastSinkState.REASON_DUPLICATE_ADD_REQUEST;
+        }
+
+        // Check if maximum PA sync capacity has been reached
+        int currentPaSyncCount = mBroadcastSinkDescriptors.size();
+        if (currentPaSyncCount >= MAX_PA_SYNC_SOURCES) {
+            Log.w(TAG, "canSourceBeAdded(): Maximum PA sync capacity reached, current=" + currentPaSyncCount +
+                  ", max=" + MAX_PA_SYNC_SOURCES);
+            return BluetoothLeBroadcastSinkState.REASON_MAX_PA_SYNC_REACHED;
+        }
+
+        return BluetoothStatusCodes.SUCCESS;
+    }
+
+    /*
+     * Helper function to check if a source can be joined (BIG sync)
+     * Similar to canBroadcastBeCreated pattern in LeAudioService
+     *
+     * @param broadcastId the broadcast ID to check
+     * @param metadata the broadcast metadata containing encryption info and broadcast code
+     * @return BluetoothStatusCodes.SUCCESS if source can be joined, or appropriate error reason code
+     */
+    private int canSourceBeJoined(int broadcastId, BluetoothLeBroadcastMetadata metadata) {
+        // Check encryption requirements first
+        if (metadata != null && metadata.isEncrypted()) {
+            byte[] broadcastCode = metadata.getBroadcastCode();
+
+            // Check if broadcast code is missing for encrypted source
+            if (broadcastCode == null || broadcastCode.length == 0) {
+                Log.w(TAG, "canSourceBeJoined(): Encrypted source requires broadcast code, broadcastId=" + broadcastId);
+                return BluetoothLeBroadcastSinkState.REASON_ENCRYPTION_FAILED_NO_KEY;
+            }
+
+            // Validate broadcast code length (must be 4-16 octets per Bluetooth spec)
+            if (broadcastCode.length < 4 || broadcastCode.length > 16) {
+                Log.w(TAG, "canSourceBeJoined(): Invalid broadcast code length=" + broadcastCode.length +
+                      " (must be 4-16 octets), broadcastId=" + broadcastId);
+                return BluetoothLeBroadcastSinkState.REASON_ENCRYPTION_FAILED_BAD_CODE;
+            }
+        }
+
+        // Check for duplicate join request
+        if (isSourceInBigSyncState(broadcastId)) {
+            Log.w(TAG, "canSourceBeJoined(): Duplicate join request for broadcastId=" + broadcastId);
+            return BluetoothLeBroadcastSinkState.REASON_DUPLICATE_JOIN_REQUEST;
+        }
+
+        // Check if maximum BIG sync capacity has been reached
+        int activeBigSyncCount = getActiveBigSyncSourcesCount();
+        if (activeBigSyncCount >= MAX_BIG_SYNC_SOURCES) {
+            Log.w(TAG, "canSourceBeJoined(): Maximum BIG sync capacity reached, current=" + activeBigSyncCount +
+                  ", max=" + MAX_BIG_SYNC_SOURCES);
+            return BluetoothLeBroadcastSinkState.REASON_MAX_BIG_SYNC_REACHED;
+        }
+
+        return BluetoothStatusCodes.SUCCESS;
+    }
+
+    /*
+     * Process stack event from native layer
+     */
+    void messageFromNative(LeAudioBroadcastSinkStackEvent event) {
+        if (DBG) Log.d(TAG, "messageFromNative(): " + event);
+
+        // Post event to handler for processing on main thread
+        mHandler.post(() -> {
+            switch (event.type) {
+                // -----------------------------------------------------------------
+                // Broadcast sink events
+                // -----------------------------------------------------------------
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_ADD_FAILED:
+                    if (DBG) Log.d(TAG, "Source add failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
+
+                    // Notify SDK callbacks
+                    notifyOnSourceAddFailed(event.broadcastId, event.reason);
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_JOIN_FAILED:
+                    if (DBG) Log.d(TAG, "Source join failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
+
+                    if (event.reason == 1) {
+                        // Reason 1 = PA sync not available (state machine in IDLE).
+                        // User must re-add the source to restart PA sync before retrying BIG sync.
+                        notifyOnSinkStartFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_PA_SYNC_LOST);
+                    } else {
+                        notifyOnSinkStartFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_LEAVE_FAILED:
+                    if (DBG) Log.d(TAG, "Source leave failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
+
+                    // Normal leave failed
+                    notifyOnSinkStopFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_REMOVE_FAILED:
+                    if (DBG) Log.d(TAG, "Source remove failed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
+
+                    // Notify SDK callbacks
+                    notifyOnSourceRemoveFailed(event.broadcastId, BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_DESTROYED:
+                    if (DBG) Log.d(TAG, "Source destroyed: broadcastId=" + event.broadcastId + ", reason=" + event.reason);
+
+                    // Notify based on reason code using defined constants
+                    if (event.reason == LeAudioBroadcastSinkStackEvent.SOURCE_DESTROYED_REASON_PA_SYNC_LOST) {
+                        // PA sync lost - notify as unexpected removal
+                        notifyOnSourceRemoved(event.broadcastId,
+                            BluetoothLeBroadcastSinkState.REASON_PA_SYNC_LOST);
+                    } else {
+                        // Normal destruction - notify as user requested removal
+                        notifyOnSourceRemoved(event.broadcastId,
+                            BluetoothLeBroadcastSinkState.REASON_LOCAL_APP_REQUEST);
+                    }
+
+                    // Resource cleanup completed in native layer, now clean up local cache
+                    mBroadcastSinkDescriptors.remove(event.broadcastId);
+                    if (DBG) Log.d(TAG, "Cleaned up local cache for broadcastId=" + event.broadcastId);
+
+                    // Remove from found sources cache
+                    synchronized (mFoundSources) {
+                        if (mFoundSources.remove(event.broadcastId) != null) {
+                            if (DBG) Log.d(TAG, "Removed destroyed source from found sources cache: broadcastId=0x" +
+                                           Integer.toHexString(event.broadcastId));
+                        }
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_METADATA_CHANGED:
+                    if (DBG) Log.d(TAG, "Source metadata changed: broadcastId=" + event.broadcastId);
+
+                    // Business logic: Store metadata on first receipt (onSourceAdded).
+                    // Enhanced broadcast source metadata does not change after initial discovery,
+                    // so onSourceMetadataChanged is never called for subsequent events.
+                    if (event.metadata != null) {
+                        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
+                        if (descriptor == null) {
+                            descriptor = new LeAudioBroadcastSinkDescriptor();
+                            mBroadcastSinkDescriptors.put(event.broadcastId, descriptor);
+                        }
+                        // Store metadata (only meaningful on first receipt; metadata is stable)
+                        descriptor.mMetadata = event.metadata;
+
+                        if (!descriptor.mIsSourceAddedNotified) {
+                            // First time full metadata is received — notify app via onSourceAdded.
+                            // mIsEnhanced was set by EVENT_TYPE_ENHANCED_SOURCE_DETECTED which
+                            // fires before SOURCE_METADATA_CHANGED for the same PA sync cycle.
+                            descriptor.mIsSourceAddedNotified = true;
+                            if (DBG) Log.d(TAG, "Full metadata received, calling notifyOnSourceAdded"
+                                    + " for broadcastId=" + event.broadcastId
+                                    + ", isEnhanced=" + descriptor.mIsEnhanced);
+                            notifyOnSourceAdded(event.metadata, descriptor.mIsEnhanced);
+                        }
+                        // No else: enhanced broadcast source metadata is stable after first receipt.
+
+                        // Extract enhanced PA vendor LTV from BASE subgroup metadata.
+                        // Only attempted in duplex broadcast mode — the LTV is only present
+                        // when the source is a duplex broadcaster (buildEnhancedPAVendorLTV).
+                        boolean isDuplex = android.os.SystemProperties.getBoolean(
+                                "persist.vendor.qcom.bluetooth.enable_ba_duplex", false);
+                        if (isDuplex) {
+                            byte[] vendorData = extractEnhancedPAVendorLTVFromMetadata(event.metadata);
+                            if (vendorData != null) {
+                                int broadcastFeatures =
+                                        ((vendorData[1] & 0xFF) << 8) | (vendorData[0] & 0xFF);
+                                byte[] dbigParams = Arrays.copyOfRange(vendorData, 2, 14);
+                                Log.d(TAG, "Enhanced PA vendor LTV found: broadcastFeatures=0x"
+                                        + String.format("%04X", broadcastFeatures));
+                                setPGOBroadcastFeatures(broadcastFeatures);
+                                setEnhancedDbigParams(dbigParams);
+                            } else {
+                                Log.d(TAG, "No enhanced PA vendor LTV in BASE metadata for broadcastId="
+                                        + event.broadcastId);
+                            }
+                        }
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_AUDIO_SESSION_CREATED: {
+                    boolean sessionSuccess = (event.valueInt1 == 1);
+                    if (DBG) Log.d(TAG, "Audio session created: success=" + sessionSuccess);
+                    // Notify MM audio with active device change only after both HAL sessions
+                    // are confirmed started — mirrors the broadcast source pattern.
+                    if (sessionSuccess && mPendingEnhancedSourceDevice != null) {
+                        BluetoothDevice pendingDevice = mPendingEnhancedSourceDevice;
+                        mPendingEnhancedSourceDevice = null;
+                        if (DBG) Log.d(TAG, "Audio session created: notifying MM audio "
+                                + "with active device: " + pendingDevice);
+                        updateBroadcastActiveInDevice(pendingDevice, mActiveBroadcastInDevice, true);
+                    } else if (!sessionSuccess) {
+                        // Session failed — clear pending device and streaming flag
+                        mPendingEnhancedSourceDevice = null;
+                        mIsEnhancedStreaming = false;
+                        Log.w(TAG, "Audio session creation failed — cleared pending state");
+                    }
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_STATE_CHANGED:
+                    // Get or create descriptor for this broadcast
+                    LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
+                    if (descriptor == null) {
+                        descriptor = new LeAudioBroadcastSinkDescriptor();
+                        mBroadcastSinkDescriptors.put(event.broadcastId, descriptor);
+                    }
+
+                    // Update descriptor state
+                    int previousState = descriptor.mSinkState;
+                    descriptor.mSinkState = event.valueInt1;
+                    if (DBG) Log.d(TAG, "State changed: broadcastId=" + event.broadcastId
+                            + ", previousState=" + LeAudioBroadcastSinkStackEvent.sinkStateToString(previousState)
+                            + ", newState=" + LeAudioBroadcastSinkStackEvent.sinkStateToString(event.valueInt1));
+
+                    // Handle state transitions and notify appropriate callbacks
+                    switch (descriptor.mSinkState) {
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_IDLE:
+                            if (DBG) Log.d(TAG, "Sink state: IDLE for broadcastId=" + event.broadcastId);
+                            // Active device is cleared by MSG_REMOVE_ACTIVE_DEVICE posted in
+                            // stopEnhancedBroadcastSink() — no need to clear it here.
+
+                            // Transition to IDLE - notification will be sent in SOURCE_DESTROYED event
+                            // Destroy source resources when transitioning to IDLE
+                            destroySource(event.broadcastId);
+                            break;
+
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCING:
+                            if (DBG) Log.d(TAG, "Sink state: PA_SYNCING for broadcastId=" + event.broadcastId);
+                            // PA sync in progress
+                            break;
+
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED:
+                            if (DBG) Log.d(TAG, "Sink state: PA_SYNCED for broadcastId=" + event.broadcastId);
+                            // Active device is cleared by MSG_REMOVE_ACTIVE_DEVICE posted in
+                            // stopEnhancedBroadcastSink() — no need to clear it here.
+
+                            if (previousState == LeAudioBroadcastSinkStackEvent.SINK_STATE_DISABLING) {
+                                // Intentional EXIT — MSG_NOTIFY_SINK_STOPPED was already queued
+                                // by stopEnhancedBroadcastSink() behind MSG_STOP and
+                                // MSG_REMOVE_ACTIVE_DEVICE. Do NOT notify here to avoid
+                                // firing before cleanup is complete.
+                                if (DBG) Log.d(TAG, "DISABLING→PA_SYNCED: notification deferred "
+                                        + "to MSG_NOTIFY_SINK_STOPPED for broadcastId="
+                                        + event.broadcastId);
+                            } else if (previousState == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED) {
+                                if (mPreemptedByCall) {
+                                    // BIG_SYNCED→PA_SYNCED due to call preemption (sync-only cmpl).
+                                    // A2DP deactivation and resumeScoIfRequired are handled in
+                                    // EVENT_TYPE_SINK_SYNC_ONLY_ACTIVE which fires from the same
+                                    // OnSyncOnlyEnableCmpl callback — no action needed here.
+                                    Log.d(TAG, "BIG_SYNCED→PA_SYNCED: call preemption, "
+                                            + "sync-only active event will handle SCO + A2DP");
+                                } else {
+                                    /* BIG sync lost unexpectedly — leave notification deferred. */
+                                    if (DBG) Log.d(TAG, "BIG_SYNCED→PA_SYNCED: leave notification "
+                                            + "deferred to EVENT_TYPE_BIG_SYNC_LOST for broadcastId="
+                                            + event.broadcastId);
+                                    descriptor.mPendingMetadataUpdate = null;
+                                }
+                            }
+                            break;
+
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCING:
+                            if (DBG) Log.d(TAG, "Sink state: BIG_SYNCING for broadcastId=" + event.broadcastId);
+                            // BIG sync in progress. Call-end resume (PA_SYNCED -> BIG_SYNCING,
+                            // sync-only disabled) is driven by onCallStateChanged(false)
+                            // re-activating the A2DP device, which triggers onAudioDevicesAdded()
+                            // -> MSG_START (achat_tx_enable=true) -> native OnAudioResume ->
+                            // START_BIG_SYNC -> this BIG_SYNCING transition. No action needed here.
+                            break;
+
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED:
+                            if (DBG) Log.d(TAG, "Sink state: BIG_SYNCED for broadcastId=" + event.broadcastId
+                                    + " — join notification sent via EVENT_TYPE_BIG_SYNC_CREATED");
+                             /* Active-device update and join/metadata-update notification are
+                              * handled in EVENT_TYPE_BIG_SYNC_CREATED (carries bigHandle +
+                             * bisHandles).  Do NOT duplicate those calls here.
+                             * Call-end resume (PA_SYNCED → BIG_SYNCING → BIG_SYNCED) re-activates
+                             * the A2DP device earlier, from onCallStateChanged(false) — see
+                             * mBroadcastInDeviceBeforeCall there. */
+                            break;
+
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_DISABLING:
+                            if (DBG) Log.d(TAG, "Sink state: DISABLING for broadcastId=" + event.broadcastId);
+                            // Disabling BIG sync (transitioning from BIG_SYNCED to PA_SYNCED)
+                            break;
+
+                        case LeAudioBroadcastSinkStackEvent.SINK_STATE_STOPPING:
+                            if (DBG) Log.d(TAG, "Sink state: STOPPING for broadcastId=" + event.broadcastId);
+                            // Stopping PA sync (transitioning to IDLE)
+                            break;
+
+                        default:
+                            Log.w(TAG, "Unknown sink state: " + descriptor.mSinkState + " for broadcastId=" + event.broadcastId);
+                            break;
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_ENHANCED_SOURCE_DETECTED:
+                    // BASE data parsing revealed this is an enhanced (enhanced broadcast) source.
+                    // Store the flag in the descriptor; it will be passed to onSourceAdded()
+                    // when the first metadata arrives via EVENT_TYPE_SOURCE_METADATA_CHANGED.
+                    if (DBG) Log.d(TAG, "Enhanced source detected [internal]: broadcastId="
+                            + event.broadcastId + ", numBis=" + event.valueInt1);
+                    {
+                        LeAudioBroadcastSinkDescriptor enhDescriptor =
+                                mBroadcastSinkDescriptors.get(event.broadcastId);
+                        if (enhDescriptor == null) {
+                            enhDescriptor = new LeAudioBroadcastSinkDescriptor();
+                            mBroadcastSinkDescriptors.put(event.broadcastId, enhDescriptor);
+                        }
+                        enhDescriptor.mIsEnhanced = true;
+                        if (DBG) Log.d(TAG, "Marked broadcastId=" + event.broadcastId
+                                + " as enhanced (numBis=" + event.valueInt1 + ")");
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SOURCE_FOUND:
+                    // Fired from NativeInterface.onSourceFound() (scan-time ScanResult).
+                    if (DBG) Log.d(TAG, "Source found event: broadcastId=" + event.broadcastId);
+                    if (event.scanResult != null) {
+                        notifyOnSourceFound(event.broadcastId, event.scanResult);
+                    }
+                    break;
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_CREATED: {
+                    // BIG sync established — the only ISO-layer event forwarded to Java.
+                    // ISO data path completion and enhanced broadcast setup completion are handled
+                    // entirely inside the C++ layer and are NOT forwarded here.
+                    if (DBG) Log.d(TAG, "BIG sync created: broadcastId=" + event.broadcastId
+                            + ", bigHandle=" + event.valueInt1
+                            + ", numBis=" + event.valueInt2);
+                    LeAudioBroadcastSinkDescriptor bigCreatedDesc =
+                            mBroadcastSinkDescriptors.get(event.broadcastId);
+                    if (bigCreatedDesc == null) {
+                        bigCreatedDesc = new LeAudioBroadcastSinkDescriptor();
+                        mBroadcastSinkDescriptors.put(event.broadcastId, bigCreatedDesc);
+                    }
+                    bigCreatedDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED;
+
+                    // BIG sync established — stop scanning for sources and notify the app.
+                    synchronized (mStateLock) {
+                        if (mSearchInProgress) {
+                            if (DBG) Log.d(TAG, "BIG sync created: stopping scan");
+                            mScanCallback.stopScanAndUnregister();
+                            mSearchInProgress = false;
+                            notifyOnSearchStopped(
+                                    BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+                        }
+                    }
+
+                    // Active-device update is done in startEnhancedBroadcastSink() for enhanced sources.
+                    // Always notify onSinkStarted when BIG sync is created.
+                    notifyOnSinkStarted(event.broadcastId);
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_TERMINATED: {
+                    if (DBG) Log.d(TAG, "BIG sync terminated: broadcastId=" + event.broadcastId
+                            + ", bigHandle=" + event.valueInt1
+                            + ", status=0x" + Integer.toHexString(event.reason));
+                    if (mBigSyncLostPending) {
+                        // MSG_NOTIFY_SINK_STOPPED already queued from EVENT_TYPE_BIG_SYNC_LOST.
+                        // Suppress duplicate.
+                        Log.d(TAG, "BIG sync terminated (post BIG-sync-lost cleanup): "
+                                + "suppressing duplicate onSinkStopped for broadcastId="
+                                + event.broadcastId);
+                        mBigSyncLostPending = false;
+                        break;
+                    }
+                    // BIG terminated via user-initiated EXIT (stopEnhancedBroadcastSink).
+                    // MSG_NOTIFY_SINK_STOPPED was already queued by stopEnhancedBroadcastSink().
+                    LeAudioBroadcastSinkDescriptor termDesc =
+                            mBroadcastSinkDescriptors.get(event.broadcastId);
+                    if (termDesc != null) {
+                        termDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
+                        termDesc.mPendingMetadataUpdate = null;
+                    }
+                    mIsEnhancedStreaming = false;
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_DBIG_STATUS_CHANGED: {
+                    notifyDbigStatusChanged(event.broadcastId, event.valueInt1, event.valueInt2,
+                            event.dbigDevId, event.dbigName, event.dbigNumBis,
+                            event.dbigBisDevIds, event.dbigBroadcastFeatures);
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_TEXIT_DBIG_COMPLETE: {
+                    int status = event.reason;
+                    if (DBG) Log.d(TAG, "TExitDbig complete: broadcastId=" + event.broadcastId
+                            + ", dbigHandle=" + event.valueInt1
+                            + ", status=0x" + Integer.toHexString(status)
+                            + ", mPgpRequestedTerminate=" + mPgpRequestedTerminate);
+
+                    if (mPgpRequestedTerminate) {
+                        mPgpRequestedTerminate = false;
+                        if (status == 0) {
+                            // PGO accepted the request and terminated the DBIG/BIG.
+                            // FW has already cleared all DBIG/BIG/ISO state — mirror the
+                            // BIG sync lost path: stop HAL datapaths and notify the app.
+                            // Do NOT send stop-BIG-sync or datapath removal HCI commands.
+                            Log.i(TAG, "PGP-requested termination succeeded — mirroring BIG sync lost path");
+                            LeAudioBroadcastSinkDescriptor desc =
+                                    mBroadcastSinkDescriptors.get(event.broadcastId);
+                            if (desc != null) {
+                                desc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
+                                desc.mBigSyncLostHciReason = 0x13; // Remote terminated
+                                desc.mPendingMetadataUpdate = null;
+                            }
+                            mIsEnhancedStreaming = false;
+                            mHandler.sendEmptyMessage(MSG_STOP);
+                            mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
+                            // Defer notification until cleanup is complete.
+                            android.os.Message pgpTermNotify = mHandler.obtainMessage(
+                                    MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
+                                    BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED);
+                            mHandler.sendMessage(pgpTermNotify);
+                        } else {
+                            // PGO rejected the request — no cleanup needed, just notify the app.
+                            Log.i(TAG, "PGP-requested termination rejected by PGO (status=0x"
+                                    + Integer.toHexString(status) + ")");
+                            notifyTexitDbigComplete(event.broadcastId, event.valueInt1, status);
+                        }
+                        break;
+                    }
+
+                    // Normal (non-PGP-requested) Texit complete.
+                    // Two sub-cases depending on whether a PGP-initiated stop is already in progress:
+                    //
+                    // Case A: mIsEnhancedStreaming == false
+                    //   PGP already called stopEnhancedBroadcastSink() which queued MSG_STOP +
+                    //   MSG_REMOVE_ACTIVE_DEVICE + MSG_NOTIFY_SINK_STOPPED before this event
+                    //   arrived. Just forward to the UI layer (e.g. to dismiss the removal
+                    //   progress dialog) — all cleanup is already in the handler queue.
+                    //
+                    // Case B: mIsEnhancedStreaming == true
+                    //   FW delivered Texit complete instead of BIG_SYNC_LOST because PGO
+                    //   terminated the BIG. No PGP-initiated stop was in progress, so no
+                    //   cleanup has been queued yet. Mirror the BIG_SYNC_LOST path: update
+                    //   state, queue MSG_STOP + MSG_REMOVE_ACTIVE_DEVICE + MSG_NOTIFY_SINK_STOPPED,
+                    //   and also forward the Texit complete to the UI layer.
+                    if (mIsEnhancedStreaming) {
+                        // Case B: PGO terminated the BIG — full cleanup path.
+                        // Queue MSG_STOP → MSG_REMOVE_ACTIVE_DEVICE → MSG_NOTIFY_SINK_STOPPED
+                        // → MSG_NOTIFY_TEXIT_COMPLETE in FIFO order so that notifyTexitDbigComplete
+                        // fires only after MM audio is torn down and active device is removed.
+                        // This prevents the Activity's removeSource() (triggered from the removal
+                        // dialog on receipt of onTexitDbigComplete) from racing with teardown.
+                        Log.i(TAG, "TExitDbig complete (PGO-terminated, mIsEnhancedStreaming=true)"
+                                + " — mirroring BIG sync lost path for broadcastId="
+                                + event.broadcastId);
+                        LeAudioBroadcastSinkDescriptor pgoDesc =
+                                mBroadcastSinkDescriptors.get(event.broadcastId);
+                        if (pgoDesc != null) {
+                            pgoDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
+                            pgoDesc.mBigSyncLostHciReason = 0x13; // Remote terminated
+                            pgoDesc.mPendingMetadataUpdate = null;
+                        }
+                        mIsEnhancedStreaming = false;
+                        mHandler.sendEmptyMessage(MSG_STOP);
+                        mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
+                        android.os.Message pgoTermNotify = mHandler.obtainMessage(
+                                MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
+                                BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED);
+                        mHandler.sendMessage(pgoTermNotify);
+                        // Queue Texit complete notification last — fires after full cleanup.
+                        android.os.Message texitNotify = mHandler.obtainMessage(
+                                MSG_NOTIFY_TEXIT_COMPLETE, event.broadcastId,
+                                event.valueInt1, Integer.valueOf(status));
+                        mHandler.sendMessage(texitNotify);
+                    } else {
+                        // Case A: PGP-initiated stop already in progress — cleanup already queued.
+                        // Forward Texit complete immediately; the handler queue ensures it runs
+                        // after any already-queued MSG_STOP / MSG_REMOVE_ACTIVE_DEVICE.
+                        notifyTexitDbigComplete(event.broadcastId, event.valueInt1, status);
+                    }
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_SINK_SYNC_ONLY_ACTIVE: {
+                    // HCI VS DBIG_SYNC_ONLY(enable=1) completed: ISO paths removed,
+                    // controller idle, BIG alive. Mirrors PGO EVENT_TYPE_BROADCAST_SYNC_ONLY_ACTIVE.
+                    Log.d(TAG, "SINK_SYNC_ONLY_ACTIVE: broadcastId=" + event.broadcastId
+                            + " mPreemptedByCall=" + mPreemptedByCall);
+                    if (mPreemptedByCall) {
+                        // Deactivate A2DP device in AudioManager — mirrors A14's
+                        // btif_ahim_ack_stream_profile_suspended at SYNC_ONLY_MODE_ON_EVT.
+                        if (mActiveBroadcastInDevice != null) {
+                            mBroadcastInDeviceBeforeCall = mActiveBroadcastInDevice;
+                            Log.d(TAG, "SINK_SYNC_ONLY_ACTIVE: deactivating broadcast device "
+                                    + "in AudioManager");
+                            updateBroadcastActiveInDevice(null, mActiveBroadcastInDevice, true);
+                        }
+                        // Controller is idle — safe to send AT+BCC now.
+                        HeadsetClientService hfpService =
+                                HeadsetClientService.getHeadsetClientService();
+                        if (hfpService != null) {
+                            resumeScoIfRequired(hfpService);
+                        }
+                    }
+                    break;
+                }
+                case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_BIG_SYNC_LOST: {
+                    int hciReason = event.reason;
+                    if (DBG) Log.d(TAG, "BIG sync lost: broadcastId=" + event.broadcastId
+                            + ", bigHandle=" + event.valueInt1
+                            + ", hciReason=0x" + Integer.toHexString(hciReason)
+                            + " (" + hciReasonToString(hciReason) + ")");
+                    LeAudioBroadcastSinkDescriptor bigLostDesc =
+                            mBroadcastSinkDescriptors.get(event.broadcastId);
+                    if (bigLostDesc != null) {
+                        bigLostDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
+                        bigLostDesc.mBigSyncLostHciReason = hciReason;
+                        bigLostDesc.mPendingMetadataUpdate = null;
+                    }
+
+                    mIsEnhancedStreaming = false;
+                    mBigSyncLostPending = true;
+                    if (DBG) Log.d(TAG, "BIG sync lost: sending MSG_STOP");
+                    mHandler.sendEmptyMessage(MSG_STOP);
+                    if (DBG) Log.d(TAG, "BIG sync lost: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
+                    mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
+
+                    // Notify the app only after full cleanup — MSG_NOTIFY_SINK_STOPPED runs
+                    // after MSG_REMOVE_ACTIVE_DEVICE so setParameters(achat_rx/tx_enable=false)
+                    // and active device removal are both complete before the app can start
+                    // a new BIG sync, preventing a race between cleanup and a new start.
+                    int sdkReason = hciReasonToSdkReason(hciReason);
+                    android.os.Message notifyMsg =
+                            mHandler.obtainMessage(MSG_NOTIFY_SINK_STOPPED,
+                                                   event.broadcastId, sdkReason);
+                    if (DBG) Log.d(TAG, "BIG sync lost: queuing MSG_NOTIFY_SINK_STOPPED after MSG_REMOVE_ACTIVE_DEVICE");
+                    mHandler.sendMessage(notifyMsg);
+                    break;
+                }
+                default:
+                    Log.e(TAG, "Unknown stack event type: " + event.type);
+                    break;
+            }
+        });
+    }
+
+    /* Returns a human-readable string for a raw HCI disconnect reason code. */
+    private static String hciReasonToString(int reason) {
+        switch (reason) {
+            case 0x08: return "Connection Timeout (out-of-range)";
+            case 0x13: return "Remote User Terminated (PGO terminated BIG)";
+            case 0x16: return "Local Host Terminated (PGP terminated sync)";
+            case 0x3D: return "MIC Failure (wrong broadcast code)";
+            default:   return "Unknown (0x" + Integer.toHexString(reason) + ")";
+        }
+    }
+
+    /*
+     * Maps a raw HCI disconnect reason from BIG_SYNC_LOST to the most specific
+     * SDK reason constant so {@code onSinkStopped()} carries the full cause.
+     *
+     *   HCI 0x13 (Remote User Terminated) → PGO sent HCI_LE_Terminate_BIG
+     *   HCI 0x08 (Connection Timeout)     → PGO out of range / link lost
+     *   anything else                      → generic REASON_BIG_SYNC_LOST
+     */
+    private static int hciReasonToSdkReason(int hciReason) {        switch (hciReason) {
+            case 0x13: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED;
+            case 0x08: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT;
+            default:   return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST;
+        }
+    }
+
+    /*
+     * Notifies all registered SDK callbacks of HCI_VS_LE_Texit_DBIG_Complete.
+     * status=0x00 success (PGO accepted terminate); status=0x0E rejected by PGO.
+     */
+    private void notifyTexitDbigComplete(int broadcastId, int dbigHandle, int status) {
+        Log.i(TAG, "notifyTexitDbigComplete: broadcastId=" + broadcastId
+                + ", dbigHandle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status));
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onTexitDbigComplete(broadcastId, dbigHandle, status);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onTexitDbigComplete", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private void notifyDbigStatusChanged(int broadcastId, int dbigHandle, int status, int devId,
+                                          byte[] name, int numBis, char[] bisDevIds,
+                                          int broadcastFeatures) {
+        if (DBG) Log.d(TAG, "notifyDbigStatusChanged: broadcastId=" + broadcastId
+                + ", dbig_handle=" + dbigHandle
+                + ", status=0x" + Integer.toHexString(status)
+                + ", devId=0x" + Integer.toHexString(devId)
+                + ", numBis=" + numBis
+                + ", broadcastFeatures=0x" + Integer.toHexString(broadcastFeatures));
+        Intent intent = new Intent("android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED");
+        intent.putExtra("android.bluetooth.extra.DBIG_STATUS", status);
+        intent.putExtra("android.bluetooth.extra.DBIG_BROADCAST_ID", broadcastId);
+        intent.putExtra("android.bluetooth.extra.DBIG_DEV_ID", devId);
+        if (name != null) {
+            intent.putExtra("android.bluetooth.extra.DBIG_NAME", name);
+        }
+        intent.putExtra("android.bluetooth.extra.DBIG_NUM_BIS", numBis);
+        if (bisDevIds != null && bisDevIds.length > 0) {
+            int[] bisDevIdsInt = new int[bisDevIds.length];
+            for (int i = 0; i < bisDevIds.length; i++) {
+                bisDevIdsInt[i] = bisDevIds[i];
+            }
+            intent.putExtra("android.bluetooth.extra.DBIG_BIS_DEV_IDS", bisDevIdsInt);
+        }
+        intent.putExtra("android.bluetooth.extra.DBIG_BROADCAST_FEATURES", broadcastFeatures);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
+                | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+        sendBroadcastAsUser(
+                intent,
+                UserHandle.ALL,
+                BLUETOOTH_CONNECT,
+                Utils.getTempBroadcastOptions().toBundle());
+    }
+
+    // Private notify methods for SDK callbacks - ONLY invoke SDK callbacks, no business logic
+    private void notifyOnSearchStarted(int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSearchStarted(reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSearchStarted", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSearchStartFailed(int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSearchStartFailed(reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSearchStartFailed", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSearchStopped(int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSearchStopped(reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSearchStopped", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSourceFound(int broadcastId, ScanResult result) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSourceFound(broadcastId, result);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSourceFound", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSourceAdded(BluetoothLeBroadcastMetadata metadata, boolean isEnhanced) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSourceAdded(metadata, isEnhanced);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSourceAdded", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSourceAddFailed(int broadcastId, int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSourceAddFailed(broadcastId, reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSourceAddFailed", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSinkStarted(int broadcastId) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSinkStarted(broadcastId);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSinkStarted", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSinkStartFailed(int broadcastId, int reason) {
+        // Get metadata from descriptor
+        LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
+        BluetoothLeBroadcastMetadata metadata = (descriptor != null) ? descriptor.mMetadata : null;
+        if (metadata == null) {
+            Log.w(TAG, "notifyOnSinkStartFailed(): No metadata found for broadcastId=" + broadcastId);
+        }
+
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSinkStartFailed(metadata, reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSinkStartFailed", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSinkStopped(int broadcastId, int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSinkStopped(broadcastId, reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSinkStopped", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSinkStopFailed(int broadcastId, int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSinkStopFailed(broadcastId, reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSinkStopFailed", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSourceRemoved(int broadcastId, int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSourceRemoved(broadcastId, reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSourceRemoved", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+
+    private void notifyOnSourceRemoveFailed(int broadcastId, int reason) {
+        int callbackCount = mCallbacks.beginBroadcast();
+        for (int i = 0; i < callbackCount; i++) {
+            try {
+                mCallbacks.getBroadcastItem(i).onSourceRemoveFailed(broadcastId, reason);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failed to call onSourceRemoveFailed", e);
+            }
+        }
+        mCallbacks.finishBroadcast();
+    }
+    /*
+     * Helper method to check if a UUID is contained in the scan filters
+     * Following the same pattern as BassClientService
+     */
+    private static boolean containsUuid(List<ScanFilter> filters, ParcelUuid uuid) {
+        if (filters == null || uuid == null) {
+            return false;
+        }
+
+        for (ScanFilter filter : filters) {
+            if (filter.getServiceDataUuid() != null &&
+                (filter.getServiceDataUuid().equals(uuid))) {
+                return true;
+            }
+            if (filter.getServiceUuid() != null &&
+                uuid.equals(filter.getServiceUuid())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /*
+     * Scan callback wrapper for broadcast sink scanning
+     */
+    private class BroadcastSinkScanCallbackWrapper extends IScannerCallback.Stub {
+        private static final int SCANNER_ID_NOT_INITIALIZED = -2;
+        private static final int SCANNER_ID_INITIALIZING = -1;
+
+        // Basic Audio Announcement Service UUID (0x1851)
+        private static final ParcelUuid BAAS_UUID =
+            ParcelUuid.fromString("00001852-0000-1000-8000-00805F9B34FB");
+
+        private final List<ScanFilter> mBaasUuidFilters = new ArrayList<ScanFilter>();
+        private int mScannerId = SCANNER_ID_NOT_INITIALIZED;
+        private ScanSettings mScanSettings;
+
+        void registerAndStartScan(List<ScanFilter> filters, ScanSettings settings) {
+            mScanSettings = settings;
+            synchronized (this) {
+                if (mScannerId == SCANNER_ID_INITIALIZING) {
+                    Log.d(TAG, "registerAndStartScan: Scanner is already initializing");
+                    notifyOnSearchStarted(BluetoothStatusCodes.ERROR_ALREADY_IN_TARGET_STATE);
+                    return;
+                }
+
+                if (mAdapterService == null) {
+                    Log.e(TAG, "registerAndStartScan: AdapterService is null");
+                    notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    return;
+                }
+
+                ScanController controller = mAdapterService.getBluetoothScanController();
+                if (controller == null) {
+                    Log.d(TAG, "registerAndStartScan: ScanController is null");
+                    notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    return;
+                }
+
+                // Add provided filters to our filter list
+                if (filters != null) {
+                    mBaasUuidFilters.addAll(filters);
+                }
+
+                // Check if BAAS UUID filter is already present, following BassClientService pattern
+                if (!containsUuid(mBaasUuidFilters, BAAS_UUID)) {
+                    byte[] serviceData = {0x00, 0x00, 0x00}; // Broadcast_ID placeholder
+                    byte[] serviceDataMask = {0x00, 0x00, 0x00}; // Match any broadcast ID
+
+                    mBaasUuidFilters.add(
+                            new ScanFilter.Builder()
+                                    .setServiceData(BAAS_UUID, serviceData, serviceDataMask)
+                                    .build());
+                }
+
+                mScannerId = SCANNER_ID_INITIALIZING;
+                controller.registerScannerInternal(this, getAttributionSource(), null);
+            }
+        }
+
+        void stopScanAndUnregister() {
+            synchronized (this) {
+                if (mAdapterService == null) {
+                    Log.e(TAG, "stopScanAndUnregister: AdapterService is null");
+                    notifyOnSearchStopped(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    return;
+                }
+
+                ScanController controller = mAdapterService.getBluetoothScanController();
+                if (controller == null) {
+                    Log.d(TAG, "stopScanAndUnregister: ScanController is null");
+                    notifyOnSearchStopped(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    return;
+                }
+
+                if (mScannerId >= 0) {
+                    controller.stopScanInternal(mScannerId);
+                    controller.unregisterScannerInternal(mScannerId);
+                }
+                mBaasUuidFilters.clear();
+                mScannerId = SCANNER_ID_NOT_INITIALIZED;
+                mScanSettings = null;
+            }
+        }
+/*
+        boolean isScanActive() {
+            synchronized (this) {
+                return mScannerId >= 0;
+            }
+        }
+*/
+        @Override
+        public void onScannerRegistered(int status, int scannerId) {
+            Log.d(TAG, "onScannerRegistered: Status: " + status + ", id:" + scannerId);
+            synchronized (this) {
+                if (status != BluetoothStatusCodes.SUCCESS) {
+                    Log.e(TAG, "onScannerRegistered: Scanner registration failed: " + status);
+                    notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    mScannerId = SCANNER_ID_NOT_INITIALIZED;
+                    return;
+                }
+                mScannerId = scannerId;
+
+                if (mAdapterService == null) {
+                    Log.e(TAG, "onScannerRegistered: AdapterService is null");
+                    notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    return;
+                }
+
+                ScanController controller = mAdapterService.getBluetoothScanController();
+                if (controller == null) {
+                    Log.d(TAG, "onScannerRegistered: ScanController is null");
+                    notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    return;
+                }
+
+                // Use provided settings or create default if null
+                ScanSettings scanSettings = mScanSettings;
+                if (scanSettings == null) {
+                    scanSettings = new ScanSettings.Builder()
+                            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                            .setLegacy(false)
+                            .build();
+                }
+
+                // Use the filters that were configured in registerAndStartScan
+                controller.startScanInternal(scannerId, scanSettings, mBaasUuidFilters);
+
+                synchronized (mStateLock) {
+                    mSearchInProgress = true;
+                }
+                notifyOnSearchStarted(BluetoothStatusCodes.REASON_LOCAL_APP_REQUEST);
+            }
+        }
+
+        @Override
+        public void onScanResult(ScanResult result) {
+            if (DBG) Log.d(TAG, "onScanResult:" + result);
+            synchronized (this) {
+                if (mScannerId < 0) {
+                    Log.d(TAG, "onScanResult: Ignoring result as scan stopped.");
+                    return;
+                }
+            }
+
+            // Process scan result and notify about found broadcast source
+            if (result != null && result.getDevice() != null) {
+                Log.d(TAG, "Broadcast Source Found:" + result.getDevice());
+
+                // Parse broadcast metadata from scan result
+                ScanRecord scanRecord = result.getScanRecord();
+                if (scanRecord == null) {
+                    Log.e(TAG, "onScanResult: Null scan record");
+                    return;
+                }
+
+                // Parse broadcast ID from BAAS service data (0x1852)
+                Integer broadcastId = parseBroadcastId(scanRecord);
+                if (broadcastId == null || broadcastId == -1) {
+                    Log.d(TAG, "onScanResult: Invalid broadcast ID");
+                    return;
+                }
+
+                Log.d(TAG, "Broadcast ID parsed: " + broadcastId);
+
+                // Check if this broadcast has already been found
+                synchronized (mFoundSources) {
+                    if (mFoundSources.containsKey(broadcastId)) {
+                        // Enhanced broadcast source metadata does not change after initial discovery.
+                        // No need to check for metadata changes.
+                        return;
+                    }
+
+                    // Add to cache
+                    mFoundSources.put(broadcastId, result);
+                    if (DBG) Log.d(TAG, "Added broadcast to found sources: broadcastId=0x" +
+                                   Integer.toHexString(broadcastId));
+                }
+
+                // Notify callbacks with the raw ScanResult.
+                // Full metadata (with subgroups / BIS configs) arrives later via
+                // onSourceMetadataChanged after PA sync + BASE data parsing.
+                notifyOnSourceFound(broadcastId, result);
+            }
+        }
+
+        @Override
+        public void onBatchScanResults(List<ScanResult> batchResults) {
+            // Handle batch scan results if needed
+        }
+
+        @Override
+        public void onFoundOrLost(boolean onFound, ScanResult scanResult) {
+            // Handle found/lost events if needed
+        }
+
+        @Override
+        public void onScanManagerErrorCallback(int errorCode) {
+            Log.d(TAG, "onScanManagerErrorCallback: errorCode = " + errorCode);
+            synchronized (this) {
+                if (mScannerId < 0) {
+                    return;
+                }
+            }
+            mScannerId = SCANNER_ID_NOT_INITIALIZED;
+
+            synchronized (mStateLock) {
+                mSearchInProgress = false;
+            }
+            notifyOnSearchStopped(BluetoothStatusCodes.ERROR_UNKNOWN);
+        }
+    }
+
+    /*
+     * Parse broadcast ID from scan record
+     * Following BassClientService pattern
+     */
+    private static Integer parseBroadcastId(android.bluetooth.le.ScanRecord scanRecord) {
+        if (scanRecord == null) {
+            Log.e(TAG, "parseBroadcastId: Null scan record");
+            return -1;
+        }
+
+        Map<ParcelUuid, byte[]> serviceData = scanRecord.getServiceData();
+        if (serviceData == null) {
+            Log.e(TAG, "parseBroadcastId: Null service data");
+            return -1;
+        }
+
+        // BAAS UUID (0x1852) contains the broadcast ID
+        ParcelUuid BAAS_UUID = ParcelUuid.fromString("00001852-0000-1000-8000-00805F9B34FB");
+        if (serviceData.containsKey(BAAS_UUID)) {
+            byte[] bId = serviceData.get(BAAS_UUID);
+            if (bId != null && bId.length >= 3) {
+                // Parse 3-byte broadcast ID (little-endian)
+                int broadcastId = (0x00FF0000 & (bId[2] << 16));
+                broadcastId |= (0x0000FF00 & (bId[1] << 8));
+                broadcastId |= (0x000000FF & bId[0]);
+                return broadcastId;
+            }
+        } else {
+            Log.e(TAG, "parseBroadcastId: No broadcast ID in service data");
+        }
+
+        return -1;
+    }
+
+    /*
+     * Update the active broadcast input device and report to audio framework
+     * Similar to updateBroadcastActiveDevice() in LeAudioService
+     *
+     * @param newDevice new active broadcast input device
+     * @param previousDevice previous active broadcast input device
+     * @param suppressNoisyIntent whether to suppress noisy intent
+     */
+    private void updateBroadcastActiveInDevice(
+            BluetoothDevice newDevice,
+            BluetoothDevice previousDevice,
+            boolean suppressNoisyIntent) {
+        mActiveBroadcastInDevice = newDevice;
+
+        if (DBG) Log.d(TAG, "updateBroadcastActiveInDevice: newDevice: " + newDevice +
+                       ", previousDevice: " + previousDevice +
+                       ", suppressNoisyIntent: " + suppressNoisyIntent);
+
+        if (mAudioManager == null) {
+            Log.e(TAG, "updateBroadcastActiveInDevice: AudioManager is null");
+            return;
+        }
+
+        // Always use a fixed placeholder address for the audio-framework-facing device
+        // identity (see DUMMY_AUDIO_DEVICE_ADDRESS) instead of the real broadcast source
+        // address, so a fresh service instance after a BT process crash can always
+        // force-clear a stale AudioDeviceInventory entry using this same known address —
+        // no need to persist the real source device's address across process death.
+        BluetoothDevice audioNewDevice = (newDevice != null) ? getDummyAudioDevice() : null;
+        BluetoothDevice audioPreviousDevice =
+                (previousDevice != null) ? getDummyAudioDevice() : null;
+
+        if (audioNewDevice != null) {
+            mAudioManager.handleBluetoothActiveDeviceChanged(audioNewDevice, audioPreviousDevice,
+                    BluetoothProfileConnectionInfo.createA2dpInfo(true, DEFAULT_VOLUME_LEVEL));
+        } else {
+            mAudioManager.handleBluetoothActiveDeviceChanged(audioNewDevice, audioPreviousDevice,
+                    BluetoothProfileConnectionInfo.createA2dpInfo(true, -1));
+        }
+
+        // Broadcast ACTION_ACTIVE_DEVICE_CHANGED so that other system components
+        // (e.g. Settings, AudioService) are notified of the new A2DP active device.
+        Intent intent = new Intent(BluetoothA2dp.ACTION_ACTIVE_DEVICE_CHANGED);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, audioNewDevice);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
+                | Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND);
+        sendBroadcast(intent, BLUETOOTH_CONNECT);
+        if (DBG) Log.d(TAG, "Sent ACTION_ACTIVE_DEVICE_CHANGED intent for device: "
+                + audioNewDevice);
+    }
+
+    /*
+     * Returns a BluetoothDevice wrapping the fixed placeholder address used for all
+     * audio-framework interactions (see DUMMY_AUDIO_DEVICE_ADDRESS).  Constructing this
+     * from a raw address requires no active BT connection and works even before/after
+     * a BT process crash, since it is just a value object.
+     */
+    private static BluetoothDevice getDummyAudioDevice() {
+        return BluetoothAdapter.getDefaultAdapter().getRemoteDevice(DUMMY_AUDIO_DEVICE_ADDRESS);
+    }
+
+    /*
+     * AudioManager callback for monitoring broadcast input audio device changes
+     */
+    private class AudioManagerAudioDeviceCallback extends AudioDeviceCallback {
+        @Override
+        public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+            if (!isAvailable()) {
+                Log.e(TAG, "onAudioDevicesAdded: Service not available");
+                return;
+            }
+
+            if (addedDevices == null) {
+                if (DBG) Log.d(TAG, "onAudioDevicesAdded: addedDevices is null, ignoring");
+                return;
+            }
+
+            // Only process A2DP device-added events when an enhanced broadcast
+            // source join is in progress.  For standard (non-enhanced) sources
+            // MSG_START is not needed, so ignore the callback.
+            if (!mIsEnhancedStreaming) {
+                if (DBG) Log.d(TAG, "onAudioDevicesAdded: mIsEnhancedStreaming=false, ignoring");
+                return;
+            }
+
+            for (AudioDeviceInfo deviceInfo : addedDevices) {
+                Log.d(TAG, "onAudioDevicesAdded: device type=" + deviceInfo.getType()
+                        + ", isSink=" + deviceInfo.isSink()
+                        + ", isSource=" + deviceInfo.isSource());
+
+                String address = deviceInfo.getAddress();
+                if (address.equals("00:00:00:00:00:00")) {
+                    continue;
+                }
+
+                if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+                    if (DBG) Log.d(TAG, "A2DP device added (enhanced streaming) — sending MSG_START");
+                    mHandler.sendEmptyMessage(MSG_START);
+                    break;
+                }
+            }
+        }
+
+        @Override
+        public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+            if (!isAvailable()) {
+                Log.e(TAG, "onAudioDevicesRemoved: Service not available");
+                return;
+            }
+
+            for (AudioDeviceInfo deviceInfo : removedDevices) {
+                Log.d(TAG, "onAudioDevicesRemoved: device type=" + deviceInfo.getType()
+                        + ", isSink=" + deviceInfo.isSink()
+                        + ", isSource=" + deviceInfo.isSource());
+
+                if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+                }
+            }
+        }
+    }
+
+}

@@ -2524,7 +2524,7 @@ void BtifAvStateMachine::StateOpened::OnEnter() {
   // implementation in Java doesn't support active devices (yet).
   // For A2DP Source, the setting of the Active device is done by the
   // ActiveDeviceManager in Java.
-  if (peer_.IsSource()) {
+  if (peer_.IsSource() && !peer_.IsActivePeer()) {
     log::debug("Reporting connection state to application.");
     // Report the connection state to the application
     btif_report_connection_state(peer_.PeerAddress(),
@@ -2536,10 +2536,7 @@ void BtifAvStateMachine::StateOpened::OnEnter() {
 
   if (peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
       log::warn("HAL Restart Recovery");
-      sleep(20); /* Wait for Audio HAL Server to restart */
-      btif_report_connection_state(peer_.PeerAddress(), BTAV_CONNECTION_STATE_CONNECTED,
-                                   bt_status_t::BT_STATUS_SUCCESS, BTA_AV_SUCCESS,
-                                   peer_.IsSource() ? A2dpType::kSink : A2dpType::kSource);
+      sleep(2); /* Wait for Audio HAL Server to restart */
       do_in_jni_thread(base::BindOnce(
              bt_vendor_av_sink_callbacks->start_ind_cb, &peer_.PeerAddress()));
       peer_.ClearFlags(BtifAvPeer::kFlagHalRestartRecovery);
@@ -3294,7 +3291,13 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
     case BTIF_AV_SINK_OFFLOAD_STOP_CFM_EVT: {
       // MM-Audio sessoin is stopped
       // check the last vsc_command status.
-      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart)) {
+      // Only send AVDTP SUSPEND when this peer is no longer the active one (SHO
+      // teardown of the old peer). For the active peer -- which includes the
+      // ADSP-SSR/HAL-restart-recovery case -- stay on the local VSC-only path so
+      // we never block waiting on real AVDTP signaling to a peer whose link may
+      // still be down during recovery.
+      if(!peer_.CheckFlags(BtifAvPeer::kFlagPendingStart) && !peer_.IsActivePeer() &&
+         !peer_.CheckFlags(BtifAvPeer::kFlagHalRestartRecovery)) {
         log::debug("Sending suspend to a2dp source peer : {}", peer_.PeerAddress());
         peer_.SetFlags(BtifAvPeer::kFlagLocalSuspendPending);
         BTA_AvStop(peer_.BtaHandle(), true);
@@ -3927,6 +3930,16 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
         }
         break;
       } else {
+        // In non-coexist mode, resolve the peer address from the RC handle
+        // before falling through. AVRCP control commands (e.g.
+        // REGISTER_NOTIFICATION for abs vol) can arrive before the A2DP
+        // stream is active, so ActivePeer() alone returns kEmpty and the
+        // event gets dropped.
+        const tBTA_AV_REMOTE_CMD& rc_rmt_cmd = p_data->remote_cmd;
+        btif_rc_get_addr_by_handle(rc_rmt_cmd.rc_handle, peer_address);
+        if (peer_address != RawAddress::kEmpty) {
+          break;
+        }
         [[fallthrough]];
       }
     }
@@ -3977,6 +3990,10 @@ static void btif_av_handle_bta_av_event(uint8_t peer_sep, const BtifAvEvent& bti
     case BTA_AV_SINK_OFFLOAD_STOP_RSP_EVT: {
         const tBTA_AV_SINK_OFFLOAD_RSP& rsp = p_data->snk_offload_rsp;
         BtifAvPeer* peer = btif_av_sink.FindPeerByHandle(rsp.hndl);
+        if (peer == nullptr) {
+          log::warn("No peer found for handle 0x{:x}, ignoring SINK_OFFLOAD_STOP_RSP", rsp.hndl);
+          break;
+        }
         peer_address = peer->PeerAddress();
         log::verbose("response hdl peer{} Active peer {}", peer->PeerAddress(), peer_address);
         bta_handle = rsp.hndl;
