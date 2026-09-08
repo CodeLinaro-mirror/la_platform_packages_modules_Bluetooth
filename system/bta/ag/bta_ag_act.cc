@@ -1106,6 +1106,16 @@ void bta_ag_svc_conn_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
     if (bta_ag_get_active_device().IsEmpty()) {
       bta_ag_api_set_active_device(p_scb->peer_addr);
     }
+
+    /* The shared SCO state machine can be shut down while this SLC is still
+     * opening (e.g. RFCOMM collision), and nothing re-arms the listen after
+     * that, so later SCO opens are dropped. Re-arm it here. */
+    if (bta_ag_cb.sco.state == BTA_AG_SCO_SHUTDOWN_ST) {
+      log::warn("SCO state machine is shut down while SLC is up for {}, re-arming listen",
+                p_scb->peer_addr);
+      bta_ag_sco_listen(p_scb, tBTA_AG_DATA::kEmpty);
+    }
+
     (*bta_ag_cb.p_cback)(BTA_AG_CONN_EVT, (tBTA_AG*)&evt);
     mAgDeviceConnected = true;
   }
