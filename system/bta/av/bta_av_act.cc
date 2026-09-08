@@ -563,10 +563,19 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
 
   log::verbose("local features {} peer features {}", p_cb->features, p_cb->rcb[i].peer_features);
 
-  /* listen to browsing channel when the connection is open,
-   * if peer initiated AVRCP connection and local device supports browsing
-   * channel */
-  AVRC_OpenBrowse(p_data->rc_conn_chg.handle, AVCT_ROLE_ACCEPTOR);
+  // Check whether target or sink have the browse feature bit.
+  // If concurrent target and controller are enabled, the sink feature bits are used.
+  bool browse_supported = (p_cb->features & BTA_AV_FEAT_BROWSE);
+  if (btif_av_both_enable()) {
+    browse_supported = (p_cb->sink_features & BTA_AV_FEAT_BROWSE);
+  }
+
+  if (browse_supported) {
+    /* listen to browsing channel when the connection is open,
+     * if peer initiated AVRCP connection and local device supports browsing
+     * channel */
+    AVRC_OpenBrowse(p_data->rc_conn_chg.handle, AVCT_ROLE_ACCEPTOR);
+  }
 
   if (p_cb->rcb[i].lidx == (BTA_AV_NUM_LINKS + 1) && shdl != 0) {
     /* rc is opened on the RC only ACP channel, but is for a specific
@@ -640,7 +649,7 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
      * support
      * browsing channel, open the browsing channel now
      * Some TG would not broadcast browse feature hence check inter-op. */
-    if ((p_cb->features & BTA_AV_FEAT_BROWSE) &&
+    if (browse_supported &&
         ((rc_open.peer_ct_features & BTA_AV_FEAT_BROWSE) ||
          (rc_open.peer_tg_features & BTA_AV_FEAT_BROWSE))) {
       if ((p_cb->rcb[i].status & BTA_AV_RC_ROLE_MASK) == BTA_AV_RC_ROLE_INT) {
@@ -673,7 +682,7 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
    * browsing channel, open the browsing channel now
    * TODO (sanketa): Some TG would not broadcast browse feature hence check
    * inter-op. */
-  if ((p_cb->features & BTA_AV_FEAT_BROWSE) && (rc_open.peer_features & BTA_AV_FEAT_BROWSE) &&
+  if (browse_supported && (rc_open.peer_features & BTA_AV_FEAT_BROWSE) &&
       ((p_cb->rcb[i].status & BTA_AV_RC_ROLE_MASK) == BTA_AV_RC_ROLE_INT)) {
     log::verbose("opening AVRC Browse channel");
     AVRC_OpenBrowse(p_data->rc_conn_chg.handle, AVCT_ROLE_INITIATOR);

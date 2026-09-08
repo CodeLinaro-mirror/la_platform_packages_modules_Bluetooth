@@ -3099,8 +3099,12 @@ bool BtifAvStateMachine::StateStarted::ProcessEvent(uint32_t event, void* p_data
           // stream only if we did not already initiate a local suspend.
           if (!peer_.CheckFlags(BtifAvPeer::kFlagLocalSuspendPending)) {
             peer_.SetFlags(BtifAvPeer::kFlagRemoteSuspend);
-            // once remote suspend flag is set , disable the sniff
-            modify_sniff_policy(false, peer_.PeerAddress());
+            // Once remote suspend flag is set,
+            // Disable sniff only when DUT is Source (peer is Sink)
+            // For A2DP Sink (peer is Source), allow sniff during suspend
+            if (peer_.IsSink()) {
+              modify_sniff_policy(false, peer_.PeerAddress());
+            }
           }
         }
       } else if(p_av->suspend.initiator == true &&
@@ -4607,8 +4611,14 @@ bt_status_t btif_av_sink_execute_service(bool enable) {
     // auto-suspend AV streaming on AG events (SCO or Call). The suspend shall
     // be initiated by the app/audioflinger layers.
     tBTA_AV_FEAT features = BTA_AV_FEAT_NO_SCO_SSPD | BTA_AV_FEAT_RCCT | BTA_AV_FEAT_METADATA |
-                            BTA_AV_FEAT_VENDOR | BTA_AV_FEAT_ADV_CTRL | BTA_AV_FEAT_RCTG |
-                            BTA_AV_FEAT_BROWSE | BTA_AV_FEAT_COVER_ARTWORK;
+                            BTA_AV_FEAT_VENDOR | BTA_AV_FEAT_ADV_CTRL | BTA_AV_FEAT_RCTG;
+
+    if (avrcp_controller_cover_art_enabled()) {
+      features |= BTA_AV_FEAT_COVER_ARTWORK;
+    }
+    if (avrcp_controller_browsing_enabled()) {
+      features |= BTA_AV_FEAT_BROWSE;
+    }
 
     if (delay_reporting_enabled()) {
       features |= BTA_AV_FEAT_DELAY_RPT;

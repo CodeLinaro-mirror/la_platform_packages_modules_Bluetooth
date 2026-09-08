@@ -1448,6 +1448,20 @@ class BluetoothManagerService {
                                 mAdapter.updateQuietModeStatus(mQuietEnable,
                                         mContext.getAttributionSource());
                             }
+                            if (mEnableExternal) {
+                                // A full enable() was requested (e.g. from the Quick Settings
+                                // tile) while Bluetooth was TURNING_OFF. Teardown stopped at
+                                // BLE_ON because a BLE-only app is still registered, and the
+                                // public STATE_CHANGED broadcast already reported OFF. Honor the
+                                // pending request now by driving BLE_ON -> ON, same as the
+                                // fresh-enable path in handleEnableMessage(). Without this, the
+                                // request is silently dropped and Bluetooth stays stuck at
+                                // BLE_ON until some unrelated later enable() call happens to
+                                // arrive.
+                                Log.i(TAG, "Pending full enable while BLE app running; "
+                                        + "transitioning BLE_ON to ON");
+                                bleOnToOn();
+                            }
                         } else {
                             Log.e(TAG, "BLE app running stay in BLE ON state");
                         }
