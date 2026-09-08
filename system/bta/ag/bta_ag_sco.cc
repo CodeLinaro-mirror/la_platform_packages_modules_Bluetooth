@@ -973,8 +973,17 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           break;
 
         case BTA_AG_SCO_CLOSE_E:
-          /* sco open is not started yet. just go back to listening */
-          p_sco->state = BTA_AG_SCO_LISTEN_ST;
+          if (p_scb == p_sco->p_curr_scb) {
+            /* sco open is not started yet. just go back to listening */
+            p_sco->state = BTA_AG_SCO_LISTEN_ST;
+            p_sco->p_curr_scb = nullptr;
+            /* The earlier bta_sys_sco_use() (e.g. from bta_ag_hfp_result()
+             * handling BTA_AG_IN_CALL_RES) is otherwise never balanced on this
+             * path, since the SCO HCI connection was never established here.
+             * Without this, BTA_AV's sco_occupied stays stuck at true and
+             * blocks every future A2DP start. */
+            bta_sys_sco_unuse(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
+          }
           break;
 
         case BTA_AG_SCO_CONN_CLOSE_E:
