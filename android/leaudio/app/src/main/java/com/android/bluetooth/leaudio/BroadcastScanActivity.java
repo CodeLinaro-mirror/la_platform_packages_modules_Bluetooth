@@ -63,6 +63,11 @@ public class BroadcastScanActivity extends AppCompatActivity {
    /** True when this device already occupies a BIS (i.e. we are the source). */
    private boolean mLocalOccupyingBis = false;
 
+    /** Last known broadcast features – used to suppress duplicate DBIG info toasts. */
+    private int mLastBroadcastFeatures = -1;
+    /** Last known BIS DevID array – used to suppress duplicate DBIG info toasts. */
+    private int[] mLastBisDevIds = null;
+
     private BluetoothDevice device;
     private BroadcastScanViewModel mViewModel;
     private BroadcastItemsAdapter adapter;
@@ -127,6 +132,48 @@ public class BroadcastScanActivity extends AppCompatActivity {
             if (action != null && action.equals(BluetoothLeBroadcast.ACTION_DBIG_STATUS_CHANGED)) {
                 // Extract the status from the intent
                 int status = intent.getIntExtra(BluetoothLeBroadcast.EXTRA_DBIG_STATUS, -1);
+
+                // Decode DBIG extended info to compute BIS occupancy.
+                // BIS num is no longer sent in the DBIG status intent, so use
+                // the BIS DevID array length as total BIS count.
+                int[] bisDevIds = intent.getIntArrayExtra(
+                        "android.bluetooth.extra.DBIG_BIS_DEV_IDS");
+                int broadcastFeatures = intent.getIntExtra(
+                        "android.bluetooth.extra.DBIG_BROADCAST_FEATURES", 0);
+
+                int totalBis = (bisDevIds != null) ? bisDevIds.length : 0;
+                int occupiedCount = 0;
+                int availableCount = 0;
+                if (bisDevIds != null) {
+                    for (int devIdEntry : bisDevIds) {
+                        if (devIdEntry != 0) { // Non-zero means acquired/occupied BIS slot
+                            occupiedCount++;
+                        } else { // 0 means free BIS slot
+                            availableCount++;
+                        }
+                    }
+                }
+
+                Log.i(TAG, "DBIG BIS: total=" + totalBis
+                        + ", BIS occupied=" + occupiedCount
+                        + ", BIS available=" + availableCount
+                        + ", features=0x" + Integer.toHexString(broadcastFeatures)
+                        + ", bisDevIds=" + (bisDevIds != null
+                            ? java.util.Arrays.toString(bisDevIds) : "null"));
+
+                boolean featuresChanged = (broadcastFeatures != mLastBroadcastFeatures);
+                boolean bisDevIdsChanged = !java.util.Arrays.equals(bisDevIds, mLastBisDevIds);
+                if (featuresChanged || bisDevIdsChanged) {
+                    mLastBroadcastFeatures = broadcastFeatures;
+                    mLastBisDevIds = (bisDevIds != null) ? java.util.Arrays.copyOf(bisDevIds, bisDevIds.length) : null;
+                    Toast.makeText(context,
+                            "DBIG: totalBis=" + totalBis
+                                    + ", occupiedBis=" + occupiedCount
+                                    + ", availableBis=" + availableCount
+                                    + ", features=0x" + Integer.toHexString(broadcastFeatures),
+                            Toast.LENGTH_SHORT).show();
+                }
+
                 boolean newDeviceAdded = (status & 0x0100) != 0;
                 if (newDeviceAdded) {
                     int devId = intent.getIntExtra(
@@ -170,9 +217,7 @@ public class BroadcastScanActivity extends AppCompatActivity {
                     Log.i(TAG, "Device removed from DBIG: devId=0x"
                             + String.format("%04X", devId) + ", name=" + nameStr);
                     Toast.makeText(context,
-                            "Device exited DBIG: DevID"
-                                    +  devId
-                                    + ", Name=" + nameStr,
+                            "Device exited DBIG: DevID " + devId + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
                 }
                 boolean bisAvailable = (status & 0x0001) != 0;
@@ -184,19 +229,21 @@ public class BroadcastScanActivity extends AppCompatActivity {
                                                 ? BisAvailability.AVAILABLE
                                                 : BisAvailability.UNAVAILABLE;
                 mLocalOccupyingBis = localOccupying;
-                Toast.makeText(context, "DBIG status changed: " + status, Toast.LENGTH_SHORT).show();
-                if((mBisAvailability == BisAvailability.AVAILABLE) ||
-                    localOccupying) {
-                    Toast.makeText(context, "BIS is available, user can speak now", Toast.LENGTH_SHORT).show();
-                } else if (!bisAvailable && !localOccupying) {
-                    Toast.makeText(context, "BIS is not available, please wait until BIS is available", Toast.LENGTH_SHORT).show();
+
+                // COMBINE 4 status toasts into ONE comprehensive message
+                String bisStatus;
+                if((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                    bisStatus = "BIS Available";
+                } else {
+                    bisStatus = "BIS Not Available";
                 }
 
-                if(bis_is_out_of_range == 1) {
-                    Toast.makeText(context, "DBIG is out of range", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(context, "DBIG is in range", Toast.LENGTH_SHORT).show();
-                }
+                String rangeStatus = (bis_is_out_of_range == 1) ? "Out of range" : "In range";
+
+                // Single combined toast with all status info
+                Toast.makeText(context,
+                        "Status: 0x" + Integer.toHexString(status) + " | " + bisStatus + " | " + rangeStatus,
+                        Toast.LENGTH_SHORT).show();
                 // If a broadcast‑info dialog is currently on‑screen, rebuild it
                 refreshDialogIfVisible();
             }
@@ -400,6 +447,12 @@ public class BroadcastScanActivity extends AppCompatActivity {
                 mBroadcastSourceAdded = true;
                 mBroadcastSourceRemoved = false; // Reset remove state
 
+                // Log Enhanced Broadcast Source capabilities when sync is established with a source
+                int sourceCap = mViewModel.getEnhancedBroadcastSourceCap();
+                Log.i(TAG, "getEnhancedBroadcastSourceCap: 0x" + Integer.toHexString(sourceCap)
+                        + " [Terminate_in_PGO=" + ((sourceCap & 0x01) != 0 ? "supported" : "not_supported")
+                        + ", Remove_in_PGO=" + ((sourceCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
+
                 Log.d(TAG, "Broadcast source add requested, waiting for DBIG status update");
             });
         }
@@ -435,6 +488,12 @@ public class BroadcastScanActivity extends AppCompatActivity {
 
             mViewModel.scanForBroadcasts(device, true);
             mViewModel.refreshBroadcasts();
+
+            // Log Enhanced Broadcast Sink capabilities when scanning starts
+            int sinkCap = mViewModel.getEnhancedBroadcastSinkCap();
+            Log.i(TAG, "getEnhancedBroadcastSinkCap: 0x" + Integer.toHexString(sinkCap)
+                    + " [Terminate_in_PGP=" + ((sinkCap & 0x01) != 0 ? "supported" : "not_supported")
+                    + ", Remove_in_PGP=" + ((sinkCap & 0x02) != 0 ? "supported" : "not_supported") + "]");
 
             Toast.makeText(this, "Scanning for broadcasts... Please wait.", Toast.LENGTH_SHORT).show();
         } else {
