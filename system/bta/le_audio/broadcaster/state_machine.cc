@@ -71,6 +71,10 @@ const int kAdvertisingChannel39 = (1 << 2);
 const int kAdvertisingChannelAll =
         (kAdvertisingChannel37 | kAdvertisingChannel38 | kAdvertisingChannel39);
 
+// Maximum number of consecutive ISO data path setup failures for a Broadcast (BIG) before
+// giving up and stopping the broadcast. Mirrors kNumberOfCisRetries used for unicast CIS.
+constexpr uint8_t kMaxBigIsoDataPathSetupRetries = 2;
+
 class BroadcastStateMachineImpl : public BroadcastStateMachine {
 public:
   BroadcastStateMachineImpl(BroadcastStateMachineConfig msg)
@@ -254,6 +258,7 @@ public:
 private:
   std::optional<BigConfig> active_config_;
   BroadcastStateMachineConfig sm_config_;
+  uint8_t iso_data_path_setup_retry_cnt_ = 0;
 
   /* Message handlers for each possible state */
   typedef std::function<void(const void*)> msg_handler_t;
@@ -456,11 +461,23 @@ private:
                      "assert failed: active_config_ != std::nullopt");
 
     if (status != 0) {
+      if (++iso_data_path_setup_retry_cnt_ > kMaxBigIsoDataPathSetupRetries) {
+        log::error(
+                "Failure creating data path {} times in a row for broadcast_id={}. Giving up "
+                "and stopping the broadcast.",
+                iso_data_path_setup_retry_cnt_, GetBroadcastId());
+        iso_data_path_setup_retry_cnt_ = 0;
+        ProcessMessage(Message::STOP, nullptr);
+        TerminateBig();
+        return;
+      }
       log::error("Failure creating data path. Tearing down the BIG now.");
       SetState(State::DISABLING);
       TerminateBig();
       return;
     }
+
+    iso_data_path_setup_retry_cnt_ = 0;
 
     /* Look for the next BIS handle */
     auto handle_it = std::find_if(active_config_->connection_handles.begin(),
