@@ -1585,7 +1585,8 @@ BT_HDR* l2c_lcc_get_next_xmit_sdu_seg(tL2C_CCB* p_ccb, bool* last_piece_of_sdu) 
  * Description      Validates and adjusts if necessary, the FCR options
  *                  based on remote EXT features.
  *
- *                  Note: This assumes peer EXT Features have been received.
+ *                  Note: If peer EXT Features have not been received, the peer
+ *                      capabilities are unknown and ERTM is still attempted.
  *                      Basic mode is used if FCR Options have not been received
  *
  * Returns          uint8_t - nonzero if can continue, '0' if no compatible
@@ -1598,6 +1599,15 @@ uint8_t l2c_fcr_chk_chan_modes(tL2C_CCB* p_ccb) {
   /* Remove nonbasic options that the peer does not support */
   if (!(p_ccb->p_lcb->peer_ext_fea & L2CAP_EXTFEA_ENH_RETRANS) &&
       p_ccb->p_rcb->ertm_info.preferred_mode == L2CAP_FCR_ERTM_MODE) {
+    if (!p_ccb->p_lcb->peer_ext_fea_known) {
+      /* The peer never answered our info request, so its extended features are
+       * unknown rather than absent. Tearing the channel down here is fatal for
+       * profiles that require ERTM (e.g. OBEX over L2CAP). Proceed instead and
+       * let config negotiation fall back to basic mode if the peer rejects
+       * ERTM (see l2c_fcr_renegotiate_chan). */
+      log::warn("L2CAP - Peer extended features unknown, trying our desired channel types");
+      return true;
+    }
     log::warn("L2CAP - Peer does not support our desired channel types");
     p_ccb->p_rcb->ertm_info.preferred_mode = 0;
     return false;
