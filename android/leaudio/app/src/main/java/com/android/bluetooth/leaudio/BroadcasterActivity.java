@@ -107,6 +107,12 @@ public class BroadcasterActivity extends AppCompatActivity {
      */
     private boolean mJoinControlEnabled = true;
 
+    // Tracks whether join control has been auto-enabled since the BIG came up.
+    // Fired from the DBIG status receiver (bisAvailable=true) rather than the
+    // playing-state callback, so SYNC_ONLY_MODE pause/resume cycles do not re-fire it.
+    // Cleared when the broadcast is removed so a fresh broadcast gets it again.
+    private boolean mJoinControlAutoEnabled = false;
+
     /**
      * Receiver for {@link BluetoothLeBroadcast#ACTION_DBIG_STATUS_CHANGED}.
      * The broadcast contains a bit‑field in {@link BluetoothLeBroadcast#EXTRA_DBIG_STATUS}
@@ -225,6 +231,24 @@ public class BroadcasterActivity extends AppCompatActivity {
                 // Single combined toast with BIS status
                 Toast.makeText(context, bisStatus, Toast.LENGTH_SHORT).show();
 
+                // Auto-enable join control once when the BIG first comes up (bisAvailable=true).
+                // Triggered here rather than in the playing-state callback so that
+                // SYNC_ONLY_MODE pause/resume cycles (BIG stays intact, audio pauses) do
+                // not re-fire it. The guard is cleared only when the broadcast is removed.
+                if (bisAvailable && !mJoinControlAutoEnabled) {
+                    mJoinControlAutoEnabled = true;
+                    Log.d(TAG, "BIG up – auto-enabling DBIG Join Control");
+                    boolean joinResult = mViewModel.setJoinControl(true);
+                    Log.d(TAG, "Auto DBIG Join Control enable: result=" + joinResult);
+                    if (joinResult) {
+                        mJoinControlEnabled = true;
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                                .putBoolean(KEY_JOIN_CONTROL_ENABLED, true).apply();
+                        Toast.makeText(context, "DBIG Join Control auto-enabled (BIG up)",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                }
+
                 Log.d(TAG, "DBIG status – availability: " + mBisAvailability
                         + ", local occupying: " + mLocalOccupyingBis);
 
@@ -321,6 +345,8 @@ public class BroadcasterActivity extends AppCompatActivity {
 
     mViewModel.getBroadcastRemovedMutableLive().observe(this, pair -> {
         itemsAdapter.removeBroadcast(pair.second);
+        // BIG is gone — reset so the next broadcast gets auto join control again.
+        mJoinControlAutoEnabled = false;
         Toast.makeText(this,
                 "Broadcast removed (id=" + pair.second + ", reason=" + pair.first + ")",
                 Toast.LENGTH_SHORT).show();
