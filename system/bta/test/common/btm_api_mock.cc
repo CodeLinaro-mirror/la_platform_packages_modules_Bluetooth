@@ -42,6 +42,10 @@ bool BTM_IsPhyHDTSupported(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
   log::assert_that(btm_interface != nullptr, "Mock btm interface not set!");
   return btm_interface->IsPhyHDTSupported(bd_addr, transport);
 }
+bool BTM_IsHdtPacketFormat1Supported(const RawAddress& bd_addr, tBT_TRANSPORT transport) {
+  log::assert_that(btm_interface != nullptr, "Mock btm interface not set!");
+  return btm_interface->IsHdtPacketFormat1Supported(bd_addr, transport);
+}
 const BtmDevice* btm_find_dev(const RawAddress& bd_addr) {
   log::assert_that(btm_interface != nullptr, "Mock btm interface not set!");
   return btm_interface->FindDevice(bd_addr);
