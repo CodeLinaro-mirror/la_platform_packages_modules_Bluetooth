@@ -154,6 +154,9 @@ static constexpr char kPtsCapAudioContextProp[] =
 #define HDT_PACKET_FORMAT_0 0x01
 #define HDT_PACKET_FORMAT_1 0x02
 
+constexpr char kHdtPreferFormat0IfPf1UnsupportedProperty[] =
+    "persist.vendor.qcom.bluetooth.hdt.prefer_format_0_if_pf1_unsupported";
+
 typedef struct {
   uint8_t cig_id;
   uint8_t cis_id;
@@ -406,8 +409,9 @@ static std::vector<T> BuildCisConfigs(LeAudioDeviceGroup* group,
     cis_cfg.phy_c_to_p = qos_config.phy_c_to_p;
     cis_cfg.phy_p_to_c = qos_config.phy_p_to_c;
     bool hdt_enabled = osi_property_get_bool("persist.vendor.qcom.bluetooth.hdt.enabled", false);
-    auto device = group->GetFirstActiveDevice();
     auto controller = bluetooth::shim::GetController();
+    bool prefer_format_0_if_pf1_unsupported = osi_property_get_bool(
+        kHdtPreferFormat0IfPf1UnsupportedProperty, false);
     if(hdt_enabled &&
          le_audio::utils::isContextForHDT(group->GetConfigurationContextType()) &&
          (cis_cfg.phy_c_to_p & bluetooth::hci::kIsoCigPhyHdt) &&
@@ -481,6 +485,21 @@ static std::vector<T> BuildCisConfigs(LeAudioDeviceGroup* group,
       cis_cfg.hdt_rates_p_to_c = hdt_allowed_rates;
       cis_cfg.hdt_mic_length = HDT_MIC_LENGTH_128_BITS; //0x02
       cis_cfg.hdt_packet_format = HDT_PACKET_FORMAT_ANY_SUPPORTED; //0x00
+      if (prefer_format_0_if_pf1_unsupported) {
+        bool any_device_lacks_pf1 = false;
+        for (auto dev = group->GetFirstActiveDevice(); dev;
+             dev = group->GetNextActiveDevice(dev)) {
+          if (!get_btm_client_interface().peer.BTM_IsHdtPacketFormat1Supported(
+                  dev->address_, BT_TRANSPORT_LE)) {
+            any_device_lacks_pf1 = true;
+            break;
+          }
+        }
+        if (any_device_lacks_pf1) {
+          log::info("A device in the group does not support HDT packet format 1; prefer packet format 0");
+          cis_cfg.hdt_packet_format = HDT_PACKET_FORMAT_0; //0x01
+        }
+      }
     }
 
     if (cis.type == bluetooth::le_audio::types::CisType::CIS_TYPE_BIDIRECTIONAL) {
