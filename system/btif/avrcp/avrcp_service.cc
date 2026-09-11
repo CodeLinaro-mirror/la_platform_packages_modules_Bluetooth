@@ -532,24 +532,20 @@ void AvrcpService::SetBipClientStatus(const RawAddress& bdaddr, bool connected) 
 void AvrcpService::SendMediaUpdate(bool track_changed, bool play_state, bool queue) {
   log::info("track_changed={} :  play_state={} :  queue={}", track_changed, play_state, queue);
 
-  if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
-    return;
-  }
   // This function may be called on any thread, we need to make sure that the
-  // device update happens on the main thread. Additionally, validate the weak
-  // pointer before accessing the device to prevent the use after free in case
-  // device is cleaned-up before callback execution.
-  for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
-    do_in_main_thread(base::BindOnce(
-        [](base::WeakPtr<Device> device, bool track_changed, bool play_state, bool queue) {
-          if (!device) {
-            log::verbose("Device destroyed before media update could be delivered");
-            return;
-          }
+  // device list is fetched, iterated, and destroyed on the main thread. This
+  // keeps the shared_ptr<Device> lifecycle single-threaded, which is required
+  // by the libchrome WeakPtr thread-safety contract.
+  do_in_main_thread(base::BindOnce(
+      [](bool track_changed, bool play_state, bool queue) {
+        if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
+          return;
+        }
+        for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
           device->SendMediaUpdate(track_changed, play_state, queue);
-        },
-        device.get()->Get(), track_changed, play_state, queue));
-  }
+        }
+      },
+      track_changed, play_state, queue));
 }
 
 void AvrcpService::HandlePendingPlay() {
@@ -565,14 +561,18 @@ void AvrcpService::SendFolderUpdate(bool available_players, bool addressed_playe
   log::info("available_players={} :  addressed_players={} :  uids={}", available_players,
             addressed_players, uids);
 
-  if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
-    return;
-  }
-  // Ensure that the update is posted to the correct thread
-  for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
-    do_in_main_thread(base::BindOnce(&Device::SendFolderUpdate, device.get()->Get(),
-                                     available_players, addressed_players, uids));
-  }
+  // Ensure that the device list is fetched, iterated, and destroyed on the
+  // main thread so the shared_ptr<Device> lifecycle stays single-threaded.
+  do_in_main_thread(base::BindOnce(
+      [](bool available_players, bool addressed_players, bool uids) {
+        if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
+          return;
+        }
+        for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
+          device->SendFolderUpdate(available_players, addressed_players, uids);
+        }
+      },
+      available_players, addressed_players, uids));
 }
 
 void AvrcpService::SendPlayerSettingsChanged(std::vector<PlayerAttribute> attributes,
@@ -596,22 +596,18 @@ void AvrcpService::SendPlayerSettingsChanged(std::vector<PlayerAttribute> attrib
 
   log::info("{}", ss.str());
 
-  // Ensure that the update is posted to the correct thread with weak pointer validation.
-  // This prevents use-after-free if device disconnects before callback executes.
-  // The lambda validates the weak pointer before accessing the device to prevent
-  // crashes when the device is destroyed during callback execution.
-  for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
-    do_in_main_thread(base::BindOnce(
-        [](base::WeakPtr<Device> device, std::vector<PlayerAttribute> attrs,
-            std::vector<uint8_t> vals) {
-          if (!device) {
-            log::verbose("Device cleaned-up before player setting notification could be sent");
-            return;
-          }
-          device->HandlePlayerSettingChanged(std::move(attrs), std::move(vals));
-        },
-        device.get()->Get(), attributes, values));
-  }
+  // Ensure that the device list is fetched, iterated, and destroyed on the
+  // main thread so the shared_ptr<Device> lifecycle stays single-threaded.
+  do_in_main_thread(base::BindOnce(
+      [](std::vector<PlayerAttribute> attrs, std::vector<uint8_t> vals) {
+        if (instance_ == nullptr || instance_->connection_handler_ == nullptr) {
+          return;
+        }
+        for (const auto& device : instance_->connection_handler_->GetListOfDevices()) {
+          device->HandlePlayerSettingChanged(attrs, vals);
+        }
+      },
+      std::move(attributes), std::move(values)));
 }
 
 void AvrcpService::DeviceCallback(std::shared_ptr<Device> new_device) {
