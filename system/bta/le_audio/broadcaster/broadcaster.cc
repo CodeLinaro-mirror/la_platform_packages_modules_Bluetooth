@@ -979,7 +979,12 @@ public:
 
         for (auto& broadcast_pair : broadcasts_) {
           auto& broadcast = broadcast_pair.second;
-          broadcast->ProcessMessage(BroadcastStateMachine::Message::START, nullptr);
+          // Only broadcasts that are configured and paused are eligible to auto-resume here.
+          // Broadcasts that were stopped (e.g. gave up after repeated ISO data path setup
+          // failures) or are mid-transition must not be restarted from this internal trigger.
+          if (broadcast->GetState() == BroadcastStateMachine::State::CONFIGURED) {
+            broadcast->ProcessMessage(BroadcastStateMachine::Message::START, nullptr);
+          }
         }
       }
 
