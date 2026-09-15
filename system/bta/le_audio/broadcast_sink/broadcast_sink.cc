@@ -53,8 +53,9 @@ std::mutex instance_mutex;
 struct TrackedSource {
   std::unique_ptr<BroadcastSinkStateMachine> state_machine;
   bool is_notified;  // Flag to avoid duplicate source found notifications
+  bool has_big_info_report;
 
-  TrackedSource() : is_notified(false) {}
+  TrackedSource() : is_notified(false), has_big_info_report(false) {}
 };
 
 /**
@@ -720,10 +721,14 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       log::info("No public metadata provided for broadcast_id=0x{:08x}", broadcast_id);
     }
 
-    // Notify callbacks about the metadata change
+    // Notify callbacks only after BASE has been parsed. Framework
+    // BluetoothLeBroadcastMetadata rejects empty subgroup lists while unparceling.
     auto updated_metadata = ConvertToMetadata(state_machine);
-    if (callbacks_) {
+    if (callbacks_ && IsValidBroadcastMetadataForCallback(updated_metadata)) {
       callbacks_->OnSourceMetadataChanged(broadcast_id, updated_metadata);
+    } else {
+      log::info("SourcePublicMetadataChanged deferred for broadcast_id=0x{:08x}: "
+                "BASE metadata is not ready", broadcast_id);
     }
 
     log::info("SourcePublicMetadataChanged completed for broadcast_id=0x{:08x}", broadcast_id);
@@ -1571,14 +1576,21 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         tracked_source.is_notified = false;
         log::info("Reset is_notified flag for broadcast_id=0x{:08x} due to BASE data change", broadcast_id);
 
-        // Call OnSourceMetadataChanged when BASE data is received if public_announcement exists
+        // Notify once complete BASE metadata is available. For private broadcasts
+        // this may be the second half of an earlier BIGInfo-first sequence.
         auto public_announcement = tracked_source.state_machine->GetPublicAnnouncement();
-        if (public_announcement.has_value() && !tracked_source.is_notified && instance->callbacks_) {
-          tracked_source.is_notified = true;
-          log::info("OnSourceMetadataChanged called from OnBaseDataReceived for broadcast_id=0x{:08x} (has public_announcement)",
-                    broadcast_id);
+        if ((public_announcement.has_value() || tracked_source.has_big_info_report) &&
+            !tracked_source.is_notified && instance->callbacks_) {
           BroadcastMetadata metadata = ConvertToMetadata(tracked_source.state_machine.get());
-          instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+          if (IsValidBroadcastMetadataForCallback(metadata)) {
+            tracked_source.is_notified = true;
+            log::info("OnSourceMetadataChanged called from OnBaseDataReceived for broadcast_id=0x{:08x}",
+                      broadcast_id);
+            instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+          } else {
+            log::warn("OnBaseDataReceived: metadata still invalid for broadcast_id=0x{:08x}",
+                      broadcast_id);
+          }
         }
       }
     }
@@ -1769,16 +1781,24 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         return;
       }
 
+      tracked_source.has_big_info_report = true;
       log::info("Updated encryption status for broadcast_id=0x{:08x}: encrypted={}",
                 broadcast_id, encrypted);
 
-      // Notify OnSourceMetadataChanged when BIG Info Report is received (first time only)
+      // Notify OnSourceMetadataChanged when BIG Info Report is received (first time only),
+      // but only after BASE data has been parsed. Java framework metadata validation
+      // rejects empty subgroup/channel lists during Binder unparceling.
       if (!tracked_source.is_notified && instance->callbacks_) {
-        tracked_source.is_notified = true;
-        log::info("Marked broadcast_id=0x{:08x} as notified (encrypted={})",
-                  broadcast_id, encrypted);
         BroadcastMetadata metadata = ConvertToMetadata(tracked_source.state_machine.get());
-        instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+        if (IsValidBroadcastMetadataForCallback(metadata)) {
+          tracked_source.is_notified = true;
+          log::info("Marked broadcast_id=0x{:08x} as notified (encrypted={})",
+                    broadcast_id, encrypted);
+          instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+        } else {
+          log::info("OnBigInfoReport deferred source metadata for broadcast_id=0x{:08x}: "
+                    "BASE metadata is not ready", broadcast_id);
+        }
       } else {
         log::info("Source already notified for broadcast_id=0x{:08x}", broadcast_id);
       }

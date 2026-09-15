@@ -22,4 +22,19 @@ LeAudioCodecConfiguration BroadcastSinkConfiguration::GetAudioHalClientConfig() 
   };
 }
 
+bool IsValidBroadcastMetadataForCallback(const BroadcastMetadata& metadata) {
+  const auto& subgroups = metadata.basic_audio_announcement.subgroup_configs;
+  if (subgroups.empty()) {
+    return false;
+  }
+
+  for (const auto& subgroup : subgroups) {
+    if (subgroup.bis_configs.empty()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 }  // namespace bluetooth::le_audio::broadcast_sink

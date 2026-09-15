@@ -1385,7 +1385,7 @@ public:
 
     // If property not set (0), use default based on PHY
     if (mtl == 0) {
-      mtl = coded_phy ? 25 : 10;  // Default: 25ms for Coded PHY, 10ms for LE2M
+      mtl = coded_phy ? 15 : 10;  // Default: 15ms for Coded PHY, 10ms for LE2M
     }
 
     log::info("Calculating BIS Control Event Interval: transport_latency={} ms, coded_phy={}", mtl, coded_phy);

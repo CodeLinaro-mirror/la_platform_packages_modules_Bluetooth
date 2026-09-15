@@ -1223,6 +1223,20 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         mNativeInterface.terminateDbig();
     }
 
+    private static boolean isValidMetadataForCallback(BluetoothLeBroadcastMetadata metadata) {
+        if (metadata == null || metadata.getSubgroups().isEmpty()) {
+            return false;
+        }
+
+        for (BluetoothLeBroadcastSubgroup subgroup : metadata.getSubgroups()) {
+            if (subgroup.getChannels().isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /*
      * Scans the subgroup metadata of a {@link BluetoothLeBroadcastMetadata} object
      * for the enhanced PA vendor LTV (Type=0xFF, Company ID=0x000A).
@@ -1465,6 +1479,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     // Enhanced broadcast source metadata does not change after initial discovery,
                     // so onSourceMetadataChanged is never called for subsequent events.
                     if (event.metadata != null) {
+                        if (!isValidMetadataForCallback(event.metadata)) {
+                            Log.w(TAG, "Ignoring incomplete metadata for broadcastId="
+                                    + event.broadcastId + ": missing BASE subgroup/channel data");
+                            break;
+                        }
+
                         LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
                         if (descriptor == null) {
                             descriptor = new LeAudioBroadcastSinkDescriptor();
