@@ -124,7 +124,7 @@ class BroadcastSinkCallbacks {
    * @param bis_dev_ids       BIS device IDs (12-bit each)
    * @param broadcast_features Broadcast features bitmask
    */
-  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint32_t status,
                                     uint16_t dev_id, std::vector<uint8_t> name,
                                     uint8_t num_bis,
                                     std::vector<uint16_t> bis_dev_ids,

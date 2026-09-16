@@ -153,7 +153,7 @@ class LeAudioBroadcasterInterfaceImpl : public LeAudioBroadcasterInterface,
                           Unretained(callbacks_), success));
   }
 
-  void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+  void OnDbigStatusChanged(uint8_t dbig_handle, uint32_t status,
                             uint16_t dev_id, std::vector<uint8_t> name,
                             uint8_t num_bis, std::vector<uint16_t> bis_dev_ids,
                             uint16_t broadcast_features) override {

@@ -45,6 +45,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     private static final String EXTRA_DBIG_STATUS =
             "android.bluetooth.extra.DBIG_STATUS";
 
+    // DBIG Status Bit Definitions
+    private static final int DBIG_STATUS_BIT_DUPLICATE_DEVICE_ID = 0x10000; // Bit 16
+
     /* ------------------------------------------------------------------
      *  BIS connectivity state (updated via ACTION_DBIG_STATUS_CHANGED)
      * ------------------------------------------------------------------ */
@@ -125,6 +128,16 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                             + ", features=0x" + Integer.toHexString(broadcastFeatures),
                             Toast.LENGTH_SHORT).show();
                 }
+
+                // bit16 (0x10000) - Duplicate Device ID detected
+                if ((status & DBIG_STATUS_BIT_DUPLICATE_DEVICE_ID) != 0) {
+                    int currentDevId = intent.getIntExtra("android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    Log.w(TAG, "Duplicate Device ID detected! devId=0x"
+                            + Integer.toHexString(currentDevId));
+                    showSetDeviceIdPopup(currentDevId);
+                    return;
+                }
+
                 // bit8 (0x0100) - new device added to DBIG
                 boolean newDeviceAdded = (status & 0x0100) != 0;
                 Log.d(TAG, "Device added bit" + newDeviceAdded);
@@ -1100,6 +1113,102 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 .setNegativeButton("Cancel", null)
                 .setCancelable(false)
                 .show();
+    }
+
+    /**
+     * Show popup dialog for user to set new Device ID and Name when duplicate Device ID is detected (Bit 16)
+     */
+    private void showSetDeviceIdPopup(final int currentDevId) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Device ID Already Taken");
+
+        // Create dialog view with two EditText fields
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(50, 40, 50, 10);
+
+        TextView messageView = new TextView(this);
+        messageView.setText("Device ID 0x" + Integer.toHexString(currentDevId)
+                + " is already in use.\nPlease enter a new Device ID and Name:");
+        messageView.setPadding(0, 0, 0, 20);
+        layout.addView(messageView);
+
+        final EditText editDevId = new EditText(this);
+        editDevId.setHint("Device ID (hex, e.g., 0x123)");
+        layout.addView(editDevId);
+
+        final EditText editName = new EditText(this);
+        editName.setHint("Device Name");
+        layout.addView(editName);
+
+        builder.setView(layout);
+
+        builder.setPositiveButton("Set Device ID", (dialog, which) -> {
+            String devIdStr = editDevId.getText().toString().trim();
+            String nameStr = editName.getText().toString().trim();
+
+            if (devIdStr.isEmpty()) {
+                Toast.makeText(this, "Device ID cannot be empty", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            try {
+                int newDevId = devIdStr.startsWith("0x") || devIdStr.startsWith("0X")
+                        ? Integer.parseInt(devIdStr.substring(2), 16)
+                        : Integer.parseInt(devIdStr);
+
+                newDevId = newDevId & 0xFFF; // Mask to 12 bits
+
+                if (newDevId == 0 || newDevId == 0xFFF) {
+                    Toast.makeText(this, "Invalid Device ID (0x000 and 0xFFF reserved)",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                // Set the new device ID - system will auto-retry sync
+                setNewDeviceId(newDevId, nameStr);
+
+            } catch (NumberFormatException e) {
+                Toast.makeText(this, "Invalid Device ID format", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        builder.setNegativeButton("Cancel", (dialog, which) -> {
+            dialog.dismiss();
+        });
+
+        builder.setCancelable(false);
+        builder.show();
+    }
+
+    /**
+     * Set new device ID via SetAttributes - system will automatically retry sync
+     */
+    private void setNewDeviceId(int newDevId, String name) {
+        Log.i(TAG, "setNewDeviceId: newDevId=0x" + Integer.toHexString(newDevId)
+                + ", name=" + name);
+
+        // Convert name to byte array (10 bytes max)
+        byte[] nameBytes = new byte[10];
+        if (name != null && !name.isEmpty()) {
+            byte[] srcBytes = name.getBytes();
+            int copyLen = Math.min(srcBytes.length, 10);
+            System.arraycopy(srcBytes, 0, nameBytes, 0, copyLen);
+        }
+
+        // Call setAttributesForSink through ViewModel (cleaner architecture)
+        boolean result = mViewModel.setAttributesForSink(newDevId, nameBytes);
+
+        if (result) {
+            Log.i(TAG, "setAttributesForSink called successfully with devId=0x"
+                    + Integer.toHexString(newDevId));
+            Toast.makeText(this, "Device ID updated. Sync will retry automatically.",
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            Log.e(TAG, "setAttributesForSink failed");
+            Toast.makeText(this, "Failed to update Device ID. Bluetooth not available.",
+                    Toast.LENGTH_SHORT).show();
+        }
     }
 
     /**

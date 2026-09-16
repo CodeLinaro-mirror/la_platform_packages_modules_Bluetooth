@@ -1606,11 +1606,11 @@ struct iso_impl {
       log::error("DBIG STATUS event with no DBIG callbacks registered — ignoring");
       return;
     }
-    /* Minimum: 1(handle) + 2(status) = 3 bytes. */
-    log::assert_that(len >= 3, "Invalid DBIG status packet length: {}", len);
+    /* Minimum: 1(handle) + 4(status) = 5 bytes. */
+    log::assert_that(len >= 5, "Invalid DBIG status packet length: {}", len);
 
     STREAM_TO_UINT8(evt.dbig_handle, stream);
-    STREAM_TO_UINT16(evt.dbig_status, stream);
+    STREAM_TO_UINT32(evt.dbig_status, stream);
 
     /* Parse extended fields if present:
      * [3-7]   : big_event_counter (5 bytes, skipped)
@@ -1626,7 +1626,7 @@ struct iso_impl {
      * remaining packet length, which the controller keeps fixed-size
      * regardless of the actual configured BIS count.
      */
-    uint16_t offset = 3;  /* 1(handle) + 2(status) */
+    uint16_t offset = 5;  /* 1(handle) + 4(status) */
     if (len >= offset + 5) {
       /* Skip big_event_counter (5 bytes) */
       stream += 5;
@@ -1657,7 +1657,7 @@ struct iso_impl {
       STREAM_TO_UINT16(evt.broadcast_features, stream);
     }
 
-    log::info("DBIG Status event - dbig_handle:0x{:02x}, dbig_status:0x{:04x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+    log::info("DBIG Status event - dbig_handle:0x{:02x}, dbig_status:0x{:08x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
               evt.dbig_handle, evt.dbig_status, evt.dev_id, evt.num_bis, evt.broadcast_features);
 
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigStatus, &evt);

@@ -1503,7 +1503,7 @@ public:
       } break;
       case bluetooth::hci::iso_manager::kIsoEventDbigStatus: {
         auto* evt = static_cast<dbig_status_evt*>(data);
-        log::info("DBIG status event, dbig_handle={}, status=0x{:04x}",
+        log::info("DBIG status event, dbig_handle={}, status=0x{:08x}",
                   evt->dbig_handle, evt->dbig_status);
 
         auto broadcast_id = BroadcastIdFromBigHandle(evt->dbig_handle);
@@ -1515,7 +1515,7 @@ public:
         }
 
         callbacks_->OnDbigStatusChanged(evt->dbig_handle,
-                                        static_cast<uint16_t>(evt->dbig_status),
+                                        evt->dbig_status,
                                         evt->dev_id, evt->name, evt->num_bis,
                                         evt->bis_dev_ids, evt->broadcast_features);
       } break;

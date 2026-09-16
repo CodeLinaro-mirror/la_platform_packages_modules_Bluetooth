@@ -339,7 +339,7 @@ struct dbig_update_evt {
 /* DBIG (Duplex Broadcast Information Group) status event */
 struct dbig_status_evt {
   uint8_t dbig_handle;
-  uint16_t dbig_status;
+  uint32_t dbig_status;
   /* Extended fields: device ID, name, BIS info, broadcast features */
   uint16_t dev_id;
   std::vector<uint8_t> name;

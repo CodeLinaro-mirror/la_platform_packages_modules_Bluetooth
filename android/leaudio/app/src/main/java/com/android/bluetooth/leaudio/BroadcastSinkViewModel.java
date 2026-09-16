@@ -435,6 +435,22 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         return mBroadcastSink.getEnhancedBroadcastSourceCap();
     }
 
+    /**
+     * Set device ID and name attributes for sink side (PGP)
+     * Used when duplicate device ID is detected (bit 16) and user needs to set new device ID
+     *
+     * @param devId 12-bit device ID (0-4095)
+     * @param name  Device name (max 10 bytes)
+     * @return true if successful, false otherwise
+     */
+    public boolean setAttributesForSink(int devId, byte[] name) {
+        BluetoothProxy proxy = BluetoothProxy.getBluetoothProxy(getApplication());
+        if (proxy != null) {
+            return proxy.setAttributesForSink(devId, name);
+        }
+        return false;
+    }
+
     public void cleanup() {
         if (mBroadcastSink != null) {
             try {
