@@ -196,12 +196,12 @@ void l2cu_release_lcb(tL2C_LCB* p_lcb) {
 
   if (p_lcb->sent_not_acked > 0) {
     if (p_lcb->transport == BT_TRANSPORT_LE) {
-      l2cb.controller_le_xmit_window += p_lcb->sent_not_acked;
+      l2cb.credit_le_xmit_window(p_lcb->sent_not_acked);
       if (l2cb.controller_le_xmit_window > l2cb.num_lm_ble_bufs) {
         l2cb.controller_le_xmit_window = l2cb.num_lm_ble_bufs;
       }
     } else {
-      l2cb.controller_xmit_window += p_lcb->sent_not_acked;
+      l2cb.credit_classic_xmit_window(p_lcb->sent_not_acked);
       if (l2cb.controller_xmit_window > l2cb.num_lm_acl_bufs) {
         l2cb.controller_xmit_window = l2cb.num_lm_acl_bufs;
       }
@@ -3611,6 +3611,20 @@ void l2cu_set_acl_hci_header(BT_HDR* p_buf, tL2C_CCB* p_ccb) {
   }
   p_buf->offset -= HCI_DATA_PREAMBLE_SIZE;
   p_buf->len += HCI_DATA_PREAMBLE_SIZE;
+}
+
+/* Controller buffers an outgoing packet occupies once fragmented. p_buf->len covers the HCI
+ * preamble, so the fragmented payload is that minus HCI_DATA_PREAMBLE_SIZE. */
+uint16_t l2cu_hci_segment_count(const BT_HDR* p_buf, tBT_TRANSPORT transport) {
+  const uint16_t acl_data_size =
+          (transport == BT_TRANSPORT_LE)
+                  ? bluetooth::shim::GetController()->GetLeBufferSize().le_data_packet_length_
+                  : bluetooth::shim::GetController()->GetAclPacketLength();
+  if (acl_data_size == 0 || p_buf->len <= HCI_DATA_PREAMBLE_SIZE) {
+    return 1;
+  }
+
+  return ((p_buf->len - HCI_DATA_PREAMBLE_SIZE) + acl_data_size - 1) / acl_data_size;
 }
 
 static void send_congestion_status_to_all_clients(tL2C_CCB* p_ccb, bool status) {

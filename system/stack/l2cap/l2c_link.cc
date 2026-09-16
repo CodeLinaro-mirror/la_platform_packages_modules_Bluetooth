@@ -28,6 +28,7 @@
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 
+#include <algorithm>
 #include <cstdint>
 
 #include "device/include/device_iot_config.h"
@@ -569,6 +570,7 @@ void l2c_link_adjust_allocation(void) {
   /* If no links active, reset buffer quotas and controller buffers */
   if (l2cb.num_used_lcbs == 0) {
     l2cb.controller_xmit_window = l2cb.num_lm_acl_bufs;
+    l2cb.xmit_fragment_debt = 0;
     l2cb.round_robin_quota = l2cb.round_robin_unacked = 0;
     return;
   }
@@ -699,6 +701,7 @@ void l2c_link_adjust_chnl_allocation(void) {
 void l2c_link_init(const uint16_t acl_buffer_count_classic) {
   l2cb.num_lm_acl_bufs = acl_buffer_count_classic;
   l2cb.controller_xmit_window = acl_buffer_count_classic;
+  l2cb.xmit_fragment_debt = 0;
 }
 
 /*******************************************************************************
@@ -952,34 +955,54 @@ void l2c_OnHciModeChangeSendPendingPackets(RawAddress remote) {
  ******************************************************************************/
 static void l2c_link_send_to_lower_br_edr(tL2C_LCB* p_lcb, BT_HDR* p_buf) {
   const uint16_t link_xmit_quota = p_lcb->link_xmit_quota;
+  /* Transport layer splits PDU into ACL packets. Derive the number of segments based on controller
+   * ACL packet length. */
+  const uint16_t num_segs = l2cu_hci_segment_count(p_buf, BT_TRANSPORT_BR_EDR);
 
   if (link_xmit_quota == 0) {
-    l2cb.round_robin_unacked++;
+    l2cb.round_robin_unacked += num_segs;
   }
-  p_lcb->sent_not_acked++;
+  p_lcb->sent_not_acked += num_segs;
   p_buf->layer_specific = 0;
-  l2cb.controller_xmit_window--;
+  /* A PDU can need more buffers than the window has left; the shortfall becomes debt for
+   * credit_classic_xmit_window() to settle before the window is credited again. */
+  if (num_segs > l2cb.controller_xmit_window) {
+    l2cb.xmit_fragment_debt += num_segs - l2cb.controller_xmit_window;
+    l2cb.controller_xmit_window = 0;
+  } else {
+    l2cb.controller_xmit_window -= num_segs;
+  }
 
   acl_send_data_packet_br_edr(p_lcb->remote_bd_addr, p_buf);
-  log::verbose("TotalWin={},Hndl=0x{:x},Quota={},Unack={},RRQuota={},RRUnack={}",
+  log::verbose("TotalWin={},Hndl=0x{:x},Quota={},Unack={},RRQuota={},RRUnack={},Segs={},Debt={}",
                l2cb.controller_xmit_window, p_lcb->Handle(), p_lcb->link_xmit_quota,
-               p_lcb->sent_not_acked, l2cb.round_robin_quota, l2cb.round_robin_unacked);
+               p_lcb->sent_not_acked, l2cb.round_robin_quota, l2cb.round_robin_unacked, num_segs,
+               l2cb.xmit_fragment_debt);
 }
 
 static void l2c_link_send_to_lower_ble(tL2C_LCB* p_lcb, BT_HDR* p_buf) {
   const uint16_t link_xmit_quota = p_lcb->link_xmit_quota;
-
+  /* Transport layer splits PDU into ACL packets. Derive the number of segments based on controller
+   * LE data packet size. */
+  const uint16_t num_segs = l2cu_hci_segment_count(p_buf, BT_TRANSPORT_LE);
   if (link_xmit_quota == 0) {
-    l2cb.ble_round_robin_unacked++;
+    l2cb.ble_round_robin_unacked += num_segs;
   }
-  p_lcb->sent_not_acked++;
+  p_lcb->sent_not_acked += num_segs;
   p_buf->layer_specific = 0;
-  l2cb.controller_le_xmit_window--;
+  /* Shortfall becomes debt for credit_le_xmit_window() to settle before crediting again. */
+  if (num_segs > l2cb.controller_le_xmit_window) {
+    l2cb.ble_xmit_fragment_debt += num_segs - l2cb.controller_le_xmit_window;
+    l2cb.controller_le_xmit_window = 0;
+  } else {
+    l2cb.controller_le_xmit_window -= num_segs;
+  }
 
   acl_send_data_packet_ble(p_lcb->remote_bd_addr, p_buf);
-  log::debug("TotalWin={},Hndl=0x{:x},Quota={},Unack={},RRQuota={},RRUnack={}",
+  log::verbose("TotalWin={},Hndl=0x{:x},Quota={},Unack={},RRQuota={},RRUnack={},Segs={},Debt={}",
              l2cb.controller_le_xmit_window, p_lcb->Handle(), p_lcb->link_xmit_quota,
-             p_lcb->sent_not_acked, l2cb.ble_round_robin_quota, l2cb.ble_round_robin_unacked);
+             p_lcb->sent_not_acked, l2cb.ble_round_robin_quota, l2cb.ble_round_robin_unacked,
+               num_segs, l2cb.ble_xmit_fragment_debt);
 }
 
 static void l2c_link_send_to_lower(tL2C_LCB* p_lcb, BT_HDR* p_buf,
@@ -1041,13 +1064,16 @@ void l2c_packets_completed(uint16_t handle, uint16_t num_sent) {
 
   switch (p_lcb->transport) {
     case BT_TRANSPORT_BR_EDR:
-      l2cb.controller_xmit_window += num_sent;
+      l2cb.credit_classic_xmit_window(num_sent);
+      l2cb.controller_xmit_window = std::min(l2cb.controller_xmit_window, l2cb.num_lm_acl_bufs);
       if (p_lcb->is_round_robin_scheduling()) {
         l2cb.update_outstanding_classic_packets(num_sent);
       }
       break;
     case BT_TRANSPORT_LE:
-      l2cb.controller_le_xmit_window += num_sent;
+      l2cb.credit_le_xmit_window(num_sent);
+      l2cb.controller_le_xmit_window =
+              std::min(l2cb.controller_le_xmit_window, l2cb.num_lm_ble_bufs);
       if (p_lcb->is_round_robin_scheduling()) {
         l2cb.update_outstanding_le_packets(num_sent);
       }
