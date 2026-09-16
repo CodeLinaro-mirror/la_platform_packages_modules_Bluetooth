@@ -30,6 +30,8 @@
 #include "bta/include/bta_dm_api.h"
 #include "stack/include/l2cap_interface.h"
 #include "stack/include/port_api.h"
+#include "stack/rfcomm/port_int.h"
+#include "stack/rfcomm/rfc_int.h"
 #include "stack/include/sdp_status.h"
 #include "types/bt_transport.h"
 #include "types/raw_address.h"
@@ -62,10 +64,34 @@ void bta_hf_client_start_close(tBTA_HF_CLIENT_DATA* p_data) {
 
   /* Take the link out of sniff and set L2C idle time to 0 */
   bta_dm_pm_active(client_cb->peer_addr);
-  if (!stack::l2cap::get_interface().L2CA_SetIdleTimeoutByBdAddr(client_cb->peer_addr, 0,
-                                                                 BT_TRANSPORT_BR_EDR)) {
-    log::warn("Unable to set L2CAP idle timeout peer:{} transport:{} timeout:{}",
-              client_cb->peer_addr, bt_transport_text(BT_TRANSPORT_BR_EDR), 0);
+
+  // Only set idle timeout to 0 if HFP is the sole RFCOMM user on this ACL.
+  // Setting it unconditionally would immediately tear down the ACL the moment
+  // HFP's RFCOMM channel closes, collapsing the shared RFCOMM mux and killing
+  // other profiles (e.g. PBAP) that are still active on the same mux.
+  tRFC_MCB* p_mcb = port_find_mcb(client_cb->peer_addr);
+  bool other_rfcomm_ports_active = false;
+  if (p_mcb != nullptr) {
+    for (int i = 0; i < RFCOMM_MAX_DLCI; i++) {
+      if (p_mcb->port_handles[i] != 0) {
+        tPORT* p_port = port_find_mcb_dlci_port(p_mcb, i);
+        if (p_port != nullptr && p_port->handle != client_cb->conn_handle) {
+          other_rfcomm_ports_active = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!other_rfcomm_ports_active) {
+    if (!stack::l2cap::get_interface().L2CA_SetIdleTimeoutByBdAddr(client_cb->peer_addr, 0,
+                                                                   BT_TRANSPORT_BR_EDR)) {
+      log::warn("Unable to set L2CAP idle timeout peer:{} transport:{} timeout:{}",
+                client_cb->peer_addr, bt_transport_text(BT_TRANSPORT_BR_EDR), 0);
+    }
+  } else {
+    log::info(
+        "Skipping L2CAP idle timeout reset for peer:{} — other RFCOMM profiles still active",
+        client_cb->peer_addr);
   }
 
   /* if SCO is open close SCO and wait on RFCOMM close */
