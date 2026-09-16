@@ -82,6 +82,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
     private static final int DEFAULT_VOLUME_LEVEL = 15;
 
+    // HCI Error Codes
+    private static final int HCI_ERR_COMMAND_DISALLOWED = 0x0C;
+    private static final int HCI_ERR_CONTROLLER_BUSY = 0x3A;
+
     /*
      * Fixed placeholder address used for ALL interactions with the audio framework
      * (AudioManager.handleBluetoothActiveDeviceChanged / ACTION_ACTIVE_DEVICE_CHANGED)
@@ -1738,6 +1742,17 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             + ", status=0x" + Integer.toHexString(status)
                             + ", hciReason=0x" + Integer.toHexString(hciReason)
                             + ", mPgpRequestedTerminate=" + mPgpRequestedTerminate);
+
+                    // Filter out controller errors (CONTROLLER_BUSY, COMMAND_DISALLOWED).
+                    // These indicate the command was rejected by the controller before reaching
+                    // PGO (e.g., duplicate command while first is still processing). Don't clear
+                    // mPgpRequestedTerminate because the original command is still pending and
+                    // its completion will be handled separately.
+                    if (status == HCI_ERR_CONTROLLER_BUSY || status == HCI_ERR_COMMAND_DISALLOWED) {
+                        Log.w(TAG, "TExitDbig rejected by controller: status=0x"
+                                + Integer.toHexString(status) + " (duplicate/disallowed command ignored)");
+                        break;
+                    }
 
                     if (mPgpRequestedTerminate) {
                         mPgpRequestedTerminate = false;
