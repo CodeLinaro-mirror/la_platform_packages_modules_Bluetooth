@@ -1456,6 +1456,8 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     cs_tracker.disable_due_to_ras_packets_delayed = false;
     cs_tracker.procedure_data_list.clear();
     cs_tracker.proc_start_timestampMs = 0;  // Reset for fresh start on next session
+    cs_tracker.calculated_schedule_interval_ms = 0;  // Reset stale interval to prevent blocking
+    cs_tracker.last_enable_sent_time = std::chrono::steady_clock::time_point();  // Reset timestamp to allow immediate re-enable
   }
 
   void handle_cs_setup_failure(
