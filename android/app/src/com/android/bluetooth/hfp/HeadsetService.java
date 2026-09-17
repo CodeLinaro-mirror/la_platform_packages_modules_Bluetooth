@@ -390,6 +390,17 @@ public class HeadsetService extends ProfileService {
         }
     }
 
+    private void doForEachConnectedOrConnectingCallStateMachine(StateMachineTask task) {
+        synchronized (mStateMachines) {
+            for (HeadsetStateMachine stateMachine : mStateMachines.values()) {
+                int state = stateMachine.getConnectionState();
+                if (state == STATE_CONNECTED || state == STATE_CONNECTING) {
+                    task.execute(stateMachine);
+                }
+            }
+        }
+    }
+
     private void doForEachConnectedStateMachine(List<StateMachineTask> tasks) {
         synchronized (mStateMachines) {
             for (BluetoothDevice device : getConnectedDevices()) {
@@ -2103,7 +2114,7 @@ public class HeadsetService extends ProfileService {
                 lock.unlock();
             }
         });
-        doForEachConnectedStateMachine(
+        doForEachConnectedOrConnectingCallStateMachine(
                 stateMachine ->
                         stateMachine.sendMessage(
                                 HeadsetStateMachine.CALL_STATE_CHANGED,
