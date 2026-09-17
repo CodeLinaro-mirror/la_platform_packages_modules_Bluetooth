@@ -37,6 +37,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.database.sqlite.SQLiteException;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
@@ -146,7 +147,11 @@ public class DatabaseManager {
                     {
                         Metadata data = (Metadata) msg.obj;
                         synchronized (mDatabaseLock) {
-                            mDatabase.insert(data);
+                            try {
+                                mDatabase.insert(data);
+                            } catch (SQLiteException e) {
+                                Log.e(TAG, "Failed to update database: " + e);
+                            }
                         }
                         break;
                     }
@@ -154,14 +159,22 @@ public class DatabaseManager {
                     {
                         String address = (String) msg.obj;
                         synchronized (mDatabaseLock) {
-                            mDatabase.delete(address);
+                            try {
+                                mDatabase.delete(address);
+                            } catch (SQLiteException e) {
+                                Log.e(TAG, "Failed to delete from database: " + e);
+                            }
                         }
                         break;
                     }
                 case MSG_CLEAR_DATABASE:
                     {
                         synchronized (mDatabaseLock) {
-                            mDatabase.deleteAll();
+                            try {
+                                mDatabase.deleteAll();
+                            } catch (SQLiteException e) {
+                                Log.e(TAG, "Failed to clear database: " + e);
+                            }
                         }
                         break;
                     }
