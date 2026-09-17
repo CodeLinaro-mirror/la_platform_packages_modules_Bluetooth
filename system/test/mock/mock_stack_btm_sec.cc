@@ -97,6 +97,9 @@ struct btm_sec_role_changed btm_sec_role_changed;
 struct btm_sec_set_peer_sec_caps btm_sec_set_peer_sec_caps;
 struct btm_sec_update_clock_offset btm_sec_update_clock_offset;
 struct btm_simple_pair_complete btm_simple_pair_complete;
+struct btm_sec_get_min_enc_key_size btm_sec_get_min_enc_key_size;
+
+struct BTM_IsRemoteNameKnown BTM_IsRemoteNameKnown;
 
 }  // namespace stack_btm_sec
 }  // namespace mock
@@ -129,6 +132,9 @@ bool btm_sec_is_a_bonded_dev::return_value = false;
 tBTM_STATUS btm_sec_l2cap_access_req::return_value = tBTM_STATUS::BTM_SUCCESS;
 tBTM_STATUS btm_sec_l2cap_access_req_by_requirement::return_value = tBTM_STATUS::BTM_SUCCESS;
 tBTM_STATUS btm_sec_mx_access_request::return_value = tBTM_STATUS::BTM_SUCCESS;
+
+bool BTM_IsRemoteNameKnown::return_value = false;
+uint8_t btm_sec_get_min_enc_key_size::return_value = 7;
 
 }  // namespace stack_btm_sec
 }  // namespace mock
@@ -406,6 +412,10 @@ void btm_simple_pair_complete(const RawAddress bd_addr, uint8_t status) {
 bool BTM_BleIsLinkKeyKnown(const RawAddress /* address */) {
   inc_func_call_count(__func__);
   return false;
+}
+uint8_t btm_sec_get_min_enc_key_size() {
+  inc_func_call_count(__func__);
+  return test::mock::stack_btm_sec::btm_sec_get_min_enc_key_size();
 }
 // Mocked functions complete
 // END mockcify generation

@@ -878,6 +878,15 @@ typedef struct {
  ******************************************************************************/
 void GATTS_StopService(uint16_t service_handle);
 
+/*****************************************************************************
+ *
+ * Function         GATTs_HandleMultipleValueNotification
+ * Description      This function handles multiple nofication
+ *
+ *****************************************************************************/
+[[nodiscard]] tGATT_STATUS GATTS_HandleMultipleValueNotification(
+		        uint16_t conn_id, std::vector<tGATT_VALUE> gatt_notif_vector);
+
 /*******************************************************************************
  *
  * Function         GATTs_HandleValueIndication
