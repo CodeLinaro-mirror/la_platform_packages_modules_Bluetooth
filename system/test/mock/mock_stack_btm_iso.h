@@ -60,6 +60,7 @@ public:
   MOCK_METHOD((void), HandleDisconnect, (uint16_t handle, uint8_t reason));
   MOCK_METHOD((void), HandleNumComplDataPkts, (uint16_t handle, uint16_t credits));
   MOCK_METHOD((void), HandleHciEvent, (uint8_t sub_code, uint8_t* params, uint16_t length));
+  MOCK_METHOD((void), HandleCreateBigCommandStatus, (uint8_t big_handle, uint8_t status));
   MOCK_METHOD((void), HandleVSCodecSettingsEvent, (uint8_t mode, uint16_t delay, uint64_t bdAddr));
 
   MOCK_METHOD((void), Start, ());
