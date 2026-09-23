@@ -296,6 +296,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                 case BluetoothLeBroadcastSinkState.REASON_HARDWARE_GENERIC:
                     message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + ": Hardware error";
                     break;
+                case BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST:
+                    message = "Stop failed: Termination already in progress — please wait";
+                    break;
                 default:
                     message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + " (" + getReasonString(reason) + ")";
                     break;
@@ -631,7 +634,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
         try {
             mBroadcastSink.stopEnhancedBroadcastSink(broadcastId, mode);
-            mStatusMessage.postValue("Stopping Enhanced Sink for broadcast ID: " + broadcastId
+            // Don't set status here - let the callback (onSinkStopped/onSinkStopFailed) handle it
+            // This prevents "Stopping..." message from appearing when the request will be rejected
+            Log.d(TAG, "stopEnhancedBroadcastSink: request sent for broadcast ID: " + broadcastId
                     + " mode=0x" + Integer.toHexString(mode));
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop enhanced sink", e);
@@ -648,8 +653,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             return;
         }
         try {
+            // Show pending status immediately - actual result will come via callback
+            mStatusMessage.postValue("Terminate DBIG: request pending, waiting for completion...");
             mBroadcastSink.terminateDbig();
-            mStatusMessage.postValue("Terminate DBIG sent");
         } catch (Exception e) {
             Log.e(TAG, "Failed to terminate DBIG", e);
             mStatusMessage.postValue("Failed to terminate DBIG: " + e.getMessage());

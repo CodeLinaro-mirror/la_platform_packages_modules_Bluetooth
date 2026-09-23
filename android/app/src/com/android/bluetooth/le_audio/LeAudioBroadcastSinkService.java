@@ -914,6 +914,17 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink(): broadcastId=" + broadcastId
                 + ", mode=0x" + Integer.toHexString(mode));
 
+        // If PGP termination is already in progress (terminateDbig was called and waiting
+        // for PGO response), reject this stop request immediately to avoid controller
+        // "Command Disallowed" error. The ongoing termination will complete on its own.
+        if (mPgpRequestedTerminate) {
+            Log.w(TAG, "stopEnhancedBroadcastSink: PGP termination already in progress, "
+                    + "rejecting stop request");
+            notifyOnSinkStopFailed(broadcastId,
+                    BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+            return;  // Don't send texit, don't do cleanup, let pending termination complete
+        }
+
         // Step 1: Call native stopEnhancedBroadcastSink DIRECTLY (not via handler) so the
         // state machine is still in BIG_SYNCED when it validates state and
         // clears flags.  Native stopEnhancedBroadcastSink does NOT stop the HAL clients.
@@ -1223,6 +1234,15 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             Log.w(TAG, "terminateDbig: Native interface not available.");
             return;
         }
+
+        // Prevent duplicate termination requests while one is pending.
+        // If terminateDbig() is called multiple times rapidly, only the first
+        // request is sent to avoid controller "Command Disallowed" errors.
+        if (mPgpRequestedTerminate) {
+            Log.w(TAG, "terminateDbig: Termination in progress, ignoring duplicate request");
+            return;
+        }
+
         mPgpRequestedTerminate = true;
         mNativeInterface.terminateDbig();
     }
