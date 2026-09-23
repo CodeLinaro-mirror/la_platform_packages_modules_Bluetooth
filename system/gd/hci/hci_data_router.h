@@ -21,7 +21,9 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
+#include <mutex>
 
 #include "common/bidi_queue.h"
 #include "hci/acl_manager/assembler.h"
@@ -53,29 +55,32 @@ public:
   virtual ~HciDataRouter() { hci_queue_end_->UnregisterDequeue(); }
 
   void SetLeAclDataConsumer(LeAclDataConsumer* le_acl_data_consumer) {
+    std::lock_guard<std::mutex> lock(acl_data_consumers_guard_);
     le_acl_data_consumer_ = le_acl_data_consumer;
   }
 
   void SetClassicAclDataConsumer(ClassicAclDataConsumer* classic_acl_data_consumer) {
+    std::lock_guard<std::mutex> lock(acl_data_consumers_guard_);
     classic_acl_data_consumer_ = classic_acl_data_consumer;
   }
 
 private:
+  bool route_packet_to_consumer(uint16_t handle,
+                                const std::function<void(acl_manager::assembler*)>& cb) {
+    std::lock_guard<std::mutex> lock(acl_data_consumers_guard_);
+    return (classic_acl_data_consumer_ != nullptr &&
+            classic_acl_data_consumer_->SendPacketUpward(handle, cb)) ||
+           (le_acl_data_consumer_ != nullptr &&
+            le_acl_data_consumer_->SendPacketUpward(handle, cb));
+  }
+
   void retry_unknown_acl(bool timed_out) {
     std::vector<AclView> unsent_packets;
     for (const auto& itr : waiting_packets_) {
       auto handle = itr.GetHandle();
-      bool sent =
-          (classic_acl_data_consumer_ != nullptr &&
-           classic_acl_data_consumer_->SendPacketUpward(
-               handle, [itr](struct acl_manager::assembler* assembler) {
-                 assembler->on_incoming_packet(itr);
-               })) ||
-          (le_acl_data_consumer_ != nullptr &&
-           le_acl_data_consumer_->SendPacketUpward(
-               handle, [itr](struct acl_manager::assembler* assembler) {
-                 assembler->on_incoming_packet(itr);
-               }));
+      bool sent = route_packet_to_consumer(handle, [itr](acl_manager::assembler* assembler) {
+        assembler->on_incoming_packet(itr);
+      });
       if (!sent) {
         if (!timed_out) {
           unsent_packets.push_back(itr);
@@ -111,18 +116,9 @@ private:
         handle == kMtkDebugHandle) {
       return;
     }
-    if (classic_acl_data_consumer_ != nullptr &&
-        classic_acl_data_consumer_->SendPacketUpward(
-                handle, [&packet](struct acl_manager::assembler* assembler) {
-                  assembler->on_incoming_packet(*packet);
-                })) {
-      return;
-    }
-    if (le_acl_data_consumer_ != nullptr &&
-        le_acl_data_consumer_->SendPacketUpward(
-                handle, [&packet](struct acl_manager::assembler* assembler) {
-                  assembler->on_incoming_packet(*packet);
-                })) {
+    if (route_packet_to_consumer(handle, [&packet](acl_manager::assembler* assembler) {
+          assembler->on_incoming_packet(*packet);
+        })) {
       return;
     }
     if (unknown_acl_alarm_ == nullptr) {
@@ -137,6 +133,7 @@ private:
   }
 
   os::Handler* handler_;
+  std::mutex acl_data_consumers_guard_;
   LeAclDataConsumer* le_acl_data_consumer_ = nullptr;
   ClassicAclDataConsumer* classic_acl_data_consumer_ = nullptr;
   common::BidiQueueEnd<AclBuilder, AclView>* hci_queue_end_ = nullptr;

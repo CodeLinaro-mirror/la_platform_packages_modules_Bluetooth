@@ -19,6 +19,7 @@
 #include <bluetooth/log.h>
 #include <com_android_bluetooth_flags.h>
 
+#include <chrono>
 #include <future>
 
 namespace bluetooth::hci::acl_manager {
@@ -38,6 +39,7 @@ AclManagerClassicImpl::AclManagerClassicImpl(os::Handler* handler, HciInterface&
                                              RemoteNameRequestModule& remote_name_request_module,
                                              RoundRobinScheduler& round_robin_scheduler)
     : handler_(handler),
+      hci_interface_(hci),
       classic_impl_(hci, handler_, round_robin_scheduler, crash_on_unknown_handle, acl_scheduler,
                     remote_name_request_module) {
   hci.SetClassicAclDataConsumer(this);
@@ -45,6 +47,7 @@ AclManagerClassicImpl::AclManagerClassicImpl(os::Handler* handler, HciInterface&
 }
 
 AclManagerClassicImpl::~AclManagerClassicImpl() {
+  hci_interface_.SetClassicAclDataConsumer(nullptr);
   if (!com_android_bluetooth_flags_same_handler_for_all_modules()) {
     handler_->Clear();
     handler_->WaitUntilStopped(std::chrono::milliseconds(2000));

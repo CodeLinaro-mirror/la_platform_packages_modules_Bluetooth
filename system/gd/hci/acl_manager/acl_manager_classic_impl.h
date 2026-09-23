@@ -99,6 +99,7 @@ private:
   uint16_t HACK_GetHandle(const Address address);
 
   os::Handler* handler_ = nullptr;
+  HciInterface& hci_interface_;
   acl_manager::classic_impl classic_impl_;
   uint16_t default_link_policy_settings_ = 0xffff;
 };

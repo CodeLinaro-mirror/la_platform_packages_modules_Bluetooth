@@ -21,6 +21,7 @@
 
 #include "hci/acl_manager/acl_manager_le_impl.h"
 
+#include <chrono>
 #include <format>
 #include <future>
 #include <string>
@@ -57,24 +58,7 @@ AclManagerLeImpl::AclManagerLeImpl(os::Handler* handler, hci::HciInterface& hci,
 }
 
 AclManagerLeImpl::~AclManagerLeImpl() {
-  // Before le_impl_ is destroyed (as part of this destructor's member cleanup),
-  // null out HciDataRouter's le_acl_data_consumer_ on gd_stack_thread. This
-  // prevents HciDataRouter::retry_unknown_acl() - which runs on gd_stack_thread
-  // via the reactor - from calling SendPacketUpward() on le_impl_ after its
-  // le_acl_connections_guard_ mutex has been destroyed, which would otherwise
-  // cause a SIGABRT (HandleUsingDestroyedMutex). Both this post and future
-  // reactor dequeue callbacks run on gd_stack_thread, so posting
-  // SetLeAclDataConsumer(nullptr) and waiting for it to complete guarantees
-  // that no subsequent reactor callback can reach le_impl_ after we return.
-  std::promise<void> promise;
-  auto future = promise.get_future();
-  handler_->Post(common::BindOnce(
-      [](hci::HciInterface* hci, std::promise<void> p) {
-        hci->SetLeAclDataConsumer(nullptr);
-        p.set_value();
-      },
-      &hci_interface_, std::move(promise)));
-  future.wait();
+  hci_interface_.SetLeAclDataConsumer(nullptr);
   log::verbose("AclManagerLe module stopped !!");
 }
 
