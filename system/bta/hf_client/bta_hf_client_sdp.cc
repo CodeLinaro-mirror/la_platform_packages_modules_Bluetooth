@@ -366,7 +366,17 @@ void bta_hf_client_do_disc(tBTA_HF_CLIENT_CB* client_cb) {
     client_cb->p_disc_db = NULL;
     // We manually set the state here because it's possible to call this from an
     // OPEN state, in which case the discovery fail event will be ignored.
-    client_cb->state = 0;  // BTA_HF_CLIENT_INIT_ST
+    if (client_cb->state == 2){ // BTA_HF_CLIENT_OPEN_ST
+      log::info("OPEN state");
+      client_cb->state = 0;  // BTA_HF_CLIENT_INIT_ST
+    } else {
+      /* if the state is not OPEN, go through SM to transition to INIT gracefully
+      *  instead of manually setting the state to INIT (OPENING -> INIT, frees CB)
+      */
+      tBTA_HF_CLIENT_DATA msg;
+      msg.hdr.layer_specific = client_cb->handle;
+      bta_hf_client_sm_execute(BTA_HF_CLIENT_DISC_FAIL_EVT, &msg);
+    }
     return;
   }
 

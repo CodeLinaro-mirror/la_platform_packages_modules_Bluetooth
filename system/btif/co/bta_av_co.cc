@@ -1209,9 +1209,13 @@ const BtaAvCoSep* BtaAvCo::SelectSourceCodec(BtaAvCoPeer* p_peer) {
   // NOTE: The selectable codec info is used only for informational purpose.
   UpdateAllSelectableSourceCodecs(p_peer);
 
-  // Query the preferred codec configuration for offloaded codecs.
-  auto provider_codec_config = GetProviderCodecConfiguration(p_peer);
-  log::info("Configuration={}", provider_codec_config->toString());
+// Query the preferred codec configuration for offloaded codecs.
+auto provider_codec_config = GetProviderCodecConfiguration(p_peer);
+  if (provider_codec_config.has_value()) {
+    log::info("Configuration={}", provider_codec_config->toString());
+  } else {
+    log::info("No offloaded provider configuration resolved");
+  }
 
   // Query the preferred codec configuration for software codecs.
   A2dpCodecConfig* software_codec_config = nullptr;
