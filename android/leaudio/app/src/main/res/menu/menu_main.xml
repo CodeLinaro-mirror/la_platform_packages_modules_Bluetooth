@@ -7,9 +7,9 @@
         android:id="@+id/action_broadcast"
         android:title="@string/action_broadcast"/>
     <item
-        android:id="@+id/action_set_achat_attributes"
-        android:title="Set Achat Attributes (Sink)"/>
+        android:id="@+id/action_set_attributes_sink"
+        android:title="Set Attributes (Sink)"/>
     <item
-        android:id="@+id/action_set_achat_attributes_source"
-        android:title="Set Achat Attributes (PGO)"/>
+        android:id="@+id/action_set_attributes_source"
+        android:title="Set Attributes (PGO)"/>
 </menu>
