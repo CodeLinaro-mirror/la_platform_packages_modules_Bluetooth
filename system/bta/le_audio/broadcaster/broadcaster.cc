@@ -166,6 +166,7 @@ public:
 
     queued_start_broadcast_request_ = std::nullopt;
     queued_create_broadcast_request_ = std::nullopt;
+    pending_resume_after_create_ = false;
 
     if (le_audio_source_hal_client_) {
       le_audio_source_hal_client_->Stop();
@@ -1087,6 +1088,38 @@ private:
     alarm_cancel(broadcast_stop_timer_);
   }
 
+  /* Starts all ready broadcasts once audio has resumed - shared by OnAudioResume() and by the
+   * deferred-resume replay in OnStateMachineCreateStatus(), so the ISO-busy guard, timer
+   * cancellation, and already-streaming guard can't drift apart between the two call sites.
+   * If ISO from unicast teardown is still active, does nothing - IsoTrafficEventCb() starts
+   * the broadcasts once ISO goes idle.
+   */
+  void ResumeAudioBroadcastsIfReady() {
+    if (broadcasts_.empty()) {
+      return;
+    }
+
+    if (!IsAnyoneStreaming() && is_iso_running_) {
+      log::debug("iso is busy, skip resume request");
+      return;
+    }
+
+    cancelBroadcastTimers();
+    UpdateAudioActiveStateInPublicAnnouncement();
+
+    /* In case of double call of resume when broadcasts are already in streaming states */
+    if (IsAnyoneStreaming()) {
+      log::debug("broadcasts are already streaming");
+      le_audio_source_hal_client_->ConfirmStreamingRequest(false);
+      return;
+    }
+
+    for (auto& broadcast_pair : broadcasts_) {
+      auto& broadcast = broadcast_pair.second;
+      broadcast->ProcessMessage(BroadcastStateMachine::Message::START, nullptr);
+    }
+  }
+
   static class BroadcastStateMachineCallbacks : public IBroadcastStateMachineCallbacks {
     void OnStateMachineCreateStatus(uint32_t broadcast_id, bool initialized) override {
       if (!instance) {
@@ -1115,6 +1148,21 @@ private:
         log::error("Failed creating broadcast!");
       }
       instance->pending_broadcasts_.erase(pending_broadcast);
+
+      /* Resolve a resume that was deferred while this (or another) create was in flight, once
+       * every outstanding create has settled - not on the first one, since pending_broadcasts_
+       * can hold more than one entry.
+       */
+      if (instance->pending_resume_after_create_ && instance->pending_broadcasts_.empty()) {
+        instance->pending_resume_after_create_ = false;
+        if (instance->broadcasts_.empty()) {
+          log::warn("Deferred resume has no broadcast to start, cancelling");
+          instance->le_audio_source_hal_client_->CancelStreamingRequest();
+        } else {
+          instance->ResumeAudioBroadcastsIfReady();
+        }
+      }
+
       instance->callbacks_->OnBroadcastCreated(broadcast_id, initialized);
     }
 
@@ -1441,6 +1489,12 @@ private:
 
       instance->audio_state_ = AudioState::SUSPENDED;
 
+      /* A resume deferred earlier while a create was in flight must not fire once audio has
+       * since suspended again - otherwise the replay in OnStateMachineCreateStatus() could
+       * start a BIG while audio is suspended.
+       */
+      instance->pending_resume_after_create_ = false;
+
       if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
         instance->is_suspended_by_audio_ = true;
         instance->UpdateAudioActiveStateInPublicAnnouncement();
@@ -1468,35 +1522,19 @@ private:
       if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
         instance->is_suspended_by_audio_ = false;
         if (instance->broadcasts_.empty()) {
+          if (!instance->pending_broadcasts_.empty()) {
+            log::info("Broadcast create still pending ({} pending), deferring resume",
+                      instance->pending_broadcasts_.size());
+            instance->pending_resume_after_create_ = true;
+            return;
+          }
           log::warn("No broadcasts are ready to resume (pending: {} broadcasts)",
                     instance->pending_broadcasts_.size());
           instance->le_audio_source_hal_client_->CancelStreamingRequest();
           return;
         }
 
-        /* If there is ongoing ISO traffic, it might be not torn down unicast stream. Resume of
-         * broadcast stream would be triggered from IsoTrafficEventCb context, once ISO would be
-         * released.
-         */
-        if (!IsAnyoneStreaming() && instance->is_iso_running_) {
-          log::debug("iso is busy, skip resume request");
-          return;
-        }
-
-        instance->cancelBroadcastTimers();
-        instance->UpdateAudioActiveStateInPublicAnnouncement();
-
-        /* In case of double call of resume when broadcasts are already in streaming states */
-        if (IsAnyoneStreaming()) {
-          log::debug("broadcasts are already streaming");
-          instance->le_audio_source_hal_client_->ConfirmStreamingRequest(false);
-          return;
-        }
-
-        for (auto& broadcast_pair : instance->broadcasts_) {
-          auto& broadcast = broadcast_pair.second;
-          broadcast->ProcessMessage(BroadcastStateMachine::Message::START, nullptr);
-        }
+        instance->ResumeAudioBroadcastsIfReady();
       } else {
         if (!IsAnyoneStreaming()) {
           instance->le_audio_source_hal_client_->CancelStreamingRequest();
@@ -1552,6 +1590,11 @@ private:
 
   // Flag of suspend request from audio
   bool is_suspended_by_audio_ = false;
+
+  // Set when OnAudioResume() arrives while a newly created broadcast is still in
+  // pending_broadcasts_; replayed once all pending creates have settled, unless a later
+  // OnAudioSuspend() cleared it first.
+  bool pending_resume_after_create_ = false;
 
   static constexpr uint64_t kBigTerminateTimeoutMs = 0;
   static constexpr uint64_t kBroadcastStopTimeoutMs = 30 * 60 * 1000;
