@@ -394,9 +394,11 @@ public:
                         ErrorCode status, std::string valid_incoming_addresses) {
                       log::warn("No matching connection to {} ({})", address,
                                 ErrorCodeText(status));
-                      log::assert_that(status != ErrorCode::SUCCESS,
-                                       "No prior connection request for {} expecting:{}", address,
-                                       valid_incoming_addresses.c_str());
+                      if (status == ErrorCode::SUCCESS) {
+                        /* This state is considered unexpected in this fallback path. */
+                        log::error("No prior connection request for {} expecting:{}", address,
+                                   valid_incoming_addresses.c_str());
+                      }
                       remote_name_request_module->ReportRemoteNameRequestCancellation(address);
                     },
                     common::Unretained(remote_name_request_module_), address, status));
