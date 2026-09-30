@@ -1541,15 +1541,12 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       log::info("PA sync lost: broadcast_id=0x{:08x}, sync_handle=0x{:04X}",
                 broadcast_id, pa_sync_handle);
 
-      /* PA sync is lost - notify Java immediately so UI can update.
-       * The state machine will record pa_sync_lost_ internally.
-       * When BIG sync is subsequently lost, full cleanup will occur. */
-      if (instance->callbacks_) {
-        log::info("Notifying Java: OnSourceDestroyed for PA sync lost, broadcast_id=0x{:08x}",
-                  broadcast_id);
-        instance->callbacks_->OnSourceDestroyed(broadcast_id,
-                                                 kBroadcastSinkDestroyReasonPaSyncLost);
-      }
+      /* PA sync is lost/terminated but BIG sync may still be active.
+       * Audio continues without PA sync.  We record pa_sync_lost_ in the
+       * state machine so that when BIG sync is subsequently lost, we know
+       * to transition to IDLE (no PA to return to) and fire OnSourceDestroyed
+       * to signal a full restart is needed.
+       * No Java notification here — BIG sync is still running. */
     }
 
     void OnBaseDataReceived(uint32_t broadcast_id,
