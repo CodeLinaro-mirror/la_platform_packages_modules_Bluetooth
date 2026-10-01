@@ -369,7 +369,7 @@ void bta_hf_client_do_disc(tBTA_HF_CLIENT_CB* client_cb) {
     if (client_cb->state == 2){ // BTA_HF_CLIENT_OPEN_ST
       log::info("OPEN state");
       client_cb->state = 0;  // BTA_HF_CLIENT_INIT_ST
-    }else{
+    } else {
       /* if the state is not OPEN, go through SM to transition to INIT gracefully
       *  instead of manually setting the state to INIT (OPENING -> INIT, frees CB)
       */

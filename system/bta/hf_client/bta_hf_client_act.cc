@@ -124,6 +124,7 @@ void bta_hf_client_start_open(tBTA_HF_CLIENT_DATA* p_data) {
     /* We will decide what to do when we find incoming connection later.*/
     bta_hf_client_collision_cback(BTA_SYS_CONN_OPEN, BTA_ID_HS, 0, client_cb->peer_addr);
     /* Don't go for SDP if there is a collision */
+    log::error("collision detected do not go for SDP");
     return;
   }
 

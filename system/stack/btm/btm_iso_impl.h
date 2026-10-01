@@ -58,6 +58,10 @@ static constexpr uint8_t kStateFlagHasOutputDataPathSet = 0x08;  // OUTPUT data 
 static constexpr uint8_t kStateFlagIsBroadcast = 0x10;
 static constexpr uint8_t kStateFlagIsCancelled = 0x20;
 static constexpr uint8_t kStateFlagIsBroadcastSync = 0x40;
+// Setup ISO data path request in flight. Must not share a bit with
+// kStateFlagIsBroadcastSync: it is cleared on every setup completion.
+static constexpr uint8_t kStateFlagSettingDataPath = 0x80;
+
 
 constexpr char kBtmLogTag[] = "ISO";
 
@@ -384,6 +388,8 @@ struct iso_impl {
     log::verbose("{}, iso_handle: {:#x}, flags: {:#x} status {}", cis_hdl_to_addr[conn_handle],
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
+    iso->state_flags &= static_cast<uint8_t>(~kStateFlagSettingDataPath);
+
     if (status == HCI_SUCCESS) {
       // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
       // kStateFlagIsBroadcastSync), track INPUT and OUTPUT data paths with
@@ -418,6 +424,9 @@ struct iso_impl {
     // For BIS connections (broadcast or broadcast sync), no connection establishment check needed
     if (!(iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
       log::assert_that(iso->state_flags & kStateFlagIsConnected, "CIS not established");
+      // CIS only: track in-flight setup so a CIS teardown race does not assert
+      // in remove_iso_data_path(). BIS state flags are left unchanged.
+      iso->state_flags |= kStateFlagSettingDataPath;
     }
 
     btsnd_hcic_setup_iso_data_path(
@@ -488,16 +497,23 @@ struct iso_impl {
     log::assert_that(iso != nullptr, "No such iso connection: 0x{:x}", iso_handle);
     // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
     // kStateFlagIsBroadcastSync), either INPUT or OUTPUT flag may be set independently.
-    // For unicast CIS, only kStateFlagHasDataPathSet is used (original behavior).
+    // For unicast CIS, a setup still in flight (kStateFlagSettingDataPath) is
+    // also accepted, as the host may tear down before the setup completion arrives.
+    // For non-duplex BIS, only kStateFlagHasDataPathSet is used (original behavior).
     if (is_duplex_enabled_ &&
         (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
       log::assert_that(
               (iso->state_flags & (kStateFlagHasDataPathSet | kStateFlagHasOutputDataPathSet)) != 0,
               "Data path not set");
+    } else if (!(iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
+      log::assert_that(
+              (iso->state_flags & (kStateFlagHasDataPathSet | kStateFlagSettingDataPath)) != 0,
+              "Data path not set");
     } else {
       log::assert_that((iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet,
                        "Data path not set");
     }
+
 
     btsnd_hcic_remove_iso_data_path(
             iso_handle, data_path_dir,
