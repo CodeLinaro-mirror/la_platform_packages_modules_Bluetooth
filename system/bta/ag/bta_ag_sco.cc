@@ -809,6 +809,8 @@ void bta_ag_codec_negotiate(tBTA_AG_SCB* p_scb) {
   uint8_t* p_rem_feat = get_btm_client_interface().peer.BTM_ReadRemoteFeatures(p_scb->peer_addr);
   bool sdp_wbs_support = p_scb->peer_sdp_features & BTA_AG_FEAT_WBS_SUPPORT;
   bool sdp_swb_support = p_scb->peer_sdp_features & BTA_AG_FEAT_SWB_SUPPORT;
+  bool is_dual_sco_enabled =
+          osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled", false);
 
   if (p_rem_feat == nullptr) {
     log::warn("Skip codec negotiation, failed to read remote features");
@@ -865,7 +867,7 @@ void bta_ag_codec_negotiate(tBTA_AG_SCB* p_scb) {
       log::verbose("Sending +BCS, sco_codec={}, is_aptx_swb_codec={}", p_scb->sco_codec,
                    p_scb->is_aptx_swb_codec);
       /* Send +BCS to the peer */
-      if (bta_is_hf_client_device_sco_connected()) {
+      if (bta_is_hf_client_device_sco_connected() && is_dual_sco_enabled) {
          log::warn("client sco is connected, need to send correct negotiation");
          uint16_t mClientCodec = fetch_client_negotiated_codec();
          if (mClientCodec == p_scb->sco_codec) {
@@ -1019,6 +1021,8 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
             /* sco open is not started yet. just go back to listening */
             p_sco->state = BTA_AG_SCO_LISTEN_ST;
             p_sco->p_curr_scb = nullptr;
+            //call app callback to notify HeadsetStateMachine exits AudioConnecting
+            bta_ag_cback_sco(p_scb, BTA_AG_AUDIO_CLOSE_EVT);
             /* The earlier bta_sys_sco_use() (e.g. from bta_ag_hfp_result()
              * handling BTA_AG_IN_CALL_RES) is otherwise never balanced on this
              * path, since the SCO HCI connection was never established here.
@@ -1528,6 +1532,9 @@ void bta_ag_sco_listen(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& /* data */) {
  *
  ******************************************************************************/
 void bta_ag_sco_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data) {
+  bool is_dual_sco_enabled =
+           osi_property_get_bool("persist.vendor.qcom.bluetooth.dual_sco_enabled", false);
+
   if (!sco_allowed) {
     log::info("not opening sco, by policy");
     return;
@@ -1544,7 +1551,7 @@ void bta_ag_sco_open(tBTA_AG_SCB* p_scb, const tBTA_AG_DATA& data) {
   //between AG and HF role is with MSBC and new BT headset supports only CVSD. No sco is created
   //in this case with BT headset. 
   //if ongoing SCO is with CVSD and new device supports MSBC, downgrading sco with CVSD
-  if (bta_is_hf_client_device_sco_connected()) {
+  if (bta_is_hf_client_device_sco_connected() && is_dual_sco_enabled) {
       uint16_t mClientCodec = fetch_client_negotiated_codec();
       if (mClientCodec == p_scb->sco_codec) {
          log::warn("going with same codec as client codec: Mclientcodec {} p_scb->sco_codec: {}", mClientCodec, p_scb->sco_codec);

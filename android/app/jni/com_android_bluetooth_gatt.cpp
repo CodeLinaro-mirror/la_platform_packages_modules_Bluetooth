@@ -31,6 +31,7 @@
 #include <nativehelper/scoped_local_ref.h>
 
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -177,8 +178,9 @@ static const btgatt_interface_t* sGattIf = NULL;
 // be initialised because the callbacks make use of sPrivateGattServerManager.
 static bluetooth::gatt::PrivateGattServerManager* sPrivateGattServerManager = NULL;
 
-/** Map from BT address string to session_id for active distance measurement sessions. */
+// Map: address -> session_id (one session per address/connection_handle)
 static std::unordered_map<std::string, uint32_t> sDistanceMeasurementSessionIds;
+static std::atomic<uint32_t> sNextSessionId{1};
 
 /** Pointer to the LE scanner interface methods.*/
 static jobject mCallbacksObj = NULL;
@@ -2034,14 +2036,22 @@ static void startDistanceMeasurementNative(JNIEnv* env, jobject /* object */, ji
     return;
   }
   RawAddress bd_addr = str2addr(env, address);
-  // Store the session_id (appUid) keyed by address string so stop can retrieve it.
+  
+  // Generate a unique session_id for this session
+  uint32_t session_id = sNextSessionId.fetch_add(1, std::memory_order_relaxed);
+  
+  // Store the session_id keyed by address string so stop can retrieve it.
   const char* c_addr = env->GetStringUTFChars(address, NULL);
   if (c_addr) {
-    sDistanceMeasurementSessionIds[std::string(c_addr)] = static_cast<uint32_t>(appUid);
+    sDistanceMeasurementSessionIds[std::string(c_addr)] = session_id;
     env->ReleaseStringUTFChars(address, c_addr);
   }
+  
+  log::info("startDistanceMeasurementNative: appUid={}, session_id={}, address={}", 
+            appUid, session_id, bd_addr.ToString());
+  
   sGattIf->distance_measurement_manager->StartDistanceMeasurement(
-          appUid, static_cast<uint32_t>(appUid), bd_addr, interval, method, sight_type,
+          appUid, session_id, bd_addr, interval, method, sight_type,
           location_type);
 }
 
@@ -2050,6 +2060,7 @@ static void stopDistanceMeasurementNative(JNIEnv* env, jobject /* object */, jst
   if (!sGattIf) {
     return;
   }
+  
   // Look up the session_id that was stored when measurement was started.
   uint32_t session_id = 0;
   const char* c_addr = env->GetStringUTFChars(address, NULL);
@@ -2058,11 +2069,13 @@ static void stopDistanceMeasurementNative(JNIEnv* env, jobject /* object */, jst
     if (it != sDistanceMeasurementSessionIds.end()) {
       session_id = it->second;
       sDistanceMeasurementSessionIds.erase(it);
+      log::info("stopDistanceMeasurementNative: session_id={}, address={}", session_id, c_addr);
     } else {
       log::warn("stopDistanceMeasurementNative: no session_id found for address {}", c_addr);
     }
     env->ReleaseStringUTFChars(address, c_addr);
   }
+  
   sGattIf->distance_measurement_manager->StopDistanceMeasurement(session_id,
                                                                   str2addr(env, address), method);
 }

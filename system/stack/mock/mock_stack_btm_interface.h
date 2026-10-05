@@ -32,6 +32,8 @@ public:
   MOCK_METHOD(void, btm_ble_free, ());
   MOCK_METHOD(void, BTM_reset_complete, ());
   MOCK_METHOD(bool, BTM_IsAclConnectionUp, (const RawAddress& bd_addr, tBT_TRANSPORT transport));
+  MOCK_METHOD(bool, BTM_IsHdtPacketFormat1Supported,
+              (const RawAddress& remote_bda, tBT_TRANSPORT transport));
   MOCK_METHOD((std::pair<RawAddress, RawAddress>), BTM_GetConnectedTransportAddress,
               (RawAddress bd_addr));
   MOCK_METHOD(uint8_t*, BTM_ReadRemoteFeatures, (const RawAddress&));

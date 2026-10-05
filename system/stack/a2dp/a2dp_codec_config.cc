@@ -732,6 +732,13 @@ bool A2dpCodecs::init() {
         log::info("LDAC not supported, updated priority to {}", codec_priority);
       }
     }
+
+    if (codec_index == BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_ADAPTIVE &&
+        A2DP_IsAptxAdaptiveDisabledForSoc()) {
+      codec_priority = BTAV_A2DP_CODEC_PRIORITY_DISABLED;
+      log::info("APTX AD not supported, updated priority: {}", codec_priority);
+    }
+
     A2dpCodecConfig* codec_config = A2dpCodecConfig::createCodec(codec_index, codec_priority);
     if (codec_config == nullptr) {
       continue;

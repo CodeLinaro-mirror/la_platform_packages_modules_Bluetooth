@@ -413,6 +413,26 @@ TEST_F(AclSchedulerTest, CancelQueuedConnectionCallback) {
   EXPECT_THAT(future, IsSet());
 }
 
+TEST_F(AclSchedulerTest, CancelUnknownIncomingConnectionClearsStaleEntry) {
+  auto promise = std::promise<void>{};
+  auto future = promise.get_future();
+
+  // an incoming connection arrives (its Accept Connection Request will fail)
+  acl_scheduler_->RegisterPendingIncomingConnection(address1);
+
+  // an unrelated RNR to a different peer is enqueued and blocked by address1's presence
+  acl_scheduler_->EnqueueRemoteNameRequest(address2, promiseCallback(std::move(promise)),
+                                           impossibleCallback());
+  EXPECT_THAT(future.wait_for(timeout), std::future_status::timeout);
+
+  // Accept Connection Request for address1 failed; CancelAclConnection is invoked for it.
+  // It is not an outgoing/queued connection, so the existing matcher finds nothing ...
+  acl_scheduler_->CancelAclConnection(address1, impossibleCallback(), impossibleCallback());
+
+  // ... but the fix must still clear the stale incoming registration and unblock the queue.
+  EXPECT_THAT(future, IsSet());
+}
+
 TEST_F(AclSchedulerTest, RemoteNameRequestImmediatelyExecuted) {
   auto promise = std::promise<void>{};
   auto future = promise.get_future();
@@ -533,6 +553,132 @@ TEST_F(AclSchedulerTest, RemoteNameRequestCancellationShouldDequeueNext) {
 
   // so the second request should now have started
   EXPECT_THAT(future, IsSet());
+}
+
+// Tests for RNR promotion on incoming ACL connection.
+// Negative test: the promotion scan (Block 3 in try_dequeue_next_operation) must
+// NOT promote an RNR whose address is NOT in the incoming set, even when another
+// address IS incoming and the outgoing slot is free.
+//
+// Queue state when try_dequeue fires after ACL(address1) completes:
+//   pending: [ ACL(address2), RNR(address3) ]
+//   incoming_set: { address2 }   <- address2, NOT address3
+//   outgoing_entry: empty
+//
+// Block 3 runs (no outgoing entry, incoming_set not empty), scans the queue,
+// finds RNR(address3) but address3 is NOT in incoming_set -> no promotion.
+// ACL(address2) is also blocked by its own incoming connection.
+TEST_F(AclSchedulerTest, DoesNotPromoteRnrIfAddressNotInIncomingSet) {
+  auto rnr_promise = std::promise<void>{};
+  auto rnr_future = rnr_promise.get_future();
+  auto acl2_promise = std::promise<void>{};
+  auto acl2_future = acl2_promise.get_future();
+
+  // ACL(address1) dispatched immediately.
+  acl_scheduler_->EnqueueOutgoingAclConnection(address1, emptyCallback());
+  // ACL(address2) queued behind address1.
+  acl_scheduler_->EnqueueOutgoingAclConnection(address2,
+                                               promiseCallback(std::move(acl2_promise)));
+  // RNR(address3) queued behind ACL(address2).
+  acl_scheduler_->EnqueueRemoteNameRequest(address3, promiseCallback(std::move(rnr_promise)),
+                                           emptyCallback());
+
+  // Incoming connection for address2, NOT address3 -- RNR(address3) is ineligible.
+  acl_scheduler_->RegisterPendingIncomingConnection(address2);
+
+  // ACL(address1) completes -> outgoing_entry_ becomes empty -> Block 3 runs.
+  // Block 3 scans: ACL(address2) skip, RNR(address3): address3 NOT in incoming_set -> no promotion.
+  acl_scheduler_->ReportAclConnectionCompletion(address1, emptyCallback(), impossibleCallback(),
+                                                impossibleCallbackTakingString());
+
+  // RNR(address3) must NOT be promoted.
+  EXPECT_THAT(rnr_future.wait_for(timeout), std::future_status::timeout)
+      << "RNR(address3) must not be promoted when address3 is not in the incoming set";
+
+  // ACL(address2) must also be blocked by its own incoming connection.
+  EXPECT_THAT(acl2_future.wait_for(timeout), std::future_status::timeout)
+      << "ACL(address2) must be blocked by its own incoming connection";
+}
+
+// Positive test: an RNR sitting behind an unrelated ACL in the queue must be
+// promoted and dispatched as soon as an incoming connection arrives for its
+// address and the head ACL completes.
+//
+// Queue state when try_dequeue_next_operation() fires after ACL(address1) completes:
+//   pending: [ ACL(address2), RNR(address3) ]
+//   incoming_set: { address3 }
+//   outgoing_entry: empty
+//
+// Expected: RNR(address3) is promoted past ACL(address2) and dispatched.
+//           ACL(address2) remains blocked while address3 is still incoming.
+TEST_F(AclSchedulerTest, PromotesRnrFromQueueWhenBehindAcl) {
+  auto rnr_promise = std::promise<void>{};
+  auto rnr_future = rnr_promise.get_future();
+  auto acl2_promise = std::promise<void>{};
+  auto acl2_future = acl2_promise.get_future();
+
+  // 1. Start an outgoing ACL to address1 -- dispatched immediately.
+  acl_scheduler_->EnqueueOutgoingAclConnection(address1, emptyCallback());
+
+  // 2. Enqueue a second ACL to address2 -- queued behind address1.
+  acl_scheduler_->EnqueueOutgoingAclConnection(address2,
+                                               promiseCallback(std::move(acl2_promise)));
+
+  // 3. Enqueue an RNR for address3 -- queued behind address2.
+  acl_scheduler_->EnqueueRemoteNameRequest(address3, promiseCallback(std::move(rnr_promise)),
+                                           emptyCallback());
+
+  // 4. An incoming connection arrives from address3, making the RNR eligible.
+  acl_scheduler_->RegisterPendingIncomingConnection(address3);
+
+  // 5. The first ACL (address1) completes -- this triggers try_dequeue_next_operation().
+  //    address1 is NOT in the incoming set, so it is not erased from there.
+  acl_scheduler_->ReportAclConnectionCompletion(address1, emptyCallback(), impossibleCallback(),
+                                                impossibleCallbackTakingString());
+
+  // 6. The RNR for address3 must be promoted past ACL(address2) and dispatched.
+  EXPECT_THAT(rnr_future, IsSet()) << "RNR should be promoted and dispatched from queue";
+
+  // 7. ACL(address2) must still be blocked: incoming_set still contains address3.
+  EXPECT_THAT(acl2_future.wait_for(timeout), std::future_status::timeout)
+      << "ACL for address2 should remain blocked while address3 incoming is pending";
+}
+
+// Verify that after the promoted RNR completes, the previously blocked ACL
+// is eventually dispatched once the incoming connection for address3 resolves.
+TEST_F(AclSchedulerTest, AclUnblockedAfterPromotedRnrCompletes) {
+  auto rnr_promise = std::promise<void>{};
+  auto rnr_future = rnr_promise.get_future();
+  auto acl2_promise = std::promise<void>{};
+  auto acl2_future = acl2_promise.get_future();
+
+  // Build the same queue as PromotesRnrFromQueueWhenBehindAcl.
+  acl_scheduler_->EnqueueOutgoingAclConnection(address1, emptyCallback());
+  acl_scheduler_->EnqueueOutgoingAclConnection(address2,
+                                               promiseCallback(std::move(acl2_promise)));
+  acl_scheduler_->EnqueueRemoteNameRequest(address3, promiseCallback(std::move(rnr_promise)),
+                                           emptyCallback());
+  acl_scheduler_->RegisterPendingIncomingConnection(address3);
+  acl_scheduler_->ReportAclConnectionCompletion(address1, emptyCallback(), impossibleCallback(),
+                                                impossibleCallbackTakingString());
+
+  // RNR is now dispatched (outgoing_entry = RNR(address3)).
+  EXPECT_THAT(rnr_future, IsSet());
+
+  // RNR completes -- outgoing_entry is cleared.
+  acl_scheduler_->ReportRemoteNameRequestCompletion(address3);
+
+  // ACL(address2) must STILL be blocked: address3 is still in the incoming set.
+  EXPECT_THAT(acl2_future.wait_for(timeout), std::future_status::timeout)
+      << "ACL for address2 must remain blocked after RNR completes (address3 still incoming)";
+
+  // The incoming connection for address3 also resolves.
+  acl_scheduler_->ReportAclConnectionCompletion(address3, impossibleCallback(), emptyCallback(),
+                                                impossibleCallbackTakingString());
+
+  // Now the incoming set is empty and outgoing_entry is empty, so ACL(address2) can proceed.
+  EXPECT_THAT(acl2_future, IsSet())
+      << "ACL for address2 should be dispatched after RNR completes and incoming resolves";
 }
 
 }  // namespace

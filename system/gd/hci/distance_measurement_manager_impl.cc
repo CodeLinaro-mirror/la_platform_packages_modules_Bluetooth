@@ -25,7 +25,6 @@
 #include <utils/SystemClock.h>
 #include <chrono>
 #include <complex>
-#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <sys/time.h>
@@ -107,80 +106,6 @@ static constexpr uint8_t kRasSegmentHeaderSize = 1;
 static constexpr uint16_t kEnableSecurityTimeoutMs = 10000;  // 10s
 static constexpr uint16_t kProcedureScheduleGuardMs = 1000;  // 1s
 static constexpr double kConnIntervalUnitMs = 1.25;          // 1.25 ms
-// Minimum gap between CS procedure enables across different connections to avoid firmware conflicts
-static constexpr uint32_t kMinInterConnectionGapMs = 300;    // 300ms gap between different connections
-
-// Global CS Procedure Scheduler to coordinate enables across all connection handles
-struct GlobalCsProcedureScheduler {
-  // Track scheduled enable time for each connection handle
-  std::unordered_map<uint16_t, std::chrono::steady_clock::time_point> scheduled_enable_times;
-  std::mutex scheduler_mutex;
-
-  GlobalCsProcedureScheduler() {}
-
-  // Calculate delay needed for this connection considering all other active connections
-  uint32_t calculate_safe_enable_delay(uint16_t current_connection_handle, uint32_t desired_interval_ms) {
-    std::lock_guard<std::mutex> lock(scheduler_mutex);
-
-    auto now = std::chrono::steady_clock::now();
-    auto desired_enable_time = now + std::chrono::milliseconds(desired_interval_ms);
-
-    // Check all other connection handles to find conflicts
-    uint32_t additional_delay = 0;
-    for (const auto& [other_handle, other_scheduled_time] : scheduled_enable_times) {
-      if (other_handle == current_connection_handle) {
-        continue;  // Skip same connection
-      }
-
-      // Calculate time difference between our desired time and other connection's scheduled time
-      auto time_diff_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-          desired_enable_time - other_scheduled_time).count();
-
-      // If our enable would be too close to another connection's enable, add delay
-      if (std::abs(time_diff_ms) < kMinInterConnectionGapMs) {
-        // Schedule after the other connection with minimum gap
-        auto required_time = other_scheduled_time + std::chrono::milliseconds(kMinInterConnectionGapMs);
-        auto delay_needed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            required_time - now).count();
-
-        if (delay_needed > additional_delay) {
-          additional_delay = delay_needed;
-        }
-      }
-    }
-
-    // If we need to add delay, make sure it's reasonable
-    if (additional_delay > 0) {
-      log::info("Connection 0x{:04x}: Adding {} ms delay to avoid conflict with other connections",
-                current_connection_handle, additional_delay);
-      return additional_delay;
-    }
-
-    return 0;
-  }
-
-  // Reserve/schedule an enable time for a connection handle
-  void schedule_enable(uint16_t connection_handle, uint32_t delay_ms) {
-    std::lock_guard<std::mutex> lock(scheduler_mutex);
-    auto scheduled_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(delay_ms);
-    scheduled_enable_times[connection_handle] = scheduled_time;
-    log::debug("Connection 0x{:04x}: Scheduled enable after {} ms", connection_handle, delay_ms);
-  }
-
-  // Remove a connection handle from scheduling (when stopped)
-  void remove_connection(uint16_t connection_handle) {
-    std::lock_guard<std::mutex> lock(scheduler_mutex);
-    scheduled_enable_times.erase(connection_handle);
-    log::debug("Connection 0x{:04x}: Removed from scheduler", connection_handle);
-  }
-
-  // Reset all scheduled times
-  void reset() {
-    std::lock_guard<std::mutex> lock(scheduler_mutex);
-    scheduled_enable_times.clear();
-    log::info("Global CS scheduler reset");
-  }
-};
 
 struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback {
   struct CsProcedureData {
@@ -333,6 +258,8 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     uint16_t max_procedure_count = 1;
     std::unordered_map<uint32_t, CsTrackerSession> sessions;
     std::unique_ptr<os::Alarm> procedure_schedule_guard_alarm = nullptr;
+    uint32_t calculated_schedule_interval_ms = kDefaultIntervalMs;
+    std::chrono::steady_clock::time_point last_enable_sent_time;
     int reflector_rssi_sum = 0;
     int reflector_rssi_count = 0;
     uint8_t min_main_mode_steps = 0;
@@ -472,8 +399,6 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       notify_on_stop(tracker, REASON_INTERNAL_ERROR, METHOD_CS);
     }
     reset_tracker_on_stopped(tracker);
-    // Remove from global scheduler
-    global_cs_scheduler_.remove_connection(connection_handle);
     // TODO: b/425866868 - Add ChannelSoundingStopReason for session close.
     report_session_metrics_on_stop(*tracker.requester_metrics_,
                                    ChannelSoundingStopReason::REASON_UNSPECIFIED);
@@ -558,8 +483,6 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     hci_layer_->UnregisterLeEventHandler(hci::SubeventCode::TRANSMIT_POWER_REPORTING);
     cs_requester_trackers_.clear();
     cs_responder_trackers_.clear();
-    // Reset global scheduler when all sessions are stopped
-    global_cs_scheduler_.reset();
   }
 
   void register_distance_measurement_callbacks(DistanceMeasurementCallbacks* callbacks) {
@@ -601,6 +524,17 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
        if (get_cs_procedure_settings(mFrequency, &cs_proc_setting) &&
            get_cs_config_settings(mCsSecurityLevel, &cs_config_setting) &&
 	   (set_cs_params_.find(connection_handle) == set_cs_params_.end())) {
+
+         if (cs_requester_trackers_.find(connection_handle) != cs_requester_trackers_.end()) {
+           auto& tracker = cs_requester_trackers_[connection_handle];
+           if (tracker.used_config_id != kInvalidConfigId) {
+             log::info("Current used_config_id={}, new config_id from security level={}",
+                      tracker.used_config_id, cs_config_setting.config_id);
+             tracker.used_config_id = kInvalidConfigId;
+             log::info("Security level changed, invalidated config to force recreation");
+           }
+         }
+
          set_cs_params_[connection_handle].address = cs_remote_address;
 	 set_cs_params_[connection_handle].cs_conf_settings.push_back(cs_config_setting);
 	 set_cs_params_[connection_handle].cs_proc_settings.push_back(cs_proc_setting);
@@ -875,9 +809,10 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
                                          ChannelSoundingStopReason::REASON_LOCAL_APP_REQUEST);
         }
         it->second.state = CsTrackerState::HOLD;
-        it->second.used_config_id = kInvalidConfigId;
-        // Remove this connection from the global scheduler
-        global_cs_scheduler_.remove_connection(connection_handle);
+        // Only clear config_id if procedure disable is not in progress (no pending retry)
+        if (!it->second.procedure_disable_in_progress) {
+          it->second.used_config_id = kInvalidConfigId;
+        }
 	  /*
 	  if (ranging_hal_->IsBound())
 	    ranging_hal_->close(connection_handle);
@@ -974,17 +909,9 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
           notify_on_stop(it->second, reason, METHOD_CS);
           report_session_metrics_on_stop(*it->second.requester_metrics_, stop_reason);
         }
-        // Remove from global scheduler before erasing tracker
-        global_cs_scheduler_.remove_connection(connection_handle);
 
         gatt_mtus_.erase(it->first);
         it = cs_requester_trackers_.erase(it);  // erase and get the next iterator
-
-        // Reset global scheduler if no more active CS sessions
-        if (cs_requester_trackers_.empty()) {
-          log::info("All CS requester sessions stopped, resetting global scheduler");
-          global_cs_scheduler_.reset();
-        }
       } else {
         ++it;
       }
@@ -1528,6 +1455,7 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
     cs_tracker.state = CsTrackerState::STOPPED;
     cs_tracker.disable_due_to_ras_packets_delayed = false;
     cs_tracker.procedure_data_list.clear();
+    cs_tracker.proc_start_timestampMs = 0;  // Reset for fresh start on next session
   }
 
   void handle_cs_setup_failure(
@@ -1545,14 +1473,12 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       it->second.procedure_schedule_guard_alarm.reset();
     }
     reset_tracker_on_stopped(it->second);
-    // Remove from global scheduler
-    global_cs_scheduler_.remove_connection(connection_handle);
     // the cs_tracker should be kept until the connection is disconnected
     report_session_metrics_on_stop(*it->second.requester_metrics_, stop_reason);
   }
 
   void send_le_cs_procedure_enable(uint16_t connection_handle, Enable enable) {
-    log::debug("cmd {}", enable);
+    log::debug("Connection 0x{:04x}: cmd {}", connection_handle, enable);
     auto it = cs_requester_trackers_.find(connection_handle);
     if (it == cs_requester_trackers_.end()) {
       log::warn("Can't find cs tracker for connection {}", connection_handle);
@@ -1568,8 +1494,48 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         return;
       }
 
+      if (it->second.used_config_id == kInvalidConfigId) {
+        log::warn("config_id is invalid, skip procedure enable for connection {}", connection_handle);
+        return;
+      }
+
+      auto now = std::chrono::steady_clock::now();
+      auto time_since_last_enable = std::chrono::duration_cast<std::chrono::milliseconds>(
+          now - it->second.last_enable_sent_time).count();
+
+      bool procedures_completed = (it->second.n_procedure_count > 1 &&
+                                   it->second.procedure_counting_after_enable == it->second.n_procedure_count);
+
+      uint32_t min_interval;
+      if (procedures_completed) {
+        min_interval = 200;
+        log::info("Connection 0x{:04x}: {} procedures completed, using short interval {} ms",
+                  connection_handle, it->second.n_procedure_count, min_interval);
+      } else {
+        min_interval = (it->second.calculated_schedule_interval_ms > 0) ?
+                        it->second.calculated_schedule_interval_ms :
+                        it->second.interval_ms;
+      }
+      
+      if (time_since_last_enable < min_interval && 
+          it->second.last_enable_sent_time != std::chrono::steady_clock::time_point()) {
+        log::warn("Connection 0x{:04x}: Blocking enable - only {} ms since last enable, need {} ms",
+                  connection_handle, time_since_last_enable, min_interval);
+        
+        uint32_t remaining_time = min_interval - time_since_last_enable;
+        it->second.procedure_schedule_guard_alarm->Cancel();
+        it->second.procedure_schedule_guard_alarm->Schedule(
+                common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
+                             connection_handle, Enable::ENABLED),
+                std::chrono::milliseconds(remaining_time));
+        log::info("Connection 0x{:04x}: Rescheduled enable after {} ms", 
+                  connection_handle, remaining_time);
+        return;
+      }
+
+      it->second.last_enable_sent_time = now;
       it->second.state = CsTrackerState::WAIT_FOR_PROCEDURE_ENABLED;
-    } else {  // Enable::DISABLE
+    } else {
       if (it->second.procedure_disable_in_progress) {
         log::info("procedure disable already in progress for state {}.", (int)it->second.state);
         return;
@@ -1581,9 +1547,14 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         log::info("no procedure disable command needed for state {}.", (int)it->second.state);
         return;
       }
+      if (it->second.used_config_id == kInvalidConfigId) {
+        log::warn("config_id is invalid, skip procedure disable for connection {}", connection_handle);
+        it->second.procedure_disable_in_progress = false;
+        return;
+      }
       it->second.procedure_disable_in_progress = true;
     }
-    
+
     hci_layer_->EnqueueCommand(
             LeCsProcedureEnableBuilder::Create(connection_handle, it->second.used_config_id,
                                                enable),
@@ -2142,31 +2113,22 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         live_tracker->used_config_id = config_id;
       }
 
-      // maybe dead code, leave it here for safe. controller may never send 'ENABLED' with error.
       if (live_tracker->local_start && event_view.GetStatus() != ErrorCode::SUCCESS) {
         log::warn("Received ENABLED procedure with error code {}. Retry counter {}",
                   ErrorCodeText(event_view.GetStatus()), live_tracker->retry_counter_for_cs_enable);
         if (live_tracker->retry_counter_for_cs_enable++ >= kMaxRetryCounterForCsEnable) {
           handle_cs_setup_failure(connection_handle, REASON_INTERNAL_ERROR);
         } else {
-          uint32_t retry_interval = live_tracker->interval_ms;
-          // Calculate safe delay considering all other active connections
-          uint32_t additional_delay = global_cs_scheduler_.calculate_safe_enable_delay(
-              connection_handle, retry_interval);
-          if (additional_delay > retry_interval) {
-            retry_interval = additional_delay;
-            log::info("Connection 0x{:04x}: Adjusted retry interval to {} ms to avoid conflicts",
-                      connection_handle, retry_interval);
-          }
-
+          uint32_t retry_interval = (live_tracker->calculated_schedule_interval_ms > 0) ?
+                                     live_tracker->calculated_schedule_interval_ms :
+                                     live_tracker->interval_ms;
           live_tracker->procedure_schedule_guard_alarm->Cancel();
-          log::info("schedule next procedure enable after {} ms", retry_interval);
+          log::info("Connection 0x{:04x}: Retry procedure enable after {} ms",
+                    connection_handle, retry_interval);
           live_tracker->procedure_schedule_guard_alarm->Schedule(
                   common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
                                connection_handle, Enable::ENABLED),
                   std::chrono::milliseconds(retry_interval));
-          // Reserve this time slot in the global scheduler
-          global_cs_scheduler_.schedule_enable(connection_handle, retry_interval);
         }
         return;
       }
@@ -2183,34 +2145,27 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
       live_tracker->max_procedure_len = event_view.GetMaxProcedureLen();
       live_tracker->procedure_counting_after_enable = 0;
       if (live_tracker->local_start) {
-        uint32_t schedule_interval = live_tracker->interval_ms;
+        live_tracker->calculated_schedule_interval_ms = live_tracker->interval_ms;
         if (live_tracker->n_procedure_count > 1) {
-          schedule_interval = live_tracker->n_procedure_count * event_view.GetProcedureInterval() *
-                                      live_tracker->conn_interval_ * kConnIntervalUnitMs +
-                              kProcedureScheduleGuardMs;
-          log::debug("guard interval is {} ms", schedule_interval);
-        }
-
-        // Calculate safe delay considering all other active connections
-        uint32_t additional_delay = global_cs_scheduler_.calculate_safe_enable_delay(
-            connection_handle, schedule_interval);
-        if (additional_delay > schedule_interval) {
-          uint32_t original_interval = schedule_interval;
-          schedule_interval = additional_delay;
-          log::info("Connection 0x{:04x}: Adjusted schedule_interval from {} ms to {} ms to avoid conflicts",
-                    connection_handle, original_interval, schedule_interval);
+          live_tracker->calculated_schedule_interval_ms = 
+                  live_tracker->n_procedure_count * event_view.GetProcedureInterval() *
+                  live_tracker->conn_interval_ * kConnIntervalUnitMs +
+                  kProcedureScheduleGuardMs;
+          log::info("Connection 0x{:04x}: Calculated guard interval {} ms based on "
+                    "n_procedure_count={}, procedure_interval={}, conn_interval={}",
+                    connection_handle, live_tracker->calculated_schedule_interval_ms,
+                    live_tracker->n_procedure_count, event_view.GetProcedureInterval(),
+                    live_tracker->conn_interval_);
         }
 
         if (live_tracker->n_procedure_count >= 1) {
           live_tracker->procedure_schedule_guard_alarm->Cancel();
-          log::info("Connection 0x{:04x}: schedule next procedure enable after {} ms",
-                    connection_handle, schedule_interval);
+          log::info("Connection 0x{:04x}: Scheduling independent timer with interval {} ms",
+                    connection_handle, live_tracker->calculated_schedule_interval_ms);
           live_tracker->procedure_schedule_guard_alarm->Schedule(
                   common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
                                connection_handle, Enable::ENABLED),
-                  std::chrono::milliseconds(schedule_interval));
-          // Reserve this time slot in the global scheduler
-          global_cs_scheduler_.schedule_enable(connection_handle, schedule_interval);
+                  std::chrono::milliseconds(live_tracker->calculated_schedule_interval_ms));
         }
         uint16_t subevent_len = event_view.GetSubeventLen();
         if (live_tracker->requester_metrics_->min_subevent_len > subevent_len) {
@@ -2239,9 +2194,13 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
           ranging_hal_->UpdateProcedureEnableConfig(connection_handle, event_view);
         }
       }
-      struct timeval tv;
-      gettimeofday(&tv, NULL);
-      live_tracker->proc_start_timestampMs = tv.tv_sec*1e6*1ll + tv.tv_usec*1ll;
+      // Only initialize timestamp once per session for BCSALGO continuity
+      if (live_tracker->proc_start_timestampMs == 0) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        live_tracker->proc_start_timestampMs = tv.tv_sec*1e6*1ll + tv.tv_usec*1ll;
+        log::debug("Connection 0x{:04x}: proc_start_timestampMs initialized", connection_handle);
+      }
     } else if (event_view.GetState() == Enable::DISABLED) {
       if (event_view.GetStatus() == ErrorCode::SUCCESS) {
         // local or remote host requested it.
@@ -2283,6 +2242,10 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
         }
         live_tracker->procedure_disable_in_progress = false;
         reset_tracker_on_stopped(*live_tracker);
+        // Clear config_id if tracker is in HOLD state after successful disable
+        if (live_tracker->state == CsTrackerState::HOLD) {
+          live_tracker->used_config_id = kInvalidConfigId;
+        }
       } else {
         auto req_it = cs_requester_trackers_.find(connection_handle);
         if (req_it != cs_requester_trackers_.end() &&
@@ -2296,37 +2259,16 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
                     connection_handle, REASON_INTERNAL_ERROR,
                     ChannelSoundingStopReason::REASON_PROCEDURE_ENABLE_COMPLETE_FAILED);
           } else {
-            uint32_t retry_interval;
-
-            // Special handling for CONNECTION_LIMIT_EXCEEDED - use short retry interval
-            if (event_view.GetStatus() == ErrorCode::CONNECTION_LIMIT_EXCEEDED) {
-              // Use command retry interval instead of measurement interval
-              retry_interval = kCommandRetryIntervalMs;  // 300ms base
-              log::info("CONNECTION_LIMIT_EXCEEDED: using short base retry_interval {} ms", retry_interval);
-            } else {
-              // For other errors, use measurement interval
-              retry_interval = req_it->second.interval_ms;
-            }
-
-            // Calculate safe delay considering all other active connections
-            uint32_t additional_delay = global_cs_scheduler_.calculate_safe_enable_delay(
-                connection_handle, retry_interval);
-            if (additional_delay > retry_interval) {
-              uint32_t original_interval = retry_interval;
-              retry_interval = additional_delay;
-              log::info("Connection 0x{:04x}: Adjusted retry from {} ms to {} ms to avoid conflicts",
-                        connection_handle, original_interval, retry_interval);
-            }
-
+            uint32_t retry_interval = (req_it->second.calculated_schedule_interval_ms > 0) ?
+                                       req_it->second.calculated_schedule_interval_ms :
+                                       req_it->second.interval_ms;
             req_it->second.procedure_schedule_guard_alarm->Cancel();
-            log::info("Connection 0x{:04x}: schedule next procedure enable after {} ms",
+            log::info("Connection 0x{:04x}: Retry procedure enable after {} ms",
                       connection_handle, retry_interval);
             req_it->second.procedure_schedule_guard_alarm->Schedule(
                     common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
                                  connection_handle, Enable::ENABLED),
                     std::chrono::milliseconds(retry_interval));
-            // Reserve this time slot in the global scheduler
-            global_cs_scheduler_.schedule_enable(connection_handle, retry_interval);
           }
         }
       }
@@ -2473,38 +2415,8 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
 
       if (should_schedule_procedure_enable ||
           procedure_done_status == CsProcedureDoneStatus::ABORTED) {
-        // For multilink support: Don't send CS enable immediately when subevents complete.
-        // Instead, use the properly calculated schedule_interval that includes guard time
-        // to ensure the controller has finished cleanup before the next CS enable request.
-        uint32_t schedule_interval = live_tracker->interval_ms;
-        if (live_tracker->n_procedure_count > 1) {
-          schedule_interval = live_tracker->n_procedure_count *
-                             live_tracker->procedure_interval *
-                             live_tracker->conn_interval_ *
-                             kConnIntervalUnitMs +
-                             kProcedureScheduleGuardMs;
-          log::debug("multilink: calculated guard interval is {} ms", schedule_interval);
-        }
-
-        // Calculate safe delay considering all other active connections
-        uint32_t additional_delay = global_cs_scheduler_.calculate_safe_enable_delay(
-            connection_handle, schedule_interval);
-        if (additional_delay > schedule_interval) {
-          uint32_t original_interval = schedule_interval;
-          schedule_interval = additional_delay;
-          log::info("Connection 0x{:04x}: Adjusted schedule_interval from {} ms to {} ms (subevent completion)",
-                    connection_handle, original_interval, schedule_interval);
-        }
-
         live_tracker->procedure_schedule_guard_alarm->Cancel();
-        log::info("multilink: schedule next procedure enable after {} ms (from subevent completion)",
-                  schedule_interval);
-        live_tracker->procedure_schedule_guard_alarm->Schedule(
-                common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
-                             connection_handle, Enable::ENABLED),
-                std::chrono::milliseconds(schedule_interval));
-        // Reserve this time slot in the global scheduler
-        global_cs_scheduler_.schedule_enable(connection_handle, schedule_interval);
+        send_le_cs_procedure_enable(connection_handle, Enable::ENABLED);
       }
     }
     ProcedureAbortReason procedure_abort_reason =
@@ -3980,8 +3892,6 @@ struct DistanceMeasurementManagerImpl::impl : bluetooth::hal::RangingHalCallback
   uint8_t local_supported_sw_time_ = 0;
   uint8_t local_max_antenna_paths_supported_ = 0x01;
   bool is_local_cs_ready_ = false;
-  // Global scheduler to coordinate CS enables across all connections
-  GlobalCsProcedureScheduler global_cs_scheduler_;
   // A table that maps num_antennas_supported and remote_num_antennas_supported to Antenna
   // Configuration Index.
   uint8_t cs_tone_antenna_config_mapping_table_[4][4] = {

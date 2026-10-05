@@ -46,6 +46,7 @@
 #include "stack/include/btm_ble_api_types.h"
 #include "stack/include/gatt_api.h"
 #include "stack/include/main_thread.h"
+#include "osi/include/properties.h"
 
 using namespace bluetooth;
 using bluetooth::csis::CsisClient;
@@ -406,6 +407,11 @@ public:
          static_cast<uint8_t>(VaSessionState::VA_SESSION_RESET);
      va_name_ = va_name;
 
+     bool isVagInitPts = osi_property_get_bool("persist.bluetooth.vaps.vag.init.pts", false);
+     if (isVagInitPts) {
+        log::info("setting session state for vag pts:{}", va_session_state);
+        va_session_state = static_cast<uint8_t>(VaSessionState::VA_SESSION_READY);
+     }
      for (auto& [bda, remote_client] : remote_clients_) {
        uint16_t ccc_va_session_state = remote_client.ccc_values_[kVaSessionStateCharacteristic];
        log::info("device:{}", bda);
@@ -1158,6 +1164,7 @@ public:
        }
 
      remote_client->handling_control_point_command_ = true;
+     bool isVagInitPts = osi_property_get_bool("persist.bluetooth.vaps.vag.init.pts", false);
 
      switch (command.ctp_opcode_) {
        case CtpOpcode::START_VA_SESSION:
@@ -1168,6 +1175,9 @@ public:
          break;
        case CtpOpcode::INITIALIZE_VA_SESSION:
          OnInitializeVaSession(bda);
+         if (isVagInitPts) {
+           OnStartVaSession(bda);
+         }
          break;
      }
    }
