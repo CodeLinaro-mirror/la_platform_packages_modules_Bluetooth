@@ -208,4 +208,9 @@ bool A2DP_VendorInitCodecConfigAptxAdaptive(AvdtpSepConfig* p_cfg);
 // and returns proper status.
 tA2DP_STATUS A2DP_VendorIsCodecConfigMatchAptxAdaptive(const uint8_t* p_codec_info);
 
+// Returns true if the running SoC (persist.vendor.qcom.bluetooth.soc_ver) has no
+// working aptX Adaptive implementation and the codec must be disabled by the
+// stack (kept out of GET_ALL_CAPABILITIES / Developer Options / codec picker).
+bool A2DP_IsAptxAdaptiveDisabledForSoc();
+
 #endif  // A2DP_VENDOR_APTX_ADAPTIVE_H
