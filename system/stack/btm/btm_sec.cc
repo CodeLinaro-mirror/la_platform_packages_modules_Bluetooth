@@ -2385,6 +2385,11 @@ void btm_sec_rmt_name_request_complete(const RawAddress* p_bd_addr,
         return;
       }
 
+      if (status == HCI_ERR_CONTROLLER_BUSY) {
+        log::warn("btm_sec_rmt_name_request_complete() Wait for incoming connection");
+        return;
+      }
+
       if (status != HCI_SUCCESS) {
         btm_sec_cb.change_pairing_state(BTM_PAIR_STATE_IDLE);
 
@@ -3746,7 +3751,7 @@ void btm_sec_connected(const RawAddress& bda, uint16_t handle,
       return;
     }
     /* wait for incoming connection without resetting pairing state */
-    else if (status == HCI_ERR_CONNECTION_EXISTS) {
+    else if ((status == HCI_ERR_CONNECTION_EXISTS)  || (status ==  HCI_ERR_CONTROLLER_BUSY)) {
       log::warn(
           "Security Manager: btm_sec_connected: Wait for incoming connection");
       return;
