@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include <tuple>
+
 #include "common/time_util.h"
 #include "osi/include/allocator.h"
 #include "stack/include/a2dp_vendor_ldac_constants.h"
@@ -126,6 +128,108 @@ TEST_F(A2dpLdacTest, a2dp_source_read_underflow) {
 
   ASSERT_EQ(enqueue_cb_invoked, 0);
 }
+
+// LDAC Dev-UI quality modes (btav_a2dp_codec_config_t::codec_specific_1).
+constexpr int64_t kLdacQualityHigh = 1000;
+constexpr int64_t kLdacQualityMid = 1001;
+constexpr int64_t kLdacQualityLow = 1002;
+constexpr int64_t kLdacQualityAbr = 1003;
+
+// Constant-bitrate modes: min == max, sample-rate dependent value.
+TEST(A2dpLdacBitRateRangeTest, ConstantBitrateHighQuality) {
+  // 44100 / 88200 select the lower ceiling; any other rate uses the higher one.
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityHigh, 44100).min_bitrate, 909000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityHigh, 44100).max_bitrate, 909000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityHigh, 88200).max_bitrate, 909000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityHigh, 48000).min_bitrate, 990000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityHigh, 48000).max_bitrate, 990000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityHigh, 96000).max_bitrate, 990000);
+}
+
+TEST(A2dpLdacBitRateRangeTest, ConstantBitrateMidQuality) {
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityMid, 44100).min_bitrate, 606000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityMid, 44100).max_bitrate, 606000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityMid, 88200).max_bitrate, 606000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityMid, 48000).min_bitrate, 660000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityMid, 48000).max_bitrate, 660000);
+}
+
+TEST(A2dpLdacBitRateRangeTest, ConstantBitrateLowQuality) {
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityLow, 44100).min_bitrate, 303000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityLow, 44100).max_bitrate, 303000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityLow, 88200).max_bitrate, 303000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityLow, 48000).min_bitrate, 330000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityLow, 48000).max_bitrate, 330000);
+}
+
+// For every constant-bitrate mode the AIDL contract requires min == max.
+class A2dpLdacCbrMinEqualsMaxTest : public ::testing::TestWithParam<std::tuple<int64_t, int>> {};
+
+TEST_P(A2dpLdacCbrMinEqualsMaxTest, ConstantBitrateMinEqualsMax) {
+  auto [mode, rate] = GetParam();
+  auto range = A2DP_VendorGetBitRateRangeLdac(mode, rate);
+  EXPECT_EQ(range.min_bitrate, range.max_bitrate);
+}
+
+INSTANTIATE_TEST_SUITE_P(A2dpLdacBitRateRangeTest, A2dpLdacCbrMinEqualsMaxTest,
+                         ::testing::Combine(::testing::Values(kLdacQualityHigh, kLdacQualityMid,
+                                                              kLdacQualityLow),
+                                            ::testing::Values(44100, 48000, 88200, 96000)));
+
+// ABR: the stream bitrate varies between the LOW and HIGH bounds. The AIDL
+// contract requires 0 < minBitrate <= maxBitrate for ABR.
+class A2dpLdacAbrSampleRateTest : public ::testing::TestWithParam<int> {};
+
+TEST_P(A2dpLdacAbrSampleRateTest, AbrRateAwareRange) {
+  int rate = GetParam();
+  auto range = A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, rate);
+  EXPECT_GT(range.min_bitrate, 0);
+  EXPECT_LE(range.min_bitrate, range.max_bitrate);
+}
+
+INSTANTIATE_TEST_SUITE_P(A2dpLdacBitRateRangeTest, A2dpLdacAbrSampleRateTest,
+                         ::testing::Values(44100, 48000, 88200, 96000));
+
+TEST(A2dpLdacBitRateRangeTest, AbrRateAwareRangeExactValues) {
+  auto low_rate = A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, 44100);
+  EXPECT_EQ(low_rate.min_bitrate, 303000);
+  EXPECT_EQ(low_rate.max_bitrate, 909000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, 88200).min_bitrate, 303000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, 88200).max_bitrate, 909000);
+
+  auto high_rate = A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, 48000);
+  EXPECT_EQ(high_rate.min_bitrate, 330000);
+  EXPECT_EQ(high_rate.max_bitrate, 990000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, 96000).min_bitrate, 330000);
+  EXPECT_EQ(A2DP_VendorGetBitRateRangeLdac(kLdacQualityAbr, 96000).max_bitrate, 990000);
+}
+
+// codec_specific_1 == 0 means the quality mode is unset ("don't care"). The
+// encoder falls back to a system-property default in that case (see
+// a2dp_vendor_ldac_encoder.cc's `codec_specific_1 != 0` guard), so the helper
+// must not treat 0 as "mode 0 == HIGH" via the %10 mapping below; it returns
+// the undefined {0, 0} range so the audio HAL is not given a bitrate hint.
+TEST(A2dpLdacBitRateRangeTest, UnsetModeReturnsUndefinedRange) {
+  auto range = A2DP_VendorGetBitRateRangeLdac(0, 44100);
+  EXPECT_EQ(range.min_bitrate, 0);
+  EXPECT_EQ(range.max_bitrate, 0);
+}
+
+// codec_specific_1 values outside 100x (but nonzero) still resolve through the
+// low decimal digit, matching the encoder's `codec_specific_1 % 10` mapping.
+// Digits 0/1/2/3 alias the HIGH/MID/LOW/ABR modes; other digits fall through
+// to the ABR range (the switch default).
+class A2dpLdacUnmappedModeTest : public ::testing::TestWithParam<int64_t> {};
+
+TEST_P(A2dpLdacUnmappedModeTest, NonzeroUnmappedModeUsesAbrRange) {
+  int64_t mode = GetParam();
+  auto range = A2DP_VendorGetBitRateRangeLdac(mode, 44100);
+  EXPECT_EQ(range.min_bitrate, 303000);
+  EXPECT_EQ(range.max_bitrate, 909000);
+}
+
+INSTANTIATE_TEST_SUITE_P(A2dpLdacBitRateRangeTest, A2dpLdacUnmappedModeTest,
+                         ::testing::Values(int64_t{55}, int64_t{9999}));
 
 }  // namespace testing
 }  // namespace bluetooth

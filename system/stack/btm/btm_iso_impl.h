@@ -800,6 +800,31 @@ struct iso_impl {
     btsnd_hcic_term_big(big_id, reason);
   }
 
+  void handle_create_big_command_status(uint8_t big_handle, uint8_t status) {
+    // Only failures are expected here. A success command status is followed by
+    // a real BIG Create Complete event and must not be turned into a synthetic
+    // completion (which would carry no connection handles and mislead the
+    // broadcaster into the success path).
+    if (status == HCI_SUCCESS) {
+      log::warn("Ignoring success command status for big_handle={}", big_handle);
+      return;
+    }
+
+    log::error("LE_CREATE_BIG command status failure: big_handle={} status={}", big_handle,
+               hci_status_code_text(static_cast<tHCI_STATUS>(status)));
+
+    if (!big_callbacks_) {
+      log::error("No BIG callbacks registered for big_handle={}", big_handle);
+      return;
+    }
+
+    struct big_create_cmpl_evt evt = {};
+    evt.status = status;
+    evt.big_id = big_handle;
+
+    big_callbacks_->OnBigEvent(kIsoEventBigOnCreateCmpl, &evt);
+  }
+
   void on_iso_event(uint8_t code, uint8_t* packet, uint16_t packet_len) {
     switch (code) {
       case HCI_BLE_CIS_EST_EVT:

@@ -1089,6 +1089,10 @@ private:
 
   static class BroadcastStateMachineCallbacks : public IBroadcastStateMachineCallbacks {
     void OnStateMachineCreateStatus(uint32_t broadcast_id, bool initialized) override {
+      if (!instance) {
+        return;
+      }
+
       auto pending_broadcast = std::find_if(
               instance->pending_broadcasts_.begin(), instance->pending_broadcasts_.end(),
               [broadcast_id](auto& sm) { return sm->GetBroadcastId() == broadcast_id; });
@@ -1204,6 +1208,18 @@ private:
       if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
         instance->le_audio_source_hal_client_->ConfirmStreamingRequest(false);
       }
+    }
+
+    void OnBigCreationFailed(uint32_t broadcast_id, uint8_t status) {
+      log::error("BIG creation failed: broadcast_id={} status={}", broadcast_id, status);
+      instance->UpdateAudioActiveStateInPublicAnnouncement();
+      if (instance->le_audio_source_hal_client_) {
+        instance->le_audio_source_hal_client_->CancelStreamingRequest();
+      }
+      instance->callbacks_->OnBroadcastStateChanged(
+              broadcast_id,
+              static_cast<bluetooth::le_audio::BroadcastState>(
+                      BroadcastStateMachine::State::CONFIGURED));
     }
 
     void OnAnnouncementUpdated(uint32_t broadcast_id) {
