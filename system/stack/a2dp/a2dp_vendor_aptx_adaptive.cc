@@ -46,6 +46,7 @@
 #include <bluetooth/log.h>
 #include <string.h>
 
+#include "osi/include/properties.h"
 #include "stack/include/a2dp_vendor.h"
 #include "stack/include/a2dp_vendor_aptx_adaptive_encoder.h"
 #include "stack/include/a2dp_codec_api.h"
@@ -648,6 +649,33 @@ bool A2DP_VendorInitCodecConfigAptxAdaptive(AvdtpSepConfig* p_cfg) {
 #endif
 
   return true;
+}
+
+// Certain chip versions have no working aptX Adaptive implementation. The BT
+// transport HAL publishes the chip-version string in
+// persist.vendor.qcom.bluetooth.soc_ver (DataHandler::SetSocVersionProperty ->
+// convertChipVerToStr). Returns true if the running SoC is on the aptX Adaptive
+// unsupported list, so callers (e.g. A2dpCodecs::init) can disable the codec's
+// SEP and keep it out of GET_ALL_CAPABILITIES, Developer Options and the codec
+// picker.
+//
+bool A2DP_IsAptxAdaptiveDisabledForSoc() {
+  static const char* const kAptxAdaptiveUnsupportedSocVersions[] = {
+      "COMANCHE_VER_1_0_1", "COMANCHE_VER_1_1",     "COMANCHE_VER_1_2_UMC",
+      "COMANCHE_VER_1_2",   "COMANCHE_VER_1_3_UMC", "COMANCHE_VER_1_3_TSMC",
+      "COMANCHE_VER_1_3",   "APACHE_VER_1_0_0",     "APACHE_VER_1_1_0",
+      "APACHE_VER_1_2_0",   "APACHE_VER_1_2_1",     "CHEROKEE_VER_2_0",
+      "CHEROKEE_VER_2_0_1", "CHEROKEE_VER_2_1",     "CHEROKEE_VER_2_1_1",
+  };
+  char soc_ver[PROPERTY_VALUE_MAX] = {'\0'};
+  osi_property_get("persist.vendor.qcom.bluetooth.soc_ver", soc_ver, "");
+  for (const char* unsupported : kAptxAdaptiveUnsupportedSocVersions) {
+    if (!strcmp(soc_ver, unsupported)) {
+      log::info("aptX Adaptive disabled for unsupported SoC {}", soc_ver);
+      return true;
+    }
+  }
+  return false;
 }
 
 A2dpCodecConfigAptxAdaptive::A2dpCodecConfigAptxAdaptive(btav_a2dp_codec_priority_t codec_priority)

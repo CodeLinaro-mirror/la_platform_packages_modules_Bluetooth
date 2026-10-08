@@ -301,6 +301,8 @@ public class DistanceMeasurementManager {
         Set<DistanceMeasurementTracker> set = mRssiTrackers.get(tracker.mIdentityAddress);
         if (!set.add(tracker)) {
             Log.w(TAG, "startRssiTracker(): Already registered");
+            invokeStartFail(tracker.mCallback, tracker.mDevice,
+                    BluetoothStatusCodes.ERROR_DISTANCE_MEASUREMENT_INTERNAL);
             return;
         }
         mNativeInterface.startDistanceMeasurement(
@@ -317,6 +319,8 @@ public class DistanceMeasurementManager {
         Set<DistanceMeasurementTracker> set = mCsTrackers.get(tracker.mIdentityAddress);
         if (!set.add(tracker)) {
             Log.w(TAG, "startCsTracker(): Already registered");
+            invokeStartFail(tracker.mCallback, tracker.mDevice,
+                    BluetoothStatusCodes.ERROR_DISTANCE_MEASUREMENT_INTERNAL);
             return;
         }
 	ChannelSoundingParams params = tracker.getChannelSoundingParams();

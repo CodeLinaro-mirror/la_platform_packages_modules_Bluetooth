@@ -36,6 +36,8 @@ class BtmInterface {
 public:
   virtual BtmDevice* FindDevice(const RawAddress& bd_addr) = 0;
   virtual bool IsPhyHDTSupported(const RawAddress& remote_bda, tBT_TRANSPORT transport) = 0;
+  virtual bool IsHdtPacketFormat1Supported(const RawAddress& remote_bda,
+                                            tBT_TRANSPORT transport) = 0;
   virtual bool SecIsLeSecurityPending(const RawAddress& bd_addr) = 0;
   virtual void AclDisconnectFromHandle(uint16_t handle, tHCI_STATUS reason) = 0;
 
@@ -53,6 +55,8 @@ public:
   MOCK_METHOD((BtmDevice*), FindDevice, (const RawAddress& bd_addr), (override));
   MOCK_METHOD((bool), IsPhyHDTSupported, (const RawAddress& remote_bda, tBT_TRANSPORT transport),
               (override));
+  MOCK_METHOD((bool), IsHdtPacketFormat1Supported,
+              (const RawAddress& remote_bda, tBT_TRANSPORT transport), (override));
   MOCK_METHOD((bool), SecIsLeSecurityPending, (const RawAddress& bd_addr), (override));
   MOCK_METHOD((void), AclDisconnectFromHandle, (uint16_t handle, tHCI_STATUS reason), (override));
 

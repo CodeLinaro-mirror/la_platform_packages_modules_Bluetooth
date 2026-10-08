@@ -823,7 +823,11 @@ void btif_update_remote_properties(const RawAddress& bdaddr, BD_NAME bd_name, DE
   BTIF_STORAGE_FILL_PROPERTY(&prop_name, BT_PROPERTY_TYPE_OF_DEVICE, sizeof(uint32_t),
                              &remote_dev_type);
   if (btif_storage_get_remote_device_property(bdaddr, &prop_name) == BT_STATUS_SUCCESS) {
-    dev_type = remote_dev_type | device_type;
+    if (device_type != BT_DEVICE_TYPE_UNKNOWN && remote_dev_type != device_type) {
+      dev_type = device_type;
+    } else {
+      dev_type = remote_dev_type | device_type;
+    }
   } else {
     dev_type = device_type;
   }

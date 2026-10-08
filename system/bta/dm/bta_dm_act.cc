@@ -1026,6 +1026,10 @@ static void adjust_roles(bool delay_role_switch) {
           break;
       }
     } else {
+      if (bta_dm_cb.switch_delay_timer == nullptr) {
+        log::warn("switch_delay_timer is null, skipping role switch delay for peer:{}", link.addr);
+        continue;
+      }
       uint64_t delay =
               bluetooth::os::GenerateRandom() % (MAX_SWITCH_DELAY_MS - MIN_SWITCH_DELAY_MS) +
               MIN_SWITCH_DELAY_MS;
@@ -1095,6 +1099,13 @@ static void bta_dm_adjust_roles() {
 }
 
 static void bta_dm_adjust_roles_delayed() {
+  // switch_delay_timer may be null if bta_dm_deinit_cb() was called (BT disabling)
+  // while a pending bta_dm_acl_down event is still being processed.
+  if (bta_dm_cb.switch_delay_timer == nullptr) {
+    log::warn("switch_delay_timer is null, skipping role switch delay (BT may be disabling)");
+    return;
+  }
+
   // Initiating immediate role switch with certain remote devices has caused issues due to role
   // switch colliding with link encryption setup and causing encryption and in turn link loss.
   if (!com_android_bluetooth_flags_role_contention_policy()) {

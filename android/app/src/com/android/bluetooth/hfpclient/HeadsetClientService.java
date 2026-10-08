@@ -913,26 +913,45 @@ public class HeadsetClientService extends ConnectableProfile {
         return getStateMachine(device, false);
     }
 
+    /**
+     * Resolves the device to the canonical address native BR/EDR connections use, so the same
+     * physical device always maps to one state machine regardless of which BD_ADDR alias (e.g.
+     * LE RPA vs. resolved identity/BR-EDR address) the caller used. Falls back to the original
+     * device if no identity mapping is known yet.
+     */
+    private BluetoothDevice getCanonicalDevice(BluetoothDevice device) {
+        if (device == null) {
+            return null;
+        }
+        byte[] brEdrAddress = getAdapterService().getByteBrEdrAddress(device);
+        if (brEdrAddress == null) {
+            return device;
+        }
+        BluetoothDevice canonical = getAdapterService().getDeviceFromByte(brEdrAddress);
+        return canonical != null ? canonical : device;
+    }
+
     private HeadsetClientStateMachine getStateMachine(
             BluetoothDevice device, boolean isConnectionEvent) {
         if (device == null) {
             Log.e(TAG, "getStateMachine failed: Device cannot be null");
             return null;
         }
+        BluetoothDevice canonicalDevice = getCanonicalDevice(device);
 
         HeadsetClientStateMachine sm;
         synchronized (mStateMachineMap) {
-            sm = mStateMachineMap.get(device);
+            sm = mStateMachineMap.get(canonicalDevice);
         }
 
         if (sm != null) {
-            Log.d(TAG, "Found SM for device " + device);
+            Log.d(TAG, "Found SM for device " + canonicalDevice);
         } else if (isConnectionEvent) {
             // The only time a new state machine should be created when none was found is for
             // connection events.
-            sm = allocateStateMachine(device);
+            sm = allocateStateMachine(canonicalDevice);
             if (sm == null) {
-                Log.e(TAG, "SM could not be allocated for device " + device);
+                Log.e(TAG, "SM could not be allocated for device " + canonicalDevice);
             }
         }
         return sm;

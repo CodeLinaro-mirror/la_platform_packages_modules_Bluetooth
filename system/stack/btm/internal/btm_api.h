@@ -450,6 +450,18 @@ void BTM_EScoConnRsp(uint16_t sco_inx, tHCI_STATUS hci_status, enh_esco_params_t
 
 /*******************************************************************************
  *
+ * Function         BTM_IsHdtPacketFormat1Supported
+ *
+ * Description      This function is called to check HDT packet format 1 support
+ *                  from peer device
+ * Returns          True when HDT packet format 1 is supported, false otherwise
+ *
+ ******************************************************************************/
+[[nodiscard]] bool BTM_IsHdtPacketFormat1Supported(const RawAddress& remote_bda,
+                                                   tBT_TRANSPORT transport);
+
+/*******************************************************************************
+ *
  * Function         BTM_RequestPeerSCA
  *
  * Description      This function is called to request sleep clock accuracy

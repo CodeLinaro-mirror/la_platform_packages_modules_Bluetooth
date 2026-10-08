@@ -7008,6 +7008,18 @@ public:
         log::warn(" Stop the stream to group_id: {} and reconfigure from {} ->  {}",
                   group->group_id_, ToString(configuration_context_type_),
                   ToString(new_config_context));
+        /* Symmetric to the GAME-entry notify above: some earbuds drop MEDIA/GAME
+         * from their advertised context once synced to a broadcast, so
+         * remote_metadata is empty here too when GAME ends. Without this, the
+         * upper layer (Java) never learns of the MEDIA transition and never
+         * restores the broadcast active device with the Audio Framework, leaving
+         * the broadcast permanently stuck on unicast. */
+        if (LeAudioBroadcaster::IsLeAudioBroadcasterRunning() &&
+            configuration_context_type_ == LeAudioContextType::GAME &&
+            new_config_context == LeAudioContextType::MEDIA) {
+          game_broadcast_inactive_notified_ = false;
+          callbacks_->OnMetadataUpdate(LeAudioContextToIntContent(LeAudioContextType::MEDIA));
+        }
         initReconfiguration(group, configuration_context_type_);
         setConfigurationContextType(new_config_context);
       }

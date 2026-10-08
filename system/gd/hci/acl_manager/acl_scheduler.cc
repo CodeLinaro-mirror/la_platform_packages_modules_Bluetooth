@@ -120,9 +120,20 @@ struct AclScheduler::impl {
             },
             [&]() { cancel_connection(); },
             [&](auto /* entry */) { cancel_connection_completed(); });
-    if (!ok) {
-      log::error("Attempted to cancel connection to {} that does not exist", address);
+    if (ok) {
+      return;
     }
+    // Only reachable when an incoming connection's Accept Connection Request failed (Command
+    // Disallowed / similar), which means the controller will never send a matching Connection
+    // Complete for it. If the address was registered as a pending incoming connection, clear it
+    // here - otherwise it blocks every future outgoing operation (ACL connections *and* Remote
+    // Name Requests, to any peer) until AclScheduler::Stop() runs.
+    if (incoming_connecting_address_set_.erase(address) != 0) {
+      log::info("Cleared pending incoming connection to {} after failed accept", address);
+      try_dequeue_next_operation();
+      return;
+    }
+    log::error("Attempted to cancel connection to {} that does not exist", address);
   }
 
   // Cancel an outstanding/queued OUTGOING Create Connection to this address, if any, so it does
