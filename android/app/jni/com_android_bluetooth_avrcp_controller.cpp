@@ -149,9 +149,7 @@ static void btavrcp_setplayerapplicationsetting_rsp_callback(const RawAddress& /
 }
 
 static void btavrcp_playerapplicationsetting_callback(const RawAddress& bd_addr, uint8_t num_attr,
-                                                      btrc_player_app_attr_t* app_attrs,
-                                                      uint8_t /* num_ext_attr */,
-                                                      btrc_player_app_ext_attr_t* /* ext_attrs */) {
+                                                      btrc_player_app_attr_t* app_attrs) {
   if (!g_callbacks_enabled.load(std::memory_order_acquire)) {
     log::verbose("callbacks disabled; dropping btavrcp_playerapplicationsetting_callback");
     return;

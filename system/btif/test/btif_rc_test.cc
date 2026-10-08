@@ -26,6 +26,7 @@
 #include <bluetooth/types/address.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <future>
 
@@ -87,17 +88,28 @@ bool btif_av_is_sink_enabled(void) { return true; }
 RawAddress btif_av_sink_active_peer(void) { return RawAddress(); }
 RawAddress btif_av_source_active_peer(void) { return RawAddress(); }
 bool btif_av_stream_started_ready(const A2dpType /*local_a2dp_type*/) { return false; }
-bt_status_t btif_transfer_context(tBTIF_CBACK* /*p_cback*/, uint16_t /*event*/, char* /*p_params*/,
-                                  int /*param_len*/, tBTIF_COPY_CBACK* /*p_copy_cback*/) {
-  return BT_STATUS_SUCCESS;
-}
 std::set<RawAddress> btif_av_source_active_peers(void) { return std::set<RawAddress>(); }
 bool btif_av_source_is_active_peer(const RawAddress& peer_address) { return true;}
 bool btif_av_is_connected(const RawAddress& peer_address) { return true;}
 bool btif_av_stream_started_ready(const RawAddress& peer_address) { return false; }
-bt_status_t btif_transfer_context(tBTIF_CBACK* p_cback, uint16_t event,
-                                  char* p_params, int param_len,
-                                  tBTIF_COPY_CBACK* p_copy_cback) {
+bt_status_t btif_transfer_context(tBTIF_CBACK* p_cback, uint16_t event, char* p_params,
+                                  int param_len, tBTIF_COPY_CBACK* p_copy_cback) {
+  inc_func_call_count("btif_transfer_context");
+  if (p_cback) {
+    if (param_len > 0 && p_params != nullptr) {
+      std::vector<char> buf(param_len);
+      if (p_copy_cback) {
+        p_copy_cback(event, buf.data(), p_params);
+      } else {
+        std::copy_n(p_params, param_len, buf.begin());
+      }
+      p_cback(event, buf.data());
+    } else {
+      p_cback(event, nullptr);
+    }
+  }
+  return BT_STATUS_SUCCESS;
+}
 bool btif_av_src_sink_coexist_enabled() { return true; }
 bool btif_av_is_connected_addr(const RawAddress& /*peer_address*/,
                                const A2dpType /*local_a2dp_type*/) {
@@ -153,9 +165,7 @@ static btrc_ctrl_callbacks_t default_btrc_ctrl_callbacks = {
         .setplayerappsetting_rsp_cb = [](const RawAddress& /* bd_addr */,
                                          uint8_t /* accepted */) { FAIL(); },
         .playerapplicationsetting_cb = [](const RawAddress& /* bd_addr */, uint8_t /* num_attr */,
-                                          btrc_player_app_attr_t* /* app_attrs */,
-                                          uint8_t /* num_ext_attr */,
-                                          btrc_player_app_ext_attr_t* /* ext_attrs */) { FAIL(); },
+                                          btrc_player_app_attr_t* /* app_attrs */) { FAIL(); },
         .playerapplicationsetting_changed_cb =
                 [](const RawAddress& /* bd_addr */, const btrc_player_settings_t& /* vals */) {
                   FAIL();
