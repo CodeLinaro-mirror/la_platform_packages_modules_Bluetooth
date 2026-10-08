@@ -1621,7 +1621,16 @@ public class GattService extends ProfileService {
                         new Runnable() {
                             @Override
                             public void run() {
-                                mNativeInterface.gattClientGetGattDb(connId);
+                                int state = BluetoothAdapter.STATE_OFF;
+                                if (mAdapterService != null) {
+                                    state = mAdapterService.getState();
+                                }
+
+                                if(state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_BLE_ON) {
+                                    mNativeInterface.gattClientGetGattDb(connId);
+                                } else {
+                                    Log.w(TAG, "onSearchCompleted() - Disallowed in BT state: " + state);
+                                }
                             }
                         });
         t.start();
@@ -2257,7 +2266,17 @@ public class GattService extends ProfileService {
                 clientIf,
                 BluetoothProtoEnums.CONNECTION_STATE_DISCONNECTING,
                 -1);
-        mNativeInterface.gattClientDisconnect(clientIf, address, connId != null ? connId : 0);
+
+        int state = BluetoothAdapter.STATE_OFF;
+        if (mAdapterService != null) {
+            state = mAdapterService.getState();
+        }
+
+        if(state == BluetoothAdapter.STATE_ON || state == BluetoothAdapter.STATE_BLE_ON) {
+           mNativeInterface.gattClientDisconnect(clientIf, address, connId != null ? connId : 0);
+        } else {
+            Log.w(TAG, "clientDisconnect() - Disallowed in BT state: " + state);
+        }
     }
 
     @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
