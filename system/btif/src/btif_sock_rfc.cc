@@ -30,6 +30,7 @@
 #include "bta/include/bta_rfcomm_scn.h"
 #include "btif/include/btif_metrics_logging.h"
 #include "btif/include/btif_sock.h"
+#include "btif/include/btif_storage.h"
 #include "btif/include/btif_sock_l2cap.h"
 #include "btif/include/btif_sock_logging.h"
 #include "btif/include/btif_sock_sdp.h"
@@ -565,6 +566,20 @@ static uint32_t on_srv_rfc_connect(tBTA_JV_RFCOMM_SRV_OPEN* p_open, uint32_t id)
   accept_rs = create_srv_accept_rfc_slot(srv_rs, &p_open->rem_bda, p_open->handle,
                                          p_open->new_listen_handle);
   if (!accept_rs) {
+    return 0;
+  }
+
+  // Reject the incoming RFCOMM connection if the remote device is no longer
+  // bonded (e.g. user called removeBond/cancelBond before RFCOMM was set up).
+  // This mirrors the check HFP performs in HeadsetClientStateMachine and
+  // closes the race where iOS fires L2CAP/RFCOMM connect within milliseconds
+  // of link-key generation, before the cancel reaches the stack.
+  if (btif_in_fetch_bonded_device(p_open->rem_bda.ToString()) !=
+      BT_STATUS_SUCCESS) {
+    log::warn(
+        "Rejecting incoming RFCOMM connection from unbonded device {}, scn: {}",
+        accept_rs->addr, accept_rs->scn);
+    cleanup_rfc_slot(accept_rs);
     return 0;
   }
 

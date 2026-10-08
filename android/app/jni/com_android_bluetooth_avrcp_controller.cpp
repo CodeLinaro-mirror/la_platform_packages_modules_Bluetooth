@@ -686,9 +686,13 @@ static void btavrcp_now_playing_content_changed_callback(const RawAddress& bd_ad
   }
 
   log::info("");
-
+  std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
   if (!sCallbackEnv.valid()) {
+    return;
+  }
+  if (!sCallbacksObj) {
+    log::error("sCallbacksObj is null");
     return;
   }
   ScopedLocalRef<jbyteArray> addr(sCallbackEnv.get(),
@@ -767,7 +771,12 @@ static void btavrcp_search_response_callback(const RawAddress& bd_addr, uint8_t 
   }
 
   log::info("status: {}, uid_counter: {}, num_items: {}", status, uid_counter, num_items);
+  std::shared_lock<std::shared_timed_mutex> lock(sCallbacks_mutex);
   CallbackEnv sCallbackEnv(__func__);
+  if (!sCallbacksObj) {
+    log::error("sCallbacksObj is null");
+    return;
+  }
   if (!sCallbackEnv.valid()) return;
 
   ScopedLocalRef<jbyteArray> addr(
