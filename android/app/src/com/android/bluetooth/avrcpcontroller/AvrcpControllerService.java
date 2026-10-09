@@ -164,6 +164,13 @@ public class AvrcpControllerService extends ProfileService {
         mBrowseTree = new BrowseTree(null);
         setAvrcpControllerService(this);
 
+        // Register volume change receiver immediately so BTSink volume is always
+        // synced with system volume, even if no AVRCP Controller state machine
+        // is created (the native layer may not report a Controller connection
+        // when both AVRCP Target and Controller profiles are enabled).
+        IntentFilter volumeFilter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+        registerReceiver(mBroadcastReceiver, volumeFilter);
+
         // Start the media browser service.
         Intent startIntent = new Intent(this, BluetoothMediaBrowserService.class);
         startService(startIntent);
@@ -228,6 +235,14 @@ public class AvrcpControllerService extends ProfileService {
             if (action.equals(AudioManager.ACTION_VOLUME_CHANGED)) {
                 int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
                 if (streamType == AudioManager.STREAM_MUSIC) {
+                        int newVolume = intent.getIntExtra(
+                        AudioManager.EXTRA_VOLUME_STREAM_VALUE, -1);
+                        // Push volume to BTSink HAL so audio output level tracks the slider
+                        A2dpSinkService a2dpSinkService =
+                                A2dpSinkService.getA2dpSinkService();
+                        if (a2dpSinkService != null && newVolume >= 0) {
+                            a2dpSinkService.sendSinkVolumeChange(newVolume);
+                        }
                         synchronized (mDeviceStateMap) {
                             for (AvrcpControllerStateMachine sm : mDeviceStateMap.values()) {
                                 if (sm != null) {

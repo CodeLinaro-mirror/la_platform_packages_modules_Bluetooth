@@ -236,6 +236,16 @@ public class A2dpSinkService extends ProfileService {
         }
     }
 
+        /** Push a volume index change to the BTSink HAL so the audio output level follows. */
+    public void sendSinkVolumeChange(int volumeIndex) {
+        synchronized (mStreamHandlerLock) {
+            Message msg = mA2dpSinkStreamHandler.obtainMessage(
+                    A2dpSinkStreamHandler.SINK_VOLUME_CHANGE);
+            msg.arg1 = volumeIndex;
+            mA2dpSinkStreamHandler.sendMessage(msg);
+        }
+    }
+
     /** Request audio focus such that the designated device can stream audio */
     public void requestAudioFocus(BluetoothDevice device, boolean request) {
         synchronized (mStreamHandlerLock) {
