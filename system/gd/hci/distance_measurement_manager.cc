@@ -1305,6 +1305,19 @@ struct DistanceMeasurementManager::impl : bluetooth::hal::RangingHalCallback {
                              connection_handle, Enable::DISABLED),
                 std::chrono::milliseconds(kProcedureScheduleGuardMs));
       }
+    } else if (enable == Enable::ENABLED && status == ErrorCode::COMMAND_DISALLOWED) {
+      // controller may still be finishing the previous burst's procedures when the next
+      // enable is sent (e.g. multi-procedure bursts with max_procedure_count > 1). This is
+      // benign - don't burn a retry attempt or wait a full interval_ms, just retry quickly.
+      log::info("controller busy for procedure enable, schedule quick retry.");
+      auto it = cs_requester_trackers_.find(connection_handle);
+      if (it != cs_requester_trackers_.end() && it->second.procedure_schedule_guard_alarm != nullptr) {
+        it->second.procedure_schedule_guard_alarm->Cancel();
+        it->second.procedure_schedule_guard_alarm->Schedule(
+                common::Bind(&impl::send_le_cs_procedure_enable, common::Unretained(this),
+                             connection_handle, Enable::ENABLED),
+                std::chrono::milliseconds(kProcedureScheduleGuardMs));
+      }
     } else if (enable == Enable::ENABLED && status_view.GetStatus() != ErrorCode::SUCCESS) {
       if (cs_requester_trackers_.count(connection_handle) == 0) {
         log::error("Error code {} for connection_handle {}. No request tracker found.",
