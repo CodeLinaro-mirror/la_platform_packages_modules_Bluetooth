@@ -188,6 +188,9 @@ public class HeadsetClientStateMachine extends StateMachine {
     @VisibleForTesting int mAudioState;
     // Indicates whether audio can be routed to the device
     private boolean mAudioRouteAllowed;
+    // Set once a SLC disconnect has been requested from the native stack. Used to drop audio
+    // connected events that were already queued when the disconnect was issued.
+    private boolean mSlcDisconnectRequested;
 
     private final boolean mClccPollDuringCall;
 
@@ -1109,6 +1112,7 @@ public class HeadsetClientStateMachine extends StateMachine {
 
             mAudioWbs = false;
             mAudioSWB = false;
+            mSlcDisconnectRequested = false;
 
             // will be set on connect
 
@@ -1494,6 +1498,7 @@ public class HeadsetClientStateMachine extends StateMachine {
                     if (!mCurrentDevice.equals(dev)) {
                         break;
                     }
+                    mSlcDisconnectRequested = true;
                     if (Flags.hfpClientDisconnectingState()) {
                         if (!mNativeInterface.disconnect(mCurrentDevice)) {
                             warn("disconnectNative failed for " + mCurrentDevice);
@@ -1950,6 +1955,12 @@ public class HeadsetClientStateMachine extends StateMachine {
                         HeadsetClientHalConstants.AUDIO_STATE_CONNECTED_MSBC:
                     mAudioSWB = state == HeadsetClientHalConstants.AUDIO_STATE_CONNECTED_LC3;
                     mAudioWbs = state == HeadsetClientHalConstants.AUDIO_STATE_CONNECTED_MSBC;
+                    if (mSlcDisconnectRequested) {
+                        info("SLC disconnect in progress! Disconnect stale SCO.");
+                        sendMessage(HeadsetClientStateMachine.DISCONNECT_AUDIO);
+                        // Don't route audio to a SCO that is already being torn down!
+                        return;
+                    }
                     debug("mAudioRouteAllowed=" + mAudioRouteAllowed);
                     if (!mAudioRouteAllowed) {
                         info("Audio is not allowed! Disconnect SCO.");
