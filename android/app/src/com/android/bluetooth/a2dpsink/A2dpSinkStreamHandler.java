@@ -80,6 +80,7 @@ public class A2dpSinkStreamHandler extends Handler {
     public static final int STOP_SINK = 12; // notify Audio HAL to stop split sink
     public static final int SET_ACTIVE = 13;  // notify Audio HAL active changed
     public static final int REMOVE_ACTIVE = 14; // notify Audio HAL active device removed
+    public static final int SINK_VOLUME_CHANGE = 15; // system volume changed, sync to HAL
     // Used to indicate focus lost
     private static final int STATE_FOCUS_LOST = 0;
     // Used to inform bluedroid that focus is granted
@@ -223,6 +224,15 @@ public class A2dpSinkStreamHandler extends Handler {
                     Log.d(TAG, "REMOVE_ACTIVE: " + removedDevice
                             + " is not the current active device (" + mMMActiveDevice
                             + "), skipping");
+                }
+                break;
+
+            case SINK_VOLUME_CHANGE:
+                if (mAudioManager != null) {
+                    int vol = message.arg1;
+                    String volume_param = "btsink_volume=" + vol;
+                    Log.d(TAG, "SINK_VOLUME_CHANGE: " + volume_param);
+                    mAudioManager.setParameters(volume_param);
                 }
                 break;
 

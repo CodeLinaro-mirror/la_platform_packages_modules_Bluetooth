@@ -1296,21 +1296,33 @@ class AvrcpControllerStateMachine extends StateMachine {
                         + ", maxLocal = "
                         + maxLocalVolume);
 
-        /*
-         * In some cases change in percentage is not sufficient enough to warrant
-         * change in index values which are in range of 0-15. For such cases
-         * no action is required
-         */
-        if (reqLocalVolume != curLocalVolume) {
-            mAudioManager.setStreamVolume(
-                    AudioManager.STREAM_MUSIC, reqLocalVolume, AudioManager.FLAG_SHOW_UI);
-        }
-
         if (mIsSplitSink) {
-            String volume_param = "btsink_volume="+reqLocalVolume;
-            Log.d(TAG,"setAbsVolume : "+volume_param);
+            // Bug fix: In split-sink (offload) mode the actual audio output level is driven by
+            // the btsink_volume HAL parameter, NOT by the Android system stream volume.
+            // The system stream volume and btsink_volume can therefore diverge (e.g. btsink_volume
+            // was initialised at stream-open time while the system stream volume was already at
+            // the same index).  When iPhone sends SET_ABSOLUTE_VOLUME we must:
+            //   1. Show the on-screen volume bar whenever btsink_volume is actually changing
+            //      (compare against cachedVolumeIndex, not curLocalVolume).
+            //   2. Always push the new value to the HAL so the audio level follows.
+            if (reqLocalVolume != cachedVolumeIndex) {
+                mAudioManager.setStreamVolume(
+                        AudioManager.STREAM_MUSIC, reqLocalVolume, AudioManager.FLAG_SHOW_UI);
+            }
+            String volume_param = "btsink_volume= " + reqLocalVolume;
+            Log.d(TAG, "setAbsVolume : " + volume_param);
             mAudioManager.setParameters(volume_param);
             cachedVolumeIndex = reqLocalVolume;
+        } else {
+            /*
+             * In some cases change in percentage is not sufficient enough to warrant
+             * change in index values which are in range of 0-15. For such cases
+             * no action is required
+             */
+            if (reqLocalVolume != curLocalVolume) {
+                mAudioManager.setStreamVolume(
+                        AudioManager.STREAM_MUSIC, reqLocalVolume, AudioManager.FLAG_SHOW_UI);
+            }
         }
     }
 
