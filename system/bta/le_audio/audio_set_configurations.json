@@ -9490,7 +9490,7 @@
         {
           "ase_cnt": 2,
           "direction": "SINK",
-          "max_sdu": 282,
+          "max_sdu": 288,
           "iso_interval": 10000,
           "codec_id": {
             "coding_format": 255,

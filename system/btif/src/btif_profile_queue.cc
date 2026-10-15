@@ -135,7 +135,7 @@ static void queue_int_advance_by_uuid(uint16_t uuid, const RawAddress& bda) {
         && (p_head->uuid() == uuid)) {
       log::warn("Queue advance UUID = {:04X}, bd_addr = {}",
                 p_head->uuid(), p_head->address().ToString().c_str());
-      btif_queue_advance();
+      queue_int_advance();
       return;
   }
   // Move to next node

@@ -176,6 +176,12 @@ void IsoManager::HandleHciEvent(uint8_t sub_code, uint8_t* params, uint16_t leng
   }
 }
 
+void IsoManager::HandleCreateBigCommandStatus(uint8_t big_handle, uint8_t status) {
+  if (pimpl_->IsRunning()) {
+    pimpl_->iso_impl_->handle_create_big_command_status(big_handle, status);
+  }
+}
+
 void IsoManager::HandleVSCodecSettingsEvent(uint8_t mode, uint16_t delay,
                                             uint64_t bdAddr) {
   if (pimpl_->IsRunning()) {

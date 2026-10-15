@@ -59,6 +59,7 @@ const char* PTS_GATT_SKIP_SERVICE_DISCOVERY_DURING_CONN =
         "PTS_SkipServiceDiscoveryDuringConnection";
 const char* PTS_CONFIGURE_SERVICE_CHG_INDICATION = "PTS_ConfigureServiceChangeIndication";
 const char* PTS_DB_OUT_OF_SYNC = "PTS_DBOutOfSync";
+const char* PTS_GATT_DISABLE_CL_CACHING_BIT_RESET = "PTS_GattDisableClCachingBitReset";
 
 static std::unique_ptr<config_t> config;
 }  // namespace
@@ -238,6 +239,11 @@ static bool get_pts_gatt_skip_service_discovery(void) {
   return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_GATT_SKIP_SERVICE_DISCOVERY_DURING_CONN, false);
 }
 
+static bool get_pts_gatt_disable_cl_caching_bit_reset(void) {
+  return config_get_bool(*config, CONFIG_DEFAULT_SECTION, PTS_GATT_DISABLE_CL_CACHING_BIT_RESET,
+                         false);
+}
+
 const stack_config_t interface = {get_pts_avrcp_test,
                                   get_pts_secure_only_mode,
                                   get_pts_conn_updates_disabled,
@@ -267,6 +273,7 @@ const stack_config_t interface = {get_pts_avrcp_test,
                                   get_pts_gatt_skip_service_discovery,
                                   get_pts_configure_svc_chg_indication,
                                   get_pts_DB_out_of_sync,
+                                  get_pts_gatt_disable_cl_caching_bit_reset,
                                   get_all};
 
 const stack_config_t* stack_config_get_interface(void) { return &interface; }
