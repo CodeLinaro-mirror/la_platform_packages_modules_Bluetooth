@@ -39,12 +39,17 @@ class MigrationFromRoomDatabase(private val adapterService: AdapterService) :
     override suspend fun migrate(currentData: UserStorage): UserStorage {
         Log.i(TAG, "Migrating from legacy Room database")
 
-        val db = MetadataDatabase.createDatabase(adapterService)
+        var db: MetadataDatabase? = null
         val metadataList: List<Metadata> =
             try {
+                db = MetadataDatabase.createDatabase(adapterService)
                 db.load()
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Legacy Room database schema is incompatible; skipping migration", e)
+                // DataStore runs cleanUp() after the migrated data is committed.
+                return currentData
             } finally {
-                db.close()
+                db?.close()
             }
 
         if (metadataList.isEmpty()) {
