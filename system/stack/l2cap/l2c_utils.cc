@@ -50,6 +50,7 @@
 #include "stack/btm/btm_sec.h"
 #include "stack/include/acl_api.h"
 #include "stack/include/bt_hdr.h"
+#include "stack/include/bt_psm_types.h"
 #include "stack/include/bt_types.h"
 #include "stack/include/btm_client_interface.h"
 #include "stack/include/btm_status.h"
@@ -196,12 +197,12 @@ void l2cu_release_lcb(tL2C_LCB* p_lcb) {
 
   if (p_lcb->sent_not_acked > 0) {
     if (p_lcb->transport == BT_TRANSPORT_LE) {
-      l2cb.controller_le_xmit_window += p_lcb->sent_not_acked;
+      l2cb.credit_le_xmit_window(p_lcb->sent_not_acked);
       if (l2cb.controller_le_xmit_window > l2cb.num_lm_ble_bufs) {
         l2cb.controller_le_xmit_window = l2cb.num_lm_ble_bufs;
       }
     } else {
-      l2cb.controller_xmit_window += p_lcb->sent_not_acked;
+      l2cb.credit_classic_xmit_window(p_lcb->sent_not_acked);
       if (l2cb.controller_xmit_window > l2cb.num_lm_acl_bufs) {
         l2cb.controller_xmit_window = l2cb.num_lm_acl_bufs;
       }
@@ -1621,6 +1622,7 @@ bool l2cu_start_post_bond_timer(uint16_t handle) {
 void l2cu_release_ccb(tL2C_CCB* p_ccb) {
   tL2C_LCB* p_lcb = p_ccb->p_lcb;
   tL2C_RCB* p_rcb = p_ccb->p_rcb;
+  const bool is_eatt_bearer = p_rcb && p_rcb->psm == BT_PSM_EATT;
 
   log::verbose("l2cu_release_ccb: cid 0x{:04x}  in_use: {}", p_ccb->local_cid, p_ccb->in_use);
 
@@ -1696,8 +1698,11 @@ void l2cu_release_ccb(tL2C_CCB* p_ccb) {
 
         // Reset ATT idle timeout so a stale GATT timer (set while LECOC was
         // active) does not prematurely drop the ACL. GATT manages teardown
-        // explicitly via L2CA_RemoveFixedChnl(ATT).
-        if (p_lcb->transport == BT_TRANSPORT_LE) {
+        // explicitly via L2CA_RemoveFixedChnl(ATT). EATT bearers are owned by
+        // GATT, which sets the ATT idle timeout itself; resetting it here would
+        // cancel the idle drop armed in gatt_update_app_use_link_flag() before
+        // the async EATT teardown completes and leave the ACL up forever.
+        if (p_lcb->transport == BT_TRANSPORT_LE && !is_eatt_bearer) {
           constexpr int kAttIdx = L2CAP_ATT_CID - L2CAP_FIRST_FIXED_CHNL;
           if (p_lcb->p_fixed_ccbs[kAttIdx] != nullptr) {
             p_lcb->p_fixed_ccbs[kAttIdx]->fixed_chnl_idle_tout = L2CAP_NO_IDLE_TIMEOUT;
@@ -3611,6 +3616,20 @@ void l2cu_set_acl_hci_header(BT_HDR* p_buf, tL2C_CCB* p_ccb) {
   }
   p_buf->offset -= HCI_DATA_PREAMBLE_SIZE;
   p_buf->len += HCI_DATA_PREAMBLE_SIZE;
+}
+
+/* Controller buffers an outgoing packet occupies once fragmented. p_buf->len covers the HCI
+ * preamble, so the fragmented payload is that minus HCI_DATA_PREAMBLE_SIZE. */
+uint16_t l2cu_hci_segment_count(const BT_HDR* p_buf, tBT_TRANSPORT transport) {
+  const uint16_t acl_data_size =
+          (transport == BT_TRANSPORT_LE)
+                  ? bluetooth::shim::GetController()->GetLeBufferSize().le_data_packet_length_
+                  : bluetooth::shim::GetController()->GetAclPacketLength();
+  if (acl_data_size == 0 || p_buf->len <= HCI_DATA_PREAMBLE_SIZE) {
+    return 1;
+  }
+
+  return ((p_buf->len - HCI_DATA_PREAMBLE_SIZE) + acl_data_size - 1) / acl_data_size;
 }
 
 static void send_congestion_status_to_all_clients(tL2C_CCB* p_ccb, bool status) {

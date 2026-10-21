@@ -15,8 +15,8 @@
  */
 
 /*
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -107,6 +107,8 @@ public class HeadsetClientStateMachine extends StateMachine {
     static final int NO_ACTION = 0;
     static final int IN_BAND_RING_ENABLED = 1;
 
+    private static final String PTS_CERT_PROPERTY = "vendor.bt.pts.certification";
+
     // external actions
     public static final int AT_OK = 0;
     public static final int CONNECT = 1;
@@ -188,6 +190,9 @@ public class HeadsetClientStateMachine extends StateMachine {
     @VisibleForTesting int mAudioState;
     // Indicates whether audio can be routed to the device
     private boolean mAudioRouteAllowed;
+    // Set once a SLC disconnect has been requested from the native stack. Used to drop audio
+    // connected events that were already queued when the disconnect was issued.
+    private boolean mSlcDisconnectRequested;
 
     private final boolean mClccPollDuringCall;
 
@@ -609,6 +614,66 @@ public class HeadsetClientStateMachine extends StateMachine {
         }
 
         mCallsUpdate.clear();
+
+        connectAudioForActiveCallInPts();
+        autoAnswerIncomingCallInPts();
+    }
+
+    // PTS (AG role) has no real Telecom/dialer UI to drive SCO setup, so the HF IUT must
+    // send AT+BCC as soon as an active call is signaled, independent of call processing.
+    // Gated to PTS certification runs only; production devices rely on Telecom-driven
+    // CONNECT_AUDIO (e.g. HfpClientConnection#onCallEvent, acceptCall()).
+    private void connectAudioForActiveCallInPts() {
+        if (!SystemProperties.getBoolean(PTS_CERT_PROPERTY, false)) {
+            return;
+        }
+        if (mAudioState != BluetoothHeadsetClient.STATE_AUDIO_DISCONNECTED) {
+            return;
+        }
+        if (callsInState(HfpClientCall.CALL_STATE_ACTIVE) > 0) {
+            debug("PTS cert mode: active call with no audio, sending CONNECT_AUDIO (AT+BCC)");
+            sendMessage(CONNECT_AUDIO);
+        }
+    }
+
+    // PTS (AG role) has no real Telecom/dialer UI to answer an incoming call, and for
+    // HFP/HF/ATH/BV-06-C the AG does not support in-band ring tone, so the HF IUT must
+    // auto-answer (AT+ATA) off the callsetup=1/RING indication alone. Gated to PTS
+    // certification runs only; production devices rely on user/Telecom-driven acceptCall().
+    private void autoAnswerIncomingCallInPts() {
+        if (!SystemProperties.getBoolean(PTS_CERT_PROPERTY, false)) {
+            return;
+        }
+        if (getCall(HfpClientCall.CALL_STATE_INCOMING) == null) {
+            return;
+        }
+        for (Pair<Integer, Object> queuedAction : mQueuedActions) {
+            if (queuedAction.first == ACCEPT_CALL) {
+                return; // ATA already sent, awaiting AG confirmation
+            }
+        }
+        debug("PTS cert mode: incoming call with no in-band ring, sending ACCEPT_CALL (AT+ATA)");
+        sendMessage(ACCEPT_CALL, BluetoothHeadsetClient.CALL_ACCEPT_NONE);
+    }
+
+    // PTS/HFP/HF/TDS/BV-01-C reports call=1 via the raw +CIND indicator but returns an
+    // empty AT+CLCC list, so mCalls is never populated and
+    // connectAudioForActiveCallInPts() (which relies on the CLCC-derived call list)
+    // never fires. TSPC_HFP_3_3a ("Audio Connection independent of call processing") is
+    // exactly this: the HF must trigger AT+BCC off the raw call indicator alone, without
+    // depending on AT+CLCC. Gated to PTS certification runs only.
+    private void connectAudioForRawCallIndicatorInPts(int callIndicatorValue) {
+        if (!SystemProperties.getBoolean(PTS_CERT_PROPERTY, false)) {
+            return;
+        }
+        if (callIndicatorValue == 0) {
+            return;
+        }
+        if (mAudioState != BluetoothHeadsetClient.STATE_AUDIO_DISCONNECTED) {
+            return;
+        }
+        debug("PTS cert mode: raw call indicator active, sending CONNECT_AUDIO (AT+BCC)");
+        sendMessage(CONNECT_AUDIO);
     }
 
     private void queryCallsUpdate(
@@ -1109,6 +1174,7 @@ public class HeadsetClientStateMachine extends StateMachine {
 
             mAudioWbs = false;
             mAudioSWB = false;
+            mSlcDisconnectRequested = false;
 
             // will be set on connect
 
@@ -1494,6 +1560,7 @@ public class HeadsetClientStateMachine extends StateMachine {
                     if (!mCurrentDevice.equals(dev)) {
                         break;
                     }
+                    mSlcDisconnectRequested = true;
                     if (Flags.hfpClientDisconnectingState()) {
                         if (!mNativeInterface.disconnect(mCurrentDevice)) {
                             warn("disconnectNative failed for " + mCurrentDevice);
@@ -1768,6 +1835,8 @@ public class HeadsetClientStateMachine extends StateMachine {
                             }
                             break;
                         case StackEvent.EVENT_TYPE_CALL:
+                            connectAudioForRawCallIndicatorInPts(event.valueInt);
+                            // fall through
                         case StackEvent.EVENT_TYPE_CALLSETUP:
                         case StackEvent.EVENT_TYPE_CALLHELD:
                         case StackEvent.EVENT_TYPE_RESP_AND_HOLD:
@@ -1950,6 +2019,12 @@ public class HeadsetClientStateMachine extends StateMachine {
                         HeadsetClientHalConstants.AUDIO_STATE_CONNECTED_MSBC:
                     mAudioSWB = state == HeadsetClientHalConstants.AUDIO_STATE_CONNECTED_LC3;
                     mAudioWbs = state == HeadsetClientHalConstants.AUDIO_STATE_CONNECTED_MSBC;
+                    if (mSlcDisconnectRequested) {
+                        info("SLC disconnect in progress! Disconnect stale SCO.");
+                        sendMessage(HeadsetClientStateMachine.DISCONNECT_AUDIO);
+                        // Don't route audio to a SCO that is already being torn down!
+                        return;
+                    }
                     debug("mAudioRouteAllowed=" + mAudioRouteAllowed);
                     if (!mAudioRouteAllowed) {
                         info("Audio is not allowed! Disconnect SCO.");

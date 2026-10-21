@@ -226,16 +226,14 @@ final class BondStateMachine extends StateMachine {
                 case ACL_DISCONNECTED:
                     if (dev.isBondingInitiatedLocally()) {
                         if (hasMessages(BONDED_INTENT_DELAY)) {
-                            removeMessages(BONDED_INTENT_DELAY);
-                            mPendingBondedDevices.remove(dev);
-                            DeviceProperties devProp =
-                                    mRemoteDevices.getDeviceProperties(dev);
-                            if (devProp != null && devProp.getUuids() == null) {
-                                Log.e(TAG,
-                                        "ACL DISCONNECTED during Bonding: Remove the device "
-                                        + dev);
-                                removeBond(dev, true);
-                            }
+                            // Device is already natively BOND_BONDED and only waiting for its
+                            // UUIDs to be broadcast; an ACL disconnect here is unrelated to
+                            // bonding success and must not abort the pending wait. Leave the
+                            // BONDED_INTENT_DELAY timer running so it resolves the pending
+                            // device the same way it would with no UUIDs after a timeout.
+                            Log.i(TAG,
+                                    "ACL DISCONNECTED while awaiting UUIDs after Bonded: "
+                                    + dev);
                         }
                     } else {
                         Log.i(TAG,
@@ -389,14 +387,12 @@ final class BondStateMachine extends StateMachine {
                     break;
                 case ACL_DISCONNECTED:
                     if (hasMessages(BONDED_INTENT_DELAY)) {
-                        removeMessages(BONDED_INTENT_DELAY);
-                        mPendingBondedDevices.remove(dev);
-                        if (devProp != null && devProp.getUuids() == null) {
-                            Log.e(TAG,
-                                    "ACL DISCONNECTED during Bonding: Remove the device "
-                                    + dev);
-                            removeBond(dev, true);
-                        }
+                        // See StableState's ACL_DISCONNECTED handling: the device is already
+                        // natively BOND_BONDED here, only its UUIDs are still pending. Do not
+                        // cancel the pending wait or remove the bond just because an unrelated
+                        // ACL link dropped.
+                        Log.i(TAG,
+                                "ACL DISCONNECTED while awaiting UUIDs after Bonded: " + dev);
                     }
                     break;
                 default:

@@ -138,6 +138,33 @@ public final class BluetoothQualityReport implements Parcelable {
     public static final int QUALITY_REPORT_ID_RF_STATS = 0x09;
 
     /**
+     * Quality report ID: RF Stats.
+     *
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int QUALITY_REPORT_ID_RF_ADVANCED_STATS  = 0x0A;
+
+    /**
+     * Quality report ID: Controller Health Event.
+     *
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT = 0x0B;
+
+    /**
+     * Quality report ID: Controller Health Monitor.
+     *
+     * @hide
+     */
+    @SystemApi
+    @SuppressLint("UnflaggedApi")
+    public static final int QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR = 0x0C;
+
+    /**
      * Quality report ID: Vendor Specific.
      *
      * @hide
@@ -185,6 +212,9 @@ public final class BluetoothQualityReport implements Parcelable {
                 QUALITY_REPORT_ID_ENERGY_MONITOR,
                 QUALITY_REPORT_ID_CONN_FAIL,
                 QUALITY_REPORT_ID_RF_STATS,
+                QUALITY_REPORT_ID_RF_ADVANCED_STATS,
+                QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT,
+                QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR,
                 QUALITY_REPORT_ID_VENDOR_SPECIFIC,
             })
     public @interface QualityReportId {}
@@ -206,6 +236,7 @@ public final class BluetoothQualityReport implements Parcelable {
     private BqrConnectFail mBqrConnectFail;
     private BqrEnergyMonitor mBqrEnergyMonitor;
     private BqrRfStats mBqrRfStats;
+    private BqrControllerHealth mBqrControllerHealth;
     private BqrVsDiscoveryMonitoring mBqrVsDiscMonitoring;
     private BqrVsMiscMonitoring mBqrVsMiscMonitoring;
     private BqrVsDbigMonitoring mBqrVsDbigMonitoring;
@@ -239,7 +270,11 @@ public final class BluetoothQualityReport implements Parcelable {
         TYPE_2DH5,
         TYPE_3DH1,
         TYPE_3DH3,
-        TYPE_3DH5;
+        TYPE_3DH5,
+        TYPE_1M_PHY,
+        TYPE_2M_PHY,
+        TYPE_CODEC_PHYS2,
+        TYPE_CODEC_PHYS8;
 
         private static final PacketType[] sAllValues = values();
 
@@ -394,8 +429,14 @@ public final class BluetoothQualityReport implements Parcelable {
                 if (id == QUALITY_REPORT_ID_ENERGY_MONITOR) {
                     mBqrEnergyMonitor = new BqrEnergyMonitor(rawData, 1);
                     return;
-                } else if (id == QUALITY_REPORT_ID_RF_STATS) {
+                } else if (id == QUALITY_REPORT_ID_RF_STATS || id == QUALITY_REPORT_ID_RF_ADVANCED_STATS) {
                     mBqrRfStats = new BqrRfStats(rawData, 1);
+                    return;
+                }
+            }
+            if(true){ // flag to check for v7
+                if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT || id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR) {
+                    mBqrControllerHealth = new BqrControllerHealth(rawData, 0);
                     return;
                 }
             }
@@ -501,8 +542,14 @@ public final class BluetoothQualityReport implements Parcelable {
         if (Flags.supportBluetoothQualityReportV6()) {
             if (id == QUALITY_REPORT_ID_ENERGY_MONITOR) {
                 mBqrEnergyMonitor = new BqrEnergyMonitor(in);
-            } else if (id == QUALITY_REPORT_ID_RF_STATS) {
+            } else if (id == QUALITY_REPORT_ID_RF_STATS || id == QUALITY_REPORT_ID_RF_ADVANCED_STATS) {
                 mBqrRfStats = new BqrRfStats(in);
+            }
+        }
+
+        if(true){ // flag to check for v7
+            if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT || id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR) {
+                mBqrControllerHealth = new BqrControllerHealth(in);
             }
         }
     }
@@ -653,8 +700,14 @@ public final class BluetoothQualityReport implements Parcelable {
         if (Flags.supportBluetoothQualityReportV6()) {
             if (id == QUALITY_REPORT_ID_ENERGY_MONITOR) {
                 return mBqrEnergyMonitor;
-            } else if (id == QUALITY_REPORT_ID_RF_STATS) {
+            } else if (id == QUALITY_REPORT_ID_RF_STATS || id == QUALITY_REPORT_ID_RF_ADVANCED_STATS ) {
                 return mBqrRfStats;
+            }
+        }
+
+        if(true){ //flag to check v7
+            if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT || id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR) {
+                return mBqrControllerHealth;
             }
         }
 
@@ -752,8 +805,14 @@ public final class BluetoothQualityReport implements Parcelable {
         if (Flags.supportBluetoothQualityReportV6()) {
             if (id == QUALITY_REPORT_ID_ENERGY_MONITOR) {
                 mBqrEnergyMonitor.writeToParcel(out, flags);
-            } else if (id == QUALITY_REPORT_ID_RF_STATS) {
+            } else if (id == QUALITY_REPORT_ID_RF_STATS || id == QUALITY_REPORT_ID_RF_ADVANCED_STATS) {
                 mBqrRfStats.writeToParcel(out, flags);
+            }
+        }
+
+        if(true){ //flag to check v7
+            if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT || id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR) {
+                mBqrControllerHealth.writeToParcel(out, flags);
             }
         }
     }
@@ -803,8 +862,14 @@ public final class BluetoothQualityReport implements Parcelable {
         if (Flags.supportBluetoothQualityReportV6()) {
             if (id == QUALITY_REPORT_ID_ENERGY_MONITOR) {
                 str = str + mBqrEnergyMonitor + "\n}";
-            } else if (id == QUALITY_REPORT_ID_RF_STATS) {
+            } else if (id == QUALITY_REPORT_ID_RF_STATS || id == QUALITY_REPORT_ID_RF_ADVANCED_STATS) {
                 str = str + mBqrRfStats + "\n}";
+            }
+        }
+
+        if(true) { // flag to check v7
+            if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT || id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR) {
+                str = str + mBqrControllerHealth + "\n}";
             }
         }
 
@@ -1044,11 +1109,12 @@ public final class BluetoothQualityReport implements Parcelable {
 
         private BqrCommon(byte[] rawData, int offset, int versionSupported) {
             mQualityReportId = rawData[0] & 0xFF;
-            if (Flags.supportBluetoothQualityReportV6()) {
-                if ((mQualityReportId == QUALITY_REPORT_ID_ENERGY_MONITOR)
-                        || (mQualityReportId == QUALITY_REPORT_ID_RF_STATS)) {
+            if ((mQualityReportId == QUALITY_REPORT_ID_ENERGY_MONITOR)
+                      || (mQualityReportId == QUALITY_REPORT_ID_RF_STATS)
+                      || (mQualityReportId == QUALITY_REPORT_ID_RF_ADVANCED_STATS)
+                      || (mQualityReportId == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT)
+                      || (mQualityReportId == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR)) {
                     return;
-                }
             }
 
             int commonLen = BluetoothQualityReport.getBqrCommonLength(versionSupported);
@@ -1219,7 +1285,17 @@ public final class BluetoothQualityReport implements Parcelable {
                     return "Energy Monitor";
                 } else if (QUALITY_REPORT_ID_RF_STATS == id) {
                     return "RF Stats";
+                } else if (id == QUALITY_REPORT_ID_RF_ADVANCED_STATS) {
+                    return "RF Advanced Stats";
                 }
+            }
+
+            if(true) { //flag to check for v7
+                if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_EVENT)
+                   return "Controller Health Event";
+
+                if (id == QUALITY_REPORT_ID_CONTROLLER_HEALTH_MONITOR)
+                   return "Controller Health Monitor";
             }
 
             switch (id) {
@@ -3125,6 +3201,9 @@ public final class BluetoothQualityReport implements Parcelable {
         private final long mTxiPaActiveTwoChainTime;
         private final long mTxePaActiveOneChainTime;
         private final long mTxePaActiveTwoChainTime;
+        // v7 additional fields
+        private final long mBrederRxActiveScanTotalTime;
+        private final long mLeRxActiveScanTotalTime;
 
         private BqrEnergyMonitor(byte[] rawData, int offset) {
             if (rawData == null || rawData.length <= offset) {
@@ -3158,6 +3237,15 @@ public final class BluetoothQualityReport implements Parcelable {
             mTxiPaActiveTwoChainTime = bqrBuf.getInt() & 0xFFFFFFFFL;
             mTxePaActiveOneChainTime = bqrBuf.getInt() & 0xFFFFFFFFL;
             mTxePaActiveTwoChainTime = bqrBuf.getInt() & 0xFFFFFFFFL;
+            // Parse v7 fields if present (8 more bytes available)
+            if (bqrBuf.remaining() >= 8) {
+                mBrederRxActiveScanTotalTime = bqrBuf.getInt() & 0xFFFFFFFFL;
+                mLeRxActiveScanTotalTime = bqrBuf.getInt() & 0xFFFFFFFFL;
+            } else {
+                // v6 - initialize v7 fields to 0
+                mBrederRxActiveScanTotalTime = 0;
+                mLeRxActiveScanTotalTime = 0;
+}
         }
 
         private BqrEnergyMonitor(Parcel in) {
@@ -3183,6 +3271,9 @@ public final class BluetoothQualityReport implements Parcelable {
             mTxiPaActiveTwoChainTime = in.readLong();
             mTxePaActiveOneChainTime = in.readLong();
             mTxePaActiveTwoChainTime = in.readLong();
+            // v7 additional fields
+            mBrederRxActiveScanTotalTime = in.readLong();
+            mLeRxActiveScanTotalTime = in.readLong();
         }
 
         /**
@@ -3460,6 +3551,31 @@ public final class BluetoothQualityReport implements Parcelable {
         }
 
         /**
+         * Gets the total time duration on BR/EDR scan RX active time in milliseconds.
+         *
+         * @return the BR/EDR scan RX active time in milliseconds
+         * @hide
+         */
+        @SystemApi
+        @DurationMillisLong
+        public long getBredrRxActiveScanTotalTimeMillis() {
+            return mBrederRxActiveScanTotalTime;
+        }
+
+        /**
+         * Gets the total time duration on LE scan RX active time in milliseconds.
+         *
+         * @return the LE scan RX active time in milliseconds
+         * @hide
+         */
+        @SystemApi
+        @DurationMillisLong
+        public long getLeRxActiveScanTotalTimeMillis() {
+            return mLeRxActiveScanTotalTime;
+        }
+
+
+        /**
          * Write BqrEnergyMonitor to parcel.
          *
          * @hide
@@ -3489,6 +3605,9 @@ public final class BluetoothQualityReport implements Parcelable {
             dest.writeLong(mTxiPaActiveTwoChainTime);
             dest.writeLong(mTxePaActiveOneChainTime);
             dest.writeLong(mTxePaActiveTwoChainTime);
+            // v7 additional fields
+            dest.writeLong(mBrederRxActiveScanTotalTime);
+            dest.writeLong(mLeRxActiveScanTotalTime);
         }
 
         /** @hide */
@@ -3508,7 +3627,7 @@ public final class BluetoothQualityReport implements Parcelable {
         @Override
         @NonNull
         public String toString() {
-            return "  BqrEnergyMonitor: {\n"
+            String str = "  BqrEnergyMonitor: {\n"
                     + "    AvgCurrentConsume: "
                     + mAvgCurrentConsume
                     + ", mIdleTotalTime: "
@@ -3553,8 +3672,18 @@ public final class BluetoothQualityReport implements Parcelable {
                     + ", mTxePaActiveOneChainTime: "
                     + mTxePaActiveOneChainTime
                     + ", mTxePaActiveTwoChainTime: "
-                    + mTxePaActiveTwoChainTime
-                    + "\n  }";
+                    + mTxePaActiveTwoChainTime;
+
+            // Only include v7 fields if they have non-zero values (indicating v7 format)
+            if (true) {  // this needs to be replaced by a check for v7
+                str = str
+                        + "    mBrederRxActiveScanTotalTime: "
+                        + mBrederRxActiveScanTotalTime
+                        + ", mLeRxActiveScanTotalTime: "
+                        + mLeRxActiveScanTotalTime;
+            }
+
+            return str + "\n  }";
         }
     }
 
@@ -3595,6 +3724,18 @@ public final class BluetoothQualityReport implements Parcelable {
         private final long mRssiDelta8To11;
         private final long mRssiDeltaOver11;
 
+        // v7 fields
+        private final long mAntennaSwitchCount;
+        private final long mRetxiPaBf;
+        private final long mRetxePaBf;
+        private final long mRetxiPaDiv;
+        private final long mRetxePaDiv;
+        private final int mChannelCountVeryBad;
+        private final int mChannelCountBad;
+        private final int mChannelCountOk;
+        private final int mChannelCountGood;
+        private final long mTxBufferQueueCount;
+
         private BqrRfStats(byte[] rawData, int offset) {
             if (rawData == null || rawData.length <= offset) {
                 throw new IllegalArgumentException(
@@ -3626,6 +3767,32 @@ public final class BluetoothQualityReport implements Parcelable {
             mRssiDelta5To8 = bqrBuf.getInt() & 0xFFFFFFFFL;
             mRssiDelta8To11 = bqrBuf.getInt() & 0xFFFFFFFFL;
             mRssiDeltaOver11 = bqrBuf.getInt() & 0xFFFFFFFFL;
+
+            // Parse v7 fields if present (28 more bytes)
+            if (bqrBuf.remaining() >= 28) {
+                mAntennaSwitchCount = bqrBuf.getInt() & 0xFFFFFFFFL;
+                mRetxiPaBf = bqrBuf.getInt() & 0xFFFFFFFFL;
+                mRetxePaBf = bqrBuf.getInt() & 0xFFFFFFFFL;
+                mRetxiPaDiv = bqrBuf.getInt() & 0xFFFFFFFFL;
+                mRetxePaDiv = bqrBuf.getInt() & 0xFFFFFFFFL;
+                mChannelCountVeryBad = bqrBuf.get() & 0xFF;
+                mChannelCountBad = bqrBuf.get() & 0xFF;
+                mChannelCountOk = bqrBuf.get() & 0xFF;
+                mChannelCountGood = bqrBuf.get() & 0xFF;
+                mTxBufferQueueCount = bqrBuf.getInt() & 0xFFFFFFFFL;
+            } else {
+                // v6 - initialize v7 fields to 0
+                mAntennaSwitchCount = 0;
+                mRetxiPaBf = 0;
+                mRetxePaBf = 0;
+                mRetxiPaDiv = 0;
+                mRetxePaDiv = 0;
+                mChannelCountVeryBad = 0;
+                mChannelCountBad = 0;
+                mChannelCountOk = 0;
+                mChannelCountGood = 0;
+                mTxBufferQueueCount = 0;
+            }
         }
 
         private BqrRfStats(Parcel in) {
@@ -3650,6 +3817,18 @@ public final class BluetoothQualityReport implements Parcelable {
             mRssiDelta5To8 = in.readLong();
             mRssiDelta8To11 = in.readLong();
             mRssiDeltaOver11 = in.readLong();
+
+             // v7 fields
+            mAntennaSwitchCount = in.readLong();
+            mRetxiPaBf = in.readLong();
+            mRetxePaBf = in.readLong();
+            mRetxiPaDiv = in.readLong();
+            mRetxePaDiv = in.readLong();
+            mChannelCountVeryBad = in.readInt();
+            mChannelCountBad = in.readInt();
+            mChannelCountOk = in.readInt();
+            mChannelCountGood = in.readInt();
+            mTxBufferQueueCount = in.readLong();
         }
 
         /**
@@ -3904,6 +4083,85 @@ public final class BluetoothQualityReport implements Parcelable {
             return 0;
         }
 
+        /** Get antenna switch count.
+         *  @hide
+        */
+        @SystemApi
+        public long getAntennaSwitchCount() {
+            return mAntennaSwitchCount;
+        }
+
+        /** Get retransmission count for iPA BF.
+         *
+         *  @hide
+         */
+        @SystemApi
+        public long getRetxiPaBf() {
+            return mRetxiPaBf;
+        }
+
+        /** Get retransmission count for ePA BF.
+         *  @hide
+         *
+         * */
+        @SystemApi
+        public long getRetxePaBf() {
+            return mRetxePaBf;
+        }
+
+        /** Get retransmission count for iPA Div.
+         *
+         *  @hide
+        */
+        @SystemApi
+        public long getRetxiPaDiv() {
+            return mRetxiPaDiv;
+        }
+
+        /** Get retransmission count for ePA Div.
+         *
+         *  @hide
+        */
+        @SystemApi
+        public long getRetxePaDiv() {
+            return mRetxePaDiv;
+        }
+
+        /** Get channel count with very bad quality.
+         *  @hide*/
+        @SystemApi
+        public int getChannelCountVeryBad() {
+            return mChannelCountVeryBad;
+        }
+
+        /** Get channel count with bad quality.
+         *  @hide */
+        @SystemApi
+        public int getChannelCountBad() {
+            return mChannelCountBad;
+        }
+
+        /** Get channel count with ok quality.
+         *  @hide*/
+        @SystemApi
+        public int getChannelCountOk() {
+            return mChannelCountOk;
+        }
+
+        /** Get channel count with good quality.
+         *  @hide*/
+        @SystemApi
+        public int getChannelCountGood() {
+            return mChannelCountGood;
+        }
+
+        /** Get TX buffer queue count.
+         *  @hide*/
+        @SystemApi
+        public long getTxBufferQueueCount() {
+            return mTxBufferQueueCount;
+        }
+
         /**
          * Write BqrRfStats to parcel.
          *
@@ -3933,6 +4191,17 @@ public final class BluetoothQualityReport implements Parcelable {
             dest.writeLong(mRssiDelta5To8);
             dest.writeLong(mRssiDelta8To11);
             dest.writeLong(mRssiDeltaOver11);
+            // v7 fields
+            dest.writeLong(mAntennaSwitchCount);
+            dest.writeLong(mRetxiPaBf);
+            dest.writeLong(mRetxePaBf);
+            dest.writeLong(mRetxiPaDiv);
+            dest.writeLong(mRetxePaDiv);
+            dest.writeInt(mChannelCountVeryBad);
+            dest.writeInt(mChannelCountBad);
+            dest.writeInt(mChannelCountOk);
+            dest.writeInt(mChannelCountGood);
+            dest.writeLong(mTxBufferQueueCount);
         }
 
         /** @hide */
@@ -3952,7 +4221,7 @@ public final class BluetoothQualityReport implements Parcelable {
         @Override
         @NonNull
         public String toString() {
-            return "  BqrRfStats: {\n"
+            String str = "  BqrRfStats: {\n"
                     + "    mExtensionInfo: "
                     + mExtensionInfo
                     + ", mReportTimePeriod: "
@@ -3997,9 +4266,305 @@ public final class BluetoothQualityReport implements Parcelable {
                     + mRssiDelta8To11
                     + ", mRssiDeltaOver11: "
                     + mRssiDeltaOver11
-                    + "\n  }";
+                    + "\n  ";
+
+            if (true) {
+                str = str + "    mAntennaSwitchCount: " + mAntennaSwitchCount + "\n"
+                    + "    mRetxiPaBf: " + mRetxiPaBf + "\n"
+                    + "    mRetxePaBf: " + mRetxePaBf + "\n"
+                    + "    mRetxiPaDiv: " + mRetxiPaDiv + "\n"
+                    + "    mRetxePaDiv: " + mRetxePaDiv + "\n"
+                    + "    mChannelCountVeryBad: " + mChannelCountVeryBad + "\n"
+                    + "    mChannelCountBad: " + mChannelCountBad + "\n"
+                    + "    mChannelCountOk: " + mChannelCountOk + "\n"
+                    + "    mChannelCountGood: " + mChannelCountGood + "\n"
+                    + "    mTxBufferQueueCount: " + mTxBufferQueueCount + "\n";
+            }
+
+            return str + " }";
         }
     }
+
+    /**
+ * Controller Health Monitoring Event (0x0B and 0x0C).
+ * Provides diagnostic information about HCI transport, power management,
+ * and active connections.
+ *
+ * @hide
+ */
+@SystemApi
+@SuppressLint("UnflaggedApi")
+public static final class BqrControllerHealth implements Parcelable {
+    private static final String TAG =
+            BluetoothQualityReport.TAG + "." + BqrControllerHealth.class.getSimpleName();
+
+    private final int mQualityReportId;
+    private final long mPacketCountHostToController;
+    private final long mPacketCountControllerToHost;
+    private final int mLastPacketLengthHostToController;
+    private final int mLastPacketLengthControllerToHost;
+    private final long mTotalBtWakeCount;
+    private final long mTotalHostWakeCount;
+    private final long mLastBtWakeTimestamp;
+    private final long mLastHostWakeTimestamp;
+    private final long mResetTimestamp;
+    private final long mCurrentTimestamp;
+    private final long mIsWatchdogTimerAboutToExpire;
+    private final int mCoexStatusMask;
+    private final int mTotalLinksBrEdrLeActive;
+    private final int mTotalLinksBrEdrSniff;
+    private final int mTotalLinksCis;
+    private final int mIsScoActive;
+
+    private BqrControllerHealth(byte[] rawData, int offset) {
+        if (rawData == null || rawData.length <= offset) {
+            throw new IllegalArgumentException(
+                    TAG + ": BQR Controller Health raw data length is abnormal.");
+        }
+
+        ByteBuffer buf = ByteBuffer.wrap(rawData, offset, rawData.length - offset)
+                                   .asReadOnlyBuffer();
+        buf.order(ByteOrder.LITTLE_ENDIAN);
+
+        mQualityReportId = buf.get() & 0xFF;
+        mPacketCountHostToController = buf.getInt() & 0xFFFFFFFFL;
+        mPacketCountControllerToHost = buf.getInt() & 0xFFFFFFFFL;
+        mLastPacketLengthHostToController = buf.getShort() & 0xFFFF;
+        mLastPacketLengthControllerToHost = buf.getShort() & 0xFFFF;
+        mTotalBtWakeCount = buf.getInt() & 0xFFFFFFFFL;
+        mTotalHostWakeCount = buf.getInt() & 0xFFFFFFFFL;
+        mLastBtWakeTimestamp = buf.getInt() & 0xFFFFFFFFL;
+        mLastHostWakeTimestamp = buf.getInt() & 0xFFFFFFFFL;
+        mResetTimestamp = buf.getInt() & 0xFFFFFFFFL;
+        mCurrentTimestamp = buf.getInt() & 0xFFFFFFFFL;
+        mIsWatchdogTimerAboutToExpire = buf.getInt() & 0xFFFFFFFFL;
+        mCoexStatusMask = buf.getShort() & 0xFFFF;
+        mTotalLinksBrEdrLeActive = buf.get() & 0xFF;
+        mTotalLinksBrEdrSniff = buf.get() & 0xFF;
+        mTotalLinksCis = buf.get() & 0xFF;
+        mIsScoActive = buf.get() & 0xFF;
+    }
+
+    private BqrControllerHealth(Parcel in) {
+        mQualityReportId = in.readInt();
+        mPacketCountHostToController = in.readLong();
+        mPacketCountControllerToHost = in.readLong();
+        mLastPacketLengthHostToController = in.readInt();
+        mLastPacketLengthControllerToHost = in.readInt();
+        mTotalBtWakeCount = in.readLong();
+        mTotalHostWakeCount = in.readLong();
+        mLastBtWakeTimestamp = in.readLong();
+        mLastHostWakeTimestamp = in.readLong();
+        mResetTimestamp = in.readLong();
+        mCurrentTimestamp = in.readLong();
+        mIsWatchdogTimerAboutToExpire = in.readLong();
+        mCoexStatusMask = in.readInt();
+        mTotalLinksBrEdrLeActive = in.readInt();
+        mTotalLinksBrEdrSniff = in.readInt();
+        mTotalLinksCis = in.readInt();
+        mIsScoActive = in.readInt();
+    }
+
+    /** @hide
+     * Quality report ID (0x0B or 0x0C)
+    */
+    @SystemApi
+    public int getQualityReportId() {
+        return mQualityReportId;
+    }
+
+    /** @hide
+     *   Total count of packets sent from Host to Controller over HCI transport.This field is employed for the purpose of debugging HCI (e.g., UART) issues.Behavior: the counters reset when the controller received HCI reset.
+     */
+    @SystemApi
+    public long getPacketCountHostToController() {
+        return mPacketCountHostToController;
+    }
+
+    /** @hide
+     * Total count of HCI Event packets sent to Host.This field is employed for the purpose of debugging HCI (e.g., UART) issues.Behavior: the counters reset when the controller received HCI reset.
+    */
+    @SystemApi
+    public long getPacketCountControllerToHost() {
+        return mPacketCountControllerToHost;
+    }
+
+    /** @hide
+     * Length of the last HCI packet sent to Host UART.Note: HCI Packet Length max 2 octet (Include HCI, ACL, SCO, ISO)
+    */
+    @SystemApi
+    public int getLastPacketLengthHostToController() {
+        return mLastPacketLengthHostToController;
+    }
+
+    /** @hide
+     * Length of the last HCI packet recevied to Host UART.Note: HCI Packet Length max 2 octet (Include HCI, ACL, SCO, ISO)
+    */
+    @SystemApi
+    public int getLastPacketLengthControllerToHost() {
+        return mLastPacketLengthControllerToHost;
+    }
+
+    /** @hide
+     * The aggregate tally of BT_Wake pin assertions by the Host entity.This field serves as a diagnostic tool for debugging power-related issues.Behavior: the counters reset when the controller received HCI reset.
+    */
+    @SystemApi
+    public long getTotalBtWakeCount() {
+        return mTotalBtWakeCount;
+    }
+
+    /** @hide
+     * Aggregate calculation of Host_Wake pin assertions initiated by the Controller.This field serves as a diagnostic tool for debugging power-related issues.
+    */
+    @SystemApi
+    public long getTotalHostWakeCount() {
+        return mTotalHostWakeCount;
+    }
+
+    /** @hide
+     * Last Timestamp when Host Asserted BT_Wake Pin.This field is implemented for the purpose of debugging Power issues
+    */
+    @SystemApi
+    public long getLastBtWakeTimestamp() {
+        return mLastBtWakeTimestamp;
+    }
+
+    /** @hide
+     * The most recent timestamp when the controller asserted the Host_Wake pin.This field is used for debugging power issues.
+    */
+    @SystemApi
+    public long getLastHostWakeTimestamp() {
+        return mLastHostWakeTimestamp;
+    }
+
+    /** @hide
+     * Timestamp indicating the completion of the most recent HCI Reset.This field is utilized for the express purpose of facilitating the resolution of timing-related issues.It should serve as the initial recording point against which all other items are referenced.
+    */
+    @SystemApi
+    public long getResetTimestamp() {
+        return mResetTimestamp;
+    }
+
+    /** @hide
+     * The present time when this event is generated.This field is utilized for the purpose of troubleshooting timing discrepancies. It should serve as the trigger recording point that all other elements reference.
+    */
+    @SystemApi
+    public long getCurrentTimestamp() {
+        return mCurrentTimestamp;
+    }
+
+    /** @hide
+     * Flag to denote that this health status event is generated by the controller as an early warning of watch dog expiration. The current timestamp serves to indicate the time of occurrence.
+    */
+    @SystemApi
+    public boolean isWatchdogTimerAboutToExpire() {
+        return mIsWatchdogTimerAboutToExpire != 0;
+    }
+
+    /** @hide
+     * Coex status
+    */
+    @SystemApi
+    public int getCoexStatusMask() {
+        return mCoexStatusMask;
+    }
+
+    /** @hide
+     * Total link count of BR/EDR/LE in Active state
+    */
+    @SystemApi
+    public int getTotalLinksBrEdrLeActive() {
+        return mTotalLinksBrEdrLeActive;
+    }
+
+    /** @hide
+     * Total link count of BR/EDR in Sniff/Idle state.
+    */
+    @SystemApi
+    public int getTotalLinksBrEdrSniff() {
+        return mTotalLinksBrEdrSniff;
+    }
+
+    /** @hide
+     * Total link count of ISO.
+    */
+    @SystemApi
+    public int getTotalLinksCis() {
+        return mTotalLinksCis;
+    }
+
+    /** @hide
+     * Indicator to check if the SCO link is currently activated
+    */
+    @SystemApi
+    public boolean isScoActive() {
+        return mIsScoActive != 0;
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    @Override
+    public void writeToParcel(@NonNull Parcel dest, int flags) {
+        dest.writeInt(mQualityReportId);
+        dest.writeLong(mPacketCountHostToController);
+        dest.writeLong(mPacketCountControllerToHost);
+        dest.writeInt(mLastPacketLengthHostToController);
+        dest.writeInt(mLastPacketLengthControllerToHost);
+        dest.writeLong(mTotalBtWakeCount);
+        dest.writeLong(mTotalHostWakeCount);
+        dest.writeLong(mLastBtWakeTimestamp);
+        dest.writeLong(mLastHostWakeTimestamp);
+        dest.writeLong(mResetTimestamp);
+        dest.writeLong(mCurrentTimestamp);
+        dest.writeLong(mIsWatchdogTimerAboutToExpire);
+        dest.writeInt(mCoexStatusMask);
+        dest.writeInt(mTotalLinksBrEdrLeActive);
+        dest.writeInt(mTotalLinksBrEdrSniff);
+        dest.writeInt(mTotalLinksCis);
+        dest.writeInt(mIsScoActive);
+    }
+
+    /** @hide */
+    @SystemApi
+    public static final @NonNull Parcelable.Creator<BqrControllerHealth> CREATOR =
+            new Parcelable.Creator<BqrControllerHealth>() {
+                public BqrControllerHealth createFromParcel(Parcel in) {
+                    return new BqrControllerHealth(in);
+                }
+
+                public BqrControllerHealth[] newArray(int size) {
+                    return new BqrControllerHealth[size];
+                }
+            };
+
+    @Override
+    @NonNull
+    public String toString() {
+        return "  BqrControllerHealth: {\n"
+                + "    mQualityReportId: " + mQualityReportId + "\n"
+                + "    mPacketCountHostToController: " + mPacketCountHostToController + "\n"
+                + "    mPacketCountControllerToHost: " + mPacketCountControllerToHost + "\n"
+                + "    mLastPacketLengthHostToController: " + mLastPacketLengthHostToController + "\n"
+                + "    mLastPacketLengthControllerToHost: " + mLastPacketLengthControllerToHost + "\n"
+                + "    mTotalBtWakeCount: " + mTotalBtWakeCount + "\n"
+                + "    mTotalHostWakeCount: " + mTotalHostWakeCount + "\n"
+                + "    mLastBtWakeTimestamp: " + mLastBtWakeTimestamp + "\n"
+                + "    mLastHostWakeTimestamp: " + mLastHostWakeTimestamp + "\n"
+                + "    mResetTimestamp: " + mResetTimestamp + "\n"
+                + "    mCurrentTimestamp: " + mCurrentTimestamp + "\n"
+                + "    mIsWatchdogTimerAboutToExpire: " + mIsWatchdogTimerAboutToExpire + "\n"
+                + "    mCoexStatusMask: 0x" + Integer.toHexString(mCoexStatusMask) + "\n"
+                + "    mTotalLinksBrEdrLeActive: " + mTotalLinksBrEdrLeActive + "\n"
+                + "    mTotalLinksBrEdrSniff: " + mTotalLinksBrEdrSniff + "\n"
+                + "    mTotalLinksCis: " + mTotalLinksCis + "\n"
+                + "    mIsScoActive: " + mIsScoActive + "\n"
+                + "  }";
+    }
+}
+
 
     /**
      * Vendor-specific extension: Quality Monitor extra fields for QC BQR5.

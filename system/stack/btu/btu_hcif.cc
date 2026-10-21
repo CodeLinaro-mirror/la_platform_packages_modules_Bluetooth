@@ -992,6 +992,13 @@ static void btu_hcif_hdl_command_complete(uint16_t opcode, uint8_t* p, uint16_t 
     case HCI_WRITE_VOICE_SETTINGS:
       break;
 
+    case HCI_CONFIGURE_DATA_PATH:
+      // LE Audio ISO data-path configuration completion (codec_manager
+      // encode/decode setup/teardown, CIS/BIS datapath setup). Fire-and-forget
+      // at this legacy dispatch layer -- no caller registers a completion
+      // callback, so no further action is required here on completion.
+      break;
+
     default:
       log::error("Command complete for opcode:0x{:02x} should not be handled here", opcode);
       break;
@@ -1124,6 +1131,19 @@ static void btu_hcif_hdl_command_status(uint16_t opcode, uint8_t status, const u
       if (hci_status != HCI_SUCCESS) {
         log::warn("Received bad command status for opcode:0x{:02x} status:{}", opcode,
                   hci_status_code_text(hci_status));
+      }
+      break;
+
+    case HCI_LE_CREATE_BIG:
+      // A success command status only acknowledges that the controller
+      // accepted the command; the BIG Create Complete event will follow and
+      // is handled separately. Only a command-status *failure* means no
+      // Create Complete event will be generated, so it must be propagated
+      // here to unblock the broadcaster.
+      if (status != HCI_SUCCESS) {
+        uint8_t big_handle;
+        STREAM_TO_UINT8(big_handle, p_cmd);
+        IsoManager::GetInstance()->HandleCreateBigCommandStatus(big_handle, status);
       }
       break;
 

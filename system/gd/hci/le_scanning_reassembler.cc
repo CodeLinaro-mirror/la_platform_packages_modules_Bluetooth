@@ -40,7 +40,8 @@ std::list<LeScanningReassembler::PeriodicAdvertisingFragment> periodic_cache_;
 std::optional<LeScanningReassembler::CompleteAdvertisingData>
 LeScanningReassembler::ProcessAdvertisingReport(uint16_t event_type, uint8_t address_type,
                                                 Address address, uint8_t advertising_sid,
-                                                const std::vector<uint8_t>& advertising_data) {
+                                                const std::vector<uint8_t>& advertising_data,
+                                                uint8_t channel_index) {
   bool is_scannable = event_type & (1 << kScannableBit);
   bool is_scan_response = event_type & (1 << kScanResponseBit);
   bool is_legacy = event_type & (1 << kLegacyBit);
@@ -70,7 +71,7 @@ LeScanningReassembler::ProcessAdvertisingReport(uint16_t event_type, uint8_t add
 
   // Concatenate the data with existing fragments.
   std::list<AdvertisingFragment>::iterator advertising_fragment =
-          AppendFragment(key, event_type, advertising_data);
+          AppendFragment(key, event_type, channel_index, advertising_data);
 
   // Trim the advertising data when the complete payload is received.
   if (data_status != DataStatus::CONTINUING) {
@@ -95,8 +96,10 @@ LeScanningReassembler::ProcessAdvertisingReport(uint16_t event_type, uint8_t add
 
   // Otherwise the full advertising report has been reassembled,
   // removed the cache entry and return the complete advertising data.
+  std::vector<uint8_t> data = AppendChannelIndexData(std::move(advertising_fragment->data),
+                                                      advertising_fragment->channel_index);
   CompleteAdvertisingData result{.extended_event_type = advertising_fragment->extended_event_type,
-                                 .data = std::move(advertising_fragment->data)};
+                                 .data = std::move(data)};
   cache_.erase(advertising_fragment);
   log::verbose("Full advertising report has been reassembled");
   return result;
@@ -145,6 +148,27 @@ std::vector<uint8_t> LeScanningReassembler::TrimAdvertisingData(
   return significant_advertising_data;
 }
 
+std::vector<uint8_t> LeScanningReassembler::AppendChannelIndexData(
+        std::vector<uint8_t> advertising_data, uint8_t channel_index) {
+  if (channel_index == kChannelIndexNotPresent) {
+    log::verbose("No channel index reported for this advertisement, skipping AD 0xFF append");
+    return advertising_data;
+  }
+
+  if (advertising_data.size() + kChannelIndexAdStructureSize > kMaxAdvertisingDataSize) {
+    log::warn("Dropping channel-index AD structure: advertising data already at size {}",
+              advertising_data.size());
+    return advertising_data;
+  }
+
+  advertising_data.push_back(kChannelIndexAdStructureSize - 1);  // AD length (excludes itself)
+  advertising_data.push_back(static_cast<uint8_t>(GapDataType::MANUFACTURER_SPECIFIC_DATA));
+  advertising_data.push_back(static_cast<uint8_t>(kChannelIndexCompanyId & 0xff));
+  advertising_data.push_back(static_cast<uint8_t>((kChannelIndexCompanyId >> 8) & 0xff));
+  advertising_data.push_back(channel_index);
+
+  return advertising_data;
+}
 LeScanningReassembler::AdvertisingKey::AdvertisingKey(Address address,
                                                       DirectAdvertisingAddressType address_type,
                                                       uint8_t sid)
@@ -169,7 +193,7 @@ bool LeScanningReassembler::AdvertisingKey::operator==(const AdvertisingKey& oth
 /// dropping the oldest advertiser.
 std::list<LeScanningReassembler::AdvertisingFragment>::iterator
 LeScanningReassembler::AppendFragment(const AdvertisingKey& key, uint16_t extended_event_type,
-                                      const std::vector<uint8_t>& data) {
+                                      uint8_t channel_index, const std::vector<uint8_t>& data) {
   auto it = FindFragment(key);
   if (it != cache_.end()) {
     // Legacy scan responses don't contain a 'connectable' bit, so this adds the
@@ -181,6 +205,7 @@ LeScanningReassembler::AppendFragment(const AdvertisingKey& key, uint16_t extend
     } else {
       it->extended_event_type = extended_event_type;
     }
+    it->channel_index = channel_index;
     it->data.insert(it->data.end(), data.cbegin(), data.cend());
     return it;
   }
@@ -189,7 +214,7 @@ LeScanningReassembler::AppendFragment(const AdvertisingKey& key, uint16_t extend
     cache_.pop_back();
   }
 
-  cache_.emplace_front(key, extended_event_type, data);
+  cache_.emplace_front(key, extended_event_type, channel_index, data);
   return cache_.begin();
 }
 

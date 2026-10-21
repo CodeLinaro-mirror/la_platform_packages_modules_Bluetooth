@@ -263,8 +263,12 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
         @Override
         public void onSinkStopped(int broadcastId, int reason) {
-            Log.d(TAG, "onSinkStopped: broadcastId=" + broadcastId + ", reason=" + reason);
-            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST
+            if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_LOCAL_TERMINATED) {
+                // User-initiated stop (PGP stopped broadcast) — no retry dialog needed.
+                // Just show status message.
+                mStatusMessage.postValue("Stopped broadcast ID: " + broadcastId
+                        + " (Local host terminated)");
+            } else if (reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST
                     || reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED
                     || reason == BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT) {
                 // BIG sync lost unexpectedly — post LiveData so the Activity can show
@@ -291,6 +295,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
                     break;
                 case BluetoothLeBroadcastSinkState.REASON_HARDWARE_GENERIC:
                     message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + ": Hardware error";
+                    break;
+                case BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST:
+                    message = "Stop failed: Termination already in progress — please wait";
                     break;
                 default:
                     message = "Stop Enhanced Sink failed for broadcast ID " + broadcastId + " (" + getReasonString(reason) + ")";
@@ -429,6 +436,22 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
     public int getEnhancedBroadcastSourceCap() {
         if (mBroadcastSink == null) return -1;
         return mBroadcastSink.getEnhancedBroadcastSourceCap();
+    }
+
+    /**
+     * Set device ID and name attributes for sink side (PGP)
+     * Used when duplicate device ID is detected (bit 16) and user needs to set new device ID
+     *
+     * @param devId 12-bit device ID (0-4095)
+     * @param name  Device name (max 10 bytes)
+     * @return true if successful, false otherwise
+     */
+    public boolean setAttributesForSink(int devId, byte[] name) {
+        BluetoothProxy proxy = BluetoothProxy.getBluetoothProxy(getApplication());
+        if (proxy != null) {
+            return proxy.setAttributesForSink(devId, name);
+        }
+        return false;
     }
 
     public void cleanup() {
@@ -611,7 +634,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
 
         try {
             mBroadcastSink.stopEnhancedBroadcastSink(broadcastId, mode);
-            mStatusMessage.postValue("Stopping Enhanced Sink for broadcast ID: " + broadcastId
+            // Don't set status here - let the callback (onSinkStopped/onSinkStopFailed) handle it
+            // This prevents "Stopping..." message from appearing when the request will be rejected
+            Log.d(TAG, "stopEnhancedBroadcastSink: request sent for broadcast ID: " + broadcastId
                     + " mode=0x" + Integer.toHexString(mode));
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop enhanced sink", e);
@@ -628,8 +653,9 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
             return;
         }
         try {
+            // Show pending status immediately - actual result will come via callback
+            mStatusMessage.postValue("Terminate DBIG: request pending, waiting for completion...");
             mBroadcastSink.terminateDbig();
-            mStatusMessage.postValue("Terminate DBIG sent");
         } catch (Exception e) {
             Log.e(TAG, "Failed to terminate DBIG", e);
             mStatusMessage.postValue("Failed to terminate DBIG: " + e.getMessage());
@@ -903,6 +929,8 @@ public class BroadcastSinkViewModel extends AndroidViewModel {
         switch (reason) {
             case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED:
                 return "PGO terminated the BIG";
+            case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_LOCAL_TERMINATED:
+                return "Local host terminated";
             case BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT:
                 return "Out of range / connection timeout";
             default:

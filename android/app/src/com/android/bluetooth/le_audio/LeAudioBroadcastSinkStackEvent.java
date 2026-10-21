@@ -75,7 +75,9 @@ public class LeAudioBroadcastSinkStackEvent {
      * Fired when HCI_VS_LE_Texit_DBIG_Complete arrives — covers both the
      * Terminate procedure (§5.3) result: success (0x00) or rejected by PGO (0x0E).
      * {@code broadcastId} = broadcast ID, {@code valueInt1} = dbig_handle,
-     * {@code reason} = HCI status (0x00 = success, 0x0E = rejected).
+     * {@code reason} = HCI status (0x00 = success, 0x0E = rejected),
+     * {@code valueInt2} = HCI disconnect reason code carried in the event
+     * (e.g. 0x13 Remote User Terminated), meaningful when {@code reason} == 0x00.
      */
     public static final int EVENT_TYPE_TEXIT_DBIG_COMPLETE = 15;
 

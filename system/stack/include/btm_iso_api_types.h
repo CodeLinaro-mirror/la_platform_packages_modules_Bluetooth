@@ -184,6 +184,7 @@ struct dbig_create_params {
   uint8_t exit_timeout;
   uint8_t remove_timeout;
   uint8_t terminate_timeout;
+  uint8_t bis_timeout;
   uint8_t tx_power;
 };
 
@@ -338,7 +339,7 @@ struct dbig_update_evt {
 /* DBIG (Duplex Broadcast Information Group) status event */
 struct dbig_status_evt {
   uint8_t dbig_handle;
-  uint16_t dbig_status;
+  uint32_t dbig_status;
   /* Extended fields: device ID, name, BIS info, broadcast features */
   uint16_t dev_id;
   std::vector<uint8_t> name;

@@ -563,10 +563,19 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
 
   log::verbose("local features {} peer features {}", p_cb->features, p_cb->rcb[i].peer_features);
 
-  /* listen to browsing channel when the connection is open,
-   * if peer initiated AVRCP connection and local device supports browsing
-   * channel */
-  AVRC_OpenBrowse(p_data->rc_conn_chg.handle, AVCT_ROLE_ACCEPTOR);
+  // Check whether target or sink have the browse feature bit.
+  // If concurrent target and controller are enabled, the sink feature bits are used.
+  bool browse_supported = (p_cb->features & BTA_AV_FEAT_BROWSE);
+  if (btif_av_both_enable()) {
+    browse_supported = (p_cb->sink_features & BTA_AV_FEAT_BROWSE);
+  }
+
+  if (browse_supported) {
+    /* listen to browsing channel when the connection is open,
+     * if peer initiated AVRCP connection and local device supports browsing
+     * channel */
+    AVRC_OpenBrowse(p_data->rc_conn_chg.handle, AVCT_ROLE_ACCEPTOR);
+  }
 
   if (p_cb->rcb[i].lidx == (BTA_AV_NUM_LINKS + 1) && shdl != 0) {
     /* rc is opened on the RC only ACP channel, but is for a specific
@@ -640,7 +649,7 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
      * support
      * browsing channel, open the browsing channel now
      * Some TG would not broadcast browse feature hence check inter-op. */
-    if ((p_cb->features & BTA_AV_FEAT_BROWSE) &&
+    if (browse_supported &&
         ((rc_open.peer_ct_features & BTA_AV_FEAT_BROWSE) ||
          (rc_open.peer_tg_features & BTA_AV_FEAT_BROWSE))) {
       if ((p_cb->rcb[i].status & BTA_AV_RC_ROLE_MASK) == BTA_AV_RC_ROLE_INT) {
@@ -673,7 +682,7 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
    * browsing channel, open the browsing channel now
    * TODO (sanketa): Some TG would not broadcast browse feature hence check
    * inter-op. */
-  if ((p_cb->features & BTA_AV_FEAT_BROWSE) && (rc_open.peer_features & BTA_AV_FEAT_BROWSE) &&
+  if (browse_supported && (rc_open.peer_features & BTA_AV_FEAT_BROWSE) &&
       ((p_cb->rcb[i].status & BTA_AV_RC_ROLE_MASK) == BTA_AV_RC_ROLE_INT)) {
     log::verbose("opening AVRC Browse channel");
     AVRC_OpenBrowse(p_data->rc_conn_chg.handle, AVCT_ROLE_INITIATOR);
@@ -2317,22 +2326,6 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
       cover_art_psm = bta_avk_get_cover_art_psm();
     }
 
-    /* Fallback for SDP cache corruption: if peer_features is still 0 but the
-     * SDP discovery database contains an AVRCP Target record, the
-     * ATTR_ID_SERVICE_CLASS_ID_LIST attribute was likely missing or malformed
-     * (observed as "features length 0 instead of 2").  Assume basic CT+TG
-     * support so that bta_av_rc_create() is called with AVCT_ROLE_INITIATOR
-     * and AVRC_Open() is actually attempted rather than leaving the stack in
-     * ACCEPTOR-only mode. */
-    if (peer_features == 0 && p_cb->p_disc_db != NULL &&
-        get_legacy_stack_sdp_api()->db.SDP_FindServiceInDb(
-                p_cb->p_disc_db, UUID_SERVCLASS_AV_REM_CTRL_TARGET, NULL) != NULL) {
-      log::warn(
-              "peer_features=0 but AVRCP TG SDP record present; assuming "
-              "basic CT+TG support to force INITIATOR open");
-      peer_features = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT;
-    }
-
     log::verbose("populating rem ctrl target bip psm 0x{:x}", cover_art_psm);
   } else if (p_cb->sdp_a2dp_handle) {
     /* check peer version and whether support CT and TG role */
@@ -2420,24 +2413,6 @@ void bta_av_rc_disc_done(tBTA_AV_DATA* p_data) {
       if (peer_features != 0) {
         DEVICE_IOT_CONFIG_ADDR_SET_HEX(p_scb->PeerAddress(), IOT_CONF_KEY_AVRCP_FEATURES,
                                        peer_features, IOT_CONF_BYTE_NUM_2);
-      }
-      /* If the AVRCP connection was still not established after the SDP
-       * discovery and connection-creation attempt, schedule a retry via
-       * BTA_AV_AVRC_TIMER_EVT so that bta_av_open_rc() is invoked and
-       * bta_av_rc_disc() re-initiates the SDP discovery.  This covers:
-       *   (a) IBS/UART sleep race: SDP CCB was stuck in CONN_SETUP until the
-       *       SDP inactivity timer fired with SDP_CONN_FAILED.
-       *   (b) Transient bta_av_rc_create() failure (no link resources).
-       *   (c) SDP cache corruption returning zero peer features.
-       * Reset use_rc so that bta_av_open_rc() will attempt the discovery. */
-      if (rc_handle == BTA_AV_RC_HANDLE_NONE && btif_av_is_a2dp_sink_offload_enabled()) {
-        log::debug(
-                "AVRCP connection not established after SDP; scheduling retry "
-                "via avrc_ct_timer (peer: {})",
-                p_scb->PeerAddress());
-        p_scb->use_rc = true;
-        bta_sys_start_timer(p_scb->avrc_ct_timer, AVRC_CONNECT_RETRY_DELAY_MS,
-                            BTA_AV_AVRC_TIMER_EVT, p_scb->hndl);
       }
     }
   } else {

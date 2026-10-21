@@ -35,6 +35,7 @@
 
 #include <stdbool.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -584,12 +585,28 @@ public:
  */
 struct tL2C_CB {
   uint16_t controller_xmit_window; /* Total ACL window for all links */
+  /* Controller buffers consumed beyond what controller_xmit_window could cover. Completions are
+   * reported per HCI fragment, so they settle this before the window is credited back. */
+  uint16_t xmit_fragment_debt;
 
   uint16_t round_robin_quota;   /* Round-robin link quota */
   uint16_t round_robin_unacked; /* Round-robin unacked */
   bool is_classic_round_robin_quota_available() const {
     return round_robin_unacked < round_robin_quota;
   }
+
+  /* Buffers carried as xmit_fragment_debt were never taken from the window, so settle those
+   * before any of the completion credits it back. */
+  void credit_classic_xmit_window(uint16_t num_packets_acked) {
+    if (xmit_fragment_debt > 0) {
+      const uint16_t settled = std::min(xmit_fragment_debt, num_packets_acked);
+      xmit_fragment_debt -= settled;
+      controller_xmit_window += num_packets_acked - settled;
+    } else {
+      controller_xmit_window += num_packets_acked;
+    }
+  }
+
   void update_outstanding_classic_packets(uint16_t num_packets_acked) {
     if (round_robin_unacked > num_packets_acked) {
       round_robin_unacked -= num_packets_acked;
@@ -625,7 +642,7 @@ struct tL2C_CB {
 #endif
 
   tL2CAP_FIXED_CHNL_REG fixed_reg[L2CAP_NUM_FIXED_CHNLS]; /* Reg info for fixed channels */
-
+  uint16_t ble_xmit_fragment_debt;                     /* See xmit_fragment_debt */
   uint16_t num_ble_links_active;                       /* Number of LE links active */
   uint16_t controller_le_xmit_window;                  /* Total ACL window for all links */
   tL2C_BLE_FIXED_CHNLS_MASK l2c_ble_fixed_chnls_mask;  // LE fixed channels mask
@@ -635,6 +652,18 @@ struct tL2C_CB {
   bool is_ble_round_robin_quota_available() const {
     return ble_round_robin_unacked < ble_round_robin_quota;
   }
+
+   /* See credit_classic_xmit_window(). */
+  void credit_le_xmit_window(uint16_t num_packets_acked) {
+    if (ble_xmit_fragment_debt > 0) {
+      const uint16_t settled = std::min(ble_xmit_fragment_debt, num_packets_acked);
+      ble_xmit_fragment_debt -= settled;
+      controller_le_xmit_window += num_packets_acked - settled;
+    } else {
+      controller_le_xmit_window += num_packets_acked;
+    }
+  }
+  
   void update_outstanding_le_packets(uint16_t num_packets_acked) {
     if (ble_round_robin_unacked > num_packets_acked) {
       ble_round_robin_unacked -= num_packets_acked;
@@ -746,6 +775,7 @@ void l2cu_reject_connection(tL2C_LCB* p_lcb, uint16_t remote_cid, uint8_t rem_id
                             tL2CAP_CONN result);
 void l2cu_send_peer_info_req(tL2C_LCB* p_lcb, uint16_t info_type);
 void l2cu_set_acl_hci_header(BT_HDR* p_buf, tL2C_CCB* p_ccb);
+uint16_t l2cu_hci_segment_count(const BT_HDR* p_buf, tBT_TRANSPORT transport);
 void l2cu_check_channel_congestion(tL2C_CCB* p_ccb);
 void l2cu_disconnect_chnl(tL2C_CCB* p_ccb);
 

@@ -14,6 +14,7 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothLeBroadcast;
 import android.bluetooth.BluetoothLeBroadcastChannel;
 import android.bluetooth.BluetoothLeBroadcastMetadata;
 import android.bluetooth.BluetoothLeBroadcastSinkState;
@@ -35,6 +36,7 @@ import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.BluetoothProfileConnectionInfo;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -79,6 +81,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private static final int MAX_BIG_SYNC_SOURCES = 1;
 
     private static final int DEFAULT_VOLUME_LEVEL = 15;
+
+    // HCI Error Codes
+    private static final int HCI_ERR_COMMAND_DISALLOWED = 0x0C;
+    private static final int HCI_ERR_CONTROLLER_BUSY = 0x3A;
 
     /*
      * Fixed placeholder address used for ALL interactions with the audio framework
@@ -238,9 +244,46 @@ public class LeAudioBroadcastSinkService extends ProfileService {
      */
     private volatile BluetoothDevice mPendingEnhancedSourceDevice = null;
 
+    // Tracks the calling UID of every currently-registered broadcast-sink callback (register()
+    // doesn't expose this on its own, and RemoteCallbackList's internal death-recipient map isn't
+    // ours to read). Populated in registerCallback(), cleaned up in unregisterCallback() and
+    // onCallbackDied() alike.
+    private final Map<IBinder, Integer> mCallbackUids = new HashMap<>();
+    // UID of the app whose addSource()/startEnhancedBroadcastSink() call is driving the
+    // currently active sink session. A passive observer (e.g. a system UI surface just
+    // displaying sink status) can also be registered in mCallbacks at once -- only THIS UID
+    // dying should trigger releaseOrphanedSessionState(); a passive observer dying must not tear
+    // down a healthy, actively-driven session. INVALID_UID means no session is currently owned.
+    private static final int INVALID_UID = -1;
+    private int mSessionOwnerUid = INVALID_UID;
+
     // Callback management
     private final RemoteCallbackList<IBluetoothLeBroadcastSinkCallback> mCallbacks =
-            new RemoteCallbackList<>();
+            new RemoteCallbackList<IBluetoothLeBroadcastSinkCallback>() {
+                @Override
+                public void onCallbackDied(IBluetoothLeBroadcastSinkCallback callback) {
+                    // The controlling app (AurachatManager, hosted outside this process) is not
+                    // necessarily the ONLY registrant here -- a passive observer (e.g. a system
+                    // UI surface just displaying sink status) can also be registered and will
+                    // typically outlive the controlling app. Counting registrants can't
+                    // distinguish the two: only reclaim when the callback that just died belongs
+                    // to the UID that's actually driving the active session.
+                    //
+                    // If it dies mid-session it never runs its teardown, so the tracked source
+                    // (PA sync reg_id + BIG sync + audio path) and any in-flight scan are
+                    // orphaned here: the leftover descriptor rejects the next join with
+                    // REASON_DUPLICATE_ADD_REQUEST and the leaked scan blocks it with "Search
+                    // already in progress", wedging every reconnect until reboot (native only
+                    // self-heals the reg_id after a ~40s timeout, far too slow for a reconnect).
+                    // Reclaim that state so a fresh session can connect once the controller
+                    // restarts.
+                    Integer diedUid;
+                    synchronized (mCallbackUids) {
+                        diedUid = mCallbackUids.remove(callback.asBinder());
+                    }
+                    reclaimOrphanedSessionIfOwner(diedUid, "onCallbackDied");
+                }
+            };
 
     // State management
     @GuardedBy("mStateLock")
@@ -248,11 +291,11 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     private final Object mStateLock = new Object();
 
     // Vendor-specific LTV constants for enhanced PA BASE metadata (Section 6.12.6.9)
-    // LTV: [0x11][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(12)]
+    // LTV: [0x12][0xFF][0x0A][0x00][Broadcast_Features(2)][DBIG_params(13)]
     // Company ID 0x000A = Qualcomm Technologies Inc (Little Endian: 0x0A, 0x00)
     private static final int DBIG_VENDOR_COMPANY_ID_LO  = 0x0A;
     private static final int DBIG_VENDOR_COMPANY_ID_HI  = 0x00;
-    private static final int DBIG_VENDOR_DATA_LENGTH    = 14; // 2 Broadcast_Features + 12 DBIG params
+    private static final int DBIG_VENDOR_DATA_LENGTH    = 15; // 2 Broadcast_Features + 13 DBIG params
 
     /* PGO Broadcast_Features field received from the enhanced PA vendor LTV. */
     private int mBroadcastFeatures = 0;
@@ -520,9 +563,89 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Clear callbacks
         mCallbacks.kill();
+        synchronized (mCallbackUids) {
+            mCallbackUids.clear();
+        }
+        mSessionOwnerUid = INVALID_UID;
 
         mPreemptedByCall = false;
         mBroadcastInDeviceBeforeCall = null;
+    }
+
+    /*
+     * Reclaim orphaned session state after the sink's controlling client dies mid-session.
+     *
+     * Mirrors the exact two-step teardown a live client would have driven through the UI --
+     * "stop_sync" (stopEnhancedBroadcastSink()) followed by "removeSource" (removeSource()) --
+     * by calling those same public methods directly, instead of reaching into mNativeInterface
+     * and reimplementing their MSG_STOP/MSG_REMOVE_ACTIVE_DEVICE bookkeeping here. destroySource()
+     * is never called from here: removeSource() drives the state machine down through PA-sync
+     * teardown to SINK_STATE_IDLE, and the existing EVENT_TYPE_STATE_CHANGED(IDLE) handler calls
+     * destroySource() from there, exactly as it does for a graceful removeSource(). Calling
+     * destroySource() directly on a still BIG-synced source (skipping the TExitDbig leave step
+     * stopEnhancedBroadcastSink() sends) tore the native source down out of its normal sequence,
+     * racing ahead of trailing DBIG STATUS/UPDATE VSEs the controller still emits for a BIG that
+     * was never gracefully exited.
+     */
+    private void releaseOrphanedSessionState() {
+        // Step 1 (mirrors a "stop_sync" click): if a source is still BIG-synced/syncing, leave
+        // it the same way stopEnhancedBroadcastSink() resolves the target itself -- there is at
+        // most one active enhanced session at a time. EXIT, matching the default mode a normal
+        // stop_sync click uses. stopEnhancedBroadcastSink() itself unconditionally sends
+        // MSG_STOP -> MSG_REMOVE_ACTIVE_DEVICE -> MSG_NOTIFY_SINK_STOPPED, so no separate AChat
+        // teardown is needed here.
+        Optional<Integer> activeSinkId = mBroadcastSinkDescriptors.entrySet().stream()
+                .filter(e -> e.getValue().mSinkState == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCED
+                        || e.getValue().mSinkState == LeAudioBroadcastSinkStackEvent.SINK_STATE_BIG_SYNCING)
+                .map(Map.Entry::getKey)
+                .findFirst();
+        if (activeSinkId.isPresent()) {
+            if (DBG) Log.d(TAG, "releaseOrphanedSessionState: leaving active session broadcastId="
+                    + activeSinkId.get());
+            stopEnhancedBroadcastSink(activeSinkId.get(), BluetoothLeBroadcast.DBIG_TEXIT_MODE_EXIT);
+        } else {
+            // No source was BIG-synced, but the client died without running its own teardown,
+            // so AChat may still be left enabled from an abrupt death mid-join (achat_rx/tx_enable
+            // were never set false). Disable it unconditionally -- MSG_STOP is idempotent --
+            // mirroring the AHAL-restart path, which likewise sends it unconditionally "so AHAL
+            // is always brought to a known state".
+            mIsEnhancedStreaming = false;
+            mHandler.sendEmptyMessage(MSG_STOP);
+            mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
+        }
+
+        boolean stopStaleScan;
+        synchronized (mStateLock) {
+            stopStaleScan = mSearchInProgress;
+            mSearchInProgress = false;
+        }
+        // stopScanAndUnregister() locks the ScanCallback monitor, so it must run WITHOUT holding
+        // mStateLock: onScannerRegistered takes that monitor -> mStateLock, so inverting the order
+        // here would deadlock this (binder death) thread against an in-flight scanner
+        // registration -- and the client can die exactly during one.
+        if (stopStaleScan) {
+            mScanCallback.stopScanAndUnregister();
+        }
+        // mFoundSources is a plain HashMap mutated under its own monitor by onScanResult on a
+        // scanner-callback thread; clearing it without that monitor is a structural data race.
+        synchronized (mFoundSources) {
+            mFoundSources.clear();
+        }
+
+        // Step 2 (mirrors a "removeSource" click): tear down PA sync for every tracked source,
+        // posted after MSG_STOP/MSG_REMOVE_ACTIVE_DEVICE above (same FIFO handler) so it runs
+        // once AChat teardown has actually completed, not while it's still in flight. Descriptor
+        // removal and mSessionOwnerUid reset are NOT done here -- they happen in the existing
+        // EVENT_TYPE_SOURCE_DESTROYED handler once destroySource() (triggered by the native
+        // IDLE transition below) completes, exactly like a graceful removeSource().
+        List<Integer> orphanedBroadcastIds = new ArrayList<>(mBroadcastSinkDescriptors.keySet());
+        mHandler.post(() -> {
+            if (DBG) Log.d(TAG, "releaseOrphanedSessionState: removing " + orphanedBroadcastIds.size()
+                    + " orphaned source(s) now that AChat teardown is complete");
+            for (Integer broadcastId : orphanedBroadcastIds) {
+                removeSource(broadcastId);
+            }
+        });
     }
 
     /*
@@ -551,6 +674,9 @@ public class LeAudioBroadcastSinkService extends ProfileService {
      */
     public void registerCallback(IBluetoothLeBroadcastSinkCallback callback) {
         if (DBG) Log.d(TAG, "registerCallback()");
+        synchronized (mCallbackUids) {
+            mCallbackUids.put(callback.asBinder(), Binder.getCallingUid());
+        }
         mCallbacks.register(callback);
     }
 
@@ -560,6 +686,37 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     public void unregisterCallback(IBluetoothLeBroadcastSinkCallback callback) {
         if (DBG) Log.d(TAG, "unregisterCallback()");
         mCallbacks.unregister(callback);
+        Integer removedUid;
+        synchronized (mCallbackUids) {
+            removedUid = mCallbackUids.remove(callback.asBinder());
+        }
+        // The client can unregister its callback as its OWN clean teardown (e.g. its
+        // Activity/Service onDestroy() when its task is removed from Recents) without first
+        // calling removeSource()/stopEnhancedBroadcastSink() -- the process is then killed right
+        // after, but the binder was already unregistered here, so onCallbackDied() never fires
+        // and this is the only remaining chance to reclaim orphaned state. Same UID-ownership
+        // check as onCallbackDied(): only reclaim if the UNREGISTERING callback belonged to the
+        // session owner -- a passive observer unregistering must not tear down a healthy,
+        // actively-driven session.
+        reclaimOrphanedSessionIfOwner(removedUid, "unregisterCallback");
+    }
+
+    /*
+     * Reclaim orphaned session state if the callback that just went away (died, or explicitly
+     * unregistered without first leaving/removing its source(s)) belonged to the UID actually
+     * driving the active session. A passive observer (e.g. a system UI surface just displaying
+     * sink status) going away must not tear down a healthy, actively-driven session.
+     */
+    private void reclaimOrphanedSessionIfOwner(Integer uid, String trigger) {
+        if (uid == null || mSessionOwnerUid == INVALID_UID || uid != mSessionOwnerUid) {
+            Log.w(TAG, trigger + ": broadcast-sink client gone (uid=" + uid
+                    + "); not the active session owner (uid=" + mSessionOwnerUid
+                    + "), keeping session state");
+            return;
+        }
+        Log.w(TAG, trigger + ": session owner (uid=" + uid
+                + ") gone; reclaiming orphaned session state");
+        releaseOrphanedSessionState();
     }
 
     /*
@@ -568,13 +725,23 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     public void startScanningForSources(List<ScanFilter> filters, ScanSettings settings) {
         if (DBG) Log.d(TAG, "startScanningForSources() with settings: " + settings);
 
+        boolean supersedeStale;
         synchronized (mStateLock) {
-            if (mSearchInProgress) {
-                Log.w(TAG, "Search already in progress");
-                notifyOnSearchStartFailed(BluetoothLeBroadcastSinkState.REASON_UNKNOWN);
-                return;
-            }
+            // A prior search's teardown can be lost: the client's stop-search call can throw
+            // ("All callbacks are unregistered") before it reaches the service, so
+            // stopScanningForSources() never runs and mSearchInProgress stays true. Left as-is,
+            // every later search is rejected here and the AGP can never join until reboot. There
+            // is only one broadcast-sink search consumer, so a new start supersedes any stale one:
+            // tear the stale scanner down (below, outside mStateLock) and start fresh.
+            supersedeStale = mSearchInProgress;
             mSearchInProgress = true;
+        }
+
+        // stopScanAndUnregister() locks the ScanCallback monitor, so it must run WITHOUT holding
+        // mStateLock (onScannerRegistered takes this -> mStateLock; inverting here would deadlock).
+        if (supersedeStale) {
+            Log.w(TAG, "Search already in progress; superseding stale search and restarting");
+            mScanCallback.stopScanAndUnregister();
         }
 
         // Clear found sources when starting a new search
@@ -583,7 +750,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         // Start scanning using the scan callback wrapper with settings
         mScanCallback.registerAndStartScan(filters, settings);
+    }
 
+    private void clearSearchInProgress() {
+        synchronized (mStateLock) {
+            mSearchInProgress = false;
+        }
     }
 
     /*
@@ -622,6 +794,10 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             notifyOnSourceAddFailed(broadcastId, canAddResult);
             return;
         }
+
+        // Claim session ownership now that this request is actually proceeding, so a later
+        // onCallbackDied() for this UID's callback knows to reclaim orphaned state.
+        mSessionOwnerUid = Binder.getCallingUid();
 
         // Get the ScanResult from found sources
         ScanResult result = mFoundSources.get(broadcastId);
@@ -671,12 +847,16 @@ public class LeAudioBroadcastSinkService extends ProfileService {
 
         int broadcastId = metadata.getBroadcastId();
 
-                        // Validate capacity and encryption
+        // Validate capacity and encryption
         int canJoinResult = canSourceBeJoined(broadcastId, metadata);
         if (canJoinResult != BluetoothStatusCodes.SUCCESS) {
             notifyOnSinkStartFailed(broadcastId, canJoinResult);
             return;
         }
+
+        // Claim session ownership now that this request is actually proceeding, so a later
+        // onCallbackDied() for this UID's callback knows to reclaim orphaned state.
+        mSessionOwnerUid = Binder.getCallingUid();
 
         // Create or update descriptor
         LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(broadcastId);
@@ -734,6 +914,17 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink(): broadcastId=" + broadcastId
                 + ", mode=0x" + Integer.toHexString(mode));
 
+        // If PGP termination is already in progress (terminateDbig was called and waiting
+        // for PGO response), reject this stop request immediately to avoid controller
+        // "Command Disallowed" error. The ongoing termination will complete on its own.
+        if (mPgpRequestedTerminate) {
+            Log.w(TAG, "stopEnhancedBroadcastSink: PGP termination already in progress, "
+                    + "rejecting stop request");
+            notifyOnSinkStopFailed(broadcastId,
+                    BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
+            return;  // Don't send texit, don't do cleanup, let pending termination complete
+        }
+
         // Step 1: Call native stopEnhancedBroadcastSink DIRECTLY (not via handler) so the
         // state machine is still in BIG_SYNCED when it validates state and
         // clears flags.  Native stopEnhancedBroadcastSink does NOT stop the HAL clients.
@@ -753,14 +944,13 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_REMOVE_ACTIVE_DEVICE after MSG_STOP");
         mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
 
-        // Step 4: Post MSG_NOTIFY_SINK_STOPPED last so the app is notified only after
-        // full cleanup (setParameters + active device removed). EVENT_TYPE_BIG_SYNC_TERMINATED
-        // arriving from C++ will skip its own notification because this is already queued.
-        android.os.Message stopNotify = mHandler.obtainMessage(
-                MSG_NOTIFY_SINK_STOPPED, broadcastId,
-                BluetoothLeBroadcastSinkState.REASON_LOCAL_STACK_REQUEST);
-        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: queuing MSG_NOTIFY_SINK_STOPPED after MSG_REMOVE_ACTIVE_DEVICE");
-        mHandler.sendMessage(stopNotify);
+        // Step 4: Set flag so the T-EXIT complete handler (EVENT_TYPE_TEXIT_DBIG_COMPLETE)
+        // knows this stop was locally-initiated and computes the real SDK reason from the
+        // HCI disconnect reason once it arrives, instead of us guessing
+        // REASON_LOCAL_STACK_REQUEST here before the actual reason is even known.
+        mPgpRequestedTerminate = true;
+        if (DBG) Log.d(TAG, "stopEnhancedBroadcastSink: set mPgpRequestedTerminate=true,"
+                + " deferring MSG_NOTIFY_SINK_STOPPED to T-EXIT complete with real hciReason");
     }
 
     /**
@@ -970,14 +1160,15 @@ public class LeAudioBroadcastSinkService extends ProfileService {
     /*
      * Set the DBIG parameters received from the enhanced PA vendor LTV and push
      * them to the native layer.
-     * 12-byte array:
+     * 13-byte array (DBIG v2.01):
      *   [0]=dbig_feature_set  [1]=bis_detection_attempts
      *   [2]=max_payload_dbig_control  [3]=bis_control_event_interval
      *   [4]=send_exit  [5]=pgp_timeout  [6]=pgo_timeout  [7]=sgo_timeout
      *   [8]=join_timeout  [9]=exit_timeout  [10]=remove_timeout  [11]=terminate_timeout
+     *   [12]=bis_timeout (NEW in v2.01)
      */
     public void setEnhancedDbigParams(byte[] dbigParams) {
-        if (dbigParams != null && dbigParams.length == 12) {
+        if (dbigParams != null && dbigParams.length == 13) {
             Log.d(TAG, "setEnhancedDbigParams: bis_ctrl_interval=" + (dbigParams[3] & 0xFF)
                     + " dbig_feature_set=0x" + String.format("%02X", dbigParams[0] & 0xFF));
             if (mNativeInterface != null) {
@@ -1043,8 +1234,31 @@ public class LeAudioBroadcastSinkService extends ProfileService {
             Log.w(TAG, "terminateDbig: Native interface not available.");
             return;
         }
+
+        // Prevent duplicate termination requests while one is pending.
+        // If terminateDbig() is called multiple times rapidly, only the first
+        // request is sent to avoid controller "Command Disallowed" errors.
+        if (mPgpRequestedTerminate) {
+            Log.w(TAG, "terminateDbig: Termination in progress, ignoring duplicate request");
+            return;
+        }
+
         mPgpRequestedTerminate = true;
         mNativeInterface.terminateDbig();
+    }
+
+    private static boolean isValidMetadataForCallback(BluetoothLeBroadcastMetadata metadata) {
+        if (metadata == null || metadata.getSubgroups().isEmpty()) {
+            return false;
+        }
+
+        for (BluetoothLeBroadcastSubgroup subgroup : metadata.getSubgroups()) {
+            if (subgroup.getChannels().isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /*
@@ -1267,6 +1481,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     // Resource cleanup completed in native layer, now clean up local cache
                     mBroadcastSinkDescriptors.remove(event.broadcastId);
                     if (DBG) Log.d(TAG, "Cleaned up local cache for broadcastId=" + event.broadcastId);
+                    if (mBroadcastSinkDescriptors.isEmpty()) {
+                        // No session left -- the current owner UID no longer applies to
+                        // anything, so it can't be stale-matched against a later, unrelated
+                        // callback death.
+                        mSessionOwnerUid = INVALID_UID;
+                    }
 
                     // Remove from found sources cache
                     synchronized (mFoundSources) {
@@ -1283,6 +1503,12 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                     // Enhanced broadcast source metadata does not change after initial discovery,
                     // so onSourceMetadataChanged is never called for subsequent events.
                     if (event.metadata != null) {
+                        if (!isValidMetadataForCallback(event.metadata)) {
+                            Log.w(TAG, "Ignoring incomplete metadata for broadcastId="
+                                    + event.broadcastId + ": missing BASE subgroup/channel data");
+                            break;
+                        }
+
                         LeAudioBroadcastSinkDescriptor descriptor = mBroadcastSinkDescriptors.get(event.broadcastId);
                         if (descriptor == null) {
                             descriptor = new LeAudioBroadcastSinkDescriptor();
@@ -1313,7 +1539,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             if (vendorData != null) {
                                 int broadcastFeatures =
                                         ((vendorData[1] & 0xFF) << 8) | (vendorData[0] & 0xFF);
-                                byte[] dbigParams = Arrays.copyOfRange(vendorData, 2, 14);
+                                byte[] dbigParams = Arrays.copyOfRange(vendorData, 2, 15);  // 13 bytes: indices 2-14 inclusive
                                 Log.d(TAG, "Enhanced PA vendor LTV found: broadcastFeatures=0x"
                                         + String.format("%04X", broadcastFeatures));
                                 setPGOBroadcastFeatures(broadcastFeatures);
@@ -1530,10 +1756,23 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 }
                 case LeAudioBroadcastSinkStackEvent.EVENT_TYPE_TEXIT_DBIG_COMPLETE: {
                     int status = event.reason;
+                    int hciReason = event.valueInt2;
                     if (DBG) Log.d(TAG, "TExitDbig complete: broadcastId=" + event.broadcastId
                             + ", dbigHandle=" + event.valueInt1
                             + ", status=0x" + Integer.toHexString(status)
+                            + ", hciReason=0x" + Integer.toHexString(hciReason)
                             + ", mPgpRequestedTerminate=" + mPgpRequestedTerminate);
+
+                    // Filter out controller errors (CONTROLLER_BUSY, COMMAND_DISALLOWED).
+                    // These indicate the command was rejected by the controller before reaching
+                    // PGO (e.g., duplicate command while first is still processing). Don't clear
+                    // mPgpRequestedTerminate because the original command is still pending and
+                    // its completion will be handled separately.
+                    if (status == HCI_ERR_CONTROLLER_BUSY || status == HCI_ERR_COMMAND_DISALLOWED) {
+                        Log.w(TAG, "TExitDbig rejected by controller: status=0x"
+                                + Integer.toHexString(status) + " (duplicate/disallowed command ignored)");
+                        break;
+                    }
 
                     if (mPgpRequestedTerminate) {
                         mPgpRequestedTerminate = false;
@@ -1547,7 +1786,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                     mBroadcastSinkDescriptors.get(event.broadcastId);
                             if (desc != null) {
                                 desc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
-                                desc.mBigSyncLostHciReason = 0x13; // Remote terminated
+                                desc.mBigSyncLostHciReason = hciReason;
                                 desc.mPendingMetadataUpdate = null;
                             }
                             mIsEnhancedStreaming = false;
@@ -1556,8 +1795,15 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                             // Defer notification until cleanup is complete.
                             android.os.Message pgpTermNotify = mHandler.obtainMessage(
                                     MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
-                                    BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED);
+                                    hciReasonToSdkReason(hciReason));
                             mHandler.sendMessage(pgpTermNotify);
+                            // Queue Texit complete notification last — fires after full cleanup,
+                            // and dismisses any UI removal-progress dialog waiting on it
+                            // (see BroadcastSinkActivity's TExitDbig-complete observer).
+                            android.os.Message pgpTexitNotify = mHandler.obtainMessage(
+                                    MSG_NOTIFY_TEXIT_COMPLETE, event.broadcastId,
+                                    event.valueInt1, Integer.valueOf(status));
+                            mHandler.sendMessage(pgpTexitNotify);
                         } else {
                             // PGO rejected the request — no cleanup needed, just notify the app.
                             Log.i(TAG, "PGP-requested termination rejected by PGO (status=0x"
@@ -1596,7 +1842,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                                 mBroadcastSinkDescriptors.get(event.broadcastId);
                         if (pgoDesc != null) {
                             pgoDesc.mSinkState = LeAudioBroadcastSinkStackEvent.SINK_STATE_PA_SYNCED;
-                            pgoDesc.mBigSyncLostHciReason = 0x13; // Remote terminated
+                            pgoDesc.mBigSyncLostHciReason = hciReason;
                             pgoDesc.mPendingMetadataUpdate = null;
                         }
                         mIsEnhancedStreaming = false;
@@ -1604,7 +1850,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                         mHandler.sendEmptyMessage(MSG_REMOVE_ACTIVE_DEVICE);
                         android.os.Message pgoTermNotify = mHandler.obtainMessage(
                                 MSG_NOTIFY_SINK_STOPPED, event.broadcastId,
-                                BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED);
+                                hciReasonToSdkReason(hciReason));
                         mHandler.sendMessage(pgoTermNotify);
                         // Queue Texit complete notification last — fires after full cleanup.
                         android.os.Message texitNotify = mHandler.obtainMessage(
@@ -1699,11 +1945,14 @@ public class LeAudioBroadcastSinkService extends ProfileService {
      *
      *   HCI 0x13 (Remote User Terminated) → PGO sent HCI_LE_Terminate_BIG
      *   HCI 0x08 (Connection Timeout)     → PGO out of range / link lost
+     *   HCI 0x16 (Local Host Terminated)  → PGP terminated the sync
      *   anything else                      → generic REASON_BIG_SYNC_LOST
      */
-    private static int hciReasonToSdkReason(int hciReason) {        switch (hciReason) {
+    private static int hciReasonToSdkReason(int hciReason) {
+        switch (hciReason) {
             case 0x13: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_REMOTE_TERMINATED;
             case 0x08: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_TIMEOUT;
+            case 0x16: return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST_LOCAL_TERMINATED;
             default:   return BluetoothLeBroadcastSinkState.REASON_BIG_SYNC_LOST;
         }
     }
@@ -1770,18 +2019,6 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 mCallbacks.getBroadcastItem(i).onSearchStarted(reason);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to call onSearchStarted", e);
-            }
-        }
-        mCallbacks.finishBroadcast();
-    }
-
-    private void notifyOnSearchStartFailed(int reason) {
-        int callbackCount = mCallbacks.beginBroadcast();
-        for (int i = 0; i < callbackCount; i++) {
-            try {
-                mCallbacks.getBroadcastItem(i).onSearchStartFailed(reason);
-            } catch (RemoteException e) {
-                Log.e(TAG, "Failed to call onSearchStartFailed", e);
             }
         }
         mCallbacks.finishBroadcast();
@@ -2028,10 +2265,41 @@ public class LeAudioBroadcastSinkService extends ProfileService {
         public void onScannerRegistered(int status, int scannerId) {
             Log.d(TAG, "onScannerRegistered: Status: " + status + ", id:" + scannerId);
             synchronized (this) {
+                // Ownership check FIRST: a stopScanAndUnregister() or a superseding start can
+                // reset mScannerId out of INITIALIZING while this registration was still pending.
+                // When that happens this callback belongs to a cancelled/superseded registration
+                // and must not touch the live scan's state -- otherwise a stale registration
+                // completing here (including a FAILED one, which is why this precedes the status
+                // check below) can clobber a newer scanner that already succeeded: leaking it in
+                // the controller, dropping its results (onScanResult sees mScannerId < 0) and
+                // clearing mSearchInProgress while a scan is actually running.
+                if (mScannerId != SCANNER_ID_INITIALIZING) {
+                    if (status == BluetoothStatusCodes.SUCCESS) {
+                        // The just-registered scanner is now orphaned; unregister it.
+                        Log.w(TAG, "onScannerRegistered: registration cancelled (stop/superseded); "
+                                + "unregistering scanner " + scannerId);
+                        ScanController cancelController =
+                                (mAdapterService != null)
+                                        ? mAdapterService.getBluetoothScanController()
+                                        : null;
+                        if (cancelController != null) {
+                            cancelController.unregisterScannerInternal(scannerId);
+                        }
+                    } else {
+                        Log.w(TAG, "onScannerRegistered: cancelled registration failed (status="
+                                + status + "); ignoring");
+                    }
+                    return;
+                }
+
                 if (status != BluetoothStatusCodes.SUCCESS) {
                     Log.e(TAG, "onScannerRegistered: Scanner registration failed: " + status);
                     notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
                     mScannerId = SCANNER_ID_NOT_INITIALIZED;
+                    // startScanningForSources() set mSearchInProgress=true before this async
+                    // registration; a failure here must clear it or every later search fails with
+                    // "Search already in progress" until reboot (the same stall this fix targets).
+                    clearSearchInProgress();
                     return;
                 }
                 mScannerId = scannerId;
@@ -2039,6 +2307,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 if (mAdapterService == null) {
                     Log.e(TAG, "onScannerRegistered: AdapterService is null");
                     notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    clearSearchInProgress();
                     return;
                 }
 
@@ -2046,6 +2315,7 @@ public class LeAudioBroadcastSinkService extends ProfileService {
                 if (controller == null) {
                     Log.d(TAG, "onScannerRegistered: ScanController is null");
                     notifyOnSearchStarted(BluetoothStatusCodes.ERROR_UNKNOWN);
+                    clearSearchInProgress();
                     return;
                 }
 

@@ -70,6 +70,10 @@ public class BroadcasterActivity extends AppCompatActivity {
             "android.bluetooth.action.LE_AUDIO_DBIG_STATUS_CHANGED";
     private static final String EXTRA_DBIG_STATUS =
             "android.bluetooth.extra.DBIG_STATUS";
+
+    // DBIG Status Bit Definitions
+    private static final int DBIG_STATUS_BIT_DEVICE_CAPACITY_EXCEEDED = 0x8000; // Bit 15
+
     /* Join Control state - persisted across app restarts */
     private static final String PREFS_NAME = "leaudio_prefs";
     private static final String KEY_JOIN_CONTROL_ENABLED = "join_control_enabled";
@@ -80,6 +84,13 @@ public class BroadcasterActivity extends AppCompatActivity {
      * Persisted in SharedPreferences so the state survives crashes.
      */
     private boolean mJoinControlEnabled = true;
+
+    /**
+     * Tracks the previous state of Bit 15 (Device Capacity Exceeded).
+     * Used to detect transition from 1→0 to re-enable join control.
+     * Initially false (assuming capacity is available on start).
+     */
+    private boolean mPreviousBit15State = false;
 
     /* ------------------------------------------------------------------
      *  BIS connectivity state (updated via ACTION_DBIG_STATUS_CHANGED)
@@ -123,6 +134,9 @@ public class BroadcasterActivity extends AppCompatActivity {
     private final java.util.Set<Integer> mJoinControlAutoEnabledIds = new java.util.HashSet<>();
     /** Retained reference so we can enable/disable the button across Remove completions. */
     private Button mBtnRemoveDevice = null;
+    /** Retained references to Join Control buttons so bit 15 can toggle them in real-time. */
+    private Button mBtnJoinEnable = null;
+    private Button mBtnJoinDisable = null;
     /** Persistent status label shown below the Remove Device button. */
     private TextView mRemoveStatusText = null;
 
@@ -146,6 +160,10 @@ public class BroadcasterActivity extends AppCompatActivity {
      *  mStreamingBroadcastId is reset to -1 (broadcast stopped/removed, BT off) so a guard for
      *  a now-gone broadcast can never suppress a genuinely new request on a reused ID. */
     private int mRejectPendingBroadcastId = -1;
+    /** broadcastId for which termination is currently being processed (Accept was clicked).
+     *  Prevents duplicate dialogs while clearing info, removing ISO, and sending exit.
+     *  Set when Accept is clicked, cleared when the broadcast actually stops or is removed. */
+    private int mTerminateInProgressBroadcastId = -1;
 
     private final BroadcastReceiver mDbigStatusReceiver =
             new BroadcastReceiver() {
@@ -177,6 +195,32 @@ public class BroadcasterActivity extends AppCompatActivity {
                     mLastBroadcastFeatures = broadcastFeatures;
                     mLastBisDevIds = (bisDevIds != null) ? java.util.Arrays.copyOf(bisDevIds, bisDevIds.length) : null;
                 }
+
+                    // bit15 (0x8000) - Device Capacity Exceeded
+                    // When set: disable join control and hide buttons
+                    // When cleared (transition 1→0): enable join control and show buttons normally
+                    boolean bit15Set = (status & DBIG_STATUS_BIT_DEVICE_CAPACITY_EXCEEDED) != 0;
+                    if (bit15Set && !mPreviousBit15State) {
+                        // Transition 0→1: Capacity exceeded
+                        Log.w(TAG, "Device capacity exceeded (bit 15 set). Disabling join control.");
+                        setJoinControlEnabled(false);
+                        // Hide both buttons
+                        if (mBtnJoinDisable != null && mBtnJoinEnable != null) {
+                            mBtnJoinDisable.setVisibility(View.GONE);
+                            mBtnJoinEnable.setVisibility(View.GONE);
+                        }
+                        Toast.makeText(context, "Device capacity exceeded. Join disabled.",
+                                Toast.LENGTH_LONG).show();
+                    } else if (!bit15Set && mPreviousBit15State) {
+                        // Transition 1→0: Capacity available
+                        Log.i(TAG, "Device capacity available (bit 15 cleared). Enabling join control.");
+                        setJoinControlEnabled(true);
+                        // Show buttons normally (setJoinControlEnabled already handles visibility)
+                        Toast.makeText(context, "Device capacity available. Join enabled.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                    // Update previous state for next comparison
+                    mPreviousBit15State = bit15Set;
 
                     // Build one combined Toast for all status changes in this event
                     StringBuilder toastMsg = new StringBuilder();
@@ -241,6 +285,12 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 // one already awaiting the user's Accept/Reject decision.
                                 Log.d(TAG, "Terminate request dialog already showing for "
                                         + "broadcastId=" + activeBroadcastId + " — ignoring re-assert");
+                            } else if (mTerminateInProgressBroadcastId == activeBroadcastId) {
+                                // Termination is already in progress (user clicked Accept and we're
+                                // clearing info, removing ISO, sending exit). Ignore duplicate bit10
+                                // assertions during this processing window to prevent another popup.
+                                Log.d(TAG, "Terminate already in progress for broadcastId="
+                                        + activeBroadcastId + " — ignoring duplicate bit10");
                             } else if (mRejectPendingBroadcastId == activeBroadcastId) {
                                 // PGP/FW keeps re-sending the same terminate request after PGO's
                                 // own reject completes, until bit10 is actually observed LOW for
@@ -254,13 +304,24 @@ public class BroadcasterActivity extends AppCompatActivity {
                                 runOnUiThread(() -> showTerminateRequestDialog(activeBroadcastId));
                             }
                         }
-                    } else if (mRejectPendingBroadcastId >= 0) {
-                        // bit10 observed LOW: the outstanding request the user rejected is done.
-                        // Clear the guard so a future bit10 assertion for this (or any) broadcast
-                        // is treated as a genuinely new request and allowed to reopen the dialog.
-                        Log.d(TAG, "bit10 cleared — reject-pending guard released for broadcastId="
-                                + mRejectPendingBroadcastId);
-                        mRejectPendingBroadcastId = -1;
+                    } else {
+                        // bit10 observed LOW: clear all pending guards
+                        if (mRejectPendingBroadcastId >= 0) {
+                            // The outstanding request the user rejected is done.
+                            // Clear the guard so a future bit10 assertion for this (or any) broadcast
+                            // is treated as a genuinely new request and allowed to reopen the dialog.
+                            Log.d(TAG, "bit10 cleared — reject-pending guard released for broadcastId="
+                                    + mRejectPendingBroadcastId);
+                            mRejectPendingBroadcastId = -1;
+                        }
+                        if (mTerminateInProgressBroadcastId >= 0) {
+                            // bit10 cleared while termination was in progress — this is expected as
+                            // the termination completes. The guard will also be cleared when the
+                            // broadcast actually stops (getBroadcastPlaybackStoppedMutableLive callback).
+                            Log.d(TAG, "bit10 cleared — terminate-in-progress guard released for broadcastId="
+                                    + mTerminateInProgressBroadcastId);
+                            mTerminateInProgressBroadcastId = -1;
+                        }
                     }
                     // NOTE: bit10 clearing releases the reject-pending guard above, but must
                     // NOT dismiss mTerminateRequestDialog. FW re-asserts/clears bit10 rapidly
@@ -851,6 +912,13 @@ public class BroadcasterActivity extends AppCompatActivity {
                                     btnJoinEnable.setVisibility(View.VISIBLE);
                                 }
 
+                                // Broadcast content cannot be changed once the PGO is running
+                                // an enhanced (DBIG-capable) broadcast — grey out "Update".
+                                Button btnUpdate = modifyDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                                boolean pgoSupportsUpdate = mPgoEnhancedCap == 0;
+                                btnUpdate.setEnabled(pgoSupportsUpdate);
+                                btnUpdate.setAlpha(pgoSupportsUpdate ? 1.0f : 0.4f);
+
                                 // "Join Enable" – visible only when join control is currently disabled
                                 btnJoinEnable.setOnClickListener(v -> {
                                 boolean result = mViewModel.setJoinControl(true);
@@ -1027,6 +1095,7 @@ public class BroadcasterActivity extends AppCompatActivity {
                             itemsAdapter.updateBroadcastPlayback(reasonAndBidPair.second, false);
                             mStreamingBroadcastId = -1;  // no longer streaming
                             mRejectPendingBroadcastId = -1;
+                            mTerminateInProgressBroadcastId = -1;  // Clear terminate-in-progress flag
                         });
 
         mViewModel
@@ -1109,6 +1178,7 @@ public class BroadcasterActivity extends AppCompatActivity {
             mJoinControlAutoEnabledIds.clear();
             mStreamingBroadcastId = -1;
             mRejectPendingBroadcastId = -1;
+            mTerminateInProgressBroadcastId = -1;  // Clear terminate-in-progress flag
             // Dismiss any open broadcast-info dialog
             if (mCurrentInfoDialog != null && mCurrentInfoDialog.isShowing()) {
                 mCurrentInfoDialog.dismiss();
@@ -1146,27 +1216,9 @@ public class BroadcasterActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Stop all active enhanced broadcasts so BIG/DBIG are terminated when the app is killed.
-        // Without this, the broadcast stays alive on the controller even after the app dies,
-        // preventing a clean restart on the next session.
-        if (mViewModel != null) {
-            try {
-                java.util.List<android.bluetooth.BluetoothLeBroadcastMetadata> activeBroadcasts =
-                        mViewModel.getAllBroadcastMetadata();
-                if (activeBroadcasts != null && !activeBroadcasts.isEmpty()) {
-                    Log.i(TAG, "onDestroy: stopping " + activeBroadcasts.size()
-                            + " active broadcast(s)");
-                    for (android.bluetooth.BluetoothLeBroadcastMetadata meta : activeBroadcasts) {
-                        int broadcastId = meta.getBroadcastId();
-                        Log.d(TAG, "onDestroy: stopping broadcast broadcastId=" + broadcastId);
-                        mViewModel.stopEnhancedBroadcast(broadcastId,
-                                android.bluetooth.BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "onDestroy: error stopping broadcasts", e);
-            }
-        }
+        // Broadcast will continue running when user navigates away with back button.
+        // It will only stop when the app is cleared from recent apps (process killed).
+        Log.d(TAG, "onDestroy: Activity destroyed, broadcast continues");
     }
 
     @Override
@@ -1565,6 +1617,10 @@ public class BroadcasterActivity extends AppCompatActivity {
                 .setPositiveButton("Accept (Terminate)", (dialog, which) -> {
                     Log.i(TAG, "PGO accepted terminate request — sending TExitDbig(TERMINATE) for "
                             + broadcastId);
+                    // Set the in-progress flag BEFORE calling acceptTerminateDbig to prevent
+                    // duplicate bit10 assertions from showing another dialog while clearing
+                    // info, removing ISO, and sending exit.
+                    mTerminateInProgressBroadcastId = broadcastId;
                     mViewModel.acceptTerminateDbig(broadcastId);
                     Toast.makeText(this, "Terminating DBIG…", Toast.LENGTH_SHORT).show();
                     mTerminateRequestDialog = null;
@@ -1581,5 +1637,39 @@ public class BroadcasterActivity extends AppCompatActivity {
                 })
                 .setCancelable(false)
                 .show();
+    }
+
+    /**
+     * Helper method to programmatically enable/disable DBIG Join Control.
+     * Used when bit 15 (Device Capacity Exceeded) changes state.
+     * Matches the pattern used in button onClick handlers.
+     *
+     * @param enable true to enable join control, false to disable
+     */
+    private void setJoinControlEnabled(boolean enable) {
+        boolean result = mViewModel.setJoinControl(enable);
+        Log.d(TAG, "DBIG Join " + (enable ? "Enable" : "Disable") + ": result=" + result);
+
+        if (result) {
+            mJoinControlEnabled = enable;
+            // Persist the state
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putBoolean(KEY_JOIN_CONTROL_ENABLED, enable).apply();
+
+            // Update button visibility if buttons are available (dialog is showing)
+            if (mBtnJoinDisable != null && mBtnJoinEnable != null) {
+                if (enable) {
+                    // Join enabled: show Disable button, hide Enable button
+                    mBtnJoinDisable.setVisibility(View.VISIBLE);
+                    mBtnJoinEnable.setVisibility(View.GONE);
+                } else {
+                    // Join disabled: show Enable button, hide Disable button
+                    mBtnJoinDisable.setVisibility(View.GONE);
+                    mBtnJoinEnable.setVisibility(View.VISIBLE);
+                }
+            }
+        } else {
+            Log.e(TAG, "Failed to set join control to " + enable);
+        }
     }
 }

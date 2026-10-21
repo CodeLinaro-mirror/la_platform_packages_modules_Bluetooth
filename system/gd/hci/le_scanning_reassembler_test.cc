@@ -341,4 +341,55 @@ TEST_F(LeScanningReassemblerTest, interleaved_periodic_advertising) {
             std::vector<uint8_t>({0x2, 0x1, 0x1}));
 }
 
+TEST_F(LeScanningReassemblerTest, channel_index_appended_for_legacy_advertising) {
+  // A legacy report with a channel index set should have a Manufacturer
+  // Specific Data (AD Type 0xFF) entry appended with the channel index.
+  auto processed_report = reassembler_.ProcessAdvertisingReport(
+          kLegacy | kComplete, (uint8_t)AddressType::PUBLIC_DEVICE_ADDRESS, kTestAddress,
+          kSidNotPresent, {0x1, 0x2}, /*channel_index=*/37);
+  ASSERT_TRUE(processed_report.has_value());
+  ASSERT_EQ(processed_report.value().data,
+            std::vector<uint8_t>({0x1, 0x2, 0x4, 0xff, 0x0a, 0x00, 37}));
+}
+
+TEST_F(LeScanningReassemblerTest, channel_index_not_appended_when_absent) {
+  // When no channel index is reported (default), no AD 0xFF entry should be
+  // appended, preserving today's behavior for controllers without this
+  // feature.
+  auto processed_report = reassembler_.ProcessAdvertisingReport(
+          kLegacy | kComplete, (uint8_t)AddressType::PUBLIC_DEVICE_ADDRESS, kTestAddress,
+          kSidNotPresent, {0x1, 0x2});
+  ASSERT_TRUE(processed_report.has_value());
+  ASSERT_EQ(processed_report.value().data, std::vector<uint8_t>({0x1, 0x2}));
+}
+
+TEST_F(LeScanningReassemblerTest, channel_index_appended_once_for_fragmented_advertising) {
+  // For a fragmented extended report, the AD 0xFF entry should be appended
+  // exactly once, after the final fragment completes reassembly.
+  ASSERT_FALSE(reassembler_
+                       .ProcessAdvertisingReport(kContinuation,
+                                                 (uint8_t)AddressType::PUBLIC_DEVICE_ADDRESS,
+                                                 kTestAddress, kSidNotPresent, {0x1, 0x2, 0x3},
+                                                 /*channel_index=*/10)
+                       .has_value());
+
+  auto processed_report = reassembler_.ProcessAdvertisingReport(
+          kComplete, (uint8_t)AddressType::PUBLIC_DEVICE_ADDRESS, kTestAddress, kSidNotPresent,
+          {0x4, 0x5, 0x6}, /*channel_index=*/10);
+  ASSERT_TRUE(processed_report.has_value());
+  ASSERT_EQ(processed_report.value().data,
+            std::vector<uint8_t>({0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x4, 0xff, 0x0a, 0x00, 10}));
+}
+
+TEST_F(LeScanningReassemblerTest, channel_index_not_appended_when_data_at_max_size) {
+  // When appending the channel-index AD structure would exceed the maximum
+  // advertising data size, it should be dropped rather than appended.
+  std::vector<uint8_t> max_size_data(1650, 0x1);
+  auto processed_report = reassembler_.ProcessAdvertisingReport(
+          kLegacy | kComplete, (uint8_t)AddressType::PUBLIC_DEVICE_ADDRESS, kTestAddress,
+          kSidNotPresent, max_size_data, /*channel_index=*/37);
+  ASSERT_TRUE(processed_report.has_value());
+  ASSERT_EQ(processed_report.value().data.size(), max_size_data.size());
+}
+
 }  // namespace bluetooth::hci

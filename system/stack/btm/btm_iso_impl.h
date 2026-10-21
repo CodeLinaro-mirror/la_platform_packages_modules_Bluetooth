@@ -24,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <atomic>
 
 #include "btm_dev.h"
@@ -57,6 +58,10 @@ static constexpr uint8_t kStateFlagHasOutputDataPathSet = 0x08;  // OUTPUT data 
 static constexpr uint8_t kStateFlagIsBroadcast = 0x10;
 static constexpr uint8_t kStateFlagIsCancelled = 0x20;
 static constexpr uint8_t kStateFlagIsBroadcastSync = 0x40;
+// Setup ISO data path request in flight. Must not share a bit with
+// kStateFlagIsBroadcastSync: it is cleared on every setup completion.
+static constexpr uint8_t kStateFlagSettingDataPath = 0x80;
+
 
 constexpr char kBtmLogTag[] = "ISO";
 
@@ -383,6 +388,8 @@ struct iso_impl {
     log::verbose("{}, iso_handle: {:#x}, flags: {:#x} status {}", cis_hdl_to_addr[conn_handle],
                  conn_handle, iso->state_flags, hci_status_code_text((tHCI_STATUS)(status)));
 
+    iso->state_flags &= static_cast<uint8_t>(~kStateFlagSettingDataPath);
+
     if (status == HCI_SUCCESS) {
       // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
       // kStateFlagIsBroadcastSync), track INPUT and OUTPUT data paths with
@@ -417,6 +424,9 @@ struct iso_impl {
     // For BIS connections (broadcast or broadcast sync), no connection establishment check needed
     if (!(iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
       log::assert_that(iso->state_flags & kStateFlagIsConnected, "CIS not established");
+      // CIS only: track in-flight setup so a CIS teardown race does not assert
+      // in remove_iso_data_path(). BIS state flags are left unchanged.
+      iso->state_flags |= kStateFlagSettingDataPath;
     }
 
     btsnd_hcic_setup_iso_data_path(
@@ -487,16 +497,23 @@ struct iso_impl {
     log::assert_that(iso != nullptr, "No such iso connection: 0x{:x}", iso_handle);
     // For AuraChat duplex BIS (both PGO kStateFlagIsBroadcast and PGP
     // kStateFlagIsBroadcastSync), either INPUT or OUTPUT flag may be set independently.
-    // For unicast CIS, only kStateFlagHasDataPathSet is used (original behavior).
+    // For unicast CIS, a setup still in flight (kStateFlagSettingDataPath) is
+    // also accepted, as the host may tear down before the setup completion arrives.
+    // For non-duplex BIS, only kStateFlagHasDataPathSet is used (original behavior).
     if (is_duplex_enabled_ &&
         (iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
       log::assert_that(
               (iso->state_flags & (kStateFlagHasDataPathSet | kStateFlagHasOutputDataPathSet)) != 0,
               "Data path not set");
+    } else if (!(iso->state_flags & (kStateFlagIsBroadcast | kStateFlagIsBroadcastSync))) {
+      log::assert_that(
+              (iso->state_flags & (kStateFlagHasDataPathSet | kStateFlagSettingDataPath)) != 0,
+              "Data path not set");
     } else {
       log::assert_that((iso->state_flags & kStateFlagHasDataPathSet) == kStateFlagHasDataPathSet,
                        "Data path not set");
     }
+
 
     btsnd_hcic_remove_iso_data_path(
             iso_handle, data_path_dir,
@@ -830,7 +847,35 @@ struct iso_impl {
       }
     }
 
-    log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
+    if (!is_known_handle) {
+      if (is_duplex_enabled_) {
+        /* A DUPLEX broadcaster holds both a standard BIG and a DBIG under the same
+         * handle, and the host only ever sends HCI_VS_LE_Texit_DBIG for it (never
+         * HCI_BLE_TERMINATE_BIG — see broadcaster state_machine TerminateBig()).
+         * on_texit_dbig_event() drains conn_hdl_to_bis_map_ for the handle on the
+         * TExit completion, after which the controller can still emit the standard
+         * LE Terminate BIG Complete for that same handle. That trailing event is
+         * expected and benign: the BIG is already gone and OnBigEvent() already
+         * fired on the real teardown, so drop it.
+         *
+         * Anything NOT torn down through that path is a genuine host/controller
+         * bookkeeping desync — keep it loud rather than silently dropping it. */
+        if (texit_terminated_bigs_.erase(evt.big_id) != 0) {
+          log::info("TERMINATE_BIG_COMPLETE for big: {} already torn down via TExitDbig — "
+                    "ignoring expected trailing event",
+                    evt.big_id);
+        } else {
+          log::error("TERMINATE_BIG_COMPLETE for unknown big: {} (not torn down via TExitDbig) — "
+                     "ignoring, but host/controller BIG state may be out of sync",
+                     evt.big_id);
+        }
+        return;
+      }
+      /* Non-DUPLEX: there is no legitimate trailing-teardown path for an unknown handle,
+       * so an unknown handle here is always a genuine host/controller bookkeeping desync —
+       * keep the original hard assert instead of silently downgrading it for legacy BIGs. */
+      log::assert_that(is_known_handle, "No such big: {}", evt.big_id);
+    }
     // Use kIsoEventBigOnTerminateCmpl (0x01) so broadcaster.cc::OnBigEvent
     // routes this to HandleHciEvent(HCI_BLE_TERM_BIG_CPL_EVT) → state machine
     // transitions DISABLING→CONFIGURED → ConfirmSuspendRequest() (TX ACK).
@@ -848,6 +893,15 @@ struct iso_impl {
 
   void create_big(uint8_t big_id, struct big_create_params big_params) {
     log::assert_that(!IsBigKnown(big_id), "Invalid big - already exists: {}", big_id);
+
+    /* This handle is being reused, so any pending trailing-teardown entry from a
+     * previous DBIG TExit on it is stale — a Terminate BIG Complete arriving after
+     * this point belongs to the new BIG. Keeps the set bounded if the controller
+     * never emits the trailing event. DUPLEX-only: texit_terminated_bigs_ is only
+     * ever populated via the DBIG TExit path (on_texit_dbig_event()). */
+    if (is_duplex_enabled_) {
+      texit_terminated_bigs_.erase(big_id);
+    }
 
     if (stack_config_get_interface()->get_pts_unencrypt_broadcast()) {
       log::info("Force create broadcst without encryption for PTS test");
@@ -897,6 +951,31 @@ struct iso_impl {
     log::assert_that(IsBigKnown(big_id), "No such big: {}", big_id);
 
     btsnd_hcic_term_big(big_id, reason);
+  }
+
+  void handle_create_big_command_status(uint8_t big_handle, uint8_t status) {
+    // Only failures are expected here. A success command status is followed by
+    // a real BIG Create Complete event and must not be turned into a synthetic
+    // completion (which would carry no connection handles and mislead the
+    // broadcaster into the success path).
+    if (status == HCI_SUCCESS) {
+      log::warn("Ignoring success command status for big_handle={}", big_handle);
+      return;
+    }
+
+    log::error("LE_CREATE_BIG command status failure: big_handle={} status={}", big_handle,
+               hci_status_code_text(static_cast<tHCI_STATUS>(status)));
+
+    if (!big_callbacks_) {
+      log::error("No BIG callbacks registered for big_handle={}", big_handle);
+      return;
+    }
+
+    struct big_create_cmpl_evt evt = {};
+    evt.status = status;
+    evt.big_id = big_handle;
+
+    big_callbacks_->OnBigEvent(kIsoEventBigOnCreateCmpl, &evt);
   }
 
   void big_create_sync(uint8_t big_handle, struct big_sync_params big_params) {
@@ -1106,7 +1185,15 @@ struct iso_impl {
   }
 
   void on_read_supported_states_cmd_complete(uint8_t* stream, uint16_t len) {
-    log::assert_that(len >= 12, "Invalid read_supported_states response length: {}", len);
+    // Some controllers (e.g. those without broadcast ISO support) return a truncated,
+    // status-only Command Complete instead of the full payload. Treat this as
+    // "capability unavailable" rather than a fatal error — broadcast_states_ stays at
+    // its default (0), which callers already check before assuming the query succeeded.
+    if (len < 12) {
+      log::error("Invalid read_supported_states response length: {}", len);
+      read_states_pending_ = false;
+      return;
+    }
 
     uint8_t status, sub_opcode;
     STREAM_TO_UINT8(status, stream);
@@ -1152,7 +1239,7 @@ struct iso_impl {
   }
 
   std::vector<uint8_t> get_dbig_params() {
-    std::vector<uint8_t> params(12, 0);
+    std::vector<uint8_t> params(13, 0);
     params[0] = last_dbig_params_.dbig_feature_set;
     params[1] = last_dbig_params_.bis_detection_attempts;
     params[2] = last_dbig_params_.max_payload_dbig_control;
@@ -1165,6 +1252,7 @@ struct iso_impl {
     params[9] = last_dbig_params_.exit_timeout;
     params[10] = last_dbig_params_.remove_timeout;
     params[11] = last_dbig_params_.terminate_timeout;
+    params[12] = last_dbig_params_.bis_timeout;
     return params;
   }
 
@@ -1193,20 +1281,22 @@ struct iso_impl {
             dbig_params.pgp_timeout, dbig_params.pgo_timeout,
             dbig_params.sgo_timeout, dbig_params.join_timeout,
             dbig_params.exit_timeout, dbig_params.remove_timeout,
-            dbig_params.terminate_timeout, dbig_params.tx_power,
+            dbig_params.terminate_timeout, dbig_params.bis_timeout,
+            dbig_params.tx_power,
             base::BindRepeating(&iso_impl::on_set_dbig_parameters_cmd_complete,
                                 weak_factory_.GetWeakPtr()));
 
     log::info("DBIG Params set - dbig_handle:0x{:02x}, feature_set:{}, detection_attempts:{}, max_payload:{}, "
               "control_interval:{}, send_exit:{}, pgp_timeout:{}, pgo_timeout:{}, sgo_timeout:{}, "
-              "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, tx_power:{}",
+              "join_timeout:{}, exit_timeout:{}, remove_timeout:{}, terminate_timeout:{}, bis_timeout:{}, tx_power:{}",
               dbig_params.dbig_handle, dbig_params.dbig_feature_set,
               dbig_params.bis_detection_attempts, dbig_params.max_payload_dbig_control,
                                dbig_params.bis_control_event_interval, dbig_params.send_exit,
                                dbig_params.pgp_timeout, dbig_params.pgo_timeout,
                                dbig_params.sgo_timeout, dbig_params.join_timeout,
                                dbig_params.exit_timeout, dbig_params.remove_timeout,
-                               dbig_params.terminate_timeout, dbig_params.tx_power);
+                               dbig_params.terminate_timeout, dbig_params.bis_timeout,
+                               dbig_params.tx_power);
   }
 
   void on_join_control_event(uint8_t* stream, uint16_t len) {
@@ -1291,6 +1381,11 @@ struct iso_impl {
         log::warn("DBIG TExitDbig complete but no BIS entries found for dbig_handle: ",
                    dbig_handle);
       }
+
+      /* Remember that this handle was torn down here so the trailing standard
+       * LE Terminate BIG Complete the controller may still emit for it is treated
+       * as expected rather than as a host/controller desync. */
+      texit_terminated_bigs_.insert(dbig_handle);
 
       // Notify that ISO traffic is now inactive (symmetric to BIG_CREATE_SYNC success)
       const std::lock_guard<std::mutex> lock(on_iso_traffic_active_callbacks_list_mutex_);
@@ -1454,7 +1549,16 @@ struct iso_impl {
   void on_dbig_update_event(uint8_t* stream, uint16_t len) {
     dbig_update_evt evt;
 
-    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
+    /* DBIG callbacks are released on TExitDbig completion (teardown) and during the
+     * PGO->PGP role handoff, and the controller can still emit a trailing DBIG UPDATE
+     * for the terminated DBIG afterwards. There is no handler to route it to, so drop
+     * it rather than aborting the whole stack on an expected async event. Logged at
+     * error level because the same condition also covers a genuine failure to register
+     * callbacks, which must not disappear silently. */
+    if (dbig_callbacks_ == nullptr) {
+      log::error("DBIG UPDATE event with no DBIG callbacks registered — ignoring");
+      return;
+    }
     log::assert_that(len >= 5, "Invalid DBIG packet length: {}", len);
 
     STREAM_TO_UINT8(evt.status, stream);
@@ -1509,21 +1613,36 @@ struct iso_impl {
   void on_dbig_status_event(uint8_t* stream, uint16_t len) {
     dbig_status_evt evt;
 
-    log::assert_that(dbig_callbacks_ != nullptr, "Invalid DBIG callbacks");
-    /* Minimum: 1(handle) + 2(status) = 3 bytes. */
-    log::assert_that(len >= 3, "Invalid DBIG status packet length: {}", len);
+    /* The controller can emit a trailing DBIG STATUS VSE after TExitDbig completion,
+     * by which point the PGO has already released its DBIG callbacks (teardown or
+     * PGO->PGP role handoff). The DBIG is gone and there is no handler to route this
+     * to, so drop it rather than aborting the stack. Logged at error level because the
+     * same condition also covers a genuine failure to register callbacks. */
+    if (dbig_callbacks_ == nullptr) {
+      log::error("DBIG STATUS event with no DBIG callbacks registered — ignoring");
+      return;
+    }
+    /* Minimum: 1(handle) + 4(status) = 5 bytes. */
+    log::assert_that(len >= 5, "Invalid DBIG status packet length: {}", len);
 
     STREAM_TO_UINT8(evt.dbig_handle, stream);
-    STREAM_TO_UINT16(evt.dbig_status, stream);
+    STREAM_TO_UINT32(evt.dbig_status, stream);
 
     /* Parse extended fields if present:
      * [3-7]   : big_event_counter (5 bytes, skipped)
      * [8-9]   : dev_id (2 bytes, 12-bit value)
      * [10-19] : name (10 bytes)
-     * [20-..] : BIS[n]_DevID (2*n bytes, n up to kDbigMaxBisCount)
+     * [20-..] : BIS[n]_DevID (2*n bytes)
      * [last]  : broadcast_features (2 bytes)
+     *
+     * n is NOT carried in this event. DBIG status is only used by the
+     * duplex broadcast (Aura Chat) path, so n is derived from the same
+     * Coded PHY property that decided the BIS count at DBIG/BIG creation
+     * time (3 for Coded PHY, 4 for LE 2M PHY) rather than from the
+     * remaining packet length, which the controller keeps fixed-size
+     * regardless of the actual configured BIS count.
      */
-    uint16_t offset = 3;  /* 1(handle) + 2(status) */
+    uint16_t offset = 5;  /* 1(handle) + 4(status) */
     if (len >= offset + 5) {
       /* Skip big_event_counter (5 bytes) */
       stream += 5;
@@ -1540,22 +1659,21 @@ struct iso_impl {
       STREAM_TO_ARRAY(evt.name.data(), stream, 10);
       offset += 10;
     }
-    /* Parse BIS[n]_DevID: n is determined by available bytes.
-     * The last 2 bytes are broadcast_features, so stop before them. */
-    evt.num_bis = 0;
-    while (len >= offset + 2 && evt.num_bis < kDbigMaxBisCount) {
-      if (len == offset + 2) break;  /* Last 2 bytes are broadcast_features */
+    bool is_coded_phy_enabled =
+            osi_property_get_bool("persist.vendor.qcom.bluetooth.enable_ba_coded_phy", false);
+    evt.num_bis = is_coded_phy_enabled ? 3 : 4;
+    for (int i = 0; i < evt.num_bis && i < kDbigMaxBisCount; i++) {
+      if (len < offset + 2) break;
       uint16_t bis_dev_id = 0;
       STREAM_TO_UINT16(bis_dev_id, stream);
       evt.bis_dev_ids.push_back(bis_dev_id & 0x0FFF);
       offset += 2;
-      evt.num_bis++;
     }
     if (len >= offset + 2) {
       STREAM_TO_UINT16(evt.broadcast_features, stream);
     }
 
-    log::info("DBIG Status event - dbig_handle:0x{:02x}, dbig_status:0x{:04x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
+    log::info("DBIG Status event - dbig_handle:0x{:02x}, dbig_status:0x{:08x}, dev_id:0x{:03x}, num_bis:{}, broadcast_features:0x{:04x}",
               evt.dbig_handle, evt.dbig_status, evt.dev_id, evt.num_bis, evt.broadcast_features);
 
     dbig_callbacks_->OnDbigEvent(kIsoEventDbigStatus, &evt);
@@ -1760,6 +1878,16 @@ struct iso_impl {
    * for TERMINATE/EXIT modes; for REJECT_TERMINATE the BIG stays alive and the BIS ISO
    * connections are still in use, so on_texit_dbig_event() must not erase them. */
   uint8_t last_texit_mode_ = HCI_TEXIT_MODE_TERMINATE;
+
+  /* BIG handles torn down through the DBIG TExit path (on_texit_dbig_event), which
+   * drains conn_hdl_to_bis_map_ for the handle. The controller may still emit the
+   * standard LE Terminate BIG Complete for such a handle afterwards; that trailing
+   * event is expected and is dropped by process_terminate_big_cmpl_pkt(), which
+   * consumes the entry here. An unknown handle that is NOT in this set indicates a
+   * real host/controller desync and is logged as an error instead. Entries are
+   * removed on the trailing event, or on the next create_big() for the handle if
+   * the controller never sends one. */
+  std::set<uint8_t> texit_terminated_bigs_;
 
   std::atomic<uint16_t> broadcast_states_{0};
   /** True while a HCI_VS_LE_READ_SUPPORTED_STATES command is in-flight.

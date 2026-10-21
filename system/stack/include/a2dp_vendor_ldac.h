@@ -30,6 +30,16 @@
 #include "internal_include/bt_target.h"
 #include "stack/include/bt_hdr.h"
 
+// Min/max bitrate limits (bits per second) used as a hint for the A2DP hardware
+// offload codec configuration. See CodecParameters.aidl:
+//   - min_bitrate == max_bitrate: constant bitrate
+//   - 0 < min_bitrate <= max_bitrate: ABR, rate varies with link quality
+//   - both 0: undefined / don't care
+struct A2dpBitrateRange {
+  int32_t min_bitrate;
+  int32_t max_bitrate;
+};
+
 class A2dpCodecConfigLdacBase : public A2dpCodecConfig {
 protected:
   A2dpCodecConfigLdacBase(btav_a2dp_codec_index_t codec_index, const std::string& name,
@@ -106,6 +116,14 @@ int A2DP_VendorGetTrackBitsPerSampleLdac(const uint8_t* p_codec_info);
 // Returns the track sample rate on success, or -1 if |p_codec_info|
 // contains invalid codec information.
 int A2DP_VendorGetBitRateLdac(const uint8_t* p_codec_info);
+
+// Computes the LDAC {min, max} offload bitrate hint (bits per second) from the
+// Dev-UI quality mode (|codec_specific_1|, one of the A2DP_LDAC_QUALITY_* modes
+// encoded as 1000..1003) and the track sampling frequency |sample_rate_hz|.
+// Constant-bitrate modes (HIGH/MID/LOW) return min == max; ABR returns the
+// sample-rate-aware LOW..HIGH range. This is the single source of truth for the
+// LDAC bitrate table, shared with A2DP_VendorGetBitRateLdac.
+A2dpBitrateRange A2DP_VendorGetBitRateRangeLdac(int64_t codec_specific_1, int sample_rate_hz);
 
 // Gets the channel count for the A2DP LDAC codec.
 // |p_codec_info| is a pointer to the LDAC codec_info to decode.

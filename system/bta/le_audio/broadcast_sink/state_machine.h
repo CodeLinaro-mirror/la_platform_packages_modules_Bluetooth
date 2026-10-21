@@ -266,7 +266,7 @@ class BroadcastSinkStateMachine : public StateMachine<7> {
    * Set DBIG parameters from PA vendor LTV.
    * Must be called before OnAudioStart() for enhanced broadcast sources.
    *
-   * @param dbig_params  12-byte DBIG parameter array from PA vendor LTV
+   * @param dbig_params  13-byte DBIG parameter array from PA vendor LTV
    */
   virtual void SetDbigParams(const std::vector<uint8_t>& dbig_params) = 0;
 

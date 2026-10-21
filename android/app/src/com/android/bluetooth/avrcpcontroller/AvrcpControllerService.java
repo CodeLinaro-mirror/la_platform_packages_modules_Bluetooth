@@ -29,12 +29,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioManager;
+import android.os.SystemProperties;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.sysprop.BluetoothProperties;
 import android.util.Log;
 
 import com.android.bluetooth.BluetoothPrefs;
-import com.android.bluetooth.R;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.a2dpsink.A2dpSinkService;
 import com.android.bluetooth.avrcpcontroller.BluetoothMediaBrowserService.BrowseResult;
@@ -97,6 +97,9 @@ public class AvrcpControllerService extends ProfileService {
     public static final int DEVICE_STATE_INACTIVE = 0;
     public static final int DEVICE_STATE_ACTIVE = 1;
 
+    private static final String COVERT_ART_ENABLED_PROPERTY =
+            "bluetooth.avrcp.controller.coverart.enabled";
+
     private static AvrcpControllerService sService;
 
     private final Object mActiveDeviceLock = new Object();
@@ -150,7 +153,7 @@ public class AvrcpControllerService extends ProfileService {
         mNativeInterface.init(this);
 
         setComponentAvailable(ON_ERROR_SETTINGS_ACTIVITY, true);
-        mCoverArtEnabled = getResources().getBoolean(R.bool.avrcp_controller_enable_cover_art);
+        mCoverArtEnabled = SystemProperties.getBoolean(COVERT_ART_ENABLED_PROPERTY, true);
         if (mCoverArtEnabled) {
             setComponentAvailable(COVER_ART_PROVIDER, true);
             mCoverArtManager = new AvrcpCoverArtManager(this, new ImageDownloadCallback());
@@ -160,6 +163,13 @@ public class AvrcpControllerService extends ProfileService {
 
         mBrowseTree = new BrowseTree(null);
         setAvrcpControllerService(this);
+
+        // Register volume change receiver immediately so BTSink volume is always
+        // synced with system volume, even if no AVRCP Controller state machine
+        // is created (the native layer may not report a Controller connection
+        // when both AVRCP Target and Controller profiles are enabled).
+        IntentFilter volumeFilter = new IntentFilter(AudioManager.ACTION_VOLUME_CHANGED);
+        registerReceiver(mBroadcastReceiver, volumeFilter);
 
         // Start the media browser service.
         Intent startIntent = new Intent(this, BluetoothMediaBrowserService.class);
@@ -225,6 +235,14 @@ public class AvrcpControllerService extends ProfileService {
             if (action.equals(AudioManager.ACTION_VOLUME_CHANGED)) {
                 int streamType = intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
                 if (streamType == AudioManager.STREAM_MUSIC) {
+                        int newVolume = intent.getIntExtra(
+                        AudioManager.EXTRA_VOLUME_STREAM_VALUE, -1);
+                        // Push volume to BTSink HAL so audio output level tracks the slider
+                        A2dpSinkService a2dpSinkService =
+                                A2dpSinkService.getA2dpSinkService();
+                        if (a2dpSinkService != null && newVolume >= 0) {
+                            a2dpSinkService.sendSinkVolumeChange(newVolume);
+                        }
                         synchronized (mDeviceStateMap) {
                             for (AvrcpControllerStateMachine sm : mDeviceStateMap.values()) {
                                 if (sm != null) {

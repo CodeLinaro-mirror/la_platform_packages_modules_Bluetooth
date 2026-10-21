@@ -128,6 +128,33 @@ typedef enum {
   BTAV_A2DP_CODEC_SAMPLE_RATE_8000 = 0x1 << 9
 } btav_a2dp_codec_sample_rate_t;
 
+inline int btavA2dpCodecSampleRateToHz(btav_a2dp_codec_sample_rate_t sample_rate) {
+  switch (sample_rate) {
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_44100:
+      return 44100;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_48000:
+      return 48000;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_88200:
+      return 88200;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_96000:
+      return 96000;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_176400:
+      return 176400;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_192000:
+      return 192000;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_16000:
+      return 16000;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_24000:
+      return 24000;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_32000:
+      return 32000;
+    case BTAV_A2DP_CODEC_SAMPLE_RATE_8000:
+      return 8000;
+    default:
+      return 0;
+  }
+}
+
 typedef enum {
   BTAV_A2DP_CODEC_FRAME_SIZE_NONE = 0x0,
   BTAV_A2DP_CODEC_FRAME_SIZE_20MS = 0x1 << 0,
@@ -190,6 +217,10 @@ struct btav_a2dp_codec_config_t {
   int64_t codec_specific_2;  // Codec-specific value 2
   int64_t codec_specific_3;  // Codec-specific value 3
   int64_t codec_specific_4;  // Codec-specific value 4
+  int64_t min_bitrate;  // Minimum bitrate in bits per second, or 0 if unset
+  int64_t max_bitrate;  // Maximum bitrate in bits per second, or 0 if unset
+
+  int SampleRateHz() const { return btavA2dpCodecSampleRateToHz(sample_rate); }
 
   std::string CodecNameStr() const {
     switch (codec_type) {
@@ -260,7 +291,9 @@ struct btav_a2dp_codec_config_t {
            " codec_specific_1: " + std::to_string(codec_specific_1) +
            " codec_specific_2: " + std::to_string(codec_specific_2) +
            " codec_specific_3: " + std::to_string(codec_specific_3) +
-           " codec_specific_4: " + std::to_string(codec_specific_4);
+           " codec_specific_4: " + std::to_string(codec_specific_4) +
+           " min_bitrate: " + std::to_string(min_bitrate) +
+           " max_bitrate: " + std::to_string(max_bitrate);
   }
 
   static std::string PrintCodecs(std::vector<btav_a2dp_codec_config_t> codecs) {

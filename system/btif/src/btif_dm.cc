@@ -1217,7 +1217,19 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
 
   if (p_auth_cmpl->success) {
     if (com::android::bluetooth::flags::temporary_pairing_tracking()) {
-      btm_set_bond_type_dev(bd_addr, pairing_cb.bond_type);
+      bool is_pts_test = osi_property_get_bool("persist.bluetooth.pts.supported", false);
+      if (is_pts_test) {
+        // Only update bond_type when a new pairing is in progress (bond_type is
+        // known). For reconnections where pairing_cb has been cleared, bond_type
+        // is BOND_TYPE_UNKNOWN (0); calling btm_set_bond_type_dev in that case
+        // would overwrite an existing PERSISTENT bond with UNKNOWN, causing
+        // btm_sec_is_a_bonded_dev to return false and wiping stored GATT CCCDs.
+        if (pairing_cb.bond_type != BOND_TYPE_UNKNOWN) {
+          btm_set_bond_type_dev(bd_addr, pairing_cb.bond_type);
+        }
+      }else{
+        btm_set_bond_type_dev(bd_addr, pairing_cb.bond_type);
+      }
     }
 
     if (p_auth_cmpl->key_present) {
@@ -2482,7 +2494,19 @@ void btif_dm_acl_evt(tBTA_DM_ACL_EVT event, tBTA_DM_ACL* p_data) {
         wipe_le_audio_metadata_cache_for_pairing_device();
         pairing_cb = {};
       }
-      btm_set_bond_type_dev(p_data->link_down.bd_addr, BOND_TYPE_UNKNOWN);
+      bool is_pts_test = osi_property_get_bool("persist.bluetooth.pts.supported", false);
+      if(is_pts_test) {
+        if(!com::android::bluetooth::flags::temporary_pairing_tracking() ||
+          btm_get_bond_type_dev(bd_addr) != BOND_TYPE_PERSISTENT){
+          // With temporary_pairing_tracking, only reset bond_type to UNKNOWN for
+          // non-persistent bonds. Persistent bonds must keep BOND_TYPE_PERSISTENT
+          // across reconnections so that btm_sec_is_a_bonded_dev returns true on
+          // the next connection, preventing stored GATT CCCDs from being wiped.
+          btm_set_bond_type_dev(p_data->link_down.bd_addr, BOND_TYPE_UNKNOWN);
+        }
+      } else{
+          btm_set_bond_type_dev(p_data->link_down.bd_addr, BOND_TYPE_UNKNOWN);
+      }
       GetInterfaceToProfiles()->onLinkDown(bd_addr, p_data->link_down.transport_link_type);
 
       bt_conn_direction_t direction;

@@ -897,6 +897,12 @@ static void btm_ble_start_sync_request(uint8_t sid, RawAddress addr, uint16_t sk
   address_type &= ~BLE_ADDR_TYPE_ID_BIT;
   uint8_t options = 0;
   uint8_t cte_type = 7;
+
+  if (!(bluetooth::shim::GetController()->SupportsBleConnectionlessCteReceiver())) {
+    cte_type = 0;
+    log::info("Controller doesn't support connectionless cte receiver,setting cte_type to 0!");
+  }
+
   int index = btm_ble_get_psync_index(sid, addr);
 
   if (index == MAX_SYNC_TRANSACTION) {

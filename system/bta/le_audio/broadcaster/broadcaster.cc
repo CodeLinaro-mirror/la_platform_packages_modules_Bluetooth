@@ -498,6 +498,48 @@ public:
     }
 
     auto& subgroup_configs = broadcasts_[broadcast_id]->GetCodecConfig();
+
+    /* The enhanced-PA vendor LTV (type 0xFF, carrying the DBIG parameters the AGP
+     * needs to set up its BIG sync) is appended to the subgroup metadata only at
+     * createEnhancedBroadcast time (Java buildMetadataArrayWithVendorLTV) and is
+     * never re-supplied by updateBroadcast(). Rebuilding the BASE purely from this
+     * update's (LTV-less) metadata would re-push the periodic advertising data with
+     * an empty subgroup metadata field, stripping the LTV on-air and breaking every
+     * AGP DBIG join. Carry the create-time vendor LTV forward for DUPLEX broadcasts.
+     *
+     * Only the vendor LTV is carried over — every other metadata field still comes
+     * from the update, so an app can add, change or REMOVE ordinary metadata as
+     * before. Merging the whole existing map would make a stale create-time entry
+     * impossible to clear. */
+    if (broadcasts_[broadcast_id]->GetBroadcastMode() ==
+            bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX) {
+      const auto& existing = broadcasts_[broadcast_id]->GetBroadcastAnnouncement();
+      for (size_t i = 0; i < subgroup_ltvs.size(); i++) {
+        if (subgroup_ltvs[i]
+                    .Find(bluetooth::le_audio::types::kLeAudioMetadataTypeVendorSpecific)
+                    .has_value()) {
+          /* The update already carries a vendor LTV — leave it as supplied. */
+          continue;
+        }
+        if (i >= existing.subgroup_configs.size()) {
+          continue;
+        }
+        const auto& existing_meta = existing.subgroup_configs[i].metadata;
+        auto it = existing_meta.find(bluetooth::le_audio::types::kLeAudioMetadataTypeVendorSpecific);
+        if (it != existing_meta.end()) {
+          log::info("Preserving enhanced-PA vendor LTV ({} bytes) for subgroup {} across "
+                    "metadata update, broadcast_id={}",
+                    it->second.size(), i, broadcast_id);
+          subgroup_ltvs[i].Add(bluetooth::le_audio::types::kLeAudioMetadataTypeVendorSpecific,
+                               it->second);
+        } else {
+          log::warn("No create-time vendor LTV found for subgroup {} on DUPLEX broadcast_id={} — "
+                    "AGP DBIG join may fail with 'dbig_params not set'",
+                    i, broadcast_id);
+        }
+      }
+    }
+
     BasicAudioAnnouncementData announcement =
             prepareBasicAnnouncement(subgroup_configs, subgroup_ltvs);
 
@@ -884,6 +926,19 @@ public:
             .broadcast_code = std::move(broadcast_code),
             .broadcast_mode = bluetooth::le_audio::broadcaster::BroadcastMode::DUPLEX,
             .streaming_direction = bluetooth::le_audio::broadcaster::kStreamingDirectionNone};
+
+    /* The static BroadcastConfiguration templates always carry num_bis=4 (LE2M)
+     * on their subgroup, so prepareBasicAnnouncement() above always pushed 4
+     * bis_configs regardless of PHY. For Coded PHY only 3 BIS are ever created
+     * over HCI (see state_machine.cc::GetNumBisForDuplex()), so trim the BASE
+     * announcement metadata to match — otherwise it would advertise 4 BIS on
+     * air while only 3 are actually created. */
+    uint8_t target_bis_count = GetTargetBisCountForDuplex();
+    for (auto& subgroup : msg.announcement.subgroup_configs) {
+      if (subgroup.bis_configs.size() > target_bis_count) {
+        subgroup.bis_configs.resize(target_bis_count);
+      }
+    }
     /* Prepare Broadcast audio session */
     if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
       const auto& broadcast_config = msg.config;
@@ -1330,7 +1385,7 @@ public:
 
     // If property not set (0), use default based on PHY
     if (mtl == 0) {
-      mtl = coded_phy ? 25 : 10;  // Default: 25ms for Coded PHY, 10ms for LE2M
+      mtl = coded_phy ? 15 : 10;  // Default: 15ms for Coded PHY, 10ms for LE2M
     }
 
     log::info("Calculating BIS Control Event Interval: transport_latency={} ms, coded_phy={}", mtl, coded_phy);
@@ -1383,16 +1438,17 @@ public:
         .dbig_handle              = 0,
         .dbig_feature_set         = 3,
         .bis_detection_attempts   = 10,
-        .max_payload_dbig_control = 30,
+        .max_payload_dbig_control = 26,
         .bis_control_event_interval = CalculateBisControlEventInterval(),
         .send_exit                = 2,
-        .pgp_timeout              = 10,
-        .pgo_timeout              = 10,
-        .sgo_timeout              = 6,
+        .pgp_timeout              = 224,
+        .pgo_timeout              = 224,
+        .sgo_timeout              = 24,
         .join_timeout             = 4,
         .exit_timeout             = 4,
         .remove_timeout           = 10,
-        .terminate_timeout        = 10,
+        .terminate_timeout        = 100,
+        .bis_timeout              = 24,
         .tx_power                 = tx_power_value,
     };
     IsoManager::GetInstance()->StoreDbigParams(defaults);
@@ -1447,7 +1503,7 @@ public:
       } break;
       case bluetooth::hci::iso_manager::kIsoEventDbigStatus: {
         auto* evt = static_cast<dbig_status_evt*>(data);
-        log::info("DBIG status event, dbig_handle={}, status=0x{:04x}",
+        log::info("DBIG status event, dbig_handle={}, status=0x{:08x}",
                   evt->dbig_handle, evt->dbig_status);
 
         auto broadcast_id = BroadcastIdFromBigHandle(evt->dbig_handle);
@@ -1459,7 +1515,7 @@ public:
         }
 
         callbacks_->OnDbigStatusChanged(evt->dbig_handle,
-                                        static_cast<uint16_t>(evt->dbig_status),
+                                        evt->dbig_status,
                                         evt->dev_id, evt->name, evt->num_bis,
                                         evt->bis_dev_ids, evt->broadcast_features);
       } break;
@@ -1491,10 +1547,14 @@ public:
              * drive announcement teardown (same path as HCI_BLE_TERM_BIG_CPL_EVT).
              * Handles both STOPPING (explicit stop) and DISABLING (timer-triggered
              * suspend raced ahead and put state to DISABLING before STOP arrived).
-             * Unregister DBIG callbacks now that the controller acked exit. */
+             * Only unregister DBIG callbacks for a genuine STOPPING teardown: DISABLING
+             * keeps the announcement alive and expects a resume-triggered CreateDbig()
+             * that goes through ProcessMessage(START) directly, not through
+             * CreateEnhancedAudioBroadcast() — the only place that re-registers them.
+             * Unregistering here would silently drop the next DBIG create-complete. */
             log::info("kIsoEventDbigTexitCmpl: state={} — triggering announcement teardown, broadcast_id={}",
                       ToString(state), broadcast_id);
-            if (dbig_callbacks_registered_) {
+            if (state == BroadcastStateMachine::State::STOPPING && dbig_callbacks_registered_) {
               IsoManager::GetInstance()->RegisterDbigCallbacks(nullptr);
               dbig_callbacks_registered_ = false;
             }
@@ -1641,6 +1701,10 @@ private:
 
   static class BroadcastStateMachineCallbacks : public IBroadcastStateMachineCallbacks {
     void OnStateMachineCreateStatus(uint32_t broadcast_id, bool initialized) override {
+      if (!instance) {
+        return;
+      }
+
       auto pending_broadcast = std::find_if(
               instance->pending_broadcasts_.begin(), instance->pending_broadcasts_.end(),
               [broadcast_id](auto& sm) { return sm->GetBroadcastId() == broadcast_id; });
@@ -1778,6 +1842,18 @@ private:
       if (com::android::bluetooth::flags::leaudio_big_depends_on_audio_state()) {
         //instance->le_audio_source_hal_client_->ConfirmStreamingRequest(false);
       }
+    }
+
+    void OnBigCreationFailed(uint32_t broadcast_id, uint8_t status) {
+      log::error("BIG creation failed: broadcast_id={} status={}", broadcast_id, status);
+      instance->UpdateAudioActiveStateInPublicAnnouncement();
+      if (instance->le_audio_source_hal_client_) {
+        instance->le_audio_source_hal_client_->CancelStreamingRequest();
+      }
+      instance->callbacks_->OnBroadcastStateChanged(
+              broadcast_id,
+              static_cast<bluetooth::le_audio::BroadcastState>(
+                      BroadcastStateMachine::State::CONFIGURED));
     }
 
     void OnAnnouncementUpdated(uint32_t broadcast_id) {

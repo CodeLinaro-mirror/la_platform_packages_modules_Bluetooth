@@ -3254,39 +3254,8 @@ void bta_av_open_rc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
     if (bta_av_cb.disc) {
       /* AVRC discover db is in use */
       if (p_scb->rc_handle == BTA_AV_RC_HANDLE_NONE) {
-        /* AVRC channel is not connected. */
+        /* AVRC channel is not connected. delay a little bit */
         if ((p_scb->wait & BTA_AV_WAIT_ROLE_SW_BITS) == 0) {
-          /* For Sink offload retry: if another SDP is already in progress and
-           * we still have no RC connection, force an outgoing AVRC_Open with
-           * AVCT_ROLE_INITIATOR directly rather than waiting for the in-flight
-           * SDP to finish.  This prevents the stack from staying in
-           * ACCEPTOR-only mode across retry cycles when bta_av_cb.disc is
-           * transiently non-zero. */
-          if (btif_av_is_a2dp_sink_offload_enabled()) {
-            /* Guard: if an RCB already exists for this SCB (e.g., from a
-             * previous forced open that has not yet completed), skip the
-             * forced open to avoid creating duplicate AVRC connections. */
-            if (bta_av_get_rcb_by_shdl((uint8_t)(p_scb->hdi + 1)) != NULL) {
-              log::debug(
-                      "RC already in progress for peer {}, skip forced "
-                      "INITIATOR open",
-                      p_scb->PeerAddress());
-              return;
-            }
-            tBTA_AV_LCB* p_lcb = bta_av_find_lcb(p_scb->PeerAddress(), BTA_AV_LCB_FIND);
-            if (p_lcb) {
-              uint8_t new_rc_handle =
-                      bta_av_rc_create(&bta_av_cb, AVCT_ROLE_INITIATOR,
-                                       (uint8_t)(p_scb->hdi + 1), p_lcb->lidx);
-              if (new_rc_handle < BTA_AV_NUM_RCB) {
-                log::debug(
-                        "Forced AVRC INITIATOR open for peer {} while SDP in "
-                        "progress (disc=0x{:x})",
-                        p_scb->PeerAddress(), bta_av_cb.disc);
-                return;
-              }
-            }
-          }
           bta_sys_start_timer(p_scb->avrc_ct_timer, BTA_AV_RC_DISC_TIME_VAL, BTA_AV_AVRC_TIMER_EVT,
                               p_scb->hndl);
         } else {

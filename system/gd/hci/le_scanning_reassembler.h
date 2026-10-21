@@ -70,7 +70,8 @@ public:
 
   std::optional<CompleteAdvertisingData> ProcessAdvertisingReport(
           uint16_t event_type, uint8_t address_type, Address address, uint8_t advertising_sid,
-          const std::vector<uint8_t>& advertising_data);
+          const std::vector<uint8_t>& advertising_data,
+          uint8_t channel_index = kChannelIndexNotPresent);
 
   /// Configure the scan response filter.
   /// If true all scan responses are ignored.
@@ -89,6 +90,31 @@ private:
   static constexpr uint8_t kScanResponseBit = 3;
   static constexpr uint8_t kLegacyBit = 4;
   static constexpr uint8_t kDataStatusBits = 5;
+
+  /// Value of channel_index indicating that the controller did not report an
+  /// advertising channel index for this report.
+  static constexpr uint8_t kChannelIndexNotPresent = 0xFF;
+
+  /// Manufacturer Specific Data (AD Type 0xFF) company identifier used to wrap
+  /// the reported advertising channel index, so it can be read back by apps
+  /// via android.bluetooth.le.ScanRecord#getManufacturerSpecificData().
+  static constexpr uint16_t kChannelIndexCompanyId = 0x000A;
+
+  /// Size in bytes of the Manufacturer Specific Data AD structure appended by
+  /// AppendChannelIndexData: AD length(1) + AD type(1) + company_id(2) +
+  /// channel_index(1).
+  static constexpr size_t kChannelIndexAdStructureSize = 5;
+
+  /// Maximum size in bytes of the advertising data, matching the extended
+  /// advertising PDU size cap. AppendChannelIndexData must not grow
+  /// advertising_data past this limit.
+  static constexpr size_t kMaxAdvertisingDataSize = 1650;
+
+  /// Appends a Manufacturer Specific Data (AD Type 0xFF) entry carrying the
+  /// advertising channel index to the trimmed advertising data, unless no
+  /// channel index was reported for this advertisement.
+  static std::vector<uint8_t> AppendChannelIndexData(std::vector<uint8_t> advertising_data,
+                                                      uint8_t channel_index);
 
   /// Packs the information necessary to disambiguate advertising events:
   /// - For legacy advertising events, the advertising address and
@@ -112,11 +138,15 @@ private:
   struct AdvertisingFragment {
     AdvertisingKey key;
     uint16_t extended_event_type;
+    uint8_t channel_index;
     std::vector<uint8_t> data;
 
     AdvertisingFragment(const AdvertisingKey& key, uint16_t extended_event_type,
-                        const std::vector<uint8_t>& data)
-        : key(key), extended_event_type(extended_event_type), data(data.begin(), data.end()) {}
+                        uint8_t channel_index, const std::vector<uint8_t>& data)
+        : key(key),
+          extended_event_type(extended_event_type),
+          channel_index(channel_index),
+          data(data.begin(), data.end()) {}
   };
 
   /// Advertising cache for de-fragmenting extended advertising reports,
@@ -130,6 +160,7 @@ private:
   /// Advertising cache management methods.
   std::list<AdvertisingFragment>::iterator AppendFragment(const AdvertisingKey& key,
                                                           uint16_t extended_event_type,
+                                                          uint8_t channel_index,
                                                           const std::vector<uint8_t>& data);
 
   std::list<PeriodicAdvertisingFragment>::iterator AppendPeriodicFragment(

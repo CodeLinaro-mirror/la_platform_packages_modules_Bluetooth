@@ -114,6 +114,8 @@ struct BroadcastSinkConfiguration {
   LeAudioCodecConfiguration GetAudioHalClientConfig() const;
 };
 
+bool IsValidBroadcastMetadataForCallback(const BroadcastMetadata& metadata);
+
 // Sink state machine states
 enum class SinkState : uint8_t {
   IDLE = 0,         // Initial state, no active syncs

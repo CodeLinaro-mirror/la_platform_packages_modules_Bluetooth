@@ -9,3 +9,21 @@ prop {
     prop_name: "bluetooth.avrcp.absolute_volume.enabled"
 }
 
+# Is cover art feature for AVRCP controller enabled
+prop {
+    api_name: "isAvrcpControllerCoverArtEnabled"
+    type: Boolean
+    scope: Internal
+    access: Readonly
+    prop_name: "bluetooth.avrcp.controller.coverart.enabled"
+}
+
+# Is browsing feature for AVRCP controller enabled
+prop {
+    api_name: "isAvrcpControllerBrowsingEnabled"
+    type: Boolean
+    scope: Internal
+    access: Readonly
+    prop_name: "bluetooth.avrcp.controller.browsing.enabled"
+}
+

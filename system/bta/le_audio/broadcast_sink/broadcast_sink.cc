@@ -53,8 +53,9 @@ std::mutex instance_mutex;
 struct TrackedSource {
   std::unique_ptr<BroadcastSinkStateMachine> state_machine;
   bool is_notified;  // Flag to avoid duplicate source found notifications
+  bool has_big_info_report;
 
-  TrackedSource() : is_notified(false) {}
+  TrackedSource() : is_notified(false), has_big_info_report(false) {}
 };
 
 /**
@@ -528,15 +529,9 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       return;
     }
 
-    // Stop audio HAL session
-    if (le_audio_sink_hal_client_) {
-      log::info("Stopping audio HAL session for broadcast_id=0x{:08x}", broadcast_id);
-      le_audio_sink_hal_client_->Stop();
-      log::info("Stopped audio HAL session for broadcast_id=0x{:08x}", broadcast_id);
-    }
-
-    // Send STOP_SYNC message to state machine
-    log::info("Sending STOP_SYNC message to state machine for broadcast_id=0x{:08x}", broadcast_id);
+    // Send STOP_SYNC message to state machine to terminate PA sync
+    // HAL client cleanup is now handled in StopEnhancedBroadcastSink flow (OnBigSyncTerminated)
+    log::info("RemoveSource: sending STOP_SYNC message to state machine for broadcast_id=0x{:08x}", broadcast_id);
     state_machine->ProcessMessage(
         BroadcastSinkStateMachine::Message::STOP_SYNC, nullptr);
   }
@@ -561,18 +556,9 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
     tracked_sources_.erase(broadcast_id);
     log::info("Destroyed broadcast source: broadcast_id=0x{:08x}", broadcast_id);
 
-    // When the last source is removed, stop and release both HAL clients.
+    // When the last source is removed, unregister DBIG callbacks and reset suspend flags.
+    // HAL client cleanup is now handled in StopEnhancedBroadcastSink flow (OnBigSyncTerminated).
     if (tracked_sources_.empty()) {
-      if (le_audio_sink_hal_client_) {
-        log::info("No more sources, stopping and releasing sink HAL client");
-        le_audio_sink_hal_client_->Stop();
-        le_audio_sink_hal_client_.reset();
-      }
-      if (le_audio_source_hal_client_) {
-        log::info("No more sources, stopping and releasing source HAL client");
-        le_audio_source_hal_client_->Stop();
-        le_audio_source_hal_client_.reset();
-      }
       /* Reset suspend flags so a fresh start finds them clean. */
       pending_source_suspend_  = false;
       pending_sink_suspend_    = false;
@@ -600,7 +586,7 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
   }
 
   void SetEnhancedDbigParams(const std::vector<uint8_t>& dbig_params) override {
-    if (dbig_params.size() < 12) {
+    if (dbig_params.size() < 13) {
       log::error("SetEnhancedDbigParams: short params ({} bytes)", dbig_params.size());
       return;
     }
@@ -735,10 +721,14 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
       log::info("No public metadata provided for broadcast_id=0x{:08x}", broadcast_id);
     }
 
-    // Notify callbacks about the metadata change
+    // Notify callbacks only after BASE has been parsed. Framework
+    // BluetoothLeBroadcastMetadata rejects empty subgroup lists while unparceling.
     auto updated_metadata = ConvertToMetadata(state_machine);
-    if (callbacks_) {
+    if (callbacks_ && IsValidBroadcastMetadataForCallback(updated_metadata)) {
       callbacks_->OnSourceMetadataChanged(broadcast_id, updated_metadata);
+    } else {
+      log::info("SourcePublicMetadataChanged deferred for broadcast_id=0x{:08x}: "
+                "BASE metadata is not ready", broadcast_id);
     }
 
     log::info("SourcePublicMetadataChanged completed for broadcast_id=0x{:08x}", broadcast_id);
@@ -1104,12 +1094,12 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
 
       case bluetooth::hci::iso_manager::kIsoEventDbigStatus: {
         auto* evt = static_cast<bluetooth::hci::iso_manager::dbig_status_evt*>(data);
-        log::info("DBIG status event: big_handle={}, status=0x{:04x}",
+        log::info("DBIG status event: big_handle={}, status=0x{:08x}",
                   evt->dbig_handle, evt->dbig_status);
         /* Forward DBIG status with extended fields to the upper layer */
         if (callbacks_) {
           callbacks_->OnDbigStatusChanged(evt->dbig_handle,
-                                          static_cast<uint16_t>(evt->dbig_status),
+                                          evt->dbig_status,
                                           evt->dev_id, evt->name, evt->num_bis,
                                           evt->bis_dev_ids, evt->broadcast_features);
         }
@@ -1141,7 +1131,7 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         if (callbacks_ && tracked_source.state_machine &&
             tracked_source.state_machine->IsEnhanced()) {
           callbacks_->OnTexitDbigComplete(broadcast_id, texit_evt->dbig_handle,
-                                          texit_evt->status);
+                                          texit_evt->status, texit_evt->reason);
         } else if (!tracked_source.state_machine ||
                    !tracked_source.state_machine->IsEnhanced()) {
           log::warn("kIsoEventDbigTexitCmpl: broadcast_id=0x{:08x} not enhanced — skip callback",
@@ -1583,14 +1573,21 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         tracked_source.is_notified = false;
         log::info("Reset is_notified flag for broadcast_id=0x{:08x} due to BASE data change", broadcast_id);
 
-        // Call OnSourceMetadataChanged when BASE data is received if public_announcement exists
+        // Notify once complete BASE metadata is available. For private broadcasts
+        // this may be the second half of an earlier BIGInfo-first sequence.
         auto public_announcement = tracked_source.state_machine->GetPublicAnnouncement();
-        if (public_announcement.has_value() && !tracked_source.is_notified && instance->callbacks_) {
-          tracked_source.is_notified = true;
-          log::info("OnSourceMetadataChanged called from OnBaseDataReceived for broadcast_id=0x{:08x} (has public_announcement)",
-                    broadcast_id);
+        if ((public_announcement.has_value() || tracked_source.has_big_info_report) &&
+            !tracked_source.is_notified && instance->callbacks_) {
           BroadcastMetadata metadata = ConvertToMetadata(tracked_source.state_machine.get());
-          instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+          if (IsValidBroadcastMetadataForCallback(metadata)) {
+            tracked_source.is_notified = true;
+            log::info("OnSourceMetadataChanged called from OnBaseDataReceived for broadcast_id=0x{:08x}",
+                      broadcast_id);
+            instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+          } else {
+            log::warn("OnBaseDataReceived: metadata still invalid for broadcast_id=0x{:08x}",
+                      broadcast_id);
+          }
         }
       }
     }
@@ -1698,6 +1695,25 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
                     "for broadcast_id=0x{:08x}", broadcast_id);
           instance->callbacks_->OnBigSyncTerminated(broadcast_id, big_handle, status);
         }
+
+        /* StopEnhancedBroadcastSink flow (MSG_STOP from Java):
+         *   1. setParameters("achat_rx_enable=false") → Sink HAL OnAudioSuspend → OnRxIsoPathsRemoved
+         *   2. setParameters("achat_tx_enable=false") → Source HAL OnAudioSuspend → OnBigSyncTerminated (HERE)
+         * This callback (OnBigSyncTerminated) is the LAST point in the teardown sequence where all
+         * cleanup (RX ISO paths removed, TX ISO paths removed, BIG terminated) has completed.
+         * Release source and sink HAL clients here as required by StopEnhancedBroadcastSink. */
+        log::info("OnBigSyncTerminated: All cleanup complete (BIG removed, ISO paths cleared), "
+                  "releasing source and sink HAL clients for broadcast_id=0x{:08x}", broadcast_id);
+        if (instance->le_audio_source_hal_client_) {
+          log::info("OnBigSyncTerminated: stopping and releasing source HAL client");
+          instance->le_audio_source_hal_client_->Stop();
+          instance->le_audio_source_hal_client_.reset();
+        }
+        if (instance->le_audio_sink_hal_client_) {
+          log::info("OnBigSyncTerminated: stopping and releasing sink HAL client");
+          instance->le_audio_sink_hal_client_->Stop();
+          instance->le_audio_sink_hal_client_.reset();
+        }
       } else {
         log::info("OnBigSyncTerminated: source HAL not pending (unsolicited Texit from PGO) "
                   "— skipping Java EVENT_TYPE_BIG_SYNC_TERMINATED for broadcast_id=0x{:08x}",
@@ -1762,16 +1778,24 @@ class LeAudioBroadcastSinkImpl : public LeAudioBroadcastSink,
         return;
       }
 
+      tracked_source.has_big_info_report = true;
       log::info("Updated encryption status for broadcast_id=0x{:08x}: encrypted={}",
                 broadcast_id, encrypted);
 
-      // Notify OnSourceMetadataChanged when BIG Info Report is received (first time only)
+      // Notify OnSourceMetadataChanged when BIG Info Report is received (first time only),
+      // but only after BASE data has been parsed. Java framework metadata validation
+      // rejects empty subgroup/channel lists during Binder unparceling.
       if (!tracked_source.is_notified && instance->callbacks_) {
-        tracked_source.is_notified = true;
-        log::info("Marked broadcast_id=0x{:08x} as notified (encrypted={})",
-                  broadcast_id, encrypted);
         BroadcastMetadata metadata = ConvertToMetadata(tracked_source.state_machine.get());
-        instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+        if (IsValidBroadcastMetadataForCallback(metadata)) {
+          tracked_source.is_notified = true;
+          log::info("Marked broadcast_id=0x{:08x} as notified (encrypted={})",
+                    broadcast_id, encrypted);
+          instance->callbacks_->OnSourceMetadataChanged(broadcast_id, metadata);
+        } else {
+          log::info("OnBigInfoReport deferred source metadata for broadcast_id=0x{:08x}: "
+                    "BASE metadata is not ready", broadcast_id);
+        }
       } else {
         log::info("Source already notified for broadcast_id=0x{:08x}", broadcast_id);
       }

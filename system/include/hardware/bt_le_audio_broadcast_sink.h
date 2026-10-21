@@ -124,7 +124,7 @@ class BroadcastSinkCallbacks {
    * @param bis_dev_ids       BIS device IDs (12-bit each)
    * @param broadcast_features Broadcast features bitmask
    */
-  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint16_t status,
+  virtual void OnDbigStatusChanged(uint8_t dbig_handle, uint32_t status,
                                     uint16_t dev_id, std::vector<uint8_t> name,
                                     uint8_t num_bis,
                                     std::vector<uint16_t> bis_dev_ids,
@@ -138,10 +138,13 @@ class BroadcastSinkCallbacks {
    * @param broadcast_id  broadcast ID of the source
    * @param dbig_handle   DBIG handle
    * @param status        HCI status (0x00 = success, 0x0E = rejected by PGO)
+   * @param reason        HCI disconnect reason code carried in the event (e.g. 0x13
+   *                      Remote User Terminated), meaningful when status == 0x00
    */
   virtual void OnTexitDbigComplete(BroadcastId broadcast_id,
                                    uint8_t dbig_handle,
-                                   uint8_t status) = 0;
+                                   uint8_t status,
+                                   uint8_t reason) = 0;
 
   /**
    * Called when HCI VS DBIG_SYNC_ONLY(enable=1) completes on the PGP side:

@@ -39,6 +39,7 @@ import android.view.KeyEvent;
 
 import com.android.bluetooth.BluetoothEventLogger;
 import com.android.bluetooth.a2dp.A2dpService;
+import com.android.bluetooth.a2dpsink.A2dpSinkService;
 import com.android.bluetooth.audio_util.ListItem;
 import com.android.bluetooth.audio_util.MediaData;
 import com.android.bluetooth.audio_util.MediaPlayerList;
@@ -284,7 +285,13 @@ public class AvrcpTargetService extends ProfileService {
     private BluetoothDevice getA2dpActiveDevice() {
         A2dpService service = mFactory.getA2dpService();
         if (service == null) {
-            return null;
+             // A2DP Source is not available; fall back to A2DP Sink service
+            // (e.g. XR acting as A2DP Sink receiving audio from a phone)
+            A2dpSinkService sinkService = A2dpSinkService.getA2dpSinkService();
+            if (sinkService == null) {
+                return null;
+            }
+            return sinkService.getActiveDevice();
         }
         return service.getActiveDevice();
     }
@@ -298,7 +305,14 @@ public class AvrcpTargetService extends ProfileService {
     private static void setA2dpActiveDevice(@NonNull BluetoothDevice device) {
         A2dpService service = A2dpService.getA2dpService();
         if (service == null) {
-            Log.d(TAG, "setA2dpActiveDevice: A2dp service not found");
+            // A2DP Source is not available; try A2DP Sink service
+            Log.d(TAG, "setA2dpActiveDevice: A2dp source service not found, trying sink");
+            A2dpSinkService sinkService = A2dpSinkService.getA2dpSinkService();
+            if (sinkService == null) {
+                Log.d(TAG, "setA2dpActiveDevice: A2dp sink service not found either");
+                return;
+            }
+            sinkService.setActiveDevice(device);
             return;
         }
         service.setActiveDevice(device);

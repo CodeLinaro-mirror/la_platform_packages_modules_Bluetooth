@@ -37,6 +37,7 @@
 #include "main/shim/metrics_api.h"
 #include "os/system_properties.h"
 #include "osi/include/allocator.h"
+#include "osi/include/properties.h"
 #include "stack/arbiter/acl_arbiter.h"
 #include "stack/btm/btm_dev.h"
 #include "stack/connection_manager/connection_manager.h"
@@ -157,6 +158,14 @@ static void gatt_update_for_database_change() {
     tGATT_TCB& tcb = gatt_cb.tcb[i];
     if (tcb.in_use) {
       gatt_sr_update_cl_status(tcb, /* chg_aware= */ false);
+      // Clear the pending "next-request makes change-aware" flag so that a
+      // stale flag from a previous DB Out of Sync response does not
+      // incorrectly mark the client change-aware with the old hash after
+      // the database has changed again (spec 2.5.2.1 / BV-05-C Step 15-16).
+      bool is_pts_test = osi_property_get_bool("persist.bluetooth.pts.supported", false);
+      if (is_pts_test) {
+        tcb.db_out_of_sync_sent = false;
+      }
     }
   }
 }
@@ -1456,6 +1465,9 @@ void GATT_Deregister(tGATT_IF gatt_if) {
     }
 
     if (gatt_get_ch_state(p_tcb) != GATT_CH_CLOSE) {
+      if (com::android::bluetooth::flags::gatt_offload_api()) {
+        gatt_offload_clear_sessions_by_conn_id(gatt_create_conn_id(p_tcb->tcb_idx, gatt_if));
+      }
       gatt_update_app_use_link_flag(gatt_if, p_tcb, false, true);
     }
 

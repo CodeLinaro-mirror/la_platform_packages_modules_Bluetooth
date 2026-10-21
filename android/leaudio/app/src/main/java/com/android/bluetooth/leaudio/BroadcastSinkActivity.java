@@ -45,6 +45,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     private static final String EXTRA_DBIG_STATUS =
             "android.bluetooth.extra.DBIG_STATUS";
 
+    // DBIG Status Bit Definitions
+    private static final int DBIG_STATUS_BIT_DUPLICATE_DEVICE_ID = 0x10000; // Bit 16
+
     /* ------------------------------------------------------------------
      *  BIS connectivity state (updated via ACTION_DBIG_STATUS_CHANGED)
      * ------------------------------------------------------------------ */
@@ -55,6 +58,18 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     }
     private BisAvailability mBisAvailability = BisAvailability.UNKNOWN;
     private boolean mLocalOccupyingBis = false;
+
+    /**
+     * True while THIS device is a member of the DBIG.
+     *
+     * Needed because ACTION_DBIG_STATUS_CHANGED is delivered to every PA-synced app with no
+     * membership filter, and bit0 describes group-level BIS availability — so bit0/bit1 alone
+     * would enable Acquire on a device that never joined.
+     *
+     * Set on bit8 (device added) whose DevID+Name match ours; cleared on bit9 (device
+     * removed) matching ours, BIG sync loss, successful TExitDbig, and BT off.
+     */
+    private boolean mLocalJoinedDbig = false;
 
     private int mLastBroadcastFeatures = -1;
     private int[] mLastBisDevIds = null;
@@ -76,6 +91,9 @@ public class BroadcastSinkActivity extends AppCompatActivity {
 
     /** Non-null while a PGO-initiated removal is in progress (bit 11 → TExitDbig complete). */
     private android.app.AlertDialog mRemovalProgressDialog = null;
+
+    /** Flag to track if a PGO-initiated removal (bit 11) is already being processed. */
+    private boolean mRemovalInProgress = false;
 
     private AudioManager mAudioManager;
 
@@ -110,6 +128,16 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                             + ", features=0x" + Integer.toHexString(broadcastFeatures),
                             Toast.LENGTH_SHORT).show();
                 }
+
+                // bit16 (0x10000) - Duplicate Device ID detected
+                if ((status & DBIG_STATUS_BIT_DUPLICATE_DEVICE_ID) != 0) {
+                    int currentDevId = intent.getIntExtra("android.bluetooth.extra.DBIG_DEV_ID", -1);
+                    Log.w(TAG, "Duplicate Device ID detected! devId=0x"
+                            + Integer.toHexString(currentDevId));
+                    showSetDeviceIdPopup(currentDevId);
+                    return;
+                }
+
                 // bit8 (0x0100) - new device added to DBIG
                 boolean newDeviceAdded = (status & 0x0100) != 0;
                 Log.d(TAG, "Device added bit" + newDeviceAdded);
@@ -127,6 +155,11 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                     Toast.makeText(context,
                             "New device joined DBIG: DevID=" + devId + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
+                    // If the joined device is us, we are now a group member and may acquire.
+                    if (isLocalDevice(devId, nameStr)) {
+                        Log.i(TAG, "bit8: THIS device joined DBIG — enabling BIS acquire");
+                        mLocalJoinedDbig = true;
+                    }
                 }
 
                 // bit9 (0x0200) - device removed from DBIG (device successfully exited)
@@ -146,6 +179,11 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                     Toast.makeText(context,
                             "Device exited DBIG: DevID=" + devId + ", Name=" + nameStr,
                             Toast.LENGTH_LONG).show();
+                    // If we are the removed device we are no longer a member.
+                    if (isLocalDevice(devId, nameStr)) {
+                        Log.i(TAG, "bit9: THIS device left DBIG — disabling BIS acquire");
+                        mLocalJoinedDbig = false;
+                    }
                 }
 
                 // bit11 (0x0800) - PGO requesting this PGP to exit (spec §5.4 PGP Remove procedure)
@@ -154,52 +192,50 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 // share the same BIG/DBIG; the remove targets exactly one).
                 boolean removalRequested = (status & 0x0800) != 0;
                 if (removalRequested) {
-                    int devId = intent.getIntExtra(
-                            "android.bluetooth.extra.DBIG_DEV_ID", -1);
-                    byte[] nameBytes = intent.getByteArrayExtra(
-                            "android.bluetooth.extra.DBIG_NAME");
-                    String nameStr = (nameBytes != null)
-                            ? new String(nameBytes,
-                                    java.nio.charset.StandardCharsets.UTF_8).trim()
-                            : "";
-
-                    android.content.SharedPreferences prefs =
-                            context.getSharedPreferences("achat_prefs",
-                                    android.content.Context.MODE_PRIVATE);
-                    int localDevId   = prefs.getInt("agp_dev_id", -1);
-                    String localName = prefs.getString("agp_name", "").trim();
-
-                    boolean devIdMatch = (localDevId >= 0) && (devId == localDevId);
-                    boolean nameMatch  = !localName.isEmpty()
-                            && localName.equals(nameStr);
-
-                    Log.i(TAG, "bit11 removal: event devId=0x" + String.format("%04X", devId)
-                            + " name=" + nameStr
-                            + " | local devId=0x" + String.format("%04X", localDevId)
-                            + " name=" + localName
-                            + " | devIdMatch=" + devIdMatch + " nameMatch=" + nameMatch);
-
-                    if (devIdMatch && nameMatch) {
-                        Log.i(TAG, "Removal targets this PGP — calling stopEnhancedBroadcastSink(EXIT)");
-                        // Show a non-cancellable progress dialog so the user knows
-                        // the exit is in progress. Dismissed when TExitDbig complete arrives.
-                        if (mRemovalProgressDialog != null
-                                && mRemovalProgressDialog.isShowing()) {
-                            mRemovalProgressDialog.dismiss();
-                        }
-                        mRemovalProgressDialog = new android.app.AlertDialog.Builder(
-                                BroadcastSinkActivity.this)
-                                .setTitle("Exiting DBIG")
-                                .setMessage("PGO has requested removal of this device"
-                                        + " (DevID=0x" + String.format("%04X", devId)
-                                        + ").\nExiting DBIG group…")
-                                .setCancelable(false)
-                                .show();
-                        mViewModel.stopEnhancedBroadcastSink(0 /* ignored by stack */,
-                                android.bluetooth.BluetoothLeBroadcastSink.DBIG_TEXIT_MODE_EXIT);
+                    // Check if removal is already in progress to prevent duplicate processing
+                    if (mRemovalInProgress) {
+                        Log.i(TAG, "bit11 removal already in progress — ignoring duplicate status");
+                        // Continue processing other bits in the status update
                     } else {
-                        Log.i(TAG, "Removal targets a different PGP (devId=0x"
-                                + String.format("%04X", devId) + ") — ignoring");
+                        int devId = intent.getIntExtra(
+                                "android.bluetooth.extra.DBIG_DEV_ID", -1);
+                        byte[] nameBytes = intent.getByteArrayExtra(
+                                "android.bluetooth.extra.DBIG_NAME");
+                        String nameStr = (nameBytes != null)
+                                ? new String(nameBytes,
+                                        java.nio.charset.StandardCharsets.UTF_8).trim()
+                                : "";
+
+                        boolean targetsThisPgp = isLocalDevice(devId, nameStr);
+
+                        Log.i(TAG, "bit11 removal: event devId=0x" + String.format("%04X", devId)
+                                + " name=" + nameStr
+                                + " | targetsThisPgp=" + targetsThisPgp);
+
+                        if (targetsThisPgp) {
+                            Log.i(TAG, "Removal targets this PGP — calling stopEnhancedBroadcastSink(EXIT)");
+                            // Mark removal as in progress to prevent duplicate processing
+                            mRemovalInProgress = true;
+                            // Show a non-cancellable progress dialog so the user knows
+                            // the exit is in progress. Dismissed when TExitDbig complete arrives.
+                            if (mRemovalProgressDialog != null
+                                    && mRemovalProgressDialog.isShowing()) {
+                                mRemovalProgressDialog.dismiss();
+                            }
+                            mRemovalProgressDialog = new android.app.AlertDialog.Builder(
+                                    BroadcastSinkActivity.this)
+                                    .setTitle("Exiting DBIG")
+                                    .setMessage("PGO has requested removal of this device"
+                                            + " (DevID=0x" + String.format("%04X", devId)
+                                            + ").\nExiting DBIG group…")
+                                    .setCancelable(false)
+                                    .show();
+                            mViewModel.stopEnhancedBroadcastSink(0 /* ignored by stack */,
+                                    android.bluetooth.BluetoothLeBroadcastSink.DBIG_TEXIT_MODE_EXIT);
+                        } else {
+                            Log.i(TAG, "Removal targets a different PGP (devId=0x"
+                                    + String.format("%04X", devId) + ") — ignoring");
+                        }
                     }
                 }
                 boolean bisAvailable   = (status & 0x0001) != 0;
@@ -211,21 +247,27 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 mLocalOccupyingBis = localOccupying;
 
                 Log.d(TAG, "DBIG status - availability: " + mBisAvailability
-                        + ", local occupying: " + mLocalOccupyingBis);
+                        + ", local occupying: " + mLocalOccupyingBis
+                        + ", local joined: " + mLocalJoinedDbig);
 
-                if ((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
-                    Toast.makeText(context, "BIS is available, user can speak now",
-                            Toast.LENGTH_SHORT).show();
-                } else if (!bisAvailable && !localOccupying) {
-                    Toast.makeText(context,
-                            "BIS is not available, please wait until BIS is available",
-                            Toast.LENGTH_SHORT).show();
+                // Only a group member can speak — a PA-synced-only device receives these
+                // status updates too, so stay quiet unless we have joined.
+                if (mLocalJoinedDbig) {
+                    if ((mBisAvailability == BisAvailability.AVAILABLE) || localOccupying) {
+                        Toast.makeText(context, "BIS is available, user can speak now",
+                                Toast.LENGTH_SHORT).show();
+                    } else if (!bisAvailable) {
+                        Toast.makeText(context,
+                                "BIS is not available, please wait until BIS is available",
+                                Toast.LENGTH_SHORT).show();
+                    }
                 }
 
                 // Update adapter button labels and enabled state to reflect new BIS state
                 if (mAdapter != null) {
                     mAdapter.updateBisState(mLocalOccupyingBis,
-                            mBisAvailability == BisAvailability.AVAILABLE);
+                            mBisAvailability == BisAvailability.AVAILABLE,
+                            mLocalJoinedDbig);
                 }
                 // Re-evaluate "Request PGO to Terminate DBIG" button visibility —
                 // the button requires mLocalOccupyingBis (BIG synced) to be true.
@@ -270,6 +312,29 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 Context.RECEIVER_EXPORTED);
     }
 
+    /**
+     * True when a DBIG event's (devId, name) pair identifies THIS device, per the attributes
+     * set via MainActivity's "Set Attributes (Sink)" dialog.
+     *
+     * Both fields must match. DevID alone is insufficient — it is a user-chosen 12-bit value
+     * (MainActivity accepts 0-4095), so two participants can collide. This is the rule the
+     * bit11 removal path has always used, now shared by bit8 and bit9.
+     */
+    private boolean isLocalDevice(int devId, String nameStr) {
+        android.content.SharedPreferences prefs =
+                getSharedPreferences("achat_prefs", Context.MODE_PRIVATE);
+        int localDevId = prefs.getInt("agp_dev_id", -1);
+        String localName = prefs.getString("agp_name", "").trim();
+
+        boolean match = (localDevId >= 0) && (devId == localDevId)
+                && !localName.isEmpty() && localName.equals(nameStr);
+
+        Log.d(TAG, "isLocalDevice: event devId=0x" + String.format("%04X", devId)
+                + " name=" + nameStr + " | local devId=0x" + String.format("%04X", localDevId)
+                + " name=" + localName + " -> " + match);
+        return match;
+    }
+
     @Override
     protected void onStop() {
         unregisterReceiver(mDbigStatusReceiver);
@@ -283,6 +348,8 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             mRemovalProgressDialog.dismiss();
             mRemovalProgressDialog = null;
         }
+        // Reset removal in progress flag on activity destruction
+        mRemovalInProgress = false;
         if (mViewModel != null) {
             mViewModel.cleanup();
         }
@@ -298,7 +365,8 @@ public class BroadcastSinkActivity extends AppCompatActivity {
         // "Request PGO to Terminate DBIG" button visibility is correct after rotation.
         if (mAdapter != null) {
             mAdapter.updateBisState(mLocalOccupyingBis,
-                    mBisAvailability == BisAvailability.AVAILABLE);
+                    mBisAvailability == BisAvailability.AVAILABLE,
+                    mLocalJoinedDbig);
             refreshTerminateButtonVisibility();
         }
     }
@@ -450,9 +518,12 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             int sdkReason   = pair.second;
             Log.i(TAG, "BIG sync lost callback: broadcastId=" + broadcastId
                     + ", sdkReason=" + sdkReason);
-            // BIG is gone — clear BIS occupancy so the terminate button disappears.
+            // BIG is gone — clear BIS occupancy so the terminate button disappears, and drop
+            // DBIG membership (no bit9 arrives once we are desynced).
             mLocalOccupyingBis = false;
+            mLocalJoinedDbig = false;
             mBisAvailability = BisAvailability.UNKNOWN;
+            if (mAdapter != null) mAdapter.updateBisState(false, false, false);
             refreshTerminateButtonVisibility();
             showBigSyncLostRetryDialog(broadcastId, sdkReason);
         });
@@ -465,10 +536,22 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             Log.i(TAG, "Texit DBIG complete: broadcastId=" + broadcastId
                     + ", status=0x" + Integer.toHexString(status));
 
+            if (status == 0x00) {
+                // Left the DBIG (user-initiated EXIT or PGO removal). No bit9 self-event
+                // arrives on this path, so clear membership here.
+                Log.i(TAG, "TExitDbig success — clearing DBIG member");
+                mLocalJoinedDbig = false;
+                mLocalOccupyingBis = false;
+                mBisAvailability = BisAvailability.UNKNOWN;
+                if (mAdapter != null) mAdapter.updateBisState(false, false, false);
+            }
+
             // If a removal progress dialog is showing, dismiss it and show result.
             if (mRemovalProgressDialog != null && mRemovalProgressDialog.isShowing()) {
                 mRemovalProgressDialog.dismiss();
                 mRemovalProgressDialog = null;
+                // Reset the removal in progress flag
+                mRemovalInProgress = false;
                 String resultMsg = (status == 0x00)
                         ? "Exited DBIG successfully"
                         : "Exit DBIG failed (status=0x" + Integer.toHexString(status) + ")";
@@ -507,13 +590,20 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             // Reset BIS availability and DBIG state
             mBisAvailability = BisAvailability.UNKNOWN;
             mLocalOccupyingBis = false;
+            mLocalJoinedDbig = false;
             mLastBroadcastFeatures = -1;
             mLastBisDevIds = null;
             mPgoSourceCap = 0;
+            // Reset removal in progress flag on Bluetooth OFF
+            mRemovalInProgress = false;
             // Clear saved metadata so Retry-with-Code dialog cannot use stale data
             mLastEnhancedMetadata = null;
             // Reset synced broadcast list in adapter
             mAdapter.updateBroadcasts(new java.util.ArrayList<>());
+            // Also reset the adapter's cached BIS/membership state — otherwise a source
+            // found after BT-on could bind against stale "joined" state and briefly show
+            // an enabled Acquire before the first DBIG status arrives.
+            mAdapter.updateBisState(false, false, false);
             updateSyncedBroadcastsText(new java.util.ArrayList<>());
             refreshTerminateButtonVisibility();
             updateStatusText("Bluetooth OFF — AuraChat sink state cleared");
@@ -577,7 +667,17 @@ public class BroadcastSinkActivity extends AppCompatActivity {
     private void onBisAcquire(BroadcastSinkViewModel.FoundBroadcastItem item) {
         Log.d(TAG, "BIS acquire/release: " + item.getBroadcastName()
                 + ", localOccupying=" + mLocalOccupyingBis
-                + ", bisAvailability=" + mBisAvailability);
+                + ", bisAvailability=" + mBisAvailability
+                + ", localJoined=" + mLocalJoinedDbig);
+
+        if (!mLocalJoinedDbig) {
+            // Button is disabled in this state — guard anyway so a stale bind cannot reach
+            // the AHAL call or the optimistic state flips below.
+            Log.w(TAG, "Not a DBIG member — ignoring BIS acquire/release");
+            Toast.makeText(this, "Join the group first to acquire a BIS",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
 
         if (mLocalOccupyingBis) {
             // Local device already occupies a BIS - Release
@@ -593,7 +693,8 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             // Optimistically update state: BIS released, wait for DBIG update
             mLocalOccupyingBis = false;
             mBisAvailability = BisAvailability.UNKNOWN;
-            if (mAdapter != null) mAdapter.updateBisState(false, false);
+            // Still a group member after releasing — keep Acquire available.
+            if (mAdapter != null) mAdapter.updateBisState(false, false, true);
         } else if (mBisAvailability == BisAvailability.AVAILABLE) {
             // BIS is free - Acquire
             if (mAudioManager != null) {
@@ -608,7 +709,7 @@ public class BroadcastSinkActivity extends AppCompatActivity {
             // Optimistically update state: local device now occupies BIS
             mLocalOccupyingBis = true;
             mBisAvailability = BisAvailability.UNAVAILABLE;
-            if (mAdapter != null) mAdapter.updateBisState(true, false);
+            if (mAdapter != null) mAdapter.updateBisState(true, false, true);
         } else {
             // BIS not available yet
             Toast.makeText(this,
@@ -1012,6 +1113,102 @@ public class BroadcastSinkActivity extends AppCompatActivity {
                 .setNegativeButton("Cancel", null)
                 .setCancelable(false)
                 .show();
+    }
+
+    /**
+     * Show popup dialog for user to set new Device ID and Name when duplicate Device ID is detected (Bit 16)
+     */
+    private void showSetDeviceIdPopup(final int currentDevId) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Device ID Already Taken");
+
+        // Create dialog view with two EditText fields
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(50, 40, 50, 10);
+
+        TextView messageView = new TextView(this);
+        messageView.setText("Device ID 0x" + Integer.toHexString(currentDevId)
+                + " is already in use.\nPlease enter a new Device ID and Name:");
+        messageView.setPadding(0, 0, 0, 20);
+        layout.addView(messageView);
+
+        final EditText editDevId = new EditText(this);
+        editDevId.setHint("Device ID (hex, e.g., 0x123)");
+        layout.addView(editDevId);
+
+        final EditText editName = new EditText(this);
+        editName.setHint("Device Name");
+        layout.addView(editName);
+
+        builder.setView(layout);
+
+        builder.setPositiveButton("Set Device ID", (dialog, which) -> {
+            String devIdStr = editDevId.getText().toString().trim();
+            String nameStr = editName.getText().toString().trim();
+
+            if (devIdStr.isEmpty()) {
+                Toast.makeText(this, "Device ID cannot be empty", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            try {
+                int newDevId = devIdStr.startsWith("0x") || devIdStr.startsWith("0X")
+                        ? Integer.parseInt(devIdStr.substring(2), 16)
+                        : Integer.parseInt(devIdStr);
+
+                newDevId = newDevId & 0xFFF; // Mask to 12 bits
+
+                if (newDevId == 0 || newDevId == 0xFFF) {
+                    Toast.makeText(this, "Invalid Device ID (0x000 and 0xFFF reserved)",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                // Set the new device ID - system will auto-retry sync
+                setNewDeviceId(newDevId, nameStr);
+
+            } catch (NumberFormatException e) {
+                Toast.makeText(this, "Invalid Device ID format", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        builder.setNegativeButton("Cancel", (dialog, which) -> {
+            dialog.dismiss();
+        });
+
+        builder.setCancelable(false);
+        builder.show();
+    }
+
+    /**
+     * Set new device ID via SetAttributes - system will automatically retry sync
+     */
+    private void setNewDeviceId(int newDevId, String name) {
+        Log.i(TAG, "setNewDeviceId: newDevId=0x" + Integer.toHexString(newDevId)
+                + ", name=" + name);
+
+        // Convert name to byte array (10 bytes max)
+        byte[] nameBytes = new byte[10];
+        if (name != null && !name.isEmpty()) {
+            byte[] srcBytes = name.getBytes();
+            int copyLen = Math.min(srcBytes.length, 10);
+            System.arraycopy(srcBytes, 0, nameBytes, 0, copyLen);
+        }
+
+        // Call setAttributesForSink through ViewModel (cleaner architecture)
+        boolean result = mViewModel.setAttributesForSink(newDevId, nameBytes);
+
+        if (result) {
+            Log.i(TAG, "setAttributesForSink called successfully with devId=0x"
+                    + Integer.toHexString(newDevId));
+            Toast.makeText(this, "Device ID updated. Sync will retry automatically.",
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            Log.e(TAG, "setAttributesForSink failed");
+            Toast.makeText(this, "Failed to update Device ID. Bluetooth not available.",
+                    Toast.LENGTH_SHORT).show();
+        }
     }
 
     /**

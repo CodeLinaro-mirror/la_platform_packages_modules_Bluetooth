@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 /*
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -80,6 +80,7 @@ import android.media.BluetoothProfileConnectionInfo;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.IBinder;
 import android.os.Looper;
 import android.os.Parcel;
 import android.os.ParcelUuid;
@@ -244,6 +245,7 @@ public class LeAudioService extends ProfileService {
 
     LeAudioTmapGattServer mTmapGattServer;
     int mUnicastGroupIdDeactivatedForBroadcastTransition = LE_AUDIO_GROUP_ID_INVALID;
+    int mGroupDeactivatedByBassAssistant = LE_AUDIO_GROUP_ID_INVALID;
     int mCurrentAudioMode = AudioManager.MODE_NORMAL;
     boolean mCurrentRecordingMode = false;
     Optional<Integer> mBroadcastIdDeactivatedForUnicastTransition = Optional.empty();
@@ -255,6 +257,23 @@ public class LeAudioService extends ProfileService {
     boolean mInCall = false;
     boolean mTmapStarted = false;
     private boolean mAwaitingBroadcastCreateResponse = false;
+    // Set by releaseOrphanedBroadcastState() when the controlling client dies while a
+    // createBroadcast() is still in flight (broadcastId not yet in mBroadcastDescriptors, so
+    // that sweep can't reach it). Consumed by the EVENT_TYPE_BROADCAST_CREATED handler to tear
+    // the broadcast down as soon as it materializes instead of auto-starting it with no client.
+    private boolean mBroadcastCreateOrphaned = false;
+    // Tracks the calling UID of every currently-registered broadcast callback (register() doesn't
+    // expose this on its own, and RemoteCallbackList's internal death-recipient map isn't ours to
+    // read). Populated in registerLeBroadcastCallback(), cleaned up in
+    // unregisterLeBroadcastCallback() and onCallbackDied() alike.
+    private final Map<IBinder, Integer> mBroadcastCallbackUids = new HashMap<>();
+    // UID of the app whose createBroadcast() call is driving the currently active/in-flight
+    // broadcast(s). Multiple unrelated apps (e.g. a system UI surface just displaying broadcast
+    // status) can be registered in mBroadcastCallbacks at once -- only THIS UID dying should
+    // trigger releaseOrphanedBroadcastState(); a passive observer dying must not tear down a
+    // healthy, actively-driven broadcast. INVALID_UID means no broadcast is currently owned.
+    private static final int INVALID_UID = -1;
+    private int mBroadcastOwnerUid = INVALID_UID;
     boolean mIsSourceStreamMonitorModeEnabled = false;
     boolean mLeAudioSuspended = false;
     boolean mIsSinkStreamMonitorModeEnabled = false;
@@ -288,7 +307,31 @@ public class LeAudioService extends ProfileService {
     @VisibleForTesting
     @GuardedBy("mBroadcastCallbacks")
     final RemoteCallbackList<IBluetoothLeBroadcastCallback> mBroadcastCallbacks =
-            new RemoteCallbackList<>();
+            new RemoteCallbackList<IBluetoothLeBroadcastCallback>() {
+                @Override
+                public void onCallbackDied(IBluetoothLeBroadcastCallback callback) {
+                    // The controlling app (e.g. the LE Audio broadcast source UI) is not
+                    // necessarily the ONLY registrant here -- a passive observer (e.g. a system
+                    // UI surface just displaying broadcast status) can also be registered and
+                    // will typically outlive the controlling app. Counting registrants can't
+                    // distinguish the two: only reclaim when the callback that just died belongs
+                    // to the UID that's actually driving the active broadcast.
+                    Integer diedUid;
+                    synchronized (mBroadcastCallbackUids) {
+                        diedUid = mBroadcastCallbackUids.remove(callback.asBinder());
+                    }
+                    if (diedUid == null || mBroadcastOwnerUid == INVALID_UID
+                            || diedUid != mBroadcastOwnerUid) {
+                        Log.w(TAG, "onCallbackDied: broadcast client died (uid=" + diedUid
+                                + "); not the active broadcast owner (uid=" + mBroadcastOwnerUid
+                                + "), keeping session state");
+                        return;
+                    }
+                    Log.w(TAG, "onCallbackDied: broadcast owner (uid=" + diedUid
+                            + ") died; reclaiming orphaned broadcast state");
+                    releaseOrphanedBroadcastState();
+                }
+            };
 
     @VisibleForTesting
     @GuardedBy("mLeAudioCallbacks")
@@ -897,6 +940,7 @@ public class LeAudioService extends ProfileService {
 
         mCreateBroadcastQueue.clear();
         mAwaitingBroadcastCreateResponse = false;
+        mBroadcastCreateOrphaned = false;
         mIsSourceStreamMonitorModeEnabled = false;
         mLeAudioSuspended = false;
         if (!leaudioUseAudioRecordingListener()) {
@@ -1006,6 +1050,10 @@ public class LeAudioService extends ProfileService {
         synchronized (mBroadcastCallbacks) {
             mBroadcastCallbacks.kill();
         }
+        synchronized (mBroadcastCallbackUids) {
+            mBroadcastCallbackUids.clear();
+        }
+        mBroadcastOwnerUid = INVALID_UID;
 
         synchronized (mLeAudioCallbacks) {
             mLeAudioCallbacks.kill();
@@ -1510,6 +1558,10 @@ public class LeAudioService extends ProfileService {
             return;
         }
 
+        // A create already in flight (caught above) keeps its own owner; only claim ownership
+        // once we know this request is the one actually proceeding (queued for real or issued).
+        mBroadcastOwnerUid = Binder.getCallingUid();
+
         if (!leaudioBigDependsOnAudioState()) {
             if (!areAllGroupsInNotActiveState()) {
                 /* Broadcast will be created once unicast group became inactive */
@@ -1610,6 +1662,9 @@ public class LeAudioService extends ProfileService {
             Log.i(TAG, "Broadcast creation queued due to waiting for a previous request response.");
             return;
         }
+        // A create already in flight (caught above) keeps its own owner; only claim ownership
+        // once we know this request is the one actually proceeding (queued for real or issued).
+        mBroadcastOwnerUid = Binder.getCallingUid();
         if (!leaudioBigDependsOnAudioState()) {
             if (!areAllGroupsInNotActiveState()) {
                 /* Broadcast will be created once unicast group became inactive */
@@ -1684,23 +1739,20 @@ public class LeAudioService extends ProfileService {
             return null;
         }
         byte[] nativeParams = mLeAudioBroadcasterNativeInterface.get().getDbigParams();
-        if (nativeParams == null || nativeParams.length < 12) {
+        if (nativeParams == null || nativeParams.length < 13) {
             Log.e(TAG, "buildEnhancedPAVendorLTV: failed to get DBIG params from native"
                     + " (got " + (nativeParams == null ? "null" : nativeParams.length) + " bytes)");
             return null;
         }
         int pgoFeatures = mLeAudioBroadcasterNativeInterface.get().getEnhancedBroadcastCap();
-        byte[] ltv = new byte[18];
-        ltv[0] = 0x11;                              // Length (17 bytes follow)
+        byte[] ltv = new byte[19];  // 1 + 1 + 2 + 2 + 13 = 19 bytes total
+        ltv[0] = 0x12;                              // Length (18 bytes follow)
         ltv[1] = (byte) 0xFF;                       // Type = Vendor Specific
         ltv[2] = (byte) DBIG_VENDOR_COMPANY_ID_LO;  // Company_ID Lo (0x0A)
         ltv[3] = (byte) DBIG_VENDOR_COMPANY_ID_HI;  // Company_ID Hi (0x00)
         ltv[4] = (byte) (pgoFeatures & 0xFF);        // Broadcast_Features Lo
         ltv[5] = (byte) ((pgoFeatures >> 8) & 0xFF); // Broadcast_Features Hi
-        System.arraycopy(nativeParams, 0, ltv, 6, 12); // DBIG params (12 bytes)
-        Log.d(TAG, "buildEnhancedPAVendorLTV: pgoFeatures=0x" + Integer.toHexString(pgoFeatures)
-                + " bis_ctrl_interval=0x"
-                + String.format("%02X", nativeParams[3] & 0xFF));
+        System.arraycopy(nativeParams, 0, ltv, 6, 13); // DBIG params (13 bytes: v2.01 includes bis_timeout)
         return ltv;
     }
 
@@ -1876,6 +1928,47 @@ public class LeAudioService extends ProfileService {
 
             Log.d(TAG, "pauseBroadcast");
             mLeAudioBroadcasterNativeInterface.get().pauseBroadcast(broadcastId);
+        }
+    }
+
+    /*
+     * Reclaim orphaned broadcast state after the source's controlling client dies mid-session.
+     *
+     * Unlike LeAudioBroadcastSinkService#releaseOrphanedSessionState(), this does not tear the
+     * native side down directly: stopBroadcast()/stopEnhancedBroadcast() already disable the
+     * AChat usecase synchronously and kick off the same async native teardown an app-initiated
+     * stop would, which self-completes via EVENT_TYPE_BROADCAST_STATE(STOPPED) ->
+     * destroyBroadcast() -> EVENT_TYPE_BROADCAST_DESTROYED (removes the descriptor and notifies).
+     * Clearing mBroadcastDescriptors here instead would race that async completion.
+     */
+    private void releaseOrphanedBroadcastState() {
+        // Queued createBroadcast() calls have no client left to receive the result.
+        mCreateBroadcastQueue.clear();
+
+        // A createBroadcast() already in flight has no descriptor yet, so the sweep below can't
+        // reach it. Its CREATED response will still arrive later (native teardown isn't possible
+        // before the ID exists) -- mark it so EVENT_TYPE_BROADCAST_CREATED tears it down instead
+        // of auto-starting it once it lands.
+        if (mAwaitingBroadcastCreateResponse) {
+            Log.w(TAG, "releaseOrphanedBroadcastState: create in flight with no client left; "
+                    + "will tear down once created");
+            mBroadcastCreateOrphaned = true;
+        }
+
+        for (Integer broadcastId : new ArrayList<>(mBroadcastDescriptors.keySet())) {
+            LeAudioBroadcastDescriptor descriptor = mBroadcastDescriptors.get(broadcastId);
+            if (descriptor == null) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(descriptor.mIsEnhanced)) {
+                Log.w(TAG, "releaseOrphanedBroadcastState: tearing down orphaned enhanced "
+                        + "broadcastId=" + broadcastId + " via stopEnhancedBroadcast");
+                stopEnhancedBroadcast(broadcastId, BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
+            } else {
+                Log.w(TAG, "releaseOrphanedBroadcastState: tearing down orphaned "
+                        + "broadcastId=" + broadcastId + " via stopBroadcast");
+                stopBroadcast(broadcastId);
+            }
         }
     }
 
@@ -3961,6 +4054,7 @@ public class LeAudioService extends ProfileService {
             }
 
             if (descriptor.isActive()) {
+                mGroupDeactivatedByBassAssistant = LE_AUDIO_GROUP_ID_INVALID;
                 mHandler.post(
                         () ->
                                 notifyGroupStatusChanged(
@@ -4228,7 +4322,8 @@ public class LeAudioService extends ProfileService {
                     updateBroadcastActiveDevice(null, mActiveBroadcastAudioDevice, true);
                 }
             }
-        } else {
+        } else if (context_type == BluetoothLeAudio.CONTEXT_TYPE_MEDIA
+                || context_type == BluetoothLeAudio.CONTEXT_TYPE_SOUND_EFFECTS) {
             if (isBroadcastActive()) {
                 BluetoothDevice device =
                     mAdapterService.getDeviceFromByte(
@@ -4958,6 +5053,13 @@ public class LeAudioService extends ProfileService {
 
                         /* Clear allowed context mask if there is no switch of group */
                         if (descriptor.areAllowedContextsModified()) {
+                            // Some headsets proactively release unicast ASEs on addSource() for
+                            // a non-collocated broadcast before PA/BIS sync completes. Cache the
+                            // group so setActiveGroupAllowedContextMask can reactivate it after
+                            // removeSource().
+                            mGroupDeactivatedByBassAssistant = groupId;
+                            Log.d(TAG, "ASE release during BASS addSource, cache group "
+                                    + groupId + " for reactivation");
                             setGroupAllowedContextMask(
                                     groupId,
                                     BluetoothLeAudio.CONTEXTS_ALL,
@@ -5046,7 +5148,20 @@ public class LeAudioService extends ProfileService {
                     mBroadcastSessionStats.put(broadcastId, sessionStats);
                 }
 
-                if (mAudioManagerAddedOutDevice == null) {
+                if (mBroadcastCreateOrphaned) {
+                    // The client that requested this create died before it completed and no
+                    // other client is registered -- starting it now would stream with nobody to
+                    // stop it. Tear it down immediately instead; the same async
+                    // STOPPED -> destroyBroadcast() -> DESTROYED chain used elsewhere reclaims it.
+                    mBroadcastCreateOrphaned = false;
+                    Log.w(TAG, "EVENT_TYPE_BROADCAST_CREATED: orphaned create completed for "
+                            + "broadcastId=" + broadcastId + " with no client left; tearing down");
+                    if (Boolean.TRUE.equals(mBroadcastDescriptors.get(broadcastId).mIsEnhanced)) {
+                        stopEnhancedBroadcast(broadcastId, BluetoothLeBroadcast.DBIG_TEXIT_MODE_TERMINATE);
+                    } else {
+                        stopBroadcast(broadcastId);
+                    }
+                } else if (mAudioManagerAddedOutDevice == null) {
                     startBroadcast(broadcastId);
                 } else {
                     if (!leaudioBigDependsOnAudioState()) {
@@ -5055,6 +5170,7 @@ public class LeAudioService extends ProfileService {
                     }
                 }
             } else {
+                mBroadcastCreateOrphaned = false;
                 // TODO: Improve reason reporting or extend the native stack event with reason code
                 Log.e(
                         TAG,
@@ -5102,6 +5218,12 @@ public class LeAudioService extends ProfileService {
                                 + broadcastId);
             } else {
                 mBroadcastDescriptors.remove(broadcastId);
+                if (mBroadcastDescriptors.isEmpty() && !mAwaitingBroadcastCreateResponse) {
+                    // No broadcast left and nothing else in flight -- the current owner UID no
+                    // longer applies to anything, so it can't be stale-matched against a later,
+                    // unrelated callback death.
+                    mBroadcastOwnerUid = INVALID_UID;
+                }
             }
 
             // TODO: Improve reason reporting or extend the native stack event with reason code
@@ -5597,6 +5719,9 @@ public class LeAudioService extends ProfileService {
                 descriptor.mIsConnected = false;
                 descriptor.mAutoActiveModeEnabled = true;
                 descriptor.mAvailableContexts = null;
+                if (groupId == mGroupDeactivatedByBassAssistant) {
+                    mGroupDeactivatedByBassAssistant = LE_AUDIO_GROUP_ID_INVALID;
+                }
                 if (descriptor.isActive()) {
                     Integer gettingActiveGroupId = getFirstGroupIdInGettingActiveState();
                     if (gettingActiveGroupId != LE_AUDIO_GROUP_ID_INVALID) {
@@ -5763,6 +5888,16 @@ public class LeAudioService extends ProfileService {
      */
     public void setActiveGroupAllowedContextMask(int sinkContextTypes, int sourceContextTypes) {
         setGroupAllowedContextMask(getActiveGroupId(), sinkContextTypes, sourceContextTypes);
+        if (mGroupDeactivatedByBassAssistant != LE_AUDIO_GROUP_ID_INVALID
+                && sinkContextTypes == BluetoothLeAudio.CONTEXTS_ALL
+                && sourceContextTypes == BluetoothLeAudio.CONTEXTS_ALL) {
+            BluetoothDevice leadDevice = getLeadDeviceForTheGroup(mGroupDeactivatedByBassAssistant);
+            Log.d(TAG, "setActiveGroupAllowedContextMask: reactivating group "
+                    + mGroupDeactivatedByBassAssistant + " via " + leadDevice);
+            if (leadDevice != null) {
+                setActiveDevice(leadDevice);
+            }
+        }
     }
 
     /**
@@ -5807,6 +5942,16 @@ public class LeAudioService extends ProfileService {
             return;
         }
         if (mLeAudioDeviceInactivatedForHfpHandover != null) {
+            if (getConnectionPolicy(mLeAudioDeviceInactivatedForHfpHandover)
+                    != BluetoothProfile.CONNECTION_POLICY_ALLOWED) {
+                Log.i(
+                        TAG,
+                        "LE Audio disabled for device="
+                                + mLeAudioDeviceInactivatedForHfpHandover
+                                + ", not handing over back");
+                mLeAudioDeviceInactivatedForHfpHandover = null;
+                return;
+            }
             Log.i(TAG, "handover to LE audio device=" + mLeAudioDeviceInactivatedForHfpHandover);
             setActiveDevice(mLeAudioDeviceInactivatedForHfpHandover);
             mLeAudioDeviceInactivatedForHfpHandover = null;
@@ -6235,6 +6380,9 @@ public class LeAudioService extends ProfileService {
     }
 
     public void registerLeBroadcastCallback(IBluetoothLeBroadcastCallback callback) {
+        synchronized (mBroadcastCallbackUids) {
+            mBroadcastCallbackUids.put(callback.asBinder(), Binder.getCallingUid());
+        }
         synchronized (mBroadcastCallbacks) {
             mBroadcastCallbacks.register(callback);
         }
@@ -6243,6 +6391,9 @@ public class LeAudioService extends ProfileService {
     public void unregisterLeBroadcastCallback(IBluetoothLeBroadcastCallback callback) {
         synchronized (mBroadcastCallbacks) {
             mBroadcastCallbacks.unregister(callback);
+        }
+        synchronized (mBroadcastCallbackUids) {
+            mBroadcastCallbackUids.remove(callback.asBinder());
         }
     }
 
