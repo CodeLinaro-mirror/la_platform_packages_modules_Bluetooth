@@ -70,7 +70,6 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothDevice.BluetoothAddress;
 import android.bluetooth.BluetoothFrameworkInitializer;
 import android.bluetooth.BluetoothLeAudio;
-import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothMap;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothProtoEnums;
@@ -1061,7 +1060,6 @@ public class AdapterService extends Service {
         MetricsLogger.getInstance().init(this, mRemoteDevices, hciInstanceName);
 
         clearDiscoveryData();
-        mAdapter = requireNonNull(getSystemService(BluetoothManager.class).getAdapter());
         boolean isCommonCriteriaMode =
                 requireNonNull(getSystemService(DevicePolicyManager.class))
                         .isCommonCriteriaModeEnabled(null);
