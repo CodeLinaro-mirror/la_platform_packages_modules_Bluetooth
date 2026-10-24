@@ -500,10 +500,6 @@ static void btm_ble_clear_resolving_list(void) {
  *
  ******************************************************************************/
 bool btm_ble_read_resolving_list_entry(tBTM_SEC_DEV_REC* p_dev_rec) {
-  if (btm_cb.ble_ctr_cb.privacy_mode < BTM_PRIVACY_1_2) {
-    log::debug("Privacy 1.2 is not enabled");
-    return false;
-  }
   if (!(p_dev_rec->ble.in_controller_list & BTM_RESOLVING_LIST_BIT)) {
     log::info("Unable to read resolving list entry as resolving bit not set");
     return false;
@@ -563,11 +559,13 @@ static bool count_resolving_list_entries(void* data, void* context) {
 }
 
 void btm_ble_resolving_list_load_dev(tBTM_SEC_DEV_REC& dev_rec) {
-  if (btm_cb.ble_ctr_cb.privacy_mode < BTM_PRIVACY_1_2) {
-    log::debug("Privacy 1.2 is not enabled");
-    return;
-  }
-
+  // The controller resolving list is used to RESOLVE PEER RPAs. Per BT Core
+  // Spec v5.4 Vol 6 Part B Section 6.4, this is independent of the local
+  // privacy_mode (which decides whether the local device uses its own RPA).
+  // Do NOT gate on privacy_mode < BTM_PRIVACY_1_2 -- doing so breaks LE
+  // connection when the peer has BLE privacy enabled and CTKD ran over
+  // BR/EDR while local privacy is off. The size / feature / bit checks
+  // below are sufficient.
   uint8_t resolving_list_size = bluetooth::shim::GetController()->GetLeResolvingListSize();
   if (resolving_list_size == 0) {
     log::info("Controller does not support RPA offloading or privacy 1.2");
@@ -636,11 +634,6 @@ void btm_ble_resolving_list_load_dev(tBTM_SEC_DEV_REC& dev_rec) {
  *
  ******************************************************************************/
 void btm_ble_resolving_list_remove_dev(tBTM_SEC_DEV_REC* p_dev_rec) {
-  if (btm_cb.ble_ctr_cb.privacy_mode < BTM_PRIVACY_1_2) {
-    log::debug("Privacy 1.2 is not enabled");
-    return;
-  }
-
   if ((p_dev_rec->ble.in_controller_list & BTM_RESOLVING_LIST_BIT) &&
       !btm_ble_brcm_find_resolving_pending_entry(p_dev_rec->bd_addr,
                                                  BTM_BLE_META_REMOVE_IRK_ENTRY)) {
