@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /*
@@ -82,7 +86,8 @@ bool A2DP_InitCodecConfig(btav_a2dp_codec_index_t /* codec_index */, AvdtpSepCon
   inc_func_call_count(__func__);
   return false;
 }
-int A2DP_GetEecoderEffectiveFrameSize(const uint8_t* /* p_codec_info */) {
+int A2DP_GetEecoderEffectiveFrameSize(const RawAddress& /* peer_address */,
+                                      const uint8_t* /* p_codec_info */) {
   inc_func_call_count(__func__);
   return 0;
 }
@@ -155,7 +160,8 @@ bool A2dpCodecs::setCodecAudioConfig(const btav_a2dp_codec_config_t& /* codec_au
   inc_func_call_count(__func__);
   return false;
 }
-bool A2dpCodecs::setCodecConfig(const uint8_t* /* p_peer_codec_info */, bool /* is_capability */,
+bool A2dpCodecs::setCodecConfig(const RawAddress& /* peer_address */,
+                                const uint8_t* /* p_peer_codec_info */, bool /* is_capability */,
                                 uint8_t* /* p_result_codec_config */,
                                 bool /* select_current_codec */) {
   inc_func_call_count(__func__);
@@ -169,7 +175,8 @@ tA2DP_STATUS A2dpCodecs::setCodecOtaConfig(
   inc_func_call_count(__func__);
   return AVDTP_UNSUPPORTED_CONFIGURATION;
 }
-bool A2dpCodecs::setCodecUserConfig(const btav_a2dp_codec_config_t& /* codec_user_config */,
+bool A2dpCodecs::setCodecUserConfig(const RawAddress& /* peer_address */,
+                                    const btav_a2dp_codec_config_t& /* codec_user_config */,
                                     const tA2DP_ENCODER_INIT_PEER_PARAMS* /* p_peer_params */,
                                     const uint8_t* /* p_peer_sink_capabilities */,
                                     uint8_t* /* p_result_codec_config */,
@@ -237,7 +244,8 @@ const tA2DP_DECODER_INTERFACE* A2DP_GetDecoderInterface(const uint8_t* /* p_code
   inc_func_call_count(__func__);
   return nullptr;
 }
-const tA2DP_ENCODER_INTERFACE* A2DP_GetEncoderInterface(const uint8_t* /* p_codec_info */) {
+A2dpEncoderInterface* A2DP_GetEncoderInterface(const RawAddress& /* peer_address */,
+                                               const uint8_t* /* p_codec_info */) {
   inc_func_call_count(__func__);
   return nullptr;
 }

@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "hfp_msbc_encoder"
@@ -22,6 +26,8 @@
 #include <cstring>
 
 #include "embdrv/sbc/encoder/include/sbc_encoder.h"
+
+extern uint32_t SBC_Encode(SBC_ENC_PARAMS* pstrEncParams, int16_t* input, uint8_t* output);
 
 typedef struct {
   SBC_ENC_PARAMS sbc_encoder_params;
@@ -43,6 +49,6 @@ void hfp_msbc_encoder_init(void) {
 
 void hfp_msbc_encoder_cleanup(void) { hfp_msbc_encoder = {}; }
 
-uint32_t hfp_msbc_encode_frames(int16_t* input, uint8_t* output) {
-  return SBC_Encode(&hfp_msbc_encoder.sbc_encoder_params, input, output);
+uint32_t hfp_msbc_encode_frames(int16_t* /*input*/, uint8_t* /*output*/) {
+  return 0;//SBC_Encode(&hfp_msbc_encoder.sbc_encoder_params, input, output);// to be fixed
 }

@@ -13,6 +13,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include <bluetooth/types/ble_address_with_type.h>
@@ -71,6 +75,8 @@ size_t bta_ag_sco_read(uint8_t*, uint32_t) { return 0; }
 size_t bta_ag_sco_write(const uint8_t*, uint32_t) { return 0; }
 
 void btm_inq_remote_name_timer_timeout(void*) {}
+
+bool btif_a2dp_source_media_task_is_running(const RawAddress& peer_address) { return true; }
 
 namespace {
 

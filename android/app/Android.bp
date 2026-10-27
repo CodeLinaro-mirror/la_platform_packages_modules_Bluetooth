@@ -101,7 +101,6 @@ cc_library_shared {
         "libbt-hci",
         "libbt-jni-thread",
         "libbt-sbc-decoder",
-        "libbt-sbc-encoder",
         "libbt-stack",
         "libbtcore",
         "libbtdevice",
@@ -131,6 +130,7 @@ cc_library_shared {
         "libcrypto",
         "liblog",
         "libnativehelper",
+        "libbt-sbc-encoder",
         "libstatssocket",
         "libvndksupport",
     ],
@@ -183,6 +183,7 @@ android_library {
         "framework-wifi.stubs.module_lib",
         "modules-utils-build",
         "android.car-module.stubs.module_lib",
+        "android.car",
     ],
     static_libs: [
         "android.bluetooth.platform.flags-aconfig-java-export",

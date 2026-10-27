@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ *  Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ *  Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -27,6 +32,13 @@
 
 #include <stdint.h>
 
+class A2DP_SBC_UPS_CB;
+
+typedef int (A2DP_SBC_UPS_CB::*tA2DP_SBC_ACT)(void* p_src, void* p_dst, uint32_t src_samples,
+                                              uint32_t dst_samples, uint32_t* p_ret);
+
+class A2DP_SBC_UPS_CB {
+public:
 /*******************************************************************************
  *
  * Function         a2dp_sbc_init_up_sample
@@ -41,7 +53,8 @@
  * Returns          none
  *
  ******************************************************************************/
-void a2dp_sbc_init_up_sample(uint32_t src_sps, uint32_t dst_sps, uint8_t bits, uint8_t n_channels);
+  void a2dp_sbc_init_up_sample(uint32_t src_sps, uint32_t dst_sps, uint8_t bits,
+                               uint8_t n_channels);
 
 /*******************************************************************************
  *
@@ -69,8 +82,8 @@ void a2dp_sbc_init_up_sample(uint32_t src_sps, uint32_t dst_sps, uint8_t bits, u
  *                  The number of bytes used in p_src (in *p_ret)
  *
  ******************************************************************************/
-int a2dp_sbc_up_sample(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
-                       uint32_t* p_ret);
+  int a2dp_sbc_up_sample(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
+                         uint32_t* p_ret);
 
 /*******************************************************************************
  *
@@ -91,8 +104,8 @@ int a2dp_sbc_up_sample(void* p_src, void* p_dst, uint32_t src_samples, uint32_t 
  *                  The number of bytes used in p_src (in *p_ret)
  *
  ******************************************************************************/
-int a2dp_sbc_up_sample_16s(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
-                           uint32_t* p_ret);
+  int a2dp_sbc_up_sample_16s(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
+                             uint32_t* p_ret);
 
 /*******************************************************************************
  *
@@ -113,8 +126,8 @@ int a2dp_sbc_up_sample_16s(void* p_src, void* p_dst, uint32_t src_samples, uint3
  *                  The number of bytes used in p_src (in *p_ret)
  *
  ******************************************************************************/
-int a2dp_sbc_up_sample_16m(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
-                           uint32_t* p_ret);
+  int a2dp_sbc_up_sample_16m(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
+                             uint32_t* p_ret);
 
 /*******************************************************************************
  *
@@ -135,8 +148,8 @@ int a2dp_sbc_up_sample_16m(void* p_src, void* p_dst, uint32_t src_samples, uint3
  *                  The number of bytes used in p_src (in *p_ret)
  *
  ******************************************************************************/
-int a2dp_sbc_up_sample_8s(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
-                          uint32_t* p_ret);
+  int a2dp_sbc_up_sample_8s(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
+                            uint32_t* p_ret);
 
 /*******************************************************************************
  *
@@ -156,7 +169,19 @@ int a2dp_sbc_up_sample_8s(void* p_src, void* p_dst, uint32_t src_samples, uint32
  *                  The number of bytes used in p_src (in *p_ret)
  *
  ******************************************************************************/
-int a2dp_sbc_up_sample_8m(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
-                          uint32_t* p_ret);
+  int a2dp_sbc_up_sample_8m(void* p_src, void* p_dst, uint32_t src_samples, uint32_t dst_samples,
+                            uint32_t* p_ret);
+
+private:
+  int32_t cur_pos;     /* current position */
+  uint32_t src_sps;    /* samples per second (source audio data) */
+  uint32_t dst_sps;    /* samples per second (converted audio data) */
+  tA2DP_SBC_ACT p_act; /* the action function to do the conversion */
+  uint8_t bits;        /* number of bits per pcm sample */
+  uint8_t n_channels;  /* number of channels (i.e. mono(1), stereo(2)...) */
+  int16_t worker1;
+  int16_t worker2;
+  uint8_t div;
+};
 
 #endif  // A2DP_SBC_UP_SAMPLE_H

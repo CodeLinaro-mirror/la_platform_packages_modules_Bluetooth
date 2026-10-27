@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "bluetooth-a2dp-aidl"
@@ -39,12 +44,13 @@ namespace aidl {
 namespace a2dp {
 
 BluetoothAudioClientInterface::BluetoothAudioClientInterface(
-        SessionType sessionType, StreamCallbacks const* stream_callbacks)
+        SessionType sessionType, StreamCallbacks const* stream_callbacks, uint8_t index)
     : provider_(nullptr),
       provider_factory_(nullptr),
       session_started_(false),
       data_mq_(nullptr),
-      latency_modes_({LatencyMode::FREE}) {
+      latency_modes_({LatencyMode::FREE}),
+      index_(index) {
   death_recipient_ =
           ::ndk::ScopedAIBinder_DeathRecipient(AIBinder_DeathRecipient_new(binderDiedCallbackAidl));
   transport_ = std::make_shared<A2dpTransport>(sessionType, stream_callbacks);
@@ -59,8 +65,9 @@ BluetoothAudioClientInterface::~BluetoothAudioClientInterface() {
 
 bool BluetoothAudioClientInterface::IsValid() const { return provider_ != nullptr; }
 
-bool BluetoothAudioClientInterface::is_aidl_available() {
-  return AServiceManager_isDeclared(kDefaultAudioProviderFactoryInterface.c_str());
+bool BluetoothAudioClientInterface::is_aidl_available() const {
+  log::info("index {}", index_);
+  return AServiceManager_isDeclared(kAudioProviderFactoryInterfaces[index_].c_str());
 }
 
 std::vector<AudioCapabilities> BluetoothAudioClientInterface::GetAudioCapabilities(
@@ -70,7 +77,7 @@ std::vector<AudioCapabilities> BluetoothAudioClientInterface::GetAudioCapabiliti
     return capabilities;
   }
   auto provider_factory = IBluetoothAudioProviderFactory::fromBinder(::ndk::SpAIBinder(
-          AServiceManager_waitForService(kDefaultAudioProviderFactoryInterface.c_str())));
+          AServiceManager_waitForService(kAudioProviderFactoryInterfaces[index_].c_str())));
 
   if (provider_factory == nullptr) {
     log::error("can't get capability from unknown factory");
@@ -95,7 +102,7 @@ BluetoothAudioClientInterface::GetProviderInfo(
 
   if (provider_factory == nullptr) {
     provider_factory = IBluetoothAudioProviderFactory::fromBinder(::ndk::SpAIBinder(
-            AServiceManager_waitForService(kDefaultAudioProviderFactoryInterface.c_str())));
+            AServiceManager_waitForService(kAudioProviderFactoryInterfaces[index_].c_str())));
   }
 
   if (provider_factory == nullptr) {
@@ -160,6 +167,7 @@ std::optional<A2dpStatus> BluetoothAudioClientInterface::ParseA2dpConfiguration(
 }
 
 void BluetoothAudioClientInterface::FetchAudioProvider() {
+  log::info("index {}", index_);
   if (!is_aidl_available()) {
     log::error("aidl is not supported on this platform.");
     return;
@@ -172,7 +180,7 @@ void BluetoothAudioClientInterface::FetchAudioProvider() {
   // re-registered, so we need to re-fetch the service.
   for (int retry_no = 0; retry_no < kFetchAudioProviderRetryNumber; ++retry_no) {
     auto provider_factory = IBluetoothAudioProviderFactory::fromBinder(::ndk::SpAIBinder(
-            AServiceManager_waitForService(kDefaultAudioProviderFactoryInterface.c_str())));
+            AServiceManager_waitForService(kAudioProviderFactoryInterfaces[index_].c_str())));
 
     if (provider_factory == nullptr) {
       log::error("can't get capability from unknown factory");

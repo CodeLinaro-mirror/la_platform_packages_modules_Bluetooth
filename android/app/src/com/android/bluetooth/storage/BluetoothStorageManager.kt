@@ -529,6 +529,40 @@ constructor(
             builder.putDevices(device.address, deviceBuilder.build()).build()
         }
 
+    /** Return the A2DP media player mapped to an audio zone, or an empty string if unset. */
+    fun getA2dpMediaPlayer(device: BluetoothDevice): String =
+        currentStorage.devicesMap[device.address]?.a2DpSettings?.mediaPlayer ?: ""
+
+    /** Return the index of the A2DP audio zone, or -1 if unset. */
+    fun getA2dpAudioZone(device: BluetoothDevice): Int {
+        val a2dpSettings = currentStorage.devicesMap[device.address]?.a2DpSettings
+        return if (a2dpSettings?.hasAudioZone() == true) a2dpSettings.audioZone else -1
+    }
+
+    /** Map [mediaPlayer] and [audioZone] to [device]. Returns false when the input is invalid. */
+    fun setA2dpMediaPlayer(device: BluetoothDevice, mediaPlayer: String?, audioZone: Int): Boolean {
+        if (mediaPlayer == null) {
+            Log.e(TAG, "setA2dpMediaPlayer: invalid mediaPlayer")
+            return false
+        }
+        if (getA2dpMediaPlayer(device) == mediaPlayer && getA2dpAudioZone(device) == audioZone) {
+            return true
+        }
+        dataStore.blockingUpdateData { storage ->
+            val builder = storage.toBuilder()
+            val deviceBuilder = builder.getExistingOrNewDeviceBuilder(device)
+
+            val settingsBuilder = deviceBuilder.a2DpSettings.toBuilder()
+            settingsBuilder.mediaPlayer = mediaPlayer
+            settingsBuilder.audioZone = audioZone
+            logEvent(device, "a2dp media player is $mediaPlayer, audio zone is $audioZone")
+
+            deviceBuilder.setA2DpSettings(settingsBuilder.build())
+            builder.putDevices(device.address, deviceBuilder.build()).build()
+        }
+        return true
+    }
+
     fun getPhonebookAccessPermission(device: BluetoothDevice): Int {
         val permissions = currentStorage.devicesMap[device.address]?.permissions
         val status = if (permissions?.hasPhonebook() == true) permissions.phonebook else null

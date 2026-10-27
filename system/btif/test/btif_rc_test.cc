@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "btif/include/btif_rc.h"
@@ -84,12 +89,18 @@ const RawAddress kDeviceAddress("11:22:33:44:55:66");
 const uint8_t kRcHandle = 123;
 }  // namespace
 
-void btif_av_clear_remote_suspend_flag(const A2dpType /*local_a2dp_type*/) {}
-bool btif_av_is_connected(const A2dpType /*local_a2dp_type*/) { return true; }
+void btif_av_clear_remote_suspend_flag(const RawAddress& peer_address, const A2dpType /*local_a2dp_type*/) {}
+bool btif_av_is_connected(const RawAddress& /*peer_address*/,
+                          const A2dpType /*local_a2dp_type*/) {
+  return true;
+}
 bool btif_av_is_sink_enabled(void) { return true; }
 RawAddress btif_av_sink_active_peer(void) { return RawAddress(); }
 RawAddress btif_av_source_active_peer(void) { return RawAddress(); }
-bool btif_av_stream_started_ready(const A2dpType /*local_a2dp_type*/) { return false; }
+bool btif_av_stream_started_ready(const RawAddress& /*peer_address*/,
+                                  const A2dpType /*local_a2dp_type*/) {
+  return false;
+}
 BtStatus btif_transfer_context(tBTIF_CBACK* p_cback, uint16_t event, char* p_params,
                                int param_len, tBTIF_COPY_CBACK* p_copy_cback) {
   inc_func_call_count("btif_transfer_context");
@@ -108,6 +119,8 @@ BtStatus btif_transfer_context(tBTIF_CBACK* p_cback, uint16_t event, char* p_par
   }
   return BtifStatus();
 }
+std::set<RawAddress> btif_av_source_active_peers(void) { return std::set<RawAddress>(); }
+bool btif_av_source_is_active_peer(const RawAddress& /*peer_address*/) { return true; }
 static bool btif_av_src_sink_coexist_enabled_value = true;
 static void set_btif_av_src_sink_coexist_enabled(bool value) {
   btif_av_src_sink_coexist_enabled_value = value;

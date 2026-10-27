@@ -76,6 +76,10 @@ public:
 
   // Functions inherited from MediaCallbacks in order to receive updates
   void SendMediaUpdate(bool track_changed, bool play_state, bool queue) override;
+
+  void SendMediaUpdateExt(const RawAddress& bdaddr, bool track_changed,
+                          bool play_state, bool queue);
+
   void SendFolderUpdate(bool available_players, bool addressed_player, bool queue) override;
 
   void SendPlayerSettingsChanged(std::vector<PlayerAttribute> attributes,

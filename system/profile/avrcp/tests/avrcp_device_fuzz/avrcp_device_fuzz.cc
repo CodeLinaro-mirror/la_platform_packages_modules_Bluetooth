@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #include "device.h"
@@ -65,6 +69,8 @@ class FakeMediaInterface : public MediaInterface {
 public:
   FakeMediaInterface(FuzzedDataProvider* fdp) : mFdp(fdp) {}
   void SendKeyEvent(const RawAddress&, uint8_t /* key */, KeyState /* state */) override { return; }
+  void SendKeyEventExt(const RawAddress& /* address */, uint8_t /* key */,
+                       KeyState /* state */) override {}
   using SongInfoCallback = base::OnceCallback<void(SongInfo)>;
   void GetSongInfo(std::string /* media_id */, SongInfoCallback info_cb) override {
     SongInfo sInfo;
@@ -76,12 +82,15 @@ public:
     std::move(info_cb).Run(sInfo);
     return;
   }
+  void GetSongInfoExt(const RawAddress& /* address */, SongInfoCallback /* info_cb */) override {}
   using PlayStatusCallback = base::OnceCallback<void(PlayStatus)>;
   void GetPlayStatus(PlayStatusCallback status_cb) override {
     PlayStatus pst;
     std::move(status_cb).Run(pst);
     return;
   }
+  void GetPlayStatusExt(const RawAddress& /* address */,
+                        PlayStatusCallback /* status_cb */) override {}
   using NowPlayingCallback = base::OnceCallback<void(std::string, std::vector<SongInfo>)>;
   void GetNowPlayingList(NowPlayingCallback now_playing_cb) override {
     std::string currentSongId = mFdp->ConsumeRandomLengthString(kMaxLen);
@@ -99,6 +108,8 @@ public:
     std::move(now_playing_cb).Run(currentSongId, songInfoVec);
     return;
   }
+  void GetNowPlayingListExt(const RawAddress& /* address */,
+                            NowPlayingCallback /* now_playing_cb */) override {}
   using MediaListCallback =
           base::OnceCallback<void(uint16_t curr_player, std::vector<MediaPlayerInfo>)>;
   void GetMediaPlayerList(MediaListCallback list_cb) override {
@@ -176,6 +187,7 @@ public:
   }
   void DeviceDisconnected(const RawAddress& /* bdaddr */) override { return; }
   void SetVolume(int8_t /* volume */) override { return; }
+  void SetVolumeExt(const RawAddress& /* bdaddr */, int8_t /* volume */) override {}
 
 private:
   FuzzedDataProvider* mFdp;
@@ -227,6 +239,7 @@ private:
 class FakeA2dpInterface : public A2dpInterface {
 public:
   RawAddress active_peer() { return RawAddress::kAny; }
+  std::set<RawAddress> active_peers() {return std::set<RawAddress>();}
   bool is_peer_in_silence_mode(const RawAddress& /* peer_address */) { return false; }
   void connect_audio_sink_delayed(uint8_t /* handle */, const RawAddress& /* peer_address */) {
     return;
