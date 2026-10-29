@@ -117,6 +117,9 @@ cc_test {
         "gatt/gatt_test.cc",
         "gatt/gatt_unittest.cc",
     ],
+    shared_libs: [
+        "libfmq",
+    ],
     static_libs: [
         "android.hardware.audio.common-V1-ndk",
         "android.hardware.bluetooth.audio-V3-ndk",
