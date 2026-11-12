@@ -531,7 +531,8 @@ static void btif_a2dp_sink_audio_handle_start_decoding() {
 
 // Must be called while locked.
 static void btif_a2dp_sink_handle_inc_media(BT_HDR* p_msg) {
-  if ((btif_av_get_peer_sep(A2dpType::kSink) == AVDT_TSEP_SNK) || (btif_a2dp_sink_cb.rx_flush)) {
+  if ((btif_av_get_peer_sep(RawAddress::kEmpty, A2dpType::kSink) == AVDT_TSEP_SNK) ||
+      (btif_a2dp_sink_cb.rx_flush)) {
     log::debug("state changed happened in this tick");
     return;
   }

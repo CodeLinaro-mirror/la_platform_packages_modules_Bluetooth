@@ -14,6 +14,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
+ *
  ******************************************************************************/
 
 #include <dlfcn.h>
@@ -1211,7 +1216,7 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
   EXPECT_NE(peer_codec_index, BTAV_A2DP_CODEC_INDEX_MAX);
   codec_config = a2dp_codecs->findSourceCodecConfig(codec_info_sbc_sink_capability);
   EXPECT_NE(codec_config, nullptr);
-  EXPECT_TRUE(a2dp_codecs->setCodecConfig(codec_info_sbc_sink_capability, true /* is_capability */,
+  EXPECT_TRUE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_sbc_sink_capability, true /* is_capability */,
                                           codec_info_result, true /* select_current_codec */));
   EXPECT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
   // Compare the result codec with the local test codec info
@@ -1226,7 +1231,7 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
   EXPECT_NE(peer_codec_index, BTAV_A2DP_CODEC_INDEX_MAX);
   codec_config = a2dp_codecs->findSourceCodecConfig(codec_info_sbc);
   EXPECT_NE(codec_config, nullptr);
-  EXPECT_TRUE(a2dp_codecs->setCodecConfig(codec_info_sbc, false /* is_capability */,
+  EXPECT_TRUE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_sbc, false /* is_capability */,
                                           codec_info_result, true /* select_current_codec */));
   EXPECT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
   // Compare the result codec with the local test codec info
@@ -1241,7 +1246,7 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
   EXPECT_NE(peer_codec_index, BTAV_A2DP_CODEC_INDEX_MAX);
   codec_config = a2dp_codecs->findSourceCodecConfig(codec_info_aac);
   EXPECT_NE(codec_config, nullptr);
-  EXPECT_TRUE(a2dp_codecs->setCodecConfig(codec_info_aac, false /* is_capability */,
+  EXPECT_TRUE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_aac, false /* is_capability */,
                                           codec_info_result, true /* select_current_codec */));
   EXPECT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
   // Compare the result codec with the local test codec info
@@ -1346,7 +1351,7 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
   uint8_t codec_info_sbc_test1[AVDT_CODEC_SIZE];
   memset(codec_info_result, 0, sizeof(codec_info_result));
   memset(codec_info_sbc_test1, 0, sizeof(codec_info_sbc_test1));
-  EXPECT_FALSE(a2dp_codecs->setCodecConfig(codec_info_sbc_test1, true /* is_capability */,
+  EXPECT_FALSE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_sbc_test1, true /* is_capability */,
                                            codec_info_result, true /* select_current_codec */));
 
   AvdtpSepConfig avdt_cfg;
@@ -1360,7 +1365,7 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
   ASSERT_NE(peer_codec_index, BTAV_A2DP_CODEC_INDEX_MAX);
   codec_config = a2dp_codecs->findSourceCodecConfig(codec_info_aac_sink_capability);
   ASSERT_NE(codec_config, nullptr);
-  ASSERT_TRUE(a2dp_codecs->setCodecConfig(codec_info_aac_sink_capability, true /* is_capability */,
+  ASSERT_TRUE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_aac_sink_capability, true /* is_capability */,
                                           codec_info_result, true /* select_current_codec */));
   ASSERT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
   // Compare the result codec with the local test codec info
@@ -1382,8 +1387,9 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
   codec_config = a2dp_codecs->findSourceCodecConfig(codec_info_aac_vbr);
   ASSERT_NE(codec_config, nullptr);
   if (aac_vbr_mode_enabled) {
-    ASSERT_TRUE(a2dp_codecs->setCodecConfig(codec_info_aac_vbr, false /* is_capability */,
-                                            codec_info_result, true /* select_current_codec */));
+    ASSERT_TRUE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_aac_vbr,
+                                            false /* is_capability */, codec_info_result,
+                                            true /* select_current_codec */));
     ASSERT_EQ(a2dp_codecs->getCurrentCodecConfig(), codec_config);
 
     // Compare the result codec with the local test codec info
@@ -1391,8 +1397,9 @@ TEST_F(A2dpCodecConfigTest, setCodecConfig) {
       ASSERT_EQ(codec_info_result[i], codec_info_aac_vbr[i]);
     }
   } else {
-    ASSERT_FALSE(a2dp_codecs->setCodecConfig(codec_info_aac_vbr, false /* is_capability */,
-                                             codec_info_result, true /* select_current_codec */));
+    ASSERT_FALSE(a2dp_codecs->setCodecConfig(RawAddress::kEmpty, codec_info_aac_vbr,
+                                             false /* is_capability */, codec_info_result,
+                                             true /* select_current_codec */));
   }
   ASSERT_TRUE(codec_config->useRtpHeaderMarkerBit());
 

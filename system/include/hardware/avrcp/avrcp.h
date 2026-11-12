@@ -12,6 +12,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
+ * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
 #pragma once
@@ -75,6 +80,8 @@ struct ListItem {
 class MediaCallbacks {
 public:
   virtual void SendMediaUpdate(bool track_changed, bool play_state, bool queue) = 0;
+  virtual void SendMediaUpdateExt(const RawAddress& bdaddress, bool track_changed,
+                               bool play_state, bool queue) = 0;
   virtual void SendFolderUpdate(bool available_players, bool addressed_players,
                                 bool uids_changed) = 0;
   virtual void SendPlayerSettingsChanged(std::vector<PlayerAttribute> attributes,
@@ -105,17 +112,21 @@ public:
 class MediaInterface {
 public:
   virtual void SendKeyEvent(const RawAddress& bdaddr, uint8_t key, KeyState state) = 0;
+  virtual void SendKeyEventExt(const RawAddress& address, uint8_t key, KeyState state) = 0;
 
   using SongInfoCallback = base::OnceCallback<void(SongInfo)>;
   virtual void GetSongInfo(std::string media_id, SongInfoCallback info_cb) = 0;
+  virtual void GetSongInfoExt(const RawAddress& address, SongInfoCallback info_cb) = 0;
 
   using PlayStatusCallback = base::OnceCallback<void(PlayStatus)>;
   virtual void GetPlayStatus(PlayStatusCallback status_cb) = 0;
-
+  virtual void GetPlayStatusExt(const RawAddress& address, PlayStatusCallback status_cb) = 0;
   // Contains the current queue and the media ID of the currently playing item
   // in the queue
   using NowPlayingCallback = base::OnceCallback<void(std::string, std::vector<SongInfo>)>;
   virtual void GetNowPlayingList(NowPlayingCallback now_playing_cb) = 0;
+
+  virtual void GetNowPlayingListExt(const RawAddress& address, NowPlayingCallback now_playing_cb) = 0;
 
   // TODO (apanicke): Use a map with the ID as the key instead of vector
   // in follow up cleanup patches. This allows simplification of the
@@ -171,6 +182,8 @@ public:
   virtual void DeviceDisconnected(const RawAddress& bdaddr) = 0;
 
   virtual void SetVolume(int8_t volume) = 0;
+
+  virtual void SetVolumeExt(const RawAddress& bdaddr, int8_t volume) = 0;
 
   virtual ~VolumeInterface() = default;
 };

@@ -121,6 +121,10 @@ message AccessPermission {
 message A2dpSettings {
   optional bool optional_codecs_supported = 1;
   optional bool optional_codecs_enabled = 2;
+  // For dual A2DP source: the media player mapped into an audio zone, and the
+  // index of that audio zone in A2dpAudioZone.
+  optional string media_player = 3;
+  optional int32 audio_zone = 4;
 }
 
 message HfpClientSettings {
