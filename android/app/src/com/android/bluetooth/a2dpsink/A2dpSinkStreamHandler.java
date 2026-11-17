@@ -247,6 +247,18 @@ public class A2dpSinkStreamHandler extends Handler {
             return;
         }
 
+        // Keep the existing AudioFocusRequest while focus is temporarily lost. AudioService and
+        // CarAudioFocus can restore this request after the transient blocker is gone. Issuing a
+        // new request here can be rejected, and AudioService then removes the focus owner so it
+        // can no longer receive the later AUDIOFOCUS_GAIN callback.
+        if (mAudioFocus == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            Log.d(
+                    TAG,
+                    "Audio focus is transiently lost; wait for AUDIOFOCUS_GAIN instead of"
+                            + " requesting focus again");
+            return;
+        }
+
         if (mAudioFocus != AudioManager.AUDIOFOCUS_GAIN) {
             requestAudioFocus();
         }
